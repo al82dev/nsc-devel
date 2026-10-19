@@ -2,6 +2,7 @@
 
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
+#include "nativesharp/Frontend/ProjectAllocatorFailureProfile.h"
 #include "nativesharp/Frontend/ProjectConstructionSiteKind.h"
 
 #include <cstddef>
@@ -11,16 +12,6 @@
 
 namespace nativesharp::frontend
 {
-// NS304-T13-F08. Explicit allocation-failure profile for `new (allocator, failure: ...) T(...)`.
-enum class ProjectAllocatorFailureProfile
-{
-    None,    // no `failure:` — preserves T13-F02/T13-F07 behaviour.
-    Null,    // `failure: null`    — Allocate null -> construction result is null.
-    Result,  // `failure: result`  — Result<owned T, AllocationFailure>.
-    Throws,  // `failure: throws`  — Allocate null -> AllocationFailureException.
-    Panic    // `failure: panic`   — Allocate null -> project panic profile.
-};
-
 // Typed hand-off from method-body analysis to constructor overload resolution. Sites are ordered
 // by callableOrdinal/sequenceWithinCallable, never by discovery timing, so future parallel body
 // analysis cannot perturb dumps, HIR ordinals, or layout consumers.

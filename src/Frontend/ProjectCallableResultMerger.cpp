@@ -192,27 +192,11 @@ void mergeEscapeStatistics(
 }
 }
 
-void ProjectCallableResultMerger::merge(
+void ProjectCallableResultMerger::mergeScopeNames(
     ProjectMethodBodyModel& destination,
-    ProjectCallableAnalysisResult&& result)
+    ProjectMethodBodyModel& source,
+    std::size_t localBase)
 {
-    ProjectMethodBodyModel& source = result.shard();
-    const std::size_t scopeBase = destination.scopes_.size();
-    const std::size_t localBase = destination.locals_.size();
-    const std::size_t cleanupBase = destination.cleanupRegions_.size();
-    const std::size_t lambdaBase = destination.nextLambdaOrdinal_;
-    const std::size_t localBorrowBase = destination.localBorrowBindings_.size();
-    const std::size_t nameBase = destination.nameBindings_.size();
-    const std::size_t expressionBase = destination.expressionTypes_.size();
-    const std::size_t constructionBase = destination.constructionSites_.size();
-    const std::size_t aggregateBase = destination.aggregateInitializerBindings_.size();
-    const std::size_t deconstructionBase = destination.deconstructionBindings_.size();
-    const std::size_t matchBase = destination.matchExpressionBindings_.size();
-    const std::size_t loopExpressionBase = destination.loopExpressionBindings_.size();
-    const std::size_t loopBreakBase = destination.loopBreakBindings_.size();
-    const std::size_t callBase = destination.calls_.size();
-    const std::size_t namespaceCallBase = destination.namespaceFunctionCalls_.size();
-
     for (auto& names : source.scopeNames_)
     {
         for (auto& name : names)
@@ -222,7 +206,17 @@ void ProjectCallableResultMerger::merge(
         }
         destination.scopeNames_.push_back(std::move(names));
     }
+}
 
+void ProjectCallableResultMerger::appendShardCollections(
+    ProjectMethodBodyModel& destination,
+    ProjectMethodBodyModel& source,
+    std::size_t scopeBase,
+    std::size_t localBase,
+    std::size_t cleanupBase,
+    std::size_t lambdaBase,
+    std::size_t localBorrowBase)
+{
 #define NSC_APPEND(field) appendRemapped(destination.field, source.field, scopeBase, localBase, \
     cleanupBase, lambdaBase, localBorrowBase)
     NSC_APPEND(scopes_);
@@ -260,7 +254,13 @@ void ProjectCallableResultMerger::merge(
     NSC_APPEND(calls_);
     NSC_APPEND(namespaceFunctionCalls_);
 #undef NSC_APPEND
+}
 
+void ProjectCallableResultMerger::mergeShardState(
+    ProjectMethodBodyModel& destination,
+    ProjectMethodBodyModel& source,
+    ProjectCallableAnalysisResult& result)
+{
     for (auto& [syntax, value] : source.staticInterpolationValues_)
         destination.staticInterpolationValues_.insert_or_assign(syntax, std::move(value));
     destination.assignedOutParameters_.insert(
@@ -283,6 +283,15 @@ void ProjectCallableResultMerger::merge(
         destination.ownershipFlowStatistics_, source.ownershipFlowStatistics_);
     mergeEscapeStatistics(
         destination.escapePropagationStatistics_, source.escapePropagationStatistics_);
+}
+
+void ProjectCallableResultMerger::indexMergedBindings(
+    ProjectMethodBodyModel& destination,
+    std::size_t nameBase,
+    std::size_t expressionBase,
+    std::size_t constructionBase,
+    std::size_t callBase)
+{
     for (std::size_t index = nameBase; index < destination.nameBindings_.size(); ++index)
     {
         const MethodNameBinding& binding = destination.nameBindings_[index];
@@ -309,6 +318,17 @@ void ProjectCallableResultMerger::merge(
         destination.callBindingIndex_.record(
             binding.callerMethodMemberOrdinal, binding.syntax, index);
     }
+}
+
+void ProjectCallableResultMerger::indexMergedSyntaxBindings(
+    ProjectMethodBodyModel& destination,
+    std::size_t aggregateBase,
+    std::size_t deconstructionBase,
+    std::size_t matchBase,
+    std::size_t loopExpressionBase,
+    std::size_t loopBreakBase,
+    std::size_t namespaceCallBase)
+{
 #define NSC_INDEX_BY_SYNTAX(field, base, indexField) \
     for (std::size_t index = base; index < destination.field.size(); ++index) \
         destination.indexField.insert_or_assign(destination.field[index].syntax, index)
@@ -324,5 +344,41 @@ void ProjectCallableResultMerger::merge(
     NSC_INDEX_BY_SYNTAX(
         namespaceFunctionCalls_, namespaceCallBase, namespaceFunctionCallBySyntax_);
 #undef NSC_INDEX_BY_SYNTAX
+}
+
+void ProjectCallableResultMerger::merge(
+    ProjectMethodBodyModel& destination,
+    ProjectCallableAnalysisResult&& result)
+{
+    ProjectMethodBodyModel& source = result.shard();
+    const std::size_t scopeBase = destination.scopes_.size();
+    const std::size_t localBase = destination.locals_.size();
+    const std::size_t cleanupBase = destination.cleanupRegions_.size();
+    const std::size_t lambdaBase = destination.nextLambdaOrdinal_;
+    const std::size_t localBorrowBase = destination.localBorrowBindings_.size();
+    const std::size_t nameBase = destination.nameBindings_.size();
+    const std::size_t expressionBase = destination.expressionTypes_.size();
+    const std::size_t constructionBase = destination.constructionSites_.size();
+    const std::size_t aggregateBase = destination.aggregateInitializerBindings_.size();
+    const std::size_t deconstructionBase = destination.deconstructionBindings_.size();
+    const std::size_t matchBase = destination.matchExpressionBindings_.size();
+    const std::size_t loopExpressionBase = destination.loopExpressionBindings_.size();
+    const std::size_t loopBreakBase = destination.loopBreakBindings_.size();
+    const std::size_t callBase = destination.calls_.size();
+    const std::size_t namespaceCallBase = destination.namespaceFunctionCalls_.size();
+
+    mergeScopeNames(destination, source, localBase);
+    appendShardCollections(
+        destination, source, scopeBase, localBase, cleanupBase, lambdaBase, localBorrowBase);
+    mergeShardState(destination, source, result);
+    indexMergedBindings(destination, nameBase, expressionBase, constructionBase, callBase);
+    indexMergedSyntaxBindings(
+        destination,
+        aggregateBase,
+        deconstructionBase,
+        matchBase,
+        loopExpressionBase,
+        loopBreakBase,
+        namespaceCallBase);
 }
 }

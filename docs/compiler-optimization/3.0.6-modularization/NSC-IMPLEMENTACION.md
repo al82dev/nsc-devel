@@ -1,10 +1,10 @@
 # NSC — IMPLEMENTACIÓN
 
-Progreso absoluto: **79/1227**
+Progreso absoluto: **642/1227**
 
-Completados: **79**
+Completados: **642**
 
-Pendientes: **1148**
+Pendientes: **585**
 
 Fuente canónica: `NSC-GUIA-DE-IMPLEMENTACION.md` y sus anexos A, B, C, D y F, medidos el 2026-10-19.
 
@@ -14,7 +14,7 @@ casillas se agrupen por integración.
 Quedan fuera del denominador: cambios a NSC Builder, cambios de CLI/sintaxis/ABI/NSMETA/contratos 3.0.4,
 eliminación de recursión y las tareas de rendimiento que requieren autorización funcional independiente.
 
-## Refactor mecánico y reorganización sin cambios funcionales — 79/1225
+## Refactor mecánico y reorganización sin cambios funcionales — 642/1225
 
 Política de integración: **10 commits técnicos**, uno por límite de subsistema. Un commit se crea únicamente
 cuando su conjunto está completo, revisado y cuenta con la evidencia focal aplicable. Ninguna optimización entra
@@ -285,1881 +285,1885 @@ Separa tipos y cuerpos fundamentales y estabiliza los umbrellas públicos que co
 - [x] NSC-IMPL-1186 — Descomponer SimplifyControlFlowPass::run en src/Passes/SimplifyControlFlowPass.cpp:178 (62 líneas
   ejecutables; 113 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-### Commit REF-02 — Lenguaje, metadata, interoperabilidad y contratos ABI — 0/314
+### Commit REF-02 — Lenguaje, metadata, interoperabilidad y contratos ABI — 314/314
 
 Ordena las superficies de lenguaje, metadata e interoperabilidad sin cambiar formatos, ordinales ni ABI.
 
-- [ ] NSC-IMPL-0083 — Extraer el struct HostContext desde src/Interop/CHeaderGenerator.cpp:40-48 (9) hacia
+- [x] NSC-IMPL-0083 — Extraer el struct HostContext desde src/Interop/CHeaderGenerator.cpp:40-48 (9) hacia
   src/Interop/Internal/HostContext.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0084 — Extraer el struct Requirement desde src/Interop/LibraryCapabilityAudit.cpp:10-15 (6) hacia
+- [x] NSC-IMPL-0084 — Extraer el struct Requirement desde src/Interop/LibraryCapabilityAudit.cpp:10-15 (6) hacia
   src/Interop/Internal/Requirement.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0085 — Extraer el class ByteWriter desde src/Interop/LibraryMetadata.cpp:70-112 (43) hacia
+- [x] NSC-IMPL-0085 — Extraer el class ByteWriter desde src/Interop/LibraryMetadata.cpp:70-112 (43) hacia
   src/Interop/Internal/ByteWriter.h, y mover sus cuerpos a src/Interop/Internal/ByteWriter.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0086 — Extraer el class ByteReader desde src/Interop/LibraryMetadata.cpp:114-185 (72) hacia
+- [x] NSC-IMPL-0086 — Extraer el class ByteReader desde src/Interop/LibraryMetadata.cpp:114-185 (72) hacia
   src/Interop/Internal/ByteReader.h, y mover sus cuerpos a src/Interop/Internal/ByteReader.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0087 — Extraer el struct TemplateSourceReplacement desde src/Interop/LibraryMetadata.cpp:577-582 (6)
+- [x] NSC-IMPL-0087 — Extraer el struct TemplateSourceReplacement desde src/Interop/LibraryMetadata.cpp:577-582 (6)
   hacia src/Interop/Internal/TemplateSourceReplacement.h, sin .cpp adicional; conservar texto, comentarios, firmas,
   orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0104 — Extraer el struct ParsedBuiltinHole desde src/Language/ExpressionErgonomics.cpp:205-213 (9) hacia
+- [x] NSC-IMPL-0104 — Extraer el struct ParsedBuiltinHole desde src/Language/ExpressionErgonomics.cpp:205-213 (9) hacia
   src/Language/Internal/ParsedBuiltinHole.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0105 — Extraer el class BuiltinStaticInterpolationHandler desde
+- [x] NSC-IMPL-0105 — Extraer el class BuiltinStaticInterpolationHandler desde
   src/Language/ExpressionErgonomics.cpp:273-328 (56) hacia src/Language/Internal/BuiltinStaticInterpolationHandler.h, y
   mover sus cuerpos a src/Language/Internal/BuiltinStaticInterpolationHandler.cpp; conservar texto, comentarios, firmas,
   orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0131 — Mover fuera de línea función libre checkedLayoutAdd de src/Language/CheckedLayoutArithmetic.h:9
+- [x] NSC-IMPL-0131 — Mover fuera de línea función libre checkedLayoutAdd de src/Language/CheckedLayoutArithmetic.h:9
   (10 líneas) a un único .cpp, dejando la declaración intacta y conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0132 — Mover fuera de línea función libre checkedLayoutAlignUp de
+- [x] NSC-IMPL-0132 — Mover fuera de línea función libre checkedLayoutAlignUp de
   src/Language/CheckedLayoutArithmetic.h:20 (16 líneas) a un único .cpp, dejando la declaración intacta y conservando
   exactamente el cuerpo.
-- [ ] NSC-IMPL-0142 — Mover fuera de línea función libre futureTypeKey de
+- [x] NSC-IMPL-0142 — Mover fuera de línea función libre futureTypeKey de
   include/nativesharp/Language/CoroutineSemantics.h:27 (6 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0143 — Mover fuera de línea función libre futureTypeKey de
+- [x] NSC-IMPL-0143 — Mover fuera de línea función libre futureTypeKey de
   include/nativesharp/Language/CoroutineSemantics.h:36 (10 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0144 — Mover fuera de línea función libre futureInnerTypeKey de
+- [x] NSC-IMPL-0144 — Mover fuera de línea función libre futureInnerTypeKey de
   include/nativesharp/Language/CoroutineSemantics.h:47 (11 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0145 — Mover fuera de línea función libre futureErrorTypeKey de
+- [x] NSC-IMPL-0145 — Mover fuera de línea función libre futureErrorTypeKey de
   include/nativesharp/Language/CoroutineSemantics.h:60 (9 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0146 — Mover fuera de línea función libre iteratorTypeKey de
+- [x] NSC-IMPL-0146 — Mover fuera de línea función libre iteratorTypeKey de
   include/nativesharp/Language/IterationSemantics.h:26 (6 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0147 — Mover fuera de línea función libre iteratorInnerTypeKey de
+- [x] NSC-IMPL-0147 — Mover fuera de línea función libre iteratorInnerTypeKey de
   include/nativesharp/Language/IterationSemantics.h:33 (8 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0148 — Mover fuera de línea función libre iteratorTypeKey de
+- [x] NSC-IMPL-0148 — Mover fuera de línea función libre iteratorTypeKey de
   include/nativesharp/Language/IterationSemantics.h:43 (11 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0149 — Mover fuera de línea función libre iteratorErrorTypeKey de
+- [x] NSC-IMPL-0149 — Mover fuera de línea función libre iteratorErrorTypeKey de
   include/nativesharp/Language/IterationSemantics.h:55 (9 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0150 — Mover fuera de línea función libre asyncIteratorTypeKey de
+- [x] NSC-IMPL-0150 — Mover fuera de línea función libre asyncIteratorTypeKey de
   include/nativesharp/Language/IterationSemantics.h:67 (11 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0151 — Mover fuera de línea función libre asyncIteratorInnerTypeKey de
+- [x] NSC-IMPL-0151 — Mover fuera de línea función libre asyncIteratorInnerTypeKey de
   include/nativesharp/Language/IterationSemantics.h:79 (8 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0152 — Mover fuera de línea función libre asyncIteratorErrorTypeKey de
+- [x] NSC-IMPL-0152 — Mover fuera de línea función libre asyncIteratorErrorTypeKey de
   include/nativesharp/Language/IterationSemantics.h:88 (9 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0231 — Extraer el struct SdkHeaderMapping desde include/nativesharp/Compilation/SdkManifest.h:14-18 hacia
+- [x] NSC-IMPL-0231 — Extraer el struct SdkHeaderMapping desde include/nativesharp/Compilation/SdkManifest.h:14-18 hacia
   include/nativesharp/Compilation/SdkHeaderMapping.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0232 — Extraer el struct SdkTypeMapping desde include/nativesharp/Compilation/SdkManifest.h:20-24 hacia
+- [x] NSC-IMPL-0232 — Extraer el struct SdkTypeMapping desde include/nativesharp/Compilation/SdkManifest.h:20-24 hacia
   include/nativesharp/Compilation/SdkTypeMapping.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0233 — Extraer el struct SdkFieldMapping desde include/nativesharp/Compilation/SdkManifest.h:26-31 hacia
+- [x] NSC-IMPL-0233 — Extraer el struct SdkFieldMapping desde include/nativesharp/Compilation/SdkManifest.h:26-31 hacia
   include/nativesharp/Compilation/SdkFieldMapping.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0234 — Extraer el struct SdkDefineMapping desde include/nativesharp/Compilation/SdkManifest.h:33-37 hacia
+- [x] NSC-IMPL-0234 — Extraer el struct SdkDefineMapping desde include/nativesharp/Compilation/SdkManifest.h:33-37 hacia
   include/nativesharp/Compilation/SdkDefineMapping.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0235 — Extraer el struct SdkTargetVariant desde include/nativesharp/Compilation/SdkManifest.h:39-44 hacia
+- [x] NSC-IMPL-0235 — Extraer el struct SdkTargetVariant desde include/nativesharp/Compilation/SdkManifest.h:39-44 hacia
   include/nativesharp/Compilation/SdkTargetVariant.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0236 — Extraer el struct SdkLibraryDependency desde include/nativesharp/Compilation/SdkManifest.h:46-50
+- [x] NSC-IMPL-0236 — Extraer el struct SdkLibraryDependency desde include/nativesharp/Compilation/SdkManifest.h:46-50
   hacia include/nativesharp/Compilation/SdkLibraryDependency.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0237 — Conservar el struct SdkManifest como tipo principal de
+- [x] NSC-IMPL-0237 — Conservar el struct SdkManifest como tipo principal de
   include/nativesharp/Compilation/SdkManifest.h:52-63 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0238 — Extraer el class SdkTargetSelector desde include/nativesharp/Compilation/SdkManifest.h:65-73 hacia
+- [x] NSC-IMPL-0238 — Extraer el class SdkTargetSelector desde include/nativesharp/Compilation/SdkManifest.h:65-73 hacia
   include/nativesharp/Compilation/SdkTargetSelector.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0239 — Extraer el class SdkManifestLoader desde include/nativesharp/Compilation/SdkManifest.h:75-81 hacia
+- [x] NSC-IMPL-0239 — Extraer el class SdkManifestLoader desde include/nativesharp/Compilation/SdkManifest.h:75-81 hacia
   include/nativesharp/Compilation/SdkManifestLoader.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0470 — Extraer el enum LibraryApiChangeImpact desde include/nativesharp/Interop/LibraryApiDiff.h:10-15
+- [x] NSC-IMPL-0470 — Extraer el enum LibraryApiChangeImpact desde include/nativesharp/Interop/LibraryApiDiff.h:10-15
   hacia include/nativesharp/Interop/LibraryApiChangeImpact.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0471 — Extraer el struct LibraryApiChange desde include/nativesharp/Interop/LibraryApiDiff.h:17-23 hacia
+- [x] NSC-IMPL-0471 — Extraer el struct LibraryApiChange desde include/nativesharp/Interop/LibraryApiDiff.h:17-23 hacia
   include/nativesharp/Interop/LibraryApiChange.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0472 — Extraer el struct LibraryApiDiffReport desde include/nativesharp/Interop/LibraryApiDiff.h:25-34
+- [x] NSC-IMPL-0472 — Extraer el struct LibraryApiDiffReport desde include/nativesharp/Interop/LibraryApiDiff.h:25-34
   hacia include/nativesharp/Interop/LibraryApiDiffReport.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0473 — Extraer el class LibraryApiDiffer desde include/nativesharp/Interop/LibraryApiDiff.h:36-51 hacia
+- [x] NSC-IMPL-0473 — Extraer el class LibraryApiDiffer desde include/nativesharp/Interop/LibraryApiDiff.h:36-51 hacia
   include/nativesharp/Interop/LibraryApiDiffer.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0474 — Extraer el enum LibraryMetadataTypeKind desde
+- [x] NSC-IMPL-0474 — Extraer el enum LibraryMetadataTypeKind desde
   include/nativesharp/Interop/LibraryMetadata.h:193-200 hacia include/nativesharp/Interop/LibraryMetadataTypeKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0475 — Extraer el enum LibraryMetadataOwnershipKind desde
+- [x] NSC-IMPL-0475 — Extraer el enum LibraryMetadataOwnershipKind desde
   include/nativesharp/Interop/LibraryMetadata.h:202-207 hacia
   include/nativesharp/Interop/LibraryMetadataOwnershipKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0476 — Extraer el enum LibraryMetadataDefaultValueKind desde
+- [x] NSC-IMPL-0476 — Extraer el enum LibraryMetadataDefaultValueKind desde
   include/nativesharp/Interop/LibraryMetadata.h:209-218 hacia
   include/nativesharp/Interop/LibraryMetadataDefaultValueKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0477 — Extraer el enum LibraryMetadataParameterPassKind desde
+- [x] NSC-IMPL-0477 — Extraer el enum LibraryMetadataParameterPassKind desde
   include/nativesharp/Interop/LibraryMetadata.h:220-226 hacia
   include/nativesharp/Interop/LibraryMetadataParameterPassKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0478 — Extraer el struct LibraryMetadataField desde include/nativesharp/Interop/LibraryMetadata.h:228-240
+- [x] NSC-IMPL-0478 — Extraer el struct LibraryMetadataField desde include/nativesharp/Interop/LibraryMetadata.h:228-240
   hacia include/nativesharp/Interop/LibraryMetadataField.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0479 — Extraer el struct LibraryMetadataVariantCase desde
+- [x] NSC-IMPL-0479 — Extraer el struct LibraryMetadataVariantCase desde
   include/nativesharp/Interop/LibraryMetadata.h:242-247 hacia include/nativesharp/Interop/LibraryMetadataVariantCase.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0480 — Extraer el enum LibraryMetadataAssociatedItemKind desde
+- [x] NSC-IMPL-0480 — Extraer el enum LibraryMetadataAssociatedItemKind desde
   include/nativesharp/Interop/LibraryMetadata.h:249-253 hacia
   include/nativesharp/Interop/LibraryMetadataAssociatedItemKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0481 — Extraer el struct LibraryMetadataAssociatedItem desde
+- [x] NSC-IMPL-0481 — Extraer el struct LibraryMetadataAssociatedItem desde
   include/nativesharp/Interop/LibraryMetadata.h:255-265 hacia
   include/nativesharp/Interop/LibraryMetadataAssociatedItem.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0482 — Extraer el struct LibraryMetadataType desde include/nativesharp/Interop/LibraryMetadata.h:267-329
+- [x] NSC-IMPL-0482 — Extraer el struct LibraryMetadataType desde include/nativesharp/Interop/LibraryMetadata.h:267-329
   hacia include/nativesharp/Interop/LibraryMetadataType.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0483 — Extraer el struct LibraryMetadataParameter desde
+- [x] NSC-IMPL-0483 — Extraer el struct LibraryMetadataParameter desde
   include/nativesharp/Interop/LibraryMetadata.h:331-355 hacia include/nativesharp/Interop/LibraryMetadataParameter.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0484 — Extraer el enum LibraryMetadataEscapeClass desde
+- [x] NSC-IMPL-0484 — Extraer el enum LibraryMetadataEscapeClass desde
   include/nativesharp/Interop/LibraryMetadata.h:357-364 hacia include/nativesharp/Interop/LibraryMetadataEscapeClass.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0485 — Extraer el struct LibraryMetadataMember desde
+- [x] NSC-IMPL-0485 — Extraer el struct LibraryMetadataMember desde
   include/nativesharp/Interop/LibraryMetadata.h:366-399 hacia include/nativesharp/Interop/LibraryMetadataMember.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0486 — Extraer el struct LibraryMetadataNamespaceFunction desde
+- [x] NSC-IMPL-0486 — Extraer el struct LibraryMetadataNamespaceFunction desde
   include/nativesharp/Interop/LibraryMetadata.h:401-417 hacia
   include/nativesharp/Interop/LibraryMetadataNamespaceFunction.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0487 — Extraer el enum LibraryMetadataNamespaceStateInitializerKind desde
+- [x] NSC-IMPL-0487 — Extraer el enum LibraryMetadataNamespaceStateInitializerKind desde
   include/nativesharp/Interop/LibraryMetadata.h:419-427 hacia
   include/nativesharp/Interop/LibraryMetadataNamespaceStateInitializerKind.h; conservar texto, comentarios, orden de
   declaración y cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0488 — Extraer el struct LibraryMetadataNamespaceState desde
+- [x] NSC-IMPL-0488 — Extraer el struct LibraryMetadataNamespaceState desde
   include/nativesharp/Interop/LibraryMetadata.h:429-442 hacia
   include/nativesharp/Interop/LibraryMetadataNamespaceState.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0489 — Extraer el struct LibraryMetadataGenericTemplate desde
+- [x] NSC-IMPL-0489 — Extraer el struct LibraryMetadataGenericTemplate desde
   include/nativesharp/Interop/LibraryMetadata.h:443-475 hacia
   include/nativesharp/Interop/LibraryMetadataGenericTemplate.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0490 — Extraer el struct LibraryMetadataGenericSpecialization desde
+- [x] NSC-IMPL-0490 — Extraer el struct LibraryMetadataGenericSpecialization desde
   include/nativesharp/Interop/LibraryMetadata.h:491-498 hacia
   include/nativesharp/Interop/LibraryMetadataGenericSpecialization.h; conservar texto, comentarios, orden de declaración
   y cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0491 — Extraer el struct LibraryMetadataDispatchInterface desde
+- [x] NSC-IMPL-0491 — Extraer el struct LibraryMetadataDispatchInterface desde
   include/nativesharp/Interop/LibraryMetadata.h:500-508 hacia
   include/nativesharp/Interop/LibraryMetadataDispatchInterface.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0492 — Extraer el struct LibraryMetadataDispatch desde
+- [x] NSC-IMPL-0492 — Extraer el struct LibraryMetadataDispatch desde
   include/nativesharp/Interop/LibraryMetadata.h:510-524 hacia include/nativesharp/Interop/LibraryMetadataDispatch.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0493 — Extraer el struct LibraryMetadataExport desde
+- [x] NSC-IMPL-0493 — Extraer el struct LibraryMetadataExport desde
   include/nativesharp/Interop/LibraryMetadata.h:526-533 hacia include/nativesharp/Interop/LibraryMetadataExport.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0494 — Extraer el struct LibraryMetadataBinaryDependency desde
+- [x] NSC-IMPL-0494 — Extraer el struct LibraryMetadataBinaryDependency desde
   include/nativesharp/Interop/LibraryMetadata.h:535-542 hacia
   include/nativesharp/Interop/LibraryMetadataBinaryDependency.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0495 — Extraer el struct LibraryMetadataPlatformImport desde
+- [x] NSC-IMPL-0495 — Extraer el struct LibraryMetadataPlatformImport desde
   include/nativesharp/Interop/LibraryMetadata.h:544-548 hacia
   include/nativesharp/Interop/LibraryMetadataPlatformImport.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0496 — Extraer el struct LibraryMetadataTraitImpl desde
+- [x] NSC-IMPL-0496 — Extraer el struct LibraryMetadataTraitImpl desde
   include/nativesharp/Interop/LibraryMetadata.h:553-558 hacia include/nativesharp/Interop/LibraryMetadataTraitImpl.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0497 — Conservar el struct LibraryMetadata como tipo principal de
+- [x] NSC-IMPL-0497 — Conservar el struct LibraryMetadata como tipo principal de
   include/nativesharp/Interop/LibraryMetadata.h:560-609 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0498 — Extraer el class LibraryMetadataCodec desde include/nativesharp/Interop/LibraryMetadata.h:616-655
+- [x] NSC-IMPL-0498 — Extraer el class LibraryMetadataCodec desde include/nativesharp/Interop/LibraryMetadata.h:616-655
   hacia include/nativesharp/Interop/LibraryMetadataCodec.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0530 — Extraer el enum Representation desde include/nativesharp/Language/AbiSemantics.h:11-11 hacia
+- [x] NSC-IMPL-0530 — Extraer el enum Representation desde include/nativesharp/Language/AbiSemantics.h:11-11 hacia
   include/nativesharp/Language/Representation.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0531 — Extraer el struct RepresentationContract desde include/nativesharp/Language/AbiSemantics.h:12-18
+- [x] NSC-IMPL-0531 — Extraer el struct RepresentationContract desde include/nativesharp/Language/AbiSemantics.h:12-18
   hacia include/nativesharp/Language/RepresentationContract.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0532 — Extraer el struct BitFieldContract desde include/nativesharp/Language/AbiSemantics.h:21-28 hacia
+- [x] NSC-IMPL-0532 — Extraer el struct BitFieldContract desde include/nativesharp/Language/AbiSemantics.h:21-28 hacia
   include/nativesharp/Language/BitFieldContract.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0533 — Extraer el struct PointerContract desde include/nativesharp/Language/AbiSemantics.h:31-38 hacia
+- [x] NSC-IMPL-0533 — Extraer el struct PointerContract desde include/nativesharp/Language/AbiSemantics.h:31-38 hacia
   include/nativesharp/Language/PointerContract.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0534 — Extraer el enum AbiCallingConvention desde include/nativesharp/Language/AbiSemantics.h:44-44 hacia
+- [x] NSC-IMPL-0534 — Extraer el enum AbiCallingConvention desde include/nativesharp/Language/AbiSemantics.h:44-44 hacia
   include/nativesharp/Language/AbiCallingConvention.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0535 — Extraer el enum UnsafeOperation desde include/nativesharp/Language/AbiSemantics.h:47-47 hacia
+- [x] NSC-IMPL-0535 — Extraer el enum UnsafeOperation desde include/nativesharp/Language/AbiSemantics.h:47-47 hacia
   include/nativesharp/Language/UnsafeOperation.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0536 — Extraer el enum FfiOwnership desde include/nativesharp/Language/AbiSemantics.h:51-51 hacia
+- [x] NSC-IMPL-0536 — Extraer el enum FfiOwnership desde include/nativesharp/Language/AbiSemantics.h:51-51 hacia
   include/nativesharp/Language/FfiOwnership.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0537 — Extraer el struct FfiParameterContract desde include/nativesharp/Language/AbiSemantics.h:52-59
+- [x] NSC-IMPL-0537 — Extraer el struct FfiParameterContract desde include/nativesharp/Language/AbiSemantics.h:52-59
   hacia include/nativesharp/Language/FfiParameterContract.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0538 — Extraer el struct SimdContract desde include/nativesharp/Language/AbiSemantics.h:66-66 hacia
+- [x] NSC-IMPL-0538 — Extraer el struct SimdContract desde include/nativesharp/Language/AbiSemantics.h:66-66 hacia
   include/nativesharp/Language/SimdContract.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0539 — Extraer el enum SimdLaneKind desde include/nativesharp/Language/AbiSemantics.h:68-68 hacia
+- [x] NSC-IMPL-0539 — Extraer el enum SimdLaneKind desde include/nativesharp/Language/AbiSemantics.h:68-68 hacia
   include/nativesharp/Language/SimdLaneKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0540 — Extraer el struct PortableSimdType desde include/nativesharp/Language/AbiSemantics.h:69-76 hacia
+- [x] NSC-IMPL-0540 — Extraer el struct PortableSimdType desde include/nativesharp/Language/AbiSemantics.h:69-76 hacia
   include/nativesharp/Language/PortableSimdType.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0541 — Extraer el struct TupleElement desde include/nativesharp/Language/AggregateSemantics.h:13-17 hacia
+- [x] NSC-IMPL-0541 — Extraer el struct TupleElement desde include/nativesharp/Language/AggregateSemantics.h:13-17 hacia
   include/nativesharp/Language/TupleElement.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0542 — Extraer el struct AggregateFieldLayout desde
+- [x] NSC-IMPL-0542 — Extraer el struct AggregateFieldLayout desde
   include/nativesharp/Language/AggregateSemantics.h:25-29 hacia include/nativesharp/Language/AggregateFieldLayout.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0543 — Extraer el struct AggregateLayout desde include/nativesharp/Language/AggregateSemantics.h:31-36
+- [x] NSC-IMPL-0543 — Extraer el struct AggregateLayout desde include/nativesharp/Language/AggregateSemantics.h:31-36
   hacia include/nativesharp/Language/AggregateLayout.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0544 — Extraer el enum WindowsX64AggregateReturn desde
+- [x] NSC-IMPL-0544 — Extraer el enum WindowsX64AggregateReturn desde
   include/nativesharp/Language/AggregateSemantics.h:41-45 hacia
   include/nativesharp/Language/WindowsX64AggregateReturn.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0545 — Extraer el enum DeconstructionBindingMode desde
+- [x] NSC-IMPL-0545 — Extraer el enum DeconstructionBindingMode desde
   include/nativesharp/Language/AggregateSemantics.h:49-55 hacia
   include/nativesharp/Language/DeconstructionBindingMode.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0546 — Extraer el struct DeconstructionBinding desde
+- [x] NSC-IMPL-0546 — Extraer el struct DeconstructionBinding desde
   include/nativesharp/Language/AggregateSemantics.h:57-61 hacia include/nativesharp/Language/DeconstructionBinding.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0547 — Extraer el enum RecordDerive desde include/nativesharp/Language/AggregateSemantics.h:67-73 hacia
+- [x] NSC-IMPL-0547 — Extraer el enum RecordDerive desde include/nativesharp/Language/AggregateSemantics.h:67-73 hacia
   include/nativesharp/Language/RecordDerive.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0548 — Extraer el class RecordDeriveSet desde include/nativesharp/Language/AggregateSemantics.h:75-93
+- [x] NSC-IMPL-0548 — Extraer el class RecordDeriveSet desde include/nativesharp/Language/AggregateSemantics.h:75-93
   hacia include/nativesharp/Language/RecordDeriveSet.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0549 — Extraer el struct PromotedField desde include/nativesharp/Language/AggregateSemantics.h:95-101
+- [x] NSC-IMPL-0549 — Extraer el struct PromotedField desde include/nativesharp/Language/AggregateSemantics.h:95-101
   hacia include/nativesharp/Language/PromotedField.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0550 — Extraer el enum FunctionCarrier desde include/nativesharp/Language/CallableSemantics.h:12-12 hacia
+- [x] NSC-IMPL-0550 — Extraer el enum FunctionCarrier desde include/nativesharp/Language/CallableSemantics.h:12-12 hacia
   include/nativesharp/Language/FunctionCarrier.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0551 — Extraer el enum CallingConvention desde include/nativesharp/Language/CallableSemantics.h:13-13
+- [x] NSC-IMPL-0551 — Extraer el enum CallingConvention desde include/nativesharp/Language/CallableSemantics.h:13-13
   hacia include/nativesharp/Language/CallingConvention.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0552 — Extraer el struct FunctionType desde include/nativesharp/Language/CallableSemantics.h:15-28 hacia
+- [x] NSC-IMPL-0552 — Extraer el struct FunctionType desde include/nativesharp/Language/CallableSemantics.h:15-28 hacia
   include/nativesharp/Language/FunctionType.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0553 — Extraer el struct AnonymousLambdaType desde include/nativesharp/Language/CallableSemantics.h:42-47
+- [x] NSC-IMPL-0553 — Extraer el struct AnonymousLambdaType desde include/nativesharp/Language/CallableSemantics.h:42-47
   hacia include/nativesharp/Language/AnonymousLambdaType.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0554 — Extraer el enum CaptureMode desde include/nativesharp/Language/CallableSemantics.h:54-54 hacia
+- [x] NSC-IMPL-0554 — Extraer el enum CaptureMode desde include/nativesharp/Language/CallableSemantics.h:54-54 hacia
   include/nativesharp/Language/CaptureMode.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0555 — Extraer el struct Capture desde include/nativesharp/Language/CallableSemantics.h:55-62 hacia
+- [x] NSC-IMPL-0555 — Extraer el struct Capture desde include/nativesharp/Language/CallableSemantics.h:55-62 hacia
   include/nativesharp/Language/Capture.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0556 — Extraer el struct ClosureLayout desde include/nativesharp/Language/CallableSemantics.h:64-64 hacia
+- [x] NSC-IMPL-0556 — Extraer el struct ClosureLayout desde include/nativesharp/Language/CallableSemantics.h:64-64 hacia
   include/nativesharp/Language/ClosureLayout.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0557 — Extraer el enum CallableTrait desde include/nativesharp/Language/CallableSemantics.h:68-68 hacia
+- [x] NSC-IMPL-0557 — Extraer el enum CallableTrait desde include/nativesharp/Language/CallableSemantics.h:68-68 hacia
   include/nativesharp/Language/CallableTrait.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0558 — Extraer el enum MethodValueKind desde include/nativesharp/Language/CallableSemantics.h:73-73 hacia
+- [x] NSC-IMPL-0558 — Extraer el enum MethodValueKind desde include/nativesharp/Language/CallableSemantics.h:73-73 hacia
   include/nativesharp/Language/MethodValueKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0559 — Extraer el struct BoundMethodLayout desde include/nativesharp/Language/CallableSemantics.h:74-74
+- [x] NSC-IMPL-0559 — Extraer el struct BoundMethodLayout desde include/nativesharp/Language/CallableSemantics.h:74-74
   hacia include/nativesharp/Language/BoundMethodLayout.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0560 — Extraer el struct BinaryModuleContract desde
+- [x] NSC-IMPL-0560 — Extraer el struct BinaryModuleContract desde
   include/nativesharp/Language/CompatibilitySemantics.h:11-17 hacia include/nativesharp/Language/BinaryModuleContract.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0561 — Extraer el enum ModuleCompatibility desde
+- [x] NSC-IMPL-0561 — Extraer el enum ModuleCompatibility desde
   include/nativesharp/Language/CompatibilitySemantics.h:18-18 hacia include/nativesharp/Language/ModuleCompatibility.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0562 — Extraer el struct CompilationUnitContract desde
+- [x] NSC-IMPL-0562 — Extraer el struct CompilationUnitContract desde
   include/nativesharp/Language/CompatibilitySemantics.h:23-29 hacia
   include/nativesharp/Language/CompilationUnitContract.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0563 — Extraer el enum MigrationIssue desde include/nativesharp/Language/CompatibilitySemantics.h:37-46
+- [x] NSC-IMPL-0563 — Extraer el enum MigrationIssue desde include/nativesharp/Language/CompatibilitySemantics.h:37-46
   hacia include/nativesharp/Language/MigrationIssue.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0564 — Extraer el struct MigrationFix desde include/nativesharp/Language/CompatibilitySemantics.h:49-54
+- [x] NSC-IMPL-0564 — Extraer el struct MigrationFix desde include/nativesharp/Language/CompatibilitySemantics.h:49-54
   hacia include/nativesharp/Language/MigrationFix.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0565 — Extraer el enum SourceCompatibility desde
+- [x] NSC-IMPL-0565 — Extraer el enum SourceCompatibility desde
   include/nativesharp/Language/CompatibilitySemantics.h:57-57 hacia include/nativesharp/Language/SourceCompatibility.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0566 — Extraer el enum AbiCompatibility desde include/nativesharp/Language/CompatibilitySemantics.h:58-58
+- [x] NSC-IMPL-0566 — Extraer el enum AbiCompatibility desde include/nativesharp/Language/CompatibilitySemantics.h:58-58
   hacia include/nativesharp/Language/AbiCompatibility.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0567 — Extraer el struct CompatibilityClassification desde
+- [x] NSC-IMPL-0567 — Extraer el struct CompatibilityClassification desde
   include/nativesharp/Language/CompatibilitySemantics.h:59-64 hacia
   include/nativesharp/Language/CompatibilityClassification.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0568 — Extraer el struct MigrationChapter desde
+- [x] NSC-IMPL-0568 — Extraer el struct MigrationChapter desde
   include/nativesharp/Language/CompatibilitySemantics.h:71-78 hacia include/nativesharp/Language/MigrationChapter.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0569 — Extraer el enum FutureStart desde include/nativesharp/Language/CoroutineSemantics.h:19-19 hacia
+- [x] NSC-IMPL-0569 — Extraer el enum FutureStart desde include/nativesharp/Language/CoroutineSemantics.h:19-19 hacia
   include/nativesharp/Language/FutureStart.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0570 — Extraer el enum FrameStorage desde include/nativesharp/Language/CoroutineSemantics.h:20-20 hacia
+- [x] NSC-IMPL-0570 — Extraer el enum FrameStorage desde include/nativesharp/Language/CoroutineSemantics.h:20-20 hacia
   include/nativesharp/Language/FrameStorage.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0571 — Extraer el struct AwaitSuspension desde include/nativesharp/Language/CoroutineSemantics.h:70-77
+- [x] NSC-IMPL-0571 — Extraer el struct AwaitSuspension desde include/nativesharp/Language/CoroutineSemantics.h:70-77
   hacia include/nativesharp/Language/AwaitSuspension.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0572 — Extraer el struct AsyncFunctionPlan desde include/nativesharp/Language/CoroutineSemantics.h:79-88
+- [x] NSC-IMPL-0572 — Extraer el struct AsyncFunctionPlan desde include/nativesharp/Language/CoroutineSemantics.h:79-88
   hacia include/nativesharp/Language/AsyncFunctionPlan.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0573 — Extraer el enum PollState desde include/nativesharp/Language/CoroutineSemantics.h:101-101 hacia
+- [x] NSC-IMPL-0573 — Extraer el enum PollState desde include/nativesharp/Language/CoroutineSemantics.h:101-101 hacia
   include/nativesharp/Language/PollState.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0574 — Extraer el enum FutureCompletion desde include/nativesharp/Language/CoroutineSemantics.h:102-102
+- [x] NSC-IMPL-0574 — Extraer el enum FutureCompletion desde include/nativesharp/Language/CoroutineSemantics.h:102-102
   hacia include/nativesharp/Language/FutureCompletion.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0575 — Extraer el enum PollOutcome desde include/nativesharp/Language/CoroutineSemantics.h:103-103 hacia
+- [x] NSC-IMPL-0575 — Extraer el enum PollOutcome desde include/nativesharp/Language/CoroutineSemantics.h:103-103 hacia
   include/nativesharp/Language/PollOutcome.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0576 — Extraer el struct FutureProtocol desde include/nativesharp/Language/CoroutineSemantics.h:105-117
+- [x] NSC-IMPL-0576 — Extraer el struct FutureProtocol desde include/nativesharp/Language/CoroutineSemantics.h:105-117
   hacia include/nativesharp/Language/FutureProtocol.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0577 — Extraer el struct AwaitContext desde include/nativesharp/Language/CoroutineSemantics.h:121-126
+- [x] NSC-IMPL-0577 — Extraer el struct AwaitContext desde include/nativesharp/Language/CoroutineSemantics.h:121-126
   hacia include/nativesharp/Language/AwaitContext.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0578 — Extraer el class FutureState desde include/nativesharp/Language/CoroutineSemantics.h:130-142 hacia
+- [x] NSC-IMPL-0578 — Extraer el class FutureState desde include/nativesharp/Language/CoroutineSemantics.h:130-142 hacia
   include/nativesharp/Language/FutureState.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0579 — Extraer el enum CancellationReason desde include/nativesharp/Language/CoroutineSemantics.h:148-148
+- [x] NSC-IMPL-0579 — Extraer el enum CancellationReason desde include/nativesharp/Language/CoroutineSemantics.h:148-148
   hacia include/nativesharp/Language/CancellationReason.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0580 — Extraer el enum AsyncCleanupKind desde include/nativesharp/Language/CoroutineSemantics.h:149-149
+- [x] NSC-IMPL-0580 — Extraer el enum AsyncCleanupKind desde include/nativesharp/Language/CoroutineSemantics.h:149-149
   hacia include/nativesharp/Language/AsyncCleanupKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0581 — Extraer el struct ActiveAsyncDefer desde include/nativesharp/Language/CoroutineSemantics.h:151-155
+- [x] NSC-IMPL-0581 — Extraer el struct ActiveAsyncDefer desde include/nativesharp/Language/CoroutineSemantics.h:151-155
   hacia include/nativesharp/Language/ActiveAsyncDefer.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0582 — Extraer el struct AsyncCleanupAction desde
+- [x] NSC-IMPL-0582 — Extraer el struct AsyncCleanupAction desde
   include/nativesharp/Language/CoroutineSemantics.h:157-162 hacia include/nativesharp/Language/AsyncCleanupAction.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0583 — Extraer el struct AsyncCancellationPlan desde
+- [x] NSC-IMPL-0583 — Extraer el struct AsyncCancellationPlan desde
   include/nativesharp/Language/CoroutineSemantics.h:164-171 hacia include/nativesharp/Language/AsyncCancellationPlan.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0584 — Extraer el enum AsyncGeneratorState desde
+- [x] NSC-IMPL-0584 — Extraer el enum AsyncGeneratorState desde
   include/nativesharp/Language/CoroutineSemantics.h:181-181 hacia include/nativesharp/Language/AsyncGeneratorState.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0585 — Extraer el enum AsyncGeneratorSuspensionKind desde
+- [x] NSC-IMPL-0585 — Extraer el enum AsyncGeneratorSuspensionKind desde
   include/nativesharp/Language/CoroutineSemantics.h:186-186 hacia
   include/nativesharp/Language/AsyncGeneratorSuspensionKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0586 — Extraer el struct AsyncGeneratorSuspension desde
+- [x] NSC-IMPL-0586 — Extraer el struct AsyncGeneratorSuspension desde
   include/nativesharp/Language/CoroutineSemantics.h:188-196 hacia
   include/nativesharp/Language/AsyncGeneratorSuspension.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0587 — Extraer el struct AsyncGeneratorPlan desde
+- [x] NSC-IMPL-0587 — Extraer el struct AsyncGeneratorPlan desde
   include/nativesharp/Language/CoroutineSemantics.h:198-207 hacia include/nativesharp/Language/AsyncGeneratorPlan.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
-- [ ] NSC-IMPL-0588 — Extraer el enum AsyncGeneratorPollOutcome desde
+- [x] NSC-IMPL-0588 — Extraer el enum AsyncGeneratorPollOutcome desde
   include/nativesharp/Language/CoroutineSemantics.h:220-220 hacia
   include/nativesharp/Language/AsyncGeneratorPollOutcome.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0589 — Extraer el class AsyncGeneratorProtocolState desde
+- [x] NSC-IMPL-0589 — Extraer el class AsyncGeneratorProtocolState desde
   include/nativesharp/Language/CoroutineSemantics.h:222-236 hacia
   include/nativesharp/Language/AsyncGeneratorProtocolState.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0590 — Extraer el struct ThreadSafetyFacts desde
+- [x] NSC-IMPL-0590 — Extraer el struct ThreadSafetyFacts desde
   include/nativesharp/Language/CoroutineSemantics.h:238-245 hacia include/nativesharp/Language/ThreadSafetyFacts.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0591 — Extraer el enum ThreadSafetyMemberKind desde
+- [x] NSC-IMPL-0591 — Extraer el enum ThreadSafetyMemberKind desde
   include/nativesharp/Language/CoroutineSemantics.h:249-257 hacia include/nativesharp/Language/ThreadSafetyMemberKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0592 — Extraer el struct ThreadSafetyMemberFacts desde
+- [x] NSC-IMPL-0592 — Extraer el struct ThreadSafetyMemberFacts desde
   include/nativesharp/Language/CoroutineSemantics.h:259-267 hacia
   include/nativesharp/Language/ThreadSafetyMemberFacts.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0593 — Extraer el struct ThreadSafetyTypeFacts desde
+- [x] NSC-IMPL-0593 — Extraer el struct ThreadSafetyTypeFacts desde
   include/nativesharp/Language/CoroutineSemantics.h:269-279 hacia include/nativesharp/Language/ThreadSafetyTypeFacts.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0594 — Extraer el struct ThreadSafetyDecision desde
+- [x] NSC-IMPL-0594 — Extraer el struct ThreadSafetyDecision desde
   include/nativesharp/Language/CoroutineSemantics.h:281-288 hacia include/nativesharp/Language/ThreadSafetyDecision.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0595 — Extraer el struct ThreadSafetyMetadata desde
+- [x] NSC-IMPL-0595 — Extraer el struct ThreadSafetyMetadata desde
   include/nativesharp/Language/CoroutineSemantics.h:293-302 hacia include/nativesharp/Language/ThreadSafetyMetadata.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0596 — Extraer el struct TaskExecutorProtocol desde
+- [x] NSC-IMPL-0596 — Extraer el struct TaskExecutorProtocol desde
   include/nativesharp/Language/CoroutineSemantics.h:313-321 hacia include/nativesharp/Language/TaskExecutorProtocol.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0597 — Extraer el struct ScopedTask desde include/nativesharp/Language/CoroutineSemantics.h:323-329 hacia
+- [x] NSC-IMPL-0597 — Extraer el struct ScopedTask desde include/nativesharp/Language/CoroutineSemantics.h:323-329 hacia
   include/nativesharp/Language/ScopedTask.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0598 — Extraer el struct TaskScopePlan desde include/nativesharp/Language/CoroutineSemantics.h:331-338
+- [x] NSC-IMPL-0598 — Extraer el struct TaskScopePlan desde include/nativesharp/Language/CoroutineSemantics.h:331-338
   hacia include/nativesharp/Language/TaskScopePlan.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0599 — Extraer el enum TaskScopeExitReason desde
+- [x] NSC-IMPL-0599 — Extraer el enum TaskScopeExitReason desde
   include/nativesharp/Language/CoroutineSemantics.h:347-347 hacia include/nativesharp/Language/TaskScopeExitReason.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0600 — Extraer el enum TaskScopeActionKind desde
+- [x] NSC-IMPL-0600 — Extraer el enum TaskScopeActionKind desde
   include/nativesharp/Language/CoroutineSemantics.h:348-348 hacia include/nativesharp/Language/TaskScopeActionKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0601 — Extraer el struct TaskScopeAction desde include/nativesharp/Language/CoroutineSemantics.h:350-354
+- [x] NSC-IMPL-0601 — Extraer el struct TaskScopeAction desde include/nativesharp/Language/CoroutineSemantics.h:350-354
   hacia include/nativesharp/Language/TaskScopeAction.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0602 — Extraer el enum ModuleUnloadPolicy desde include/nativesharp/Language/CrossModuleLifetime.h:15-19
+- [x] NSC-IMPL-0602 — Extraer el enum ModuleUnloadPolicy desde include/nativesharp/Language/CrossModuleLifetime.h:15-19
   hacia include/nativesharp/Language/ModuleUnloadPolicy.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: vista #define private public (ver §4.3).
-- [ ] NSC-IMPL-0603 — Extraer el struct CrossModuleLifetimeContract desde
+- [x] NSC-IMPL-0603 — Extraer el struct CrossModuleLifetimeContract desde
   include/nativesharp/Language/CrossModuleLifetime.h:21-32 hacia
   include/nativesharp/Language/CrossModuleLifetimeContract.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: vista #define private public (ver §4.3).
-- [ ] NSC-IMPL-0604 — Extraer el class ModuleLifetimeRegistry desde
+- [x] NSC-IMPL-0604 — Extraer el class ModuleLifetimeRegistry desde
   include/nativesharp/Language/CrossModuleLifetime.h:44-61 hacia include/nativesharp/Language/ModuleLifetimeRegistry.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: vista #define private public (ver §4.3).
-- [ ] NSC-IMPL-0605 — Extraer el struct ResultProtocol desde include/nativesharp/Language/ErrorSemantics.h:11-18 hacia
+- [x] NSC-IMPL-0605 — Extraer el struct ResultProtocol desde include/nativesharp/Language/ErrorSemantics.h:11-18 hacia
   include/nativesharp/Language/ResultProtocol.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0606 — Extraer el enum ThrowAbi desde include/nativesharp/Language/ErrorSemantics.h:22-22 hacia
+- [x] NSC-IMPL-0606 — Extraer el enum ThrowAbi desde include/nativesharp/Language/ErrorSemantics.h:22-22 hacia
   include/nativesharp/Language/ThrowAbi.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0607 — Extraer el struct ThrowContract desde include/nativesharp/Language/ErrorSemantics.h:23-29 hacia
+- [x] NSC-IMPL-0607 — Extraer el struct ThrowContract desde include/nativesharp/Language/ErrorSemantics.h:23-29 hacia
   include/nativesharp/Language/ThrowContract.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0608 — Extraer el enum PanicProfile desde include/nativesharp/Language/ErrorSemantics.h:40-40 hacia
+- [x] NSC-IMPL-0608 — Extraer el enum PanicProfile desde include/nativesharp/Language/ErrorSemantics.h:40-40 hacia
   include/nativesharp/Language/PanicProfile.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0609 — Extraer el struct PanicContract desde include/nativesharp/Language/ErrorSemantics.h:43-47 hacia
+- [x] NSC-IMPL-0609 — Extraer el struct PanicContract desde include/nativesharp/Language/ErrorSemantics.h:43-47 hacia
   include/nativesharp/Language/PanicContract.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0610 — Extraer el enum AssertionKind desde include/nativesharp/Language/ErrorSemantics.h:50-50 hacia
+- [x] NSC-IMPL-0610 — Extraer el enum AssertionKind desde include/nativesharp/Language/ErrorSemantics.h:50-50 hacia
   include/nativesharp/Language/AssertionKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0611 — Extraer el enum ExpressionFeature desde include/nativesharp/Language/ExpressionErgonomics.h:12-21
+- [x] NSC-IMPL-0611 — Extraer el enum ExpressionFeature desde include/nativesharp/Language/ExpressionErgonomics.h:12-21
   hacia include/nativesharp/Language/ExpressionFeature.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0612 — Extraer el struct ExpressionLoweringContract desde
+- [x] NSC-IMPL-0612 — Extraer el struct ExpressionLoweringContract desde
   include/nativesharp/Language/ExpressionErgonomics.h:23-31 hacia
   include/nativesharp/Language/ExpressionLoweringContract.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0613 — Extraer el enum NullAwareOperandKind desde
+- [x] NSC-IMPL-0613 — Extraer el enum NullAwareOperandKind desde
   include/nativesharp/Language/ExpressionErgonomics.h:38-44 hacia include/nativesharp/Language/NullAwareOperandKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0614 — Extraer el struct RangeEndpoint desde include/nativesharp/Language/ExpressionErgonomics.h:49-53
+- [x] NSC-IMPL-0614 — Extraer el struct RangeEndpoint desde include/nativesharp/Language/ExpressionErgonomics.h:49-53
   hacia include/nativesharp/Language/RangeEndpoint.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0615 — Extraer el struct ResolvedRange desde include/nativesharp/Language/ExpressionErgonomics.h:55-59
+- [x] NSC-IMPL-0615 — Extraer el struct ResolvedRange desde include/nativesharp/Language/ExpressionErgonomics.h:55-59
   hacia include/nativesharp/Language/ResolvedRange.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0616 — Extraer el enum InterpolationPartKind desde
+- [x] NSC-IMPL-0616 — Extraer el enum InterpolationPartKind desde
   include/nativesharp/Language/ExpressionErgonomics.h:68-72 hacia include/nativesharp/Language/InterpolationPartKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0617 — Extraer el struct InterpolationPart desde
+- [x] NSC-IMPL-0617 — Extraer el struct InterpolationPart desde
   include/nativesharp/Language/ExpressionErgonomics.h:74-84 hacia include/nativesharp/Language/InterpolationPart.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0618 — Extraer el class StaticInterpolationHandler desde
+- [x] NSC-IMPL-0618 — Extraer el class StaticInterpolationHandler desde
   include/nativesharp/Language/ExpressionErgonomics.h:95-101 hacia
   include/nativesharp/Language/StaticInterpolationHandler.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0619 — Extraer el struct ConstraintSet desde include/nativesharp/Language/GenericSemantics.h:12-16 hacia
+- [x] NSC-IMPL-0619 — Extraer el struct ConstraintSet desde include/nativesharp/Language/GenericSemantics.h:12-16 hacia
   include/nativesharp/Language/ConstraintSet.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0620 — Extraer el enum ConstGenericKind desde include/nativesharp/Language/GenericSemantics.h:23-23 hacia
+- [x] NSC-IMPL-0620 — Extraer el enum ConstGenericKind desde include/nativesharp/Language/GenericSemantics.h:23-23 hacia
   include/nativesharp/Language/ConstGenericKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0621 — Extraer el struct ConstGenericValue desde include/nativesharp/Language/GenericSemantics.h:25-30
+- [x] NSC-IMPL-0621 — Extraer el struct ConstGenericValue desde include/nativesharp/Language/GenericSemantics.h:25-30
   hacia include/nativesharp/Language/ConstGenericValue.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0622 — Extraer el enum AliasKind desde include/nativesharp/Language/GenericSemantics.h:55-55 hacia
+- [x] NSC-IMPL-0622 — Extraer el enum AliasKind desde include/nativesharp/Language/GenericSemantics.h:55-55 hacia
   include/nativesharp/Language/AliasKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0623 — Extraer el class InstantiationBudget desde include/nativesharp/Language/GenericSemantics.h:66-87
+- [x] NSC-IMPL-0623 — Extraer el class InstantiationBudget desde include/nativesharp/Language/GenericSemantics.h:66-87
   hacia include/nativesharp/Language/InstantiationBudget.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0624 — Extraer el enum FeatureArea desde include/nativesharp/Language/IntegrationQuality.h:13-28 hacia
+- [x] NSC-IMPL-0624 — Extraer el enum FeatureArea desde include/nativesharp/Language/IntegrationQuality.h:13-28 hacia
   include/nativesharp/Language/FeatureArea.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0625 — Extraer el enum InteractionRisk desde include/nativesharp/Language/IntegrationQuality.h:29-29
+- [x] NSC-IMPL-0625 — Extraer el enum InteractionRisk desde include/nativesharp/Language/IntegrationQuality.h:29-29
   hacia include/nativesharp/Language/InteractionRisk.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0626 — Extraer el struct InteractionCase desde include/nativesharp/Language/IntegrationQuality.h:31-40
+- [x] NSC-IMPL-0626 — Extraer el struct InteractionCase desde include/nativesharp/Language/IntegrationQuality.h:31-40
   hacia include/nativesharp/Language/InteractionCase.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0627 — Extraer el struct WholeProgramWitness desde
+- [x] NSC-IMPL-0627 — Extraer el struct WholeProgramWitness desde
   include/nativesharp/Language/IntegrationQuality.h:51-66 hacia include/nativesharp/Language/WholeProgramWitness.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0628 — Extraer el struct PerformanceBudget desde include/nativesharp/Language/IntegrationQuality.h:73-82
+- [x] NSC-IMPL-0628 — Extraer el struct PerformanceBudget desde include/nativesharp/Language/IntegrationQuality.h:73-82
   hacia include/nativesharp/Language/PerformanceBudget.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0629 — Extraer el enum PerformanceCorpus desde include/nativesharp/Language/IntegrationQuality.h:85-93
+- [x] NSC-IMPL-0629 — Extraer el enum PerformanceCorpus desde include/nativesharp/Language/IntegrationQuality.h:85-93
   hacia include/nativesharp/Language/PerformanceCorpus.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0630 — Extraer el struct PerformanceBudgetProfile desde
+- [x] NSC-IMPL-0630 — Extraer el struct PerformanceBudgetProfile desde
   include/nativesharp/Language/IntegrationQuality.h:95-103 hacia
   include/nativesharp/Language/PerformanceBudgetProfile.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0631 — Extraer el struct PerformanceAssessment desde
+- [x] NSC-IMPL-0631 — Extraer el struct PerformanceAssessment desde
   include/nativesharp/Language/IntegrationQuality.h:105-110 hacia include/nativesharp/Language/PerformanceAssessment.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0632 — Extraer el enum DiagnosticArea desde include/nativesharp/Language/IntegrationQuality.h:118-118
+- [x] NSC-IMPL-0632 — Extraer el enum DiagnosticArea desde include/nativesharp/Language/IntegrationQuality.h:118-118
   hacia include/nativesharp/Language/DiagnosticArea.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0633 — Extraer el struct DiagnosticSpan desde include/nativesharp/Language/IntegrationQuality.h:120-127
+- [x] NSC-IMPL-0633 — Extraer el struct DiagnosticSpan desde include/nativesharp/Language/IntegrationQuality.h:120-127
   hacia include/nativesharp/Language/DiagnosticSpan.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0634 — Extraer el struct DiagnosticFixIt desde include/nativesharp/Language/IntegrationQuality.h:129-134
+- [x] NSC-IMPL-0634 — Extraer el struct DiagnosticFixIt desde include/nativesharp/Language/IntegrationQuality.h:129-134
   hacia include/nativesharp/Language/DiagnosticFixIt.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0635 — Extraer el struct DiagnosticQuality desde
+- [x] NSC-IMPL-0635 — Extraer el struct DiagnosticQuality desde
   include/nativesharp/Language/IntegrationQuality.h:136-148 hacia include/nativesharp/Language/DiagnosticQuality.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0636 — Extraer el enum DebugOptimization desde include/nativesharp/Language/IntegrationQuality.h:164-164
+- [x] NSC-IMPL-0636 — Extraer el enum DebugOptimization desde include/nativesharp/Language/IntegrationQuality.h:164-164
   hacia include/nativesharp/Language/DebugOptimization.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0637 — Extraer el enum DebugAvailability desde include/nativesharp/Language/IntegrationQuality.h:165-165
+- [x] NSC-IMPL-0637 — Extraer el enum DebugAvailability desde include/nativesharp/Language/IntegrationQuality.h:165-165
   hacia include/nativesharp/Language/DebugAvailability.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0638 — Extraer el enum DebugEntityKind desde include/nativesharp/Language/IntegrationQuality.h:166-176
+- [x] NSC-IMPL-0638 — Extraer el enum DebugEntityKind desde include/nativesharp/Language/IntegrationQuality.h:166-176
   hacia include/nativesharp/Language/DebugEntityKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0639 — Extraer el struct SemanticDebugEntry desde
+- [x] NSC-IMPL-0639 — Extraer el struct SemanticDebugEntry desde
   include/nativesharp/Language/IntegrationQuality.h:178-191 hacia include/nativesharp/Language/SemanticDebugEntry.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0640 — Extraer el enum GeneratedCost desde include/nativesharp/Language/IntegrationQuality.h:197-197
+- [x] NSC-IMPL-0640 — Extraer el enum GeneratedCost desde include/nativesharp/Language/IntegrationQuality.h:197-197
   hacia include/nativesharp/Language/GeneratedCost.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0641 — Extraer el struct CostEvent desde include/nativesharp/Language/IntegrationQuality.h:198-203 hacia
+- [x] NSC-IMPL-0641 — Extraer el struct CostEvent desde include/nativesharp/Language/IntegrationQuality.h:198-203 hacia
   include/nativesharp/Language/CostEvent.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0642 — Extraer el enum CostOptimization desde include/nativesharp/Language/IntegrationQuality.h:206-206
+- [x] NSC-IMPL-0642 — Extraer el enum CostOptimization desde include/nativesharp/Language/IntegrationQuality.h:206-206
   hacia include/nativesharp/Language/CostOptimization.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0643 — Extraer el struct CostAuditRecord desde include/nativesharp/Language/IntegrationQuality.h:207-215
+- [x] NSC-IMPL-0643 — Extraer el struct CostAuditRecord desde include/nativesharp/Language/IntegrationQuality.h:207-215
   hacia include/nativesharp/Language/CostAuditRecord.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0644 — Extraer el enum IterationMode desde include/nativesharp/Language/IterationSemantics.h:12-12 hacia
+- [x] NSC-IMPL-0644 — Extraer el enum IterationMode desde include/nativesharp/Language/IterationSemantics.h:12-12 hacia
   include/nativesharp/Language/IterationMode.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0645 — Extraer el struct IteratorProtocol desde include/nativesharp/Language/IterationSemantics.h:13-21
+- [x] NSC-IMPL-0645 — Extraer el struct IteratorProtocol desde include/nativesharp/Language/IterationSemantics.h:13-21
   hacia include/nativesharp/Language/IteratorProtocol.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0646 — Extraer el struct LazyIntegerRange desde include/nativesharp/Language/IterationSemantics.h:98-104
+- [x] NSC-IMPL-0646 — Extraer el struct LazyIntegerRange desde include/nativesharp/Language/IterationSemantics.h:98-104
   hacia include/nativesharp/Language/LazyIntegerRange.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0647 — Extraer el enum BuilderStorage desde include/nativesharp/Language/IterationSemantics.h:108-108
+- [x] NSC-IMPL-0647 — Extraer el enum BuilderStorage desde include/nativesharp/Language/IterationSemantics.h:108-108
   hacia include/nativesharp/Language/BuilderStorage.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0648 — Extraer el enum SourceMutation desde include/nativesharp/Language/IterationSemantics.h:111-111
+- [x] NSC-IMPL-0648 — Extraer el enum SourceMutation desde include/nativesharp/Language/IterationSemantics.h:111-111
   hacia include/nativesharp/Language/SourceMutation.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0649 — Extraer el struct GeneratorLocal desde include/nativesharp/Language/IterationSemantics.h:116-128
+- [x] NSC-IMPL-0649 — Extraer el struct GeneratorLocal desde include/nativesharp/Language/IterationSemantics.h:116-128
   hacia include/nativesharp/Language/GeneratorLocal.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0650 — Extraer el struct GeneratorFrame desde include/nativesharp/Language/IterationSemantics.h:129-129
+- [x] NSC-IMPL-0650 — Extraer el struct GeneratorFrame desde include/nativesharp/Language/IterationSemantics.h:129-129
   hacia include/nativesharp/Language/GeneratorFrame.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0651 — Extraer el enum GeneratorStorage desde include/nativesharp/Language/IterationSemantics.h:134-134
+- [x] NSC-IMPL-0651 — Extraer el enum GeneratorStorage desde include/nativesharp/Language/IterationSemantics.h:134-134
   hacia include/nativesharp/Language/GeneratorStorage.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0652 — Extraer el enum GeneratorYieldKind desde include/nativesharp/Language/IterationSemantics.h:135-135
+- [x] NSC-IMPL-0652 — Extraer el enum GeneratorYieldKind desde include/nativesharp/Language/IterationSemantics.h:135-135
   hacia include/nativesharp/Language/GeneratorYieldKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0653 — Extraer el struct GeneratorSuspension desde
+- [x] NSC-IMPL-0653 — Extraer el struct GeneratorSuspension desde
   include/nativesharp/Language/IterationSemantics.h:137-148 hacia include/nativesharp/Language/GeneratorSuspension.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0654 — Extraer el struct GeneratorFrameSlot desde
+- [x] NSC-IMPL-0654 — Extraer el struct GeneratorFrameSlot desde
   include/nativesharp/Language/IterationSemantics.h:150-161 hacia include/nativesharp/Language/GeneratorFrameSlot.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0655 — Extraer el struct GeneratorState desde include/nativesharp/Language/IterationSemantics.h:163-169
+- [x] NSC-IMPL-0655 — Extraer el struct GeneratorState desde include/nativesharp/Language/IterationSemantics.h:163-169
   hacia include/nativesharp/Language/GeneratorState.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0656 — Extraer el struct SynchronousGeneratorPlan desde
+- [x] NSC-IMPL-0656 — Extraer el struct SynchronousGeneratorPlan desde
   include/nativesharp/Language/IterationSemantics.h:171-181 hacia
   include/nativesharp/Language/SynchronousGeneratorPlan.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0657 — Extraer el enum TraversalCategory desde include/nativesharp/Language/IterationSemantics.h:206-206
+- [x] NSC-IMPL-0657 — Extraer el enum TraversalCategory desde include/nativesharp/Language/IterationSemantics.h:206-206
   hacia include/nativesharp/Language/TraversalCategory.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0658 — Extraer el struct EvaluationContract desde
+- [x] NSC-IMPL-0658 — Extraer el struct EvaluationContract desde
   include/nativesharp/Language/IterationSemantics.h:207-216 hacia include/nativesharp/Language/EvaluationContract.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0659 — Extraer el enum FusionRejection desde include/nativesharp/Language/IterationSemantics.h:218-227
+- [x] NSC-IMPL-0659 — Extraer el enum FusionRejection desde include/nativesharp/Language/IterationSemantics.h:218-227
   hacia include/nativesharp/Language/FusionRejection.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0660 — Extraer el struct FusionRequest desde include/nativesharp/Language/IterationSemantics.h:229-239
+- [x] NSC-IMPL-0660 — Extraer el struct FusionRequest desde include/nativesharp/Language/IterationSemantics.h:229-239
   hacia include/nativesharp/Language/FusionRequest.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0661 — Extraer el struct FusionDecision desde include/nativesharp/Language/IterationSemantics.h:241-246
+- [x] NSC-IMPL-0661 — Extraer el struct FusionDecision desde include/nativesharp/Language/IterationSemantics.h:241-246
   hacia include/nativesharp/Language/FusionDecision.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0662 — Extraer el enum Language3Feature desde include/nativesharp/Language/Language3Surface.h:9-27 hacia
+- [x] NSC-IMPL-0662 — Extraer el enum Language3Feature desde include/nativesharp/Language/Language3Surface.h:9-27 hacia
   include/nativesharp/Language/Language3Feature.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0663 — Extraer el enum Language3Disposition desde include/nativesharp/Language/Language3Surface.h:29-35
+- [x] NSC-IMPL-0663 — Extraer el enum Language3Disposition desde include/nativesharp/Language/Language3Surface.h:29-35
   hacia include/nativesharp/Language/Language3Disposition.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0664 — Extraer el enum StaticInitializationState desde
+- [x] NSC-IMPL-0664 — Extraer el enum StaticInitializationState desde
   include/nativesharp/Language/Language3Surface.h:37-43 hacia include/nativesharp/Language/StaticInitializationState.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0665 — Extraer el struct Language3SurfaceEntry desde
+- [x] NSC-IMPL-0665 — Extraer el struct Language3SurfaceEntry desde
   include/nativesharp/Language/Language3Surface.h:71-77 hacia include/nativesharp/Language/Language3SurfaceEntry.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0666 — Extraer el enum AtomicOperation desde include/nativesharp/Language/MemoryModel.h:9-15 hacia
+- [x] NSC-IMPL-0666 — Extraer el enum AtomicOperation desde include/nativesharp/Language/MemoryModel.h:9-15 hacia
   include/nativesharp/Language/AtomicOperation.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0667 — Extraer el enum MemoryOrder desde include/nativesharp/Language/MemoryModel.h:19-26 hacia
+- [x] NSC-IMPL-0667 — Extraer el enum MemoryOrder desde include/nativesharp/Language/MemoryModel.h:19-26 hacia
   include/nativesharp/Language/MemoryOrder.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0668 — Extraer el enum DataRaceBehavior desde include/nativesharp/Language/MemoryModel.h:28-31 hacia
+- [x] NSC-IMPL-0668 — Extraer el enum DataRaceBehavior desde include/nativesharp/Language/MemoryModel.h:28-31 hacia
   include/nativesharp/Language/DataRaceBehavior.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0669 — Extraer el enum GeneratedDeclarationKind desde
+- [x] NSC-IMPL-0669 — Extraer el enum GeneratedDeclarationKind desde
   include/nativesharp/Language/MetaprogrammingGeneration.h:12-12 hacia
   include/nativesharp/Language/GeneratedDeclarationKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0670 — Extraer el struct GeneratedDeclaration desde
+- [x] NSC-IMPL-0670 — Extraer el struct GeneratedDeclaration desde
   include/nativesharp/Language/MetaprogrammingGeneration.h:19-31 hacia
   include/nativesharp/Language/GeneratedDeclaration.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0671 — Extraer el class MetaprogrammingAstBuilder desde
+- [x] NSC-IMPL-0671 — Extraer el class MetaprogrammingAstBuilder desde
   include/nativesharp/Language/MetaprogrammingGeneration.h:36-74 hacia
   include/nativesharp/Language/MetaprogrammingAstBuilder.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0672 — Extraer el struct IntrospectionMember desde
+- [x] NSC-IMPL-0672 — Extraer el struct IntrospectionMember desde
   include/nativesharp/Language/MetaprogrammingSemantics.h:11-17 hacia
   include/nativesharp/Language/IntrospectionMember.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0673 — Extraer el enum AttributeRetention desde
+- [x] NSC-IMPL-0673 — Extraer el enum AttributeRetention desde
   include/nativesharp/Language/MetaprogrammingSemantics.h:23-23 hacia include/nativesharp/Language/AttributeRetention.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0674 — Extraer el struct AttributeUse desde include/nativesharp/Language/MetaprogrammingSemantics.h:24-30
+- [x] NSC-IMPL-0674 — Extraer el struct AttributeUse desde include/nativesharp/Language/MetaprogrammingSemantics.h:24-30
   hacia include/nativesharp/Language/AttributeUse.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0675 — Extraer el struct HygienicName desde include/nativesharp/Language/MetaprogrammingSemantics.h:37-37
+- [x] NSC-IMPL-0675 — Extraer el struct HygienicName desde include/nativesharp/Language/MetaprogrammingSemantics.h:37-37
   hacia include/nativesharp/Language/HygienicName.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0676 — Extraer el enum ComptimeCapability desde
+- [x] NSC-IMPL-0676 — Extraer el enum ComptimeCapability desde
   include/nativesharp/Language/MetaprogrammingSemantics.h:40-40 hacia include/nativesharp/Language/ComptimeCapability.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0677 — Extraer el struct ComptimeInput desde
+- [x] NSC-IMPL-0677 — Extraer el struct ComptimeInput desde
   include/nativesharp/Language/MetaprogrammingSemantics.h:41-41 hacia include/nativesharp/Language/ComptimeInput.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0678 — Extraer el class ComptimeBudget desde
+- [x] NSC-IMPL-0678 — Extraer el class ComptimeBudget desde
   include/nativesharp/Language/MetaprogrammingSemantics.h:56-65 hacia include/nativesharp/Language/ComptimeBudget.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0679 — Extraer el enum ModuleDependencyKind desde include/nativesharp/Language/ModuleSemantics.h:12-12
+- [x] NSC-IMPL-0679 — Extraer el enum ModuleDependencyKind desde include/nativesharp/Language/ModuleSemantics.h:12-12
   hacia include/nativesharp/Language/ModuleDependencyKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0680 — Extraer el struct ModuleDependency desde include/nativesharp/Language/ModuleSemantics.h:13-13
+- [x] NSC-IMPL-0680 — Extraer el struct ModuleDependency desde include/nativesharp/Language/ModuleSemantics.h:13-13
   hacia include/nativesharp/Language/ModuleDependency.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0681 — Extraer el enum ImportKind desde include/nativesharp/Language/ModuleSemantics.h:16-16 hacia
+- [x] NSC-IMPL-0681 — Extraer el enum ImportKind desde include/nativesharp/Language/ModuleSemantics.h:16-16 hacia
   include/nativesharp/Language/ImportKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0682 — Extraer el struct Import desde include/nativesharp/Language/ModuleSemantics.h:17-17 hacia
+- [x] NSC-IMPL-0682 — Extraer el struct Import desde include/nativesharp/Language/ModuleSemantics.h:17-17 hacia
   include/nativesharp/Language/Import.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante
   el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0683 — Extraer el enum Visibility desde include/nativesharp/Language/ModuleSemantics.h:20-20 hacia
+- [x] NSC-IMPL-0683 — Extraer el enum Visibility desde include/nativesharp/Language/ModuleSemantics.h:20-20 hacia
   include/nativesharp/Language/Visibility.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0684 — Extraer el struct Availability desde include/nativesharp/Language/ModuleSemantics.h:30-33 hacia
+- [x] NSC-IMPL-0684 — Extraer el struct Availability desde include/nativesharp/Language/ModuleSemantics.h:30-33 hacia
   include/nativesharp/Language/Availability.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0685 — Extraer el enum AvailabilityStatus desde include/nativesharp/Language/ModuleSemantics.h:34-34
+- [x] NSC-IMPL-0685 — Extraer el enum AvailabilityStatus desde include/nativesharp/Language/ModuleSemantics.h:34-34
   hacia include/nativesharp/Language/AvailabilityStatus.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0686 — Extraer el struct PublicApiSymbol desde include/nativesharp/Language/ModuleSemantics.h:40-47 hacia
+- [x] NSC-IMPL-0686 — Extraer el struct PublicApiSymbol desde include/nativesharp/Language/ModuleSemantics.h:40-47 hacia
   include/nativesharp/Language/PublicApiSymbol.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0687 — Extraer el struct Decimal128Bits desde include/nativesharp/Language/NumericSemantics.h:23-27 hacia
+- [x] NSC-IMPL-0687 — Extraer el struct Decimal128Bits desde include/nativesharp/Language/NumericSemantics.h:23-27 hacia
   include/nativesharp/Language/Decimal128Bits.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0688 — Extraer el struct DecimalLiteralValue desde include/nativesharp/Language/NumericSemantics.h:62-68
+- [x] NSC-IMPL-0688 — Extraer el struct DecimalLiteralValue desde include/nativesharp/Language/NumericSemantics.h:62-68
   hacia include/nativesharp/Language/DecimalLiteralValue.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0689 — Extraer el enum DecimalArithmeticOperation desde
+- [x] NSC-IMPL-0689 — Extraer el enum DecimalArithmeticOperation desde
   include/nativesharp/Language/NumericSemantics.h:77-77 hacia include/nativesharp/Language/DecimalArithmeticOperation.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0690 — Extraer el struct IntegerType desde include/nativesharp/Language/NumericSemantics.h:88-88 hacia
+- [x] NSC-IMPL-0690 — Extraer el struct IntegerType desde include/nativesharp/Language/NumericSemantics.h:88-88 hacia
   include/nativesharp/Language/IntegerType.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0691 — Extraer el enum IntegerLiteralBase desde include/nativesharp/Language/NumericSemantics.h:92-92
+- [x] NSC-IMPL-0691 — Extraer el enum IntegerLiteralBase desde include/nativesharp/Language/NumericSemantics.h:92-92
   hacia include/nativesharp/Language/IntegerLiteralBase.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0692 — Extraer el enum IntegerLiteralSuffix desde include/nativesharp/Language/NumericSemantics.h:93-98
+- [x] NSC-IMPL-0692 — Extraer el enum IntegerLiteralSuffix desde include/nativesharp/Language/NumericSemantics.h:93-98
   hacia include/nativesharp/Language/IntegerLiteralSuffix.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0693 — Extraer el struct UntypedIntegerLiteral desde
+- [x] NSC-IMPL-0693 — Extraer el struct UntypedIntegerLiteral desde
   include/nativesharp/Language/NumericSemantics.h:100-105 hacia include/nativesharp/Language/UntypedIntegerLiteral.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0694 — Extraer el struct ResolvedIntegerLiteral desde
+- [x] NSC-IMPL-0694 — Extraer el struct ResolvedIntegerLiteral desde
   include/nativesharp/Language/NumericSemantics.h:107-113 hacia include/nativesharp/Language/ResolvedIntegerLiteral.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0695 — Extraer el enum OverflowPolicy desde include/nativesharp/Language/NumericSemantics.h:124-124 hacia
+- [x] NSC-IMPL-0695 — Extraer el enum OverflowPolicy desde include/nativesharp/Language/NumericSemantics.h:124-124 hacia
   include/nativesharp/Language/OverflowPolicy.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0696 — Extraer el enum IntegerArithmeticOperation desde
+- [x] NSC-IMPL-0696 — Extraer el enum IntegerArithmeticOperation desde
   include/nativesharp/Language/NumericSemantics.h:131-139 hacia
   include/nativesharp/Language/IntegerArithmeticOperation.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0697 — Extraer el enum NumericEvaluationDomain desde
+- [x] NSC-IMPL-0697 — Extraer el enum NumericEvaluationDomain desde
   include/nativesharp/Language/NumericSemantics.h:140-140 hacia include/nativesharp/Language/NumericEvaluationDomain.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0698 — Extraer el struct IntegerArithmeticRequest desde
+- [x] NSC-IMPL-0698 — Extraer el struct IntegerArithmeticRequest desde
   include/nativesharp/Language/NumericSemantics.h:142-150 hacia include/nativesharp/Language/IntegerArithmeticRequest.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0699 — Extraer el struct IntegerArithmeticResult desde
+- [x] NSC-IMPL-0699 — Extraer el struct IntegerArithmeticResult desde
   include/nativesharp/Language/NumericSemantics.h:152-157 hacia include/nativesharp/Language/IntegerArithmeticResult.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0700 — Extraer el enum NumericKind desde include/nativesharp/Language/NumericSemantics.h:166-166 hacia
+- [x] NSC-IMPL-0700 — Extraer el enum NumericKind desde include/nativesharp/Language/NumericSemantics.h:166-166 hacia
   include/nativesharp/Language/NumericKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0701 — Extraer el struct NumericType desde include/nativesharp/Language/NumericSemantics.h:167-167 hacia
+- [x] NSC-IMPL-0701 — Extraer el struct NumericType desde include/nativesharp/Language/NumericSemantics.h:167-167 hacia
   include/nativesharp/Language/NumericType.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0702 — Extraer el enum NumericConversionKind desde
+- [x] NSC-IMPL-0702 — Extraer el enum NumericConversionKind desde
   include/nativesharp/Language/NumericSemantics.h:170-180 hacia include/nativesharp/Language/NumericConversionKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0703 — Extraer el enum NumericConversionUse desde include/nativesharp/Language/NumericSemantics.h:181-181
+- [x] NSC-IMPL-0703 — Extraer el enum NumericConversionUse desde include/nativesharp/Language/NumericSemantics.h:181-181
   hacia include/nativesharp/Language/NumericConversionUse.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0704 — Extraer el struct NumericConstant desde include/nativesharp/Language/NumericSemantics.h:183-188
+- [x] NSC-IMPL-0704 — Extraer el struct NumericConstant desde include/nativesharp/Language/NumericSemantics.h:183-188
   hacia include/nativesharp/Language/NumericConstant.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0705 — Extraer el struct NumericConversionDecision desde
+- [x] NSC-IMPL-0705 — Extraer el struct NumericConversionDecision desde
   include/nativesharp/Language/NumericSemantics.h:190-197 hacia
   include/nativesharp/Language/NumericConversionDecision.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0706 — Extraer el enum FloatingPointMode desde include/nativesharp/Language/NumericSemantics.h:205-205
+- [x] NSC-IMPL-0706 — Extraer el enum FloatingPointMode desde include/nativesharp/Language/NumericSemantics.h:205-205
   hacia include/nativesharp/Language/FloatingPointMode.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0707 — Extraer el struct FloatingPointContract desde
+- [x] NSC-IMPL-0707 — Extraer el struct FloatingPointContract desde
   include/nativesharp/Language/NumericSemantics.h:206-215 hacia include/nativesharp/Language/FloatingPointContract.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0708 — Extraer el struct StrongNumericType desde include/nativesharp/Language/NumericSemantics.h:218-218
+- [x] NSC-IMPL-0708 — Extraer el struct StrongNumericType desde include/nativesharp/Language/NumericSemantics.h:218-218
   hacia include/nativesharp/Language/StrongNumericType.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0709 — Extraer el enum StrongNumericOperator desde
+- [x] NSC-IMPL-0709 — Extraer el enum StrongNumericOperator desde
   include/nativesharp/Language/NumericSemantics.h:222-222 hacia include/nativesharp/Language/StrongNumericOperator.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0710 — Extraer el struct StrongNumericDefinition desde
+- [x] NSC-IMPL-0710 — Extraer el struct StrongNumericDefinition desde
   include/nativesharp/Language/NumericSemantics.h:224-235 hacia include/nativesharp/Language/StrongNumericDefinition.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0711 — Extraer el struct StrongNumericPlan desde include/nativesharp/Language/NumericSemantics.h:237-250
+- [x] NSC-IMPL-0711 — Extraer el struct StrongNumericPlan desde include/nativesharp/Language/NumericSemantics.h:237-250
   hacia include/nativesharp/Language/StrongNumericPlan.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0712 — Extraer el struct ConstantPointer desde include/nativesharp/Language/NumericSemantics.h:260-264
+- [x] NSC-IMPL-0712 — Extraer el struct ConstantPointer desde include/nativesharp/Language/NumericSemantics.h:260-264
   hacia include/nativesharp/Language/ConstantPointer.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0713 — Extraer el struct ConstantAllocation desde include/nativesharp/Language/NumericSemantics.h:266-272
+- [x] NSC-IMPL-0713 — Extraer el struct ConstantAllocation desde include/nativesharp/Language/NumericSemantics.h:266-272
   hacia include/nativesharp/Language/ConstantAllocation.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0714 — Extraer el class ConstantMemory desde include/nativesharp/Language/NumericSemantics.h:274-293
+- [x] NSC-IMPL-0714 — Extraer el class ConstantMemory desde include/nativesharp/Language/NumericSemantics.h:274-293
   hacia include/nativesharp/Language/ConstantMemory.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0715 — Extraer el struct ConstantUnionState desde include/nativesharp/Language/NumericSemantics.h:295-299
+- [x] NSC-IMPL-0715 — Extraer el struct ConstantUnionState desde include/nativesharp/Language/NumericSemantics.h:295-299
   hacia include/nativesharp/Language/ConstantUnionState.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0716 — Extraer el enum ValueState desde include/nativesharp/Language/OwnershipSemantics.h:11-11 hacia
+- [x] NSC-IMPL-0716 — Extraer el enum ValueState desde include/nativesharp/Language/OwnershipSemantics.h:11-11 hacia
   include/nativesharp/Language/ValueState.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0717 — Extraer el struct MoveState desde include/nativesharp/Language/OwnershipSemantics.h:13-18 hacia
+- [x] NSC-IMPL-0717 — Extraer el struct MoveState desde include/nativesharp/Language/OwnershipSemantics.h:13-18 hacia
   include/nativesharp/Language/MoveState.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0718 — Extraer el struct BorrowPlace desde include/nativesharp/Language/OwnershipSemantics.h:25-29 hacia
+- [x] NSC-IMPL-0718 — Extraer el struct BorrowPlace desde include/nativesharp/Language/OwnershipSemantics.h:25-29 hacia
   include/nativesharp/Language/BorrowPlace.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0719 — Extraer el enum CleanupKind desde include/nativesharp/Language/OwnershipSemantics.h:39-39 hacia
+- [x] NSC-IMPL-0719 — Extraer el enum CleanupKind desde include/nativesharp/Language/OwnershipSemantics.h:39-39 hacia
   include/nativesharp/Language/CleanupKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0720 — Extraer el struct CleanupAction desde include/nativesharp/Language/OwnershipSemantics.h:40-40
+- [x] NSC-IMPL-0720 — Extraer el struct CleanupAction desde include/nativesharp/Language/OwnershipSemantics.h:40-40
   hacia include/nativesharp/Language/CleanupAction.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0721 — Extraer el enum EscapeClass desde include/nativesharp/Language/OwnershipSemantics.h:45-45 hacia
+- [x] NSC-IMPL-0721 — Extraer el enum EscapeClass desde include/nativesharp/Language/OwnershipSemantics.h:45-45 hacia
   include/nativesharp/Language/EscapeClass.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0722 — Extraer el struct EscapeSummary desde include/nativesharp/Language/OwnershipSemantics.h:46-50
+- [x] NSC-IMPL-0722 — Extraer el struct EscapeSummary desde include/nativesharp/Language/OwnershipSemantics.h:46-50
   hacia include/nativesharp/Language/EscapeSummary.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0723 — Extraer el struct FreezeManifest desde include/nativesharp/Language/ReleaseSemantics.h:11-17 hacia
+- [x] NSC-IMPL-0723 — Extraer el struct FreezeManifest desde include/nativesharp/Language/ReleaseSemantics.h:11-17 hacia
   include/nativesharp/Language/FreezeManifest.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0724 — Extraer el struct SyntaxFreezeManifest desde include/nativesharp/Language/ReleaseSemantics.h:20-32
+- [x] NSC-IMPL-0724 — Extraer el struct SyntaxFreezeManifest desde include/nativesharp/Language/ReleaseSemantics.h:20-32
   hacia include/nativesharp/Language/SyntaxFreezeManifest.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0725 — Extraer el struct SemanticFreezeManifest desde
+- [x] NSC-IMPL-0725 — Extraer el struct SemanticFreezeManifest desde
   include/nativesharp/Language/ReleaseSemantics.h:35-47 hacia include/nativesharp/Language/SemanticFreezeManifest.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0726 — Extraer el struct Win64AbiFreezeManifest desde
+- [x] NSC-IMPL-0726 — Extraer el struct Win64AbiFreezeManifest desde
   include/nativesharp/Language/ReleaseSemantics.h:50-65 hacia include/nativesharp/Language/Win64AbiFreezeManifest.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0727 — Extraer el enum ConformanceTier desde include/nativesharp/Language/ReleaseSemantics.h:68-68 hacia
+- [x] NSC-IMPL-0727 — Extraer el enum ConformanceTier desde include/nativesharp/Language/ReleaseSemantics.h:68-68 hacia
   include/nativesharp/Language/ConformanceTier.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0728 — Extraer el struct ConformanceCase desde include/nativesharp/Language/ReleaseSemantics.h:69-69
+- [x] NSC-IMPL-0728 — Extraer el struct ConformanceCase desde include/nativesharp/Language/ReleaseSemantics.h:69-69
   hacia include/nativesharp/Language/ConformanceCase.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0729 — Extraer el struct CandidateConformanceManifest desde
+- [x] NSC-IMPL-0729 — Extraer el struct CandidateConformanceManifest desde
   include/nativesharp/Language/ReleaseSemantics.h:72-81 hacia
   include/nativesharp/Language/CandidateConformanceManifest.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0730 — Extraer el struct BilingualClause desde include/nativesharp/Language/ReleaseSemantics.h:86-99
+- [x] NSC-IMPL-0730 — Extraer el struct BilingualClause desde include/nativesharp/Language/ReleaseSemantics.h:86-99
   hacia include/nativesharp/Language/BilingualClause.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0731 — Extraer el enum ReleaseCandidateStage desde
+- [x] NSC-IMPL-0731 — Extraer el enum ReleaseCandidateStage desde
   include/nativesharp/Language/ReleaseSemantics.h:105-105 hacia include/nativesharp/Language/ReleaseCandidateStage.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0732 — Extraer el enum ChangeSeverity desde include/nativesharp/Language/ReleaseSemantics.h:106-106 hacia
+- [x] NSC-IMPL-0732 — Extraer el enum ChangeSeverity desde include/nativesharp/Language/ReleaseSemantics.h:106-106 hacia
   include/nativesharp/Language/ChangeSeverity.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0733 — Extraer el struct ReleaseCandidateEvidence desde
+- [x] NSC-IMPL-0733 — Extraer el struct ReleaseCandidateEvidence desde
   include/nativesharp/Language/ReleaseSemantics.h:109-122 hacia include/nativesharp/Language/ReleaseCandidateEvidence.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0734 — Extraer el struct PromotionEvidence desde include/nativesharp/Language/ReleaseSemantics.h:127-138
+- [x] NSC-IMPL-0734 — Extraer el struct PromotionEvidence desde include/nativesharp/Language/ReleaseSemantics.h:127-138
   hacia include/nativesharp/Language/PromotionEvidence.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0735 — Extraer el enum PromotionStatus desde include/nativesharp/Language/ReleaseSemantics.h:139-139
+- [x] NSC-IMPL-0735 — Extraer el enum PromotionStatus desde include/nativesharp/Language/ReleaseSemantics.h:139-139
   hacia include/nativesharp/Language/PromotionStatus.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0736 — Extraer el struct OfficialPromotionManifest desde
+- [x] NSC-IMPL-0736 — Extraer el struct OfficialPromotionManifest desde
   include/nativesharp/Language/ReleaseSemantics.h:143-155 hacia
   include/nativesharp/Language/OfficialPromotionManifest.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0737 — Extraer el enum SmartPointerFamily desde
+- [x] NSC-IMPL-0737 — Extraer el enum SmartPointerFamily desde
   include/nativesharp/Language/SmartPointerSemantics.h:14-21 hacia include/nativesharp/Language/SmartPointerFamily.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0738 — Extraer el enum SmartPointerThreadModel desde
+- [x] NSC-IMPL-0738 — Extraer el enum SmartPointerThreadModel desde
   include/nativesharp/Language/SmartPointerSemantics.h:23-28 hacia
   include/nativesharp/Language/SmartPointerThreadModel.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0739 — Extraer el struct SmartPointerFamilyContract desde
+- [x] NSC-IMPL-0739 — Extraer el struct SmartPointerFamilyContract desde
   include/nativesharp/Language/SmartPointerSemantics.h:30-39 hacia
   include/nativesharp/Language/SmartPointerFamilyContract.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0740 — Extraer el enum SmartPointerOperation desde
+- [x] NSC-IMPL-0740 — Extraer el enum SmartPointerOperation desde
   include/nativesharp/Language/SmartPointerSemantics.h:54-64 hacia include/nativesharp/Language/SmartPointerOperation.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0741 — Extraer el struct SmartPointerOperationContext desde
+- [x] NSC-IMPL-0741 — Extraer el struct SmartPointerOperationContext desde
   include/nativesharp/Language/SmartPointerSemantics.h:66-74 hacia
   include/nativesharp/Language/SmartPointerOperationContext.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0742 — Extraer el struct VariantCase desde include/nativesharp/Language/SumTypeSemantics.h:12-17 hacia
+- [x] NSC-IMPL-0742 — Extraer el struct VariantCase desde include/nativesharp/Language/SumTypeSemantics.h:12-17 hacia
   include/nativesharp/Language/VariantCase.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0743 — Extraer el struct VariantLayout desde include/nativesharp/Language/SumTypeSemantics.h:19-25 hacia
+- [x] NSC-IMPL-0743 — Extraer el struct VariantLayout desde include/nativesharp/Language/SumTypeSemantics.h:19-25 hacia
   include/nativesharp/Language/VariantLayout.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0744 — Extraer el enum PatternKind desde include/nativesharp/Language/SumTypeSemantics.h:30-40 hacia
+- [x] NSC-IMPL-0744 — Extraer el enum PatternKind desde include/nativesharp/Language/SumTypeSemantics.h:30-40 hacia
   include/nativesharp/Language/PatternKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0745 — Extraer el enum PatternBindingMode desde include/nativesharp/Language/SumTypeSemantics.h:42-49
+- [x] NSC-IMPL-0745 — Extraer el enum PatternBindingMode desde include/nativesharp/Language/SumTypeSemantics.h:42-49
   hacia include/nativesharp/Language/PatternBindingMode.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0746 — Extraer el struct PatternBinding desde include/nativesharp/Language/SumTypeSemantics.h:51-56 hacia
+- [x] NSC-IMPL-0746 — Extraer el struct PatternBinding desde include/nativesharp/Language/SumTypeSemantics.h:51-56 hacia
   include/nativesharp/Language/PatternBinding.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0747 — Extraer el struct MatchArmCoverage desde include/nativesharp/Language/SumTypeSemantics.h:63-79
+- [x] NSC-IMPL-0747 — Extraer el struct MatchArmCoverage desde include/nativesharp/Language/SumTypeSemantics.h:63-79
   hacia include/nativesharp/Language/MatchArmCoverage.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0748 — Extraer el struct ExhaustivenessResult desde include/nativesharp/Language/SumTypeSemantics.h:81-86
+- [x] NSC-IMPL-0748 — Extraer el struct ExhaustivenessResult desde include/nativesharp/Language/SumTypeSemantics.h:81-86
   hacia include/nativesharp/Language/ExhaustivenessResult.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0749 — Extraer el struct TraitMethod desde include/nativesharp/Language/TraitSemantics.h:10-16 hacia
+- [x] NSC-IMPL-0749 — Extraer el struct TraitMethod desde include/nativesharp/Language/TraitSemantics.h:10-16 hacia
   include/nativesharp/Language/TraitMethod.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0750 — Extraer el struct TraitContract desde include/nativesharp/Language/TraitSemantics.h:18-23 hacia
+- [x] NSC-IMPL-0750 — Extraer el struct TraitContract desde include/nativesharp/Language/TraitSemantics.h:18-23 hacia
   include/nativesharp/Language/TraitContract.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0751 — Extraer el struct ImplCandidate desde include/nativesharp/Language/TraitSemantics.h:27-34 hacia
+- [x] NSC-IMPL-0751 — Extraer el struct ImplCandidate desde include/nativesharp/Language/TraitSemantics.h:27-34 hacia
   include/nativesharp/Language/ImplCandidate.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0752 — Extraer el struct AssociatedProjection desde include/nativesharp/Language/TraitSemantics.h:38-42
+- [x] NSC-IMPL-0752 — Extraer el struct AssociatedProjection desde include/nativesharp/Language/TraitSemantics.h:38-42
   hacia include/nativesharp/Language/AssociatedProjection.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0753 — Extraer el enum DispatchKind desde include/nativesharp/Language/TraitSemantics.h:53-53 hacia
+- [x] NSC-IMPL-0753 — Extraer el enum DispatchKind desde include/nativesharp/Language/TraitSemantics.h:53-53 hacia
   include/nativesharp/Language/DispatchKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0754 — Extraer el struct TraitObjectLayout desde include/nativesharp/Language/TraitSemantics.h:54-61
+- [x] NSC-IMPL-0754 — Extraer el struct TraitObjectLayout desde include/nativesharp/Language/TraitSemantics.h:54-61
   hacia include/nativesharp/Language/TraitObjectLayout.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0755 — Extraer el enum ExtensionResolution desde include/nativesharp/Language/TraitSemantics.h:65-65
+- [x] NSC-IMPL-0755 — Extraer el enum ExtensionResolution desde include/nativesharp/Language/TraitSemantics.h:65-65
   hacia include/nativesharp/Language/ExtensionResolution.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0756 — Extraer el struct OperatorTraitContract desde include/nativesharp/Language/TraitSemantics.h:73-79
+- [x] NSC-IMPL-0756 — Extraer el struct OperatorTraitContract desde include/nativesharp/Language/TraitSemantics.h:73-79
   hacia include/nativesharp/Language/OperatorTraitContract.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0806 — Extraer el enum BuiltinLayoutKind desde include/nativesharp/Target/TargetDataLayout.h:10-36 hacia
+- [x] NSC-IMPL-0806 — Extraer el enum BuiltinLayoutKind desde include/nativesharp/Target/TargetDataLayout.h:10-36 hacia
   include/nativesharp/Target/BuiltinLayoutKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0807 — Extraer el struct TypeLayout desde include/nativesharp/Target/TargetDataLayout.h:38-42 hacia
+- [x] NSC-IMPL-0807 — Extraer el struct TypeLayout desde include/nativesharp/Target/TargetDataLayout.h:38-42 hacia
   include/nativesharp/Target/TypeLayout.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0808 — Extraer el struct ArrayLayout desde include/nativesharp/Target/TargetDataLayout.h:44-50 hacia
+- [x] NSC-IMPL-0808 — Extraer el struct ArrayLayout desde include/nativesharp/Target/TargetDataLayout.h:44-50 hacia
   include/nativesharp/Target/ArrayLayout.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0809 — Extraer el struct StructFieldLayout desde include/nativesharp/Target/TargetDataLayout.h:52-61
+- [x] NSC-IMPL-0809 — Extraer el struct StructFieldLayout desde include/nativesharp/Target/TargetDataLayout.h:52-61
   hacia include/nativesharp/Target/StructFieldLayout.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0810 — Extraer el struct StructLayout desde include/nativesharp/Target/TargetDataLayout.h:63-68 hacia
+- [x] NSC-IMPL-0810 — Extraer el struct StructLayout desde include/nativesharp/Target/TargetDataLayout.h:63-68 hacia
   include/nativesharp/Target/StructLayout.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0811 — Extraer el struct StructLayoutOptions desde include/nativesharp/Target/TargetDataLayout.h:84-89
+- [x] NSC-IMPL-0811 — Extraer el struct StructLayoutOptions desde include/nativesharp/Target/TargetDataLayout.h:84-89
   hacia include/nativesharp/Target/StructLayoutOptions.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0812 — Extraer el struct StructFieldRequest desde include/nativesharp/Target/TargetDataLayout.h:91-99
+- [x] NSC-IMPL-0812 — Extraer el struct StructFieldRequest desde include/nativesharp/Target/TargetDataLayout.h:91-99
   hacia include/nativesharp/Target/StructFieldRequest.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0813 — Conservar el class TargetDataLayout como tipo principal de
+- [x] NSC-IMPL-0813 — Conservar el class TargetDataLayout como tipo principal de
   include/nativesharp/Target/TargetDataLayout.h:101-131 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0861 — Descomponer buildMetadataModel en src/Interop/LibraryMetadata.cpp:754 (920 líneas ejecutables;
+- [x] NSC-IMPL-0861 — Descomponer buildMetadataModel en src/Interop/LibraryMetadata.cpp:754 (920 líneas ejecutables;
   1305 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0865 — Descomponer LibraryMetadataCodec::verifyCurrentCompiler en src/Interop/LibraryMetadata.cpp:4233
+- [x] NSC-IMPL-0865 — Descomponer LibraryMetadataCodec::verifyCurrentCompiler en src/Interop/LibraryMetadata.cpp:4233
   (724 líneas ejecutables; 1058 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0867 — Descomponer decodePayload en src/Interop/LibraryMetadata.cpp:2672 (595 líneas ejecutables; 871
+- [x] NSC-IMPL-0867 — Descomponer decodePayload en src/Interop/LibraryMetadata.cpp:2672 (595 líneas ejecutables; 871
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0891 — Descomponer encodePayload en src/Interop/LibraryMetadata.cpp:2081 (305 líneas ejecutables; 430
+- [x] NSC-IMPL-0891 — Descomponer encodePayload en src/Interop/LibraryMetadata.cpp:2081 (305 líneas ejecutables; 430
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0901 — Descomponer LibraryMetadataCodec::writeModelImpl en src/Interop/LibraryMetadata.cpp:3664 (270
+- [x] NSC-IMPL-0901 — Descomponer LibraryMetadataCodec::writeModelImpl en src/Interop/LibraryMetadata.cpp:3664 (270
   líneas ejecutables; 454 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0951 — Descomponer LibraryAbiReporter::write en src/Interop/LibraryAbiReport.cpp:113 (160 líneas
+- [x] NSC-IMPL-0951 — Descomponer LibraryAbiReporter::write en src/Interop/LibraryAbiReport.cpp:113 (160 líneas
   ejecutables; 197 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0972 — Descomponer sourceSurface en src/Interop/LibraryApiDiff.cpp:160 (138 líneas ejecutables; 177
+- [x] NSC-IMPL-0972 — Descomponer sourceSurface en src/Interop/LibraryApiDiff.cpp:160 (138 líneas ejecutables; 177
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0975 — Descomponer emitStruct en src/Interop/CHeaderGenerator.cpp:426 (135 líneas ejecutables; 192
+- [x] NSC-IMPL-0975 — Descomponer emitStruct en src/Interop/CHeaderGenerator.cpp:426 (135 líneas ejecutables; 192
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0976 — Descomponer abiSurface en src/Interop/LibraryApiDiff.cpp:338 (135 líneas ejecutables; 167 totales)
+- [x] NSC-IMPL-0976 — Descomponer abiSurface en src/Interop/LibraryApiDiff.cpp:338 (135 líneas ejecutables; 167 totales)
   hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni
   resultados.
-- [ ] NSC-IMPL-1022 — Descomponer TargetDataLayout::layoutStruct en src/Target/TargetDataLayout.cpp:94 (103 líneas
+- [x] NSC-IMPL-1022 — Descomponer TargetDataLayout::layoutStruct en src/Target/TargetDataLayout.cpp:94 (103 líneas
   ejecutables; 155 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1027 — Descomponer CHeaderGenerator::writeHeader en src/Interop/CHeaderGenerator.cpp:797 (101 líneas
+- [x] NSC-IMPL-1027 — Descomponer CHeaderGenerator::writeHeader en src/Interop/CHeaderGenerator.cpp:797 (101 líneas
   ejecutables; 142 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1028 — Descomponer encodeAbiProjection en src/Interop/LibraryMetadata.cpp:2512 (101 líneas ejecutables;
+- [x] NSC-IMPL-1028 — Descomponer encodeAbiProjection en src/Interop/LibraryMetadata.cpp:2512 (101 líneas ejecutables;
   154 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1037 — Descomponer SdkManifestLoader::load en src/Compilation/SdkManifest.cpp:295 (96 líneas ejecutables;
+- [x] NSC-IMPL-1037 — Descomponer SdkManifestLoader::load en src/Compilation/SdkManifest.cpp:295 (96 líneas ejecutables;
   148 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1039 — Descomponer canonicalizeModel en src/Interop/LibraryMetadataMerger.cpp:270 (94 líneas ejecutables;
+- [x] NSC-IMPL-1039 — Descomponer canonicalizeModel en src/Interop/LibraryMetadataMerger.cpp:270 (94 líneas ejecutables;
   108 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1044 — Descomponer materializeGenericTemplateSource en src/Interop/LibraryMetadata.cpp:621 (92 líneas
+- [x] NSC-IMPL-1044 — Descomponer materializeGenericTemplateSource en src/Interop/LibraryMetadata.cpp:621 (92 líneas
   ejecutables; 132 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1056 — Descomponer parseStaticInterpolation en src/Language/ExpressionErgonomics.cpp:78 (87 líneas
+- [x] NSC-IMPL-1056 — Descomponer parseStaticInterpolation en src/Language/ExpressionErgonomics.cpp:78 (87 líneas
   ejecutables; 124 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1089 — Descomponer buildSynchronousGeneratorPlan en src/Language/IterationSemantics.cpp:93 (80 líneas
+- [x] NSC-IMPL-1089 — Descomponer buildSynchronousGeneratorPlan en src/Language/IterationSemantics.cpp:93 (80 líneas
   ejecutables; 119 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1097 — Descomponer LibraryMetadataCodec::read en src/Interop/LibraryMetadata.cpp:4119 (79 líneas
+- [x] NSC-IMPL-1097 — Descomponer LibraryMetadataCodec::read en src/Interop/LibraryMetadata.cpp:4119 (79 líneas
   ejecutables; 113 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1118 — Descomponer parseDecimalLiteral en src/Language/NumericSemantics.cpp:150 (75 líneas ejecutables;
+- [x] NSC-IMPL-1118 — Descomponer parseDecimalLiteral en src/Language/NumericSemantics.cpp:150 (75 líneas ejecutables;
   102 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1138 — Descomponer evaluateIntegerArithmetic en src/Language/NumericSemantics.cpp:547 (71 líneas
+- [x] NSC-IMPL-1138 — Descomponer evaluateIntegerArithmetic en src/Language/NumericSemantics.cpp:547 (71 líneas
   ejecutables; 97 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1219 — Convertir LibraryMetadataCodec en fachada y separar códec, construcción, verificación y payload
+- [x] NSC-IMPL-1219 — Convertir LibraryMetadataCodec en fachada y separar códec, construcción, verificación y payload
   sin cambiar NSMETA.
 
-### Commit REF-03 — Modelos base del frontend, nombres, miembros, construcción y genéricos — 0/249
+### Commit REF-03 — Modelos base del frontend, nombres, miembros, construcción y genéricos — 249/249
 
 Modulariza los modelos del frontend y sus fachadas sin mover estado ni alterar resolución o especialización.
 
-- [ ] NSC-IMPL-0053 — Extraer el class IntegerExpression desde src/Frontend/ComptimeEngine.cpp:34-301 (268) hacia
+- [x] NSC-IMPL-0053 — Extraer el class IntegerExpression desde src/Frontend/ComptimeEngine.cpp:34-301 (268) hacia
   src/Frontend/Internal/IntegerExpression.h, y mover sus cuerpos a src/Frontend/Internal/IntegerExpression.cpp;
   conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0058 — Extraer el struct Definition desde src/Frontend/MacroExpansionEngine.cpp:10-17 (8) hacia
+- [x] NSC-IMPL-0058 — Extraer el struct Definition desde src/Frontend/MacroExpansionEngine.cpp:10-17 (8) hacia
   src/Frontend/Internal/Definition.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0059 — Extraer el class ProjectPhaseTimer desde src/Frontend/ProjectCompilation.cpp:76-109 (34) hacia
+- [x] NSC-IMPL-0059 — Extraer el class ProjectPhaseTimer desde src/Frontend/ProjectCompilation.cpp:76-109 (34) hacia
   src/Frontend/Internal/ProjectPhaseTimer.h, y mover sus cuerpos a src/Frontend/Internal/ProjectPhaseTimer.cpp;
   conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0060 — Extraer el struct NamedConstructorArgumentMap desde
+- [x] NSC-IMPL-0060 — Extraer el struct NamedConstructorArgumentMap desde
   src/Frontend/ProjectConstructionModel.cpp:15-24 (10) hacia src/Frontend/Internal/NamedConstructorArgumentMap.h, sin
   .cpp adicional; conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0061 — Extraer el struct PendingDiagnostic desde src/Frontend/ProjectGenericConstraintModel.cpp:275-281
+- [x] NSC-IMPL-0061 — Extraer el struct PendingDiagnostic desde src/Frontend/ProjectGenericConstraintModel.cpp:275-281
   (7) hacia src/Frontend/Internal/PendingDiagnostic.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0062 — Extraer el class SpecializationWaveTimer desde src/Frontend/ProjectGenericModel.cpp:47-71 (25)
+- [x] NSC-IMPL-0062 — Extraer el class SpecializationWaveTimer desde src/Frontend/ProjectGenericModel.cpp:47-71 (25)
   hacia src/Frontend/Internal/SpecializationWaveTimer.h, y mover sus cuerpos a
   src/Frontend/Internal/SpecializationWaveTimer.cpp; conservar texto, comentarios, firmas, orden y conducta. Restricción
   de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0063 — Extraer el class EnumConstResolver desde src/Frontend/ProjectGenericModel.cpp:374-440 (67) hacia
+- [x] NSC-IMPL-0063 — Extraer el class EnumConstResolver desde src/Frontend/ProjectGenericModel.cpp:374-440 (67) hacia
   src/Frontend/Internal/EnumConstResolver.h, y mover sus cuerpos a src/Frontend/Internal/EnumConstResolver.cpp;
   conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0064 — Extraer el class ByteReader desde src/Frontend/ProjectGenericModel.cpp:2194-2254 (61) hacia
+- [x] NSC-IMPL-0064 — Extraer el class ByteReader desde src/Frontend/ProjectGenericModel.cpp:2194-2254 (61) hacia
   src/Frontend/Internal/ByteReader.h, y mover sus cuerpos a src/Frontend/Internal/ByteReader.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0065 — Extraer el struct InterfaceFingerprint desde src/Frontend/ProjectGenericModel.cpp:2901-2906 (6)
+- [x] NSC-IMPL-0065 — Extraer el struct InterfaceFingerprint desde src/Frontend/ProjectGenericModel.cpp:2901-2906 (6)
   hacia src/Frontend/Internal/InterfaceFingerprint.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0066 — Extraer el struct ImplementationFingerprint desde src/Frontend/ProjectGenericModel.cpp:2908-2912
+- [x] NSC-IMPL-0066 — Extraer el struct ImplementationFingerprint desde src/Frontend/ProjectGenericModel.cpp:2908-2912
   (5) hacia src/Frontend/Internal/ImplementationFingerprint.h, sin .cpp adicional; conservar texto, comentarios, firmas,
   orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0067 — Extraer el struct MirFunctionKey desde src/Frontend/ProjectGenericModel.cpp:2971-2978 (8) hacia
+- [x] NSC-IMPL-0067 — Extraer el struct MirFunctionKey desde src/Frontend/ProjectGenericModel.cpp:2971-2978 (8) hacia
   src/Frontend/Internal/MirFunctionKey.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0068 — Extraer el struct MirCacheRecord desde src/Frontend/ProjectGenericModel.cpp:3004-3009 (6) hacia
+- [x] NSC-IMPL-0068 — Extraer el struct MirCacheRecord desde src/Frontend/ProjectGenericModel.cpp:3004-3009 (6) hacia
   src/Frontend/Internal/MirCacheRecord.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0069 — Extraer el struct CloneDepthGuard desde src/Frontend/ProjectGenericModel.cpp:6748-6753 (6) hacia
+- [x] NSC-IMPL-0069 — Extraer el struct CloneDepthGuard desde src/Frontend/ProjectGenericModel.cpp:6748-6753 (6) hacia
   src/Frontend/Internal/CloneDepthGuard.h, y mover sus cuerpos a src/Frontend/Internal/CloneDepthGuard.cpp; conservar
   texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0070 — Extraer el struct EnumValue desde src/Frontend/ProjectMemberModel.cpp:3427-3431 (5) hacia
+- [x] NSC-IMPL-0070 — Extraer el struct EnumValue desde src/Frontend/ProjectMemberModel.cpp:3427-3431 (5) hacia
   src/Frontend/Internal/EnumValue.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0071 — Extraer el struct EnumSuccessor desde src/Frontend/ProjectMemberModel.cpp:3484-3488 (5) hacia
+- [x] NSC-IMPL-0071 — Extraer el struct EnumSuccessor desde src/Frontend/ProjectMemberModel.cpp:3484-3488 (5) hacia
   src/Frontend/Internal/EnumSuccessor.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0072 — Extraer el class EnumInitializerResolver desde src/Frontend/ProjectMemberModel.cpp:3506-3567 (62)
+- [x] NSC-IMPL-0072 — Extraer el class EnumInitializerResolver desde src/Frontend/ProjectMemberModel.cpp:3506-3567 (62)
   hacia src/Frontend/Internal/EnumInitializerResolver.h, y mover sus cuerpos a
   src/Frontend/Internal/EnumInitializerResolver.cpp; conservar texto, comentarios, firmas, orden y conducta. Restricción
   de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0075 — Extraer el struct ProjectNameLookup::LookupEnvironment desde
+- [x] NSC-IMPL-0075 — Extraer el struct ProjectNameLookup::LookupEnvironment desde
   src/Frontend/ProjectNameLookup.cpp:250-263 (14) hacia src/Frontend/Internal/LookupEnvironment.h, sin .cpp adicional;
   conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0076 — Extraer el struct FunctionLookupEnvironment desde
+- [x] NSC-IMPL-0076 — Extraer el struct FunctionLookupEnvironment desde
   src/Frontend/ProjectNamespaceFunctionModel.cpp:263-267 (5) hacia src/Frontend/Internal/FunctionLookupEnvironment.h,
   sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite
   (A-1).
-- [ ] NSC-IMPL-0077 — Extraer el struct LocatedDeclaration desde src/Frontend/ProjectOpaqueResultModel.cpp:29-36 (8)
+- [x] NSC-IMPL-0077 — Extraer el struct LocatedDeclaration desde src/Frontend/ProjectOpaqueResultModel.cpp:29-36 (8)
   hacia src/Frontend/Internal/LocatedDeclaration.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0078 — Extraer el struct CacheMetadata desde src/Frontend/TemplateParseCache.cpp:116-121 (6) hacia
+- [x] NSC-IMPL-0078 — Extraer el struct CacheMetadata desde src/Frontend/TemplateParseCache.cpp:116-121 (6) hacia
   src/Frontend/Internal/CacheMetadata.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0153 — Mover fuera de línea función libre declaredEnumUnderlyingTypeKey de
+- [x] NSC-IMPL-0153 — Mover fuera de línea función libre declaredEnumUnderlyingTypeKey de
   include/nativesharp/Frontend/EnumUnderlyingType.h:43 (30 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0154 — Mover fuera de línea función libre enumUnderlyingTypeKey de
+- [x] NSC-IMPL-0154 — Mover fuera de línea función libre enumUnderlyingTypeKey de
   include/nativesharp/Frontend/EnumUnderlyingType.h:76 (5 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0155 — Mover fuera de línea método GenericTelemetry::recordSubPhase de
+- [x] NSC-IMPL-0155 — Mover fuera de línea método GenericTelemetry::recordSubPhase de
   include/nativesharp/Frontend/ProjectGenericModel.h:262 (6 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0156 — Mover fuera de línea método GenericTelemetry::noteResolutionQuery de
+- [x] NSC-IMPL-0156 — Mover fuera de línea método GenericTelemetry::noteResolutionQuery de
   include/nativesharp/Frontend/ProjectGenericModel.h:283 (6 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0157 — Mover fuera de línea método GenericTelemetry::noteTemplate de
+- [x] NSC-IMPL-0157 — Mover fuera de línea método GenericTelemetry::noteTemplate de
   include/nativesharp/Frontend/ProjectGenericModel.h:290 (6 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0158 — Mover fuera de línea método GenericTelemetry::noteScopeCopy de
+- [x] NSC-IMPL-0158 — Mover fuera de línea método GenericTelemetry::noteScopeCopy de
   include/nativesharp/Frontend/ProjectGenericModel.h:297 (6 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0159 — Mover fuera de línea método GenericTelemetry::noteSpecializationHit de
+- [x] NSC-IMPL-0159 — Mover fuera de línea método GenericTelemetry::noteSpecializationHit de
   include/nativesharp/Frontend/ProjectGenericModel.h:304 (4 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0160 — Mover fuera de línea método GenericTelemetry::noteMaterialization de
+- [x] NSC-IMPL-0160 — Mover fuera de línea método GenericTelemetry::noteMaterialization de
   include/nativesharp/Frontend/ProjectGenericModel.h:309 (13 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0161 — Mover fuera de línea método GenericTelemetry::noteDemand de
+- [x] NSC-IMPL-0161 — Mover fuera de línea método GenericTelemetry::noteDemand de
   include/nativesharp/Frontend/ProjectGenericModel.h:323 (6 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0162 — Mover fuera de línea método GenericTelemetry::noteNodesCloned de
+- [x] NSC-IMPL-0162 — Mover fuera de línea método GenericTelemetry::noteNodesCloned de
   include/nativesharp/Frontend/ProjectGenericModel.h:330 (4 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0163 — Mover fuera de línea método GenericTelemetry::noteTypesCloned de
+- [x] NSC-IMPL-0163 — Mover fuera de línea método GenericTelemetry::noteTypesCloned de
   include/nativesharp/Frontend/ProjectGenericModel.h:335 (4 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0164 — Mover fuera de línea método Scope::Scope de include/nativesharp/Frontend/ProjectGenericModel.h:342
+- [x] NSC-IMPL-0164 — Mover fuera de línea método Scope::Scope de include/nativesharp/Frontend/ProjectGenericModel.h:342
   (27 líneas) a un único .cpp, dejando la declaración intacta y conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0165 — Mover fuera de línea método Scope::~Scope de
+- [x] NSC-IMPL-0165 — Mover fuera de línea método Scope::~Scope de
   include/nativesharp/Frontend/ProjectGenericModel.h:369 (7 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0166 — Mover fuera de línea método ValueBinding::ValueBinding de
+- [x] NSC-IMPL-0166 — Mover fuera de línea método ValueBinding::ValueBinding de
   include/nativesharp/Frontend/ProjectGenericModel.h:603 (7 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0167 — Mover fuera de línea método ValueBinding::~ValueBinding de
+- [x] NSC-IMPL-0167 — Mover fuera de línea método ValueBinding::~ValueBinding de
   include/nativesharp/Frontend/ProjectGenericModel.h:611 (13 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0168 — Mover fuera de línea método GenericLookupScope::addValueType de
+- [x] NSC-IMPL-0168 — Mover fuera de línea método GenericLookupScope::addValueType de
   include/nativesharp/Frontend/ProjectGenericModel.h:630 (5 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0169 — Mover fuera de línea método GenericLookupScope::findValueType de
+- [x] NSC-IMPL-0169 — Mover fuera de línea método GenericLookupScope::findValueType de
   include/nativesharp/Frontend/ProjectGenericModel.h:635 (9 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0170 — Mover fuera de línea método SpecializationContext::save de
+- [x] NSC-IMPL-0170 — Mover fuera de línea método SpecializationContext::save de
   include/nativesharp/Frontend/ProjectGenericModel.h:730 (13 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0171 — Mover fuera de línea método SpecializationContext::restore de
+- [x] NSC-IMPL-0171 — Mover fuera de línea método SpecializationContext::restore de
   include/nativesharp/Frontend/ProjectGenericModel.h:743 (13 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0172 — Mover fuera de línea método SpecializationPlanner::request de
+- [x] NSC-IMPL-0172 — Mover fuera de línea método SpecializationPlanner::request de
   include/nativesharp/Frontend/ProjectGenericModel.h:1275 (5 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0173 — Mover fuera de línea método SpecializationPlanner::commit de
+- [x] NSC-IMPL-0173 — Mover fuera de línea método SpecializationPlanner::commit de
   include/nativesharp/Frontend/ProjectGenericModel.h:1280 (4 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0174 — Mover fuera de línea método SpecializationPlanner::rollback de
+- [x] NSC-IMPL-0174 — Mover fuera de línea método SpecializationPlanner::rollback de
   include/nativesharp/Frontend/ProjectGenericModel.h:1284 (4 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0175 — Mover fuera de línea método ProjectIntegerValue::asSigned de
+- [x] NSC-IMPL-0175 — Mover fuera de línea método ProjectIntegerValue::asSigned de
   include/nativesharp/Frontend/ProjectIntegerEvaluator.h:38 (4 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0176 — Mover fuera de línea método ProjectIntegerEvaluator::ProjectIntegerEvaluator de
+- [x] NSC-IMPL-0176 — Mover fuera de línea método ProjectIntegerEvaluator::ProjectIntegerEvaluator de
   include/nativesharp/Frontend/ProjectIntegerEvaluator.h:101 (4 líneas) a un único .cpp, dejando la declaración intacta
   y conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0177 — Mover fuera de línea método TransparentStringHash::operator de
+- [x] NSC-IMPL-0177 — Mover fuera de línea método TransparentStringHash::operator de
   include/nativesharp/Frontend/ProjectMemberModel.h:407 (4 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0178 — Mover fuera de línea método TransparentStringHash::operator de
+- [x] NSC-IMPL-0178 — Mover fuera de línea método TransparentStringHash::operator de
   include/nativesharp/Frontend/ProjectMemberModel.h:412 (4 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0266 — Conservar el enum CompilationStage como tipo principal de
+- [x] NSC-IMPL-0266 — Conservar el enum CompilationStage como tipo principal de
   include/nativesharp/Frontend/CompilationStage.h:11-20 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0267 — Extraer el enum StageInformation desde include/nativesharp/Frontend/CompilationStage.h:22-32 hacia
+- [x] NSC-IMPL-0267 — Extraer el enum StageInformation desde include/nativesharp/Frontend/CompilationStage.h:22-32 hacia
   include/nativesharp/Frontend/StageInformation.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0268 — Extraer el struct CompilationStageContract desde
+- [x] NSC-IMPL-0268 — Extraer el struct CompilationStageContract desde
   include/nativesharp/Frontend/CompilationStage.h:48-55 hacia include/nativesharp/Frontend/CompilationStageContract.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0269 — Extraer el class CompilationStageTracker desde
+- [x] NSC-IMPL-0269 — Extraer el class CompilationStageTracker desde
   include/nativesharp/Frontend/CompilationStage.h:61-71 hacia include/nativesharp/Frontend/CompilationStageTracker.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0270 — Extraer el struct ComptimeEvaluation desde include/nativesharp/Frontend/ComptimeEngine.h:19-26
+- [x] NSC-IMPL-0270 — Extraer el struct ComptimeEvaluation desde include/nativesharp/Frontend/ComptimeEngine.h:19-26
   hacia include/nativesharp/Frontend/ComptimeEvaluation.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0271 — Extraer el struct ComptimeDependency desde include/nativesharp/Frontend/ComptimeEngine.h:28-33
+- [x] NSC-IMPL-0271 — Extraer el struct ComptimeDependency desde include/nativesharp/Frontend/ComptimeEngine.h:28-33
   hacia include/nativesharp/Frontend/ComptimeDependency.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0272 — Extraer el enum ComptimeAttributeTarget desde include/nativesharp/Frontend/ComptimeEngine.h:35-35
+- [x] NSC-IMPL-0272 — Extraer el enum ComptimeAttributeTarget desde include/nativesharp/Frontend/ComptimeEngine.h:35-35
   hacia include/nativesharp/Frontend/ComptimeAttributeTarget.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0273 — Extraer el enum ComptimeAttributeRetention desde
+- [x] NSC-IMPL-0273 — Extraer el enum ComptimeAttributeRetention desde
   include/nativesharp/Frontend/ComptimeEngine.h:36-36 hacia include/nativesharp/Frontend/ComptimeAttributeRetention.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0274 — Extraer el struct ComptimeAttributeDirective desde
+- [x] NSC-IMPL-0274 — Extraer el struct ComptimeAttributeDirective desde
   include/nativesharp/Frontend/ComptimeEngine.h:38-48 hacia include/nativesharp/Frontend/ComptimeAttributeDirective.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0275 — Extraer el enum ComptimeDiagnosticSeverity desde
+- [x] NSC-IMPL-0275 — Extraer el enum ComptimeDiagnosticSeverity desde
   include/nativesharp/Frontend/ComptimeEngine.h:50-50 hacia include/nativesharp/Frontend/ComptimeDiagnosticSeverity.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0276 — Extraer el struct ComptimeAuthoredDiagnostic desde
+- [x] NSC-IMPL-0276 — Extraer el struct ComptimeAuthoredDiagnostic desde
   include/nativesharp/Frontend/ComptimeEngine.h:52-60 hacia include/nativesharp/Frontend/ComptimeAuthoredDiagnostic.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0277 — Extraer el class ComptimeCache desde include/nativesharp/Frontend/ComptimeEngine.h:62-78 hacia
+- [x] NSC-IMPL-0277 — Extraer el class ComptimeCache desde include/nativesharp/Frontend/ComptimeEngine.h:62-78 hacia
   include/nativesharp/Frontend/ComptimeCache.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0278 — Extraer el struct ComptimeLimits desde include/nativesharp/Frontend/ComptimeEngine.h:80-88 hacia
+- [x] NSC-IMPL-0278 — Extraer el struct ComptimeLimits desde include/nativesharp/Frontend/ComptimeEngine.h:80-88 hacia
   include/nativesharp/Frontend/ComptimeLimits.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0279 — Extraer el struct ComptimeExecutionContext desde
+- [x] NSC-IMPL-0279 — Extraer el struct ComptimeExecutionContext desde
   include/nativesharp/Frontend/ComptimeEngine.h:90-95 hacia include/nativesharp/Frontend/ComptimeExecutionContext.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0280 — Extraer el struct ComptimeResult desde include/nativesharp/Frontend/ComptimeEngine.h:97-113 hacia
+- [x] NSC-IMPL-0280 — Extraer el struct ComptimeResult desde include/nativesharp/Frontend/ComptimeEngine.h:97-113 hacia
   include/nativesharp/Frontend/ComptimeResult.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0281 — Extraer el struct ProjectComptimeRecord desde
+- [x] NSC-IMPL-0281 — Extraer el struct ProjectComptimeRecord desde
   include/nativesharp/Frontend/ComptimeEngine.h:115-131 hacia include/nativesharp/Frontend/ProjectComptimeRecord.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0282 — Conservar el class ComptimeEngine como tipo principal de
+- [x] NSC-IMPL-0282 — Conservar el class ComptimeEngine como tipo principal de
   include/nativesharp/Frontend/ComptimeEngine.h:137-150 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0283 — Extraer el enum MacroExpansionContext desde
+- [x] NSC-IMPL-0283 — Extraer el enum MacroExpansionContext desde
   include/nativesharp/Frontend/MacroExpansionEngine.h:14-14 hacia include/nativesharp/Frontend/MacroExpansionContext.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0284 — Extraer el struct MacroExpansionRecord desde
+- [x] NSC-IMPL-0284 — Extraer el struct MacroExpansionRecord desde
   include/nativesharp/Frontend/MacroExpansionEngine.h:16-28 hacia include/nativesharp/Frontend/MacroExpansionRecord.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0285 — Extraer el struct MacroExpansionResult desde
+- [x] NSC-IMPL-0285 — Extraer el struct MacroExpansionResult desde
   include/nativesharp/Frontend/MacroExpansionEngine.h:30-36 hacia include/nativesharp/Frontend/MacroExpansionResult.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0286 — Conservar el class MacroExpansionEngine como tipo principal de
+- [x] NSC-IMPL-0286 — Conservar el class MacroExpansionEngine como tipo principal de
   include/nativesharp/Frontend/MacroExpansionEngine.h:40-54 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0287 — Conservar el class NamespaceSymbol como tipo principal de
+- [x] NSC-IMPL-0287 — Conservar el class NamespaceSymbol como tipo principal de
   include/nativesharp/Frontend/NamespaceSymbol.h:12-39 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0288 — Extraer el class GlobalNamespace desde include/nativesharp/Frontend/NamespaceSymbol.h:41-55 hacia
+- [x] NSC-IMPL-0288 — Extraer el class GlobalNamespace desde include/nativesharp/Frontend/NamespaceSymbol.h:41-55 hacia
   include/nativesharp/Frontend/GlobalNamespace.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0289 — Extraer el enum PrecompiledMemberIdentityMatchKind desde
+- [x] NSC-IMPL-0289 — Extraer el enum PrecompiledMemberIdentityMatchKind desde
   include/nativesharp/Frontend/PrecompiledMemberIdentityIndex.h:12-17 hacia
   include/nativesharp/Frontend/PrecompiledMemberIdentityMatchKind.h; conservar texto, comentarios, orden de declaración
   y cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0290 — Extraer el struct PrecompiledMemberIdentityMatch desde
+- [x] NSC-IMPL-0290 — Extraer el struct PrecompiledMemberIdentityMatch desde
   include/nativesharp/Frontend/PrecompiledMemberIdentityIndex.h:19-24 hacia
   include/nativesharp/Frontend/PrecompiledMemberIdentityMatch.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0291 — Conservar el class PrecompiledMemberIdentityIndex como tipo principal de
+- [x] NSC-IMPL-0291 — Conservar el class PrecompiledMemberIdentityIndex como tipo principal de
   include/nativesharp/Frontend/PrecompiledMemberIdentityIndex.h:28-54 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0292 — Extraer el struct PrecompiledSyntaxModule desde
+- [x] NSC-IMPL-0292 — Extraer el struct PrecompiledSyntaxModule desde
   include/nativesharp/Frontend/ProjectCompilation.h:39-49 hacia include/nativesharp/Frontend/PrecompiledSyntaxModule.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0293 — Conservar el class ProjectCompilation como tipo principal de
+- [x] NSC-IMPL-0293 — Conservar el class ProjectCompilation como tipo principal de
   include/nativesharp/Frontend/ProjectCompilation.h:51-167 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0294 — Extraer el enum ConstructionResolutionKind desde
+- [x] NSC-IMPL-0294 — Extraer el enum ConstructionResolutionKind desde
   include/nativesharp/Frontend/ProjectConstructionModel.h:30-38 hacia
   include/nativesharp/Frontend/ConstructionResolutionKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0295 — Extraer el struct ConstructorOwnershipTransfer desde
+- [x] NSC-IMPL-0295 — Extraer el struct ConstructorOwnershipTransfer desde
   include/nativesharp/Frontend/ProjectConstructionModel.h:43-48 hacia
   include/nativesharp/Frontend/ConstructorOwnershipTransfer.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0296 — Extraer el struct ConstructorCandidateBinding desde
+- [x] NSC-IMPL-0296 — Extraer el struct ConstructorCandidateBinding desde
   include/nativesharp/Frontend/ProjectConstructionModel.h:50-80 hacia
   include/nativesharp/Frontend/ConstructorCandidateBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0297 — Extraer el enum ConstructorInitializerKind desde
+- [x] NSC-IMPL-0297 — Extraer el enum ConstructorInitializerKind desde
   include/nativesharp/Frontend/ProjectConstructionModel.h:83-88 hacia
   include/nativesharp/Frontend/ConstructorInitializerKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0298 — Extraer el enum ConstructorInitializerResolutionKind desde
+- [x] NSC-IMPL-0298 — Extraer el enum ConstructorInitializerResolutionKind desde
   include/nativesharp/Frontend/ProjectConstructionModel.h:90-99 hacia
   include/nativesharp/Frontend/ConstructorInitializerResolutionKind.h; conservar texto, comentarios, orden de
   declaración y cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0299 — Extraer el struct ConstructorInitializerBinding desde
+- [x] NSC-IMPL-0299 — Extraer el struct ConstructorInitializerBinding desde
   include/nativesharp/Frontend/ProjectConstructionModel.h:101-127 hacia
   include/nativesharp/Frontend/ConstructorInitializerBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0300 — Extraer el enum ImplicitDefaultConstructorResolutionKind desde
+- [x] NSC-IMPL-0300 — Extraer el enum ImplicitDefaultConstructorResolutionKind desde
   include/nativesharp/Frontend/ProjectConstructionModel.h:129-137 hacia
   include/nativesharp/Frontend/ImplicitDefaultConstructorResolutionKind.h; conservar texto, comentarios, orden de
   declaración y cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0301 — Extraer el struct ImplicitDefaultConstructorBinding desde
+- [x] NSC-IMPL-0301 — Extraer el struct ImplicitDefaultConstructorBinding desde
   include/nativesharp/Frontend/ProjectConstructionModel.h:139-147 hacia
   include/nativesharp/Frontend/ImplicitDefaultConstructorBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0302 — Extraer el struct ObjectConstructionBinding desde
+- [x] NSC-IMPL-0302 — Extraer el struct ObjectConstructionBinding desde
   include/nativesharp/Frontend/ProjectConstructionModel.h:149-191 hacia
   include/nativesharp/Frontend/ObjectConstructionBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0303 — Conservar el class ProjectConstructionModel como tipo principal de
+- [x] NSC-IMPL-0303 — Conservar el class ProjectConstructionModel como tipo principal de
   include/nativesharp/Frontend/ProjectConstructionModel.h:193-290 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0304 — Extraer el enum ProjectAllocatorFailureProfile desde
+- [x] NSC-IMPL-0304 — Extraer el enum ProjectAllocatorFailureProfile desde
   include/nativesharp/Frontend/ProjectConstructionSite.h:15-22 hacia
   include/nativesharp/Frontend/ProjectAllocatorFailureProfile.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0305 — Conservar el struct ProjectConstructionSite como tipo principal de
+- [x] NSC-IMPL-0305 — Conservar el struct ProjectConstructionSite como tipo principal de
   include/nativesharp/Frontend/ProjectConstructionSite.h:27-48 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0306 — Extraer el struct ProjectFunctionCosts desde
+- [x] NSC-IMPL-0306 — Extraer el struct ProjectFunctionCosts desde
   include/nativesharp/Frontend/ProjectCostExplorer.h:12-27 hacia include/nativesharp/Frontend/ProjectFunctionCosts.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0307 — Extraer el struct ProjectCostReport desde include/nativesharp/Frontend/ProjectCostExplorer.h:29-33
+- [x] NSC-IMPL-0307 — Extraer el struct ProjectCostReport desde include/nativesharp/Frontend/ProjectCostExplorer.h:29-33
   hacia include/nativesharp/Frontend/ProjectCostReport.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0308 — Extraer el struct ClassDestructionPlan desde
+- [x] NSC-IMPL-0308 — Extraer el struct ClassDestructionPlan desde
   include/nativesharp/Frontend/ProjectDestructionModel.h:21-32 hacia
   include/nativesharp/Frontend/ClassDestructionPlan.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0309 — Conservar el class ProjectDestructionModel como tipo principal de
+- [x] NSC-IMPL-0309 — Conservar el class ProjectDestructionModel como tipo principal de
   include/nativesharp/Frontend/ProjectDestructionModel.h:34-59 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0310 — Extraer el enum GenericConstraintViolationKind desde
+- [x] NSC-IMPL-0310 — Extraer el enum GenericConstraintViolationKind desde
   include/nativesharp/Frontend/ProjectGenericConstraintModel.h:27-55 hacia
   include/nativesharp/Frontend/GenericConstraintViolationKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0311 — Extraer el struct GenericConstraintViolation desde
+- [x] NSC-IMPL-0311 — Extraer el struct GenericConstraintViolation desde
   include/nativesharp/Frontend/ProjectGenericConstraintModel.h:57-71 hacia
   include/nativesharp/Frontend/GenericConstraintViolation.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0312 — Conservar el class ProjectGenericConstraintModel como tipo principal de
+- [x] NSC-IMPL-0312 — Conservar el class ProjectGenericConstraintModel como tipo principal de
   include/nativesharp/Frontend/ProjectGenericConstraintModel.h:86-203 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0313 — Extraer el enum GenericTemplateKind desde include/nativesharp/Frontend/ProjectGenericModel.h:36-44
+- [x] NSC-IMPL-0313 — Extraer el enum GenericTemplateKind desde include/nativesharp/Frontend/ProjectGenericModel.h:36-44
   hacia include/nativesharp/Frontend/GenericTemplateKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0314 — Extraer el enum GenericTemplateAccessibility desde
+- [x] NSC-IMPL-0314 — Extraer el enum GenericTemplateAccessibility desde
   include/nativesharp/Frontend/ProjectGenericModel.h:46-52 hacia
   include/nativesharp/Frontend/GenericTemplateAccessibility.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0315 — Extraer el struct GenericTemplateExternalTypeReference desde
+- [x] NSC-IMPL-0315 — Extraer el struct GenericTemplateExternalTypeReference desde
   include/nativesharp/Frontend/ProjectGenericModel.h:53-59 hacia
   include/nativesharp/Frontend/GenericTemplateExternalTypeReference.h; conservar texto, comentarios, orden de
   declaración y cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0316 — Extraer el struct GenericTemplateRecord desde
+- [x] NSC-IMPL-0316 — Extraer el struct GenericTemplateRecord desde
   include/nativesharp/Frontend/ProjectGenericModel.h:61-114 hacia include/nativesharp/Frontend/GenericTemplateRecord.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0317 — Extraer el enum SpecializationState desde
+- [x] NSC-IMPL-0317 — Extraer el enum SpecializationState desde
   include/nativesharp/Frontend/ProjectGenericModel.h:119-126 hacia include/nativesharp/Frontend/SpecializationState.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0318 — Extraer el struct InstantiationContext desde
+- [x] NSC-IMPL-0318 — Extraer el struct InstantiationContext desde
   include/nativesharp/Frontend/ProjectGenericModel.h:131-139 hacia include/nativesharp/Frontend/InstantiationContext.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0319 — Extraer el struct GenericSpecializationRecord desde
+- [x] NSC-IMPL-0319 — Extraer el struct GenericSpecializationRecord desde
   include/nativesharp/Frontend/ProjectGenericModel.h:141-176 hacia
   include/nativesharp/Frontend/GenericSpecializationRecord.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0320 — Extraer el struct PrecompiledGenericSpecialization desde
+- [x] NSC-IMPL-0320 — Extraer el struct PrecompiledGenericSpecialization desde
   include/nativesharp/Frontend/ProjectGenericModel.h:181-193 hacia
   include/nativesharp/Frontend/PrecompiledGenericSpecialization.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0321 — Extraer el struct GenericInstantiationReport desde
+- [x] NSC-IMPL-0321 — Extraer el struct GenericInstantiationReport desde
   include/nativesharp/Frontend/ProjectGenericModel.h:195-202 hacia
   include/nativesharp/Frontend/GenericInstantiationReport.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0322 — Extraer el struct GenericTelemetry desde
+- [x] NSC-IMPL-0322 — Extraer el struct GenericTelemetry desde
   include/nativesharp/Frontend/ProjectGenericModel.h:212-389 hacia include/nativesharp/Frontend/GenericTelemetry.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0323 — Conservar el class ProjectGenericModel como tipo principal de
+- [x] NSC-IMPL-0323 — Conservar el class ProjectGenericModel como tipo principal de
   include/nativesharp/Frontend/ProjectGenericModel.h:391-1380 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0324 — Extraer el struct ClassInheritanceInfo desde
+- [x] NSC-IMPL-0324 — Extraer el struct ClassInheritanceInfo desde
   include/nativesharp/Frontend/ProjectInheritanceModel.h:21-28 hacia
   include/nativesharp/Frontend/ClassInheritanceInfo.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0325 — Conservar el class ProjectInheritanceModel como tipo principal de
+- [x] NSC-IMPL-0325 — Conservar el class ProjectInheritanceModel como tipo principal de
   include/nativesharp/Frontend/ProjectInheritanceModel.h:30-83 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0326 — Extraer el struct ProjectIntegerValue desde
+- [x] NSC-IMPL-0326 — Extraer el struct ProjectIntegerValue desde
   include/nativesharp/Frontend/ProjectIntegerEvaluator.h:30-42 hacia include/nativesharp/Frontend/ProjectIntegerValue.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0327 — Extraer el class ProjectConstantMemberResolver desde
+- [x] NSC-IMPL-0327 — Extraer el class ProjectConstantMemberResolver desde
   include/nativesharp/Frontend/ProjectIntegerEvaluator.h:50-85 hacia
   include/nativesharp/Frontend/ProjectConstantMemberResolver.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0328 — Conservar el class ProjectIntegerEvaluator como tipo principal de
+- [x] NSC-IMPL-0328 — Conservar el class ProjectIntegerEvaluator como tipo principal de
   include/nativesharp/Frontend/ProjectIntegerEvaluator.h:87-141 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0329 — Extraer el struct InterfaceTypeInfo desde
+- [x] NSC-IMPL-0329 — Extraer el struct InterfaceTypeInfo desde
   include/nativesharp/Frontend/ProjectInterfaceModel.h:22-30 hacia include/nativesharp/Frontend/InterfaceTypeInfo.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0330 — Extraer el struct ClassInterfaceTablePlan desde
+- [x] NSC-IMPL-0330 — Extraer el struct ClassInterfaceTablePlan desde
   include/nativesharp/Frontend/ProjectInterfaceModel.h:32-39 hacia
   include/nativesharp/Frontend/ClassInterfaceTablePlan.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0331 — Extraer el struct TraitOperatorWitness desde
+- [x] NSC-IMPL-0331 — Extraer el struct TraitOperatorWitness desde
   include/nativesharp/Frontend/ProjectInterfaceModel.h:44-51 hacia include/nativesharp/Frontend/TraitOperatorWitness.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0332 — Extraer el struct TraitObjectContract desde
+- [x] NSC-IMPL-0332 — Extraer el struct TraitObjectContract desde
   include/nativesharp/Frontend/ProjectInterfaceModel.h:58-67 hacia include/nativesharp/Frontend/TraitObjectContract.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0333 — Conservar el class ProjectInterfaceModel como tipo principal de
+- [x] NSC-IMPL-0333 — Conservar el class ProjectInterfaceModel como tipo principal de
   include/nativesharp/Frontend/ProjectInterfaceModel.h:69-135 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0334 — Extraer el enum ClassMemberKind desde include/nativesharp/Frontend/ProjectMemberModel.h:40-47
+- [x] NSC-IMPL-0334 — Extraer el enum ClassMemberKind desde include/nativesharp/Frontend/ProjectMemberModel.h:40-47
   hacia include/nativesharp/Frontend/ClassMemberKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0335 — Extraer el enum ClassMemberAccessibility desde
+- [x] NSC-IMPL-0335 — Extraer el enum ClassMemberAccessibility desde
   include/nativesharp/Frontend/ProjectMemberModel.h:49-55 hacia include/nativesharp/Frontend/ClassMemberAccessibility.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0336 — Extraer el enum ParameterPassKind desde include/nativesharp/Frontend/ProjectMemberModel.h:70-76
+- [x] NSC-IMPL-0336 — Extraer el enum ParameterPassKind desde include/nativesharp/Frontend/ProjectMemberModel.h:70-76
   hacia include/nativesharp/Frontend/ParameterPassKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0337 — Extraer el struct MethodParameterSymbol desde
+- [x] NSC-IMPL-0337 — Extraer el struct MethodParameterSymbol desde
   include/nativesharp/Frontend/ProjectMemberModel.h:81-120 hacia include/nativesharp/Frontend/MethodParameterSymbol.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0338 — Extraer el struct ClassMemberSymbol desde
+- [x] NSC-IMPL-0338 — Extraer el struct ClassMemberSymbol desde
   include/nativesharp/Frontend/ProjectMemberModel.h:122-294 hacia include/nativesharp/Frontend/ClassMemberSymbol.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0339 — Extraer el struct ModuleInitializationRecord desde
+- [x] NSC-IMPL-0339 — Extraer el struct ModuleInitializationRecord desde
   include/nativesharp/Frontend/ProjectMemberModel.h:296-302 hacia
   include/nativesharp/Frontend/ModuleInitializationRecord.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0340 — Extraer el struct PrecompiledMemberIdentity desde
+- [x] NSC-IMPL-0340 — Extraer el struct PrecompiledMemberIdentity desde
   include/nativesharp/Frontend/ProjectMemberModel.h:304-312 hacia
   include/nativesharp/Frontend/PrecompiledMemberIdentity.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0341 — Extraer el enum MemberBodyBindingKind desde
+- [x] NSC-IMPL-0341 — Extraer el enum MemberBodyBindingKind desde
   include/nativesharp/Frontend/ProjectMemberModel.h:314-318 hacia include/nativesharp/Frontend/MemberBodyBindingKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0342 — Extraer el struct MemberBodyBinding desde
+- [x] NSC-IMPL-0342 — Extraer el struct MemberBodyBinding desde
   include/nativesharp/Frontend/ProjectMemberModel.h:320-328 hacia include/nativesharp/Frontend/MemberBodyBinding.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0343 — Conservar el class ProjectMemberModel como tipo principal de
+- [x] NSC-IMPL-0343 — Conservar el class ProjectMemberModel como tipo principal de
   include/nativesharp/Frontend/ProjectMemberModel.h:330-471 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0344 — Extraer el enum StaticMemberKind desde
+- [x] NSC-IMPL-0344 — Extraer el enum StaticMemberKind desde
   include/nativesharp/Frontend/ProjectMetaprogrammingModel.h:20-20 hacia
   include/nativesharp/Frontend/StaticMemberKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0345 — Extraer el struct StaticMemberInfo desde
+- [x] NSC-IMPL-0345 — Extraer el struct StaticMemberInfo desde
   include/nativesharp/Frontend/ProjectMetaprogrammingModel.h:22-39 hacia
   include/nativesharp/Frontend/StaticMemberInfo.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0346 — Extraer el struct StaticTypeInfo desde
+- [x] NSC-IMPL-0346 — Extraer el struct StaticTypeInfo desde
   include/nativesharp/Frontend/ProjectMetaprogrammingModel.h:41-54 hacia include/nativesharp/Frontend/StaticTypeInfo.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0347 — Extraer el struct StaticAttributeInfo desde
+- [x] NSC-IMPL-0347 — Extraer el struct StaticAttributeInfo desde
   include/nativesharp/Frontend/ProjectMetaprogrammingModel.h:56-63 hacia
   include/nativesharp/Frontend/StaticAttributeInfo.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0348 — Extraer el struct StaticAvailabilityInfo desde
+- [x] NSC-IMPL-0348 — Extraer el struct StaticAvailabilityInfo desde
   include/nativesharp/Frontend/ProjectMetaprogrammingModel.h:67-76 hacia
   include/nativesharp/Frontend/StaticAvailabilityInfo.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0349 — Extraer el struct StaticDeriveInfo desde
+- [x] NSC-IMPL-0349 — Extraer el struct StaticDeriveInfo desde
   include/nativesharp/Frontend/ProjectMetaprogrammingModel.h:78-85 hacia
   include/nativesharp/Frontend/StaticDeriveInfo.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0350 — Conservar el class ProjectMetaprogrammingModel como tipo principal de
+- [x] NSC-IMPL-0350 — Conservar el class ProjectMetaprogrammingModel como tipo principal de
   include/nativesharp/Frontend/ProjectMetaprogrammingModel.h:89-124 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0407 — Extraer el enum NamedTypeDeclarationKind desde
+- [x] NSC-IMPL-0407 — Extraer el enum NamedTypeDeclarationKind desde
   include/nativesharp/Frontend/ProjectNameLookup.h:28-35 hacia include/nativesharp/Frontend/NamedTypeDeclarationKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0408 — Extraer el enum NamedTypeAccessibility desde
+- [x] NSC-IMPL-0408 — Extraer el enum NamedTypeAccessibility desde
   include/nativesharp/Frontend/ProjectNameLookup.h:46-53 hacia include/nativesharp/Frontend/NamedTypeAccessibility.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0409 — Extraer el struct NamedTypeDeclarationPart desde
+- [x] NSC-IMPL-0409 — Extraer el struct NamedTypeDeclarationPart desde
   include/nativesharp/Frontend/ProjectNameLookup.h:55-75 hacia include/nativesharp/Frontend/NamedTypeDeclarationPart.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0410 — Extraer el struct NamedTypeDeclaration desde
+- [x] NSC-IMPL-0410 — Extraer el struct NamedTypeDeclaration desde
   include/nativesharp/Frontend/ProjectNameLookup.h:77-97 hacia include/nativesharp/Frontend/NamedTypeDeclaration.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0411 — Extraer el enum NamespaceFunctionAccessibility desde
+- [x] NSC-IMPL-0411 — Extraer el enum NamespaceFunctionAccessibility desde
   include/nativesharp/Frontend/ProjectNameLookup.h:99-103 hacia
   include/nativesharp/Frontend/NamespaceFunctionAccessibility.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0412 — Extraer el struct NamespaceFunctionDeclaration desde
+- [x] NSC-IMPL-0412 — Extraer el struct NamespaceFunctionDeclaration desde
   include/nativesharp/Frontend/ProjectNameLookup.h:105-119 hacia
   include/nativesharp/Frontend/NamespaceFunctionDeclaration.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0413 — Extraer el struct NamespaceStateDeclaration desde
+- [x] NSC-IMPL-0413 — Extraer el struct NamespaceStateDeclaration desde
   include/nativesharp/Frontend/ProjectNameLookup.h:121-135 hacia
   include/nativesharp/Frontend/NamespaceStateDeclaration.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0414 — Extraer el enum TypeNameBindingKind desde include/nativesharp/Frontend/ProjectNameLookup.h:136-142
+- [x] NSC-IMPL-0414 — Extraer el enum TypeNameBindingKind desde include/nativesharp/Frontend/ProjectNameLookup.h:136-142
   hacia include/nativesharp/Frontend/TypeNameBindingKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0415 — Extraer el struct TypeNameBinding desde include/nativesharp/Frontend/ProjectNameLookup.h:144-160
+- [x] NSC-IMPL-0415 — Extraer el struct TypeNameBinding desde include/nativesharp/Frontend/ProjectNameLookup.h:144-160
   hacia include/nativesharp/Frontend/TypeNameBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0416 — Extraer el struct ExpressionTypeNameBinding desde
+- [x] NSC-IMPL-0416 — Extraer el struct ExpressionTypeNameBinding desde
   include/nativesharp/Frontend/ProjectNameLookup.h:162-173 hacia
   include/nativesharp/Frontend/ExpressionTypeNameBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0417 — Extraer el class ModuleDeclarationSpace desde
+- [x] NSC-IMPL-0417 — Extraer el class ModuleDeclarationSpace desde
   include/nativesharp/Frontend/ProjectNameLookup.h:175-197 hacia include/nativesharp/Frontend/ModuleDeclarationSpace.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0418 — Conservar el class ProjectNameLookup como tipo principal de
+- [x] NSC-IMPL-0418 — Conservar el class ProjectNameLookup como tipo principal de
   include/nativesharp/Frontend/ProjectNameLookup.h:199-364 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0419 — Extraer el struct NamespaceFunctionPart desde
+- [x] NSC-IMPL-0419 — Extraer el struct NamespaceFunctionPart desde
   include/nativesharp/Frontend/ProjectNamespaceFunctionModel.h:23-32 hacia
   include/nativesharp/Frontend/NamespaceFunctionPart.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0420 — Extraer el struct NamespaceFunctionSymbol desde
+- [x] NSC-IMPL-0420 — Extraer el struct NamespaceFunctionSymbol desde
   include/nativesharp/Frontend/ProjectNamespaceFunctionModel.h:34-76 hacia
   include/nativesharp/Frontend/NamespaceFunctionSymbol.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0421 — Extraer el struct PrecompiledNamespaceFunctionIdentity desde
+- [x] NSC-IMPL-0421 — Extraer el struct PrecompiledNamespaceFunctionIdentity desde
   include/nativesharp/Frontend/ProjectNamespaceFunctionModel.h:78-85 hacia
   include/nativesharp/Frontend/PrecompiledNamespaceFunctionIdentity.h; conservar texto, comentarios, orden de
   declaración y cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0422 — Extraer el enum NamespaceStateInitializerKind desde
+- [x] NSC-IMPL-0422 — Extraer el enum NamespaceStateInitializerKind desde
   include/nativesharp/Frontend/ProjectNamespaceFunctionModel.h:87-95 hacia
   include/nativesharp/Frontend/NamespaceStateInitializerKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0423 — Extraer el struct NamespaceStateSymbol desde
+- [x] NSC-IMPL-0423 — Extraer el struct NamespaceStateSymbol desde
   include/nativesharp/Frontend/ProjectNamespaceFunctionModel.h:97-121 hacia
   include/nativesharp/Frontend/NamespaceStateSymbol.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0424 — Extraer el struct NamespaceFunctionReferenceBinding desde
+- [x] NSC-IMPL-0424 — Extraer el struct NamespaceFunctionReferenceBinding desde
   include/nativesharp/Frontend/ProjectNamespaceFunctionModel.h:123-135 hacia
   include/nativesharp/Frontend/NamespaceFunctionReferenceBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0425 — Extraer el struct NamespaceStateReferenceBinding desde
+- [x] NSC-IMPL-0425 — Extraer el struct NamespaceStateReferenceBinding desde
   include/nativesharp/Frontend/ProjectNamespaceFunctionModel.h:137-146 hacia
   include/nativesharp/Frontend/NamespaceStateReferenceBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0426 — Conservar el class ProjectNamespaceFunctionModel como tipo principal de
+- [x] NSC-IMPL-0426 — Conservar el class ProjectNamespaceFunctionModel como tipo principal de
   include/nativesharp/Frontend/ProjectNamespaceFunctionModel.h:148-195 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0427 — Extraer el struct ObjectFieldLayout desde
+- [x] NSC-IMPL-0427 — Extraer el struct ObjectFieldLayout desde
   include/nativesharp/Frontend/ProjectObjectLayoutModel.h:26-35 hacia include/nativesharp/Frontend/ObjectFieldLayout.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0428 — Extraer el struct StructValueLayout desde
+- [x] NSC-IMPL-0428 — Extraer el struct StructValueLayout desde
   include/nativesharp/Frontend/ProjectObjectLayoutModel.h:38-53 hacia include/nativesharp/Frontend/StructValueLayout.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0429 — Extraer el struct ClassObjectLayout desde
+- [x] NSC-IMPL-0429 — Extraer el struct ClassObjectLayout desde
   include/nativesharp/Frontend/ProjectObjectLayoutModel.h:55-67 hacia include/nativesharp/Frontend/ClassObjectLayout.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0430 — Extraer el enum ObjectInitializationStepKind desde
+- [x] NSC-IMPL-0430 — Extraer el enum ObjectInitializationStepKind desde
   include/nativesharp/Frontend/ProjectObjectLayoutModel.h:69-78 hacia
   include/nativesharp/Frontend/ObjectInitializationStepKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0431 — Extraer el struct ObjectInitializationStep desde
+- [x] NSC-IMPL-0431 — Extraer el struct ObjectInitializationStep desde
   include/nativesharp/Frontend/ProjectObjectLayoutModel.h:80-84 hacia
   include/nativesharp/Frontend/ObjectInitializationStep.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0432 — Extraer el struct ObjectAllocationPlan desde
+- [x] NSC-IMPL-0432 — Extraer el struct ObjectAllocationPlan desde
   include/nativesharp/Frontend/ProjectObjectLayoutModel.h:86-101 hacia
   include/nativesharp/Frontend/ObjectAllocationPlan.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0433 — Conservar el class ProjectObjectLayoutModel como tipo principal de
+- [x] NSC-IMPL-0433 — Conservar el class ProjectObjectLayoutModel como tipo principal de
   include/nativesharp/Frontend/ProjectObjectLayoutModel.h:103-182 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0458 — Extraer el enum ProjectConversionKind desde
+- [x] NSC-IMPL-0458 — Extraer el enum ProjectConversionKind desde
   include/nativesharp/Frontend/ProjectTypeConversion.h:13-35 hacia include/nativesharp/Frontend/ProjectConversionKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0459 — Extraer el struct ProjectIntegerConstant desde
+- [x] NSC-IMPL-0459 — Extraer el struct ProjectIntegerConstant desde
   include/nativesharp/Frontend/ProjectTypeConversion.h:37-46 hacia
   include/nativesharp/Frontend/ProjectIntegerConstant.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0460 — Extraer el struct ProjectImplicitConversion desde
+- [x] NSC-IMPL-0460 — Extraer el struct ProjectImplicitConversion desde
   include/nativesharp/Frontend/ProjectTypeConversion.h:48-57 hacia
   include/nativesharp/Frontend/ProjectImplicitConversion.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0461 — Conservar el class ProjectTypeConversion como tipo principal de
+- [x] NSC-IMPL-0461 — Conservar el class ProjectTypeConversion como tipo principal de
   include/nativesharp/Frontend/ProjectTypeConversion.h:59-88 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0462 — Extraer el struct VirtualMethodInfo desde
+- [x] NSC-IMPL-0462 — Extraer el struct VirtualMethodInfo desde
   include/nativesharp/Frontend/ProjectVirtualDispatchModel.h:19-25 hacia
   include/nativesharp/Frontend/VirtualMethodInfo.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0463 — Extraer el struct ClassVirtualTable desde
+- [x] NSC-IMPL-0463 — Extraer el struct ClassVirtualTable desde
   include/nativesharp/Frontend/ProjectVirtualDispatchModel.h:27-35 hacia
   include/nativesharp/Frontend/ClassVirtualTable.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0464 — Conservar el class ProjectVirtualDispatchModel como tipo principal de
+- [x] NSC-IMPL-0464 — Conservar el class ProjectVirtualDispatchModel como tipo principal de
   include/nativesharp/Frontend/ProjectVirtualDispatchModel.h:37-69 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0465 — Extraer el struct QualifiedNameSite desde include/nativesharp/Frontend/QualifiedNameLadder.h:41-54
+- [x] NSC-IMPL-0465 — Extraer el struct QualifiedNameSite desde include/nativesharp/Frontend/QualifiedNameLadder.h:41-54
   hacia include/nativesharp/Frontend/QualifiedNameSite.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0466 — Extraer el enum QualifiedNameTier desde include/nativesharp/Frontend/QualifiedNameLadder.h:58-71
+- [x] NSC-IMPL-0466 — Extraer el enum QualifiedNameTier desde include/nativesharp/Frontend/QualifiedNameLadder.h:58-71
   hacia include/nativesharp/Frontend/QualifiedNameTier.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0467 — Extraer el struct QualifiedNameRung desde include/nativesharp/Frontend/QualifiedNameLadder.h:76-80
+- [x] NSC-IMPL-0467 — Extraer el struct QualifiedNameRung desde include/nativesharp/Frontend/QualifiedNameLadder.h:76-80
   hacia include/nativesharp/Frontend/QualifiedNameRung.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0468 — Extraer el enum StageBoundary desde include/nativesharp/Frontend/StageBoundaryVerifier.h:15-23
+- [x] NSC-IMPL-0468 — Extraer el enum StageBoundary desde include/nativesharp/Frontend/StageBoundaryVerifier.h:15-23
   hacia include/nativesharp/Frontend/StageBoundary.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0469 — Conservar el class StageBoundaryVerifier como tipo principal de
+- [x] NSC-IMPL-0469 — Conservar el class StageBoundaryVerifier como tipo principal de
   include/nativesharp/Frontend/StageBoundaryVerifier.h:29-48 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0859 — Descomponer ProjectMemberModel::collectTypeMembers en src/Frontend/ProjectMemberModel.cpp:1773
+- [x] NSC-IMPL-0859 — Descomponer ProjectMemberModel::collectTypeMembers en src/Frontend/ProjectMemberModel.cpp:1773
   (1025 líneas ejecutables; 1490 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0866 — Descomponer ProjectNamespaceFunctionModel::build en
+- [x] NSC-IMPL-0866 — Descomponer ProjectNamespaceFunctionModel::build en
   src/Frontend/ProjectNamespaceFunctionModel.cpp:327 (713 líneas ejecutables; 966 totales) hasta que cada función quede
   en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0887 — Descomponer ProjectConstructionModel::bindConstruction en
+- [x] NSC-IMPL-0887 — Descomponer ProjectConstructionModel::bindConstruction en
   src/Frontend/ProjectConstructionModel.cpp:949 (314 líneas ejecutables; 444 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0889 — Descomponer ProjectOpaqueResultModel::build en src/Frontend/ProjectOpaqueResultModel.cpp:529 (309
+- [x] NSC-IMPL-0889 — Descomponer ProjectOpaqueResultModel::build en src/Frontend/ProjectOpaqueResultModel.cpp:529 (309
   líneas ejecutables; 386 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0894 — Descomponer ProjectConstructionModel::bindConstructorInitializer en
+- [x] NSC-IMPL-0894 — Descomponer ProjectConstructionModel::bindConstructorInitializer en
   src/Frontend/ProjectConstructionModel.cpp:483 (280 líneas ejecutables; 389 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0897 — Descomponer ProjectMetaprogrammingModel::build en src/Frontend/ProjectMetaprogrammingModel.cpp:48
+- [x] NSC-IMPL-0897 — Descomponer ProjectMetaprogrammingModel::build en src/Frontend/ProjectMetaprogrammingModel.cpp:48
   (278 líneas ejecutables; 381 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0903 — Descomponer ProjectGenericConstraintModel::build en
+- [x] NSC-IMPL-0903 — Descomponer ProjectGenericConstraintModel::build en
   src/Frontend/ProjectGenericConstraintModel.cpp:612 (266 líneas ejecutables; 384 totales) hasta que cada función quede
   en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0909 — Descomponer ProjectMemberModel::build en src/Frontend/ProjectMemberModel.cpp:540 (240 líneas
+- [x] NSC-IMPL-0909 — Descomponer ProjectMemberModel::build en src/Frontend/ProjectMemberModel.cpp:540 (240 líneas
   ejecutables; 384 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0910 — Descomponer ProjectCompilation::compileSyntaxCore en src/Frontend/ProjectCompilation.cpp:932 (233
+- [x] NSC-IMPL-0910 — Descomponer ProjectCompilation::compileSyntaxCore en src/Frontend/ProjectCompilation.cpp:932 (233
   líneas ejecutables; 325 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0911 — Descomponer ProjectObjectLayoutModel::buildStructLayout en
+- [x] NSC-IMPL-0911 — Descomponer ProjectObjectLayoutModel::buildStructLayout en
   src/Frontend/ProjectObjectLayoutModel.cpp:605 (231 líneas ejecutables; 325 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0913 — Descomponer ProjectGenericModel::inferGenericCall en src/Frontend/ProjectGenericModel.cpp:5230
+- [x] NSC-IMPL-0913 — Descomponer ProjectGenericModel::inferGenericCall en src/Frontend/ProjectGenericModel.cpp:5230
   (228 líneas ejecutables; 321 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0914 — Descomponer ProjectGenericModel::specializeGenericLambdaCall en
+- [x] NSC-IMPL-0914 — Descomponer ProjectGenericModel::specializeGenericLambdaCall en
   src/Frontend/ProjectGenericModel.cpp:3365 (225 líneas ejecutables; 305 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0915 — Descomponer ProjectInterfaceModel::buildClassPlans en src/Frontend/ProjectInterfaceModel.cpp:708
+- [x] NSC-IMPL-0915 — Descomponer ProjectInterfaceModel::buildClassPlans en src/Frontend/ProjectInterfaceModel.cpp:708
   (225 líneas ejecutables; 314 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0916 — Descomponer ProjectNameLookup::bindTypeSyntax en src/Frontend/ProjectNameLookup.cpp:1583 (222
+- [x] NSC-IMPL-0916 — Descomponer ProjectNameLookup::bindTypeSyntax en src/Frontend/ProjectNameLookup.cpp:1583 (222
   líneas ejecutables; 353 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0918 — Descomponer ProjectVirtualDispatchModel::buildClass en
+- [x] NSC-IMPL-0918 — Descomponer ProjectVirtualDispatchModel::buildClass en
   src/Frontend/ProjectVirtualDispatchModel.cpp:92 (218 líneas ejecutables; 297 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0919 — Descomponer ProjectNameLookup::finalizePredeclarations en src/Frontend/ProjectNameLookup.cpp:764
+- [x] NSC-IMPL-0919 — Descomponer ProjectNameLookup::finalizePredeclarations en src/Frontend/ProjectNameLookup.cpp:764
   (217 líneas ejecutables; 328 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0920 — Descomponer ProjectGenericModel::collectAssociatedItems en
+- [x] NSC-IMPL-0920 — Descomponer ProjectGenericModel::collectAssociatedItems en
   src/Frontend/ProjectGenericModel.cpp:1313 (213 líneas ejecutables; 267 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0922 — Descomponer ProjectGenericModel::build en src/Frontend/ProjectGenericModel.cpp:738 (206 líneas
+- [x] NSC-IMPL-0922 — Descomponer ProjectGenericModel::build en src/Frontend/ProjectGenericModel.cpp:738 (206 líneas
   ejecutables; 358 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0923 — Descomponer ProjectInterfaceModel::visitInterface en src/Frontend/ProjectInterfaceModel.cpp:408
+- [x] NSC-IMPL-0923 — Descomponer ProjectInterfaceModel::visitInterface en src/Frontend/ProjectInterfaceModel.cpp:408
   (205 líneas ejecutables; 299 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0926 — Descomponer ComptimeEngine::execute en src/Frontend/ComptimeEngine.cpp:703 (198 líneas
+- [x] NSC-IMPL-0926 — Descomponer ComptimeEngine::execute en src/Frontend/ComptimeEngine.cpp:703 (198 líneas
   ejecutables; 261 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0937 — Descomponer ProjectGenericModel::normalizeGenericArguments en
+- [x] NSC-IMPL-0937 — Descomponer ProjectGenericModel::normalizeGenericArguments en
   src/Frontend/ProjectGenericModel.cpp:4839 (182 líneas ejecutables; 241 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0952 — Descomponer ProjectGenericModel::collectTemplates en src/Frontend/ProjectGenericModel.cpp:3152
+- [x] NSC-IMPL-0952 — Descomponer ProjectGenericModel::collectTemplates en src/Frontend/ProjectGenericModel.cpp:3152
   (158 líneas ejecutables; 212 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0966 — Descomponer ProjectGenericModel::inferExpressionType en src/Frontend/ProjectGenericModel.cpp:4514
+- [x] NSC-IMPL-0966 — Descomponer ProjectGenericModel::inferExpressionType en src/Frontend/ProjectGenericModel.cpp:4514
   (140 líneas ejecutables; 182 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0969 — Descomponer ProjectGenericConstraintModel::validateTemplateClauses en
+- [x] NSC-IMPL-0969 — Descomponer ProjectGenericConstraintModel::validateTemplateClauses en
   src/Frontend/ProjectGenericConstraintModel.cpp:284 (138 líneas ejecutables; 193 totales) hasta que cada función quede
   en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0971 — Descomponer ProjectObjectLayoutModel::buildClassLayout en
+- [x] NSC-IMPL-0971 — Descomponer ProjectObjectLayoutModel::buildClassLayout en
   src/Frontend/ProjectObjectLayoutModel.cpp:940 (138 líneas ejecutables; 198 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0982 — Descomponer ProjectConversionClassifier::classifyImplicit en
+- [x] NSC-IMPL-0982 — Descomponer ProjectConversionClassifier::classifyImplicit en
   src/Frontend/ProjectConversionClassifier.cpp:28 (128 líneas ejecutables; 193 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0985 — Descomponer ProjectMemberModel::canonicalTypeKey en src/Frontend/ProjectMemberModel.cpp:1364 (126
+- [x] NSC-IMPL-0985 — Descomponer ProjectMemberModel::canonicalTypeKey en src/Frontend/ProjectMemberModel.cpp:1364 (126
   líneas ejecutables; 206 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0987 — Descomponer ProjectGenericModel::executeTypeDemandWaves en
+- [x] NSC-IMPL-0987 — Descomponer ProjectGenericModel::executeTypeDemandWaves en
   src/Frontend/ProjectGenericModel.cpp:4229 (124 líneas ejecutables; 167 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0992 — Descomponer ProjectGenericModel::ensureMethodSpecialization en
+- [x] NSC-IMPL-0992 — Descomponer ProjectGenericModel::ensureMethodSpecialization en
   src/Frontend/ProjectGenericModel.cpp:6524 (120 líneas ejecutables; 154 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0993 — Descomponer ProjectMemberModelDumper::dump en src/Frontend/ProjectMemberModelDumper.cpp:10 (120
+- [x] NSC-IMPL-0993 — Descomponer ProjectMemberModelDumper::dump en src/Frontend/ProjectMemberModelDumper.cpp:10 (120
   líneas ejecutables; 160 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0994 — Descomponer ProjectNameLookup::predeclareNode en src/Frontend/ProjectNameLookup.cpp:587 (120
+- [x] NSC-IMPL-0994 — Descomponer ProjectNameLookup::predeclareNode en src/Frontend/ProjectNameLookup.cpp:587 (120
   líneas ejecutables; 176 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0998 — Descomponer ProjectGenericModel::mergeTraitImplementations en
+- [x] NSC-IMPL-0998 — Descomponer ProjectGenericModel::mergeTraitImplementations en
   src/Frontend/ProjectGenericModel.cpp:1097 (116 líneas ejecutables; 150 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1003 — Descomponer ProjectCallableResultMerger::merge en src/Frontend/ProjectCallableResultMerger.cpp:195
+- [x] NSC-IMPL-1003 — Descomponer ProjectCallableResultMerger::merge en src/Frontend/ProjectCallableResultMerger.cpp:195
   (113 líneas ejecutables; 133 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1004 — Descomponer ProjectGenericModel::processNodeOnce en src/Frontend/ProjectGenericModel.cpp:3764 (113
+- [x] NSC-IMPL-1004 — Descomponer ProjectGenericModel::processNodeOnce en src/Frontend/ProjectGenericModel.cpp:3764 (113
   líneas ejecutables; 174 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1010 — Descomponer ProjectGenericModel::inferTypeArguments en src/Frontend/ProjectGenericModel.cpp:4697
+- [x] NSC-IMPL-1010 — Descomponer ProjectGenericModel::inferTypeArguments en src/Frontend/ProjectGenericModel.cpp:4697
   (109 líneas ejecutables; 141 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1012 — Descomponer ProjectGenericModel::cloneType en src/Frontend/ProjectGenericModel.cpp:7016 (108
+- [x] NSC-IMPL-1012 — Descomponer ProjectGenericModel::cloneType en src/Frontend/ProjectGenericModel.cpp:7016 (108
   líneas ejecutables; 183 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1016 — Descomponer ProjectInheritanceModel::resolveBaseSpecifications en
+- [x] NSC-IMPL-1016 — Descomponer ProjectInheritanceModel::resolveBaseSpecifications en
   src/Frontend/ProjectInheritanceModel.cpp:296 (104 líneas ejecutables; 176 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1017 — Descomponer ProjectMemberModel::collectAnonymousMemberPromotions en
+- [x] NSC-IMPL-1017 — Descomponer ProjectMemberModel::collectAnonymousMemberPromotions en
   src/Frontend/ProjectMemberModel.cpp:3264 (104 líneas ejecutables; 143 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1023 — Descomponer collectTypeSeedsInScope en src/Frontend/ProjectCompilation.cpp:270 (102 líneas
+- [x] NSC-IMPL-1023 — Descomponer collectTypeSeedsInScope en src/Frontend/ProjectCompilation.cpp:270 (102 líneas
   ejecutables; 181 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1024 — Descomponer MacroExpansionEngine::expand en src/Frontend/MacroExpansionEngine.cpp:157 (101 líneas
+- [x] NSC-IMPL-1024 — Descomponer MacroExpansionEngine::expand en src/Frontend/MacroExpansionEngine.cpp:157 (101 líneas
   ejecutables; 119 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1025 — Descomponer ProjectNameLookup::resolveTypeCandidates en src/Frontend/ProjectNameLookup.cpp:1968
+- [x] NSC-IMPL-1025 — Descomponer ProjectNameLookup::resolveTypeCandidates en src/Frontend/ProjectNameLookup.cpp:1968
   (101 líneas ejecutables; 180 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1031 — Descomponer ProjectNameLookup::build en src/Frontend/ProjectNameLookup.cpp:313 (100 líneas
+- [x] NSC-IMPL-1031 — Descomponer ProjectNameLookup::build en src/Frontend/ProjectNameLookup.cpp:313 (100 líneas
   ejecutables; 134 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1032 — Descomponer ProjectNameLookup::bindNode en src/Frontend/ProjectNameLookup.cpp:1361 (100 líneas
+- [x] NSC-IMPL-1032 — Descomponer ProjectNameLookup::bindNode en src/Frontend/ProjectNameLookup.cpp:1361 (100 líneas
   ejecutables; 194 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1042 — Descomponer ProjectGenericModel::foldValuePack en src/Frontend/ProjectGenericModel.cpp:7234 (92
+- [x] NSC-IMPL-1042 — Descomponer ProjectGenericModel::foldValuePack en src/Frontend/ProjectGenericModel.cpp:7234 (92
   líneas ejecutables; 117 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1043 — Descomponer ProjectNameLookup::finalizeReexports en src/Frontend/ProjectNameLookup.cpp:1093 (92
+- [x] NSC-IMPL-1043 — Descomponer ProjectNameLookup::finalizeReexports en src/Frontend/ProjectNameLookup.cpp:1093 (92
   líneas ejecutables; 130 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1047 — Descomponer ProjectMemberModel::collectEnumMembers en src/Frontend/ProjectMemberModel.cpp:3579 (91
+- [x] NSC-IMPL-1047 — Descomponer ProjectMemberModel::collectEnumMembers en src/Frontend/ProjectMemberModel.cpp:3579 (91
   líneas ejecutables; 143 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1053 — Descomponer deserializeTypeSyntaxTree en src/Frontend/ProjectGenericModel.cpp:2453 (89 líneas
+- [x] NSC-IMPL-1053 — Descomponer deserializeTypeSyntaxTree en src/Frontend/ProjectGenericModel.cpp:2453 (89 líneas
   ejecutables; 99 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1065 — Descomponer ProjectGenericModel::expandTypeAliases en src/Frontend/ProjectGenericModel.cpp:1662
+- [x] NSC-IMPL-1065 — Descomponer ProjectGenericModel::expandTypeAliases en src/Frontend/ProjectGenericModel.cpp:1662
   (86 líneas ejecutables; 107 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1066 — Descomponer ProjectTypeConversion::classifyImplicit en src/Frontend/ProjectTypeConversion.cpp:332
+- [x] NSC-IMPL-1066 — Descomponer ProjectTypeConversion::classifyImplicit en src/Frontend/ProjectTypeConversion.cpp:332
   (86 líneas ejecutables; 146 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1073 — Descomponer ProjectGenericConstraintModel::validateControlledSpecializations en
+- [x] NSC-IMPL-1073 — Descomponer ProjectGenericConstraintModel::validateControlledSpecializations en
   src/Frontend/ProjectGenericConstraintModel.cpp:478 (84 líneas ejecutables; 112 totales) hasta que cada función quede
   en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1078 — Descomponer ProjectGenericModel::processTypeSyntax en src/Frontend/ProjectGenericModel.cpp:4397
+- [x] NSC-IMPL-1078 — Descomponer ProjectGenericModel::processTypeSyntax en src/Frontend/ProjectGenericModel.cpp:4397
   (83 líneas ejecutables; 116 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1079 — Descomponer validateDelegateLifetimeContract en src/Frontend/ProjectMemberModel.cpp:183 (83 líneas
+- [x] NSC-IMPL-1079 — Descomponer validateDelegateLifetimeContract en src/Frontend/ProjectMemberModel.cpp:183 (83 líneas
   ejecutables; 111 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1080 — Descomponer ProjectNameLookup::bindScope en src/Frontend/ProjectNameLookup.cpp:1233 (83 líneas
+- [x] NSC-IMPL-1080 — Descomponer ProjectNameLookup::bindScope en src/Frontend/ProjectNameLookup.cpp:1233 (83 líneas
   ejecutables; 127 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1081 — Descomponer ProjectGenericModel::cloneTypeGeneric en src/Frontend/ProjectGenericModel.cpp:6898 (82
+- [x] NSC-IMPL-1081 — Descomponer ProjectGenericModel::cloneTypeGeneric en src/Frontend/ProjectGenericModel.cpp:6898 (82
   líneas ejecutables; 117 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1090 — Descomponer FrontendCompilation::run en src/Frontend/FrontendCompilation.cpp:113 (80 líneas
+- [x] NSC-IMPL-1090 — Descomponer FrontendCompilation::run en src/Frontend/FrontendCompilation.cpp:113 (80 líneas
   ejecutables; 136 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1091 — Descomponer ProjectGenericModel::cloneProjectionType en src/Frontend/ProjectGenericModel.cpp:6791
+- [x] NSC-IMPL-1091 — Descomponer ProjectGenericModel::cloneProjectionType en src/Frontend/ProjectGenericModel.cpp:6791
   (80 líneas ejecutables; 106 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1104 — Descomponer ProjectGenericModel::processNode en src/Frontend/ProjectGenericModel.cpp:3939 (77
+- [x] NSC-IMPL-1104 — Descomponer ProjectGenericModel::processNode en src/Frontend/ProjectGenericModel.cpp:3939 (77
   líneas ejecutables; 106 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1105 — Descomponer ProjectGenericModel::ensureTypeSpecialization en
+- [x] NSC-IMPL-1105 — Descomponer ProjectGenericModel::ensureTypeSpecialization en
   src/Frontend/ProjectGenericModel.cpp:6421 (77 líneas ejecutables; 102 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1106 — Descomponer ProjectGenericModel::cloneNodeGeneric en src/Frontend/ProjectGenericModel.cpp:7378 (77
+- [x] NSC-IMPL-1106 — Descomponer ProjectGenericModel::cloneNodeGeneric en src/Frontend/ProjectGenericModel.cpp:7378 (77
   líneas ejecutables; 100 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1120 — Descomponer ProjectConstructionModel::bindImplicitDefaultConstructor en
+- [x] NSC-IMPL-1120 — Descomponer ProjectConstructionModel::bindImplicitDefaultConstructor en
   src/Frontend/ProjectConstructionModel.cpp:363 (75 líneas ejecutables; 119 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1127 — Descomponer ProjectIntegerEvaluator::evaluateBinary en
+- [x] NSC-IMPL-1127 — Descomponer ProjectIntegerEvaluator::evaluateBinary en
   src/Frontend/ProjectIntegerEvaluator.cpp:228 (74 líneas ejecutables; 139 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1129 — Descomponer ProjectGenericModel::expandAliasesInNode en src/Frontend/ProjectGenericModel.cpp:1770
+- [x] NSC-IMPL-1129 — Descomponer ProjectGenericModel::expandAliasesInNode en src/Frontend/ProjectGenericModel.cpp:1770
   (73 líneas ejecutables; 102 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1130 — Descomponer ProjectGenericModel::cloneNode en src/Frontend/ProjectGenericModel.cpp:7560 (73 líneas
+- [x] NSC-IMPL-1130 — Descomponer ProjectGenericModel::cloneNode en src/Frontend/ProjectGenericModel.cpp:7560 (73 líneas
   ejecutables; 95 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1139 — Descomponer ProjectGenericModel::resolveDeclaredTypeIdentity en
+- [x] NSC-IMPL-1139 — Descomponer ProjectGenericModel::resolveDeclaredTypeIdentity en
   src/Frontend/ProjectGenericModel.cpp:7777 (71 líneas ejecutables; 104 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1146 — Descomponer resolveCapabilityCalls en src/Frontend/ComptimeEngine.cpp:560 (69 líneas ejecutables;
+- [x] NSC-IMPL-1146 — Descomponer resolveCapabilityCalls en src/Frontend/ComptimeEngine.cpp:560 (69 líneas ejecutables;
   83 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1147 — Descomponer deserializeTypeSyntaxScalars en src/Frontend/ProjectGenericModel.cpp:2357 (69 líneas
+- [x] NSC-IMPL-1147 — Descomponer deserializeTypeSyntaxScalars en src/Frontend/ProjectGenericModel.cpp:2357 (69 líneas
   ejecutables; 73 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1155 — Descomponer parseAuthoredDiagnostic en src/Frontend/ComptimeEngine.cpp:451 (68 líneas ejecutables;
+- [x] NSC-IMPL-1155 — Descomponer parseAuthoredDiagnostic en src/Frontend/ComptimeEngine.cpp:451 (68 líneas ejecutables;
   81 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1170 — Descomponer TemplateParseCache::prune en src/Frontend/TemplateParseCache.cpp:287 (64 líneas
+- [x] NSC-IMPL-1170 — Descomponer TemplateParseCache::prune en src/Frontend/TemplateParseCache.cpp:287 (64 líneas
   ejecutables; 85 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1178 — Descomponer ProjectDestructionModel::buildClass en src/Frontend/ProjectDestructionModel.cpp:78 (63
+- [x] NSC-IMPL-1178 — Descomponer ProjectDestructionModel::buildClass en src/Frontend/ProjectDestructionModel.cpp:78 (63
   líneas ejecutables; 96 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1179 — Descomponer constArgumentExpression en src/Frontend/ProjectGenericModel.cpp:451 (63 líneas
+- [x] NSC-IMPL-1179 — Descomponer constArgumentExpression en src/Frontend/ProjectGenericModel.cpp:451 (63 líneas
   ejecutables; 76 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1189 — Descomponer accumulateNodeCost en src/Frontend/ProjectCostExplorer.cpp:76 (62 líneas ejecutables;
+- [x] NSC-IMPL-1189 — Descomponer accumulateNodeCost en src/Frontend/ProjectCostExplorer.cpp:76 (62 líneas ejecutables;
   75 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1190 — Descomponer ProjectGenericModel::discoverTemplateDependencies en
+- [x] NSC-IMPL-1190 — Descomponer ProjectGenericModel::discoverTemplateDependencies en
   src/Frontend/ProjectGenericModel.cpp:7994 (62 líneas ejecutables; 89 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1191 — Descomponer ProjectGenericModel::collectTemplateDependencies en
+- [x] NSC-IMPL-1191 — Descomponer ProjectGenericModel::collectTemplateDependencies en
   src/Frontend/ProjectGenericModel.cpp:8199 (62 líneas ejecutables; 79 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1198 — Descomponer ProjectGenericModel::inferLambdaTypeArguments en
+- [x] NSC-IMPL-1198 — Descomponer ProjectGenericModel::inferLambdaTypeArguments en
   src/Frontend/ProjectGenericModel.cpp:5152 (61 líneas ejecutables; 77 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1199 — Descomponer ProjectGenericModel::typeSpelling en src/Frontend/ProjectGenericModel.cpp:7656 (61
+- [x] NSC-IMPL-1199 — Descomponer ProjectGenericModel::typeSpelling en src/Frontend/ProjectGenericModel.cpp:7656 (61
   líneas ejecutables; 78 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1208 — Partir ProjectGenericModel.cpp según los rangos de la guía y dejar ProjectGenericModel como
+- [x] NSC-IMPL-1208 — Partir ProjectGenericModel.cpp según los rangos de la guía y dejar ProjectGenericModel como
   fachada sin mover sus 41 campos.
-- [ ] NSC-IMPL-1215 — Convertir ProjectMemberModel en fachada con colaboradores por familia, sin mover campos ni cambiar
+- [x] NSC-IMPL-1215 — Convertir ProjectMemberModel en fachada con colaboradores por familia, sin mover campos ni cambiar
   collectTypeMembers.
-- [ ] NSC-IMPL-1216 — Convertir ProjectNameLookup en fachada con colaboradores por familia, sin mover campos ni cambiar
+- [x] NSC-IMPL-1216 — Convertir ProjectNameLookup en fachada con colaboradores por familia, sin mover campos ni cambiar
   resolución u orden.
-- [ ] NSC-IMPL-1217 — Convertir ProjectConstructionModel en fachada con colaboradores por familia, sin mover campos ni
+- [x] NSC-IMPL-1217 — Convertir ProjectConstructionModel en fachada con colaboradores por familia, sin mover campos ni
   cambiar binding.
+
+Nota de cierre REF-03: por instrucción explícita del propietario, los colaboradores de NSC-IMPL-1215,
+NSC-IMPL-1216 y NSC-IMPL-1217 se materializaron como unidades de traducción por familia de métodos de la clase
+existente, sin introducir clases conceptuales nuevas, mover campos ni alterar firmas, algoritmos o flujo.
 
 ### Commit REF-04 — Análisis de cuerpos de métodos — 0/107
 

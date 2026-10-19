@@ -12,6 +12,16 @@
 
 namespace nativesharp::frontend
 {
+std::int64_t ProjectIntegerValue::asSigned() const noexcept
+    {
+        return static_cast<std::int64_t>(bits);
+    }
+
+ProjectIntegerEvaluator::ProjectIntegerEvaluator(const ProjectConstantMemberResolver* resolver) noexcept
+        : resolver_(resolver)
+    {
+    }
+
 namespace
 {
 using lexer::TokenKind;
@@ -69,6 +79,48 @@ ProjectIntegerConstant asIntegerConstant(const ProjectIntegerValue& value) noexc
         return ProjectIntegerConstant{value.bits, typeIsUnsigned, false};
     }
     return ProjectIntegerConstant{std::uint64_t{0} - value.bits, false, true};
+}
+
+// CC1-103 / C-004. Un SHIFT no toma el tipo comun de sus dos operandos: el resultado tiene el
+// tipo del OPERANDO IZQUIERDO, y el contador se valida contra el ancho de ese tipo, no contra
+// los 64 bits de la representacion interna del compilador. Meter el shift por el camino del
+// tipo comun es exactamente lo que produjo `1u << 28` tipado como double en su dia.
+std::optional<ProjectIntegerValue> evaluateShiftOperation(
+    TokenKind operation,
+    const ProjectIntegerValue& left,
+    const ProjectIntegerValue& right)
+{
+    const unsigned width = ProjectIntegerEvaluator::integerWidth(left.typeKey);
+    if (width == 0) return std::nullopt;
+    const std::int64_t count = right.asSigned();
+    if (count < 0 || static_cast<unsigned>(count) >= width) return std::nullopt;
+    const unsigned shift = static_cast<unsigned>(count);
+
+    ProjectIntegerValue value;
+    value.typeKey = left.typeKey;
+    if (operation == TokenKind::LessLess)
+    {
+        value.bits = ProjectIntegerEvaluator::normalize(left.bits << shift, value.typeKey);
+    }
+    else if (ProjectIntegerEvaluator::isSignedInteger(left.typeKey))
+    {
+        // Aritmetico: `bits` ya viene con el signo extendido a 64, asi que el `>>` con signo de
+        // C++ sobre int64_t hace lo correcto para cualquier ancho.
+        value.bits = ProjectIntegerEvaluator::normalize(
+            static_cast<std::uint64_t>(left.asSigned() >> shift), value.typeKey);
+    }
+    else
+    {
+        // Logico: hay que truncar al ancho real ANTES de desplazar, porque `bits` de un tipo
+        // sin signo estrecho no tiene basura arriba pero uno de 64 bits si puede tener el bit
+        // 63 puesto y ese es justo el caso que C-002 evaluaba con signo.
+        const std::uint64_t mask = width == 64
+            ? ~std::uint64_t{0}
+            : ((std::uint64_t{1} << width) - std::uint64_t{1});
+        value.bits = ProjectIntegerEvaluator::normalize(
+            (left.bits & mask) >> shift, value.typeKey);
+    }
+    return value;
 }
 }
 
@@ -240,42 +292,9 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateBinary(
 
     const TokenKind operation = expression->tokenKind();
 
-    // CC1-103 / C-004. Un SHIFT no toma el tipo comun de sus dos operandos: el resultado tiene el
-    // tipo del OPERANDO IZQUIERDO, y el contador se valida contra el ancho de ese tipo, no contra
-    // los 64 bits de la representacion interna del compilador. Meter el shift por el camino del
-    // tipo comun es exactamente lo que produjo `1u << 28` tipado como double en su dia.
     if (operation == TokenKind::LessLess || operation == TokenKind::GreaterGreater)
     {
-        const unsigned width = integerWidth(left->typeKey);
-        if (width == 0) return std::nullopt;
-        const std::int64_t count = right->asSigned();
-        if (count < 0 || static_cast<unsigned>(count) >= width) return std::nullopt;
-        const unsigned shift = static_cast<unsigned>(count);
-
-        ProjectIntegerValue value;
-        value.typeKey = left->typeKey;
-        if (operation == TokenKind::LessLess)
-        {
-            value.bits = normalize(left->bits << shift, value.typeKey);
-        }
-        else if (isSignedInteger(left->typeKey))
-        {
-            // Aritmetico: `bits` ya viene con el signo extendido a 64, asi que el `>>` con signo de
-            // C++ sobre int64_t hace lo correcto para cualquier ancho.
-            value.bits = normalize(
-                static_cast<std::uint64_t>(left->asSigned() >> shift), value.typeKey);
-        }
-        else
-        {
-            // Logico: hay que truncar al ancho real ANTES de desplazar, porque `bits` de un tipo
-            // sin signo estrecho no tiene basura arriba pero uno de 64 bits si puede tener el bit
-            // 63 puesto y ese es justo el caso que C-002 evaluaba con signo.
-            const std::uint64_t mask = width == 64
-                ? ~std::uint64_t{0}
-                : ((std::uint64_t{1} << width) - std::uint64_t{1});
-            value.bits = normalize((left->bits & mask) >> shift, value.typeKey);
-        }
-        return value;
+        return evaluateShiftOperation(operation, *left, *right);
     }
 
     const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(

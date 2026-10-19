@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
+#include "Internal/ProjectPhaseTimer.h"
 #include "nativesharp/Frontend/ComptimeEngine.h"
 
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
@@ -73,40 +74,7 @@ namespace
 using lexer::Token;
 using lexer::TokenKind;
 
-class ProjectPhaseTimer final
-{
-public:
-    ProjectPhaseTimer(
-        const std::function<void(std::string_view, std::chrono::nanoseconds)>& timingSink,
-        const std::function<void(const basic::CompilationEvent&)>& progressSink,
-        std::string_view phase)
-        : timingSink_(timingSink), progressSink_(progressSink), phase_(phase),
-          started_(timingSink || progressSink ? std::chrono::steady_clock::now()
-                                              : std::chrono::steady_clock::time_point{})
-    {
-        if (progressSink_)
-            progressSink_({basic::CompilationEventKind::PhaseStarted,
-                phase_, {}, 0, 0, {}});
-    }
-
-    ~ProjectPhaseTimer()
-    {
-        if (!timingSink_ && !progressSink_) return;
-        const std::chrono::nanoseconds elapsed =
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - started_);
-        if (timingSink_) timingSink_(phase_, elapsed);
-        if (progressSink_)
-            progressSink_({basic::CompilationEventKind::PhaseFinished,
-                phase_, {}, 0, 0, elapsed});
-    }
-
-private:
-    const std::function<void(std::string_view, std::chrono::nanoseconds)>& timingSink_;
-    const std::function<void(const basic::CompilationEvent&)>& progressSink_;
-    std::string_view phase_;
-    std::chrono::steady_clock::time_point started_;
-};
+using internal::ProjectPhaseTimer;
 
 void reportSourceProgress(
     const std::function<void(const basic::CompilationEvent&)>& sink,
@@ -273,6 +241,175 @@ void collectTypeSeedsInScope(
     const std::vector<std::string>& namespacePrefix,
     const std::vector<std::string>& containingTypes,
     TokenKind terminator,
+    std::set<std::string>& names);
+
+bool collectNamespaceTypeSeeds(
+    std::span<const Token> tokens,
+    std::size_t& index,
+    const std::vector<std::string>& namespacePrefix,
+    const std::vector<std::string>& containingTypes,
+    TokenKind terminator,
+    std::set<std::string>& names,
+    bool& terminateScope)
+{
+    if (tokens[index].kind() != TokenKind::KwNamespace) return false;
+    ++index;
+    std::vector<std::string> declaredSegments;
+    if (!readQualifiedName(tokens, index, declaredSegments)) return true;
+
+    std::vector<std::string> nested = namespacePrefix;
+    nested.insert(nested.end(), declaredSegments.begin(), declaredSegments.end());
+    if (index < tokens.size() && tokens[index].kind() == TokenKind::Semicolon)
+    {
+        ++index;
+        collectTypeSeedsInScope(tokens, index, nested, containingTypes, terminator, names);
+        terminateScope = true;
+        return true;
+    }
+    if (index < tokens.size() && tokens[index].kind() == TokenKind::LeftBrace)
+    {
+        ++index;
+        collectTypeSeedsInScope(
+            tokens, index, nested, containingTypes, TokenKind::RightBrace, names);
+        if (index < tokens.size() && tokens[index].kind() == TokenKind::RightBrace) ++index;
+    }
+    return true;
+}
+
+bool collectDeclaredTypeSeed(
+    std::span<const Token> tokens,
+    std::size_t& index,
+    const std::vector<std::string>& namespacePrefix,
+    const std::vector<std::string>& containingTypes,
+    std::set<std::string>& names)
+{
+    const bool opaqueType = tokens[index].kind() == TokenKind::Identifier &&
+        tokens[index].lexeme() == "opaque" && index + 1U < tokens.size() &&
+        tokens[index + 1U].kind() == TokenKind::Identifier &&
+        tokens[index + 1U].lexeme() == "type";
+    const bool traitType = tokens[index].kind() == TokenKind::Identifier &&
+        tokens[index].lexeme() == "trait" && index + 1U < tokens.size() &&
+        tokens[index + 1U].kind() == TokenKind::Identifier;
+    const bool variantType = tokens[index].kind() == TokenKind::Identifier &&
+        tokens[index].lexeme() == "variant" && index + 1U < tokens.size() &&
+        tokens[index + 1U].kind() == TokenKind::Identifier;
+    const bool typeDeclaration = tokens[index].kind() == TokenKind::KwStruct ||
+        (tokens[index].kind() == TokenKind::Identifier && tokens[index].lexeme() == "union") ||
+        traitType || variantType || opaqueType ||
+        tokens[index].kind() == TokenKind::KwClass ||
+        tokens[index].kind() == TokenKind::KwInterface ||
+        tokens[index].kind() == TokenKind::KwEnum;
+    if (!typeDeclaration) return false;
+
+    index += opaqueType ? 2U : 1U;
+    std::vector<std::string> chain = containingTypes;
+    if (index < tokens.size() && tokens[index].kind() == TokenKind::Identifier)
+    {
+        chain.emplace_back(tokens[index].lexeme());
+        insertTypeSeeds(names, namespacePrefix, chain);
+        ++index;
+    }
+    // NSC-LIMIT-009. Avanzar HASTA el cuerpo, y despues BAJAR a el.
+    //
+    // Las dos mitades importan. La primera porque entre el nombre y el `{` cabe una lista
+    // de parametros genericos, una lista de bases, el tipo subyacente de un enum y una
+    // clausula `where`: la version anterior solo miraba si el token siguiente al nombre
+    // era `{`, de modo que en `class C<T> : Base { ... }` no reconocia el cuerpo y seguia
+    // leyendo sus tokens en linea recta, como si fueran declaraciones del namespace.
+    //
+    // Y la segunda porque un cuerpo de tipo YA NO se salta: dentro puede haber otro tipo.
+    // Bajar es lo unico que hace que `Outer.Item` exista para el parser. Los cuerpos de
+    // metodo de dentro se saltan solos: los cierra la rama `LeftBrace` de mas abajo.
+    while (index < tokens.size() && tokens[index].kind() != TokenKind::LeftBrace &&
+           tokens[index].kind() != TokenKind::Semicolon &&
+           tokens[index].kind() != TokenKind::RightBrace &&
+           tokens[index].kind() != TokenKind::EndOfFile)
+    {
+        ++index;
+    }
+    if (index < tokens.size() && tokens[index].kind() == TokenKind::LeftBrace)
+    {
+        ++index;
+        collectTypeSeedsInScope(
+            tokens, index, namespacePrefix, chain, TokenKind::RightBrace, names);
+        if (index < tokens.size() && tokens[index].kind() == TokenKind::RightBrace) ++index;
+    }
+    return true;
+}
+
+bool collectDelegateTypeSeed(
+    std::span<const Token> tokens,
+    std::size_t& index,
+    const std::vector<std::string>& namespacePrefix,
+    const std::vector<std::string>& containingTypes,
+    std::set<std::string>& names)
+{
+    if (tokens[index].kind() != TokenKind::KwDelegate) return false;
+    // Stage 52 fix: this scanner previously only seeded class/struct/interface/enum
+    // names, never delegate names. That is invisible within a single file, because the
+    // real parser (Parser::parseDelegateDeclaration) inserts the delegate's name into
+    // its OWN incrementally-built knownTypeNames_ the moment it parses the declaration,
+    // so a later use in the SAME translation unit already sees it. But a project that
+    // only *references* another project's delegate (e.g. this package's own
+    // `HashFunc<T>`/`Comparison<T>`/`Predicate<T>`/`Action<T>` from Delegates.ns, used by
+    // a consuming project via <ProjectReference>) never physically parses that
+    // declaration itself -- it relies entirely on this cross-file seed list, which was
+    // missing the name. The concrete, reliably reproducible symptom: `Predicate<int> p =
+    // someMethod;` in a project referencing this one failed to parse ("expected
+    // expression") for a builtin type argument specifically (a class type argument
+    // happened to disambiguate through a different path and did not expose the gap).
+    //
+    // A delegate declaration has the shape `delegate ReturnType Name<TParams>(params);`
+    // (or `delegate ReturnType Name(params);` for a non-generic delegate) -- ReturnType
+    // can itself be an arbitrary type, including a generic one, so the delegate's own
+    // name is identified here as the first identifier directly followed by '<' or '('
+    // (its generic-parameter list or its parameter list), skipping over any balanced
+    // '<...>' the return type itself contributes first.
+    ++index;
+    while (index < tokens.size() && tokens[index].kind() != TokenKind::Semicolon &&
+           tokens[index].kind() != TokenKind::LeftBrace)
+    {
+        if (tokens[index].kind() == TokenKind::Identifier && index + 1 < tokens.size() &&
+            (tokens[index + 1].kind() == TokenKind::Less ||
+             tokens[index + 1].kind() == TokenKind::LeftParen))
+        {
+            std::vector<std::string> chain = containingTypes;
+            chain.emplace_back(tokens[index].lexeme());
+            insertTypeSeeds(names, namespacePrefix, chain);
+            ++index;
+            break;
+        }
+        if (tokens[index].kind() == TokenKind::Less)
+        {
+            int depth = 1;
+            ++index;
+            while (index < tokens.size() && depth > 0 &&
+                   tokens[index].kind() != TokenKind::Semicolon &&
+                   tokens[index].kind() != TokenKind::LeftBrace)
+            {
+                if (tokens[index].kind() == TokenKind::Less) ++depth;
+                else if (tokens[index].kind() == TokenKind::Greater) --depth;
+                ++index;
+            }
+            continue;
+        }
+        ++index;
+    }
+    while (index < tokens.size() && tokens[index].kind() != TokenKind::Semicolon &&
+           tokens[index].kind() != TokenKind::LeftBrace)
+    {
+        ++index;
+    }
+    if (index < tokens.size() && tokens[index].kind() == TokenKind::Semicolon) ++index;
+    return true;
+}
+
+void collectTypeSeedsInScope(
+    std::span<const Token> tokens,
+    std::size_t& index,
+    const std::vector<std::string>& namespacePrefix,
+    const std::vector<std::string>& containingTypes,
+    TokenKind terminator,
     std::set<std::string>& names)
 {
     while (index < tokens.size() && tokens[index].kind() != TokenKind::EndOfFile)
@@ -282,163 +419,18 @@ void collectTypeSeedsInScope(
             return;
         }
 
-        if (tokens[index].kind() == TokenKind::KwNamespace)
+        bool terminateScope = false;
+        if (collectNamespaceTypeSeeds(
+                tokens, index, namespacePrefix, containingTypes,
+                terminator, names, terminateScope))
         {
-            ++index;
-            std::vector<std::string> declaredSegments;
-            if (!readQualifiedName(tokens, index, declaredSegments))
-            {
-                continue;
-            }
-
-            std::vector<std::string> nested = namespacePrefix;
-            nested.insert(nested.end(), declaredSegments.begin(), declaredSegments.end());
-            if (index < tokens.size() && tokens[index].kind() == TokenKind::Semicolon)
-            {
-                ++index;
-                collectTypeSeedsInScope(tokens, index, nested, containingTypes, terminator, names);
-                return;
-            }
-            if (index < tokens.size() && tokens[index].kind() == TokenKind::LeftBrace)
-            {
-                ++index;
-                collectTypeSeedsInScope(
-                    tokens, index, nested, containingTypes, TokenKind::RightBrace, names);
-                if (index < tokens.size() && tokens[index].kind() == TokenKind::RightBrace)
-                {
-                    ++index;
-                }
-                continue;
-            }
+            if (terminateScope) return;
             continue;
         }
-
-        const bool opaqueType = tokens[index].kind() == TokenKind::Identifier &&
-            tokens[index].lexeme() == "opaque" && index + 1U < tokens.size() &&
-            tokens[index + 1U].kind() == TokenKind::Identifier &&
-            tokens[index + 1U].lexeme() == "type";
-        const bool traitType = tokens[index].kind() == TokenKind::Identifier &&
-            tokens[index].lexeme() == "trait" && index + 1U < tokens.size() &&
-            tokens[index + 1U].kind() == TokenKind::Identifier;
-        const bool variantType = tokens[index].kind() == TokenKind::Identifier &&
-            tokens[index].lexeme() == "variant" && index + 1U < tokens.size() &&
-            tokens[index + 1U].kind() == TokenKind::Identifier;
-        if (tokens[index].kind() == TokenKind::KwStruct ||
-            (tokens[index].kind() == TokenKind::Identifier &&
-             tokens[index].lexeme() == "union") ||
-            traitType ||
-            variantType ||
-            opaqueType ||
-            tokens[index].kind() == TokenKind::KwClass ||
-            tokens[index].kind() == TokenKind::KwInterface ||
-            tokens[index].kind() == TokenKind::KwEnum)
-        {
-            index += opaqueType ? 2U : 1U;
-            std::vector<std::string> chain = containingTypes;
-            if (index < tokens.size() && tokens[index].kind() == TokenKind::Identifier)
-            {
-                chain.emplace_back(tokens[index].lexeme());
-                insertTypeSeeds(names, namespacePrefix, chain);
-                ++index;
-            }
-            // NSC-LIMIT-009. Avanzar HASTA el cuerpo, y despues BAJAR a el.
-            //
-            // Las dos mitades importan. La primera porque entre el nombre y el `{` cabe una lista
-            // de parametros genericos, una lista de bases, el tipo subyacente de un enum y una
-            // clausula `where`: la version anterior solo miraba si el token siguiente al nombre
-            // era `{`, de modo que en `class C<T> : Base { ... }` no reconocia el cuerpo y seguia
-            // leyendo sus tokens en linea recta, como si fueran declaraciones del namespace.
-            //
-            // Y la segunda porque un cuerpo de tipo YA NO se salta: dentro puede haber otro tipo.
-            // Bajar es lo unico que hace que `Outer.Item` exista para el parser. Los cuerpos de
-            // metodo de dentro se saltan solos: los cierra la rama `LeftBrace` de mas abajo.
-            while (index < tokens.size() &&
-                   tokens[index].kind() != TokenKind::LeftBrace &&
-                   tokens[index].kind() != TokenKind::Semicolon &&
-                   tokens[index].kind() != TokenKind::RightBrace &&
-                   tokens[index].kind() != TokenKind::EndOfFile)
-            {
-                ++index;
-            }
-            if (index < tokens.size() && tokens[index].kind() == TokenKind::LeftBrace)
-            {
-                ++index;
-                collectTypeSeedsInScope(
-                    tokens, index, namespacePrefix, chain, TokenKind::RightBrace, names);
-                if (index < tokens.size() && tokens[index].kind() == TokenKind::RightBrace)
-                {
-                    ++index;
-                }
-            }
-            continue;
-        }
-
-        if (tokens[index].kind() == TokenKind::KwDelegate)
-        {
-            // Stage 52 fix: this scanner previously only seeded class/struct/interface/enum
-            // names, never delegate names. That is invisible within a single file, because the
-            // real parser (Parser::parseDelegateDeclaration) inserts the delegate's name into
-            // its OWN incrementally-built knownTypeNames_ the moment it parses the declaration,
-            // so a later use in the SAME translation unit already sees it. But a project that
-            // only *references* another project's delegate (e.g. this package's own
-            // `HashFunc<T>`/`Comparison<T>`/`Predicate<T>`/`Action<T>` from Delegates.ns, used by
-            // a consuming project via <ProjectReference>) never physically parses that
-            // declaration itself -- it relies entirely on this cross-file seed list, which was
-            // missing the name. The concrete, reliably reproducible symptom: `Predicate<int> p =
-            // someMethod;` in a project referencing this one failed to parse ("expected
-            // expression") for a builtin type argument specifically (a class type argument
-            // happened to disambiguate through a different path and did not expose the gap).
-            //
-            // A delegate declaration has the shape `delegate ReturnType Name<TParams>(params);`
-            // (or `delegate ReturnType Name(params);` for a non-generic delegate) -- ReturnType
-            // can itself be an arbitrary type, including a generic one, so the delegate's own
-            // name is identified here as the first identifier directly followed by '<' or '('
-            // (its generic-parameter list or its parameter list), skipping over any balanced
-            // '<...>' the return type itself contributes first.
-            ++index;
-            while (index < tokens.size() &&
-                   tokens[index].kind() != TokenKind::Semicolon &&
-                   tokens[index].kind() != TokenKind::LeftBrace)
-            {
-                if (tokens[index].kind() == TokenKind::Identifier &&
-                    index + 1 < tokens.size() &&
-                    (tokens[index + 1].kind() == TokenKind::Less ||
-                     tokens[index + 1].kind() == TokenKind::LeftParen))
-                {
-                    std::vector<std::string> chain = containingTypes;
-                    chain.emplace_back(tokens[index].lexeme());
-                    insertTypeSeeds(names, namespacePrefix, chain);
-                    ++index;
-                    break;
-                }
-                if (tokens[index].kind() == TokenKind::Less)
-                {
-                    int depth = 1;
-                    ++index;
-                    while (index < tokens.size() && depth > 0 &&
-                           tokens[index].kind() != TokenKind::Semicolon &&
-                           tokens[index].kind() != TokenKind::LeftBrace)
-                    {
-                        if (tokens[index].kind() == TokenKind::Less) ++depth;
-                        else if (tokens[index].kind() == TokenKind::Greater) --depth;
-                        ++index;
-                    }
-                    continue;
-                }
-                ++index;
-            }
-            while (index < tokens.size() &&
-                   tokens[index].kind() != TokenKind::Semicolon &&
-                   tokens[index].kind() != TokenKind::LeftBrace)
-            {
-                ++index;
-            }
-            if (index < tokens.size() && tokens[index].kind() == TokenKind::Semicolon)
-            {
-                ++index;
-            }
-            continue;
-        }
+        if (collectDeclaredTypeSeed(
+                tokens, index, namespacePrefix, containingTypes, names)) continue;
+        if (collectDelegateTypeSeed(
+                tokens, index, namespacePrefix, containingTypes, names)) continue;
 
         if (tokens[index].kind() == TokenKind::LeftBrace)
         {
@@ -929,62 +921,60 @@ bool ProjectCompilation::compileProjectOopMir(
     return enterStage(CompilationStage::Monomorphization, loadError);
 }
 
-bool ProjectCompilation::compileSyntaxCore(
+bool ProjectCompilation::isSyntaxCompilationFresh(std::string& loadError) const
+{
+    if (units_.empty() && genericModel_ == nullptr && nameLookup_ == nullptr &&
+        memberModel_ == nullptr && inheritanceModel_ == nullptr && interfaceModel_ == nullptr &&
+        methodBodyModel_ == nullptr && virtualDispatchModel_ == nullptr &&
+        destructionModel_ == nullptr && constructionModel_ == nullptr &&
+        objectLayoutModel_ == nullptr && metaprogrammingModel_ == nullptr &&
+        oopHirModel_ == nullptr && oopMirModel_ == nullptr)
+    {
+        return true;
+    }
+    loadError = "ProjectCompilation instances are single-use";
+    return false;
+}
+
+bool ProjectCompilation::ensureProjectGraph(
     const std::filesystem::path& projectFile,
     std::string& loadError)
 {
-    loadError.clear();
-    if (!units_.empty() || genericModel_ != nullptr || nameLookup_ != nullptr || memberModel_ != nullptr || inheritanceModel_ != nullptr || interfaceModel_ != nullptr ||
-        methodBodyModel_ != nullptr || virtualDispatchModel_ != nullptr || destructionModel_ != nullptr ||
-        constructionModel_ != nullptr ||
-        objectLayoutModel_ != nullptr || metaprogrammingModel_ != nullptr ||
-        oopHirModel_ != nullptr || oopMirModel_ != nullptr)
+    if (projectGraph_.has_value())
     {
-        loadError = "ProjectCompilation instances are single-use";
+        return true;
+    }
+    compilation::ProjectGraphLoader loader(compilationJobs_, {}, projectLoadOptions_);
+    std::optional<compilation::ProjectGraph> graph;
+    {
+        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "project-graph");
+        graph = loader.load(projectFile, loadError);
+    }
+    if (!graph.has_value())
+    {
         return false;
     }
+    projectGraph_ = std::move(*graph);
+    return true;
+}
 
-    if (!projectGraph_.has_value())
-    {
-        compilation::ProjectGraphLoader loader(compilationJobs_, {}, projectLoadOptions_);
-        std::optional<compilation::ProjectGraph> graph;
-        {
-            const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "project-graph");
-            graph = loader.load(projectFile, loadError);
-        }
-        if (!graph.has_value())
-        {
-            return false;
-        }
-        projectGraph_ = std::move(*graph);
-    }
-    if (cancellationRequested(loadError, "syntax")) return false;
-    std::vector<compilation::PrecompiledProjectDescriptor> precompiledDescriptors;
-    precompiledDescriptors.reserve(precompiledModules_.size());
+bool ProjectCompilation::addPrecompiledProjects(std::string& loadError)
+{
+    std::vector<compilation::PrecompiledProjectDescriptor> descriptors;
+    descriptors.reserve(precompiledModules_.size());
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
-        precompiledDescriptors.push_back({
+        descriptors.push_back({
             module.ownerProjectFile,
             module.metadataPath,
             module.moduleName});
     }
-    if (!projectGraph_->addPrecompiledProjects(precompiledDescriptors, loadError))
-    {
-        return false;
-    }
-    struct SourceRead final
-    {
-        std::size_t projectOrdinal = 0;
-        std::size_t sourceOrdinal = 0;
-        std::string moduleName;
-        std::filesystem::path path;
-        std::optional<std::string> buffer;
-        std::optional<ComptimeResult> comptime;
-        std::string error;
-    };
-    comptimeRecords_.clear();
-    driver::CompilationWorkerPool syntaxWorkers(compilationJobs_);
-    std::vector<SourceRead> sourceReads;
+    return projectGraph_->addPrecompiledProjects(descriptors, loadError);
+}
+
+std::vector<ProjectSyntaxSourceRead> ProjectCompilation::collectSyntaxSourceReads() const
+{
+    std::vector<ProjectSyntaxSourceRead> sourceReads;
     for (std::size_t projectOrdinal = 0;
          projectOrdinal < projectGraph_->projects().size();
          ++projectOrdinal)
@@ -1002,257 +992,407 @@ bool ProjectCompilation::compileSyntaxCore(
                 {}});
         }
     }
+    return sourceReads;
+}
 
+bool ProjectCompilation::readSyntaxSources(
+    std::vector<ProjectSyntaxSourceRead>& sourceReads,
+    driver::CompilationWorkerPool& syntaxWorkers,
+    std::string& loadError)
+{
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-read");
+    std::atomic_size_t completed = 0;
+    for (std::size_t index = 0; index < sourceReads.size(); ++index)
     {
-        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-read");
-        std::atomic_size_t completed = 0;
-        for (std::size_t index = 0; index < sourceReads.size(); ++index)
+        syntaxWorkers.submit([&, index](std::size_t)
         {
-            syntaxWorkers.submit([&, index](std::size_t) {
-                if (sourceBufferProvider_)
-                {
-                    sourceReads[index].buffer = sourceBufferProvider_(sourceReads[index].path);
-                }
-                if (!sourceReads[index].buffer.has_value())
-                {
-                    sourceReads[index].buffer = source::SourceManager::readFileBuffer(
-                        sourceReads[index].path, sourceReads[index].error);
-                }
-                reportSourceProgress(progressSink_, "syntax-read", sourceReads[index].path,
-                    completed.fetch_add(1, std::memory_order_relaxed) + 1U,
-                    sourceReads.size());
-            });
-        }
-        if (!waitForSyntaxWorkers(syntaxWorkers, "source reading", loadError)) return false;
-        for (const SourceRead& read : sourceReads)
-        {
-            if (!read.buffer.has_value())
+            if (sourceBufferProvider_)
             {
-                loadError = read.error;
-                return false;
+                sourceReads[index].buffer = sourceBufferProvider_(sourceReads[index].path);
             }
+            if (!sourceReads[index].buffer.has_value())
+            {
+                sourceReads[index].buffer = source::SourceManager::readFileBuffer(
+                    sourceReads[index].path, sourceReads[index].error);
+            }
+            reportSourceProgress(
+                progressSink_,
+                "syntax-read",
+                sourceReads[index].path,
+                completed.fetch_add(1, std::memory_order_relaxed) + 1U,
+                sourceReads.size());
+        });
+    }
+    if (!waitForSyntaxWorkers(syntaxWorkers, "source reading", loadError))
+    {
+        return false;
+    }
+    for (const ProjectSyntaxSourceRead& read : sourceReads)
+    {
+        if (!read.buffer.has_value())
+        {
+            loadError = read.error;
+            return false;
         }
     }
+    return true;
+}
 
+void ProjectCompilation::appendComptimeRecord(
+    const ProjectSyntaxSourceRead& read,
+    const std::filesystem::path& relativePath)
+{
+    comptimeRecords_.push_back({
+        read.projectOrdinal,
+        read.sourceOrdinal,
+        read.moduleName,
+        relativePath.generic_string(),
+        read.comptime->evaluations.size(),
+        read.comptime->executedSteps,
+        read.comptime->cacheHits,
+        read.comptime->cacheMisses,
+        read.comptime->reproducibilityDigest,
+        read.comptime->dependencies,
+        read.comptime->attributes,
+        read.comptime->macroExpansions,
+        read.comptime->authoredDiagnostics,
+        read.comptime->declaredCapabilities});
+}
+
+void ProjectCompilation::reportComptimeDiagnostics(
+    const ProjectSyntaxSourceRead& read,
+    FileId fileId)
+{
+    for (const ComptimeAuthoredDiagnostic& diagnostic : read.comptime->authoredDiagnostics)
     {
-        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-comptime");
-        const auto comptimeCache = std::make_shared<ComptimeCache>();
-        std::atomic_size_t completed = 0;
-        for (std::size_t index = 0; index < sourceReads.size(); ++index)
+        const auto severity = diagnostic.severity == ComptimeDiagnosticSeverity::Error
+            ? diagnostics::DiagnosticSeverity::Error
+            : diagnostic.severity == ComptimeDiagnosticSeverity::Warning
+                ? diagnostics::DiagnosticSeverity::Warning
+                : diagnostics::DiagnosticSeverity::Note;
+        diagnostics_.reportStructured(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            severity,
+            SourceRange(
+                SourceLocation(fileId, static_cast<std::uint32_t>(diagnostic.offset)),
+                SourceLocation(fileId, static_cast<std::uint32_t>(
+                    diagnostic.offset + diagnostic.length))),
+            "[" + diagnostic.code + "] " + diagnostic.message,
+            {},
+            diagnostic.notes);
+    }
+}
+
+bool ProjectCompilation::materializeComptimeSource(
+    ProjectSyntaxSourceRead& read,
+    std::string& loadError)
+{
+    if (!read.comptime.has_value() || !read.comptime->success)
+    {
+        loadError = read.path.generic_string() + ": " +
+            (read.comptime.has_value() ? read.comptime->error : "comptime produced no result");
+        return false;
+    }
+    const compilation::Project& owner = projectGraph_->projects()[read.projectOrdinal];
+    std::error_code relativeError;
+    std::filesystem::path relativePath = std::filesystem::relative(
+        read.path, owner.projectFile().parent_path(), relativeError);
+    if (relativeError)
+    {
+        relativePath = read.path.filename();
+    }
+    appendComptimeRecord(read, relativePath);
+    const FileId fileId = sourceManager_.addBuffer(
+        read.path, std::move(read.comptime->source));
+    reportComptimeDiagnostics(read, fileId);
+    units_.push_back(std::make_unique<ProjectSyntaxUnit>(
+        read.projectOrdinal,
+        read.sourceOrdinal,
+        std::move(read.moduleName),
+        fileId,
+        false));
+    return true;
+}
+
+bool ProjectCompilation::executeSyntaxComptime(
+    std::vector<ProjectSyntaxSourceRead>& sourceReads,
+    driver::CompilationWorkerPool& syntaxWorkers,
+    std::string& loadError)
+{
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-comptime");
+    const auto comptimeCache = std::make_shared<ComptimeCache>();
+    std::atomic_size_t completed = 0;
+    for (std::size_t index = 0; index < sourceReads.size(); ++index)
+    {
+        syntaxWorkers.submit([&, index](std::size_t)
         {
-            syntaxWorkers.submit([&, index](std::size_t) {
-                sourceReads[index].comptime =
-                    ComptimeEngine({}, comptimeCache,
-                        ComptimeExecutionContext{sourceReads[index].path.parent_path(), true, {}})
-                        .execute(*sourceReads[index].buffer);
-                reportSourceProgress(progressSink_, "syntax-comptime", sourceReads[index].path,
-                    completed.fetch_add(1, std::memory_order_relaxed) + 1U,
-                    sourceReads.size());
-            });
-        }
-        if (!waitForSyntaxWorkers(syntaxWorkers, "comptime", loadError)) return false;
-        for (SourceRead& read : sourceReads)
+            sourceReads[index].comptime = ComptimeEngine(
+                {},
+                comptimeCache,
+                ComptimeExecutionContext{sourceReads[index].path.parent_path(), true, {}})
+                .execute(*sourceReads[index].buffer);
+            reportSourceProgress(
+                progressSink_,
+                "syntax-comptime",
+                sourceReads[index].path,
+                completed.fetch_add(1, std::memory_order_relaxed) + 1U,
+                sourceReads.size());
+        });
+    }
+    if (!waitForSyntaxWorkers(syntaxWorkers, "comptime", loadError))
+    {
+        return false;
+    }
+    for (ProjectSyntaxSourceRead& read : sourceReads)
+    {
+        if (!materializeComptimeSource(read, loadError))
         {
-            if (!read.comptime.has_value() || !read.comptime->success)
-            {
-                loadError = read.path.generic_string() + ": " +
-                    (read.comptime.has_value() ? read.comptime->error : "comptime produced no result");
-                return false;
-            }
-            const compilation::Project& owner = projectGraph_->projects()[read.projectOrdinal];
-            std::error_code relativeError;
-            std::filesystem::path relativePath = std::filesystem::relative(
-                read.path, owner.projectFile().parent_path(), relativeError);
-            if (relativeError) relativePath = read.path.filename();
-            comptimeRecords_.push_back({
-                read.projectOrdinal,
-                read.sourceOrdinal,
-                read.moduleName,
-                relativePath.generic_string(),
-                read.comptime->evaluations.size(),
-                read.comptime->executedSteps,
-                read.comptime->cacheHits,
-                read.comptime->cacheMisses,
-                read.comptime->reproducibilityDigest,
-            read.comptime->dependencies,
-            read.comptime->attributes,
-            read.comptime->macroExpansions,
-            read.comptime->authoredDiagnostics,
-            read.comptime->declaredCapabilities});
-            const FileId fileId = sourceManager_.addBuffer(
-                read.path, std::move(read.comptime->source));
-            for (const ComptimeAuthoredDiagnostic& diagnostic : read.comptime->authoredDiagnostics)
-            {
-                const auto severity = diagnostic.severity == ComptimeDiagnosticSeverity::Error
-                    ? diagnostics::DiagnosticSeverity::Error
-                    : diagnostic.severity == ComptimeDiagnosticSeverity::Warning
-                        ? diagnostics::DiagnosticSeverity::Warning
-                        : diagnostics::DiagnosticSeverity::Note;
-                diagnostics_.reportStructured(
-                    diagnostics::DiagnosticId::ExpectedDeclaration,
-                    severity,
-                    SourceRange(
-                        SourceLocation(fileId, static_cast<std::uint32_t>(diagnostic.offset)),
-                        SourceLocation(fileId, static_cast<std::uint32_t>(
-                            diagnostic.offset + diagnostic.length))),
-                    "[" + diagnostic.code + "] " + diagnostic.message,
-                    {},
-                    diagnostic.notes);
-            }
-            units_.push_back(std::make_unique<ProjectSyntaxUnit>(
-                read.projectOrdinal,
-                read.sourceOrdinal,
-                std::move(read.moduleName),
-                fileId,
-                false));
+            return false;
         }
     }
+    return true;
+}
 
+std::optional<std::size_t> ProjectCompilation::precompiledProjectOrdinal(
+    const PrecompiledSyntaxModule& module) const
+{
+    for (std::size_t ordinal = 0; ordinal < projectGraph_->projects().size(); ++ordinal)
+    {
+        std::error_code leftError;
+        std::error_code rightError;
+        const std::filesystem::path left = std::filesystem::weakly_canonical(
+            projectGraph_->projects()[ordinal].projectFile(), leftError);
+        const std::filesystem::path right = std::filesystem::weakly_canonical(
+            module.metadataPath, rightError);
+        if (!leftError && !rightError && left == right)
+        {
+            return ordinal;
+        }
+    }
+    return std::nullopt;
+}
+
+bool ProjectCompilation::materializePrecompiledTemplateUnit(
+    const PrecompiledSyntaxModule& module,
+    std::size_t projectOrdinal,
+    std::string& loadError)
+{
+    if (module.templateSourceText.empty())
+    {
+        return true;
+    }
+    std::filesystem::path displayPath = module.metadataPath;
+    displayPath += ".public-templates.ns";
+    const FileId fileId = sourceManager_.addBuffer(displayPath, module.templateSourceText);
+    const source::SourceFile* sourceFile = sourceManager_.getFile(fileId);
+    if (sourceFile == nullptr)
+    {
+        loadError = "internal error: generated precompiled templates have no SourceFile slot";
+        return false;
+    }
+    // Deliberately NOT precompiled: these public bodies are input to the consumer's
+    // ordinary generic pass, which specializes only what that consumer requests.
+    units_.push_back(std::make_unique<ProjectSyntaxUnit>(
+        projectOrdinal,
+        1,
+        module.moduleName,
+        fileId,
+        false));
+    return true;
+}
+
+bool ProjectCompilation::materializePrecompiledModule(
+    const PrecompiledSyntaxModule& module,
+    std::set<std::string>& materializedMetadata,
+    std::string& loadError)
+{
+    std::error_code metadataKeyError;
+    std::string metadataKey = std::filesystem::weakly_canonical(
+        module.metadataPath, metadataKeyError).generic_string();
+    if (metadataKeyError)
+    {
+        metadataKey = std::filesystem::absolute(
+            module.metadataPath).lexically_normal().generic_string();
+    }
+    if (!materializedMetadata.insert(metadataKey).second)
+    {
+        return true;
+    }
+    const std::optional<std::size_t> projectOrdinal = precompiledProjectOrdinal(module);
+    if (!projectOrdinal.has_value())
+    {
+        loadError = "internal error: precompiled module '" + module.moduleName +
+            "' has no project-graph node";
+        return false;
+    }
+    std::filesystem::path displayPath = module.metadataPath;
+    displayPath += ".public-api.ns";
+    const FileId fileId = sourceManager_.addBuffer(displayPath, module.sourceText);
+    const source::SourceFile* sourceFile = sourceManager_.getFile(fileId);
+    if (sourceFile == nullptr)
+    {
+        loadError = "internal error: generated precompiled API has no SourceFile slot";
+        return false;
+    }
+    units_.push_back(std::make_unique<ProjectSyntaxUnit>(
+        *projectOrdinal,
+        0,
+        module.moduleName,
+        fileId,
+        true));
+    return materializePrecompiledTemplateUnit(module, *projectOrdinal, loadError);
+}
+
+bool ProjectCompilation::materializePrecompiledSyntax(std::string& loadError)
+{
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "precompiled-syntax");
     std::set<std::string> materializedMetadata;
+    for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
-        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "precompiled-syntax");
-        for (const PrecompiledSyntaxModule& module : precompiledModules_)
+        if (!materializePrecompiledModule(module, materializedMetadata, loadError))
         {
-        std::error_code metadataKeyError;
-        std::string metadataKey = std::filesystem::weakly_canonical(
-            module.metadataPath, metadataKeyError).generic_string();
-        if (metadataKeyError)
-            metadataKey = std::filesystem::absolute(module.metadataPath).lexically_normal().generic_string();
-        if (!materializedMetadata.insert(metadataKey).second) continue;
-
-        std::optional<std::size_t> projectOrdinal;
-        for (std::size_t ordinal = 0; ordinal < projectGraph_->projects().size(); ++ordinal)
-        {
-            std::error_code leftError;
-            std::error_code rightError;
-            const std::filesystem::path left = std::filesystem::weakly_canonical(
-                projectGraph_->projects()[ordinal].projectFile(), leftError);
-            const std::filesystem::path right =
-                std::filesystem::weakly_canonical(module.metadataPath, rightError);
-            if (!leftError && !rightError && left == right)
-            {
-                projectOrdinal = ordinal;
-                break;
-            }
-        }
-        if (!projectOrdinal.has_value())
-        {
-            loadError = "internal error: precompiled module '" + module.moduleName +
-                "' has no project-graph node";
             return false;
         }
+    }
+    return true;
+}
 
-        std::filesystem::path displayPath = module.metadataPath;
-        displayPath += ".public-api.ns";
-        const FileId fileId = sourceManager_.addBuffer(displayPath, module.sourceText);
-        const source::SourceFile* sourceFile = sourceManager_.getFile(fileId);
-        if (sourceFile == nullptr)
+bool ProjectCompilation::lexSyntaxUnits(
+    driver::CompilationWorkerPool& syntaxWorkers,
+    bool& lexicalOk,
+    std::string& loadError)
+{
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-lex");
+    const std::size_t progressTotal = visibleSourceCount(units_, sourceManager_);
+    std::atomic_size_t completed = 0;
+    std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
+    localDiagnostics.reserve(units_.size());
+    for (std::size_t index = 0; index < units_.size(); ++index)
+    {
+        localDiagnostics.emplace_back(diagnostics_.errorLimit());
+        syntaxWorkers.submit([&, index](std::size_t)
         {
-            loadError = "internal error: generated precompiled API has no SourceFile slot";
-            return false;
-        }
-        auto unit = std::make_unique<ProjectSyntaxUnit>(
-            *projectOrdinal,
-            0,
-            module.moduleName,
-            fileId,
-            true);
-        units_.push_back(std::move(unit));
-
-        if (!module.templateSourceText.empty())
-        {
-            std::filesystem::path templateDisplayPath = module.metadataPath;
-            templateDisplayPath += ".public-templates.ns";
-            const FileId templateFileId =
-                sourceManager_.addBuffer(templateDisplayPath, module.templateSourceText);
-            const source::SourceFile* templateSourceFile = sourceManager_.getFile(templateFileId);
-            if (templateSourceFile == nullptr)
+            const source::SourceFile* sourceFile = sourceManager_.getFile(units_[index]->fileId());
+            if (sourceFile == nullptr)
             {
-                loadError = "internal error: generated precompiled templates have no SourceFile slot";
-                return false;
+                throw std::logic_error("syntax unit has no SourceFile slot");
             }
-            // Deliberately NOT precompiled: these public bodies are input to the consumer's
-            // ordinary generic pass, which specializes only what that consumer requests.
-            auto templateUnit = std::make_unique<ProjectSyntaxUnit>(
-                *projectOrdinal,
-                1,
-                module.moduleName,
-                templateFileId,
-                false);
-            units_.push_back(std::move(templateUnit));
-        }
-        }
+            units_[index]->lex(*sourceFile, localDiagnostics[index]);
+            if (!isMetadataBackedVirtualSource(sourceFile->path()))
+            {
+                reportSourceProgress(
+                    progressSink_,
+                    "syntax-lex",
+                    sourceFile->path(),
+                    completed.fetch_add(1, std::memory_order_relaxed) + 1U,
+                    progressTotal);
+            }
+        });
+    }
+    if (!waitForSyntaxWorkers(syntaxWorkers, "lexing", loadError))
+    {
+        return false;
+    }
+    lexicalOk = true;
+    for (std::size_t index = 0; index < units_.size(); ++index)
+    {
+        lexicalOk = units_[index]->isLexicallyValid() && lexicalOk;
+    }
+    diagnostics_.mergeDeterministically(localDiagnostics);
+    return true;
+}
+
+bool ProjectCompilation::parseSyntaxUnits(
+    driver::CompilationWorkerPool& syntaxWorkers,
+    bool lexicalOk,
+    std::string& loadError)
+{
+    const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-parse");
+    const std::vector<std::string> knownTypeNames = collectParserKnownTypeNames(units_);
+    const std::size_t progressTotal = visibleSourceCount(units_, sourceManager_);
+    std::atomic_size_t completed = 0;
+    bool syntaxOk = lexicalOk;
+    std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
+    localDiagnostics.reserve(units_.size());
+    for (std::size_t index = 0; index < units_.size(); ++index)
+    {
+        localDiagnostics.emplace_back(diagnostics_.errorLimit());
+        if (!units_[index]->isLexicallyValid()) continue;
+        syntaxWorkers.submit([&, index](std::size_t)
+        {
+            units_[index]->parse(localDiagnostics[index], knownTypeNames);
+            const std::filesystem::path sourcePath(sourceManager_.getPath(
+                SourceLocation(units_[index]->fileId(), 0U)));
+            if (!isMetadataBackedVirtualSource(sourcePath))
+            {
+                reportSourceProgress(
+                    progressSink_,
+                    "syntax-parse",
+                    sourcePath,
+                    completed.fetch_add(1, std::memory_order_relaxed) + 1U,
+                    progressTotal);
+            }
+        });
+    }
+    if (!waitForSyntaxWorkers(syntaxWorkers, "parsing", loadError))
+    {
+        return false;
+    }
+    for (std::size_t index = 0; index < units_.size(); ++index)
+    {
+        syntaxOk = units_[index]->isSyntaxValid() && syntaxOk;
+    }
+    diagnostics_.mergeDeterministically(localDiagnostics);
+    if (!syntaxOk || diagnostics_.hasErrors())
+    {
+        return false;
+    }
+    return enterStage(CompilationStage::Parse, loadError);
+}
+
+bool ProjectCompilation::compileSyntaxCore(
+    const std::filesystem::path& projectFile,
+    std::string& loadError)
+{
+    loadError.clear();
+    if (!isSyntaxCompilationFresh(loadError))
+    {
+        return false;
+    }
+    if (!ensureProjectGraph(projectFile, loadError))
+    {
+        return false;
+    }
+    if (cancellationRequested(loadError, "syntax")) return false;
+    if (!addPrecompiledProjects(loadError))
+    {
+        return false;
+    }
+    comptimeRecords_.clear();
+    driver::CompilationWorkerPool syntaxWorkers(compilationJobs_);
+    std::vector<ProjectSyntaxSourceRead> sourceReads = collectSyntaxSourceReads();
+
+    if (!readSyntaxSources(sourceReads, syntaxWorkers, loadError))
+    {
+        return false;
+    }
+
+    if (!executeSyntaxComptime(sourceReads, syntaxWorkers, loadError))
+    {
+        return false;
+    }
+
+    if (!materializePrecompiledSyntax(loadError))
+    {
+        return false;
     }
 
     bool lexicalOk = true;
+    if (!lexSyntaxUnits(syntaxWorkers, lexicalOk, loadError))
     {
-        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-lex");
-        const std::size_t progressTotal = visibleSourceCount(units_, sourceManager_);
-        std::atomic_size_t completed = 0;
-        std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
-        localDiagnostics.reserve(units_.size());
-        for (std::size_t index = 0; index < units_.size(); ++index)
-        {
-            localDiagnostics.emplace_back(diagnostics_.errorLimit());
-            syntaxWorkers.submit([&, index](std::size_t) {
-                const source::SourceFile* sourceFile =
-                    sourceManager_.getFile(units_[index]->fileId());
-                if (sourceFile == nullptr)
-                {
-                    throw std::logic_error("syntax unit has no SourceFile slot");
-                }
-                units_[index]->lex(*sourceFile, localDiagnostics[index]);
-                if (!isMetadataBackedVirtualSource(sourceFile->path()))
-                {
-                    reportSourceProgress(progressSink_, "syntax-lex",
-                        sourceFile->path(),
-                        completed.fetch_add(1, std::memory_order_relaxed) + 1U,
-                        progressTotal);
-                }
-            });
-        }
-        if (!waitForSyntaxWorkers(syntaxWorkers, "lexing", loadError)) return false;
-        for (std::size_t index = 0; index < units_.size(); ++index)
-        {
-            lexicalOk = units_[index]->isLexicallyValid() && lexicalOk;
-        }
-        diagnostics_.mergeDeterministically(localDiagnostics);
+        return false;
     }
-
-    {
-        const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-parse");
-        const std::vector<std::string> knownTypeNames = collectParserKnownTypeNames(units_);
-        const std::size_t progressTotal = visibleSourceCount(units_, sourceManager_);
-        std::atomic_size_t parseCompleted = 0;
-        bool syntaxOk = lexicalOk;
-        std::vector<diagnostics::DiagnosticEngine> localDiagnostics;
-        localDiagnostics.reserve(units_.size());
-        for (std::size_t index = 0; index < units_.size(); ++index)
-        {
-            localDiagnostics.emplace_back(diagnostics_.errorLimit());
-            if (!units_[index]->isLexicallyValid()) continue;
-            syntaxWorkers.submit([&, index](std::size_t) {
-                units_[index]->parse(localDiagnostics[index], knownTypeNames);
-                const std::filesystem::path sourcePath(sourceManager_.getPath(
-                    SourceLocation(units_[index]->fileId(), 0U)));
-                if (!isMetadataBackedVirtualSource(sourcePath))
-                {
-                    reportSourceProgress(progressSink_, "syntax-parse",
-                        sourcePath,
-                        parseCompleted.fetch_add(1, std::memory_order_relaxed) + 1U,
-                        progressTotal);
-                }
-            });
-        }
-        if (!waitForSyntaxWorkers(syntaxWorkers, "parsing", loadError)) return false;
-        for (std::size_t index = 0; index < units_.size(); ++index)
-        {
-            syntaxOk = units_[index]->isSyntaxValid() && syntaxOk;
-        }
-        diagnostics_.mergeDeterministically(localDiagnostics);
-        if (!syntaxOk || diagnostics_.hasErrors()) return false;
-        return enterStage(CompilationStage::Parse, loadError);
-    }
+    return parseSyntaxUnits(syntaxWorkers, lexicalOk, loadError);
 }
 
 bool ProjectCompilation::enterStage(CompilationStage stage, std::string& error)

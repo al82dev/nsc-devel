@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Frontend/StageBoundary.h"
 #include <string>
 #include <string_view>
 
@@ -12,15 +13,6 @@ namespace nativesharp::ssa { class SsaModule; }
 
 namespace nativesharp::frontend
 {
-enum class StageBoundary
-{
-    HirToMir,
-    MirToCfg,
-    CfgToDominance,
-    DominanceToSsa,
-    SsaToOptimization,
-    OptimizationToBackend
-};
 
 std::string_view stageBoundaryName(StageBoundary boundary) noexcept;
 

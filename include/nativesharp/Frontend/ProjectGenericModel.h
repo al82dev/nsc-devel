@@ -1,6 +1,16 @@
 #pragma once
 
 #include "nativesharp/Frontend/QualifiedNameLadder.h"
+#include "nativesharp/Frontend/GenericInstantiationReport.h"
+#include "nativesharp/Frontend/GenericSpecializationRecord.h"
+#include "nativesharp/Frontend/GenericTelemetry.h"
+#include "nativesharp/Frontend/GenericTemplateAccessibility.h"
+#include "nativesharp/Frontend/GenericTemplateExternalTypeReference.h"
+#include "nativesharp/Frontend/GenericTemplateKind.h"
+#include "nativesharp/Frontend/GenericTemplateRecord.h"
+#include "nativesharp/Frontend/InstantiationContext.h"
+#include "nativesharp/Frontend/PrecompiledGenericSpecialization.h"
+#include "nativesharp/Frontend/SpecializationState.h"
 
 #include "nativesharp/AST/AstNode.h"
 #if 0 // INSTRUMENTATION CODE: detailed generics trace support.
@@ -22,6 +32,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -33,360 +44,8 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
-enum class GenericTemplateKind
-{
-    Class,
-    Struct,
-    Delegate,
-    Method,
-    // Appended to preserve the serialized numeric values of the four 1.0.1 kinds in NSMETA.
-    Interface
-};
-
-enum class GenericTemplateAccessibility
-{
-    Private,
-    Protected,
-    Internal,
-    Public
-};
-struct GenericTemplateExternalTypeReference final
-{
-    SourceRange range;
-    // Canonical named identity, including its owning module. Modifiers are not part of this key;
-    // the original template source keeps pointer/array syntax around the rewritten base name.
-    std::string typeKey;
-};
-
-struct GenericTemplateRecord final
-{
-    GenericTemplateKind kind = GenericTemplateKind::Class;
-    GenericTemplateAccessibility accessibility = GenericTemplateAccessibility::Internal;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t projectOrdinal = 0;
-    std::size_t sourceOrdinal = 0;
-    std::string moduleName;
-    std::string namespaceName;
-    // NSC-LIMIT-009. La CADENA de tipos contenedores, unida con `+`: `A+Inner`, no `Inner`. Para
-    // un metodo generico es su dueno; para un tipo generico, sus contenedores.
-    std::string ownerName;
-    std::string name;
-    // El nombre del tipo con su cadena delante --`A+Inner`-- o el nombre a secas si no esta
-    // anidado. Es lo que hace que dos `Inner<T>` bajo contenedores distintos no compartan clave.
-    std::string qualifiedTypeName;
-    std::vector<std::string> parameters;
-    std::vector<ast::GenericParameterSyntax> parameterSyntaxes;
-    // NSC-LIMIT-007. Las clausulas `where` DE LA PLANTILLA, copiadas del AST sin resolver. Se
-    // guardan aqui y no se validan al recolectar porque cuando esta fase corre --la segunda de
-    // toda la cadena-- todavia no existen el name lookup, la herencia ni las interfaces. Quien
-    // valida es ProjectGenericConstraintModel, con las tres ya construidas.
-    std::vector<ast::GenericConstraintClause> constraints;
-    std::string canonicalKey;
-    // NativeSharp 3.0 T04-F06. Methods enter one controlled-specialization family only when
-    // their generic arity, receiver form and alpha-normalized value-parameter pattern agree.
-    // Constraints are deliberately excluded: they define the partial order inside the family.
-    std::string specializationFamilyKey;
-    bool isControlledSpecialization = false;
-    bool isControlledSpecializationFamily = false;
-    // Canonical identities reached from this template's declaration/body. The producer uses
-    // these edges to compute the reusable fixed-point closure; NSMETA persists them so artifact
-    // verification can prove that every same-module dependency is present.
-    std::vector<std::string> dependencies;
-    // Ordinary named types reached from this template through its original using/alias scope.
-    // These references let NSMETA make the declaration self-contained instead of depending on
-    // source-level using directives that are intentionally not transported with a template body.
-    std::vector<GenericTemplateExternalTypeReference> externalTypeReferences;
-
-    // T05-F02. Source-level impl blocks merged into this template. They are retained separately
-    // so NSMETA can publish the original class declaration followed by its coherence extensions;
-    // a consumer then runs the same merge before monomorphization.
-    std::vector<const ast::AstNode*> extensionSyntaxes;
-
-    // Explicit generic uses that could not be resolved while inspecting the template. They are
-    // harmless in an unreachable private template, but make a public reusable closure invalid.
-    std::vector<std::string> unresolvedDependencies;
-
-    // NSC305-C01. SHA-256 of the template's source text (reconstructed from the lexer tokens), the
-    // C1 cache key input that invalidates on any source change (including the body).
-    std::string sourceFingerprint;
-    // NSC305-C01. Full C1 cache key: SHA-256 of (source fingerprint + cache schema version).
-    std::string c1CacheKey;
-};
-
-// NSC305-G07. Lifecycle of a specialization slot. The sequential pass only uses Unseen (no slot),
-// Building (record pushed, materializing) and Ready (product committed). Queued and Failed are the
-// states the deterministic parallel planner (G09) will add.
-enum class SpecializationState : std::uint8_t
-{
-    Unseen = 0,
-    Queued = 1,
-    Building = 2,
-    Ready = 3,
-    Failed = 4,
-};
-
-// NSC305-G09 (§6.4). The demand-owned instantiation context: what a specialization needs to know
-// about its request site, carried by the demand itself instead of the shared model state, so a
-// private worker can execute it without the C++ call stack.
-struct InstantiationContext final
-{
-    std::size_t projectOrdinal = 0;
-    std::string namespaceName;
-    SourceRange range{};
-    std::size_t overloadGroup = 0;
-    std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>> packSubstitutions;
-    std::unordered_set<std::string> associatedProjections;
-};
-
-struct GenericSpecializationRecord final
-{
-    GenericTemplateKind kind = GenericTemplateKind::Class;
-    const ast::AstNode* templateSyntax = nullptr;
-    const ast::AstNode* specializedSyntax = nullptr;
-    std::string templateKey;
-    std::string specializationKey;
-    std::string specializedName;
-    std::vector<std::string> typeArguments;
-    std::size_t cacheOrdinal = 0;
-    // NSC-LIMIT-007. Lo que la validacion de constraints necesita y no podia deducir: DE QUE
-    // PLANTILLA salio esta especializacion, y DONDE se pidio.
-    //
-    // El sitio importa mas de lo que parece: sin el, un `Caja<int>` invalido se diagnostica sobre
-    // la declaracion de `Caja<T>`, que es correcta, y el lector va al sitio equivocado. El
-    // diagnostico tiene que apuntar a quien escribio `Caja<int>`.
-    std::size_t templateOrdinal = 0;
-    const ast::AstNode* instantiationSyntax = nullptr;
-    SourceRange instantiationRange;
-    // NSC-LIMIT-007, segunda vuelta. CERO si esta especializacion es la unica respuesta posible a
-    // su sitio de instanciacion; distinto de cero si salio de un conjunto de SOBRECARGAS que se
-    // materializaron todas juntas porque comparten nombre y aridad y elegir entre ellas necesita
-    // los tipos de los argumentos --que esta fase no tiene--.
-    //
-    // Importa para la validacion: en un grupo asi, que UNA candidata incumpla su constraint no es
-    // un error del programa, porque la llamada puede estar resolviendo a otra. Solo lo es si
-    // fallan TODAS. Sin este campo, `F<Valor>(...)` con dos `F<T>` declaradas se rechazaba por la
-    // candidata equivocada.
-    std::size_t overloadGroup = 0;
-    // NSC305-G09. The demand-owned instantiation context (request site + packs + projections).
-    InstantiationContext instantiationContext;
-    // NSC305-G07. Explicit lifecycle state (see SpecializationState). A record is pushed as
-    // Building and flips to Ready when the committed clone is attached; precompiled seed and lambda
-    // instances are born Ready.
-    SpecializationState state = SpecializationState::Unseen;
-};
-
-// Closed code that is already present in a referenced binary. Seeding the generic cache with
-// these identities makes an equal consumer request bind to the producer implementation instead
-// of cloning a second specialization into the consumer.
-struct PrecompiledGenericSpecialization final
-{
-    GenericTemplateKind kind = GenericTemplateKind::Class;
-    std::string templateKey;
-    std::string specializationKey;
-    std::string specializedName;
-    std::vector<std::string> typeArguments;
-    // True when the importing module's ordinary public-API source already declares the concrete
-    // generated name.  A cross-module specialization used only through a published signature has
-    // no such declaration: it must be materialized from its open template instead of merely
-    // seeding the cache with a name that name lookup can never resolve.
-    bool hasConcreteDeclaration = false;
-};
-
-struct GenericInstantiationReport final
-{
-    std::size_t materializedCount = 0;
-    std::size_t cacheHitCount = 0;
-    std::size_t maximumObservedDepth = 0;
-    std::size_t maximumDepth = 0;
-    std::size_t maximumCount = 0;
-};
-
-// NSC305-P01. Observability-only accumulator for the generic monomorphization phase.
-//
-// It records hierarchical sub-phase timings and aggregate counters so a `--time` /
-// `--time-trace` run can attribute the `generics` phase to its internal steps and, with
-// detail enabled, to individual templates. Recording is a no-op unless `enabled` is true;
-// the per-template breakdown is recorded only when `detailed` is also true. This struct must
-// never influence diagnostics, artifacts, control flow, ordering or scheduling: every
-// instrumented site only appends to these fields or forwards a timing to `timingSink`.
-struct GenericTelemetry final
-{
-    using TimingSink = std::function<void(std::string_view, std::chrono::nanoseconds)>;
-#if 0 // INSTRUMENTATION CODE
-    using ProgressSink = std::function<void(const basic::CompilationEvent&)>;
-#endif // INSTRUMENTATION CODE
-
-    bool enabled = false;
-    bool detailed = false;
-    TimingSink timingSink;
-#if 0 // INSTRUMENTATION CODE
-    // Live, crash-surviving breadcrumbs are independent from timing collection. The driver sink
-    // serializes concurrent worker events and flushes every rendered line before returning.
-    ProgressSink progressSink;
-#endif // INSTRUMENTATION CODE
-
-    // Sub-phase wall times accumulated by name. A sub-phase may span more than one lexical
-    // scope (for example `generics.template-index`); times for the same name are summed.
-    std::unordered_map<std::string, std::uint64_t> subPhaseMicros;
-
-    std::uint64_t ownUnits = 0;
-    std::uint64_t templateSourceBytes = 0;
-    std::uint64_t templatesCollected = 0;
-    // Indexed by GenericTemplateKind (Class, Struct, Delegate, Method, Interface).
-    std::uint64_t templatesByKind[5] = {};
-    std::uint64_t resolutionQueries = 0;
-    std::uint64_t candidatesExamined = 0;
-    std::uint64_t demandsDiscovered = 0;
-    std::uint64_t demandsDuplicated = 0;
-    std::uint64_t demandsMaterialized = 0;
-    std::uint64_t specializationHits = 0;
-    // NSC305-G09. Cloned on the worker thread (outside the wave mutex), so these two counters are
-    // atomic; the remaining counters are written only on the serial coordinator.
-    std::atomic<std::uint64_t> nodesCloned{0};
-    std::atomic<std::uint64_t> typesCloned{0};
-    std::uint64_t maximumLogicalDepth = 0;
-    // NSC305-G04. Scope-copy cardinality: how many `GenericLookupScope` deep copies were made and
-    // the total container entries those copies moved. A large `scopeCopiedEntries` per copy is the
-    // O(N^2) signal that motivates persistent scopes.
-    std::uint64_t scopeCopies = 0;
-    std::uint64_t scopeCopiedEntries = 0;
-
-    struct TemplateDetail final
-    {
-        std::uint64_t materializations = 0;
-        std::uint64_t exclusiveMicros = 0;
-    };
-    // Keyed by the template canonical key; populated only while `detailed` is enabled.
-    std::unordered_map<std::string, TemplateDetail> templates;
-
-    void recordSubPhase(std::string_view name, std::chrono::nanoseconds elapsed)
-    {
-        subPhaseMicros[std::string(name)] += static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count());
-        if (timingSink) timingSink(name, elapsed);
-    }
-
-#if 0 // INSTRUMENTATION CODE
-    void reportProgress(
-        basic::CompilationEventKind kind,
-        std::string_view phase,
-        std::string_view detail = {},
-        std::size_t current = 0,
-        std::size_t total = 0,
-        std::chrono::nanoseconds duration = {}) const
-    {
-        if (progressSink)
-            progressSink({kind, phase, detail, current, total, duration});
-    }
-#endif // INSTRUMENTATION CODE
-
-    void noteResolutionQuery(std::size_t candidates)
-    {
-        if (!enabled) return;
-        ++resolutionQueries;
-        candidatesExamined += candidates;
-    }
-
-    void noteTemplate(std::size_t kindIndex)
-    {
-        if (!enabled) return;
-        ++templatesCollected;
-        if (kindIndex < 5U) ++templatesByKind[kindIndex];
-    }
-
-    void noteScopeCopy(std::size_t entries)
-    {
-        if (!enabled) return;
-        ++scopeCopies;
-        scopeCopiedEntries += entries;
-    }
-
-    void noteSpecializationHit()
-    {
-        if (enabled) ++specializationHits;
-    }
-
-    void noteMaterialization(
-        std::string_view canonicalKey, std::chrono::nanoseconds elapsed)
-    {
-        if (!enabled) return;
-        ++demandsMaterialized;
-        if (detailed)
-        {
-            TemplateDetail& detail = templates[std::string(canonicalKey)];
-            ++detail.materializations;
-            detail.exclusiveMicros += static_cast<std::uint64_t>(
-                std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count());
-        }
-    }
-
-    void noteDemand(bool duplicated)
-    {
-        if (!enabled) return;
-        ++demandsDiscovered;
-        if (duplicated) ++demandsDuplicated;
-    }
-
-    void noteNodesCloned()
-    {
-        if (enabled) ++nodesCloned;
-    }
-
-    void noteTypesCloned()
-    {
-        if (enabled) ++typesCloned;
-    }
-
-    class Scope final
-    {
-    public:
-#if 0 // INSTRUMENTATION CODE: progress-aware scope retained for diagnostic builds.
-        Scope(GenericTelemetry& telemetry, std::string_view name)
-            : telemetry_(&telemetry), name_(name),
-              started_(telemetry.enabled || telemetry.progressSink
-                  ? std::chrono::steady_clock::now()
-                  : std::chrono::steady_clock::time_point{})
-        {
-            telemetry_->reportProgress(
-                basic::CompilationEventKind::PhaseStarted, name_);
-        }
-        ~Scope()
-        {
-            if (!telemetry_->enabled && !telemetry_->progressSink) return;
-            const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - started_);
-            if (telemetry_->enabled) telemetry_->recordSubPhase(name_, elapsed);
-            telemetry_->reportProgress(
-                basic::CompilationEventKind::PhaseFinished, name_, {}, 0, 0, elapsed);
-        }
-#else
-        Scope(GenericTelemetry& telemetry, std::string_view name)
-            : telemetry_(&telemetry), name_(name),
-              started_(telemetry.enabled ? std::chrono::steady_clock::now()
-                                         : std::chrono::steady_clock::time_point{})
-        {
-        }
-        ~Scope()
-        {
-            if (!telemetry_->enabled) return;
-            const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - started_);
-            telemetry_->recordSubPhase(name_, elapsed);
-        }
-#endif // INSTRUMENTATION CODE
-        Scope(const Scope&) = delete;
-        Scope& operator=(const Scope&) = delete;
-
-    private:
-        GenericTelemetry* telemetry_;
-        std::string_view name_;
-        std::chrono::steady_clock::time_point started_;
-    };
-
-    // Deterministic, human-readable summary of counters and per-template detail. Implemented
-    // in ProjectGenericModel.cpp to keep this header free of <sstream>.
-    std::string renderSummary() const;
-};
+struct LocatedNode;
+struct TypeWork;
 
 class ProjectGenericModel final
 {
@@ -501,6 +160,12 @@ private:
     };
 
     struct GenericLookupScope;
+    struct DependencyFrame;
+    struct BodyFrame;
+    struct AliasFrame;
+    struct ChildWork;
+    struct CollectFrame;
+    struct ProcessFrame;
 
     void collectTemplates(
         ProjectSyntaxUnit& unit,
@@ -510,13 +175,143 @@ private:
         std::string ownerName,
         bool insideGenericType,
         diagnostics::DiagnosticEngine& diagnostics);
+    void publishConstEnumType(
+        const std::string& spelling,
+        const std::string& enumTypeKey);
+    void publishConstEnumValue(
+        const std::string& spelling,
+        const std::pair<std::string, std::string>& identity);
+    void collectEnumTemplateData(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::string& currentNamespace);
+    void collectDeclaredTypeIdentity(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::string& currentNamespace,
+        const std::string& ownerName);
+    void collectGenericTypeTemplate(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        ast::AstNode* parent,
+        const std::string& currentNamespace,
+        const std::string& ownerName,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void collectGenericMethodTemplate(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        ast::AstNode* parent,
+        const std::string& currentNamespace,
+        const std::string& ownerName,
+        bool insideGenericType,
+        diagnostics::DiagnosticEngine& diagnostics);
+    static void pushCollectTemplateChildren(
+        ast::AstNode* node,
+        const std::string& currentNamespace,
+        const std::string& ownerName,
+        bool insideGenericType,
+        bool genericType,
+        std::vector<CollectFrame>& stack);
+    void processCollectTemplateFrame(
+        ProjectSyntaxUnit& unit,
+        CollectFrame frame,
+        std::vector<CollectFrame>& stack,
+        diagnostics::DiagnosticEngine& diagnostics);
 
     bool mergeTraitImplementations(
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics);
+    void collectTraitImplementationNodes(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const std::string& parentNamespace,
+        std::vector<LocatedNode>& templates,
+        std::vector<LocatedNode>& implementations);
+    std::string genericParameterShape(const ast::AstNode* node) const;
+    std::string genericConstraintShape(const ast::AstNode* node) const;
+    ast::AstNode* findTraitImplementationOwner(
+        const std::vector<LocatedNode>& templates,
+        const LocatedNode& implementation) const;
+    static bool traitImplementationHasDirectTarget(
+        const ast::AstNode* implementation,
+        const ast::TypeSyntax* target);
+    bool mergeTraitImplementation(
+        const std::vector<LocatedNode>& templates,
+        const LocatedNode& implementation,
+        diagnostics::DiagnosticEngine& diagnostics);
     bool collectAssociatedItems(
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics);
+    void collectAssociatedItemNodes(
+        ast::AstNode* node,
+        const std::string& parentNamespace,
+        const std::string& parentOwner,
+        std::vector<LocatedNode>& traits,
+        std::vector<LocatedNode>& owners);
+    void collectAssociatedItemUnits(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        std::vector<LocatedNode>& traits,
+        std::vector<LocatedNode>& owners);
+    bool indexTraitAssociatedItems(
+        const std::vector<LocatedNode>& traits,
+        std::unordered_map<std::string, const ast::AstNode*>& traitTypes,
+        std::unordered_map<std::string, const ast::AstNode*>& traitConstants,
+        std::unordered_map<std::string, const LocatedNode*>& traitsByName,
+        diagnostics::DiagnosticEngine& diagnostics);
+    static void collectDirectAssociatedItemKeys(
+        const LocatedNode& owner,
+        const std::string& ownerName,
+        std::unordered_set<std::string>& directTypeKeys,
+        std::unordered_set<std::string>& directConstantKeys);
+    std::string associatedTraitName(
+        const LocatedNode& owner,
+        const ast::TypeSyntax* base,
+        const std::unordered_map<std::string, const LocatedNode*>& traitsByName) const;
+    static std::unordered_map<std::string, const ast::TypeSyntax*>
+        associatedTraitSubstitutions(
+            const LocatedNode& trait,
+            const ast::TypeSyntax* base);
+    bool inheritAssociatedTypes(
+        const LocatedNode& owner,
+        const std::string& ownerName,
+        const std::string& traitName,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        const std::unordered_map<std::string, const ast::AstNode*>& traitTypes,
+        const std::unordered_set<std::string>& directTypeKeys,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool inheritAssociatedConstants(
+        const LocatedNode& owner,
+        const std::string& ownerName,
+        const std::string& traitName,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        const std::unordered_map<std::string, const ast::AstNode*>& traitConstants,
+        const std::unordered_set<std::string>& directConstantKeys,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateAssociatedConstantRequirement(
+        const LocatedNode& owner,
+        const std::string& ownerName,
+        const std::string& traitName,
+        const ast::AstNode* requirement,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateAssociatedRequirements(
+        const LocatedNode& owner,
+        const std::string& ownerName,
+        const std::string& traitName,
+        const LocatedNode& trait,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool collectOwnerAssociatedItems(
+        const LocatedNode& owner,
+        const std::unordered_map<std::string, const ast::AstNode*>& traitTypes,
+        const std::unordered_map<std::string, const ast::AstNode*>& traitConstants,
+        const std::unordered_map<std::string, const LocatedNode*>& traitsByName,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool visitAssociatedProjection(
+        const std::string& key,
+        std::unordered_map<std::string, unsigned>& projectionState,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateAssociatedProjections(diagnostics::DiagnosticEngine& diagnostics);
     bool registerAssociatedItems(
         const ast::AstNode* owner,
         std::string_view ownerName,
@@ -536,6 +331,16 @@ private:
         std::string ownerName,
         GenericLookupScope scope,
         const ast::AstNode* rootSyntax);
+    void addDependencyImportedNamespace(
+        GenericLookupScope& scope,
+        std::string candidate) const;
+    void collectDependencyImports(
+        const ast::AstNode* node,
+        const std::string& currentNamespace,
+        GenericLookupScope& scope) const;
+    void collectBodyDependencyImports(
+        const ast::AstNode* node,
+        GenericLookupScope& scope) const;
     void collectTypeDependency(
         TemplateState& root,
         ProjectSyntaxUnit& unit,
@@ -603,44 +408,17 @@ private:
             ValueBinding(
                 std::string bindingName,
                 const ast::TypeSyntax* bindingType,
-                std::shared_ptr<ValueBinding> bindingParent)
-                : name(std::move(bindingName)), type(bindingType), parent(std::move(bindingParent))
-            {
-            }
+                std::shared_ptr<ValueBinding> bindingParent);
 
-            ~ValueBinding() noexcept
-            {
-                // A persistent scope can contain thousands of fields.  Letting shared_ptr destroy
-                // the unique tail recursively consumes one native stack frame per binding.  Peel
-                // that tail here so each node is destroyed with an empty parent and teardown stays
-                // iterative; stop as soon as an ancestor is still shared by another scope.
-                while (parent && parent.use_count() == 1)
-                {
-                    std::shared_ptr<ValueBinding> ancestor = std::move(parent);
-                    parent = std::move(ancestor->parent);
-                    ancestor->parent.reset();
-                }
-            }
+            ~ValueBinding() noexcept;
 
             std::string name;
             const ast::TypeSyntax* type = nullptr;
             std::shared_ptr<ValueBinding> parent;
         };
         std::shared_ptr<ValueBinding> valueTypes;
-        void addValueType(std::string name, const ast::TypeSyntax* type)
-        {
-            valueTypes = std::make_shared<ValueBinding>(
-                std::move(name), type, std::move(valueTypes));
-        }
-        const ast::TypeSyntax* findValueType(std::string_view name) const noexcept
-        {
-            for (const ValueBinding* binding = valueTypes.get(); binding != nullptr;
-                 binding = binding->parent.get())
-            {
-                if (binding->name == name) return binding->type;
-            }
-            return nullptr;
-        }
+        void addValueType(std::string name, const ast::TypeSyntax* type);
+        const ast::TypeSyntax* findValueType(std::string_view name) const noexcept;
         // By-reference parameter types carry a trailing Pointer modifier for ABI representation.
         // Preserve the source pass kind separately so structural pre-Sema type discovery can look
         // through that wrapper without losing the readonly meaning of `in`.
@@ -689,6 +467,8 @@ private:
         std::string stableKey;
     };
 
+    struct ReservedDemand;
+
     // NSC305-G09. The private output of a specialization worker (the committer merges it by the
     // reserved ordinal). The clone lives in the worker's arena and is linked on merge.
     struct SpecializationProduct final
@@ -727,39 +507,115 @@ private:
         std::string associatedError;
         SourceRange associatedErrorRange{};
 
-        void save(const ProjectGenericModel& model)
-        {
-            projectOrdinal = model.currentInstantiationProjectOrdinal_;
-            namespaceName = model.currentInstantiationNamespace_;
-            range = model.currentInstantiationRange_;
-            overloadGroup = model.currentOverloadGroup_;
-            packSubstitutions = model.activePackSubstitutions_;
-            packError = model.packMaterializationError_;
-            packErrorRange = model.packMaterializationErrorRange_;
-            associatedProjections = model.activeAssociatedProjections_;
-            associatedError = model.associatedProjectionError_;
-            associatedErrorRange = model.associatedProjectionErrorRange_;
-        }
-        void restore(ProjectGenericModel& model) const
-        {
-            model.currentInstantiationProjectOrdinal_ = projectOrdinal;
-            model.currentInstantiationNamespace_ = namespaceName;
-            model.currentInstantiationRange_ = range;
-            model.currentOverloadGroup_ = overloadGroup;
-            model.activePackSubstitutions_ = packSubstitutions;
-            model.packMaterializationError_ = packError;
-            model.packMaterializationErrorRange_ = packErrorRange;
-            model.activeAssociatedProjections_ = associatedProjections;
-            model.associatedProjectionError_ = associatedError;
-            model.associatedProjectionErrorRange_ = associatedErrorRange;
-        }
+        void save(const ProjectGenericModel& model);
+        void restore(ProjectGenericModel& model) const;
     };
+
+    void expandAliasesForBuild(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool mergeTraitImplementationsForBuild(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool buildOpaqueResultsForBuild(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void indexOrdinaryCallableReturnTypes(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units);
+    bool collectAssociatedItemsForBuild(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void collectTemplatesForBuild(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void disambiguateTemplateCanonicalKeys();
+    void buildTemplateIndexes();
+    void discoverTemplateDependenciesForBuild(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units);
+    void publishTemplateRecordsForBuild(diagnostics::DiagnosticEngine& diagnostics);
+    void seedImportedSpecializationsForBuild(
+        std::span<const PrecompiledGenericSpecialization> precompiledSpecializations);
+    void discoverRootDemandsForBuild(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool materializePendingDemandsForBuild(diagnostics::DiagnosticEngine& diagnostics);
+    void finalizeBuildState();
 
     bool specializeGenericLambdaCall(
         ProjectSyntaxUnit& unit,
         ast::AstNode* call,
         const GenericLookupScope::GenericLambda& lambda,
         const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool collectExplicitGenericLambdaArguments(
+        const ast::AstNode* call,
+        const std::vector<ast::GenericParameterSyntax>& parameters,
+        std::unordered_map<std::string, ast::TypeSyntax*>& inferred,
+        std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>>& packSubstitutions,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool inferGenericLambdaArgumentsFromValues(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* call,
+        const ast::AstNode* source,
+        const GenericTemplateRecord& inferenceRecord,
+        const std::unordered_set<std::string>& names,
+        const GenericLookupScope& scope,
+        std::unordered_map<std::string, ast::TypeSyntax*>& inferred,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool buildGenericLambdaSubstitutions(
+        const ast::AstNode* call,
+        const std::vector<ast::GenericParameterSyntax>& parameters,
+        const std::unordered_map<std::string, ast::TypeSyntax*>& inferred,
+        const std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>>& packSubstitutions,
+        std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void markGenericLambdaRecursiveCalls(ast::AstNode* node, const std::string& localName);
+    void inferGenericLambdaReturnType(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* specialized,
+        const GenericLookupScope& scope);
+    std::size_t registerGenericLambdaTemplate(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* source);
+    GenericSpecializationRecord createGenericLambdaSpecialization(
+        const ast::AstNode* call,
+        const ast::AstNode* source,
+        ast::AstNode* specialized,
+        std::size_t templateOrdinal,
+        const std::vector<ast::GenericParameterSyntax>& parameters,
+        const std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>>& packSubstitutions,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions) const;
+    void appendGenericLambdaSpecializationArguments(
+        const std::vector<ast::GenericParameterSyntax>& parameters,
+        const std::unordered_map<std::string, std::vector<const ast::TypeSyntax*>>& packSubstitutions,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        GenericSpecializationRecord& specialization) const;
+    std::optional<std::string> synthesizeGenericLambdaDelegate(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* call,
+        const GenericLookupScope::GenericLambda& local,
+        const ast::AstNode* source,
+        ast::AstNode* lambda,
+        std::string_view suffix,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool rewriteGenericLambdaCall(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* call,
+        const GenericLookupScope::GenericLambda& local,
+        const ast::AstNode* source,
+        ast::AstNode* specialized,
+        const std::string& instanceKey,
+        std::size_t instanceOrdinal,
+        bool captures,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool materializeGenericLambdaCarrier(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* call,
+        const GenericLookupScope::GenericLambda& local,
+        const ast::AstNode* source,
+        ast::AstNode* specialized,
+        const std::string& instanceKey,
+        bool captures,
         diagnostics::DiagnosticEngine& diagnostics);
 
     bool expandAliasesInNode(
@@ -768,6 +624,11 @@ private:
         std::string namespaceName,
         GenericLookupScope scope,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool expandAliasesForNode(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics);
 
     bool expandTypeAliases(
         ProjectSyntaxUnit& unit,
@@ -775,6 +636,12 @@ private:
         const GenericLookupScope& scope,
         diagnostics::DiagnosticEngine& diagnostics,
         std::vector<std::string>& expansionStack);
+    bool applyExpandedAliasSyntax(
+        ast::TypeSyntax* syntax,
+        ast::TypeSyntax* expanded,
+        const ast::AstNode* declaration,
+        ast::OwnershipQualifierSyntaxKind writtenOwnership,
+        diagnostics::DiagnosticEngine& diagnostics);
 
     ast::TypeSyntax* cloneAliasType(
         ast::AstArena& arena,
@@ -790,6 +657,13 @@ private:
         GenericLookupScope scope,
         bool insideTemplate,
         diagnostics::DiagnosticEngine& diagnostics);
+    void scheduleProcessedNodeChildren(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const std::string& currentNamespace,
+        const std::string& ownerName,
+        const GenericLookupScope& currentScope,
+        std::vector<ProcessFrame>& frames);
 
     // NSC305-G08. Builds the lexical scope for one node (namespace, using directives/aliases,
     // expected return type, parameter/field snapshot) -- the discovery half of processNode.
@@ -810,6 +684,48 @@ private:
         const std::string& ownerName,
         GenericLookupScope& currentScope,
         bool insideTemplate,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void prepareMatchExpressionScope(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        GenericLookupScope& scope);
+    void processNodeGenericConstraints(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const std::string& currentNamespace,
+        GenericLookupScope& currentScope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool shouldSkipTemplateNode(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const std::string& currentNamespace,
+        GenericLookupScope& currentScope,
+        bool templateNode,
+        bool insideTemplate,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ast::TypeSyntax* declarationExpectedType(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* node);
+    void processNodePrimaryTypeSyntax(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const std::string& currentNamespace,
+        GenericLookupScope& currentScope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void processNodeGenericCalls(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const std::string& currentNamespace,
+        const std::string& ownerName,
+        GenericLookupScope& currentScope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void applyNodeExpectedType(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* node,
+        const ast::TypeSyntax* expectedDeclarationType,
+        const std::string& currentNamespace,
+        const std::string& ownerName,
+        GenericLookupScope& currentScope,
         diagnostics::DiagnosticEngine& diagnostics);
 
     void collectBodyTypeSpecializationDemand(
@@ -833,6 +749,24 @@ private:
         // NSC305-G08. When non-null, receives the canonical specialization key of the materialized
         // type specialization (the SpecializationId that the demand-driven planner will use).
         std::string* outSpecializationKey = nullptr);
+    std::optional<bool> processNestedTypeSyntax(
+        ProjectSyntaxUnit& unit,
+        ast::TypeSyntax* syntax,
+        const std::string& namespaceName,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void recordDeclaredTypeIdentity(
+        ast::TypeSyntax* syntax,
+        std::size_t projectOrdinal,
+        const std::string& namespaceName,
+        const GenericLookupScope& scope);
+    bool validateGenericTypeArgumentCount(
+        const TemplateState& state,
+        const ast::TypeSyntax* syntax,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool hasOpenGenericParameter(
+        const ast::TypeSyntax* syntax,
+        const GenericLookupScope& scope) const;
     // NSC305-G08. Materializes a resolved closed type and rewrites the source spelling (the
     // "rewrite" half of the demand/rewrite split). Returns false on error.
     bool materializeTypeSyntax(
@@ -851,6 +785,27 @@ private:
         const std::string& namespaceName);
     // NSC305-G08. Executes the collected type demands in waves (the apply half of the two-pass).
     bool executeTypeDemandWaves(diagnostics::DiagnosticEngine& diagnostics);
+    void applyTypeDemandContext(const GenericTypeDemand& demand);
+    std::vector<ReservedDemand> reserveTypeDemandWave(
+        std::vector<GenericTypeDemand>& wave,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::string applyReservedTypeDemand(
+        ReservedDemand& reservedDemand,
+        SpecializationProduct* preClonedProduct,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void cloneReservedTypeDemands(
+        std::vector<ReservedDemand>& reserved,
+        std::vector<SpecializationProduct>& products);
+    bool applyClonedTypeDemands(
+        std::vector<ReservedDemand>& reserved,
+        std::vector<SpecializationProduct>& products,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool applyReservedTypeDemands(
+        std::vector<ReservedDemand>& reserved,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool executeTypeDemandWave(
+        std::vector<GenericTypeDemand>& wave,
+        diagnostics::DiagnosticEngine& diagnostics);
 
     bool processGenericCall(
         ProjectSyntaxUnit& unit,
@@ -890,6 +845,100 @@ private:
         const ast::TypeSyntax* expectedType = nullptr,
         bool reportFailure = true,
         std::size_t inferenceDepth = 0);
+    std::vector<TemplateState*> resolveGenericInferenceCandidates(
+        const ProjectSyntaxUnit& unit,
+        const std::string& namespaceName,
+        const std::string& ownerName,
+        const GenericLookupScope& scope,
+        const ast::AstNode* callee,
+        const std::string& methodName);
+    void inferNestedGenericCallArguments(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* call,
+        const std::string& namespaceName,
+        const std::string& ownerName,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::size_t inferenceDepth);
+    bool hasApplicableNonGenericOverload(
+        const std::vector<TemplateState*>& candidates,
+        const ast::AstNode* call,
+        const std::string& methodName,
+        const ast::TypeSyntax* expectedType) const;
+    std::size_t genericPatternSpecificity(
+        const ast::TypeSyntax* pattern,
+        const std::unordered_set<std::string>& parameters) const;
+    bool mapGenericCallArguments(
+        const ast::AstNode* call,
+        const TemplateState& candidate,
+        std::vector<const ast::AstNode*>& parameters,
+        std::vector<std::optional<std::size_t>>& mapping,
+        bool& extensionCandidate) const;
+    bool inferGenericCandidateEvidence(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* call,
+        TemplateState& candidate,
+        const std::vector<const ast::AstNode*>& parameters,
+        const std::vector<std::optional<std::size_t>>& mapping,
+        bool extensionCandidate,
+        const std::unordered_set<std::string>& genericParameters,
+        const GenericLookupScope& scope,
+        const ast::TypeSyntax* expectedType,
+        std::unordered_map<std::string, ast::TypeSyntax*>& inferred);
+    bool applyGenericCandidateContext(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* call,
+        TemplateState& candidate,
+        const std::vector<const ast::AstNode*>& parameters,
+        const std::vector<std::optional<std::size_t>>& mapping,
+        const std::unordered_set<std::string>& genericParameters,
+        const std::string& namespaceName,
+        const std::string& ownerName,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::size_t inferenceDepth,
+        std::unordered_map<std::string, ast::TypeSyntax*>& inferred);
+    bool inferGenericCandidate(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* call,
+        TemplateState& candidate,
+        std::size_t candidateCount,
+        const std::string& namespaceName,
+        const std::string& ownerName,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ast::TypeSyntax* expectedType,
+        std::size_t inferenceDepth,
+        std::vector<ast::TypeSyntax*>& arguments,
+        std::size_t& specificity);
+    void collectGenericCallInferences(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* call,
+        const std::vector<TemplateState*>& candidates,
+        const std::string& namespaceName,
+        const std::string& ownerName,
+        const GenericLookupScope& scope,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ast::TypeSyntax* expectedType,
+        std::size_t inferenceDepth,
+        std::vector<std::tuple<
+            TemplateState*, std::vector<ast::TypeSyntax*>, std::size_t>>& successes);
+    void recordGenericInferenceReturnType(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* call,
+        const std::vector<std::tuple<
+            TemplateState*, std::vector<ast::TypeSyntax*>, std::size_t>>& successes);
+    bool haveSameGenericInferenceArguments(
+        const std::tuple<TemplateState*, std::vector<ast::TypeSyntax*>, std::size_t>& candidate,
+        const std::tuple<TemplateState*, std::vector<ast::TypeSyntax*>, std::size_t>& first) const;
+    bool commitGenericCallInference(
+        ProjectSyntaxUnit& unit,
+        ast::AstNode* call,
+        const std::string& methodName,
+        bool reportFailure,
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::vector<std::tuple<
+            TemplateState*, std::vector<ast::TypeSyntax*>, std::size_t>>& successes);
 
     bool applyExpectedTypeToExpression(
         ProjectSyntaxUnit& unit,
@@ -909,11 +958,52 @@ private:
         const std::unordered_set<std::string>& methodParameters,
         const GenericLookupScope& scope,
         std::unordered_map<std::string, ast::TypeSyntax*>& inferred);
+    TemplateState* resolveLambdaDelegate(
+        const ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* delegatePattern);
 
     ast::TypeSyntax* inferExpressionType(
         ProjectSyntaxUnit& unit,
         const ast::AstNode* expression,
         const GenericLookupScope& scope);
+    static ast::TypeSyntax* makeInferredBuiltinType(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* expression,
+        lexer::TokenKind kind,
+        std::string name);
+    ast::TypeSyntax* cloneInferredType(
+        ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* source);
+    ast::TypeSyntax* inferNamedExpressionType(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* expression,
+        const GenericLookupScope& scope);
+    ast::TypeSyntax* inferIntegerLiteralType(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* expression);
+    ast::TypeSyntax* inferConstructionExpressionType(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* expression);
+    ast::TypeSyntax* inferUnaryExpressionType(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* expression,
+        const GenericLookupScope& scope);
+    ast::TypeSyntax* inferConditionalExpressionType(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* expression,
+        const GenericLookupScope& scope);
+    static bool binaryExpressionReturnsBoolean(lexer::TokenKind tokenKind);
+    ast::TypeSyntax* inferBinaryExpressionType(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* expression,
+        const GenericLookupScope& scope);
+    ast::TypeSyntax* inferTupleExpressionType(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* expression,
+        const GenericLookupScope& scope);
+    ast::TypeSyntax* inferCallExpressionType(
+        ProjectSyntaxUnit& unit,
+        const ast::AstNode* expression);
 
     bool inferTypeArguments(
         ProjectSyntaxUnit& unit,
@@ -922,10 +1012,98 @@ private:
         const GenericTemplateRecord& record,
         const std::unordered_set<std::string>& parameters,
         std::unordered_map<std::string, ast::TypeSyntax*>& inferred);
+    bool inferArrayExtentTypeArguments(
+        ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* pattern,
+        const ast::TypeSyntax* actual,
+        const GenericTemplateRecord& record,
+        std::size_t modifierPrefix,
+        std::unordered_map<std::string, ast::TypeSyntax*>& inferred);
+    bool recordInferredTypeArgument(
+        const std::string& parameterName,
+        ast::TypeSyntax* value,
+        std::unordered_map<std::string, ast::TypeSyntax*>& inferred) const;
+    std::optional<bool> inferConstantTypeArgument(
+        ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* pattern,
+        const ast::TypeSyntax* actual,
+        const GenericTemplateRecord& record,
+        const std::unordered_set<std::string>& parameters,
+        std::unordered_map<std::string, ast::TypeSyntax*>& inferred);
+    ast::TypeSyntax* cloneInferredTypeArgument(
+        ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* pattern,
+        const ast::TypeSyntax* actual,
+        std::size_t modifierPrefix);
+    std::optional<bool> inferNamedTypeArgument(
+        ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* pattern,
+        const ast::TypeSyntax* actual,
+        const GenericTemplateRecord& record,
+        const std::unordered_set<std::string>& parameters,
+        std::size_t modifierPrefix,
+        std::unordered_map<std::string, ast::TypeSyntax*>& inferred);
 
     bool normalizeGenericArguments(
         const GenericTemplateRecord& record,
         std::span<ast::TypeSyntax* const> arguments,
+        SourceRange range,
+        diagnostics::DiagnosticEngine& diagnostics);
+    static bool validateGenericPackArgumentCount(
+        std::size_t argumentCount,
+        const std::optional<std::size_t>& packIndex,
+        SourceRange range,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::string structuralConstGenericTypeKey(
+        const ast::TypeSyntax* type) const;
+    std::string expectedConstGenericTypeKey(
+        const ast::GenericParameterSyntax& parameter) const;
+    bool normalizeEnumConstGenericArgument(
+        ast::TypeSyntax* argument,
+        const std::string& expectedType,
+        std::string& argumentType,
+        std::string& argumentValue) const;
+    bool validateConstGenericArgumentKind(
+        const GenericTemplateRecord& record,
+        const ast::GenericParameterSyntax& parameter,
+        ast::GenericParameterSyntaxKind kind,
+        std::size_t parameterIndex,
+        ast::TypeSyntax* argument,
+        bool constant,
+        const std::string& expectedType,
+        const std::string& constSubject,
+        SourceRange range,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    static std::optional<bool> validateStructuralConstGenericArgument(
+        const GenericTemplateRecord& record,
+        const ast::GenericParameterSyntax& parameter,
+        std::size_t parameterIndex,
+        ast::TypeSyntax* argument,
+        const std::string& expectedType,
+        const std::string& argumentType,
+        const std::string& argumentValue,
+        const std::string& constSubject,
+        diagnostics::DiagnosticEngine& diagnostics);
+    static bool integralConstGenericValueFits(
+        std::uint64_t value,
+        unsigned expectedWidth,
+        bool expectedSigned,
+        bool argumentSigned);
+    static bool normalizeIntegralConstGenericArgument(
+        const GenericTemplateRecord& record,
+        const ast::GenericParameterSyntax& parameter,
+        std::size_t parameterIndex,
+        ast::TypeSyntax* argument,
+        const std::string& expectedType,
+        const std::string& argumentType,
+        const std::string& argumentValue,
+        const std::string& constSubject,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool normalizeGenericArgument(
+        const GenericTemplateRecord& record,
+        std::span<ast::TypeSyntax* const> arguments,
+        std::size_t index,
+        const std::optional<std::size_t>& packIndex,
         SourceRange range,
         diagnostics::DiagnosticEngine& diagnostics);
 
@@ -1017,6 +1195,13 @@ private:
         // materialized (or cache-hit) type specialization, so callers avoid a reverse scan of
         // `specializations_` by `specializedName`.
         std::string* outSpecializationKey = nullptr);
+    bool restoreTypeSpecializationFromCache(
+        TemplateState& state,
+        const std::string& key,
+        const std::string& specializedName,
+        const std::vector<std::string>& identities,
+        const SpecializationContext& callerContext,
+        diagnostics::DiagnosticEngine& diagnostics);
     // NSC305-G09. Merges a produced specialization clone into its reserved slot: sets the terminal
     // name/metadata, attaches the clone to the template parent, and marks the record Ready.
     void commitTypeSpecialization(
@@ -1109,6 +1294,51 @@ private:
         // especializan con ESTE nombre y se convierten en sobrecargas ordinarias. Vacio para el
         // caso normal, donde el nombre lo deriva la propia clave.
         std::string_view sharedName = {});
+    std::string methodSpecializedName(
+        const TemplateState& state,
+        std::size_t argumentCount,
+        const std::vector<std::string>& spellings,
+        const std::string& key,
+        std::string_view sharedName) const;
+    bool beginMethodSpecialization(
+        const TemplateState& state,
+        const std::string& key,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::size_t reserveMethodSpecialization(
+        TemplateState& state,
+        const std::string& key,
+        const std::string& specializedName,
+        const std::vector<std::string>& identities);
+    ast::AstNode* cloneMethodSpecialization(
+        TemplateState& state,
+        std::span<ast::TypeSyntax* const> arguments,
+        const SpecializationContext& callerContext,
+        std::string& packError,
+        SourceRange& packErrorRange,
+        std::string& associatedError,
+        SourceRange& associatedErrorRange);
+    bool reportMethodSpecializationError(
+        const std::string& key,
+        const std::string& packError,
+        const SourceRange& packErrorRange,
+        const std::string& associatedError,
+        const SourceRange& associatedErrorRange,
+        const SpecializationContext& callerContext,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void commitMethodSpecialization(
+        TemplateState& state,
+        ast::AstNode* clone,
+        const std::string& key,
+        const std::string& specializedName,
+        std::size_t ordinal);
+    std::string completeMethodSpecialization(
+        TemplateState& state,
+        ast::AstNode* clone,
+        const std::string& key,
+        const std::string& specializedName,
+        std::size_t ordinal,
+        const SpecializationContext& callerContext,
+        diagnostics::DiagnosticEngine& diagnostics);
 
     // NSC305-G07. Shared steps of ensureTypeSpecialization/ensureMethodSpecialization so the two
     // no longer duplicate the key, spelling/identity and substitution/pack setup. Pure helpers;
@@ -1157,6 +1387,28 @@ private:
         const ast::TypeSyntax* source,
         const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
         std::size_t modifierLimit = std::numeric_limits<std::size_t>::max());
+    ast::TypeSyntax* clonePackType(
+        ast::AstArena& arena,
+        const ast::TypeSyntax* source,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::size_t modifierLimit);
+    ast::TypeSyntax* cloneSubstitutedOrGenericType(
+        ast::AstArena& arena,
+        const ast::TypeSyntax* source,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::size_t modifierLimit,
+        bool& substituted);
+    void appendCloneModifiers(
+        ast::AstArena& arena,
+        const ast::TypeSyntax* source,
+        ast::TypeSyntax* result,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::size_t modifierLimit,
+        bool updateIdentity);
+    void applyClonedTypeSurface(
+        const ast::TypeSyntax* source,
+        ast::TypeSyntax* result,
+        bool substituted);
     // NSC305-G06. The non-substitution branch of cloneType: creates the shallow result, clones the
     // function return/error types and type arguments, and carries forward origin tags.
     ast::TypeSyntax* cloneTypeGeneric(
@@ -1164,6 +1416,20 @@ private:
         const ast::TypeSyntax* source,
         const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
         std::size_t modifierLimit);
+    bool isSpecialCloneType(
+        const ast::TypeSyntax* syntax,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions) const;
+    void seedCloneTypeWork(
+        const ast::TypeSyntax* source,
+        ast::TypeSyntax* result,
+        std::vector<TypeWork>& work) const;
+    ast::TypeSyntax* cloneTypeWorkItem(
+        ast::AstArena& arena,
+        const TypeWork& item,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::size_t modifierLimit,
+        std::vector<TypeWork>& work);
+    static void attachClonedType(const TypeWork& item, ast::TypeSyntax* child);
     // NSC305-G06. The shallow (non-recursive) part of the generic type clone: creates the result,
     // copies the function flags and carries forward origin tags. Return/error/argument cloning is
     // left to the caller.
@@ -1177,6 +1443,17 @@ private:
         const ast::TypeSyntax* source,
         const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
         std::size_t modifierLimit);
+    ast::TypeSyntax* cloneProjectionResult(
+        ast::AstArena& arena,
+        const ast::TypeSyntax* source,
+        const ast::TypeSyntax* current,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::size_t modifierLimit);
+    ast::TypeSyntax* recoverAssociatedProjectionFailure(
+        ast::AstArena& arena,
+        const ast::TypeSyntax* source,
+        bool cycle,
+        std::string_view detail);
 
     std::vector<ast::TypeSyntax*> cloneExpandedTypeArgument(
         ast::AstArena& arena,
@@ -1204,6 +1481,21 @@ private:
         const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
         std::string_view rewrittenContainingTypeName,
         std::string_view originalContainingTypeName);
+    void cloneGenericConstraints(
+        ast::AstArena& arena,
+        const ast::AstNode* source,
+        ast::AstNode* result,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions);
+    bool isLayoutQueryOfSubstitutedParameter(
+        const ast::AstNode* node,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions) const;
+    void cloneNodeChildrenIterative(
+        ast::AstArena& arena,
+        const ast::AstNode* source,
+        ast::AstNode* result,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::string_view rewrittenContainingTypeName,
+        std::string_view originalContainingTypeName);
     // NSC305-G06. Clones the special (non-generic) node cases -- member-expression associated
     // constant, value-pack fold, and identifier const substitution. Returns nullptr when the node
     // is not a special case so the caller falls through to the generic path.
@@ -1222,8 +1514,21 @@ private:
         const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
         std::string_view rewrittenContainingTypeName,
         std::string_view originalContainingTypeName);
+    ast::AstNode* foldValuePackAt(
+        ast::AstArena& arena,
+        const ast::AstNode* source,
+        const std::vector<const ast::TypeSyntax*>& pack,
+        const std::unordered_map<std::string, const ast::TypeSyntax*>& substitutions,
+        std::string_view rewrittenContainingTypeName,
+        std::string_view originalContainingTypeName);
+    ast::AstNode* foldValuePackReduction(
+        ast::AstArena& arena,
+        const ast::AstNode* source,
+        const std::string& operation,
+        const std::vector<const ast::TypeSyntax*>& pack);
 
     std::string typeSpelling(const ast::TypeSyntax* syntax) const;
+    std::string functionTypeSpelling(const ast::TypeSyntax* syntax) const;
     std::string typeSpecializationIdentity(const ast::TypeSyntax* syntax) const;
     const std::string* lookupResolvedTypeIdentity(const ast::TypeSyntax* syntax) const noexcept;
     const DeclaredTypeOrigin* lookupResolvedTypeOrigin(const ast::TypeSyntax* syntax) const noexcept;
@@ -1235,6 +1540,9 @@ private:
         std::size_t projectOrdinal,
         std::string_view namespaceName,
         const GenericLookupScope& scope) const;
+    const DeclaredTypeIdentity* resolveModuleQualifiedDeclaredTypeIdentity(
+        std::string_view writtenName,
+        std::size_t projectOrdinal) const;
     static void appendTypeModifiers(std::string& identity, const ast::TypeSyntax* syntax);
     static std::string namespaceAppend(std::string_view prefix, std::string_view suffix);
     static std::string sanitize(std::string_view text);
@@ -1272,19 +1580,9 @@ private:
     struct SpecializationPlanner final
     {
         std::unordered_map<std::string, std::size_t> byKey;
-        std::optional<std::size_t> request(const std::string& key) const
-        {
-            const auto found = byKey.find(key);
-            return found == byKey.end() ? std::optional<std::size_t>{} : found->second;
-        }
-        void commit(const std::string& key, std::size_t ordinal)
-        {
-            byKey.emplace(key, ordinal);
-        }
-        void rollback(const std::string& key)
-        {
-            byKey.erase(key);
-        }
+        std::optional<std::size_t> request(const std::string& key) const;
+        void commit(const std::string& key, std::size_t ordinal);
+        void rollback(const std::string& key);
     };
     SpecializationPlanner specializationPlanner_;
     std::unordered_map<const ast::AstNode*, std::size_t> specializationBySyntax_;

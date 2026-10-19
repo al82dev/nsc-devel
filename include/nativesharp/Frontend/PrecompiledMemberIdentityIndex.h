@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/PrecompiledMemberIdentityMatch.h"
+#include "nativesharp/Frontend/PrecompiledMemberIdentityMatchKind.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 
 #include <cstddef>
@@ -9,20 +11,6 @@
 
 namespace nativesharp::frontend
 {
-enum class PrecompiledMemberIdentityMatchKind
-{
-    Missing,
-    Unique,
-    Ambiguous
-};
-
-struct PrecompiledMemberIdentityMatch final
-{
-    PrecompiledMemberIdentityMatchKind kind =
-        PrecompiledMemberIdentityMatchKind::Missing;
-    const PrecompiledMemberIdentity* identity = nullptr;
-};
-
 // A short-lived view over one decoded NSMETA set. The caller owns the identity strings and must
 // keep them alive for the lifetime of the index.
 class PrecompiledMemberIdentityIndex final

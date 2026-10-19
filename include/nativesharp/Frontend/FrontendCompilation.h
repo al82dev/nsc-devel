@@ -62,6 +62,8 @@ public:
 
 private:
     bool run(FileId fileId, bool requireMain);
+    bool buildHirMirAndCfg(StageBoundaryVerifier& boundaryVerifier);
+    bool buildDominanceSsaAndOptimization(StageBoundaryVerifier& boundaryVerifier);
 
     source::SourceManager sourceManager_;
     diagnostics::DiagnosticEngine diagnostics_;

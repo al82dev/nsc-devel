@@ -1,14 +1,13 @@
 #pragma once
 
+#include "nativesharp/Frontend/ClassDestructionPlan.h"
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <optional>
 #include <span>
-#include <string>
 #include <vector>
 
 namespace nativesharp::diagnostics
@@ -18,19 +17,6 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
-struct ClassDestructionPlan final
-{
-    std::size_t typeOrdinal = 0;
-    std::optional<std::size_t> explicitDestructorMemberOrdinal;
-    std::vector<std::size_t> destructorMemberOrdinals;
-    std::string destructionEntryName;
-    std::string objectDestructionEntryName;
-    std::string crossModuleCreateEntryName;
-    std::string crossModuleDestroyEntryName;
-    std::string crossModuleDeallocateEntryName;
-    std::uint16_t crossModuleLifetimeAbiMajor = 0;
-};
-
 class ProjectDestructionModel final
 {
 public:

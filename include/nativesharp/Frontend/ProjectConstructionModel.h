@@ -1,6 +1,15 @@
 #pragma once
 
 #include "nativesharp/AST/AstNode.h"
+#include "nativesharp/Frontend/ConstructionResolutionKind.h"
+#include "nativesharp/Frontend/ConstructorCandidateBinding.h"
+#include "nativesharp/Frontend/ConstructorInitializerBinding.h"
+#include "nativesharp/Frontend/ConstructorInitializerKind.h"
+#include "nativesharp/Frontend/ConstructorInitializerResolutionKind.h"
+#include "nativesharp/Frontend/ConstructorOwnershipTransfer.h"
+#include "nativesharp/Frontend/ImplicitDefaultConstructorBinding.h"
+#include "nativesharp/Frontend/ImplicitDefaultConstructorResolutionKind.h"
+#include "nativesharp/Frontend/ObjectConstructionBinding.h"
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
@@ -26,169 +35,6 @@ class DiagnosticEngine;
 namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess;
-
-enum class ConstructionResolutionKind
-{
-    ResolvedExplicit,
-    ResolvedImplicitDefault,
-    NoViableCandidate,
-    Ambiguous,
-    Inaccessible,
-    InvalidTarget
-};
-
-// NSC-LIMIT-010. Una transferencia de propiedad elegida por la resolucion de constructores: que
-// parametro la recibe y de donde sale. Es la misma informacion que una llamada ordinaria ya
-// registraba; el constructor no la tenia porque su resolucion no miraba propiedad en absoluto.
-struct ConstructorOwnershipTransfer final
-{
-    std::size_t parameterOrdinal = 0;
-    std::optional<std::size_t> sourceLocalOrdinal;
-    std::optional<std::size_t> sourceParameterOrdinal;
-};
-
-struct ConstructorCandidateBinding final
-{
-    std::optional<std::size_t> memberOrdinal;
-    bool implicitDefault = false;
-    bool accessible = false;
-    bool viable = false;
-    std::vector<ProjectImplicitConversion> conversions;
-    std::vector<std::size_t> argumentParameterOrdinals;
-    std::vector<std::size_t> defaultedParameterOrdinals;
-    std::vector<bool> parameterPackElements;
-    std::optional<std::size_t> parameterPackOrdinal;
-    bool usesExpandedParameterPack = false;
-    bool synthesizesEmptyParameterPack = false;
-    std::size_t defaultedParameterCount = 0;
-    // NSC-LIMIT-010. Viabilidad de PROPIEDAD por argumento, en paralelo a `conversions`, que solo
-    // lleva la fisica. Un candidato puede ser fisicamente valido y aun asi incumplir el contrato:
-    // `new Caja(duenio)` sin `move` convierte perfectamente y sigue siendo ilegal.
-    //
-    // Se guarda el veredicto de CADA argumento y no un booleano por candidato porque el
-    // diagnostico tiene que nombrar el argumento concreto y decir cual de los tres
-    // incumplimientos fue.
-    std::vector<OwnershipArgumentFit> ownershipFits;
-    // Parallel to conversions/ownershipFits. True means the physical conversion exists but a
-    // named move-only place would be copied into a by-value constructor parameter.
-    std::vector<bool> moveOnlyCopyRejects;
-    // Las transferencias que este candidato exigiria si saliera elegido.
-    std::vector<ConstructorOwnershipTransfer> ownershipTransfers;
-    // Argumentos que producen un string owned temporal prestado solo durante la construccion.
-    // No son transferencias: HIR les crea un owner oculto y lo destruye al terminar la expresion.
-    std::vector<std::size_t> fullExpressionBorrowArgumentOrdinals;
-};
-
-
-enum class ConstructorInitializerKind
-{
-    ImplicitBase,
-    ExplicitBase,
-    ExplicitThis
-};
-
-enum class ConstructorInitializerResolutionKind
-{
-    NoChainingRequired,
-    ResolvedExplicit,
-    ResolvedImplicitDefault,
-    NoViableCandidate,
-    Ambiguous,
-    Inaccessible,
-    Invalid
-};
-
-struct ConstructorInitializerBinding final
-{
-    ConstructorInitializerResolutionKind resolution = ConstructorInitializerResolutionKind::Invalid;
-    ConstructorInitializerKind kind = ConstructorInitializerKind::ImplicitBase;
-    const ast::AstNode* initializerSyntax = nullptr;
-    std::size_t constructorMemberOrdinal = 0;
-    std::size_t containingTypeOrdinal = 0;
-    std::optional<std::size_t> targetTypeOrdinal;
-    bool explicitInitializer = false;
-    std::vector<std::size_t> explicitConstructorMemberOrdinals;
-    std::vector<ConstructorCandidateBinding> evaluatedCandidates;
-    std::optional<std::size_t> selectedConstructorMemberOrdinal;
-    std::optional<std::size_t> selectedEntryConstructorMemberOrdinal;
-    bool selectedImplicitDefault = false;
-    std::vector<ProjectImplicitConversion> selectedConversions;
-    std::vector<std::size_t> selectedArgumentParameterOrdinals;
-    std::vector<bool> selectedParameterPackElements;
-    std::optional<std::size_t> selectedParameterPackOrdinal;
-    bool selectedUsesExpandedParameterPack = false;
-    bool selectedSynthesizesEmptyParameterPack = false;
-    std::vector<const ast::AstNode*> selectedDefaultArguments;
-    std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
-    // NSC-LIMIT-010: `this(...)` y `base(...)` transfieren propiedad con las mismas reglas
-    // que un `new`, asi que registran las mismas transferencias.
-    std::vector<ConstructorOwnershipTransfer> selectedOwnershipTransfers;
-    std::vector<std::size_t> selectedFullExpressionBorrowArgumentOrdinals;
-};
-
-enum class ImplicitDefaultConstructorResolutionKind
-{
-    NoBaseRequired,
-    ResolvedExplicitBaseEntry,
-    ResolvedImplicitBaseChain,
-    NoViableBaseConstructor,
-    InaccessibleBaseConstructor,
-    Invalid
-};
-
-struct ImplicitDefaultConstructorBinding final
-{
-    ImplicitDefaultConstructorResolutionKind resolution =
-        ImplicitDefaultConstructorResolutionKind::Invalid;
-    std::size_t typeOrdinal = 0;
-    std::optional<std::size_t> baseTypeOrdinal;
-    std::optional<std::size_t> directBaseConstructorMemberOrdinal;
-    std::optional<std::size_t> entryConstructorMemberOrdinal;
-};
-
-struct ObjectConstructionBinding final
-{
-    ConstructionResolutionKind resolution = ConstructionResolutionKind::InvalidTarget;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t callerMemberOrdinal = 0;
-    std::size_t targetTypeOrdinal = 0;
-    // C6 "struct members": `new Vec2(1, 2)` on a STRUCT means "initialize in place", not
-    // "allocate". Everything about resolving which constructor runs is identical to a class --
-    // same candidates, same overload rules, same argument conversions -- so only this flag and
-    // the lowering differ. See ProjectOopHirModel's ObjectCreationExpression case.
-    bool targetIsStruct = false;
-    // NS304-T13-F02: `new (allocator) T(...)` where `allocator : IAllocator`. The HIR desugars to
-    // `allocator.Allocate(size)` + placement construction on the returned pointer.
-    bool allocatorSelection = false;
-    std::string allocatorTypeKey;
-    std::optional<std::size_t> allocatorAllocateMemberOrdinal;
-    // NS304-T13-F07: the allocator's Deallocate member (provenance pair of Allocate).
-    std::optional<std::size_t> allocatorDeallocateMemberOrdinal;
-    // NS304-T13-F08: the explicit failure profile (None when `failure:` is absent).
-    ProjectAllocatorFailureProfile allocatorFailureProfile = ProjectAllocatorFailureProfile::None;
-    // NS304-T13-F08 `failure: result`: the Ok/Error factory members of Result<T,E>.
-    std::optional<std::size_t> allocatorResultOkFactoryMemberOrdinal;
-    std::optional<std::size_t> allocatorResultErrorFactoryMemberOrdinal;
-    std::string allocatorResultCarrierTypeKey;
-    std::string targetTypeKey;
-    std::vector<std::size_t> explicitConstructorMemberOrdinals;
-    std::vector<ConstructorCandidateBinding> evaluatedCandidates;
-    std::optional<std::size_t> selectedConstructorMemberOrdinal;
-    bool selectedImplicitDefault = false;
-    std::optional<std::size_t> implicitDefaultBaseConstructorMemberOrdinal;
-    std::vector<ProjectImplicitConversion> selectedConversions;
-    std::vector<std::size_t> selectedArgumentParameterOrdinals;
-    std::vector<bool> selectedParameterPackElements;
-    std::optional<std::size_t> selectedParameterPackOrdinal;
-    bool selectedUsesExpandedParameterPack = false;
-    bool selectedSynthesizesEmptyParameterPack = false;
-    std::vector<const ast::AstNode*> selectedDefaultArguments;
-    std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
-    // NSC-LIMIT-010. Las transferencias del candidato ELEGIDO, copiadas aqui para que quien
-    // lea el binding final no tenga que volver a recorrer los candidatos evaluados.
-    std::vector<ConstructorOwnershipTransfer> selectedOwnershipTransfers;
-    std::vector<std::size_t> selectedFullExpressionBorrowArgumentOrdinals;
-};
 
 class ProjectConstructionModel final
 {
@@ -222,13 +68,120 @@ private:
     void bindImplicitDefaultConstructor(
         std::size_t typeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    void bindExplicitBaseDefaultConstructor(
+        std::size_t typeOrdinal,
+        std::span<const std::size_t> baseConstructors,
+        ImplicitDefaultConstructorBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void bindImplicitBaseDefaultConstructor(
+        std::size_t typeOrdinal,
+        std::size_t baseTypeOrdinal,
+        ImplicitDefaultConstructorBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics);
     void bindConstructorInitializer(
         std::size_t constructorMemberOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool resolveConstructorInitializerTarget(
+        ConstructorInitializerBinding& binding,
+        const ClassMemberSymbol& constructor,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool collectConstructorInitializerArgumentTypes(
+        const ConstructorInitializerBinding& binding,
+        std::size_t constructorMemberOrdinal,
+        std::vector<MethodExpressionTypeBinding>& argumentTypes) const;
+    void bindImplicitConstructorInitializer(
+        ConstructorInitializerBinding& binding,
+        const ClassMemberSymbol& constructor,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void evaluateConstructorInitializerCandidates(
+        ConstructorInitializerBinding& binding,
+        std::size_t constructorMemberOrdinal,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        bool& anyAccessible,
+        bool& anyMatchingArity,
+        bool& accessibleMatchingArity) const;
+    void resolveConstructorInitializerCandidates(
+        ConstructorInitializerBinding& binding,
+        const ClassMemberSymbol& constructor,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        bool anyAccessible,
+        bool anyMatchingArity,
+        bool accessibleMatchingArity,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void selectConstructorInitializerCandidate(
+        ConstructorInitializerBinding& binding,
+        std::size_t selectedIndex) const;
+    void storeConstructorInitializerBinding(
+        std::size_t constructorMemberOrdinal,
+        ConstructorInitializerBinding&& binding);
     void validateThisConstructorCycles(diagnostics::DiagnosticEngine& diagnostics);
     void bindConstruction(
         const ProjectConstructionSite& site,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool initializeConstructionBinding(
+        const ProjectConstructionSite& site,
+        ObjectConstructionBinding& binding,
+        std::optional<std::size_t>& targetOrdinal,
+        bool& targetIsStruct,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void initializeConstructionAllocator(
+        const ProjectConstructionSite& site,
+        ObjectConstructionBinding& binding) const;
+    void bindImplicitConstruction(
+        ObjectConstructionBinding& binding,
+        std::size_t targetOrdinal,
+        std::size_t callerMemberOrdinal,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        bool targetIsStruct,
+        const ast::AstNode* expression,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void evaluateConstructionCandidates(
+        ObjectConstructionBinding& binding,
+        std::size_t callerMemberOrdinal,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        std::size_t constructorArgumentCount,
+        bool& anyAccessible,
+        bool& anyMatchingArity,
+        bool& accessibleMatchingArity) const;
+    bool resolveConstructionAccessibility(
+        ObjectConstructionBinding& binding,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        bool anyAccessible,
+        bool anyMatchingArity,
+        bool accessibleMatchingArity,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void resolveConstructionCandidates(
+        ObjectConstructionBinding& binding,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void selectConstructionCandidate(
+        ObjectConstructionBinding& binding,
+        std::size_t selectedIndex) const;
+    ConstructorCandidateBinding evaluateConstructorCandidate(
+        const ClassMemberSymbol& constructor,
+        std::size_t constructorOrdinal,
+        bool accessible,
+        std::span<ast::AstNode* const> arguments,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        const ProjectConversionClassifier& conversions,
+        bool& matchingArity) const;
+    void preferWholeParameterPackConversion(
+        const ClassMemberSymbol& constructor,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        const ProjectConversionClassifier& conversions,
+        ConstructorCandidateBinding& candidate) const;
+    void evaluateConstructorArgument(
+        const ClassMemberSymbol& constructor,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        std::size_t argumentOrdinal,
+        const ProjectConversionClassifier& conversions,
+        ConstructorCandidateBinding& candidate) const;
+    std::vector<std::size_t> viableConstructorCandidates(
+        const std::vector<ConstructorCandidateBinding>& candidates) const;
+    std::vector<std::size_t> nonDominatedConstructorCandidates(
+        const std::vector<ConstructorCandidateBinding>& candidates,
+        std::span<const std::size_t> viable) const;
     std::optional<MethodExpressionTypeBinding> expressionType(
         const ast::AstNode* syntax,
         std::size_t callerMemberOrdinal) const;

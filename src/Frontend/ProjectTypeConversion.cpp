@@ -322,6 +322,87 @@ ProjectImplicitConversion makeConversion(
 {
     return ProjectImplicitConversion{kind, rank, std::string(source), std::string(target), std::nullopt};
 }
+
+std::optional<ProjectImplicitConversion> classifyTupleImplicitConversion(
+    std::string_view sourceTypeKey,
+    std::string_view targetTypeKey)
+{
+    const std::optional<std::vector<std::string>> sourceTuple =
+        ProjectTypeConversion::tupleElementTypeKeys(sourceTypeKey);
+    const std::optional<std::vector<std::string>> targetTuple =
+        ProjectTypeConversion::tupleElementTypeKeys(targetTypeKey);
+    if (!sourceTuple.has_value() && !targetTuple.has_value()) return std::nullopt;
+    if (!sourceTuple.has_value() || !targetTuple.has_value() ||
+        sourceTuple->size() != targetTuple->size())
+        return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+    int rank = 0;
+    for (std::size_t index = 0; index < sourceTuple->size(); ++index)
+    {
+        const ProjectImplicitConversion element = ProjectTypeConversion::classifyImplicit(
+            (*sourceTuple)[index], (*targetTuple)[index]);
+        if (!element.exists())
+            return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+        rank = std::max(rank, element.rank);
+    }
+    return makeConversion(ProjectConversionKind::Tuple, rank + 1, sourceTypeKey, targetTypeKey);
+}
+
+std::optional<ProjectImplicitConversion> classifyFunctionImplicitConversion(
+    std::string_view sourceTypeKey,
+    std::string_view targetTypeKey)
+{
+    const std::optional<language::FunctionType> sourceFunction =
+        language::parseFunctionTypeIdentity(sourceTypeKey);
+    const std::optional<language::FunctionType> targetFunction =
+        language::parseFunctionTypeIdentity(targetTypeKey);
+    const std::optional<language::AnonymousLambdaType> sourceLambda =
+        language::parseAnonymousLambdaTypeIdentity(sourceTypeKey);
+    if (sourceLambda.has_value() && targetFunction.has_value())
+    {
+        // A nominal non-capturing lambda has no runtime payload. Its one implicit materialization
+        // is the address of its generated callable, and only an exactly compatible raw function
+        // pointer can receive that address. A managed fn& would require allocating a delegate cell,
+        // which would violate the zero-size/no-hidden-allocation contract of F02.
+        if (targetFunction->carrier != language::FunctionCarrier::Pointer ||
+            !language::functionTypesAssignable(sourceLambda->signature, *targetFunction))
+            return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+        return makeConversion(ProjectConversionKind::Function, 1, sourceTypeKey, targetTypeKey);
+    }
+    if (!sourceFunction.has_value() && !targetFunction.has_value()) return std::nullopt;
+    if (!sourceFunction.has_value() || !targetFunction.has_value() ||
+        !language::functionTypesAssignable(*sourceFunction, *targetFunction))
+        return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+    return makeConversion(ProjectConversionKind::Function, 1, sourceTypeKey, targetTypeKey);
+}
+
+std::optional<ProjectImplicitConversion> classifyNullImplicitConversion(
+    std::string_view sourceTypeKey,
+    std::string_view targetTypeKey,
+    bool targetIsClassReference)
+{
+    if (sourceTypeKey != "builtin:null") return std::nullopt;
+    if (ProjectTypeConversion::isFunctionPointer(targetTypeKey))
+    {
+        const std::optional<language::FunctionType> target =
+            language::parseFunctionTypeIdentity(targetTypeKey);
+        return target.has_value() && target->nullable
+            ? makeConversion(ProjectConversionKind::NullPointer, 4, sourceTypeKey, targetTypeKey)
+            : makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+    }
+    if (ProjectTypeConversion::isFunctionReference(targetTypeKey))
+    {
+        const std::optional<language::FunctionType> target =
+            language::parseFunctionTypeIdentity(targetTypeKey);
+        return target.has_value() && target->nullable
+            ? makeConversion(ProjectConversionKind::NullReference, 4, sourceTypeKey, targetTypeKey)
+            : makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+    }
+    if (ProjectTypeConversion::isPointer(targetTypeKey))
+        return makeConversion(ProjectConversionKind::NullPointer, 4, sourceTypeKey, targetTypeKey);
+    if (targetIsClassReference || ProjectTypeConversion::isNativeCoreReference(targetTypeKey))
+        return makeConversion(ProjectConversionKind::NullReference, 4, sourceTypeKey, targetTypeKey);
+    return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
+}
 }
 
 bool ProjectImplicitConversion::exists() const noexcept
@@ -355,51 +436,12 @@ ProjectImplicitConversion ProjectTypeConversion::classifyImplicit(
         return makeConversion(ProjectConversionKind::Never, 0, sourceTypeKey, targetTypeKey);
     }
 
-    const std::optional<std::vector<std::string>> sourceTuple =
-        tupleElementTypeKeys(sourceTypeKey);
-    const std::optional<std::vector<std::string>> targetTuple =
-        tupleElementTypeKeys(targetTypeKey);
-    if (sourceTuple.has_value() || targetTuple.has_value())
-    {
-        if (!sourceTuple.has_value() || !targetTuple.has_value() ||
-            sourceTuple->size() != targetTuple->size())
-            return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
-        int rank = 0;
-        for (std::size_t index = 0; index < sourceTuple->size(); ++index)
-        {
-            const ProjectImplicitConversion element = classifyImplicit(
-                (*sourceTuple)[index], (*targetTuple)[index]);
-            if (!element.exists())
-                return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
-            rank = std::max(rank, element.rank);
-        }
-        return makeConversion(ProjectConversionKind::Tuple, rank + 1, sourceTypeKey, targetTypeKey);
-    }
-
-    const std::optional<language::FunctionType> sourceFunction =
-        language::parseFunctionTypeIdentity(sourceTypeKey);
-    const std::optional<language::FunctionType> targetFunction =
-        language::parseFunctionTypeIdentity(targetTypeKey);
-    const std::optional<language::AnonymousLambdaType> sourceLambda =
-        language::parseAnonymousLambdaTypeIdentity(sourceTypeKey);
-    if (sourceLambda.has_value() && targetFunction.has_value())
-    {
-        // A nominal non-capturing lambda has no runtime payload. Its one implicit materialization
-        // is the address of its generated callable, and only an exactly compatible raw function
-        // pointer can receive that address. A managed fn& would require allocating a delegate cell,
-        // which would violate the zero-size/no-hidden-allocation contract of F02.
-        if (targetFunction->carrier != language::FunctionCarrier::Pointer ||
-            !language::functionTypesAssignable(sourceLambda->signature, *targetFunction))
-            return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
-        return makeConversion(ProjectConversionKind::Function, 1, sourceTypeKey, targetTypeKey);
-    }
-    if (sourceFunction.has_value() || targetFunction.has_value())
-    {
-        if (!sourceFunction.has_value() || !targetFunction.has_value() ||
-            !language::functionTypesAssignable(*sourceFunction, *targetFunction))
-            return makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
-        return makeConversion(ProjectConversionKind::Function, 1, sourceTypeKey, targetTypeKey);
-    }
+    if (const std::optional<ProjectImplicitConversion> tuple =
+            classifyTupleImplicitConversion(sourceTypeKey, targetTypeKey))
+        return *tuple;
+    if (const std::optional<ProjectImplicitConversion> function =
+            classifyFunctionImplicitConversion(sourceTypeKey, targetTypeKey))
+        return *function;
 
     if (isIntegralPromotion(sourceTypeKey, targetTypeKey))
     {
@@ -421,34 +463,9 @@ ProjectImplicitConversion ProjectTypeConversion::classifyImplicit(
         return makeConversion(ProjectConversionKind::ConstantInteger, 2, sourceTypeKey, targetTypeKey);
     }
 
-    if (sourceTypeKey == "builtin:null" && isFunctionPointer(targetTypeKey))
-    {
-        const std::optional<language::FunctionType> target =
-            language::parseFunctionTypeIdentity(targetTypeKey);
-        return target.has_value() && target->nullable
-            ? makeConversion(ProjectConversionKind::NullPointer, 4, sourceTypeKey, targetTypeKey)
-            : makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
-    }
-
-    if (sourceTypeKey == "builtin:null" && isFunctionReference(targetTypeKey))
-    {
-        const std::optional<language::FunctionType> target =
-            language::parseFunctionTypeIdentity(targetTypeKey);
-        return target.has_value() && target->nullable
-            ? makeConversion(ProjectConversionKind::NullReference, 4, sourceTypeKey, targetTypeKey)
-            : makeConversion(ProjectConversionKind::None, 1000, sourceTypeKey, targetTypeKey);
-    }
-
-    if (sourceTypeKey == "builtin:null" && isPointer(targetTypeKey))
-    {
-        return makeConversion(ProjectConversionKind::NullPointer, 4, sourceTypeKey, targetTypeKey);
-    }
-
-    if (sourceTypeKey == "builtin:null" &&
-        (targetIsClassReference || isNativeCoreReference(targetTypeKey)))
-    {
-        return makeConversion(ProjectConversionKind::NullReference, 4, sourceTypeKey, targetTypeKey);
-    }
+    if (const std::optional<ProjectImplicitConversion> nullConversion =
+            classifyNullImplicitConversion(sourceTypeKey, targetTypeKey, targetIsClassReference))
+        return *nullConversion;
 
     if (isPointer(sourceTypeKey) && targetTypeKey == "builtin:void*")
     {

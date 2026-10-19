@@ -38,19 +38,6 @@ private:
     std::vector<std::size_t> functionOrdinals_;
 };
 
-class GlobalNamespace final
-{
-public:
-    GlobalNamespace();
-
-    NamespaceSymbol& root() noexcept;
-    const NamespaceSymbol& root() const noexcept;
-
-    NamespaceSymbol& ensureNamespace(std::span<const std::string> segments);
-    NamespaceSymbol* findNamespace(std::span<const std::string> segments) noexcept;
-    const NamespaceSymbol* findNamespace(std::span<const std::string> segments) const noexcept;
-
-private:
-    NamespaceSymbol root_;
-};
 }
+
+#include "nativesharp/Frontend/GlobalNamespace.h"

@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectOpaqueResultModel.h"
+#include "Internal/LocatedDeclaration.h"
 
 #include "nativesharp/AST/AstArena.h"
 #include "nativesharp/AST/AstNode.h"
@@ -26,14 +27,7 @@ using ast::AstNodeKind;
 using ast::TypeSyntax;
 using lexer::TokenKind;
 
-struct LocatedDeclaration final
-{
-    ProjectSyntaxUnit* unit = nullptr;
-    AstNode* parent = nullptr;
-    AstNode* syntax = nullptr;
-    std::string namespaceName;
-    std::string ownerName;
-};
+using internal::LocatedDeclaration;
 
 std::string qualify(std::string_view prefix, std::string_view name)
 {
@@ -524,6 +518,496 @@ bool isSelfRecursiveReturn(const AstNode* expression, const AstNode* declaration
 {
     return declaration != nullptr && calleeName(expression) == declaration->text();
 }
+
+// Reports opaque-result syntax outside a direct callable return while preserving traversal order.
+void validateOpaqueResultPlacement(
+    AstNode* node,
+    diagnostics::DiagnosticEngine& diagnostics,
+    bool& ok)
+{
+    const bool callableReturn =
+        (node->kind() == AstNodeKind::MethodDeclaration ||
+         node->kind() == AstNodeKind::FunctionDeclaration) &&
+        node->typeSyntax() != nullptr && node->typeSyntax()->isOpaqueResult();
+    if (node->typeSyntax() != nullptr && containsOpaqueResult(node->typeSyntax()) &&
+        (!callableReturn || !node->typeSyntax()->isOpaqueResult() ||
+         std::ranges::any_of(node->typeSyntax()->typeArguments(), containsOpaqueResult)))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            node->typeSyntax()->range(),
+            "'some Trait' is permitted only as the direct return type of a function or method");
+        ok = false;
+    }
+    for (const TypeSyntax* syntax : node->typeSyntaxes())
+    {
+        if (!containsOpaqueResult(syntax)) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax->range(),
+            "'some Trait' is permitted only as the direct return type of a function or method");
+        ok = false;
+    }
+}
+
+// Records declarations and callable returns in the same depth-first order used by the original closure.
+void collectOpaqueResultDeclarations(
+    ProjectSyntaxUnit& unit,
+    AstNode* node,
+    AstNode* parent,
+    const std::string& parentNamespace,
+    const std::string& parentOwner,
+    std::vector<LocatedDeclaration>& opaqueDeclarations,
+    std::unordered_map<std::string, LocatedDeclaration>& traits,
+    std::unordered_map<std::string, LocatedDeclaration>& concreteDeclarations,
+    std::vector<LocatedDeclaration>& traitImplementations,
+    std::unordered_map<std::string, const TypeSyntax*>& callableReturns,
+    diagnostics::DiagnosticEngine& diagnostics,
+    bool& ok)
+{
+    if (node == nullptr) return;
+    std::string currentNamespace = parentNamespace;
+    if (node->kind() == AstNodeKind::NamespaceDeclaration)
+        currentNamespace = qualify(parentNamespace, node->text());
+    std::string currentOwner = parentOwner;
+    if (node->kind() == AstNodeKind::ClassDeclaration ||
+        node->kind() == AstNodeKind::StructDeclaration ||
+        node->kind() == AstNodeKind::InterfaceDeclaration)
+        currentOwner = qualify(parentOwner, node->text());
+
+    if (node->kind() == AstNodeKind::InterfaceDeclaration &&
+        (node->auxiliaryText() == "ns3-trait" ||
+         node->auxiliaryText().find("nsc-meta:ns3-trait") != std::string::npos))
+    {
+        const LocatedDeclaration located{&unit, parent, node, currentNamespace, currentOwner};
+        traits.emplace(qualify(currentNamespace, node->text()), located);
+        traits.emplace(node->text(), located);
+    }
+    if (node->kind() == AstNodeKind::ClassDeclaration ||
+        node->kind() == AstNodeKind::StructDeclaration)
+    {
+        const LocatedDeclaration located{&unit, parent, node, currentNamespace, currentOwner};
+        if (node->auxiliaryText() == "ns3-trait-impl") traitImplementations.push_back(located);
+        else
+        {
+            concreteDeclarations.emplace(node->text(), located);
+            concreteDeclarations.emplace(currentOwner, located);
+            concreteDeclarations.emplace(qualify(currentNamespace, currentOwner), located);
+        }
+    }
+
+    validateOpaqueResultPlacement(node, diagnostics, ok);
+    if ((node->kind() == AstNodeKind::MethodDeclaration ||
+         node->kind() == AstNodeKind::FunctionDeclaration) &&
+        node->typeSyntax() != nullptr)
+    {
+        if (node->typeSyntax()->isOpaqueResult())
+            opaqueDeclarations.push_back(
+                LocatedDeclaration{&unit, parent, node, currentNamespace, currentOwner});
+        else
+        {
+            const auto [position, inserted] = callableReturns.emplace(node->text(), node->typeSyntax());
+            if (!inserted && typeSpelling(position->second) != typeSpelling(node->typeSyntax()))
+                position->second = nullptr;
+        }
+    }
+
+    const std::string childOwner = currentOwner;
+    for (AstNode* child : node->children())
+        collectOpaqueResultDeclarations(
+            unit, child, node, currentNamespace, childOwner, opaqueDeclarations, traits,
+            concreteDeclarations, traitImplementations, callableReturns, diagnostics, ok);
+}
+
+// Rejects opaque declarations whose source shape cannot produce a declaration-scoped wrapper.
+bool validateOpaqueDeclaration(
+    const LocatedDeclaration& declaration,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    AstNode* method = declaration.syntax;
+    TypeSyntax* sourceReturn = method->typeSyntax();
+    if (declaration.parent == nullptr || method->first() == nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            method->range(),
+            "an opaque result declaration requires a body that determines one concrete type");
+        return false;
+    }
+    if (sourceReturn->isDynamicTrait() || sourceReturn->isTuple() ||
+        !sourceReturn->modifiers().empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            sourceReturn->range(),
+            "'some' must name one trait directly; pointer, array, tuple and 'dyn' forms are invalid");
+        return false;
+    }
+    return true;
+}
+
+// Resolves the trait using the original unqualified-then-qualified precedence.
+const LocatedDeclaration* findOpaqueTrait(
+    const LocatedDeclaration& declaration,
+    const TypeSyntax* sourceReturn,
+    const std::unordered_map<std::string, LocatedDeclaration>& traits)
+{
+    const std::string traitName = sourceReturn->opaqueResultTraitName();
+    const auto trait = traits.find(traitName);
+    const auto qualifiedTrait = traits.find(qualify(declaration.namespaceName, traitName));
+    return trait != traits.end()
+        ? &trait->second
+        : (qualifiedTrait != traits.end() ? &qualifiedTrait->second : nullptr);
+}
+
+// Infers the single concrete return type and emits the original aggregate failure diagnostic.
+const TypeSyntax* inferOpaqueConcreteType(
+    const LocatedDeclaration& declaration,
+    const std::unordered_map<std::string, const TypeSyntax*>& callableReturns,
+    std::vector<AstNode*>& returns,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    AstNode* method = declaration.syntax;
+    std::unordered_map<std::string, const TypeSyntax*> values;
+    collectValueTypes(method, values);
+    collectReturns(method->first(), method, returns);
+    const TypeSyntax* concreteType = nullptr;
+    bool mismatch = false;
+    bool unknown = false;
+    for (AstNode* statement : returns)
+    {
+        if (statement->first() == nullptr) continue;
+        if (isSelfRecursiveReturn(statement->first(), method)) continue;
+        const TypeSyntax* inferred = inferExpressionType(statement->first(), values, callableReturns);
+        if (inferred == nullptr)
+        {
+            unknown = true;
+            continue;
+        }
+        if (concreteType == nullptr) concreteType = inferred;
+        else if (typeSpelling(concreteType) != typeSpelling(inferred)) mismatch = true;
+    }
+    if (!returns.empty() && concreteType != nullptr && !unknown && !mismatch) return concreteType;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidType,
+        diagnostics::DiagnosticSeverity::Error,
+        method->range(),
+        mismatch
+            ? "opaque result paths resolve to different concrete types"
+            : "opaque result concrete type cannot be inferred from every non-recursive return path");
+    return nullptr;
+}
+
+// Builds the exposed trait spelling and verifies the inferred representation against it.
+TypeSyntax* validateOpaqueConformance(
+    const LocatedDeclaration& declaration,
+    TypeSyntax* sourceReturn,
+    const TypeSyntax* concreteType,
+    const std::unordered_map<std::string, LocatedDeclaration>& concreteDeclarations,
+    const std::vector<LocatedDeclaration>& traitImplementations,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    TypeSyntax* exposedTrait = cloneType(declaration.unit->arena(), sourceReturn);
+    exposedTrait->setOpaqueResult(false);
+    exposedTrait->setOpaqueResultTraitName({});
+    std::unordered_set<const AstNode*> visitedConformance;
+    if (typeConformsToTrait(
+            concreteType, typeSpelling(exposedTrait), declaration.namespaceName,
+            concreteDeclarations, traitImplementations, visitedConformance))
+        return exposedTrait;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidType,
+        diagnostics::DiagnosticSeverity::Error,
+        declaration.syntax->range(),
+        "opaque result concrete type '" + typeSpelling(concreteType) +
+            "' does not implement trait '" + typeSpelling(exposedTrait) + "'");
+    return nullptr;
+}
+
+// Produces the stable declaration identity without changing parameter order or spelling.
+std::string opaqueDeclarationIdentity(
+    const LocatedDeclaration& declaration,
+    const TypeSyntax* exposedTrait)
+{
+    AstNode* method = declaration.syntax;
+    std::string identity = qualify(declaration.namespaceName, declaration.ownerName);
+    identity += "::" + method->text() + "(";
+    for (const AstNode* child : method->children())
+        if (child != nullptr && child->kind() == AstNodeKind::ParameterDeclaration)
+            identity += typeSpelling(child->typeSyntax()) + ";";
+    identity += ")->some " + typeSpelling(exposedTrait);
+    return identity;
+}
+
+// Creates the synthetic value wrapper, representation field and factory in their original order.
+AstNode* makeOpaqueWrapper(
+    ast::AstArena& arena,
+    const LocatedDeclaration& declaration,
+    const std::string& wrapperName,
+    const std::string& identity,
+    const std::string& traitName,
+    TypeSyntax* exposedTrait,
+    const TypeSyntax* concreteType)
+{
+    AstNode* method = declaration.syntax;
+    AstNode* wrapper = arena.make<AstNode>(AstNodeKind::StructDeclaration, method->range());
+    wrapper->setText(wrapperName);
+    // The compiler-owned wrapper is a value just like a user-declared struct.
+    // Keeping the marker on the synthetic declaration makes its generated factory return a
+    // real move-only local instead of asking the ownership checker to move a copyable value.
+    wrapper->setAuxiliaryText(
+        "opaque-result|identity=" + identity + "|trait=" + traitName + "|move-only-value");
+    const TokenKind accessibility = method->hasModifier(TokenKind::KwPublic)
+        ? TokenKind::KwPublic : TokenKind::KwInternal;
+    wrapper->setTokenKind(accessibility);
+    wrapper->addModifier(accessibility);
+    for (const ast::GenericParameterSyntax& parameter : method->genericParameterSyntaxes())
+        wrapper->addGenericParameter(parameter);
+    for (const ast::GenericConstraintClause& clause : method->genericConstraints())
+        wrapper->addGenericConstraint(clause);
+    TypeSyntax* wrapperTrait = exposedTrait;
+    wrapper->setTypeSyntax(wrapperTrait);
+    wrapper->addTypeSyntax(wrapperTrait);
+
+    AstNode* field = arena.make<AstNode>(AstNodeKind::FieldDeclaration, method->range());
+    field->setText("__nsc_opaque_value");
+    field->setAuxiliaryText("opaque-result:representation");
+    field->setTokenKind(TokenKind::KwPrivate);
+    field->addModifier(TokenKind::KwPrivate);
+    field->setTypeSyntax(cloneType(arena, concreteType));
+    wrapper->addChild(field);
+    wrapper->addChild(makeFactory(arena, declaration, wrapperName, concreteType));
+    return wrapper;
+}
+
+// Finds the concrete associated item before falling back to a trait default.
+const AstNode* findAssociatedDefinition(
+    const LocatedDeclaration* concreteDeclaration,
+    const std::vector<LocatedDeclaration>& traitImplementations,
+    const TypeSyntax* concreteType,
+    std::string_view name)
+{
+    if (concreteDeclaration != nullptr && concreteDeclaration->syntax != nullptr)
+        for (const AstNode* child : concreteDeclaration->syntax->children())
+            if (child != nullptr && child->text() == name &&
+                (child->kind() == AstNodeKind::AssociatedTypeDeclaration ||
+                 child->kind() == AstNodeKind::AssociatedConstantDeclaration))
+                return child;
+    for (const LocatedDeclaration& implementation : traitImplementations)
+    {
+        if (implementation.syntax == nullptr ||
+            implementation.syntax->text() != concreteType->baseName())
+            continue;
+        for (const AstNode* child : implementation.syntax->children())
+            if (child != nullptr && child->text() == name &&
+                (child->kind() == AstNodeKind::AssociatedTypeDeclaration ||
+                 child->kind() == AstNodeKind::AssociatedConstantDeclaration))
+                return child;
+    }
+    return nullptr;
+}
+
+// Recursively appends inherited trait requirements using the original depth-first traversal.
+void addOpaqueTraitSurface(
+    ast::AstArena& arena,
+    const LocatedDeclaration& currentTrait,
+    const std::unordered_map<std::string, const TypeSyntax*>& substitutions,
+    const std::unordered_map<std::string, LocatedDeclaration>& traits,
+    const LocatedDeclaration* concreteDeclaration,
+    const std::vector<LocatedDeclaration>& traitImplementations,
+    const TypeSyntax* concreteType,
+    AstNode* wrapper,
+    std::unordered_set<std::string>& forwardedMethods,
+    std::unordered_set<std::string>& forwardedAssociatedItems,
+    std::unordered_set<const AstNode*>& visitedTraits)
+{
+    if (currentTrait.syntax == nullptr || !visitedTraits.insert(currentTrait.syntax).second) return;
+    for (const TypeSyntax* base : currentTrait.syntax->typeSyntaxes())
+    {
+        if (base == nullptr) continue;
+        std::string baseName = base->baseName();
+        const auto directBase = traits.find(baseName);
+        const auto qualifiedBase = traits.find(qualify(currentTrait.namespaceName, baseName));
+        const LocatedDeclaration* baseTrait = directBase != traits.end()
+            ? &directBase->second
+            : (qualifiedBase != traits.end() ? &qualifiedBase->second : nullptr);
+        if (baseTrait == nullptr) continue;
+        std::unordered_map<std::string, const TypeSyntax*> baseSubstitutions;
+        const auto& baseParameters = baseTrait->syntax->genericParameters();
+        for (std::size_t index = 0;
+             index < baseParameters.size() && index < base->typeArguments().size(); ++index)
+        {
+            const TypeSyntax* argument = base->typeArguments()[index];
+            const auto replacement = argument == nullptr
+                ? substitutions.end() : substitutions.find(argument->baseName());
+            baseSubstitutions.emplace(
+                baseParameters[index],
+                replacement != substitutions.end() && argument->typeArguments().empty()
+                    ? replacement->second : argument);
+        }
+        addOpaqueTraitSurface(
+            arena, *baseTrait, baseSubstitutions, traits, concreteDeclaration,
+            traitImplementations, concreteType, wrapper, forwardedMethods,
+            forwardedAssociatedItems, visitedTraits);
+    }
+    for (const AstNode* requirement : currentTrait.syntax->children())
+    {
+        if (requirement == nullptr) continue;
+        if (requirement->kind() == AstNodeKind::AssociatedTypeDeclaration ||
+            requirement->kind() == AstNodeKind::AssociatedConstantDeclaration)
+        {
+            if (!forwardedAssociatedItems.insert(requirement->text()).second) continue;
+            const AstNode* definition = findAssociatedDefinition(
+                concreteDeclaration, traitImplementations, concreteType, requirement->text());
+            const bool hasDefault =
+                (requirement->kind() == AstNodeKind::AssociatedTypeDeclaration &&
+                 requirement->typeSyntax() != nullptr) ||
+                (requirement->kind() == AstNodeKind::AssociatedConstantDeclaration &&
+                 requirement->first() != nullptr);
+            if (definition != nullptr || hasDefault)
+                wrapper->addChild(cloneNode(
+                    arena, definition != nullptr ? definition : requirement, substitutions));
+            continue;
+        }
+        if (requirement->kind() != AstNodeKind::MethodDeclaration) continue;
+        std::string signature = requirement->text() + "(";
+        for (const AstNode* parameter : requirement->children())
+            if (parameter != nullptr && parameter->kind() == AstNodeKind::ParameterDeclaration)
+                signature += typeSpelling(parameter->typeSyntax()) + ";";
+        signature += ")";
+        if (!forwardedMethods.insert(signature).second) continue;
+        if (requirement->first() != nullptr)
+            wrapper->addChild(cloneNode(arena, requirement, substitutions));
+        else if (AstNode* forwarder = makeForwarder(arena, requirement, concreteType, substitutions))
+            wrapper->addChild(forwarder);
+    }
+}
+
+// Seeds trait substitutions and preserves the original visited and de-duplication scopes.
+void populateOpaqueTraitSurface(
+    ast::AstArena& arena,
+    AstNode* wrapper,
+    const LocatedDeclaration& traitDeclaration,
+    const TypeSyntax* sourceReturn,
+    const std::unordered_map<std::string, LocatedDeclaration>& traits,
+    const LocatedDeclaration* concreteDeclaration,
+    const std::vector<LocatedDeclaration>& traitImplementations,
+    const TypeSyntax* concreteType)
+{
+    std::unordered_map<std::string, const TypeSyntax*> traitSubstitutions;
+    const auto& traitParameters = traitDeclaration.syntax->genericParameters();
+    for (std::size_t index = 0;
+         index < traitParameters.size() && index < sourceReturn->typeArguments().size(); ++index)
+        traitSubstitutions.emplace(traitParameters[index], sourceReturn->typeArguments()[index]);
+    std::unordered_set<std::string> forwardedMethods;
+    std::unordered_set<std::string> forwardedAssociatedItems;
+    std::unordered_set<const AstNode*> visitedTraits;
+    addOpaqueTraitSurface(
+        arena, traitDeclaration, traitSubstitutions, traits, concreteDeclaration,
+        traitImplementations, concreteType, wrapper, forwardedMethods,
+        forwardedAssociatedItems, visitedTraits);
+}
+
+// Rewrites the callable return and each non-recursive return value, then publishes the wrapper.
+void rewriteOpaqueDeclaration(
+    ast::AstArena& arena,
+    const LocatedDeclaration& declaration,
+    TypeSyntax* sourceReturn,
+    const std::string& wrapperName,
+    const std::string& traitName,
+    std::vector<AstNode*>& returns,
+    std::unordered_map<std::string, const TypeSyntax*>& callableReturns,
+    AstNode* wrapper)
+{
+    AstNode* method = declaration.syntax;
+    TypeSyntax* rewrittenReturn = makeNamedType(
+        arena, sourceReturn->range(), wrapperName, method);
+    rewrittenReturn->setOwnershipQualifier(sourceReturn->ownershipQualifier());
+    rewrittenReturn->setOpaqueResult();
+    rewrittenReturn->setOpaqueResultTraitName(traitName);
+    method->setTypeSyntax(rewrittenReturn);
+    method->setAuxiliaryText(
+        method->auxiliaryText() + (method->auxiliaryText().empty() ? "" : "|") +
+        "opaque-result:" + wrapperName + ":" + traitName);
+
+    const auto [callable, insertedCallable] = callableReturns.emplace(method->text(), rewrittenReturn);
+    if (!insertedCallable && callable->second != nullptr &&
+        typeSpelling(callable->second) != typeSpelling(rewrittenReturn))
+        callable->second = nullptr;
+    for (AstNode* statement : returns)
+    {
+        AstNode* value = statement->first();
+        if (value == nullptr || isSelfRecursiveReturn(value, method)) continue;
+        AstNode* typeExpression = identifier(arena, value->range(), wrapperName);
+        if (!method->genericParameters().empty())
+            typeExpression->setTypeSyntax(makeNamedType(
+                arena, value->range(), wrapperName, method));
+        AstNode* factory = member(arena, typeExpression, "__nsc_from_representation");
+        statement->setFirst(call(arena, factory, {value}));
+    }
+    declaration.parent->addChild(wrapper);
+}
+
+// Processes one opaque declaration without changing the original validation and publication sequence.
+bool processOpaqueDeclaration(
+    const LocatedDeclaration& declaration,
+    const std::unordered_map<std::string, LocatedDeclaration>& traits,
+    const std::unordered_map<std::string, LocatedDeclaration>& concreteDeclarations,
+    const std::vector<LocatedDeclaration>& traitImplementations,
+    std::unordered_map<std::string, const TypeSyntax*>& callableReturns,
+    std::unordered_set<std::string>& wrapperNames,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    AstNode* method = declaration.syntax;
+    TypeSyntax* sourceReturn = method->typeSyntax();
+    if (!validateOpaqueDeclaration(declaration, diagnostics)) return false;
+    const std::string traitName = sourceReturn->opaqueResultTraitName();
+    const LocatedDeclaration* traitDeclaration = findOpaqueTrait(declaration, sourceReturn, traits);
+    if (traitDeclaration == nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            sourceReturn->range(),
+            "opaque result target '" + traitName + "' is not a visible trait");
+        return false;
+    }
+    std::vector<AstNode*> returns;
+    const TypeSyntax* concreteType = inferOpaqueConcreteType(
+        declaration, callableReturns, returns, diagnostics);
+    if (concreteType == nullptr) return false;
+    TypeSyntax* exposedTrait = validateOpaqueConformance(
+        declaration, sourceReturn, concreteType, concreteDeclarations,
+        traitImplementations, diagnostics);
+    if (exposedTrait == nullptr) return false;
+
+    const std::string identity = opaqueDeclarationIdentity(declaration, exposedTrait);
+    const std::string wrapperName = "__nsc_some_" + stableSuffix(identity);
+    if (!wrapperNames.insert(wrapperName).second)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::DuplicateSymbol,
+            diagnostics::DiagnosticSeverity::Error,
+            method->range(),
+            "duplicate opaque result declaration identity '" + identity + "'");
+        return false;
+    }
+    ast::AstArena& arena = declaration.unit->arena();
+    AstNode* wrapper = makeOpaqueWrapper(
+        arena, declaration, wrapperName, identity, traitName, exposedTrait, concreteType);
+    const LocatedDeclaration* concreteDeclaration = findDeclaration(
+        concreteDeclarations, concreteType->baseName(), declaration.namespaceName);
+    populateOpaqueTraitSurface(
+        arena, wrapper, *traitDeclaration, sourceReturn, traits, concreteDeclaration,
+        traitImplementations, concreteType);
+    rewriteOpaqueDeclaration(
+        arena, declaration, sourceReturn, wrapperName, traitName, returns, callableReturns, wrapper);
+    return true;
+}
 }
 
 bool ProjectOpaqueResultModel::build(
@@ -537,378 +1021,18 @@ bool ProjectOpaqueResultModel::build(
     std::unordered_map<std::string, const TypeSyntax*> callableReturns;
     bool ok = true;
 
-    const auto collect = [&](auto&& self,
-                             ProjectSyntaxUnit& unit,
-                             AstNode* node,
-                             AstNode* parent,
-                             const std::string& parentNamespace,
-                             const std::string& parentOwner) -> void
-    {
-        if (node == nullptr) return;
-        std::string currentNamespace = parentNamespace;
-        if (node->kind() == AstNodeKind::NamespaceDeclaration)
-            currentNamespace = qualify(parentNamespace, node->text());
-        std::string currentOwner = parentOwner;
-        if (node->kind() == AstNodeKind::ClassDeclaration ||
-            node->kind() == AstNodeKind::StructDeclaration ||
-            node->kind() == AstNodeKind::InterfaceDeclaration)
-            currentOwner = qualify(parentOwner, node->text());
-
-        if (node->kind() == AstNodeKind::InterfaceDeclaration &&
-            (node->auxiliaryText() == "ns3-trait" ||
-             node->auxiliaryText().find("nsc-meta:ns3-trait") != std::string::npos))
-        {
-            const LocatedDeclaration located{
-                &unit, parent, node, currentNamespace, currentOwner};
-            traits.emplace(qualify(currentNamespace, node->text()), located);
-            traits.emplace(node->text(), located);
-        }
-
-        if (node->kind() == AstNodeKind::ClassDeclaration ||
-            node->kind() == AstNodeKind::StructDeclaration)
-        {
-            const LocatedDeclaration located{
-                &unit, parent, node, currentNamespace, currentOwner};
-            if (node->auxiliaryText() == "ns3-trait-impl")
-                traitImplementations.push_back(located);
-            else
-            {
-                concreteDeclarations.emplace(node->text(), located);
-                concreteDeclarations.emplace(currentOwner, located);
-                concreteDeclarations.emplace(qualify(currentNamespace, currentOwner), located);
-            }
-        }
-
-        const bool callableReturn =
-            (node->kind() == AstNodeKind::MethodDeclaration ||
-             node->kind() == AstNodeKind::FunctionDeclaration) &&
-            node->typeSyntax() != nullptr && node->typeSyntax()->isOpaqueResult();
-        if (node->typeSyntax() != nullptr && containsOpaqueResult(node->typeSyntax()) &&
-            (!callableReturn || !node->typeSyntax()->isOpaqueResult() ||
-             std::ranges::any_of(node->typeSyntax()->typeArguments(), containsOpaqueResult)))
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                node->typeSyntax()->range(),
-                "'some Trait' is permitted only as the direct return type of a function or method");
-            ok = false;
-        }
-        for (const TypeSyntax* syntax : node->typeSyntaxes())
-        {
-            if (containsOpaqueResult(syntax))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    syntax->range(),
-                    "'some Trait' is permitted only as the direct return type of a function or method");
-                ok = false;
-            }
-        }
-
-        if ((node->kind() == AstNodeKind::MethodDeclaration ||
-             node->kind() == AstNodeKind::FunctionDeclaration) &&
-            node->typeSyntax() != nullptr)
-        {
-            if (node->typeSyntax()->isOpaqueResult())
-                opaqueDeclarations.push_back(LocatedDeclaration{
-                    &unit, parent, node, currentNamespace, currentOwner});
-            else
-            {
-                const auto [position, inserted] = callableReturns.emplace(
-                    node->text(), node->typeSyntax());
-                if (!inserted && typeSpelling(position->second) != typeSpelling(node->typeSyntax()))
-                    position->second = nullptr;
-            }
-        }
-
-        const std::string childOwner = currentOwner;
-        for (AstNode* child : node->children())
-            self(self, unit, child, node, currentNamespace, childOwner);
-    };
     for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
         if (unit != nullptr && unit->syntaxTree() != nullptr)
-            collect(collect, *unit, unit->syntaxTree(), nullptr, "", "");
+            collectOpaqueResultDeclarations(
+                *unit, unit->syntaxTree(), nullptr, "", "", opaqueDeclarations, traits,
+                concreteDeclarations, traitImplementations, callableReturns, diagnostics, ok);
 
     std::unordered_set<std::string> wrapperNames;
     for (const LocatedDeclaration& declaration : opaqueDeclarations)
-    {
-        AstNode* method = declaration.syntax;
-        TypeSyntax* sourceReturn = method->typeSyntax();
-        if (declaration.parent == nullptr || method->first() == nullptr)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                method->range(),
-                "an opaque result declaration requires a body that determines one concrete type");
+        if (!processOpaqueDeclaration(
+                declaration, traits, concreteDeclarations, traitImplementations,
+                callableReturns, wrapperNames, diagnostics))
             ok = false;
-            continue;
-        }
-        if (sourceReturn->isDynamicTrait() || sourceReturn->isTuple() ||
-            !sourceReturn->modifiers().empty())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                sourceReturn->range(),
-                "'some' must name one trait directly; pointer, array, tuple and 'dyn' forms are invalid");
-            ok = false;
-            continue;
-        }
-
-        std::string traitName = sourceReturn->opaqueResultTraitName();
-        const auto trait = traits.find(traitName);
-        const auto qualifiedTrait = traits.find(qualify(declaration.namespaceName, traitName));
-        const LocatedDeclaration* traitDeclaration = trait != traits.end()
-            ? &trait->second
-            : (qualifiedTrait != traits.end() ? &qualifiedTrait->second : nullptr);
-        if (traitDeclaration == nullptr)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                sourceReturn->range(),
-                "opaque result target '" + traitName + "' is not a visible trait");
-            ok = false;
-            continue;
-        }
-
-        std::unordered_map<std::string, const TypeSyntax*> values;
-        collectValueTypes(method, values);
-        std::vector<AstNode*> returns;
-        collectReturns(method->first(), method, returns);
-        const TypeSyntax* concreteType = nullptr;
-        bool mismatch = false;
-        bool unknown = false;
-        for (AstNode* statement : returns)
-        {
-            if (statement->first() == nullptr) continue;
-            if (isSelfRecursiveReturn(statement->first(), method)) continue;
-            const TypeSyntax* inferred = inferExpressionType(
-                statement->first(), values, callableReturns);
-            if (inferred == nullptr)
-            {
-                unknown = true;
-                continue;
-            }
-            if (concreteType == nullptr) concreteType = inferred;
-            else if (typeSpelling(concreteType) != typeSpelling(inferred)) mismatch = true;
-        }
-        if (returns.empty() || concreteType == nullptr || unknown || mismatch)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                method->range(),
-                mismatch
-                    ? "opaque result paths resolve to different concrete types"
-                    : "opaque result concrete type cannot be inferred from every non-recursive return path");
-            ok = false;
-            continue;
-        }
-
-        TypeSyntax* exposedTrait = cloneType(declaration.unit->arena(), sourceReturn);
-        exposedTrait->setOpaqueResult(false);
-        exposedTrait->setOpaqueResultTraitName({});
-        std::unordered_set<const AstNode*> visitedConformance;
-        if (!typeConformsToTrait(
-                concreteType, typeSpelling(exposedTrait), declaration.namespaceName,
-                concreteDeclarations, traitImplementations, visitedConformance))
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                method->range(),
-                "opaque result concrete type '" + typeSpelling(concreteType) +
-                    "' does not implement trait '" + typeSpelling(exposedTrait) + "'");
-            ok = false;
-            continue;
-        }
-
-        std::string identity = qualify(declaration.namespaceName, declaration.ownerName);
-        identity += "::" + method->text() + "(";
-        for (const AstNode* child : method->children())
-            if (child != nullptr && child->kind() == AstNodeKind::ParameterDeclaration)
-                identity += typeSpelling(child->typeSyntax()) + ";";
-        identity += ")->some " + typeSpelling(exposedTrait);
-        const std::string wrapperName = "__nsc_some_" + stableSuffix(identity);
-        if (!wrapperNames.insert(wrapperName).second)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::DuplicateSymbol,
-                diagnostics::DiagnosticSeverity::Error,
-                method->range(),
-                "duplicate opaque result declaration identity '" + identity + "'");
-            ok = false;
-            continue;
-        }
-
-        ast::AstArena& arena = declaration.unit->arena();
-        AstNode* wrapper = arena.make<AstNode>(AstNodeKind::StructDeclaration, method->range());
-        wrapper->setText(wrapperName);
-        // The compiler-owned wrapper is a value just like a user-declared struct.
-        // Keeping the marker on the synthetic declaration makes its generated factory return a
-        // real move-only local instead of asking the ownership checker to move a copyable value.
-        wrapper->setAuxiliaryText(
-            "opaque-result|identity=" + identity + "|trait=" + traitName + "|move-only-value");
-        const TokenKind accessibility = method->hasModifier(TokenKind::KwPublic)
-            ? TokenKind::KwPublic : TokenKind::KwInternal;
-        wrapper->setTokenKind(accessibility);
-        wrapper->addModifier(accessibility);
-        for (const ast::GenericParameterSyntax& parameter : method->genericParameterSyntaxes())
-            wrapper->addGenericParameter(parameter);
-        for (const ast::GenericConstraintClause& clause : method->genericConstraints())
-            wrapper->addGenericConstraint(clause);
-
-        TypeSyntax* wrapperTrait = exposedTrait;
-        wrapper->setTypeSyntax(wrapperTrait);
-        wrapper->addTypeSyntax(wrapperTrait);
-
-        AstNode* field = arena.make<AstNode>(AstNodeKind::FieldDeclaration, method->range());
-        field->setText("__nsc_opaque_value");
-        field->setAuxiliaryText("opaque-result:representation");
-        field->setTokenKind(TokenKind::KwPrivate);
-        field->addModifier(TokenKind::KwPrivate);
-        field->setTypeSyntax(cloneType(arena, concreteType));
-        wrapper->addChild(field);
-        wrapper->addChild(makeFactory(
-            arena, declaration, wrapperName, concreteType));
-
-        std::unordered_map<std::string, const TypeSyntax*> traitSubstitutions;
-        const auto& traitParameters = traitDeclaration->syntax->genericParameters();
-        for (std::size_t index = 0;
-             index < traitParameters.size() && index < sourceReturn->typeArguments().size(); ++index)
-            traitSubstitutions.emplace(traitParameters[index], sourceReturn->typeArguments()[index]);
-        std::unordered_set<std::string> forwardedMethods;
-        std::unordered_set<std::string> forwardedAssociatedItems;
-        std::unordered_set<const AstNode*> visitedTraits;
-        const LocatedDeclaration* concreteDeclaration = findDeclaration(
-            concreteDeclarations, concreteType->baseName(), declaration.namespaceName);
-        const auto associatedDefinition = [&](std::string_view name) -> const AstNode*
-        {
-            if (concreteDeclaration != nullptr && concreteDeclaration->syntax != nullptr)
-                for (const AstNode* child : concreteDeclaration->syntax->children())
-                    if (child != nullptr && child->text() == name &&
-                        (child->kind() == AstNodeKind::AssociatedTypeDeclaration ||
-                         child->kind() == AstNodeKind::AssociatedConstantDeclaration))
-                        return child;
-            for (const LocatedDeclaration& implementation : traitImplementations)
-            {
-                if (implementation.syntax == nullptr ||
-                    implementation.syntax->text() != concreteType->baseName())
-                    continue;
-                for (const AstNode* child : implementation.syntax->children())
-                    if (child != nullptr && child->text() == name &&
-                        (child->kind() == AstNodeKind::AssociatedTypeDeclaration ||
-                         child->kind() == AstNodeKind::AssociatedConstantDeclaration))
-                        return child;
-            }
-            return nullptr;
-        };
-        const auto addTraitSurface = [&](auto&& self,
-                                         const LocatedDeclaration& currentTrait,
-                                         const std::unordered_map<std::string, const TypeSyntax*>&
-                                             substitutions) -> void
-        {
-            if (currentTrait.syntax == nullptr ||
-                !visitedTraits.insert(currentTrait.syntax).second)
-                return;
-            for (const TypeSyntax* base : currentTrait.syntax->typeSyntaxes())
-            {
-                if (base == nullptr) continue;
-                std::string baseName = base->baseName();
-                const auto directBase = traits.find(baseName);
-                const auto qualifiedBase = traits.find(
-                    qualify(currentTrait.namespaceName, baseName));
-                const LocatedDeclaration* baseTrait = directBase != traits.end()
-                    ? &directBase->second
-                    : (qualifiedBase != traits.end() ? &qualifiedBase->second : nullptr);
-                if (baseTrait == nullptr) continue;
-                std::unordered_map<std::string, const TypeSyntax*> baseSubstitutions;
-                const auto& baseParameters = baseTrait->syntax->genericParameters();
-                for (std::size_t index = 0;
-                     index < baseParameters.size() && index < base->typeArguments().size(); ++index)
-                {
-                    const TypeSyntax* argument = base->typeArguments()[index];
-                    const auto replacement = argument == nullptr
-                        ? substitutions.end() : substitutions.find(argument->baseName());
-                    baseSubstitutions.emplace(
-                        baseParameters[index],
-                        replacement != substitutions.end() && argument->typeArguments().empty()
-                            ? replacement->second : argument);
-                }
-                self(self, *baseTrait, baseSubstitutions);
-            }
-            for (const AstNode* requirement : currentTrait.syntax->children())
-            {
-                if (requirement == nullptr) continue;
-                if (requirement->kind() == AstNodeKind::AssociatedTypeDeclaration ||
-                    requirement->kind() == AstNodeKind::AssociatedConstantDeclaration)
-                {
-                    if (!forwardedAssociatedItems.insert(requirement->text()).second) continue;
-                    const AstNode* definition = associatedDefinition(requirement->text());
-                    const bool hasDefault =
-                        (requirement->kind() == AstNodeKind::AssociatedTypeDeclaration &&
-                         requirement->typeSyntax() != nullptr) ||
-                        (requirement->kind() == AstNodeKind::AssociatedConstantDeclaration &&
-                         requirement->first() != nullptr);
-                    if (definition != nullptr || hasDefault)
-                        wrapper->addChild(cloneNode(
-                            arena,
-                            definition != nullptr ? definition : requirement,
-                            substitutions));
-                    continue;
-                }
-                if (requirement->kind() != AstNodeKind::MethodDeclaration)
-                    continue;
-                std::string signature = requirement->text() + "(";
-                for (const AstNode* parameter : requirement->children())
-                    if (parameter != nullptr &&
-                        parameter->kind() == AstNodeKind::ParameterDeclaration)
-                        signature += typeSpelling(parameter->typeSyntax()) + ";";
-                signature += ")";
-                if (!forwardedMethods.insert(signature).second) continue;
-                if (requirement->first() != nullptr)
-                    wrapper->addChild(cloneNode(arena, requirement, substitutions));
-                else if (AstNode* forwarder = makeForwarder(
-                             arena, requirement, concreteType, substitutions))
-                    wrapper->addChild(forwarder);
-            }
-        };
-        addTraitSurface(addTraitSurface, *traitDeclaration, traitSubstitutions);
-
-        TypeSyntax* rewrittenReturn = makeNamedType(
-            arena, sourceReturn->range(), wrapperName, method);
-        rewrittenReturn->setOwnershipQualifier(sourceReturn->ownershipQualifier());
-        rewrittenReturn->setOpaqueResult();
-        rewrittenReturn->setOpaqueResultTraitName(traitName);
-        method->setTypeSyntax(rewrittenReturn);
-        method->setAuxiliaryText(
-            method->auxiliaryText() + (method->auxiliaryText().empty() ? "" : "|") +
-            "opaque-result:" + wrapperName + ":" + traitName);
-
-        const auto [callable, insertedCallable] = callableReturns.emplace(
-            method->text(), rewrittenReturn);
-        if (!insertedCallable && callable->second != nullptr &&
-            typeSpelling(callable->second) != typeSpelling(rewrittenReturn))
-            callable->second = nullptr;
-
-        for (AstNode* statement : returns)
-        {
-            AstNode* value = statement->first();
-            if (value == nullptr || isSelfRecursiveReturn(value, method)) continue;
-            AstNode* typeExpression = identifier(arena, value->range(), wrapperName);
-            if (!method->genericParameters().empty())
-                typeExpression->setTypeSyntax(makeNamedType(
-                    arena, value->range(), wrapperName, method));
-            AstNode* factory = member(
-                arena, typeExpression, "__nsc_from_representation");
-            statement->setFirst(call(arena, factory, {value}));
-        }
-        declaration.parent->addChild(wrapper);
-    }
 
     return ok && !diagnostics.hasErrors();
 }

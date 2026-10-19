@@ -22,32 +22,28 @@
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "nativesharp/Source/SourceManager.h"
+#include "Internal/ProjectSyntaxSourceRead.h"
 
 #include <chrono>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
+namespace nativesharp::driver
+{
+class CompilationWorkerPool;
+}
+
 namespace nativesharp::frontend
 {
-struct PrecompiledSyntaxModule final
-{
-    std::filesystem::path ownerProjectFile;
-    std::filesystem::path metadataPath;
-    std::string moduleName;
-    std::string sourceText;
-    std::string templateSourceText;
-    std::vector<PrecompiledMemberIdentity> members;
-    std::vector<PrecompiledNamespaceFunctionIdentity> namespaceFunctions;
-    std::vector<PrecompiledGenericSpecialization> genericSpecializations;
-};
-
 class ProjectCompilation final
 {
 public:
@@ -127,6 +123,48 @@ public:
 
 private:
     bool cancellationRequested(std::string& loadError, std::string_view nextPhase) const;
+    bool isSyntaxCompilationFresh(std::string& loadError) const;
+    bool ensureProjectGraph(
+        const std::filesystem::path& projectFile,
+        std::string& loadError);
+    bool addPrecompiledProjects(std::string& loadError);
+    std::vector<ProjectSyntaxSourceRead> collectSyntaxSourceReads() const;
+    bool readSyntaxSources(
+        std::vector<ProjectSyntaxSourceRead>& sourceReads,
+        driver::CompilationWorkerPool& syntaxWorkers,
+        std::string& loadError);
+    void appendComptimeRecord(
+        const ProjectSyntaxSourceRead& read,
+        const std::filesystem::path& relativePath);
+    void reportComptimeDiagnostics(
+        const ProjectSyntaxSourceRead& read,
+        FileId fileId);
+    bool materializeComptimeSource(
+        ProjectSyntaxSourceRead& read,
+        std::string& loadError);
+    bool executeSyntaxComptime(
+        std::vector<ProjectSyntaxSourceRead>& sourceReads,
+        driver::CompilationWorkerPool& syntaxWorkers,
+        std::string& loadError);
+    std::optional<std::size_t> precompiledProjectOrdinal(
+        const PrecompiledSyntaxModule& module) const;
+    bool materializePrecompiledModule(
+        const PrecompiledSyntaxModule& module,
+        std::set<std::string>& materializedMetadata,
+        std::string& loadError);
+    bool materializePrecompiledTemplateUnit(
+        const PrecompiledSyntaxModule& module,
+        std::size_t projectOrdinal,
+        std::string& loadError);
+    bool materializePrecompiledSyntax(std::string& loadError);
+    bool lexSyntaxUnits(
+        driver::CompilationWorkerPool& syntaxWorkers,
+        bool& lexicalOk,
+        std::string& loadError);
+    bool parseSyntaxUnits(
+        driver::CompilationWorkerPool& syntaxWorkers,
+        bool lexicalOk,
+        std::string& loadError);
     bool compileSyntaxCore(const std::filesystem::path& projectFile, std::string& loadError);
     bool enterStage(CompilationStage stage, std::string& error);
 

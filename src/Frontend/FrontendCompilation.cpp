@@ -110,6 +110,106 @@ const std::vector<StageBoundary>& FrontendCompilation::verifiedStageBoundaries()
 }
 FileId FrontendCompilation::primaryFileId() const noexcept { return primaryFileId_; }
 
+bool FrontendCompilation::buildHirMirAndCfg(StageBoundaryVerifier& boundaryVerifier)
+{
+    hir::HirBuilder hirBuilder(hirArena_, typeContext_, semanticAnalyzer_->model());
+    hirRoot_ = hirBuilder.build(syntaxTree_);
+    if (hirRoot_ == nullptr)
+    {
+        hirError_ = hirBuilder.error();
+        return false;
+    }
+    if (!boundaryVerifier.verify(StageBoundary::HirToMir, hirRoot_))
+    {
+        hirError_ = boundaryVerifier.error();
+        return false;
+    }
+    verifiedStageBoundaries_.push_back(StageBoundary::HirToMir);
+
+    mir::MirBuilder mirBuilder(mirArena_);
+    mirModule_ = mirBuilder.build(hirRoot_);
+    if (mirModule_ == nullptr)
+    {
+        mirError_ = mirBuilder.error();
+        return false;
+    }
+    if (!boundaryVerifier.verify(StageBoundary::MirToCfg, mirModule_))
+    {
+        mirError_ = boundaryVerifier.error();
+        return false;
+    }
+    verifiedStageBoundaries_.push_back(StageBoundary::MirToCfg);
+
+    cfg::CfgBuilder cfgBuilder(cfgArena_);
+    cfgModule_ = cfgBuilder.build(mirModule_);
+    if (cfgModule_ == nullptr)
+    {
+        cfgError_ = cfgBuilder.error();
+        return false;
+    }
+    if (!boundaryVerifier.verify(StageBoundary::CfgToDominance, cfgModule_))
+    {
+        cfgError_ = boundaryVerifier.error();
+        return false;
+    }
+    verifiedStageBoundaries_.push_back(StageBoundary::CfgToDominance);
+    return true;
+}
+
+bool FrontendCompilation::buildDominanceSsaAndOptimization(
+    StageBoundaryVerifier& boundaryVerifier)
+{
+    dominance::DominanceBuilder dominanceBuilder(dominanceArena_);
+    dominanceModule_ = dominanceBuilder.build(cfgModule_);
+    if (dominanceModule_ == nullptr)
+    {
+        dominanceError_ = dominanceBuilder.error();
+        return false;
+    }
+    if (!boundaryVerifier.verify(StageBoundary::DominanceToSsa, dominanceModule_))
+    {
+        dominanceError_ = boundaryVerifier.error();
+        return false;
+    }
+    verifiedStageBoundaries_.push_back(StageBoundary::DominanceToSsa);
+
+    ssa::SsaBuilder ssaBuilder(ssaArena_);
+    ssaModule_ = ssaBuilder.build(mirModule_, cfgModule_, dominanceModule_);
+    if (ssaModule_ == nullptr)
+    {
+        ssaError_ = ssaBuilder.error();
+        return false;
+    }
+    if (!boundaryVerifier.verify(StageBoundary::SsaToOptimization, ssaModule_))
+    {
+        ssaError_ = boundaryVerifier.error();
+        return false;
+    }
+    verifiedStageBoundaries_.push_back(StageBoundary::SsaToOptimization);
+
+    passes::OptimizationBuilder optimizationBuilder(optimizationArena_);
+    optimizationModule_ = optimizationBuilder.build(ssaModule_);
+    if (optimizationModule_ == nullptr)
+    {
+        optimizationError_ = optimizationBuilder.error();
+        return false;
+    }
+    passes::PassManager passManager(optimizationArena_);
+    passManager.addDefaultPipeline();
+    if (!passManager.run(optimizationModule_))
+    {
+        optimizationError_ = passManager.error();
+        return false;
+    }
+    if (!boundaryVerifier.verify(StageBoundary::OptimizationToBackend, optimizationModule_))
+    {
+        optimizationError_ = boundaryVerifier.error();
+        return false;
+    }
+    verifiedStageBoundaries_.push_back(StageBoundary::OptimizationToBackend);
+    return true;
+}
+
 bool FrontendCompilation::run(FileId fileId, bool requireMain)
 {
     verifiedStageBoundaries_.clear();
@@ -146,104 +246,7 @@ bool FrontendCompilation::run(FileId fileId, bool requireMain)
         return false;
     }
 
-    hir::HirBuilder hirBuilder(hirArena_, typeContext_, semanticAnalyzer_->model());
-    hirRoot_ = hirBuilder.build(syntaxTree_);
-    if (hirRoot_ == nullptr)
-    {
-        hirError_ = hirBuilder.error();
-        return false;
-    }
-
-    if (!boundaryVerifier.verify(StageBoundary::HirToMir, hirRoot_))
-    {
-        hirError_ = boundaryVerifier.error();
-        return false;
-    }
-    verifiedStageBoundaries_.push_back(StageBoundary::HirToMir);
-
-    mir::MirBuilder mirBuilder(mirArena_);
-    mirModule_ = mirBuilder.build(hirRoot_);
-    if (mirModule_ == nullptr)
-    {
-        mirError_ = mirBuilder.error();
-        return false;
-    }
-
-    if (!boundaryVerifier.verify(StageBoundary::MirToCfg, mirModule_))
-    {
-        mirError_ = boundaryVerifier.error();
-        return false;
-    }
-    verifiedStageBoundaries_.push_back(StageBoundary::MirToCfg);
-
-    cfg::CfgBuilder cfgBuilder(cfgArena_);
-    cfgModule_ = cfgBuilder.build(mirModule_);
-    if (cfgModule_ == nullptr)
-    {
-        cfgError_ = cfgBuilder.error();
-        return false;
-    }
-
-    if (!boundaryVerifier.verify(StageBoundary::CfgToDominance, cfgModule_))
-    {
-        cfgError_ = boundaryVerifier.error();
-        return false;
-    }
-    verifiedStageBoundaries_.push_back(StageBoundary::CfgToDominance);
-
-    dominance::DominanceBuilder dominanceBuilder(dominanceArena_);
-    dominanceModule_ = dominanceBuilder.build(cfgModule_);
-    if (dominanceModule_ == nullptr)
-    {
-        dominanceError_ = dominanceBuilder.error();
-        return false;
-    }
-
-    if (!boundaryVerifier.verify(StageBoundary::DominanceToSsa, dominanceModule_))
-    {
-        dominanceError_ = boundaryVerifier.error();
-        return false;
-    }
-    verifiedStageBoundaries_.push_back(StageBoundary::DominanceToSsa);
-
-    ssa::SsaBuilder ssaBuilder(ssaArena_);
-    ssaModule_ = ssaBuilder.build(mirModule_, cfgModule_, dominanceModule_);
-    if (ssaModule_ == nullptr)
-    {
-        ssaError_ = ssaBuilder.error();
-        return false;
-    }
-
-    if (!boundaryVerifier.verify(StageBoundary::SsaToOptimization, ssaModule_))
-    {
-        ssaError_ = boundaryVerifier.error();
-        return false;
-    }
-    verifiedStageBoundaries_.push_back(StageBoundary::SsaToOptimization);
-
-    passes::OptimizationBuilder optimizationBuilder(optimizationArena_);
-    optimizationModule_ = optimizationBuilder.build(ssaModule_);
-    if (optimizationModule_ == nullptr)
-    {
-        optimizationError_ = optimizationBuilder.error();
-        return false;
-    }
-
-    passes::PassManager passManager(optimizationArena_);
-    passManager.addDefaultPipeline();
-    if (!passManager.run(optimizationModule_))
-    {
-        optimizationError_ = passManager.error();
-        return false;
-    }
-
-    if (!boundaryVerifier.verify(StageBoundary::OptimizationToBackend, optimizationModule_))
-    {
-        optimizationError_ = boundaryVerifier.error();
-        return false;
-    }
-    verifiedStageBoundaries_.push_back(StageBoundary::OptimizationToBackend);
-
-    return true;
+    if (!buildHirMirAndCfg(boundaryVerifier)) return false;
+    return buildDominanceSsaAndOptimization(boundaryVerifier);
 }
 }

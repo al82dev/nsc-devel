@@ -1,5 +1,11 @@
 #pragma once
 
+#include "nativesharp/Frontend/ObjectFieldLayout.h"
+#include "nativesharp/Frontend/StructValueLayout.h"
+#include "nativesharp/Frontend/ClassObjectLayout.h"
+#include "nativesharp/Frontend/ObjectInitializationStepKind.h"
+#include "nativesharp/Frontend/ObjectInitializationStep.h"
+#include "nativesharp/Frontend/ObjectAllocationPlan.h"
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
@@ -10,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <vector>
@@ -23,82 +30,12 @@ namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess;
 
-struct ObjectFieldLayout final
-{
-    std::size_t memberOrdinal = 0;
-    std::uint64_t offset = 0;
-    std::uint64_t size = 0;
-    std::uint64_t alignment = 1;
-    std::string typeKey;
-    std::optional<std::uint64_t> bitOffset;
-    std::optional<std::uint64_t> bitWidth;
-};
 
 
-struct StructValueLayout final
-{
-    std::size_t typeOrdinal = 0;
-    std::string typeKey;
-    std::uint64_t size = 0;
-    std::uint64_t alignment = 1;
-    // C2.2 "union and explicit layout": what the declaration asked for, carried alongside the
-    // computed result so consumers that must REPRODUCE the layout in another language -- the C
-    // header generator above all -- can emit `union` / `#pragma pack(N)` / an alignment attribute
-    // instead of guessing from offsets that happen to coincide.
-    bool isUnion = false;
-    std::uint64_t pack = 0;
-    std::uint64_t minimumAlignment = 0;
-    bool hasExplicitFieldOffsets = false;
-    std::vector<ObjectFieldLayout> fields;
-};
 
-struct ClassObjectLayout final
-{
-    std::size_t typeOrdinal = 0;
-    std::string typeKey;
-    std::uint64_t size = 0;
-    std::uint64_t alignment = 1;
-    std::uint64_t headerSize = 0;
-    std::optional<std::size_t> baseTypeOrdinal;
-    std::uint64_t baseSubobjectSize = 0;
-    std::uint64_t referenceSize = 0;
-    std::uint64_t referenceAlignment = 1;
-    std::vector<ObjectFieldLayout> fields;
-};
 
-enum class ObjectInitializationStepKind
-{
-    RequestStorage,
-    CheckAllocationResult,
-    BeginObjectLifetime,
-    ZeroInitializeStorage,
-    InitializeObjectInfrastructure,
-    InvokeConstructor,
-    ReturnReference
-};
 
-struct ObjectInitializationStep final
-{
-    ObjectInitializationStepKind kind = ObjectInitializationStepKind::RequestStorage;
-    std::optional<std::size_t> constructorMemberOrdinal;
-};
 
-struct ObjectAllocationPlan final
-{
-    std::size_t constructionOrdinal = 0;
-    std::size_t targetTypeOrdinal = 0;
-    std::string targetTypeKey;
-    std::uint64_t objectSize = 0;
-    std::uint64_t objectAlignment = 1;
-    std::uint64_t referenceSize = 0;
-    std::uint64_t referenceAlignment = 1;
-    bool allocationFailureReturnsNull = true;
-    bool zeroInitializesStorage = true;
-    bool selectedImplicitDefault = false;
-    std::optional<std::size_t> selectedConstructorMemberOrdinal;
-    std::optional<std::size_t> constructorEntryMemberOrdinal;
-    std::vector<ObjectInitializationStep> initializationSteps;
-};
 
 class ProjectObjectLayoutModel final
 {
@@ -159,8 +96,89 @@ private:
         std::size_t typeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics,
         SourceRange useRange);
+    bool hasTrivialStructLifetime(
+        std::string_view typeKey,
+        std::set<std::size_t>& visiting) const;
+    bool structBitFieldWidth(
+        const ClassMemberSymbol& member,
+        const target::TypeLayout& fieldLayout,
+        std::size_t typeOrdinal,
+        std::optional<std::uint64_t>& bitWidth,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateFlexibleStructField(
+        const ClassMemberSymbol& member,
+        std::string_view elementTypeKey,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool collectStructPhysicalFields(
+        std::size_t typeOrdinal,
+        std::vector<target::StructFieldRequest>& physicalFields,
+        std::vector<std::size_t>& fieldMembers,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateTransparentStruct(
+        std::span<const target::StructFieldRequest> physicalFields,
+        std::span<const std::size_t> fieldMembers,
+        const target::StructLayoutOptions& layoutOptions,
+        diagnostics::DiagnosticEngine& diagnostics,
+        SourceRange useRange) const;
+    bool validateFlexibleStructPlacement(
+        std::span<const target::StructFieldRequest> physicalFields,
+        std::span<const std::size_t> fieldMembers,
+        const target::StructLayoutOptions& layoutOptions,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool structFieldTransitivelyOwnsStorage(
+        std::size_t index,
+        std::span<const std::size_t> fieldMembers) const;
+    bool validateStructFieldOverlaps(
+        const target::StructLayout& layout,
+        std::span<const std::size_t> fieldMembers,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    StructValueLayout makeStructValueLayout(
+        std::size_t typeOrdinal,
+        const NamedTypeDeclaration& type,
+        const target::StructLayoutOptions& layoutOptions,
+        const target::StructLayout& layout,
+        std::span<const std::size_t> fieldMembers,
+        bool hasExplicitFieldOffsets) const;
+    bool validateStructAssertedSize(
+        std::size_t typeOrdinal,
+        const NamedTypeDeclaration& type,
+        const target::StructLayout& layout,
+        diagnostics::DiagnosticEngine& diagnostics);
     bool buildClassLayout(
         std::size_t typeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool prepareClassBaseLayout(
+        const NamedTypeDeclaration& type,
+        const std::optional<std::size_t>& baseType,
+        std::uint64_t& offset,
+        std::uint64_t& aggregateAlignment,
+        std::uint64_t& baseSubobjectSize,
+        diagnostics::DiagnosticEngine& diagnostics);
+    static ClassObjectLayout makeClassObjectLayout(
+        std::size_t typeOrdinal,
+        const NamedTypeDeclaration& type,
+        const target::TypeLayout& reference,
+        const std::optional<std::size_t>& baseType,
+        std::uint64_t baseSubobjectSize);
+    bool isClassBitFieldBase(std::string_view typeKey) const;
+    bool classBitFieldWidth(
+        const ClassMemberSymbol& member,
+        const target::TypeLayout& fieldLayout,
+        std::size_t typeOrdinal,
+        std::optional<std::uint64_t>& bitWidth,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool collectClassPhysicalFields(
+        std::size_t typeOrdinal,
+        std::vector<target::StructFieldRequest>& physicalFields,
+        std::vector<std::size_t>& fieldMembers,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool finalizeClassLayout(
+        std::size_t typeOrdinal,
+        const NamedTypeDeclaration& type,
+        std::uint64_t minimumSize,
+        const std::vector<target::StructFieldRequest>& physicalFields,
+        const std::vector<std::size_t>& fieldMembers,
+        ClassObjectLayout& layout,
         diagnostics::DiagnosticEngine& diagnostics);
     bool buildPromotedFieldLayouts(diagnostics::DiagnosticEngine& diagnostics);
     void buildAllocationPlans();

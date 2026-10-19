@@ -73,6 +73,20 @@ void addCause(ProjectFunctionCosts& costs, std::string_view category, ProjectOop
     costs.causes.push_back(std::string(category) + " <- " + projectOopMirNodeKindName(kind));
 }
 
+void accumulateSynchronizationCost(const ProjectOopMirNode& node, ProjectFunctionCosts& costs)
+{
+    if (isAtomic(node.kind))
+    {
+        ++costs.atomicSites;
+        addCause(costs, "atomic", node.kind);
+    }
+    if (isLock(node.kind))
+    {
+        ++costs.lockSites;
+        addCause(costs, "lock", node.kind);
+    }
+}
+
 void accumulateNodeCost(const ProjectOopMirNode& node, ProjectFunctionCosts& costs)
 {
     switch (node.kind)
@@ -137,16 +151,7 @@ void accumulateNodeCost(const ProjectOopMirNode& node, ProjectFunctionCosts& cos
         default:
             break;
     }
-    if (isAtomic(node.kind))
-    {
-        ++costs.atomicSites;
-        addCause(costs, "atomic", node.kind);
-    }
-    if (isLock(node.kind))
-    {
-        ++costs.lockSites;
-        addCause(costs, "lock", node.kind);
-    }
+    accumulateSynchronizationCost(node, costs);
 }
 
 void visit(const ProjectOopMirNode& root, ProjectFunctionCosts& costs)

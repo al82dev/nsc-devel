@@ -1,5 +1,8 @@
 #pragma once
 
+#include "nativesharp/Frontend/ProjectConversionKind.h"
+#include "nativesharp/Frontend/ProjectIntegerConstant.h"
+#include "nativesharp/Frontend/ProjectImplicitConversion.h"
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -10,51 +13,8 @@
 
 namespace nativesharp::frontend
 {
-enum class ProjectConversionKind
-{
-    None,
-    Identity,
-    Never,
-    IntegralPromotion,
-    ConstantInteger,
-    Numeric,
-    Tuple,
-    Function,
-    NullPointer,
-    NullReference,
-    ReferenceUpcast,
-    ReferenceInterface,
-    PointerToVoid,
-    StringLiteralToCharPointer,
-    StringLiteralToNativeString,
-    // NS304-T11-F01: a mutable view (Span<T>) becomes an immutable view (ReadOnlySpan<T>). Identity
-    // element, one-way (immutable never gains mutability). Structural (pointer const + length).
-    View,
-    UserDefinedImplicit,
-    UserDefinedExplicit
-};
 
-struct ProjectIntegerConstant final
-{
-    std::uint64_t value = 0;
-    bool isUnsigned = false;
-    // ID 119. `value` es una MAGNITUD, no un patron de bits en complemento a dos: `constantFits`
-    // solo compara contra cotas superiores. Un literal negativo se representa entonces con la
-    // magnitud y esta bandera, no con `value` negado -- negarlo daria 0xFFFF...FD y ninguna cota
-    // superior lo aceptaria.
-    bool isNegative = false;
-};
 
-struct ProjectImplicitConversion final
-{
-    ProjectConversionKind kind = ProjectConversionKind::None;
-    int rank = 1000;
-    std::string sourceTypeKey;
-    std::string targetTypeKey;
-    std::optional<std::size_t> userDefinedMemberOrdinal;
-
-    bool exists() const noexcept;
-};
 
 class ProjectTypeConversion final
 {

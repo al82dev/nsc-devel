@@ -1,9 +1,18 @@
 #pragma once
 
+#include "nativesharp/Frontend/StaticMemberKind.h"
+#include "nativesharp/Frontend/StaticMemberInfo.h"
+#include "nativesharp/Frontend/StaticTypeInfo.h"
+#include "nativesharp/Frontend/StaticAttributeInfo.h"
+#include "nativesharp/Frontend/StaticAvailabilityInfo.h"
+#include "nativesharp/Frontend/StaticDeriveInfo.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 #include "nativesharp/Frontend/ComptimeEngine.h"
+#include "Internal/ComptimeAttributeDefinition.h"
+#include "nativesharp/Basic/SourceRange.h"
+#include "nativesharp/Diagnostics/DiagnosticId.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -11,78 +20,20 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace nativesharp::frontend
 {
 class ProjectMethodBodyModel;
 
-enum class StaticMemberKind { Field, Method, Constructor, Destructor, Event };
 
-struct StaticMemberInfo final
-{
-    std::size_t memberOrdinal = 0;
-    StaticMemberKind kind = StaticMemberKind::Field;
-    std::string name;
-    std::string typeKey;
-    std::string signatureKey;
-    bool isPublic = false;
-    bool isStatic = false;
-    // NS304-T14-F01: typed descriptors (modifiers / ownership / generics / source origin).
-    bool isReadonly = false;
-    bool isConst = false;
-    bool isVolatile = false;
-    sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
-    std::string genericTemplateKey;
-    std::string sourcePath;
-    language::FrameStorage frameStorage = language::FrameStorage::CallerStack;
-};
 
-struct StaticTypeInfo final
-{
-    std::size_t typeOrdinal = 0;
-    std::size_t ownerProjectOrdinal = 0;
-    std::string identity;
-    std::string moduleName;
-    NamedTypeDeclarationKind kind = NamedTypeDeclarationKind::Struct;
-    bool isPublic = false;
-    bool isOpenGeneric = false;
-    bool isPrecompiled = false;
-    std::optional<std::uint64_t> size;
-    std::optional<std::uint64_t> alignment;
-    std::vector<StaticMemberInfo> members;
-};
 
-struct StaticAttributeInfo final
-{
-    std::string identity;
-    std::vector<std::string> constantArguments;
-    ComptimeAttributeRetention retention = ComptimeAttributeRetention::CompileTime;
-    std::optional<std::size_t> typeOrdinal;
-    std::optional<std::size_t> memberOrdinal;
-};
 
 // Availability is a compile-time contract attached to the canonical declaration ordinal.
 // Messages and replacements remain structured; source-language revisions never gate a use.
-struct StaticAvailabilityInfo final
-{
-    std::optional<std::size_t> typeOrdinal;
-    std::optional<std::size_t> memberOrdinal;
-    bool deprecated = false;
-    std::string message;
-    std::string replacement;
-    std::string target;
-    std::string architecture;
-};
 
-struct StaticDeriveInfo final
-{
-    std::size_t typeOrdinal = 0;
-    std::string traitName;
-    std::string dependencyKey;
-    std::vector<std::string> participatingFields;
-    std::vector<std::string> generatedMembers;
-};
 
 // Compile-time-only typed catalogue. It owns copied scalar/string values and never publishes a
 // runtime descriptor, registry, vtable, or linker-visible symbol.
@@ -113,6 +64,89 @@ public:
     bool isBuilt() const noexcept;
 
 private:
+    void reset();
+    bool appendStaticType(
+        std::size_t typeOrdinal,
+        const ProjectNameLookup& names,
+        const ProjectMemberModel& members,
+        const ProjectObjectLayoutModel& layouts);
+    bool collectStaticTypes(
+        const ProjectNameLookup& names,
+        const ProjectMemberModel& members,
+        const ProjectObjectLayoutModel& layouts);
+    static void addBuiltinAttributeDefinitions(
+        std::unordered_map<std::string, internal::ComptimeAttributeDefinition>& definitions);
+    bool collectAttributeDefinitions(
+        std::span<const ProjectComptimeRecord> comptimeRecords,
+        std::unordered_map<std::string, internal::ComptimeAttributeDefinition>& definitions);
+    bool findAttributeTarget(
+        const ProjectNameLookup& names,
+        const ProjectMemberModel& members,
+        const ProjectComptimeRecord& record,
+        const ComptimeAttributeDirective& directive,
+        std::optional<std::size_t>& targetType,
+        std::optional<std::size_t>& targetMember) const;
+    bool appendAttributeUse(
+        const ProjectNameLookup& names,
+        const ProjectMemberModel& members,
+        const ProjectComptimeRecord& record,
+        const ComptimeAttributeDirective& directive,
+        const std::unordered_map<std::string, internal::ComptimeAttributeDefinition>& definitions,
+        std::unordered_map<std::string, std::size_t>& nonRepeatableUses);
+    bool collectAttributeUses(
+        const ProjectNameLookup& names,
+        const ProjectMemberModel& members,
+        std::span<const ProjectComptimeRecord> comptimeRecords,
+        const std::unordered_map<std::string, internal::ComptimeAttributeDefinition>& definitions);
+    bool invalidAttributeArguments(
+        const StaticAttributeInfo& attribute,
+        std::string expected);
+    std::size_t availabilityIndexForAttribute(
+        const StaticAttributeInfo& attribute,
+        std::unordered_map<std::size_t, std::size_t>& availabilityByType,
+        std::unordered_map<std::size_t, std::size_t>& availabilityByMember);
+    bool applyAvailabilityAttribute(
+        const StaticAttributeInfo& attribute,
+        std::unordered_map<std::size_t, std::size_t>& availabilityByType,
+        std::unordered_map<std::size_t, std::size_t>& availabilityByMember);
+    bool collectAvailabilityContracts(
+        std::unordered_map<std::size_t, std::size_t>& availabilityByType,
+        std::unordered_map<std::size_t, std::size_t>& availabilityByMember);
+    bool attributeSuppressed(
+        std::size_t typeOrdinal,
+        std::string_view category) const;
+    void reportAvailabilityError(
+        std::string_view declaration,
+        const StaticAvailabilityInfo& contract,
+        std::string reason,
+        SourceRange range,
+        diagnostics::DiagnosticId errorId,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateAvailabilityUse(
+        const ProjectNameLookup& names,
+        const ProjectMemberModel& members,
+        const StaticAvailabilityInfo& contract,
+        std::optional<std::size_t> enclosingType,
+        SourceRange range,
+        diagnostics::DiagnosticId errorId,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateAvailabilityBindings(
+        const ProjectNameLookup& names,
+        const ProjectMemberModel& members,
+        const ProjectMethodBodyModel& methodBodies,
+        const std::unordered_map<std::size_t, std::size_t>& availabilityByType,
+        const std::unordered_map<std::size_t, std::size_t>& availabilityByMember,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool fieldIgnored(std::size_t memberOrdinal) const;
+    static bool derivedMemberCollides(
+        const StaticTypeInfo& type,
+        std::string_view name);
+    bool appendDerive(
+        const StaticTypeInfo& type,
+        std::string_view trait,
+        const std::vector<std::string>& fields);
+    bool collectDerives(const ProjectNameLookup& names);
+
     std::vector<StaticTypeInfo> types_;
     std::vector<StaticAttributeInfo> attributes_;
     std::vector<StaticAttributeInfo> runtimeAttributes_;

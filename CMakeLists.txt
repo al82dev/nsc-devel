@@ -395,6 +395,14 @@ add_library(nsc_frontend STATIC
     src/Frontend/FrontendCompilation.cpp
     src/Frontend/CompilationStage.cpp
     src/Frontend/StageBoundaryVerifier.cpp
+    src/Frontend/EnumUnderlyingType.cpp
+    src/Frontend/Internal/IntegerExpression.cpp
+    src/Frontend/Internal/ProjectPhaseTimer.cpp
+    src/Frontend/Internal/SpecializationWaveTimer.cpp
+    src/Frontend/Internal/EnumConstResolver.cpp
+    src/Frontend/Internal/ByteReader.cpp
+    src/Frontend/Internal/CloneDepthGuard.cpp
+    src/Frontend/Internal/EnumInitializerResolver.cpp
     src/Frontend/ComptimeEngine.cpp
     src/Frontend/MacroExpansionEngine.cpp
     src/Frontend/ProjectSyntaxUnit.cpp
@@ -402,13 +410,58 @@ add_library(nsc_frontend STATIC
     src/Frontend/QualifiedNameLadder.cpp
     src/Frontend/ProjectGenericConstraintModel.cpp
     src/Frontend/ProjectGenericModel.cpp
+    src/Frontend/Generics/GenericModelSupport.cpp
+    src/Frontend/Generics/Support/TemplateClassification.cpp
+    src/Frontend/Generics/Support/TemplateSpelling.cpp
+    src/Frontend/Generics/Support/ConstGenericArguments.cpp
+    src/Frontend/Generics/Support/GenericPatterns.cpp
+    src/Frontend/Generics/TraitImplementationMerger.cpp
+    src/Frontend/Generics/AssociatedItemCollector.cpp
+    src/Frontend/Generics/TypeAliasExpander.cpp
+    src/Frontend/Generics/Cache/TemplateCatalogCodec.cpp
+    src/Frontend/Generics/Cache/TemplateCacheBridge.cpp
+    src/Frontend/Generics/TemplateCollector.cpp
+    src/Frontend/Generics/GenericLambdaSpecializer.cpp
+    src/Frontend/Generics/GenericNodeProcessor.cpp
+    src/Frontend/Generics/TypeDemandScheduler.cpp
+    src/Frontend/Generics/GenericTypeInference.cpp
+    src/Frontend/Generics/GenericCallInference.cpp
+    src/Frontend/Generics/TemplateResolver.cpp
+    src/Frontend/Generics/SpecializationExecutor.cpp
+    src/Frontend/Generics/GenericCloner.cpp
+    src/Frontend/Generics/TypeSpellingAndVisibility.cpp
+    src/Frontend/Generics/TemplateDependencyCollector.cpp
+    src/Frontend/GenericTelemetry.cpp
     src/Frontend/ProjectGenericModelDumper.cpp
     src/Frontend/TemplateParseCache.cpp
     src/Frontend/ProjectOpaqueResultModel.cpp
     src/Frontend/ProjectNameLookup.cpp
+    src/Frontend/NameLookup/ProjectSetup.cpp
+    src/Frontend/NameLookup/QualifiedNamespaces.cpp
+    src/Frontend/NameLookup/QualifiedTypeNames.cpp
+    src/Frontend/NameLookup/ExpressionNames.cpp
+    src/Frontend/NameLookup/CandidateCollection.cpp
+    src/Frontend/NameLookup/NameDiagnostics.cpp
+    src/Frontend/NameLookup/TypePredeclarations.cpp
+    src/Frontend/NameLookup/TypeAggregation.cpp
+    src/Frontend/NameLookup/Reexports.cpp
+    src/Frontend/NameLookup/SyntaxBinding.cpp
+    src/Frontend/NameLookup/BuiltinTypeValidation.cpp
+    src/Frontend/NameLookup/TypeResolutionDiagnostics.cpp
+    src/Frontend/NameLookup/TypeVisibility.cpp
     src/Frontend/ProjectNameLookupDumper.cpp
     src/Frontend/PrecompiledMemberIdentityIndex.cpp
     src/Frontend/ProjectMemberModel.cpp
+    src/Frontend/MemberModel/AnonymousMemberPromotion.cpp
+    src/Frontend/MemberModel/BuildAndDeclaration.cpp
+    src/Frontend/MemberModel/BuildSupport.cpp
+    src/Frontend/MemberModel/CallableMembers.cpp
+    src/Frontend/MemberModel/EnumMemberCollection.cpp
+    src/Frontend/MemberModel/MemberBodyScan.cpp
+    src/Frontend/MemberModel/MemberCollection.cpp
+    src/Frontend/MemberModel/MemberInitialization.cpp
+    src/Frontend/MemberModel/OwnershipQueries.cpp
+    src/Frontend/MemberModel/TypeIdentity.cpp
     src/Frontend/ProjectNamespaceFunctionModel.cpp
     src/Frontend/ProjectMemberModelDumper.cpp
     src/Frontend/ProjectInheritanceModel.cpp
@@ -444,6 +497,11 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
     src/Frontend/ProjectConstructionModel.cpp
+    src/Frontend/ConstructionModel/ImplicitDefaultConstructors.cpp
+    src/Frontend/ConstructionModel/ConstructorInitializers.cpp
+    src/Frontend/ConstructionModel/ConstructionBinding.cpp
+    src/Frontend/ConstructionModel/ConstructorCandidateEvaluation.cpp
+    src/Frontend/ConstructionModel/ConstructionAccessibility.cpp
     src/Frontend/ProjectConstructionModelDumper.cpp
     src/Frontend/ProjectObjectLayoutModel.cpp
     src/Frontend/ProjectObjectLayoutModelDumper.cpp

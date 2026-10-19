@@ -1,5 +1,8 @@
 #pragma once
 
+#include "nativesharp/Frontend/QualifiedNameSite.h"
+#include "nativesharp/Frontend/QualifiedNameTier.h"
+#include "nativesharp/Frontend/QualifiedNameRung.h"
 #include <span>
 #include <string>
 #include <string_view>
@@ -38,46 +41,13 @@ namespace nativesharp::frontend
 // EL SITIO desde el que se escribe el nombre, en forma puramente TEXTUAL -- ni ordinales ni
 // tablas. Es lo que permite que la fase generica, que no tiene modelo de nombres, construya el
 // mismo sitio que el modelo de nombres construye con ordinales.
-struct QualifiedNameSite final
-{
-    // El namespace lexico, de fuera adentro: {"A","B"} dentro de `namespace A { namespace B {`.
-    std::span<const std::string> namespaceSegments;
-    // La escritura COMPLETA Y CALIFICADA de cada tipo contenedor, de fuera adentro:
-    // {"A.Outer", "A.Outer.Medio"} dentro de `A.Outer.Medio`. Completa y no simple porque el
-    // escalon de contenedores produce nombres absolutos, no relativos.
-    std::span<const std::string> enclosingTypeNames;
-    // `using X = A.B.C;` -- solo la mitad de NAMESPACE. Un alias a un tipo lleva sintaxis, no una
-    // cadena, y se expande antes de llegar aqui.
-    const std::unordered_map<std::string, std::string>* aliases = nullptr;
-    // `using A.B;`
-    std::span<const std::string> importedNamespaces;
-};
 
 // A que escalon pertenece una escritura candidata. Cada fase sondea su propia tabla, y el escalon
 // es lo que le dice CON QUE reglas de visibilidad sondearla.
-enum class QualifiedNameTier
-{
-    // Un tipo contenedor del sitio. Solo el modulo propio.
-    EnclosingType,
-    // El namespace actual o uno exterior. Solo el modulo propio.
-    LexicalNamespace,
-    // Un `using` de namespace. El modulo propio y los referenciados, en el MISMO escalon: dos
-    // candidatos iguales aqui son ambiguos, no se elige uno.
-    ImportedNamespace,
-    // El namespace global del modulo propio.
-    Global,
-    // Los modulos referenciados, por anidamiento de namespace y despues global.
-    ReferencedModule
-};
 
 // UN ESCALON: las escrituras que compiten ENTRE SI. El primer escalon que produce algun resultado
 // decide; dos resultados dentro del mismo escalon son ambiguos. Un escalon con una sola escritura
 // --que es el caso normal-- es «prueba esta, y si esta no, baja».
-struct QualifiedNameRung final
-{
-    QualifiedNameTier tier = QualifiedNameTier::LexicalNamespace;
-    std::vector<std::string> spellings;
-};
 
 // Las escrituras candidatas, EN ORDEN DE PRIORIDAD. Sin tablas y sin decidir nada: quien decide es
 // quien sondea.

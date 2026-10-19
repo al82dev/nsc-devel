@@ -602,6 +602,315 @@ target::StructLayoutOptions parseStructLayoutOptions(const NamedTypeDeclaration&
 }
 }
 
+bool ProjectObjectLayoutModel::hasTrivialStructLifetime(
+    std::string_view typeKey,
+    std::set<std::size_t>& visiting) const
+{
+    std::string current(typeKey);
+    while (const std::optional<std::string> element =
+               ProjectMemberModel::fixedArrayElementTypeKey(current))
+        current = *element;
+    if (!current.starts_with("type:")) return true;
+    const std::string_view identity = std::string_view(current).substr(5);
+    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+    {
+        const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[ordinal];
+        if (declaration.identity.key() != identity) continue;
+        if (declaration.kind != NamedTypeDeclarationKind::Struct) return true;
+        if (!visiting.insert(ordinal).second) return false;
+        for (const std::size_t nestedOrdinal : memberModel_->membersOfType(ordinal))
+        {
+            if (nestedOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& nested = memberModel_->members()[nestedOrdinal];
+            if (nested.kind == ClassMemberKind::Destructor ||
+                (nested.kind == ClassMemberKind::Field && !nested.isStatic &&
+                 (nested.declaredOwnership == sema::OwnershipKind::Owned ||
+                  !hasTrivialStructLifetime(nested.declaredTypeKey, visiting))))
+            {
+                visiting.erase(ordinal);
+                return false;
+            }
+        }
+        visiting.erase(ordinal);
+        return true;
+    }
+    return true;
+}
+
+bool ProjectObjectLayoutModel::structBitFieldWidth(
+    const ClassMemberSymbol& member,
+    const target::TypeLayout& fieldLayout,
+    std::size_t typeOrdinal,
+    std::optional<std::uint64_t>& bitWidth,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!member.isBitField) return true;
+    bool validBase = ProjectIntegerEvaluator::isIntegerType(member.declaredTypeKey) ||
+        member.declaredTypeKey == "builtin:bool";
+    if (!validBase && member.declaredTypeKey.starts_with("type:"))
+    {
+        const std::string_view identity = std::string_view(member.declaredTypeKey).substr(5);
+        for (const NamedTypeDeclaration& declaration : nameLookup_->namedTypes())
+        {
+            if (declaration.identity.key() != identity) continue;
+            validBase = declaration.kind == NamedTypeDeclarationKind::Enum;
+            break;
+        }
+    }
+    const std::optional<ProjectIntegerValue> folded =
+        ProjectIntegerEvaluator(nullptr).evaluate(member.bitWidthSyntax, typeOrdinal);
+    const bool negative = folded.has_value() &&
+        ProjectIntegerEvaluator::isSignedInteger(folded->typeKey) &&
+        folded->asSigned() < 0;
+    if (!validBase || fieldLayout.size > 8U || !folded.has_value() || negative ||
+        folded->bits > fieldLayout.size * 8U ||
+        (folded->bits == 0 && !member.isUnnamedBitField))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            member.range,
+            !validBase
+                ? "a bit-field base type must be an integer, bool, or enum"
+                : fieldLayout.size > 8U
+                    ? "bit-field allocation units are limited to 8, 16, 32, or 64 bits"
+                : !folded.has_value() || negative
+                    ? "bit-field width must be a nonnegative integral constant expression"
+                    : folded->bits == 0
+                        ? "a named bit-field cannot have width zero"
+                        : "bit-field width exceeds its storage type");
+        return false;
+    }
+    bitWidth = folded->bits;
+    return true;
+}
+
+bool ProjectObjectLayoutModel::validateFlexibleStructField(
+    const ClassMemberSymbol& member,
+    std::string_view elementTypeKey,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    std::set<std::size_t> visiting;
+    if (member.declaredOwnership == sema::OwnershipKind::None &&
+        hasTrivialStructLifetime(elementTypeKey, visiting))
+        return true;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidType,
+        diagnostics::DiagnosticSeverity::Error,
+        member.range,
+        "a flexible array requires an unqualified element type with trivial lifetime");
+    return false;
+}
+
+bool ProjectObjectLayoutModel::collectStructPhysicalFields(
+    std::size_t typeOrdinal,
+    std::vector<target::StructFieldRequest>& physicalFields,
+    std::vector<std::size_t>& fieldMembers,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
+    {
+        if (memberOrdinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
+        const std::optional<TypeLayout> fieldLayout = layoutTypeSyntax(
+            member.declaredTypeSyntax, diagnostics, member.range);
+        if (!fieldLayout.has_value())
+        {
+            namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+            return false;
+        }
+        const bool flexible = ProjectMemberModel::flexibleArrayElementTypeKey(
+            member.declaredTypeKey).has_value();
+        std::optional<std::uint64_t> bitWidth;
+        if (member.isBitField &&
+            !structBitFieldWidth(
+                member, *fieldLayout, typeOrdinal, bitWidth, diagnostics))
+        {
+            namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+            return false;
+        }
+        if (flexible)
+        {
+            const std::string element =
+                *ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey);
+            if (!validateFlexibleStructField(member, element, diagnostics))
+            {
+                namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+                return false;
+            }
+        }
+        physicalFields.push_back(target::StructFieldRequest{
+            *fieldLayout,
+            member.explicitFieldOffset,
+            member.explicitFieldAlignment,
+            flexible,
+            bitWidth,
+            member.isUnnamedBitField});
+        fieldMembers.push_back(memberOrdinal);
+    }
+    return true;
+}
+
+bool ProjectObjectLayoutModel::validateTransparentStruct(
+    std::span<const target::StructFieldRequest> physicalFields,
+    std::span<const std::size_t> fieldMembers,
+    const target::StructLayoutOptions& layoutOptions,
+    diagnostics::DiagnosticEngine& diagnostics,
+    SourceRange useRange) const
+{
+    const bool containsBitField = std::ranges::any_of(
+        fieldMembers,
+        [&](std::size_t memberOrdinal)
+        {
+            return memberOrdinal < memberModel_->members().size() &&
+                memberModel_->members()[memberOrdinal].isBitField;
+        });
+    const std::size_t representedFields = std::ranges::count_if(
+        physicalFields,
+        [](const target::StructFieldRequest& field)
+        {
+            return !field.isFlexibleArray && field.layout.size != 0;
+        });
+    if (representedFields == 1 && !layoutOptions.isUnion && !containsBitField) return true;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidType,
+        diagnostics::DiagnosticSeverity::Error,
+        useRange,
+        "repr(transparent) requires exactly one non-zero-sized instance field");
+    return false;
+}
+
+bool ProjectObjectLayoutModel::validateFlexibleStructPlacement(
+    std::span<const target::StructFieldRequest> physicalFields,
+    std::span<const std::size_t> fieldMembers,
+    const target::StructLayoutOptions& layoutOptions,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    for (std::size_t index = 0; index < physicalFields.size(); ++index)
+    {
+        if (!physicalFields[index].isFlexibleArray) continue;
+        if (!layoutOptions.isUnion && index + 1 == physicalFields.size()) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            memberModel_->members()[fieldMembers[index]].range,
+            "a flexible array is permitted only as the final instance field of a non-union struct");
+        return false;
+    }
+    return true;
+}
+
+bool ProjectObjectLayoutModel::structFieldTransitivelyOwnsStorage(
+    std::size_t index,
+    std::span<const std::size_t> fieldMembers) const
+{
+    if (index >= fieldMembers.size()) return false;
+    const ClassMemberSymbol& member = memberModel_->members()[fieldMembers[index]];
+    if (member.declaredOwnership == sema::OwnershipKind::Owned) return true;
+    return memberModel_->typeTransitivelyOwnsStorage(member.declaredTypeKey);
+}
+
+bool ProjectObjectLayoutModel::validateStructFieldOverlaps(
+    const target::StructLayout& layout,
+    std::span<const std::size_t> fieldMembers,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    for (std::size_t left = 0; left < layout.fields.size(); ++left)
+    {
+        for (std::size_t right = left + 1; right < layout.fields.size(); ++right)
+        {
+            const target::StructFieldLayout& leftLayout = layout.fields[left];
+            const target::StructFieldLayout& rightLayout = layout.fields[right];
+            const bool overlaps = leftLayout.offset < rightLayout.offset + rightLayout.size &&
+                rightLayout.offset < leftLayout.offset + leftLayout.size;
+            if (!overlaps) continue;
+            const bool leftOwns = structFieldTransitivelyOwnsStorage(left, fieldMembers);
+            const bool rightOwns = structFieldTransitivelyOwnsStorage(right, fieldMembers);
+            if (!leftOwns && !rightOwns) continue;
+            const std::size_t owner = leftOwns ? left : right;
+            const std::size_t other = leftOwns ? right : left;
+            const ClassMemberSymbol& ownerMember = memberModel_->members()[fieldMembers[owner]];
+            const ClassMemberSymbol& otherMember = memberModel_->members()[fieldMembers[other]];
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                ownerMember.range,
+                "field '" + ownerMember.name + "' contains owned storage and overlaps field '" +
+                    otherMember.name + "'; explicit layout cannot overlap owning storage "
+                    "without active-member tracking");
+            return false;
+        }
+    }
+    return true;
+}
+
+StructValueLayout ProjectObjectLayoutModel::makeStructValueLayout(
+    std::size_t typeOrdinal,
+    const NamedTypeDeclaration& type,
+    const target::StructLayoutOptions& layoutOptions,
+    const target::StructLayout& layout,
+    std::span<const std::size_t> fieldMembers,
+    bool hasExplicitFieldOffsets) const
+{
+    StructValueLayout valueLayout;
+    valueLayout.typeOrdinal = typeOrdinal;
+    valueLayout.typeKey = "type:" + type.identity.key();
+    valueLayout.size = layout.size;
+    valueLayout.alignment = layout.alignment;
+    valueLayout.isUnion = layoutOptions.isUnion;
+    valueLayout.pack = layoutOptions.pack;
+    valueLayout.minimumAlignment = layoutOptions.minimumAlignment;
+    valueLayout.hasExplicitFieldOffsets = hasExplicitFieldOffsets;
+    for (std::size_t index = 0; index < fieldMembers.size(); ++index)
+    {
+        const std::size_t memberOrdinal = fieldMembers[index];
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        const target::StructFieldLayout& field = layout.fields[index];
+        valueLayout.fields.push_back(ObjectFieldLayout{
+            memberOrdinal,
+            field.offset,
+            field.size,
+            field.alignment,
+            member.declaredTypeKey,
+            field.bitOffset,
+            field.bitWidth});
+    }
+    return valueLayout;
+}
+
+bool ProjectObjectLayoutModel::validateStructAssertedSize(
+    std::size_t typeOrdinal,
+    const NamedTypeDeclaration& type,
+    const target::StructLayout& layout,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    // `size(N)`. Aqui es donde se comprueba, porque es el unico sitio donde el tamano YA ESTA
+    // CALCULADO -- con su relleno final, que es justo la parte que nadie escribe y donde un
+    // binding se desvia de C sin enterarse.
+    //
+    // EL MENSAJE LLEVA LOS DOS NUMEROS. Un diagnostico que solo dijera "el tamano no coincide"
+    // obligaria a otra corrida para saber cual es: quien lo lee esta comparando contra un header
+    // de C y lo que necesita es la diferencia, no la noticia.
+    const std::optional<std::uint64_t> asserted = parseAssertedSize(type);
+    if (!asserted.has_value() || *asserted == layout.size) return true;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidType,
+        diagnostics::DiagnosticSeverity::Error,
+        type.range,
+        "struct '" + type.identity.key() + "' declares size(" + std::to_string(*asserted) +
+            ") but its fields lay out to " + std::to_string(layout.size) +
+            " bytes with alignment " + std::to_string(layout.alignment) +
+            "; size() verifies the layout, it does not pad it");
+    // MARCAR `Failed` ANTES DE SALIR, como hacen los otros tres puntos de fallo de esta
+    // funcion. Dejarlo en `Visiting` haria que la SIGUIENTE consulta de este mismo tipo
+    // --cualquier struct que lo tenga como campo-- lo tomara por un ciclo, y el segundo
+    // diagnostico diria "referencia circular" sobre una struct que no tiene ninguna. Un error
+    // que inventa un segundo error distinto es peor que el primero.
+    namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+    return false;
+}
+
 bool ProjectObjectLayoutModel::buildStructLayout(
     std::size_t typeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics,
@@ -611,17 +920,10 @@ bool ProjectObjectLayoutModel::buildStructLayout(
         typeOrdinal >= nameLookup_->namedTypes().size() ||
         typeOrdinal >= namedLayoutStates_.size() ||
         typeOrdinal >= structLayoutIndexByType_.size())
-    {
         return false;
-    }
     if (namedLayoutStates_[typeOrdinal] == NamedLayoutState::Complete)
-    {
         return structLayoutIndexByType_[typeOrdinal].has_value();
-    }
-    if (namedLayoutStates_[typeOrdinal] == NamedLayoutState::Failed)
-    {
-        return false;
-    }
+    if (namedLayoutStates_[typeOrdinal] == NamedLayoutState::Failed) return false;
     if (namedLayoutStates_[typeOrdinal] == NamedLayoutState::Visiting)
     {
         diagnostics.report(
@@ -635,133 +937,13 @@ bool ProjectObjectLayoutModel::buildStructLayout(
     }
 
     const NamedTypeDeclaration& type = nameLookup_->namedTypes()[typeOrdinal];
-    if (type.kind != NamedTypeDeclarationKind::Struct)
-    {
-        return false;
-    }
-
+    if (type.kind != NamedTypeDeclarationKind::Struct) return false;
     namedLayoutStates_[typeOrdinal] = NamedLayoutState::Visiting;
-    std::function<bool(std::string_view, std::set<std::size_t>&)> hasTrivialLifetime =
-        [&](std::string_view candidate, std::set<std::size_t>& visiting) -> bool
-    {
-        std::string current(candidate);
-        while (const std::optional<std::string> element =
-                   ProjectMemberModel::fixedArrayElementTypeKey(current))
-            current = *element;
-        if (!current.starts_with("type:")) return true;
-        const std::string_view identity = std::string_view(current).substr(5);
-        for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
-        {
-            const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[ordinal];
-            if (declaration.identity.key() != identity) continue;
-            if (declaration.kind != NamedTypeDeclarationKind::Struct) return true;
-            if (!visiting.insert(ordinal).second) return false;
-            for (const std::size_t nestedOrdinal : memberModel_->membersOfType(ordinal))
-            {
-                if (nestedOrdinal >= memberModel_->members().size()) continue;
-                const ClassMemberSymbol& nested = memberModel_->members()[nestedOrdinal];
-                if (nested.kind == ClassMemberKind::Destructor ||
-                    (nested.kind == ClassMemberKind::Field && !nested.isStatic &&
-                     (nested.declaredOwnership == sema::OwnershipKind::Owned ||
-                      !hasTrivialLifetime(nested.declaredTypeKey, visiting))))
-                {
-                    visiting.erase(ordinal);
-                    return false;
-                }
-            }
-            visiting.erase(ordinal);
-            return true;
-        }
-        return true;
-    };
     std::vector<target::StructFieldRequest> physicalFields;
     std::vector<std::size_t> fieldMembers;
-    for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
-    {
-        if (memberOrdinal >= memberModel_->members().size()) continue;
-        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-        if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
-        const std::optional<TypeLayout> fieldLayout = layoutTypeSyntax(
-            member.declaredTypeSyntax, diagnostics, member.range);
-        if (!fieldLayout.has_value())
-        {
-            namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
-            return false;
-        }
-        const bool flexible =
-            ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey).has_value();
-        std::optional<std::uint64_t> bitWidth;
-        if (member.isBitField)
-        {
-            bool validBase = ProjectIntegerEvaluator::isIntegerType(member.declaredTypeKey) ||
-                member.declaredTypeKey == "builtin:bool";
-            if (!validBase && member.declaredTypeKey.starts_with("type:"))
-            {
-                const std::string_view identity =
-                    std::string_view(member.declaredTypeKey).substr(5);
-                for (const NamedTypeDeclaration& declaration : nameLookup_->namedTypes())
-                {
-                    if (declaration.identity.key() == identity)
-                    {
-                        validBase = declaration.kind == NamedTypeDeclarationKind::Enum;
-                        break;
-                    }
-                }
-            }
-            const std::optional<ProjectIntegerValue> folded =
-                ProjectIntegerEvaluator(nullptr).evaluate(member.bitWidthSyntax, typeOrdinal);
-            const bool negative = folded.has_value() &&
-                ProjectIntegerEvaluator::isSignedInteger(folded->typeKey) &&
-                folded->asSigned() < 0;
-            if (!validBase || fieldLayout->size > 8U || !folded.has_value() || negative ||
-                folded->bits > fieldLayout->size * 8U ||
-                (folded->bits == 0 && !member.isUnnamedBitField))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    member.range,
-                    !validBase
-                        ? "a bit-field base type must be an integer, bool, or enum"
-                        : fieldLayout->size > 8U
-                            ? "bit-field allocation units are limited to 8, 16, 32, or 64 bits"
-                        : !folded.has_value() || negative
-                            ? "bit-field width must be a nonnegative integral constant expression"
-                            : folded->bits == 0
-                                ? "a named bit-field cannot have width zero"
-                                : "bit-field width exceeds its storage type");
-                namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
-                return false;
-            }
-            bitWidth = folded->bits;
-        }
-        if (flexible)
-        {
-            const std::string element =
-                *ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey);
-            std::set<std::size_t> visiting;
-            if (member.declaredOwnership != sema::OwnershipKind::None ||
-                !hasTrivialLifetime(element, visiting))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    member.range,
-                    "a flexible array requires an unqualified element type with trivial lifetime");
-                namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
-                return false;
-            }
-        }
-        physicalFields.push_back(
-            target::StructFieldRequest{
-                *fieldLayout,
-                member.explicitFieldOffset,
-                member.explicitFieldAlignment,
-                flexible,
-                bitWidth,
-                member.isUnnamedBitField});
-        fieldMembers.push_back(memberOrdinal);
-    }
+    if (!collectStructPhysicalFields(
+            typeOrdinal, physicalFields, fieldMembers, diagnostics))
+        return false;
 
     // C2.2 "union and explicit layout": this is THE one place in the compiler that knows a union
     // is not an ordinary struct. Everything else -- members, by-value semantics, the C ABI
@@ -769,46 +951,18 @@ bool ProjectObjectLayoutModel::buildStructLayout(
     // because in every respect except where the fields sit, they ARE identical. The markers were
     // written onto the declaration by the parser (`union`, `pack=N`, `align=N`).
     const target::StructLayoutOptions layoutOptions = parseStructLayoutOptions(type);
-    const std::string_view representation = parseRepresentation(type);
-    if (representation == "transparent")
+    if (parseRepresentation(type) == "transparent" &&
+        !validateTransparentStruct(
+            physicalFields, fieldMembers, layoutOptions, diagnostics, useRange))
     {
-        const bool containsBitField = std::ranges::any_of(
-            fieldMembers,
-            [&](std::size_t memberOrdinal)
-            {
-                return memberOrdinal < memberModel_->members().size() &&
-                    memberModel_->members()[memberOrdinal].isBitField;
-            });
-        const std::size_t representedFields = std::ranges::count_if(
-            physicalFields,
-            [](const target::StructFieldRequest& field)
-            {
-                return !field.isFlexibleArray && field.layout.size != 0;
-            });
-        if (representedFields != 1 || layoutOptions.isUnion || containsBitField)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                useRange,
-                "repr(transparent) requires exactly one non-zero-sized instance field");
-            namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
-            return false;
-        }
+        namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+        return false;
     }
-    for (std::size_t index = 0; index < physicalFields.size(); ++index)
+    if (!validateFlexibleStructPlacement(
+            physicalFields, fieldMembers, layoutOptions, diagnostics))
     {
-        if (!physicalFields[index].isFlexibleArray) continue;
-        if (layoutOptions.isUnion || index + 1 != physicalFields.size())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                memberModel_->members()[fieldMembers[index]].range,
-                "a flexible array is permitted only as the final instance field of a non-union struct");
-            namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
-            return false;
-        }
+        namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
+        return false;
     }
     const std::optional<target::StructLayout> layout =
         targetLayout_.layoutStruct(physicalFields, layoutOptions);
@@ -832,95 +986,16 @@ bool ProjectObjectLayoutModel::buildStructLayout(
     const bool hasExplicitFieldOffsets = std::ranges::any_of(
         physicalFields,
         [](const target::StructFieldRequest& field) { return field.explicitOffset.has_value(); });
-    if (hasExplicitFieldOffsets)
+    if (hasExplicitFieldOffsets &&
+        !validateStructFieldOverlaps(*layout, fieldMembers, diagnostics))
     {
-        const auto fieldTransitivelyOwnsStorage = [&](std::size_t index) -> bool
-        {
-            if (index >= fieldMembers.size()) return false;
-            const ClassMemberSymbol& member = memberModel_->members()[fieldMembers[index]];
-            if (member.declaredOwnership == sema::OwnershipKind::Owned) return true;
-            return memberModel_->typeTransitivelyOwnsStorage(member.declaredTypeKey);
-        };
-        for (std::size_t left = 0; left < layout->fields.size(); ++left)
-        {
-            for (std::size_t right = left + 1; right < layout->fields.size(); ++right)
-            {
-                const target::StructFieldLayout& leftLayout = layout->fields[left];
-                const target::StructFieldLayout& rightLayout = layout->fields[right];
-                const bool overlaps = leftLayout.offset < rightLayout.offset + rightLayout.size &&
-                    rightLayout.offset < leftLayout.offset + leftLayout.size;
-                if (!overlaps) continue;
-                const bool leftOwns = fieldTransitivelyOwnsStorage(left);
-                const bool rightOwns = fieldTransitivelyOwnsStorage(right);
-                if (!leftOwns && !rightOwns) continue;
-                const std::size_t owner = leftOwns ? left : right;
-                const std::size_t other = leftOwns ? right : left;
-                const ClassMemberSymbol& ownerMember = memberModel_->members()[fieldMembers[owner]];
-                const ClassMemberSymbol& otherMember = memberModel_->members()[fieldMembers[other]];
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    ownerMember.range,
-                    "field '" + ownerMember.name + "' contains owned storage and overlaps field '" +
-                        otherMember.name + "'; explicit layout cannot overlap owning storage "
-                        "without active-member tracking");
-                namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
-                return false;
-            }
-        }
-    }
-
-    StructValueLayout valueLayout;
-    valueLayout.typeOrdinal = typeOrdinal;
-    valueLayout.typeKey = "type:" + type.identity.key();
-    valueLayout.size = layout->size;
-    valueLayout.alignment = layout->alignment;
-    valueLayout.isUnion = layoutOptions.isUnion;
-    valueLayout.pack = layoutOptions.pack;
-    valueLayout.minimumAlignment = layoutOptions.minimumAlignment;
-    valueLayout.hasExplicitFieldOffsets = hasExplicitFieldOffsets;
-    for (std::size_t index = 0; index < fieldMembers.size(); ++index)
-    {
-        const std::size_t memberOrdinal = fieldMembers[index];
-        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-        const target::StructFieldLayout& field = layout->fields[index];
-        valueLayout.fields.push_back(ObjectFieldLayout{
-            memberOrdinal,
-            field.offset,
-            field.size,
-            field.alignment,
-            member.declaredTypeKey,
-            field.bitOffset,
-            field.bitWidth});
-    }
-
-    // `size(N)`. Aqui es donde se comprueba, porque es el unico sitio donde el tamano YA ESTA
-    // CALCULADO -- con su relleno final, que es justo la parte que nadie escribe y donde un
-    // binding se desvia de C sin enterarse.
-    //
-    // EL MENSAJE LLEVA LOS DOS NUMEROS. Un diagnostico que solo dijera "el tamano no coincide"
-    // obligaria a otra corrida para saber cual es: quien lo lee esta comparando contra un header
-    // de C y lo que necesita es la diferencia, no la noticia.
-    if (const std::optional<std::uint64_t> asserted = parseAssertedSize(type);
-        asserted.has_value() && *asserted != layout->size)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidType,
-            diagnostics::DiagnosticSeverity::Error,
-            type.range,
-            "struct '" + type.identity.key() + "' declares size(" + std::to_string(*asserted) +
-                ") but its fields lay out to " + std::to_string(layout->size) +
-                " bytes with alignment " + std::to_string(layout->alignment) +
-                "; size() verifies the layout, it does not pad it");
-        // MARCAR `Failed` ANTES DE SALIR, como hacen los otros tres puntos de fallo de esta
-        // funcion. Dejarlo en `Visiting` haria que la SIGUIENTE consulta de este mismo tipo
-        // --cualquier struct que lo tenga como campo-- lo tomara por un ciclo, y el segundo
-        // diagnostico diria "referencia circular" sobre una struct que no tiene ninguna. Un error
-        // que inventa un segundo error distinto es peor que el primero.
         namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
         return false;
     }
 
+    StructValueLayout valueLayout = makeStructValueLayout(
+        typeOrdinal, type, layoutOptions, *layout, fieldMembers, hasExplicitFieldOffsets);
+    if (!validateStructAssertedSize(typeOrdinal, type, *layout, diagnostics)) return false;
     namedTypeLayouts_[typeOrdinal] = TypeLayout{layout->size, layout->alignment};
     structLayoutIndexByType_[typeOrdinal] = structLayouts_.size();
     structLayouts_.push_back(std::move(valueLayout));
@@ -937,51 +1012,39 @@ std::optional<std::uint64_t> ProjectObjectLayoutModel::evaluateArrayCount(const 
     return ProjectMemberModel::evaluateConstantArrayCount(expression);
 }
 
-bool ProjectObjectLayoutModel::buildClassLayout(
-    std::size_t typeOrdinal,
+bool ProjectObjectLayoutModel::prepareClassBaseLayout(
+    const NamedTypeDeclaration& type,
+    const std::optional<std::size_t>& baseType,
+    std::uint64_t& offset,
+    std::uint64_t& aggregateAlignment,
+    std::uint64_t& baseSubobjectSize,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (nameLookup_ == nullptr || memberModel_ == nullptr || inheritanceModel_ == nullptr ||
-        typeOrdinal >= nameLookup_->namedTypes().size() || typeOrdinal >= classLayoutIndexByType_.size())
+    if (!baseType.has_value()) return true;
+    if (!buildClassLayout(*baseType, diagnostics)) return false;
+    const ClassObjectLayout* baseLayout = layoutForType(*baseType);
+    if (baseLayout == nullptr)
     {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            type.range,
+            "derived class layout cannot locate completed base-class layout");
         return false;
     }
-    if (classLayoutIndexByType_[typeOrdinal].has_value())
-    {
-        return true;
-    }
+    offset = baseLayout->size;
+    aggregateAlignment = std::max(aggregateAlignment, baseLayout->alignment);
+    baseSubobjectSize = baseLayout->size;
+    return true;
+}
 
-    const NamedTypeDeclaration& type = nameLookup_->namedTypes()[typeOrdinal];
-    const TypeLayout reference = classReferenceLayout();
-    const std::optional<std::size_t> baseType = inheritanceModel_->baseTypeOrdinal(typeOrdinal);
-
-    // The public object ABI is one descriptor pointer followed by the base/user payload. Allocator
-    // provenance must never grow this prefix: independently compiled generic bodies share these
-    // offsets, so changing the header silently corrupts objects allocated by an older producer.
-    std::uint64_t offset = reference.size;
-    std::uint64_t aggregateAlignment = reference.alignment;
-    std::uint64_t baseSubobjectSize = 0;
-    if (baseType.has_value())
-    {
-        if (!buildClassLayout(*baseType, diagnostics))
-        {
-            return false;
-        }
-        const ClassObjectLayout* baseLayout = layoutForType(*baseType);
-        if (baseLayout == nullptr)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidType,
-                diagnostics::DiagnosticSeverity::Error,
-                type.range,
-                "derived class layout cannot locate completed base-class layout");
-            return false;
-        }
-        offset = baseLayout->size;
-        aggregateAlignment = std::max(aggregateAlignment, baseLayout->alignment);
-        baseSubobjectSize = baseLayout->size;
-    }
-
+ClassObjectLayout ProjectObjectLayoutModel::makeClassObjectLayout(
+    std::size_t typeOrdinal,
+    const NamedTypeDeclaration& type,
+    const target::TypeLayout& reference,
+    const std::optional<std::size_t>& baseType,
+    std::uint64_t baseSubobjectSize)
+{
     ClassObjectLayout layout;
     layout.typeOrdinal = typeOrdinal;
     layout.typeKey = "type:" + type.identity.key();
@@ -990,105 +1053,104 @@ bool ProjectObjectLayoutModel::buildClassLayout(
     layout.baseSubobjectSize = baseSubobjectSize;
     layout.referenceSize = reference.size;
     layout.referenceAlignment = reference.alignment;
+    return layout;
+}
 
-    // Item 328. Treat the object header/base subobject as an already-laid-out prefix and route
-    // every instance field through the same target authority used by value structs. This keeps
-    // class bit-field allocation units, zero-width barriers and ordinary trailing fields from
-    // growing a second MSVC layout algorithm here.
-    std::vector<target::StructFieldRequest> physicalFields;
-    std::vector<std::size_t> fieldMembers;
-    physicalFields.push_back(target::StructFieldRequest{
-        TypeLayout{offset, aggregateAlignment},
-        std::nullopt,
-        std::nullopt,
-        false,
-        std::nullopt,
-        false});
+bool ProjectObjectLayoutModel::isClassBitFieldBase(std::string_view typeKey) const
+{
+    if (ProjectIntegerEvaluator::isIntegerType(typeKey) || typeKey == "builtin:bool")
+        return true;
+    if (!typeKey.starts_with("type:")) return false;
+    const std::string_view identity = typeKey.substr(5);
+    for (const NamedTypeDeclaration& declaration : nameLookup_->namedTypes())
+    {
+        if (declaration.identity.key() == identity)
+            return declaration.kind == NamedTypeDeclarationKind::Enum;
+    }
+    return false;
+}
 
+bool ProjectObjectLayoutModel::classBitFieldWidth(
+    const ClassMemberSymbol& member,
+    const target::TypeLayout& fieldLayout,
+    std::size_t typeOrdinal,
+    std::optional<std::uint64_t>& bitWidth,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!member.isBitField) return true;
+    const bool validBase = isClassBitFieldBase(member.declaredTypeKey);
+    const std::optional<ProjectIntegerValue> folded =
+        ProjectIntegerEvaluator(nullptr).evaluate(member.bitWidthSyntax, typeOrdinal);
+    const bool negative = folded.has_value() &&
+        ProjectIntegerEvaluator::isSignedInteger(folded->typeKey) &&
+        folded->asSigned() < 0;
+    if (!validBase || !folded.has_value() || negative ||
+        folded->bits > fieldLayout.size * 8U ||
+        (folded->bits == 0 && !member.isUnnamedBitField))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            member.range,
+            !validBase
+                ? "a bit-field base type must be an integer, bool, or enum"
+                : !folded.has_value() || negative
+                    ? "bit-field width must be a nonnegative integral constant expression"
+                    : folded->bits == 0
+                        ? "a named bit-field cannot have width zero"
+                        : "bit-field width exceeds its storage type");
+        return false;
+    }
+    bitWidth = folded->bits;
+    return true;
+}
+
+bool ProjectObjectLayoutModel::collectClassPhysicalFields(
+    std::size_t typeOrdinal,
+    std::vector<target::StructFieldRequest>& physicalFields,
+    std::vector<std::size_t>& fieldMembers,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
     for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
     {
-        if (memberOrdinal >= memberModel_->members().size())
-        {
-            continue;
-        }
+        if (memberOrdinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-        if (member.kind != ClassMemberKind::Field || member.isStatic)
-        {
-            continue;
-        }
-
-        if (ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey).has_value())
+        if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
+        if (ProjectMemberModel::flexibleArrayElementTypeKey(
+                member.declaredTypeKey).has_value())
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidType,
                 diagnostics::DiagnosticSeverity::Error,
                 member.range,
-                "a flexible array belongs only to the final field of a struct; class allocation has a fixed object size");
+                "a flexible array belongs only to the final field of a struct; "
+                "class allocation has a fixed object size");
             return false;
         }
-
         const std::optional<TypeLayout> fieldLayout = layoutTypeSyntax(
-            member.declaredTypeSyntax,
-            diagnostics,
-            member.range);
-        if (!fieldLayout.has_value())
-        {
-            return false;
-        }
-
+            member.declaredTypeSyntax, diagnostics, member.range);
+        if (!fieldLayout.has_value()) return false;
         std::optional<std::uint64_t> bitWidth;
-        if (member.isBitField)
-        {
-            bool validBase = ProjectIntegerEvaluator::isIntegerType(member.declaredTypeKey) ||
-                member.declaredTypeKey == "builtin:bool";
-            if (!validBase && member.declaredTypeKey.starts_with("type:"))
-            {
-                const std::string_view identity =
-                    std::string_view(member.declaredTypeKey).substr(5);
-                for (const NamedTypeDeclaration& declaration : nameLookup_->namedTypes())
-                {
-                    if (declaration.identity.key() == identity)
-                    {
-                        validBase = declaration.kind == NamedTypeDeclarationKind::Enum;
-                        break;
-                    }
-                }
-            }
-            const std::optional<ProjectIntegerValue> folded =
-                ProjectIntegerEvaluator(nullptr).evaluate(member.bitWidthSyntax, typeOrdinal);
-            const bool negative = folded.has_value() &&
-                ProjectIntegerEvaluator::isSignedInteger(folded->typeKey) &&
-                folded->asSigned() < 0;
-            if (!validBase || !folded.has_value() || negative ||
-                folded->bits > fieldLayout->size * 8U ||
-                (folded->bits == 0 && !member.isUnnamedBitField))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    member.range,
-                    !validBase
-                        ? "a bit-field base type must be an integer, bool, or enum"
-                        : !folded.has_value() || negative
-                            ? "bit-field width must be a nonnegative integral constant expression"
-                            : folded->bits == 0
-                                ? "a named bit-field cannot have width zero"
-                                : "bit-field width exceeds its storage type");
-                return false;
-            }
-            bitWidth = folded->bits;
-        }
-
+        if (!classBitFieldWidth(
+                member, *fieldLayout, typeOrdinal, bitWidth, diagnostics))
+            return false;
         physicalFields.push_back(target::StructFieldRequest{
-            *fieldLayout,
-            std::nullopt,
-            member.explicitFieldAlignment,
-            false,
-            bitWidth,
-            member.isUnnamedBitField});
+            *fieldLayout, std::nullopt, member.explicitFieldAlignment,
+            false, bitWidth, member.isUnnamedBitField});
         fieldMembers.push_back(memberOrdinal);
     }
+    return true;
+}
 
+bool ProjectObjectLayoutModel::finalizeClassLayout(
+    std::size_t typeOrdinal,
+    const NamedTypeDeclaration& type,
+    std::uint64_t minimumSize,
+    const std::vector<target::StructFieldRequest>& physicalFields,
+    const std::vector<std::size_t>& fieldMembers,
+    ClassObjectLayout& layout,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
     const std::optional<target::StructLayout> physicalLayout =
         targetLayout_.layoutStruct(physicalFields, {});
     if (!physicalLayout.has_value() || physicalLayout->fields.size() != physicalFields.size())
@@ -1101,26 +1163,18 @@ bool ProjectObjectLayoutModel::buildClassLayout(
                 type.identity.fullyQualifiedName() + "'");
         return false;
     }
-
     for (std::size_t index = 0; index < fieldMembers.size(); ++index)
     {
         const std::size_t memberOrdinal = fieldMembers[index];
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
         const target::StructFieldLayout& field = physicalLayout->fields[index + 1];
         layout.fields.push_back(ObjectFieldLayout{
-            memberOrdinal,
-            field.offset,
-            field.size,
-            field.alignment,
-            member.declaredTypeKey,
-            field.bitOffset,
-            field.bitWidth});
+            memberOrdinal, field.offset, field.size, field.alignment,
+            member.declaredTypeKey, field.bitOffset, field.bitWidth});
     }
-
     layout.size = physicalLayout->size;
     layout.alignment = physicalLayout->alignment;
-
-    if (layout.size < offset)
+    if (layout.size < minimumSize)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidType,
@@ -1129,11 +1183,53 @@ bool ProjectObjectLayoutModel::buildClassLayout(
             "class object layout is smaller than its header or base subobject");
         return false;
     }
-
     const std::size_t layoutIndex = classLayouts_.size();
     classLayouts_.push_back(std::move(layout));
     classLayoutIndexByType_[typeOrdinal] = layoutIndex;
     return true;
+}
+
+bool ProjectObjectLayoutModel::buildClassLayout(
+    std::size_t typeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (nameLookup_ == nullptr || memberModel_ == nullptr || inheritanceModel_ == nullptr ||
+        typeOrdinal >= nameLookup_->namedTypes().size() ||
+        typeOrdinal >= classLayoutIndexByType_.size())
+        return false;
+    if (classLayoutIndexByType_[typeOrdinal].has_value()) return true;
+
+    const NamedTypeDeclaration& type = nameLookup_->namedTypes()[typeOrdinal];
+    const TypeLayout reference = classReferenceLayout();
+    const std::optional<std::size_t> baseType = inheritanceModel_->baseTypeOrdinal(typeOrdinal);
+
+    // The public object ABI is one descriptor pointer followed by the base/user payload. Allocator
+    // provenance must never grow this prefix: independently compiled generic bodies share these
+    // offsets, so changing the header silently corrupts objects allocated by an older producer.
+    std::uint64_t offset = reference.size;
+    std::uint64_t aggregateAlignment = reference.alignment;
+    std::uint64_t baseSubobjectSize = 0;
+    if (!prepareClassBaseLayout(
+            type, baseType, offset, aggregateAlignment,
+            baseSubobjectSize, diagnostics))
+        return false;
+    ClassObjectLayout layout = makeClassObjectLayout(
+        typeOrdinal, type, reference, baseType, baseSubobjectSize);
+
+    // Item 328. Treat the object header/base subobject as an already-laid-out prefix and route
+    // every instance field through the same target authority used by value structs. This keeps
+    // class bit-field allocation units, zero-width barriers and ordinary trailing fields from
+    // growing a second MSVC layout algorithm here.
+    std::vector<target::StructFieldRequest> physicalFields;
+    std::vector<std::size_t> fieldMembers;
+    physicalFields.push_back(target::StructFieldRequest{
+        TypeLayout{offset, aggregateAlignment}, std::nullopt, std::nullopt,
+        false, std::nullopt, false});
+    if (!collectClassPhysicalFields(
+            typeOrdinal, physicalFields, fieldMembers, diagnostics))
+        return false;
+    return finalizeClassLayout(
+        typeOrdinal, type, offset, physicalFields, fieldMembers, layout, diagnostics);
 }
 
 bool ProjectObjectLayoutModel::buildPromotedFieldLayouts(

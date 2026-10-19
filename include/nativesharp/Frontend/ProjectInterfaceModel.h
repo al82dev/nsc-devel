@@ -1,8 +1,13 @@
 #pragma once
 
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
+#include "nativesharp/Frontend/InterfaceTypeInfo.h"
+#include "nativesharp/Frontend/ClassInterfaceTablePlan.h"
+#include "nativesharp/Frontend/TraitOperatorWitness.h"
+#include "nativesharp/Frontend/TraitObjectContract.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "Internal/ProjectInterfaceDirectSource.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -10,6 +15,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nativesharp::diagnostics
@@ -19,53 +26,6 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
-struct InterfaceTypeInfo final
-{
-    std::size_t typeOrdinal = 0;
-    bool isTrait = false;
-    std::vector<std::size_t> directBaseInterfaceOrdinals;
-    std::vector<std::size_t> transitiveBaseInterfaceOrdinals;
-    std::vector<std::size_t> effectiveMethodMemberOrdinals;
-    std::vector<std::size_t> requiredStaticMemberOrdinals;
-};
-
-struct ClassInterfaceTablePlan final
-{
-    std::size_t classTypeOrdinal = 0;
-    std::size_t interfaceTypeOrdinal = 0;
-    std::uint64_t stableInterfaceTypeId = 0;
-    std::vector<std::size_t> interfaceMethodMemberOrdinals;
-    std::vector<std::optional<std::size_t>> implementationMemberOrdinals;
-};
-
-// NativeSharp 3.0 T05-F07. A trait's static operator requirement is resolved to one concrete
-// witness while interface/coherence information is complete. Operator expressions consume this
-// table; they never rediscover a trait contract by matching ABI method names later in Sema.
-struct TraitOperatorWitness final
-{
-    std::size_t implementingTypeOrdinal = 0;
-    std::size_t traitTypeOrdinal = 0;
-    std::size_t requirementMemberOrdinal = 0;
-    std::size_t implementationMemberOrdinal = 0;
-    std::string langItem;
-};
-
-// NativeSharp 3.0 T05-F05. A `dyn Trait` is deliberately not a boxed value and not a
-// Rust-style two-word fat pointer. On Windows x64 it is the existing one-word object reference;
-// the object's class descriptor owns the stable interface map that resolves the trait table.
-// Keeping this as an explicit frontend contract prevents documentation/metadata/backend code
-// from inventing different representations for the same source type.
-struct TraitObjectContract final
-{
-    std::size_t traitTypeOrdinal = 0;
-    std::uint64_t size = 8;
-    std::uint64_t alignment = 8;
-    bool objectSafe = false;
-    bool descriptorInterfaceMap = true;
-    bool nullIsZero = true;
-    bool conversionAllocates = false;
-};
-
 class ProjectInterfaceModel final
 {
 public:
@@ -111,6 +71,139 @@ private:
     bool visitInterface(
         std::size_t typeOrdinal,
         std::vector<VisitState>& states,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool inheritInterfaceMethod(
+        std::size_t typeOrdinal,
+        InterfaceTypeInfo& info,
+        std::size_t memberOrdinal,
+        std::unordered_map<std::string, std::size_t>& signatureOwner,
+        std::unordered_map<std::string, std::vector<std::size_t>>& inheritedDefaults,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool inheritStaticRequirement(
+        std::size_t typeOrdinal,
+        InterfaceTypeInfo& info,
+        std::size_t memberOrdinal,
+        std::unordered_map<std::string, std::size_t>& staticSignatureOwner,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool inheritBaseInterface(
+        std::size_t typeOrdinal,
+        InterfaceTypeInfo& info,
+        std::size_t baseOrdinal,
+        std::vector<VisitState>& states,
+        std::unordered_map<std::string, std::size_t>& signatureOwner,
+        std::unordered_map<std::string, std::size_t>& staticSignatureOwner,
+        std::unordered_map<std::string, std::vector<std::size_t>>& inheritedDefaults,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool collectInheritedInterfaceMembers(
+        std::size_t typeOrdinal,
+        InterfaceTypeInfo& info,
+        std::vector<VisitState>& states,
+        std::unordered_map<std::string, std::size_t>& signatureOwner,
+        std::unordered_map<std::string, std::size_t>& staticSignatureOwner,
+        std::unordered_map<std::string, std::vector<std::size_t>>& inheritedDefaults,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateDeclaredInterfaceMethod(
+        const InterfaceTypeInfo& info,
+        const ClassMemberSymbol& method,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool mergeTraitStaticRequirement(
+        InterfaceTypeInfo& info,
+        std::size_t memberOrdinal,
+        std::unordered_map<std::string, std::size_t>& staticSignatureOwner,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool mergeDeclaredInterfaceMethod(
+        InterfaceTypeInfo& info,
+        std::size_t memberOrdinal,
+        std::unordered_map<std::string, std::size_t>& signatureOwner,
+        std::unordered_set<std::string>& redeclaredSignatures,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool collectDeclaredInterfaceMembers(
+        std::size_t typeOrdinal,
+        InterfaceTypeInfo& info,
+        std::unordered_map<std::string, std::size_t>& signatureOwner,
+        std::unordered_map<std::string, std::size_t>& staticSignatureOwner,
+        std::unordered_set<std::string>& redeclaredSignatures,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool inheritedDefaultIsDominated(
+        const std::vector<std::size_t>& defaults,
+        std::size_t candidateOrdinal) const;
+    bool validateInheritedDefaults(
+        std::size_t typeOrdinal,
+        const std::unordered_map<std::string, std::vector<std::size_t>>& inheritedDefaults,
+        const std::unordered_set<std::string>& redeclaredSignatures,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool collectDirectInterfaces(
+        std::size_t classOrdinal,
+        bool valueType,
+        std::vector<std::size_t>& implemented,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateNonInterfaceSpecification(
+        std::size_t candidateOrdinal,
+        NamedTypeDeclarationKind kind,
+        bool valueType,
+        bool sawInterface,
+        const ast::TypeSyntax& specification,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateDirectInterfaceTarget(
+        std::size_t candidateOrdinal,
+        bool valueType,
+        bool explicitImpl,
+        const InterfaceTypeInfo* info,
+        const ast::TypeSyntax& specification,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateDirectInterfaceDuplicate(
+        std::size_t classOrdinal,
+        std::size_t candidateOrdinal,
+        bool explicitImpl,
+        const ast::TypeSyntax& specification,
+        const std::unordered_map<std::size_t, ProjectInterfaceDirectSource>& directInterfaces,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool collectDirectInterface(
+        std::size_t classOrdinal,
+        bool valueType,
+        const ast::TypeSyntax& specification,
+        bool& sawInterface,
+        std::unordered_map<std::size_t, ProjectInterfaceDirectSource>& directInterfaces,
+        std::vector<std::size_t>& implemented,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool implementationThrowsCompatible(
+        const ClassMemberSymbol& implementation,
+        const ClassMemberSymbol& requirement) const;
+    bool appendInterfaceMethodImplementation(
+        std::size_t classOrdinal,
+        std::size_t interfaceOrdinal,
+        std::size_t interfaceMethodOrdinal,
+        const NamedTypeDeclaration& type,
+        const ClassMemberSymbol& interfaceMethod,
+        ClassInterfaceTablePlan& plan,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void appendOperatorWitness(
+        std::size_t classOrdinal,
+        std::size_t interfaceOrdinal,
+        std::size_t requirementOrdinal,
+        std::size_t implementationOrdinal,
+        const ClassMemberSymbol& requirement);
+    bool validateStaticRequirementImplementation(
+        std::size_t classOrdinal,
+        std::size_t interfaceOrdinal,
+        const NamedTypeDeclaration& type,
+        std::size_t requirementOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool buildInterfacePlan(
+        std::size_t classOrdinal,
+        bool valueType,
+        std::size_t interfaceOrdinal,
+        const NamedTypeDeclaration& type,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool buildImplementedInterfacePlans(
+        std::size_t classOrdinal,
+        bool valueType,
+        const std::vector<std::size_t>& implemented,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool buildImplementingTypePlans(
+        std::size_t classOrdinal,
+        std::optional<std::size_t> baseOrdinal,
+        bool valueType,
         diagnostics::DiagnosticEngine& diagnostics);
     bool buildClassPlans(diagnostics::DiagnosticEngine& diagnostics);
     bool buildTraitObjectContracts(diagnostics::DiagnosticEngine& diagnostics);

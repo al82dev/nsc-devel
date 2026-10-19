@@ -293,14 +293,8 @@ bool ProjectInheritanceModel::isBuilt() const noexcept
     return built_;
 }
 
-bool ProjectInheritanceModel::resolveBaseSpecifications(
-    diagnostics::DiagnosticEngine& diagnostics)
+std::optional<std::size_t> ProjectInheritanceModel::objectRootTypeOrdinal() const
 {
-    if (nameLookup_ == nullptr)
-    {
-        return false;
-    }
-
     // C8 "type root": the ordinal of NativeSharp.Core.Object, when the compilation has it in
     // view. Looked up once here rather than per class.
     //
@@ -310,163 +304,165 @@ bool ProjectInheritanceModel::resolveBaseSpecifications(
     // constructor chain of every class in every such project for a facility it cannot use. This
     // follows exactly the convention NativeSharp.Core.Exception already set for typed
     // catch/throw -- see ProjectMethodBodyModel::exceptionRootTypeOrdinal.
-    std::optional<std::size_t> objectRootOrdinal;
     for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
     {
         const NamedTypeDeclaration& candidate = nameLookup_->namedTypes()[ordinal];
         if (candidate.kind == NamedTypeDeclarationKind::Class &&
             candidate.identity.fullyQualifiedName() == "NativeSharp.Core.Object")
         {
-            objectRootOrdinal = ordinal;
-            break;
+            return ordinal;
         }
     }
+    return std::nullopt;
+}
 
+bool ProjectInheritanceModel::validateBaseClassDerivation(
+    const NamedTypeDeclaration& type,
+    const ClassInheritanceInfo& info,
+    const NamedTypeDeclaration& candidateType,
+    std::size_t candidateOrdinal,
+    const ast::TypeSyntax* baseSyntax,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (candidateType.isSealed)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidBaseType,
+            diagnostics::DiagnosticSeverity::Error,
+            baseSyntax->range(),
+            "class '" + type.identity.key() + "' cannot derive from sealed class '" +
+                candidateType.identity.key() + "'");
+        return false;
+    }
+    if (candidateType.isStatic)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidBaseType,
+            diagnostics::DiagnosticSeverity::Error,
+            baseSyntax->range(),
+            "class '" + type.identity.key() + "' cannot derive from static class '" +
+                candidateType.identity.key() + "'");
+        return false;
+    }
+    if (candidateOrdinal == info.typeOrdinal)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InheritanceCycle,
+            diagnostics::DiagnosticSeverity::Error,
+            baseSyntax->range(),
+            "class '" + type.identity.key() + "' cannot derive directly from itself");
+        return false;
+    }
+    return true;
+}
+
+bool ProjectInheritanceModel::resolveBaseSpecification(
+    const NamedTypeDeclaration& type,
+    const ClassInheritanceInfo& info,
+    const ast::TypeSyntax* baseSyntax,
+    std::optional<std::size_t>& selectedBase,
+    const ast::TypeSyntax*& selectedSyntax,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (baseSyntax == nullptr) return true;
+    if (!baseSyntax->modifiers().empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidBaseType,
+            diagnostics::DiagnosticSeverity::Error,
+            baseSyntax->range(),
+            "class base/interface specification must name a type directly; pointer and array modifiers are invalid");
+        return false;
+    }
+    const std::optional<std::size_t> candidate = nameLookup_->resolvedTypeOrdinal(baseSyntax);
+    if (!candidate.has_value() || *candidate >= nameLookup_->namedTypes().size()) return false;
+    const NamedTypeDeclaration& candidateType = nameLookup_->namedTypes()[*candidate];
+    if (candidateType.kind == NamedTypeDeclarationKind::Interface)
+    {
+        // Stage 36 interface obligations are owned by ProjectInterfaceModel.
+        return true;
+    }
+    if (candidateType.kind != NamedTypeDeclarationKind::Class)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidBaseType,
+            diagnostics::DiagnosticSeverity::Error,
+            baseSyntax->range(),
+            "class '" + type.identity.key() +
+                "' may list only one class base followed by interfaces");
+        return false;
+    }
+    if (!validateBaseClassDerivation(
+            type, info, candidateType, *candidate, baseSyntax, diagnostics))
+        return false;
+    if (!selectedBase.has_value())
+    {
+        selectedBase = candidate;
+        selectedSyntax = baseSyntax;
+        return true;
+    }
+    if (*selectedBase == *candidate) return true;
+    diagnostics.report(
+        diagnostics::DiagnosticId::PartialTypeConflict,
+        diagnostics::DiagnosticSeverity::Error,
+        baseSyntax->range(),
+        "partial declarations of class '" + type.identity.key() +
+            "' specify different base classes");
+    if (selectedSyntax != nullptr)
+        diagnostics.report(
+            diagnostics::DiagnosticId::PreviousDeclaration,
+            diagnostics::DiagnosticSeverity::Note,
+            selectedSyntax->range(),
+            "previous base-class specification is here");
+    return false;
+}
+
+bool ProjectInheritanceModel::resolveClassBaseSpecifications(
+    ClassInheritanceInfo& info,
+    std::optional<std::size_t> objectRootOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const NamedTypeDeclaration& type = nameLookup_->namedTypes()[info.typeOrdinal];
+    std::optional<std::size_t> selectedBase;
+    const ast::TypeSyntax* selectedSyntax = nullptr;
+    bool ok = true;
+    for (const NamedTypeDeclarationPart& part : type.parts)
+    {
+        if (part.syntax == nullptr) continue;
+        std::vector<const ast::TypeSyntax*> specifications;
+        if (!part.syntax->typeSyntaxes().empty())
+            specifications.assign(
+                part.syntax->typeSyntaxes().begin(), part.syntax->typeSyntaxes().end());
+        else if (part.syntax->typeSyntax() != nullptr)
+            specifications.push_back(part.syntax->typeSyntax());
+        for (const ast::TypeSyntax* baseSyntax : specifications)
+            if (!resolveBaseSpecification(
+                    type, info, baseSyntax, selectedBase, selectedSyntax, diagnostics))
+                ok = false;
+    }
+
+    // C8 "type root": a class that named no base derives from Object -- except Object
+    // itself, which is where the chain has to stop. Every other consumer of the hierarchy
+    // (the vtable builder, the descriptor emitter, `base.` lookup, the constructor chain, the
+    // RTTI walk) then sees an ordinary base class and needs no special case at all: the root
+    // is a real class, not a compiler fiction.
+    if (!selectedBase.has_value() && objectRootOrdinal.has_value() &&
+        info.typeOrdinal != *objectRootOrdinal)
+        selectedBase = objectRootOrdinal;
+
+    info.baseTypeOrdinal = selectedBase;
+    if (selectedBase.has_value()) info.baseTypeKey = typeKeyForOrdinal(*selectedBase);
+    return ok;
+}
+
+bool ProjectInheritanceModel::resolveBaseSpecifications(
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (nameLookup_ == nullptr) return false;
+    const std::optional<std::size_t> objectRootOrdinal = objectRootTypeOrdinal();
     bool ok = true;
     for (ClassInheritanceInfo& info : classes_)
-    {
-        const NamedTypeDeclaration& type = nameLookup_->namedTypes()[info.typeOrdinal];
-        std::optional<std::size_t> selectedBase;
-        const ast::TypeSyntax* selectedSyntax = nullptr;
-
-        for (const NamedTypeDeclarationPart& part : type.parts)
-        {
-            if (part.syntax == nullptr)
-            {
-                continue;
-            }
-            std::vector<const ast::TypeSyntax*> specifications;
-            if (!part.syntax->typeSyntaxes().empty())
-            {
-                specifications.assign(
-                    part.syntax->typeSyntaxes().begin(),
-                    part.syntax->typeSyntaxes().end());
-            }
-            else if (part.syntax->typeSyntax() != nullptr)
-            {
-                specifications.push_back(part.syntax->typeSyntax());
-            }
-
-            for (const ast::TypeSyntax* baseSyntax : specifications)
-            {
-                if (baseSyntax == nullptr)
-                {
-                    continue;
-                }
-                if (!baseSyntax->modifiers().empty())
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidBaseType,
-                        diagnostics::DiagnosticSeverity::Error,
-                        baseSyntax->range(),
-                        "class base/interface specification must name a type directly; pointer and array modifiers are invalid");
-                    ok = false;
-                    continue;
-                }
-
-                const std::optional<std::size_t> candidate = nameLookup_->resolvedTypeOrdinal(baseSyntax);
-                if (!candidate.has_value())
-                {
-                    ok = false;
-                    continue;
-                }
-                if (*candidate >= nameLookup_->namedTypes().size())
-                {
-                    ok = false;
-                    continue;
-                }
-                const NamedTypeDeclarationKind candidateKind = nameLookup_->namedTypes()[*candidate].kind;
-                if (candidateKind == NamedTypeDeclarationKind::Interface)
-                {
-                    // Stage 36 interface obligations are owned by ProjectInterfaceModel.
-                    continue;
-                }
-                if (candidateKind != NamedTypeDeclarationKind::Class)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidBaseType,
-                        diagnostics::DiagnosticSeverity::Error,
-                        baseSyntax->range(),
-                        "class '" + type.identity.key() + "' may list only one class base followed by interfaces");
-                    ok = false;
-                    continue;
-                }
-            if (nameLookup_->namedTypes()[*candidate].isSealed)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidBaseType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    baseSyntax->range(),
-                    "class '" + type.identity.key() + "' cannot derive from sealed class '" +
-                        nameLookup_->namedTypes()[*candidate].identity.key() + "'");
-                ok = false;
-                continue;
-            }
-            if (nameLookup_->namedTypes()[*candidate].isStatic)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidBaseType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    baseSyntax->range(),
-                    "class '" + type.identity.key() + "' cannot derive from static class '" +
-                        nameLookup_->namedTypes()[*candidate].identity.key() + "'");
-                ok = false;
-                continue;
-            }
-            if (*candidate == info.typeOrdinal)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InheritanceCycle,
-                    diagnostics::DiagnosticSeverity::Error,
-                    baseSyntax->range(),
-                    "class '" + type.identity.key() + "' cannot derive directly from itself");
-                ok = false;
-                continue;
-            }
-
-            if (!selectedBase.has_value())
-            {
-                selectedBase = candidate;
-                selectedSyntax = baseSyntax;
-            }
-            else if (*selectedBase != *candidate)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::PartialTypeConflict,
-                    diagnostics::DiagnosticSeverity::Error,
-                    baseSyntax->range(),
-                    "partial declarations of class '" + type.identity.key() +
-                        "' specify different base classes");
-                if (selectedSyntax != nullptr)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::PreviousDeclaration,
-                        diagnostics::DiagnosticSeverity::Note,
-                        selectedSyntax->range(),
-                        "previous base-class specification is here");
-                }
-                ok = false;
-            }
-            }
-        }
-
-        // C8 "type root": a class that named no base derives from Object -- except Object
-        // itself, which is where the chain has to stop. Every other consumer of the hierarchy
-        // (the vtable builder, the descriptor emitter, `base.` lookup, the constructor chain, the
-        // RTTI walk) then sees an ordinary base class and needs no special case at all: the root
-        // is a real class, not a compiler fiction.
-        if (!selectedBase.has_value() && objectRootOrdinal.has_value() &&
-            info.typeOrdinal != *objectRootOrdinal)
-        {
-            selectedBase = objectRootOrdinal;
-        }
-
-        info.baseTypeOrdinal = selectedBase;
-        if (selectedBase.has_value())
-        {
-            info.baseTypeKey = typeKeyForOrdinal(*selectedBase);
-        }
-    }
+        if (!resolveClassBaseSpecifications(info, objectRootOrdinal, diagnostics)) ok = false;
     return ok;
 }
 

@@ -19,6 +19,53 @@ std::string sanitizeSymbol(std::string_view value)
 {
     return compilation::symbolFragmentForIdentityKey(value);
 }
+
+void initializeClassDestructionPlan(
+    const ProjectNameLookup& nameLookup,
+    std::size_t typeOrdinal,
+    ClassDestructionPlan& plan)
+{
+    plan.typeOrdinal = typeOrdinal;
+    plan.destructionEntryName = "__nsc_destroy_" +
+        sanitizeSymbol(nameLookup.namedTypes()[typeOrdinal].identity.key());
+    plan.objectDestructionEntryName = "__nsc_destroy_object_" +
+        sanitizeSymbol(nameLookup.namedTypes()[typeOrdinal].identity.key());
+    const compilation::TypeIdentity& identity = nameLookup.namedTypes()[typeOrdinal].identity;
+    const language::CrossModuleLifetimeContract crossModule =
+        language::makeCrossModuleLifetimeContract(
+            identity.moduleName(), identity.key(), "nativesharp.default",
+            language::ModuleUnloadPolicy::RejectWhileObjectsLive);
+    plan.crossModuleCreateEntryName = crossModule.createThunk;
+    plan.crossModuleDestroyEntryName = crossModule.destroyThunk;
+    plan.crossModuleDeallocateEntryName = crossModule.deallocateThunk;
+    plan.crossModuleLifetimeAbiMajor = crossModule.abiMajor;
+}
+
+std::size_t collectDestructorMembers(
+    const ProjectMemberModel& memberModel,
+    std::size_t typeOrdinal,
+    ClassDestructionPlan& plan)
+{
+    std::size_t destructorCount = 0;
+    for (const std::size_t memberOrdinal : memberModel.membersOfType(typeOrdinal))
+    {
+        if (memberOrdinal >= memberModel.members().size())
+        {
+            continue;
+        }
+        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Destructor)
+        {
+            continue;
+        }
+        ++destructorCount;
+        if (!plan.explicitDestructorMemberOrdinal.has_value())
+        {
+            plan.explicitDestructorMemberOrdinal = memberOrdinal;
+        }
+    }
+    return destructorCount;
+}
 }
 
 bool ProjectDestructionModel::build(
@@ -95,39 +142,9 @@ bool ProjectDestructionModel::buildClass(
     buildingType_[typeOrdinal] = true;
 
     ClassDestructionPlan plan;
-    plan.typeOrdinal = typeOrdinal;
-    plan.destructionEntryName = "__nsc_destroy_" +
-        sanitizeSymbol(nameLookup_->namedTypes()[typeOrdinal].identity.key());
-    plan.objectDestructionEntryName = "__nsc_destroy_object_" +
-        sanitizeSymbol(nameLookup_->namedTypes()[typeOrdinal].identity.key());
-    const compilation::TypeIdentity& identity = nameLookup_->namedTypes()[typeOrdinal].identity;
-    const language::CrossModuleLifetimeContract crossModule =
-        language::makeCrossModuleLifetimeContract(
-            identity.moduleName(), identity.key(), "nativesharp.default",
-            language::ModuleUnloadPolicy::RejectWhileObjectsLive);
-    plan.crossModuleCreateEntryName = crossModule.createThunk;
-    plan.crossModuleDestroyEntryName = crossModule.destroyThunk;
-    plan.crossModuleDeallocateEntryName = crossModule.deallocateThunk;
-    plan.crossModuleLifetimeAbiMajor = crossModule.abiMajor;
-
-    std::size_t destructorCount = 0;
-    for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
-    {
-        if (memberOrdinal >= memberModel_->members().size())
-        {
-            continue;
-        }
-        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-        if (member.kind != ClassMemberKind::Destructor)
-        {
-            continue;
-        }
-        ++destructorCount;
-        if (!plan.explicitDestructorMemberOrdinal.has_value())
-        {
-            plan.explicitDestructorMemberOrdinal = memberOrdinal;
-        }
-    }
+    initializeClassDestructionPlan(*nameLookup_, typeOrdinal, plan);
+    const std::size_t destructorCount =
+        collectDestructorMembers(*memberModel_, typeOrdinal, plan);
 
     if (destructorCount > 1)
     {

@@ -4,6 +4,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "Internal/ProjectInterfaceImplementingType.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -71,6 +72,13 @@ std::string lifetimeContractKey(const ClassMemberSymbol& method)
     result += ";where=";
     for (const std::string& constraint : constraints) result += constraint + ',';
     return result;
+}
+
+bool implementingTypeDepthLess(
+    const ProjectInterfaceImplementingType& left,
+    const ProjectInterfaceImplementingType& right)
+{
+    return left.depth < right.depth;
 }
 }
 
@@ -405,6 +413,366 @@ bool ProjectInterfaceModel::collectInterfaceBases(diagnostics::DiagnosticEngine&
     return ok;
 }
 
+bool ProjectInterfaceModel::inheritInterfaceMethod(
+    std::size_t typeOrdinal,
+    InterfaceTypeInfo& info,
+    std::size_t memberOrdinal,
+    std::unordered_map<std::string, std::size_t>& signatureOwner,
+    std::unordered_map<std::string, std::vector<std::size_t>>& inheritedDefaults,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (memberOrdinal >= memberModel_->members().size())
+    {
+        return true;
+    }
+    const ClassMemberSymbol& method = memberModel_->members()[memberOrdinal];
+    if (method.syntax != nullptr && method.syntax->first() != nullptr)
+    {
+        auto& defaults = inheritedDefaults[method.signatureKey];
+        if (std::find(defaults.begin(), defaults.end(), memberOrdinal) == defaults.end())
+            defaults.push_back(memberOrdinal);
+    }
+    const auto found = signatureOwner.find(method.signatureKey);
+    if (found == signatureOwner.end())
+    {
+        signatureOwner.emplace(method.signatureKey, memberOrdinal);
+        info.effectiveMethodMemberOrdinals.push_back(memberOrdinal);
+        return true;
+    }
+
+    bool ok = true;
+    const ClassMemberSymbol& previous = memberModel_->members()[found->second];
+    if (previous.declaredTypeKey != method.declaredTypeKey ||
+        previous.declaredErrorTypeKey != method.declaredErrorTypeKey ||
+        previous.isReferenceReturn != method.isReferenceReturn ||
+        lifetimeContractKey(previous) != lifetimeContractKey(method))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOverride,
+            diagnostics::DiagnosticSeverity::Error,
+            nameLookup_->namedTypes()[typeOrdinal].range,
+            "interface inherits incompatible return types for method '" + method.signatureKey + "'");
+        ok = false;
+    }
+    const bool previousDefault = previous.syntax != nullptr && previous.syntax->first() != nullptr;
+    const bool methodDefault = method.syntax != nullptr && method.syntax->first() != nullptr;
+    if ((methodDefault && (!previousDefault || interfaceDerivesFrom(
+        method.declaringTypeOrdinal, previous.declaringTypeOrdinal))) ||
+        (!previous.isNoHeap && method.isNoHeap))
+    {
+        std::ranges::replace(info.effectiveMethodMemberOrdinals, found->second, memberOrdinal);
+        found->second = memberOrdinal;
+    }
+    return ok;
+}
+
+bool ProjectInterfaceModel::inheritStaticRequirement(
+    std::size_t typeOrdinal,
+    InterfaceTypeInfo& info,
+    std::size_t memberOrdinal,
+    std::unordered_map<std::string, std::size_t>& staticSignatureOwner,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (memberOrdinal >= memberModel_->members().size())
+    {
+        return true;
+    }
+    const ClassMemberSymbol& requirement = memberModel_->members()[memberOrdinal];
+    const auto found = staticSignatureOwner.find(requirement.signatureKey);
+    if (found == staticSignatureOwner.end())
+    {
+        staticSignatureOwner.emplace(requirement.signatureKey, memberOrdinal);
+        info.requiredStaticMemberOrdinals.push_back(memberOrdinal);
+        return true;
+    }
+    const ClassMemberSymbol& previous = memberModel_->members()[found->second];
+    if (previous.declaredTypeKey == requirement.declaredTypeKey &&
+        previous.declaredErrorTypeKey == requirement.declaredErrorTypeKey)
+    {
+        return true;
+    }
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOverride,
+        diagnostics::DiagnosticSeverity::Error,
+        nameLookup_->namedTypes()[typeOrdinal].range,
+        "trait inherits incompatible static requirements for '" + requirement.signatureKey + "'");
+    return false;
+}
+
+bool ProjectInterfaceModel::inheritBaseInterface(
+    std::size_t typeOrdinal,
+    InterfaceTypeInfo& info,
+    std::size_t baseOrdinal,
+    std::vector<VisitState>& states,
+    std::unordered_map<std::string, std::size_t>& signatureOwner,
+    std::unordered_map<std::string, std::size_t>& staticSignatureOwner,
+    std::unordered_map<std::string, std::vector<std::size_t>>& inheritedDefaults,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (!visitInterface(baseOrdinal, states, diagnostics))
+    {
+        return false;
+    }
+    appendUnique(info.transitiveBaseInterfaceOrdinals, baseOrdinal);
+    const InterfaceTypeInfo* base = interfaceInfo(baseOrdinal);
+    if (base == nullptr)
+    {
+        return false;
+    }
+    for (const std::size_t transitive : base->transitiveBaseInterfaceOrdinals)
+    {
+        appendUnique(info.transitiveBaseInterfaceOrdinals, transitive);
+    }
+
+    bool ok = true;
+    for (const std::size_t memberOrdinal : base->effectiveMethodMemberOrdinals)
+    {
+        if (!inheritInterfaceMethod(
+            typeOrdinal, info, memberOrdinal, signatureOwner, inheritedDefaults, diagnostics))
+            ok = false;
+    }
+    for (const std::size_t memberOrdinal : base->requiredStaticMemberOrdinals)
+    {
+        if (!inheritStaticRequirement(
+            typeOrdinal, info, memberOrdinal, staticSignatureOwner, diagnostics))
+            ok = false;
+    }
+    return ok;
+}
+
+bool ProjectInterfaceModel::collectInheritedInterfaceMembers(
+    std::size_t typeOrdinal,
+    InterfaceTypeInfo& info,
+    std::vector<VisitState>& states,
+    std::unordered_map<std::string, std::size_t>& signatureOwner,
+    std::unordered_map<std::string, std::size_t>& staticSignatureOwner,
+    std::unordered_map<std::string, std::vector<std::size_t>>& inheritedDefaults,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    bool ok = true;
+    for (const std::size_t baseOrdinal : info.directBaseInterfaceOrdinals)
+    {
+        if (!inheritBaseInterface(
+            typeOrdinal,
+            info,
+            baseOrdinal,
+            states,
+            signatureOwner,
+            staticSignatureOwner,
+            inheritedDefaults,
+            diagnostics))
+        {
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+bool ProjectInterfaceModel::validateDeclaredInterfaceMethod(
+    const InterfaceTypeInfo& info,
+    const ClassMemberSymbol& method,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (method.kind != ClassMemberKind::Method)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidMemberAccess,
+            diagnostics::DiagnosticSeverity::Error,
+            method.range,
+            "Stage 36 interface declaration spaces contain methods only");
+        return false;
+    }
+    const bool hasBody = method.syntax != nullptr && method.syntax->first() != nullptr;
+    if (!info.isTrait && (method.isStatic ||
+        method.accessibility != ClassMemberAccessibility::Public ||
+        method.syntax == nullptr || method.isAbstract == hasBody))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidMemberAccess,
+            diagnostics::DiagnosticSeverity::Error,
+            method.range,
+            "interface members are public instance requirements without bodies or default "
+            "members with bodies");
+        return false;
+    }
+    if (info.isTrait && (method.accessibility != ClassMemberAccessibility::Public ||
+        method.syntax == nullptr || method.isAbstract == hasBody))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidMemberAccess,
+            diagnostics::DiagnosticSeverity::Error,
+            method.range,
+            "trait members are public requirements without bodies or default methods with bodies");
+        return false;
+    }
+    return true;
+}
+
+bool ProjectInterfaceModel::mergeTraitStaticRequirement(
+    InterfaceTypeInfo& info,
+    std::size_t memberOrdinal,
+    std::unordered_map<std::string, std::size_t>& staticSignatureOwner,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const ClassMemberSymbol& method = memberModel_->members()[memberOrdinal];
+    const auto found = staticSignatureOwner.find(method.signatureKey);
+    if (found == staticSignatureOwner.end())
+    {
+        staticSignatureOwner.emplace(method.signatureKey, memberOrdinal);
+        info.requiredStaticMemberOrdinals.push_back(memberOrdinal);
+        return true;
+    }
+    const ClassMemberSymbol& previous = memberModel_->members()[found->second];
+    if (previous.declaredTypeKey != method.declaredTypeKey)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOverride,
+            diagnostics::DiagnosticSeverity::Error,
+            method.range,
+            "trait static requirement '" + method.signatureKey +
+                "' conflicts with its inherited return type");
+        return false;
+    }
+    std::ranges::replace(info.requiredStaticMemberOrdinals, found->second, memberOrdinal);
+    found->second = memberOrdinal;
+    return true;
+}
+
+bool ProjectInterfaceModel::mergeDeclaredInterfaceMethod(
+    InterfaceTypeInfo& info,
+    std::size_t memberOrdinal,
+    std::unordered_map<std::string, std::size_t>& signatureOwner,
+    std::unordered_set<std::string>& redeclaredSignatures,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    bool ok = true;
+    const ClassMemberSymbol& method = memberModel_->members()[memberOrdinal];
+    const auto found = signatureOwner.find(method.signatureKey);
+    if (found == signatureOwner.end())
+    {
+        signatureOwner.emplace(method.signatureKey, memberOrdinal);
+        info.effectiveMethodMemberOrdinals.push_back(memberOrdinal);
+        return true;
+    }
+    const ClassMemberSymbol& previous = memberModel_->members()[found->second];
+    if (previous.declaredTypeKey != method.declaredTypeKey ||
+        previous.declaredErrorTypeKey != method.declaredErrorTypeKey ||
+        previous.isReferenceReturn != method.isReferenceReturn ||
+        lifetimeContractKey(previous) != lifetimeContractKey(method))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOverride,
+            diagnostics::DiagnosticSeverity::Error,
+            method.range,
+            "interface method '" + method.signatureKey + "' conflicts with an inherited return type");
+        ok = false;
+    }
+    if (previous.isNoHeap && !method.isNoHeap)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOverride,
+            diagnostics::DiagnosticSeverity::Error,
+            method.range,
+            "NS3030: interface method '" + method.signatureKey +
+                "' cannot drop the inherited noheap contract");
+        ok = false;
+    }
+    std::ranges::replace(info.effectiveMethodMemberOrdinals, found->second, memberOrdinal);
+    found->second = memberOrdinal;
+    redeclaredSignatures.insert(method.signatureKey);
+    // Redeclaring an inherited contract keeps its slot but replaces its contract/default.
+    return ok;
+}
+
+bool ProjectInterfaceModel::collectDeclaredInterfaceMembers(
+    std::size_t typeOrdinal,
+    InterfaceTypeInfo& info,
+    std::unordered_map<std::string, std::size_t>& signatureOwner,
+    std::unordered_map<std::string, std::size_t>& staticSignatureOwner,
+    std::unordered_set<std::string>& redeclaredSignatures,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    bool ok = true;
+    for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
+    {
+        if (memberOrdinal >= memberModel_->members().size())
+        {
+            continue;
+        }
+        const ClassMemberSymbol& method = memberModel_->members()[memberOrdinal];
+        if (!validateDeclaredInterfaceMethod(info, method, diagnostics))
+            ok = false;
+        if (method.kind != ClassMemberKind::Method)
+        {
+            continue;
+        }
+        if (method.isStatic)
+        {
+            if (info.isTrait && !mergeTraitStaticRequirement(
+                info, memberOrdinal, staticSignatureOwner, diagnostics))
+                ok = false;
+            continue;
+        }
+        if (!mergeDeclaredInterfaceMethod(
+            info, memberOrdinal, signatureOwner, redeclaredSignatures, diagnostics))
+            ok = false;
+    }
+    return ok;
+}
+
+bool ProjectInterfaceModel::inheritedDefaultIsDominated(
+    const std::vector<std::size_t>& defaults,
+    std::size_t candidateOrdinal) const
+{
+    const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
+    for (const std::size_t otherOrdinal : defaults)
+    {
+        if (otherOrdinal == candidateOrdinal || otherOrdinal >= memberModel_->members().size())
+        {
+            continue;
+        }
+        const ClassMemberSymbol& other = memberModel_->members()[otherOrdinal];
+        if (interfaceDerivesFrom(other.declaringTypeOrdinal, candidate.declaringTypeOrdinal))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ProjectInterfaceModel::validateInheritedDefaults(
+    std::size_t typeOrdinal,
+    const std::unordered_map<std::string, std::vector<std::size_t>>& inheritedDefaults,
+    const std::unordered_set<std::string>& redeclaredSignatures,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    bool ok = true;
+    for (const auto& [signature, defaults] : inheritedDefaults)
+    {
+        std::size_t undominatedDefaults = 0;
+        for (const std::size_t candidateOrdinal : defaults)
+        {
+            if (candidateOrdinal >= memberModel_->members().size())
+            {
+                continue;
+            }
+            if (!inheritedDefaultIsDominated(defaults, candidateOrdinal))
+                ++undominatedDefaults;
+        }
+        if (undominatedDefaults > 1U && !redeclaredSignatures.contains(signature))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOverride,
+                diagnostics::DiagnosticSeverity::Error,
+                nameLookup_->namedTypes()[typeOrdinal].range,
+                "trait or interface inherits competing default implementations for '" + signature +
+                    "'; redeclare the method to select or replace the default");
+            ok = false;
+        }
+    }
+    return ok;
+}
+
 bool ProjectInterfaceModel::visitInterface(
     std::size_t typeOrdinal,
     std::vector<VisitState>& states,
@@ -439,582 +807,473 @@ bool ProjectInterfaceModel::visitInterface(
         return false;
     }
     states[typeOrdinal] = VisitState::Visiting;
-
-    bool ok = true;
     std::unordered_map<std::string, std::size_t> signatureOwner;
     std::unordered_map<std::string, std::size_t> staticSignatureOwner;
     std::unordered_map<std::string, std::vector<std::size_t>> inheritedDefaults;
     std::unordered_set<std::string> redeclaredSignatures;
-    for (const std::size_t baseOrdinal : info->directBaseInterfaceOrdinals)
+
+    bool ok = collectInheritedInterfaceMembers(
+        typeOrdinal, *info, states, signatureOwner, staticSignatureOwner, inheritedDefaults, diagnostics);
+    if (!collectDeclaredInterfaceMembers(
+        typeOrdinal, *info, signatureOwner, staticSignatureOwner, redeclaredSignatures, diagnostics))
+        ok = false;
+    if (!validateInheritedDefaults(typeOrdinal, inheritedDefaults, redeclaredSignatures, diagnostics))
+        ok = false;
+    states[typeOrdinal] = ok ? VisitState::Complete : VisitState::Failed;
+    return ok;
+}
+
+bool ProjectInterfaceModel::validateNonInterfaceSpecification(
+    std::size_t candidateOrdinal,
+    NamedTypeDeclarationKind kind,
+    bool valueType,
+    bool sawInterface,
+    const ast::TypeSyntax& specification,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (valueType)
     {
-        if (!visitInterface(baseOrdinal, states, diagnostics))
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidBaseType,
+            diagnostics::DiagnosticSeverity::Error,
+            specification.range(),
+            "a struct cannot inherit class '" +
+                nameLookup_->namedTypes()[candidateOrdinal].identity.key() +
+                "'; only NativeSharp 3 traits are valid after ':'");
+        return false;
+    }
+    if (kind == NamedTypeDeclarationKind::Class && sawInterface)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidBaseType,
+            diagnostics::DiagnosticSeverity::Error,
+            specification.range(),
+            "the single class base must precede interface specifications");
+        return false;
+    }
+    return true;
+}
+
+bool ProjectInterfaceModel::validateDirectInterfaceTarget(
+    std::size_t candidateOrdinal,
+    bool valueType,
+    bool explicitImpl,
+    const InterfaceTypeInfo* info,
+    const ast::TypeSyntax& specification,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (valueType && (info == nullptr || !info->isTrait))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidBaseType,
+            diagnostics::DiagnosticSeverity::Error,
+            specification.range(),
+            "a NativeSharp 3 struct may implement traits only; ordinary "
+            "interfaces require class reference semantics");
+        return false;
+    }
+    if (explicitImpl && (info == nullptr || !info->isTrait))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidBaseType,
+            diagnostics::DiagnosticSeverity::Error,
+            specification.range(),
+            "an impl block requires a NativeSharp 3 trait; '" +
+                nameLookup_->namedTypes()[candidateOrdinal].identity.key() +
+                "' is an ordinary interface");
+        return false;
+    }
+    return true;
+}
+
+bool ProjectInterfaceModel::validateDirectInterfaceDuplicate(
+    std::size_t classOrdinal,
+    std::size_t candidateOrdinal,
+    bool explicitImpl,
+    const ast::TypeSyntax& specification,
+    const std::unordered_map<std::size_t, ProjectInterfaceDirectSource>& directInterfaces,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const auto duplicate = directInterfaces.find(candidateOrdinal);
+    if (duplicate == directInterfaces.end() ||
+        (!explicitImpl && !duplicate->second.explicitImpl))
+    {
+        return true;
+    }
+    const NamedTypeDeclaration& type = nameLookup_->namedTypes()[classOrdinal];
+    diagnostics.report(
+        diagnostics::DiagnosticId::DuplicateSymbol,
+        diagnostics::DiagnosticSeverity::Error,
+        specification.range(),
+        "duplicate trait impl for '" + nameLookup_->namedTypes()[candidateOrdinal].identity.key() +
+            "' on class '" + type.identity.key() + "'");
+    if (duplicate->second.syntax != nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::PreviousDeclaration,
+            diagnostics::DiagnosticSeverity::Note,
+            duplicate->second.syntax->range(),
+            "previous trait implementation is here");
+    }
+    return false;
+}
+
+bool ProjectInterfaceModel::collectDirectInterface(
+    std::size_t classOrdinal,
+    bool valueType,
+    const ast::TypeSyntax& specification,
+    bool& sawInterface,
+    std::unordered_map<std::size_t, ProjectInterfaceDirectSource>& directInterfaces,
+    std::vector<std::size_t>& implemented,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const std::optional<std::size_t> candidate = nameLookup_->resolvedTypeOrdinal(&specification);
+    if (!candidate.has_value() || *candidate >= nameLookup_->namedTypes().size())
+    {
+        return true;
+    }
+    const NamedTypeDeclarationKind kind = nameLookup_->namedTypes()[*candidate].kind;
+    if (kind != NamedTypeDeclarationKind::Interface)
+    {
+        return validateNonInterfaceSpecification(
+            *candidate, kind, valueType, sawInterface, specification, diagnostics);
+    }
+    const bool explicitImpl = specification.isExplicitTraitImplementation();
+    const InterfaceTypeInfo* info = interfaceInfo(*candidate);
+    if (!validateDirectInterfaceTarget(
+        *candidate, valueType, explicitImpl, info, specification, diagnostics))
+    {
+        return false;
+    }
+    // The historical unsafe marker remains readable, but it is not a
+    // caller- or implementation-side permission boundary in a native language.
+    // Trait compatibility is determined by its actual method contracts.
+    if (!validateDirectInterfaceDuplicate(
+        classOrdinal, *candidate, explicitImpl, specification, directInterfaces, diagnostics))
+    {
+        return false;
+    }
+    directInterfaces.emplace(
+        *candidate, ProjectInterfaceDirectSource{&specification, explicitImpl});
+    sawInterface = true;
+    appendUnique(implemented, *candidate);
+    if (info != nullptr)
+    {
+        for (const std::size_t baseInterface : info->transitiveBaseInterfaceOrdinals)
         {
-            ok = false;
-            continue;
+            appendUnique(implemented, baseInterface);
         }
-        appendUnique(info->transitiveBaseInterfaceOrdinals, baseOrdinal);
-        const InterfaceTypeInfo* base = interfaceInfo(baseOrdinal);
-        if (base == nullptr)
+    }
+    return true;
+}
+
+bool ProjectInterfaceModel::collectDirectInterfaces(
+    std::size_t classOrdinal,
+    bool valueType,
+    std::vector<std::size_t>& implemented,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    bool ok = true;
+    bool sawInterface = false;
+    std::unordered_map<std::size_t, ProjectInterfaceDirectSource> directInterfaces;
+    const NamedTypeDeclaration& type = nameLookup_->namedTypes()[classOrdinal];
+    for (const NamedTypeDeclarationPart& part : type.parts)
+    {
+        for (const ast::TypeSyntax* specification : declarationSpecifications(part.syntax))
         {
-            ok = false;
-            continue;
-        }
-        for (const std::size_t transitive : base->transitiveBaseInterfaceOrdinals)
-        {
-            appendUnique(info->transitiveBaseInterfaceOrdinals, transitive);
-        }
-        for (const std::size_t memberOrdinal : base->effectiveMethodMemberOrdinals)
-        {
-            if (memberOrdinal >= memberModel_->members().size())
+            if (specification == nullptr)
             {
                 continue;
             }
-            const ClassMemberSymbol& method = memberModel_->members()[memberOrdinal];
-            if (method.syntax != nullptr && method.syntax->first() != nullptr)
+            if (!collectDirectInterface(
+                classOrdinal,
+                valueType,
+                *specification,
+                sawInterface,
+                directInterfaces,
+                implemented,
+                diagnostics))
             {
-                auto& defaults = inheritedDefaults[method.signatureKey];
-                if (std::find(defaults.begin(), defaults.end(), memberOrdinal) == defaults.end())
-                    defaults.push_back(memberOrdinal);
-            }
-            const auto found = signatureOwner.find(method.signatureKey);
-            if (found == signatureOwner.end())
-            {
-                signatureOwner.emplace(method.signatureKey, memberOrdinal);
-                info->effectiveMethodMemberOrdinals.push_back(memberOrdinal);
-            }
-            else
-            {
-                const ClassMemberSymbol& previous = memberModel_->members()[found->second];
-                if (previous.declaredTypeKey != method.declaredTypeKey ||
-                    previous.declaredErrorTypeKey != method.declaredErrorTypeKey ||
-                    previous.isReferenceReturn != method.isReferenceReturn ||
-                    lifetimeContractKey(previous) != lifetimeContractKey(method))
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOverride,
-                        diagnostics::DiagnosticSeverity::Error,
-                        nameLookup_->namedTypes()[typeOrdinal].range,
-                        "interface inherits incompatible return types for method '" + method.signatureKey + "'");
-                    ok = false;
-                }
-                const bool previousDefault = previous.syntax != nullptr &&
-                    previous.syntax->first() != nullptr;
-                const bool methodDefault = method.syntax != nullptr &&
-                    method.syntax->first() != nullptr;
-                if (methodDefault &&
-                    (!previousDefault || interfaceDerivesFrom(
-                        method.declaringTypeOrdinal,
-                        previous.declaringTypeOrdinal)))
-                {
-                    std::ranges::replace(
-                        info->effectiveMethodMemberOrdinals, found->second, memberOrdinal);
-                    found->second = memberOrdinal;
-                }
-                else if (!previous.isNoHeap && method.isNoHeap)
-                {
-                    std::ranges::replace(
-                        info->effectiveMethodMemberOrdinals, found->second, memberOrdinal);
-                    found->second = memberOrdinal;
-                }
-            }
-        }
-        for (const std::size_t memberOrdinal : base->requiredStaticMemberOrdinals)
-        {
-            if (memberOrdinal >= memberModel_->members().size()) continue;
-            const ClassMemberSymbol& requirement = memberModel_->members()[memberOrdinal];
-            const auto found = staticSignatureOwner.find(requirement.signatureKey);
-            if (found == staticSignatureOwner.end())
-            {
-                staticSignatureOwner.emplace(requirement.signatureKey, memberOrdinal);
-                info->requiredStaticMemberOrdinals.push_back(memberOrdinal);
-            }
-            else
-            {
-                const ClassMemberSymbol& previous = memberModel_->members()[found->second];
-                if (previous.declaredTypeKey != requirement.declaredTypeKey ||
-                    previous.declaredErrorTypeKey != requirement.declaredErrorTypeKey)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOverride,
-                        diagnostics::DiagnosticSeverity::Error,
-                        nameLookup_->namedTypes()[typeOrdinal].range,
-                        "trait inherits incompatible static requirements for '" +
-                            requirement.signatureKey + "'");
-                    ok = false;
-                }
+                ok = false;
             }
         }
     }
+    return ok;
+}
 
-    for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
+bool ProjectInterfaceModel::implementationThrowsCompatible(
+    const ClassMemberSymbol& implementation,
+    const ClassMemberSymbol& requirement) const
+{
+    if (implementation.declaredErrorTypeKey.empty())
     {
-        if (memberOrdinal >= memberModel_->members().size())
-        {
-            continue;
-        }
-        const ClassMemberSymbol& method = memberModel_->members()[memberOrdinal];
-        if (method.kind != ClassMemberKind::Method)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidMemberAccess,
-                diagnostics::DiagnosticSeverity::Error,
-                method.range,
-                "Stage 36 interface declaration spaces contain methods only");
-            ok = false;
-            continue;
-        }
-        const bool hasBody = method.syntax != nullptr && method.syntax->first() != nullptr;
-        if (!info->isTrait && (method.isStatic ||
-            method.accessibility != ClassMemberAccessibility::Public ||
-            method.syntax == nullptr || method.isAbstract == hasBody))
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidMemberAccess,
-                diagnostics::DiagnosticSeverity::Error,
-                method.range,
-                "interface members are public instance requirements without bodies or default "
-                "members with bodies");
-            ok = false;
-        }
-
-        if (info->isTrait && (method.accessibility != ClassMemberAccessibility::Public ||
-            method.syntax == nullptr || method.isAbstract == hasBody))
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidMemberAccess,
-                diagnostics::DiagnosticSeverity::Error,
-                method.range,
-                "trait members are public requirements without bodies or default methods with bodies");
-            ok = false;
-        }
-
-        if (method.isStatic)
-        {
-            if (info->isTrait)
-            {
-                const auto found = staticSignatureOwner.find(method.signatureKey);
-                if (found == staticSignatureOwner.end())
-                {
-                    staticSignatureOwner.emplace(method.signatureKey, memberOrdinal);
-                    info->requiredStaticMemberOrdinals.push_back(memberOrdinal);
-                }
-                else
-                {
-                    const ClassMemberSymbol& previous = memberModel_->members()[found->second];
-                    if (previous.declaredTypeKey != method.declaredTypeKey)
-                    {
-                        diagnostics.report(
-                            diagnostics::DiagnosticId::InvalidOverride,
-                            diagnostics::DiagnosticSeverity::Error,
-                            method.range,
-                            "trait static requirement '" + method.signatureKey +
-                                "' conflicts with its inherited return type");
-                        ok = false;
-                    }
-                    else
-                    {
-                        std::ranges::replace(
-                            info->requiredStaticMemberOrdinals, found->second, memberOrdinal);
-                        found->second = memberOrdinal;
-                    }
-                }
-            }
-            continue;
-        }
-
-        const auto found = signatureOwner.find(method.signatureKey);
-        if (found != signatureOwner.end())
-        {
-            const ClassMemberSymbol& previous = memberModel_->members()[found->second];
-            if (previous.declaredTypeKey != method.declaredTypeKey ||
-                previous.declaredErrorTypeKey != method.declaredErrorTypeKey ||
-                previous.isReferenceReturn != method.isReferenceReturn ||
-                lifetimeContractKey(previous) != lifetimeContractKey(method))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOverride,
-                    diagnostics::DiagnosticSeverity::Error,
-                    method.range,
-                    "interface method '" + method.signatureKey + "' conflicts with an inherited return type");
-                ok = false;
-            }
-            if (previous.isNoHeap && !method.isNoHeap)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOverride,
-                    diagnostics::DiagnosticSeverity::Error,
-                    method.range,
-                    "NS3030: interface method '" + method.signatureKey +
-                        "' cannot drop the inherited noheap contract");
-                ok = false;
-            }
-            else if (!previous.isNoHeap && method.isNoHeap)
-            {
-                std::ranges::replace(
-                    info->effectiveMethodMemberOrdinals, found->second, memberOrdinal);
-                found->second = memberOrdinal;
-            }
-            else
-            {
-                std::ranges::replace(
-                    info->effectiveMethodMemberOrdinals, found->second, memberOrdinal);
-                found->second = memberOrdinal;
-            }
-            redeclaredSignatures.insert(method.signatureKey);
-            // Redeclaring an inherited contract keeps its slot but replaces its contract/default.
-            continue;
-        }
-        signatureOwner.emplace(method.signatureKey, memberOrdinal);
-        info->effectiveMethodMemberOrdinals.push_back(memberOrdinal);
+        return true;
     }
-
-    for (const auto& [signature, defaults] : inheritedDefaults)
+    if (requirement.declaredErrorTypeKey.empty())
     {
-        std::size_t undominatedDefaults = 0;
-        for (const std::size_t candidateOrdinal : defaults)
-        {
-            if (candidateOrdinal >= memberModel_->members().size()) continue;
-            const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
-            const bool dominated = std::ranges::any_of(
-                defaults,
-                [&](const std::size_t otherOrdinal)
-                {
-                    if (otherOrdinal == candidateOrdinal ||
-                        otherOrdinal >= memberModel_->members().size())
-                        return false;
-                    const ClassMemberSymbol& other = memberModel_->members()[otherOrdinal];
-                    return interfaceDerivesFrom(
-                        other.declaringTypeOrdinal,
-                        candidate.declaringTypeOrdinal);
-                });
-            if (!dominated) ++undominatedDefaults;
-        }
-        if (undominatedDefaults > 1U && !redeclaredSignatures.contains(signature))
+        return false;
+    }
+    const std::optional<std::size_t> implementationError =
+        inheritanceModel_->typeOrdinalForTypeKey(implementation.declaredErrorTypeKey);
+    const std::optional<std::size_t> contractError =
+        inheritanceModel_->typeOrdinalForTypeKey(requirement.declaredErrorTypeKey);
+    return implementationError.has_value() && contractError.has_value() &&
+        inheritanceModel_->isDerivedFrom(*implementationError, *contractError, true);
+}
+
+bool ProjectInterfaceModel::appendInterfaceMethodImplementation(
+    std::size_t classOrdinal,
+    std::size_t interfaceOrdinal,
+    std::size_t interfaceMethodOrdinal,
+    const NamedTypeDeclaration& type,
+    const ClassMemberSymbol& interfaceMethod,
+    ClassInterfaceTablePlan& plan,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    std::optional<std::size_t> implementation = findImplementation(classOrdinal, interfaceMethod);
+    if (!implementation.has_value() &&
+        interfaceMethod.syntax != nullptr && interfaceMethod.syntax->first() != nullptr)
+    {
+        implementation = interfaceMethodOrdinal;
+    }
+    plan.implementationMemberOrdinals.push_back(implementation);
+    bool ok = true;
+    if (implementation.has_value() && interfaceMethod.isNoHeap &&
+        !memberModel_->members()[*implementation].isNoHeap)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOverride,
+            diagnostics::DiagnosticSeverity::Error,
+            memberModel_->members()[*implementation].range,
+            "NS3030: method '" + memberModel_->members()[*implementation].signatureKey +
+                "' cannot implement noheap interface contract '" +
+                interfaceMethod.signatureKey + "' without noheap");
+        ok = false;
+    }
+    if (implementation.has_value())
+    {
+        const ClassMemberSymbol& concrete = memberModel_->members()[*implementation];
+        if (!implementationThrowsCompatible(concrete, interfaceMethod))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOverride,
                 diagnostics::DiagnosticSeverity::Error,
-                nameLookup_->namedTypes()[typeOrdinal].range,
-                "trait or interface inherits competing default implementations for '" + signature +
-                    "'; redeclare the method to select or replace the default");
+                concrete.range,
+                "method '" + concrete.signatureKey + "' declares throws '" +
+                    concrete.declaredErrorTypeKey + "' outside interface contract '" +
+                    (interfaceMethod.declaredErrorTypeKey.empty()
+                        ? std::string{"<non-throwing>"}
+                        : interfaceMethod.declaredErrorTypeKey) + "'");
             ok = false;
         }
     }
+    if (!implementation.has_value() && !type.isAbstract)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOverride,
+            diagnostics::DiagnosticSeverity::Error,
+            type.range,
+            "concrete class '" + type.identity.key() + "' does not implement interface method '" +
+                interfaceMethod.signatureKey + "' from '" +
+                nameLookup_->namedTypes()[interfaceOrdinal].identity.key() + "'");
+        ok = false;
+    }
+    return ok;
+}
 
-    states[typeOrdinal] = ok ? VisitState::Complete : VisitState::Failed;
+void ProjectInterfaceModel::appendOperatorWitness(
+    std::size_t classOrdinal,
+    std::size_t interfaceOrdinal,
+    std::size_t requirementOrdinal,
+    std::size_t implementationOrdinal,
+    const ClassMemberSymbol& requirement)
+{
+    auto& witnesses = operatorWitnessesByType_[classOrdinal];
+    for (const TraitOperatorWitness& witness : witnesses)
+    {
+        if (witness.traitTypeOrdinal == interfaceOrdinal &&
+            witness.requirementMemberOrdinal == requirementOrdinal &&
+            witness.implementationMemberOrdinal == implementationOrdinal)
+        {
+            return;
+        }
+    }
+    witnesses.push_back(TraitOperatorWitness{
+        classOrdinal,
+        interfaceOrdinal,
+        requirementOrdinal,
+        implementationOrdinal,
+        requirement.operatorTraitKey});
+}
+
+bool ProjectInterfaceModel::validateStaticRequirementImplementation(
+    std::size_t classOrdinal,
+    std::size_t interfaceOrdinal,
+    const NamedTypeDeclaration& type,
+    std::size_t requirementOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (requirementOrdinal >= memberModel_->members().size())
+    {
+        return true;
+    }
+    const ClassMemberSymbol& requirement = memberModel_->members()[requirementOrdinal];
+    const std::optional<std::size_t> implementation =
+        findStaticImplementation(classOrdinal, requirement);
+    bool ok = true;
+    if (!implementation.has_value() && !type.isAbstract)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOverride,
+            diagnostics::DiagnosticSeverity::Error,
+            type.range,
+            "concrete class '" + type.identity.key() +
+                "' does not implement static trait requirement '" + requirement.signatureKey +
+                "' from '" + nameLookup_->namedTypes()[interfaceOrdinal].identity.key() + "'");
+        ok = false;
+    }
+    if (implementation.has_value())
+    {
+        const ClassMemberSymbol& concrete = memberModel_->members()[*implementation];
+        if (!implementationThrowsCompatible(concrete, requirement))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOverride,
+                diagnostics::DiagnosticSeverity::Error,
+                concrete.range,
+                "static method '" + concrete.signatureKey + "' declares throws '" +
+                    concrete.declaredErrorTypeKey + "' outside trait contract '" +
+                    (requirement.declaredErrorTypeKey.empty()
+                        ? std::string{"<non-throwing>"}
+                        : requirement.declaredErrorTypeKey) + "'");
+            ok = false;
+        }
+    }
+    if (implementation.has_value() && requirement.isUserOperator &&
+        !requirement.operatorTraitKey.empty())
+    {
+        appendOperatorWitness(
+            classOrdinal, interfaceOrdinal, requirementOrdinal, *implementation, requirement);
+    }
+    return ok;
+}
+
+bool ProjectInterfaceModel::buildInterfacePlan(
+    std::size_t classOrdinal,
+    bool valueType,
+    std::size_t interfaceOrdinal,
+    const NamedTypeDeclaration& type,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const InterfaceTypeInfo* interface = interfaceInfo(interfaceOrdinal);
+    if (interface == nullptr)
+    {
+        return true;
+    }
+    ClassInterfaceTablePlan plan;
+    plan.classTypeOrdinal = classOrdinal;
+    plan.interfaceTypeOrdinal = interfaceOrdinal;
+    plan.stableInterfaceTypeId = stableTypeId(typeKeyForOrdinal(interfaceOrdinal));
+    plan.interfaceMethodMemberOrdinals = interface->effectiveMethodMemberOrdinals;
+
+    bool ok = true;
+    for (const std::size_t methodOrdinal : interface->effectiveMethodMemberOrdinals)
+    {
+        const ClassMemberSymbol& interfaceMethod = memberModel_->members()[methodOrdinal];
+        if (!appendInterfaceMethodImplementation(
+            classOrdinal,
+            interfaceOrdinal,
+            methodOrdinal,
+            type,
+            interfaceMethod,
+            plan,
+            diagnostics))
+            ok = false;
+    }
+    for (const std::size_t requirementOrdinal : interface->requiredStaticMemberOrdinals)
+    {
+        if (!validateStaticRequirementImplementation(
+            classOrdinal, interfaceOrdinal, type, requirementOrdinal, diagnostics))
+            ok = false;
+    }
+    if (!valueType)
+    {
+        tablePlans_.push_back(std::move(plan));
+    }
+    return ok;
+}
+
+bool ProjectInterfaceModel::buildImplementedInterfacePlans(
+    std::size_t classOrdinal,
+    bool valueType,
+    const std::vector<std::size_t>& implemented,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    bool ok = true;
+    const NamedTypeDeclaration& type = nameLookup_->namedTypes()[classOrdinal];
+    for (const std::size_t interfaceOrdinal : implemented)
+    {
+        if (!buildInterfacePlan(classOrdinal, valueType, interfaceOrdinal, type, diagnostics))
+        {
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+bool ProjectInterfaceModel::buildImplementingTypePlans(
+    std::size_t classOrdinal,
+    std::optional<std::size_t> baseOrdinal,
+    bool valueType,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    std::vector<std::size_t>& implemented = interfacesByClass_[classOrdinal];
+    if (baseOrdinal.has_value() && *baseOrdinal < interfacesByClass_.size())
+    {
+        implemented = interfacesByClass_[*baseOrdinal];
+    }
+    bool ok = collectDirectInterfaces(classOrdinal, valueType, implemented, diagnostics);
+    if (!buildImplementedInterfacePlans(classOrdinal, valueType, implemented, diagnostics))
+    {
+        ok = false;
+    }
     return ok;
 }
 
 bool ProjectInterfaceModel::buildClassPlans(diagnostics::DiagnosticEngine& diagnostics)
 {
-    bool ok = true;
-    struct ImplementingType final
-    {
-        std::size_t ordinal = 0;
-        std::optional<std::size_t> baseOrdinal;
-        std::size_t depth = 0;
-        bool valueType = false;
-    };
-    std::vector<ImplementingType> orderedTypes;
+    std::vector<ProjectInterfaceImplementingType> orderedTypes;
     orderedTypes.reserve(
         inheritanceModel_->classes().size() + nameLookup_->namedTypes().size());
     for (const ClassInheritanceInfo& classInfo : inheritanceModel_->classes())
     {
-        orderedTypes.push_back(ImplementingType{
+        orderedTypes.push_back(ProjectInterfaceImplementingType{
             classInfo.typeOrdinal, classInfo.baseTypeOrdinal, classInfo.depth, false});
     }
     for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
     {
         if (nameLookup_->namedTypes()[ordinal].kind == NamedTypeDeclarationKind::Struct)
-            orderedTypes.push_back(ImplementingType{ordinal, std::nullopt, 0U, true});
-    }
-    std::stable_sort(orderedTypes.begin(), orderedTypes.end(),
-        [](const ImplementingType& left, const ImplementingType& right)
         {
-            return left.depth < right.depth;
-        });
+            orderedTypes.push_back(ProjectInterfaceImplementingType{
+                ordinal, std::nullopt, 0U, true});
+        }
+    }
+    std::stable_sort(orderedTypes.begin(), orderedTypes.end(), implementingTypeDepthLess);
 
     // Base classes must publish their inherited interface set before derived classes copy it.
     // Sorting by the already-validated inheritance depth makes this independent of source order.
     // NativeSharp 3 structs participate in nominal trait constraints too, but remain value types:
     // they have no class base and receive no dynamic interface table from this phase.
-    for (const ImplementingType& implementingType : orderedTypes)
+    bool ok = true;
+    for (const ProjectInterfaceImplementingType& implementingType : orderedTypes)
     {
-        const std::size_t classOrdinal = implementingType.ordinal;
-        std::vector<std::size_t>& implemented = interfacesByClass_[classOrdinal];
-
-        if (implementingType.baseOrdinal.has_value() &&
-            *implementingType.baseOrdinal < interfacesByClass_.size())
+        if (!buildImplementingTypePlans(
+            implementingType.ordinal,
+            implementingType.baseOrdinal,
+            implementingType.valueType,
+            diagnostics))
         {
-            implemented = interfacesByClass_[*implementingType.baseOrdinal];
-        }
-
-        const NamedTypeDeclaration& type = nameLookup_->namedTypes()[classOrdinal];
-        bool sawInterface = false;
-        struct DirectInterfaceSource final
-        {
-            const ast::TypeSyntax* syntax = nullptr;
-            bool explicitImpl = false;
-        };
-        std::unordered_map<std::size_t, DirectInterfaceSource> directInterfaces;
-        for (const NamedTypeDeclarationPart& part : type.parts)
-        {
-            for (const ast::TypeSyntax* specification : declarationSpecifications(part.syntax))
-            {
-                if (specification == nullptr)
-                {
-                    continue;
-                }
-                const std::optional<std::size_t> candidate = nameLookup_->resolvedTypeOrdinal(specification);
-                if (!candidate.has_value() || *candidate >= nameLookup_->namedTypes().size())
-                {
-                    continue;
-                }
-                const NamedTypeDeclarationKind kind = nameLookup_->namedTypes()[*candidate].kind;
-                if (kind == NamedTypeDeclarationKind::Interface)
-                {
-                    const bool explicitImpl = specification->isExplicitTraitImplementation();
-                    const InterfaceTypeInfo* info = interfaceInfo(*candidate);
-                    if (implementingType.valueType && (info == nullptr || !info->isTrait))
-                    {
-                        diagnostics.report(
-                            diagnostics::DiagnosticId::InvalidBaseType,
-                            diagnostics::DiagnosticSeverity::Error,
-                            specification->range(),
-                            "a NativeSharp 3 struct may implement traits only; ordinary "
-                            "interfaces require class reference semantics");
-                        ok = false;
-                        continue;
-                    }
-                    if (explicitImpl && (info == nullptr || !info->isTrait))
-                    {
-                        diagnostics.report(
-                            diagnostics::DiagnosticId::InvalidBaseType,
-                            diagnostics::DiagnosticSeverity::Error,
-                            specification->range(),
-                            "an impl block requires a NativeSharp 3 trait; '" +
-                                nameLookup_->namedTypes()[*candidate].identity.key() +
-                                "' is an ordinary interface");
-                        ok = false;
-                        continue;
-                    }
-                    // The historical unsafe marker remains readable, but it is not a
-                    // caller- or implementation-side permission boundary in a native language.
-                    // Trait compatibility is determined by its actual method contracts.
-                    if (const auto duplicate = directInterfaces.find(*candidate);
-                        duplicate != directInterfaces.end() &&
-                        (explicitImpl || duplicate->second.explicitImpl))
-                    {
-                        diagnostics.report(
-                            diagnostics::DiagnosticId::DuplicateSymbol,
-                            diagnostics::DiagnosticSeverity::Error,
-                            specification->range(),
-                            "duplicate trait impl for '" +
-                                nameLookup_->namedTypes()[*candidate].identity.key() +
-                                "' on class '" + type.identity.key() + "'");
-                        if (duplicate->second.syntax != nullptr)
-                        {
-                            diagnostics.report(
-                                diagnostics::DiagnosticId::PreviousDeclaration,
-                                diagnostics::DiagnosticSeverity::Note,
-                                duplicate->second.syntax->range(),
-                                "previous trait implementation is here");
-                        }
-                        ok = false;
-                        continue;
-                    }
-                    directInterfaces.emplace(
-                        *candidate, DirectInterfaceSource{specification, explicitImpl});
-                    sawInterface = true;
-                    appendUnique(implemented, *candidate);
-                    if (info != nullptr)
-                    {
-                        for (const std::size_t baseInterface : info->transitiveBaseInterfaceOrdinals)
-                        {
-                            appendUnique(implemented, baseInterface);
-                        }
-                    }
-                }
-                else if (implementingType.valueType)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidBaseType,
-                        diagnostics::DiagnosticSeverity::Error,
-                        specification->range(),
-                        "a struct cannot inherit class '" +
-                            nameLookup_->namedTypes()[*candidate].identity.key() +
-                            "'; only NativeSharp 3 traits are valid after ':'");
-                    ok = false;
-                }
-                else if (kind == NamedTypeDeclarationKind::Class && sawInterface)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidBaseType,
-                        diagnostics::DiagnosticSeverity::Error,
-                        specification->range(),
-                        "the single class base must precede interface specifications");
-                    ok = false;
-                }
-            }
-        }
-
-        for (const std::size_t interfaceOrdinal : implemented)
-        {
-            const InterfaceTypeInfo* interface = interfaceInfo(interfaceOrdinal);
-            if (interface == nullptr)
-            {
-                continue;
-            }
-            ClassInterfaceTablePlan plan;
-            plan.classTypeOrdinal = classOrdinal;
-            plan.interfaceTypeOrdinal = interfaceOrdinal;
-            plan.stableInterfaceTypeId = stableTypeId(typeKeyForOrdinal(interfaceOrdinal));
-            plan.interfaceMethodMemberOrdinals = interface->effectiveMethodMemberOrdinals;
-
-            for (const std::size_t interfaceMethodOrdinal : interface->effectiveMethodMemberOrdinals)
-            {
-                const ClassMemberSymbol& interfaceMethod = memberModel_->members()[interfaceMethodOrdinal];
-                std::optional<std::size_t> implementation =
-                    findImplementation(classOrdinal, interfaceMethod);
-                if (!implementation.has_value() &&
-                    interfaceMethod.syntax != nullptr && interfaceMethod.syntax->first() != nullptr)
-                {
-                    implementation = interfaceMethodOrdinal;
-                }
-                plan.implementationMemberOrdinals.push_back(implementation);
-                if (implementation.has_value() && interfaceMethod.isNoHeap &&
-                    !memberModel_->members()[*implementation].isNoHeap)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOverride,
-                        diagnostics::DiagnosticSeverity::Error,
-                        memberModel_->members()[*implementation].range,
-                        "NS3030: method '" + memberModel_->members()[*implementation].signatureKey +
-                            "' cannot implement noheap interface contract '" +
-                            interfaceMethod.signatureKey + "' without noheap");
-                    ok = false;
-                }
-                if (implementation.has_value())
-                {
-                    const ClassMemberSymbol& concrete =
-                        memberModel_->members()[*implementation];
-                    bool compatibleThrows = concrete.declaredErrorTypeKey.empty();
-                    if (!compatibleThrows && !interfaceMethod.declaredErrorTypeKey.empty())
-                    {
-                        const std::optional<std::size_t> concreteError =
-                            inheritanceModel_->typeOrdinalForTypeKey(
-                                concrete.declaredErrorTypeKey);
-                        const std::optional<std::size_t> contractError =
-                            inheritanceModel_->typeOrdinalForTypeKey(
-                                interfaceMethod.declaredErrorTypeKey);
-                        compatibleThrows = concreteError.has_value() &&
-                            contractError.has_value() &&
-                            inheritanceModel_->isDerivedFrom(
-                                *concreteError, *contractError, true);
-                    }
-                    if (!compatibleThrows)
-                    {
-                        diagnostics.report(
-                            diagnostics::DiagnosticId::InvalidOverride,
-                            diagnostics::DiagnosticSeverity::Error,
-                            concrete.range,
-                            "method '" + concrete.signatureKey + "' declares throws '" +
-                                concrete.declaredErrorTypeKey +
-                                "' outside interface contract '" +
-                                (interfaceMethod.declaredErrorTypeKey.empty()
-                                    ? std::string{"<non-throwing>"}
-                                    : interfaceMethod.declaredErrorTypeKey) + "'");
-                        ok = false;
-                    }
-                }
-                if (!implementation.has_value() && !type.isAbstract)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOverride,
-                        diagnostics::DiagnosticSeverity::Error,
-                        type.range,
-                        "concrete class '" + type.identity.key() + "' does not implement interface method '" +
-                            interfaceMethod.signatureKey + "' from '" +
-                            nameLookup_->namedTypes()[interfaceOrdinal].identity.key() + "'");
-                    ok = false;
-                }
-            }
-            for (const std::size_t requirementOrdinal : interface->requiredStaticMemberOrdinals)
-            {
-                if (requirementOrdinal >= memberModel_->members().size()) continue;
-                const ClassMemberSymbol& requirement = memberModel_->members()[requirementOrdinal];
-                const std::optional<std::size_t> implementation =
-                    findStaticImplementation(classOrdinal, requirement);
-                if (!implementation.has_value() &&
-                    !type.isAbstract)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOverride,
-                        diagnostics::DiagnosticSeverity::Error,
-                        type.range,
-                        "concrete class '" + type.identity.key() +
-                            "' does not implement static trait requirement '" +
-                            requirement.signatureKey + "' from '" +
-                            nameLookup_->namedTypes()[interfaceOrdinal].identity.key() + "'");
-                    ok = false;
-                }
-                if (implementation.has_value())
-                {
-                    const ClassMemberSymbol& concrete =
-                        memberModel_->members()[*implementation];
-                    bool compatibleThrows = concrete.declaredErrorTypeKey.empty();
-                    if (!compatibleThrows && !requirement.declaredErrorTypeKey.empty())
-                    {
-                        const std::optional<std::size_t> concreteError =
-                            inheritanceModel_->typeOrdinalForTypeKey(
-                                concrete.declaredErrorTypeKey);
-                        const std::optional<std::size_t> contractError =
-                            inheritanceModel_->typeOrdinalForTypeKey(
-                                requirement.declaredErrorTypeKey);
-                        compatibleThrows = concreteError.has_value() &&
-                            contractError.has_value() &&
-                            inheritanceModel_->isDerivedFrom(
-                                *concreteError, *contractError, true);
-                    }
-                    if (!compatibleThrows)
-                    {
-                        diagnostics.report(
-                            diagnostics::DiagnosticId::InvalidOverride,
-                            diagnostics::DiagnosticSeverity::Error,
-                            concrete.range,
-                            "static method '" + concrete.signatureKey +
-                                "' declares throws '" + concrete.declaredErrorTypeKey +
-                                "' outside trait contract '" +
-                                (requirement.declaredErrorTypeKey.empty()
-                                    ? std::string{"<non-throwing>"}
-                                    : requirement.declaredErrorTypeKey) + "'");
-                        ok = false;
-                    }
-                }
-                if (implementation.has_value() && requirement.isUserOperator &&
-                    !requirement.operatorTraitKey.empty())
-                {
-                    auto& witnesses = operatorWitnessesByType_[classOrdinal];
-                    const bool duplicate = std::ranges::any_of(
-                        witnesses,
-                        [&](const TraitOperatorWitness& witness)
-                        {
-                            return witness.traitTypeOrdinal == interfaceOrdinal &&
-                                witness.requirementMemberOrdinal == requirementOrdinal &&
-                                witness.implementationMemberOrdinal == *implementation;
-                        });
-                    if (!duplicate)
-                    {
-                        witnesses.push_back(TraitOperatorWitness{
-                            classOrdinal,
-                            interfaceOrdinal,
-                            requirementOrdinal,
-                            *implementation,
-                            requirement.operatorTraitKey});
-                    }
-                }
-            }
-            if (!implementingType.valueType) tablePlans_.push_back(std::move(plan));
+            ok = false;
         }
     }
     return ok;

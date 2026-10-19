@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/MacroExpansionEngine.h"
+#include "Internal/Definition.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -7,14 +8,7 @@ namespace nativesharp::frontend
 {
 namespace
 {
-struct Definition final
-{
-    std::vector<std::string> parameters;
-    std::string body;
-    MacroExpansionContext context = MacroExpansionContext::Statement;
-    std::size_t definitionOffset = 0;
-    std::size_t definitionLength = 0;
-};
+using internal::Definition;
 
 bool identifierStart(char value) noexcept
 {
@@ -147,6 +141,126 @@ std::string instantiate(
     }
     return output;
 }
+
+bool collectMacroDefinitions(
+    MacroExpansionResult& result,
+    std::unordered_map<std::string, Definition>& definitions)
+{
+    std::size_t search = 0;
+    while ((search = result.source.find("#macro", search)) != std::string::npos)
+    {
+        std::size_t cursor = search + 6;
+        std::string name;
+        if (!readIdentifier(result.source, cursor, name))
+        { result.error = "macro definition requires a name"; return false; }
+        skipSpace(result.source, cursor);
+        if (cursor >= result.source.size() || result.source[cursor] != '(')
+        { result.error = "macro definition requires a parameter list"; return false; }
+        const std::size_t parametersEnd = matching(result.source, cursor, '(', ')');
+        if (parametersEnd == std::string::npos)
+        { result.error = "unterminated macro parameter list"; return false; }
+        bool valid = false;
+        std::vector<std::string> parameters = splitArguments(
+            std::string_view(result.source).substr(cursor + 1, parametersEnd - cursor - 1), valid);
+        if (!valid || std::ranges::any_of(parameters, [](const std::string& parameter) {
+                return parameter.empty() || !identifierStart(parameter.front()) ||
+                    !std::ranges::all_of(parameter, identifierByte);
+            }))
+        { result.error = "macro parameters must be identifiers"; return false; }
+        std::ranges::sort(parameters);
+        if (std::ranges::adjacent_find(parameters) != parameters.end())
+        { result.error = "macro parameter names must be unique"; return false; }
+        // Restore declared order after uniqueness validation.
+        parameters = splitArguments(
+            std::string_view(result.source).substr(cursor + 1, parametersEnd - cursor - 1), valid);
+        cursor = parametersEnd + 1;
+        skipSpace(result.source, cursor);
+        MacroExpansionContext context = MacroExpansionContext::Statement;
+        if (cursor < result.source.size() && result.source[cursor] != '{')
+        {
+            std::string keyword;
+            if (!readIdentifier(result.source, cursor, keyword))
+            { result.error = "macro context requires an identifier"; return false; }
+            if (keyword == "statement") context = MacroExpansionContext::Statement;
+            else if (keyword == "expression") context = MacroExpansionContext::Expression;
+            else if (keyword == "member") context = MacroExpansionContext::Member;
+            else if (keyword == "type") context = MacroExpansionContext::Type;
+            else
+            { result.error = "macro context must be statement, expression, member, or type"; return false; }
+        }
+        skipSpace(result.source, cursor);
+        if (cursor >= result.source.size() || result.source[cursor] != '{')
+        { result.error = "macro definition requires a token-tree body"; return false; }
+        const std::size_t bodyEnd = matching(result.source, cursor, '{', '}');
+        if (bodyEnd == std::string::npos)
+        { result.error = "unterminated macro body"; return false; }
+        if (!definitions.emplace(name, Definition{std::move(parameters),
+                result.source.substr(cursor + 1, bodyEnd - cursor - 1), context,
+                search, bodyEnd + 1 - search}).second)
+        { result.error = "duplicate macro definition '" + name + "'"; return false; }
+        for (std::size_t index = search; index <= bodyEnd; ++index)
+            if (result.source[index] != '\r' && result.source[index] != '\n') result.source[index] = ' ';
+        search = bodyEnd + 1;
+    }
+    return true;
+}
+
+bool expandMacroInvocations(
+    MacroExpansionResult& result,
+    const std::unordered_map<std::string, Definition>& definitions,
+    std::size_t maximumExpansions,
+    std::size_t maximumDepth)
+{
+    std::size_t scope = 0;
+    while (true)
+    {
+        const std::size_t invocation = result.source.find("#expand");
+        if (invocation == std::string::npos) break;
+        if (result.expansions.size() >= maximumExpansions)
+        {
+            result.error = "macro expansion limit exceeded\ncomptime backtrace:";
+            const std::size_t first = result.expansions.size() > 8
+                ? result.expansions.size() - 8 : 0;
+            for (std::size_t index = result.expansions.size(); index > first; --index)
+                result.error += "\n  #expand " + result.expansions[index - 1].macroName;
+            return false;
+        }
+        std::size_t cursor = invocation + 7;
+        std::string name;
+        if (!readIdentifier(result.source, cursor, name))
+        { result.error = "macro expansion requires a name"; return false; }
+        const auto definition = definitions.find(name);
+        if (definition == definitions.end())
+        { result.error = "unknown macro '" + name + "'"; return false; }
+        skipSpace(result.source, cursor);
+        if (cursor >= result.source.size() || result.source[cursor] != '(')
+        { result.error = "macro expansion requires an argument list"; return false; }
+        const std::size_t end = matching(result.source, cursor, '(', ')');
+        if (end == std::string::npos)
+        { result.error = "unterminated macro invocation"; return false; }
+        bool valid = false;
+        const std::vector<std::string> arguments = splitArguments(
+            std::string_view(result.source).substr(cursor + 1, end - cursor - 1), valid);
+        if (!valid || arguments.size() != definition->second.parameters.size())
+        { result.error = "macro argument count does not match definition '" + name + "'"; return false; }
+        ++scope;
+        if (scope > maximumDepth)
+        { result.error = "macro expansion depth limit exceeded"; return false; }
+        std::string error;
+        std::string expansion = instantiate(definition->second, arguments, scope, error);
+        if (!error.empty()) { result.error = error; return false; }
+        // NS304-T14-F07: a macro whose body expands itself is a symbol cycle, diagnosed
+        // specifically instead of being absorbed by the step budget.
+        if (expansion.find("#expand " + name) != std::string::npos)
+        { result.error = "macro cycle detected: '" + name + "' expands to itself"; return false; }
+        const std::size_t invocationLength = end + 1 - invocation;
+        result.source.replace(invocation, invocationLength, expansion);
+        result.expansions.push_back({name, invocation, invocationLength, expansion.size(),
+            scope, definition->second.context,
+            definition->second.definitionOffset, definition->second.definitionLength});
+    }
+    return true;
+}
 }
 
 MacroExpansionEngine::MacroExpansionEngine(
@@ -164,112 +278,9 @@ MacroExpansionResult MacroExpansionEngine::expand(std::string_view source) const
     }
     result.source.assign(source);
     std::unordered_map<std::string, Definition> definitions;
-
-    std::size_t search = 0;
-    while ((search = result.source.find("#macro", search)) != std::string::npos)
-    {
-        std::size_t cursor = search + 6;
-        std::string name;
-        if (!readIdentifier(result.source, cursor, name))
-        { result.error = "macro definition requires a name"; return result; }
-        skipSpace(result.source, cursor);
-        if (cursor >= result.source.size() || result.source[cursor] != '(')
-        { result.error = "macro definition requires a parameter list"; return result; }
-        const std::size_t parametersEnd = matching(result.source, cursor, '(', ')');
-        if (parametersEnd == std::string::npos)
-        { result.error = "unterminated macro parameter list"; return result; }
-        bool valid = false;
-        std::vector<std::string> parameters = splitArguments(
-            std::string_view(result.source).substr(cursor + 1, parametersEnd - cursor - 1), valid);
-        if (!valid || std::ranges::any_of(parameters, [](const std::string& parameter) {
-                return parameter.empty() || !identifierStart(parameter.front()) ||
-                    !std::ranges::all_of(parameter, identifierByte);
-            }))
-        { result.error = "macro parameters must be identifiers"; return result; }
-        std::ranges::sort(parameters);
-        if (std::ranges::adjacent_find(parameters) != parameters.end())
-        { result.error = "macro parameter names must be unique"; return result; }
-        // Restore declared order after uniqueness validation.
-        parameters = splitArguments(
-            std::string_view(result.source).substr(cursor + 1, parametersEnd - cursor - 1), valid);
-        cursor = parametersEnd + 1;
-        skipSpace(result.source, cursor);
-        MacroExpansionContext context = MacroExpansionContext::Statement;
-        if (cursor < result.source.size() && result.source[cursor] != '{')
-        {
-            std::string keyword;
-            if (!readIdentifier(result.source, cursor, keyword))
-            { result.error = "macro context requires an identifier"; return result; }
-            if (keyword == "statement") context = MacroExpansionContext::Statement;
-            else if (keyword == "expression") context = MacroExpansionContext::Expression;
-            else if (keyword == "member") context = MacroExpansionContext::Member;
-            else if (keyword == "type") context = MacroExpansionContext::Type;
-            else
-            { result.error = "macro context must be statement, expression, member, or type"; return result; }
-        }
-        skipSpace(result.source, cursor);
-        if (cursor >= result.source.size() || result.source[cursor] != '{')
-        { result.error = "macro definition requires a token-tree body"; return result; }
-        const std::size_t bodyEnd = matching(result.source, cursor, '{', '}');
-        if (bodyEnd == std::string::npos)
-        { result.error = "unterminated macro body"; return result; }
-        if (!definitions.emplace(name, Definition{std::move(parameters),
-                result.source.substr(cursor + 1, bodyEnd - cursor - 1), context,
-                search, bodyEnd + 1 - search}).second)
-        { result.error = "duplicate macro definition '" + name + "'"; return result; }
-        for (std::size_t index = search; index <= bodyEnd; ++index)
-            if (result.source[index] != '\r' && result.source[index] != '\n') result.source[index] = ' ';
-        search = bodyEnd + 1;
-    }
-
-    std::size_t scope = 0;
-    while (true)
-    {
-        const std::size_t invocation = result.source.find("#expand");
-        if (invocation == std::string::npos) break;
-        if (result.expansions.size() >= maximumExpansions_)
-        {
-            result.error = "macro expansion limit exceeded\ncomptime backtrace:";
-            const std::size_t first = result.expansions.size() > 8
-                ? result.expansions.size() - 8 : 0;
-            for (std::size_t index = result.expansions.size(); index > first; --index)
-                result.error += "\n  #expand " + result.expansions[index - 1].macroName;
-            return result;
-        }
-        std::size_t cursor = invocation + 7;
-        std::string name;
-        if (!readIdentifier(result.source, cursor, name))
-        { result.error = "macro expansion requires a name"; return result; }
-        const auto definition = definitions.find(name);
-        if (definition == definitions.end())
-        { result.error = "unknown macro '" + name + "'"; return result; }
-        skipSpace(result.source, cursor);
-        if (cursor >= result.source.size() || result.source[cursor] != '(')
-        { result.error = "macro expansion requires an argument list"; return result; }
-        const std::size_t end = matching(result.source, cursor, '(', ')');
-        if (end == std::string::npos)
-        { result.error = "unterminated macro invocation"; return result; }
-        bool valid = false;
-        const std::vector<std::string> arguments = splitArguments(
-            std::string_view(result.source).substr(cursor + 1, end - cursor - 1), valid);
-        if (!valid || arguments.size() != definition->second.parameters.size())
-        { result.error = "macro argument count does not match definition '" + name + "'"; return result; }
-        ++scope;
-        if (scope > maximumDepth_)
-        { result.error = "macro expansion depth limit exceeded"; return result; }
-        std::string error;
-        std::string expansion = instantiate(definition->second, arguments, scope, error);
-        if (!error.empty()) { result.error = error; return result; }
-        // NS304-T14-F07: a macro whose body expands itself is a symbol cycle, diagnosed
-        // specifically instead of being absorbed by the step budget.
-        if (expansion.find("#expand " + name) != std::string::npos)
-        { result.error = "macro cycle detected: '" + name + "' expands to itself"; return result; }
-        const std::size_t invocationLength = end + 1 - invocation;
-        result.source.replace(invocation, invocationLength, expansion);
-        result.expansions.push_back({name, invocation, invocationLength, expansion.size(),
-            scope, definition->second.context,
-            definition->second.definitionOffset, definition->second.definitionLength});
-    }
+    if (!collectMacroDefinitions(result, definitions)) return result;
+    if (!expandMacroInvocations(
+            result, definitions, maximumExpansions_, maximumDepth_)) return result;
     result.success = true;
     return result;
 }

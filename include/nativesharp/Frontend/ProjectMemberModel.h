@@ -1,6 +1,15 @@
 #pragma once
 
 #include "nativesharp/AST/AstNode.h"
+#include "nativesharp/Frontend/ClassMemberKind.h"
+#include "nativesharp/Frontend/ClassMemberAccessibility.h"
+#include "nativesharp/Frontend/ParameterPassKind.h"
+#include "nativesharp/Frontend/MethodParameterSymbol.h"
+#include "nativesharp/Frontend/ClassMemberSymbol.h"
+#include "nativesharp/Frontend/ModuleInitializationRecord.h"
+#include "nativesharp/Frontend/PrecompiledMemberIdentity.h"
+#include "nativesharp/Frontend/MemberBodyBindingKind.h"
+#include "nativesharp/Frontend/MemberBodyBinding.h"
 #include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Basic/FileId.h"
 #include "nativesharp/Basic/SourceRange.h"
@@ -36,296 +45,10 @@ class ProjectGraph;
 
 namespace nativesharp::frontend
 {
+enum class AnonymousMemberPromotionVisitState : std::uint8_t;
 class ProjectGenericModel;
-enum class ClassMemberKind
-{
-    Field,
-    Event,
-    Method,
-    Constructor,
-    Destructor
-};
-
-enum class ClassMemberAccessibility
-{
-    Private,
-    Protected,
-    Internal,
-    Public
-};
-
-// C4 "language references". How a parameter receives its argument.
-//
-// All three by-reference forms are ONE machine-level thing -- a pointer -- and that is deliberate:
-// C1 already made `&x`, `*p` and pointer parameters work end to end, so `ref`/`out`/`in` are
-// sugar over machinery that is already certified rather than a new calling convention. What
-// distinguishes them is entirely a matter of RULES the frontend enforces:
-//
-//   Ref -- the argument must already hold a value, and the callee may read and write it.
-//   Out -- the callee MUST assign it before returning; the caller need not initialize it first.
-//   In  -- pass by reference for cost, read-only at the callee. No copy, no writes.
-//
-// The keyword is required at the CALL SITE too, exactly as in C#, so that a reader of the call
-// can see that the argument may change without having to go read the signature.
-enum class ParameterPassKind
-{
-    Value,
-    Ref,
-    Out,
-    In
-};
-
 const char* parameterPassKindName(ParameterPassKind kind) noexcept;
 const char* parameterPassKindKeyword(ParameterPassKind kind) noexcept;
-
-struct MethodParameterSymbol final
-{
-    std::string name;
-    // C4: Value for every ordinary parameter. For the other three, `typeKey` is the POINTER type
-    // (`T*`) -- the parser adds that modifier -- because a by-reference parameter genuinely
-    // receives an address; `pointeeTypeKey` is what the programmer wrote and what a use of the
-    // parameter inside the body evaluates to.
-    ParameterPassKind passKind = ParameterPassKind::Value;
-    std::string pointeeTypeKey;
-    const ast::TypeSyntax* typeSyntax = nullptr;
-    std::string typeKey;
-    bool pointerPointeeReadonly = false;
-    bool pointerNullable = true;
-    bool pointerHasProvenance = true;
-    std::size_t pointerKnownAlignment = 1;
-    unsigned pointerAddressSpace = 0;
-    sema::OwnershipKind ownership = sema::OwnershipKind::None;
-    FileId fileId;
-    SourceRange range;
-    const ast::AstNode* syntax = nullptr;
-    // T06-F04. Empty for value/out parameters. Elided ref/in parameters receive a stable
-    // declaration-local synthetic name so a ref return can still bind to exactly one input.
-    std::string lifetimeName;
-    // NativeSharp 3.0 T01. A typed pack is always the final ReadOnlySpan<T> parameter. This bit
-    // changes call-site binding only; the physical ABI remains one ordinary span value.
-    bool isParameterPack = false;
-    // Canonical T from ReadOnlySpan<T>. The closed span identity itself is mangled and therefore
-    // intentionally does not need to encode or be reparsed to recover its element type.
-    std::string parameterPackElementTypeKey;
-    // NativeSharp 3.0 T13-F06. These are semantic C-boundary contracts. The linked length
-    // ordinal is resolved after collecting the complete parameter list and is serialized in
-    // NSMETA so a consumer validates the same declaration reconstructed from LibraryReference.
-    std::string ffiLengthParameterName;
-    std::optional<std::size_t> ffiLengthParameterOrdinal;
-    bool ffiCallback = false;
-    bool ffiCallbackMayEscape = false;
-    // NSC-LIMIT-020. Defaults remain attached to the declaration AST so ProjectReference calls
-    // materialize the value fixed by the callee's contract, not a caller-side reparse.
-    const ast::AstNode* defaultValueSyntax = nullptr;
-};
-
-struct ClassMemberSymbol final
-{
-    ClassMemberKind kind = ClassMemberKind::Field;
-    ClassMemberAccessibility accessibility = ClassMemberAccessibility::Private;
-    std::size_t declaringTypeOrdinal = 0;
-    std::size_t partOrdinal = 0;
-    std::size_t sourceOrdinal = 0;
-    std::size_t declarationOrdinal = 0;
-    FileId fileId;
-    SourceRange range;
-    const ast::AstNode* syntax = nullptr;
-    std::string sourcePath;
-    // The origin belongs to the declaration PART, not necessarily to the complete partial type.
-    // A metadata API part may be precompiled while a transported generic-template part is local
-    // and must therefore be analyzed/lowered in the consumer.
-    bool isPrecompiled = false;
-    bool isTransportedInlineBody = false;
-    // Exact physical identity published by the producer's NSMETA.  A precompiled callable is
-    // resolved semantically against the synthetic declaration, but its external symbol must
-    // never be regenerated from that declaration: source materialization can use a different
-    // spelling for an otherwise identical closed generic type.
-    std::string precompiledMangledName;
-    std::string name;
-    const ast::TypeSyntax* declaredTypeSyntax = nullptr;
-    std::string declaredTypeKey;
-    // NativeSharp 3.0 T07-F02. Empty means non-throwing. A non-empty key is part of the
-    // callable type/effect contract while the physical Windows x64 return ABI stays unchanged.
-    const ast::TypeSyntax* declaredErrorTypeSyntax = nullptr;
-    std::string declaredErrorTypeKey;
-    // NS304-T05-F08: async frame storage selected by [FrameStorage(...)] (default CallerStack).
-    language::FrameStorage frameStorage = language::FrameStorage::CallerStack;
-    bool declaredPointerPointeeReadonly = false;
-    bool declaredPointerNullable = true;
-    bool declaredPointerHasProvenance = true;
-    std::size_t declaredPointerKnownAlignment = 1;
-    unsigned declaredPointerAddressSpace = 0;
-    sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
-    std::vector<MethodParameterSymbol> parameters;
-    ast::FfiUnwindSyntaxKind ffiUnwindPolicy = ast::FfiUnwindSyntaxKind::Default;
-    std::string signatureKey;
-    // NativeSharp 3.0 T04-F06. Closed generic methods retain the template that produced them so
-    // overload resolution can compare the declaration constraints after ordinary conversions.
-    std::optional<std::size_t> genericTemplateOrdinal;
-    bool isControlledSpecialization = false;
-    bool isControlledSpecializationFamily = false;
-    std::string genericTemplateKey;
-    bool hasImplicitThis = false;
-    bool declaringTypeIsStruct = false;
-    bool isStatic = false;
-    bool isNewSlot = false;
-    bool isReadonly = false;
-    // Item 313. declaredTypeKey remains the referent T; this bit makes the callable result an
-    // lvalue and changes only its physical ABI carrier to T*.
-    bool isReferenceReturn = false;
-    std::string returnLifetimeName;
-    std::vector<std::string> lifetimeParameters;
-    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
-    // NativeSharp 3.0 T06-F07. One stable interprocedural escape contract per parameter.
-    // Empty means that no producer contract was available and consumers must fail closed.
-    std::vector<language::EscapeClass> parameterEscapeSummary;
-    // Item 308. A volatile field is an observable memory location: every load/store survives
-    // optimization, but it gains neither atomicity nor inter-thread ordering.
-    bool isVolatile = false;
-    bool isConst = false;
-    // Item 327. Bit-field syntax retains the width expression without assigning physical bit
-    // offsets yet. Unnamed fields use an unreachable compiler-generated identity until item 328
-    // groups them into MSVC storage units.
-    bool isBitField = false;
-    bool isUnnamedBitField = false;
-    const ast::AstNode* bitWidthSyntax = nullptr;
-    InliningPolicy inliningPolicy = InliningPolicy::Automatic;
-    // Item 321. The callable body may not contain an operation that allocates heap storage.
-    bool isNoHeap = false;
-    // T13-F05: a direct call requires an explicit unsafe block at the call site.
-    bool isUnsafe = false;
-    // NativeSharp 3.0 T00-F04. `isNoHeap` remains as an ABI-compatible projection while all
-    // semantic consumers use this extensible set for noheap/throws/async and future effects.
-    sema::EffectSet effects;
-    bool isVirtual = false;
-    bool isOverride = false;
-    bool isAbstract = false;
-    bool isSealed = false;
-    bool isExported = false;
-    bool isExternC = false;
-    bool isExportedC = false;
-    // Item 331. The declaration has one or more fixed C parameters followed by `...`.
-    bool isVariadic = false;
-    // Interop Foundation: true for a function declared inside `extern C from "<dll>" { ... }` --
-    // a body-less static member whose C symbol is `name` and whose import library is derived
-    // from `importDllName` at link time. The compiler knows no API by name; only this shape.
-    bool isImportedC = false;
-    std::string importDllName;
-    // C1.2 "import identity": set when this import's C symbol name is claimed by MORE THAN ONE
-    // library in the project (`a.dll!Init` and `b.dll!Init`). A PE import library keys an import
-    // by its symbol NAME, so one name cannot be resolved statically against two DLLs -- this
-    // import binds at first call through LoadLibrary/GetProcAddress instead, and is deliberately
-    // left OUT of the import-library plan. False for every import whose name only one library
-    // claims, which leaves the certified static-by-name path exactly as it was.
-    bool importRequiresRuntimeBinding = false;
-    std::string cAbiName;
-    bool isCompilerGenerated = false;
-    bool isEvent = false;
-    bool isEventBacking = false;
-    bool isPropertyAccessor = false;
-    bool isIndexerAccessor = false;
-    bool isGetter = false;
-    bool isSetter = false;
-    bool isInit = false;
-    bool isRequired = false;
-    bool isUserOperator = false;
-    // NativeSharp 3.0 T05-F07. Stable semantic identity (for example `lang:Add`) shared by a
-    // trait operator requirement and every concrete witness. The ABI method name remains in
-    // `name`; overload resolution must not use that historical spelling as the language contract.
-    std::string operatorTraitKey;
-    bool isUserConversion = false;
-    bool isImplicitUserConversion = false;
-    // Bloque 1 item 9 (ownership-aware properties/indexers). Set on BOTH accessors of a
-    // property or indexer whose declared type carries the `owned` qualifier.
-    //
-    // What `owned` means on a property/indexer is deliberately asymmetric, and the asymmetry is
-    // the whole design decision:
-    //
-    //   * The SETTER takes ownership. Its implicit `value` parameter is `owned`, so
-    //     `h.Slot = move(a)` is a real transfer and the receiver becomes responsible for the
-    //     object. That is the half the feature exists for.
-    //
-    //   * The GETTER hands out a NON-OWNING PLAIN REFERENCE, never ownership. Its
-    //     `declaredOwnership` is reset to None right where this flag is set, so a getter body may
-    //     `return backing;` and a caller that writes `Res r = h.Slot;` gets a plain alias.
-    //
-    //     PRECISION (audit finding, terminologia): this is deliberately NOT a formal `borrowed`.
-    //     A borrowed value in this language carries a PROVEN lifetime binding back to a live
-    //     owner, and a field read has no such provenance to offer (measured: a borrowed-declared
-    //     getter is rejected with "borrowed return requires a borrowed value whose lifetime
-    //     outlives the call"). So the alias belongs to the language's THIRD reference category --
-    //     plain/raw, non-owning, lifetime-unchecked, exactly like every read-only container
-    //     accessor already returns. An alias that outlives its container dangles BY DESIGN, the
-    //     way a C++ raw reference would; documentation must never present it as borrow safety.
-    //
-    // A getter cannot transfer ownership out, and that is not a lowering limitation -- it is
-    // unwritable for a sound reason. If reading the property gave the caller ownership, the
-    // object would still be holding the same pointer in an `owned` field that its own
-    // destruction entry releases: two owners, one allocation, guaranteed double free. The only
-    // alternative -- clearing the field on read -- would make a read mutate the object, which is
-    // not what a getter is. So `owned` here describes WHERE THE STORAGE LIVES (this object owns
-    // it), not what every accessor does with it.
-    //
-    // This is exactly the shape the library had already settled on by hand while the qualifier
-    // was undeclarable: `List<T>` exposes a read-only indexer returning a plain `T` and writes
-    // through `SetAt(int, owned T)`. Item 9 makes that shape expressible as one declaration
-    // instead of two members.
-    bool ownsAccessorStorage = false;
-    std::string associatedName;
-    // Stage 51.x: enum member support in the OOP pipeline. An enum constant is registered as
-    // an ordinary `static const int` field (reusing the Stage 37 native constant-field lowering
-    // end to end) plus this precomputed value, since enum member declarations have no real
-    // initializer expression to fold for the (common) auto-increment case.
-    bool isEnumConstant = false;
-    std::int64_t enumConstantValue = 0;
-    // C2.2 "union and explicit layout": the byte offset this field names for itself with
-    // `at(N)`, if it named one. Unset means "wherever the layout rule puts it", which is the
-    // normal case for every field in the language.
-    std::optional<std::uint64_t> explicitFieldOffset;
-    // `align(N)` on an instance field raises that field's placement alignment and therefore the
-    // containing aggregate's alignment. It is a minimum, never a request to weaken natural layout.
-    std::optional<std::uint64_t> explicitFieldAlignment;
-    // Item 326. A promoted field is a semantic alias owned by the containing type. It is not a
-    // second physical field: the source member remains inside the anonymous aggregate and this
-    // path names the compiler-generated carrier fields that lead from the containing object to it.
-    bool isAnonymousMemberPromotion = false;
-    std::optional<std::size_t> promotedSourceMemberOrdinal;
-    std::vector<std::size_t> anonymousCarrierMemberOrdinals;
-};
-
-struct ModuleInitializationRecord final
-{
-    std::size_t projectOrdinal = 0;
-    std::string moduleName;
-    std::vector<std::size_t> dependencyProjectOrdinals;
-    std::vector<std::size_t> staticConstructorMemberOrdinals;
-};
-
-struct PrecompiledMemberIdentity final
-{
-    ClassMemberKind kind = ClassMemberKind::Field;
-    std::string declaringTypeKey;
-    std::string name;
-    std::string signatureKey;
-    std::string mangledName;
-    std::vector<language::EscapeClass> parameterEscapeSummary;
-};
-
-enum class MemberBodyBindingKind
-{
-    ThisReference,
-    ThisMemberAccess
-};
-
-struct MemberBodyBinding final
-{
-    MemberBodyBindingKind kind = MemberBodyBindingKind::ThisReference;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t declaringTypeOrdinal = 0;
-    std::size_t methodMemberOrdinal = 0;
-    std::string memberName;
-    std::vector<std::size_t> candidateMemberOrdinals;
-};
 
 class ProjectMemberModel final
 {
@@ -400,19 +123,37 @@ public:
 private:
     friend struct ProjectOopHirModelTestAccess;
 
+    const std::string* resolvedGenericTypeIdentity(
+        const ast::TypeSyntax* syntax) const;
+    std::string canonicalFunctionTypeKey(
+        const ast::TypeSyntax* syntax,
+        const ProjectNameLookup& nameLookup) const;
+    std::string canonicalTupleTypeKey(
+        const ast::TypeSyntax* syntax,
+        const ProjectNameLookup& nameLookup) const;
+    std::string canonicalPortableSimdTypeKey(
+        const ast::TypeSyntax* syntax,
+        const ProjectNameLookup& nameLookup) const;
+    std::string canonicalNamedTypeKey(
+        const ast::TypeSyntax* syntax,
+        const ProjectNameLookup& nameLookup) const;
+    void appendCanonicalTypeModifier(
+        std::string& result,
+        const ast::TypeModifierSyntax& modifier) const;
+    void appendCanonicalTypeModifiers(
+        std::string& result,
+        const ast::TypeSyntax* syntax) const;
+    static void applyCanonicalReferenceQualifier(
+        std::string& result,
+        const ast::TypeSyntax* syntax);
+
     struct TransparentStringHash final
     {
         using is_transparent = void;
 
-        std::size_t operator()(std::string_view value) const noexcept
-        {
-            return std::hash<std::string_view>{}(value);
-        }
+        std::size_t operator()(std::string_view value) const noexcept;
 
-        std::size_t operator()(const std::string& value) const noexcept
-        {
-            return (*this)(std::string_view(value));
-        }
+        std::size_t operator()(const std::string& value) const noexcept;
     };
 
     using MemberNameIndex = std::unordered_map<
@@ -423,12 +164,295 @@ private:
 
     std::string syntaxFingerprint(const ast::AstNode* node) const;
     std::optional<std::size_t> typeOrdinalForKey(std::string_view typeKey) const noexcept;
+    void initializeBuildState(
+        const ProjectNameLookup& nameLookup,
+        const ProjectGenericModel* genericModel);
+    void validateDelegateParameters(
+        const NamedTypeDeclaration& type,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateExternDelegate(
+        const NamedTypeDeclaration& type,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateDelegateType(
+        const NamedTypeDeclaration& type,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void collectDeclaredTypeMembers(
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void collectExternalTraitImplMembers(
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void validateCopyType(
+        std::size_t typeOrdinal,
+        const NamedTypeDeclaration& type,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateCopyTypes(
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateRawUnion(
+        std::size_t typeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateRawUnions(
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateCAbiExportNames(
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    static std::string importedCSignature(const ClassMemberSymbol& member);
+    void collectImportedCLibraries(
+        std::unordered_map<
+            std::string,
+            std::pair<const ClassMemberSymbol*, std::string>>& importsByLibraryAndSymbol,
+        std::unordered_map<std::string, std::vector<std::string>>& librariesBySymbol,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void markRuntimeBoundImports(
+        const std::unordered_map<std::string, std::vector<std::string>>& librariesBySymbol,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void validateImportedCIdentities(
+        diagnostics::DiagnosticEngine& diagnostics);
+    void scanMemberBodies(diagnostics::DiagnosticEngine& diagnostics);
+    void scanCompilationUnits(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void buildTransitiveOwnershipCache();
     void buildMemberNameIndex();
     bool collectTypeMembers(
         std::size_t typeOrdinal,
         const NamedTypeDeclaration& type,
         const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void validateTypeLifetimeConstraints(
+        const NamedTypeDeclaration& type,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateExportedGenericMember(
+        const ast::AstNode* directMember,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void registerTypeMemberDeclaration(
+        const ast::AstNode* declaredMember,
+        const NamedTypeDeclaration& type,
+        std::unordered_map<std::string, const ast::AstNode*>& propertyDeclarations,
+        std::unordered_map<std::string, const ast::AstNode*>& ordinaryDeclarations,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void collectExpandedPartMembers(
+        const NamedTypeDeclarationPart& part,
+        const NamedTypeDeclaration& type,
+        std::unordered_map<std::string, const ast::AstNode*>& propertyDeclarations,
+        std::unordered_map<std::string, const ast::AstNode*>& ordinaryDeclarations,
+        std::vector<const ast::AstNode*>& expandedMembers,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void collectTypePartMembers(
+        std::size_t typeOrdinal,
+        const NamedTypeDeclaration& type,
+        std::size_t partOrdinal,
+        const NamedTypeDeclarationPart& part,
+        const ProjectNameLookup& nameLookup,
+        std::unordered_map<std::string, std::vector<std::size_t>>& byName,
+        std::unordered_map<std::string, const ast::AstNode*>& propertyDeclarations,
+        std::unordered_map<std::string, const ast::AstNode*>& ordinaryDeclarations,
+        diagnostics::DiagnosticEngine& diagnostics);
+    static ClassMemberKind classMemberKind(const ast::AstNode* memberNode) noexcept;
+    void initializeMemberIdentity(
+        ClassMemberSymbol& symbol,
+        std::size_t typeOrdinal,
+        std::size_t partOrdinal,
+        std::size_t declarationOrdinal,
+        const NamedTypeDeclarationPart& part,
+        const ast::AstNode* memberNode) const;
+    void applyMemberGenericSpecialization(
+        ClassMemberSymbol& symbol,
+        const ast::AstNode* memberNode) const;
+    void applyMemberOrigin(
+        ClassMemberSymbol& symbol,
+        const NamedTypeDeclarationPart& part,
+        const ast::AstNode* memberNode) const;
+    bool initializeMemberDeclaredType(
+        ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        const ast::AstNode* memberNode,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void initializeMemberPointerAndOwnership(
+        ClassMemberSymbol& symbol,
+        const ast::AstNode* memberNode) const;
+    void initializeMemberLifetimeContract(
+        ClassMemberSymbol& symbol,
+        const ast::AstNode* memberNode) const;
+    void validateMemberReferenceContract(
+        const ClassMemberSymbol& symbol,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateMemberFieldLifetime(
+        const ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateMemberViewField(
+        const ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void initializeMemberEffects(
+        ClassMemberSymbol& symbol,
+        const ast::AstNode* memberNode,
+        bool isAsyncMethod) const;
+    void initializeMemberStorageModifiers(
+        ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        const ast::AstNode* memberNode) const;
+    void validateVolatileMember(
+        const ClassMemberSymbol& symbol,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateReadonlyStructMember(
+        const ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateStaticOwnedMember(
+        const ClassMemberSymbol& symbol,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void initializeMemberDispatchAndInterop(
+        ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        const ast::AstNode* memberNode,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void applyExplicitMemberLayout(
+        ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        const ast::AstNode* memberNode,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void initializeGeneratedMemberMetadata(
+        ClassMemberSymbol& symbol,
+        const ast::AstNode* memberNode) const;
+    void initializeAccessorMetadata(ClassMemberSymbol& symbol) const;
+    void validateEventMember(
+        const ClassMemberSymbol& symbol,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void initializeMethodParameter(
+        MethodParameterSymbol& parameter,
+        const ast::AstNode* parameterNode,
+        const NamedTypeDeclarationPart& part,
+        const ProjectNameLookup& nameLookup) const;
+    void applyFfiParameterMarkers(
+        MethodParameterSymbol& parameter,
+        const ast::AstNode* parameterNode) const;
+    void validateParameterPack(
+        MethodParameterSymbol& parameter,
+        const ProjectNameLookup& nameLookup,
+        bool& sawParameterPack,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    static void applyParameterPassKind(
+        MethodParameterSymbol& parameter,
+        const ast::AstNode* parameterNode);
+    void validateParameterLifetime(
+        MethodParameterSymbol& parameter,
+        const ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        const ast::AstNode* parameterNode,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool defaultParameterValueIsCompatible(
+        const MethodParameterSymbol& parameter,
+        const ast::AstNode* valueSyntax,
+        const ProjectNameLookup& nameLookup) const;
+    void validateDefaultParameter(
+        const MethodParameterSymbol& parameter,
+        bool& sawOptionalParameter,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateCallableParameterIdentity(
+        const MethodParameterSymbol& parameter,
+        const ClassMemberSymbol& symbol,
+        std::unordered_map<std::string, const ast::AstNode*>& parameterNames,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void collectCallableParameters(
+        ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        const NamedTypeDeclarationPart& part,
+        const ast::AstNode* memberNode,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateFfiParameterContract(
+        ClassMemberSymbol& symbol,
+        std::size_t parameterOrdinal,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateMemberFfiContracts(
+        ClassMemberSymbol& symbol,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void inferReferenceReturnLifetime(
+        ClassMemberSymbol& symbol,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateReferenceReturnLifetime(
+        ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        const ast::AstNode* memberNode,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void buildCallableSignature(
+        ClassMemberSymbol& symbol,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    static void markAccessorOwnership(ClassMemberSymbol& symbol);
+    void finalizeCallableMember(
+        ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        const ast::AstNode* memberNode,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateInlineArraySignature(
+        const ClassMemberSymbol& symbol,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateCAbiMember(
+        const ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        const ast::AstNode* memberNode,
+        const ProjectNameLookup& nameLookup,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateUserOperator(
+        const ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateUserConversion(
+        const ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    static bool isPartialEventMerge(
+        const ClassMemberSymbol& symbol,
+        const ClassMemberSymbol& previous) noexcept;
+    static bool isPartialMethodMerge(
+        const ClassMemberSymbol& symbol,
+        const ClassMemberSymbol& previous) noexcept;
+    void mergePartialMethod(
+        const ClassMemberSymbol& symbol,
+        const ClassMemberSymbol& previous,
+        const NamedTypeDeclaration& type,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool controlledSpecializationsMayCoexist(
+        const ClassMemberSymbol& symbol,
+        const ClassMemberSymbol& previous) const;
+    bool memberConflictsWithPrevious(
+        const ClassMemberSymbol& symbol,
+        const ClassMemberSymbol& previous,
+        const NamedTypeDeclaration& type,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool isDuplicateMember(
+        const ClassMemberSymbol& symbol,
+        const NamedTypeDeclaration& type,
+        const std::unordered_map<std::string, std::vector<std::size_t>>& byName,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void appendCollectedMember(
+        ClassMemberSymbol symbol,
+        std::size_t typeOrdinal,
+        const ast::AstNode* memberNode,
+        std::unordered_map<std::string, std::vector<std::size_t>>& byName);
+    void collectTypeMember(
+        std::size_t typeOrdinal,
+        const NamedTypeDeclaration& type,
+        std::size_t partOrdinal,
+        const NamedTypeDeclarationPart& part,
+        const ast::AstNode* memberNode,
+        std::size_t declarationOrdinal,
+        const ProjectNameLookup& nameLookup,
+        std::unordered_map<std::string, std::vector<std::size_t>>& byName,
         diagnostics::DiagnosticEngine& diagnostics);
     bool collectEnumMembers(
         std::size_t typeOrdinal,
@@ -437,10 +461,47 @@ private:
     bool collectAnonymousMemberPromotions(
         const ProjectNameLookup& nameLookup,
         diagnostics::DiagnosticEngine& diagnostics);
+    static ClassMemberAccessibility intersectAnonymousMemberAccessibility(
+        ClassMemberAccessibility carrier,
+        ClassMemberAccessibility member) noexcept;
+    void promoteAnonymousSourceMember(
+        std::size_t typeOrdinal,
+        std::size_t carrierOrdinal,
+        std::size_t sourceOrdinal,
+        const ProjectNameLookup& nameLookup,
+        std::unordered_map<std::string, std::size_t>& directNames,
+        std::unordered_map<std::string, std::size_t>& promotedNames,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void promoteAnonymousCarrierMembers(
+        std::size_t typeOrdinal,
+        std::size_t carrierOrdinal,
+        const ProjectNameLookup& nameLookup,
+        std::unordered_map<std::string, std::size_t>& directNames,
+        std::unordered_map<std::string, std::size_t>& promotedNames,
+        std::vector<AnonymousMemberPromotionVisitState>& states,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void visitAnonymousMemberPromotions(
+        std::size_t typeOrdinal,
+        const ProjectNameLookup& nameLookup,
+        std::vector<AnonymousMemberPromotionVisitState>& states,
+        diagnostics::DiagnosticEngine& diagnostics);
     void scanMethodBody(
         const ast::AstNode* node,
         std::size_t typeOrdinal,
         std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void completeThisMemberAccess(
+        const ast::AstNode* node,
+        std::size_t typeOrdinal,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void recordThisReference(
+        const ast::AstNode* node,
+        std::size_t typeOrdinal,
+        std::size_t methodMemberOrdinal);
+    static bool isDirectThisMemberAccess(const ast::AstNode* node) noexcept;
+    static bool rejectThisPointerMemberAccess(
+        const ast::AstNode* node,
         diagnostics::DiagnosticEngine& diagnostics);
     void scanInvalidThisContexts(
         const ast::AstNode* node,

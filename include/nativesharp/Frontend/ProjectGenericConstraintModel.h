@@ -2,6 +2,8 @@
 
 #include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
+#include "nativesharp/Frontend/GenericConstraintViolation.h"
+#include "nativesharp/Frontend/GenericConstraintViolationKind.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectInterfaceModel.h"
@@ -14,6 +16,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace nativesharp::diagnostics
@@ -23,52 +26,10 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
-// NSC-LIMIT-007. QUE INCUMPLIO UNA ESPECIALIZACION, para el diagnostico y para las pruebas.
-enum class GenericConstraintViolationKind
+namespace internal
 {
-    // `where T : class` y el argumento es un tipo valor.
-    RequiresReferenceType,
-    // `where T : Base` y el argumento no deriva de Base.
-    DoesNotDeriveFromBase,
-    // `where T : IFoo` y el argumento no implementa IFoo.
-    DoesNotImplementInterface,
-    // El constraint escrito no nombra una clase ni una interfaz -- un enum, un struct, un
-    // delegado o un nombre que no resuelve. Es un error de la DECLARACION, no del sitio.
-    ConstraintIsNotAClassOrInterface,
-    // El mismo tipo nombrado dos veces en una clausula bajo dos escrituras distintas --un alias,
-    // un nombre corto y uno calificado--. El parser solo compara texto; esto compara identidad.
-    DuplicateConstraint,
-    // La clausula infringe la regla de constraint PRIMARIO: `class` junto a una clase base, dos
-    // clases base, o una clase base detras de una interfaz.
-    InvalidPrimaryConstraint,
-    RequiresValueType,
-    RequiresDefaultConstructor,
-    RequiresCopy,
-    RequiresMove,
-    RequiresTrackedLifetime,
-    RequiresUnmanaged,
-    RequiresNotNull,
-    // NS304-T11-F05: `where T : ref-like` and the argument is not a stack-only borrowed view.
-    RequiresRefLike,
-    EqualityMismatch,
-    InvalidConstraintCombination
-};
-
-struct GenericConstraintViolation final
-{
-    GenericConstraintViolationKind kind = GenericConstraintViolationKind::RequiresReferenceType;
-    // Ordinal de la ESPECIALIZACION que incumple, o de la PLANTILLA cuando la violacion es de
-    // declaracion --`isDeclarationViolation`--, que no tiene sitio de instanciacion al que
-    // apuntar porque el error esta en el `where`, no en quien lo usa.
-    std::size_t specializationOrdinal = 0;
-    std::string parameterName;
-    std::string argumentTypeKey;
-    std::string constraintTypeKey;
-    // Cierto para lo que esta mal ESCRITO en la clausula --un constraint que no nombra clase ni
-    // interfaz, o el mismo tipo dos veces bajo dos nombres--. Se comprueba sobre la plantilla y
-    // por tanto se reporta aunque nadie la instancie.
-    bool isDeclarationViolation = false;
-};
+struct PendingDiagnostic;
+}
 
 // LA FASE QUE VALIDA LOS `where`, y por que es una fase aparte.
 //
@@ -155,8 +116,184 @@ private:
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         diagnostics::DiagnosticEngine& diagnostics);
+    static std::size_t constraintParameterOrdinal(
+        const GenericTemplateRecord& templateRecord,
+        const ast::GenericConstraintClause& clause);
+    static void appendTemplateClauseAtoms(
+        const ast::GenericConstraintClause& clause,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::vector<std::string>& clauseAtoms);
+    bool validateTemplateTypeConstraint(
+        std::size_t templateOrdinal,
+        const ast::GenericConstraintClause& clause,
+        const ast::TypeSyntax* constraintSyntax,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::unordered_map<std::string, std::string>& seenByKey,
+        std::vector<std::pair<const ast::TypeSyntax*, std::size_t>>& baseClasses,
+        std::size_t& acceptedConstraints,
+        std::vector<std::string>& clauseAtoms,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void normalizeTemplateClause(
+        std::size_t templateOrdinal,
+        std::size_t parameterOrdinal,
+        const ast::GenericConstraintClause& clause,
+        const std::vector<std::string>& clauseAtoms,
+        std::vector<std::string>& templateAtoms,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void validatePrimaryTemplateConstraint(
+        std::size_t templateOrdinal,
+        const ast::GenericConstraintClause& clause,
+        const std::vector<std::pair<const ast::TypeSyntax*, std::size_t>>& baseClasses,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void validateTemplateClause(
+        std::size_t templateOrdinal,
+        const GenericTemplateRecord& templateRecord,
+        const ast::GenericConstraintClause& clause,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::vector<std::string>& templateAtoms,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void finalizeTemplateConstraintIdentity(
+        std::size_t templateOrdinal,
+        const std::vector<std::string>& templateAtoms);
     void validateControlledSpecializations(
         const ProjectGenericModel& genericModel,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void reportControlledSpecializationViolation(
+        std::span<const GenericTemplateRecord> templates,
+        std::size_t ordinal,
+        std::string message,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void notePreviousControlledSpecialization(
+        std::span<const GenericTemplateRecord> templates,
+        std::size_t ordinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateControlledSpecializationPair(
+        std::span<const GenericTemplateRecord> templates,
+        std::size_t leftOrdinal,
+        std::size_t rightOrdinal,
+        std::unordered_set<std::size_t>& hasFallback,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void validateControlledSpecializationFamily(
+        std::span<const GenericTemplateRecord> templates,
+        const std::vector<std::size_t>& ordinals,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void initializeBuildState(std::size_t templateCount);
+    void collectInvalidTemplateOrdinals();
+    static void appendCapabilityViolation(
+        bool required,
+        bool satisfied,
+        GenericConstraintViolationKind kind,
+        std::string_view spelling,
+        std::string_view expectation,
+        const GenericSpecializationRecord& specialization,
+        const GenericTemplateRecord& templateRecord,
+        const ast::GenericConstraintClause& clause,
+        const std::string& argumentKey,
+        const std::string& argumentName,
+        const std::string& templateModuleSuffix,
+        std::vector<internal::PendingDiagnostic>& pending);
+    static void appendCapabilityViolations(
+        const GenericSpecializationRecord& specialization,
+        const GenericTemplateRecord& templateRecord,
+        const ast::GenericConstraintClause& clause,
+        const ast::TypeSyntax* argumentSyntax,
+        const NamedTypeDeclaration* argument,
+        std::size_t argumentOrdinal,
+        const std::string& argumentKey,
+        const std::string& argumentName,
+        const std::string& templateModuleSuffix,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::vector<internal::PendingDiagnostic>& pending);
+    static void appendEqualityViolation(
+        const GenericSpecializationRecord& specialization,
+        const GenericTemplateRecord& templateRecord,
+        const ast::GenericConstraintClause& clause,
+        const ast::TypeSyntax* argumentSyntax,
+        const std::string& argumentName,
+        const std::string& templateModuleSuffix,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::vector<internal::PendingDiagnostic>& pending);
+    static void appendReferenceTypeViolation(
+        const GenericSpecializationRecord& specialization,
+        const GenericTemplateRecord& templateRecord,
+        const ast::GenericConstraintClause& clause,
+        const ast::TypeSyntax* argumentSyntax,
+        const NamedTypeDeclaration* argument,
+        const std::string& argumentKey,
+        const std::string& argumentName,
+        const std::string& templateModuleSuffix,
+        std::vector<internal::PendingDiagnostic>& pending);
+    static bool satisfiesThreadSafetyConstraint(
+        const NamedTypeDeclaration& argument,
+        std::size_t argumentOrdinal,
+        bool sendMarker,
+        const ProjectMemberModel& memberModel);
+    static bool satisfiesTypeConstraint(
+        const NamedTypeDeclaration& argument,
+        std::size_t argumentOrdinal,
+        const NamedTypeDeclaration& constraint,
+        std::size_t constraintOrdinal,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel);
+    static void appendTypeConstraintViolation(
+        const GenericSpecializationRecord& specialization,
+        const GenericTemplateRecord& templateRecord,
+        const ast::GenericConstraintClause& clause,
+        const ast::TypeSyntax* constraintSyntax,
+        const NamedTypeDeclaration* argument,
+        std::size_t argumentOrdinal,
+        const std::string& argumentKey,
+        const std::string& argumentName,
+        const std::string& templateModuleSuffix,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        std::vector<internal::PendingDiagnostic>& pending);
+    static void appendTypeConstraintViolations(
+        const GenericSpecializationRecord& specialization,
+        const GenericTemplateRecord& templateRecord,
+        const ast::GenericConstraintClause& clause,
+        const NamedTypeDeclaration* argument,
+        std::size_t argumentOrdinal,
+        const std::string& argumentKey,
+        const std::string& argumentName,
+        const std::string& templateModuleSuffix,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        std::vector<internal::PendingDiagnostic>& pending);
+    static void validateSpecializationClause(
+        const GenericSpecializationRecord& specialization,
+        const GenericTemplateRecord& templateRecord,
+        const ast::GenericConstraintClause& clause,
+        const std::string& templateModuleSuffix,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        std::vector<internal::PendingDiagnostic>& pending);
+    void storeSpecializationViolations(
+        const GenericSpecializationRecord& specialization,
+        const std::vector<internal::PendingDiagnostic>& pending,
+        std::vector<internal::PendingDiagnostic>& ungrouped);
+    void validateSpecialization(
+        const GenericSpecializationRecord& specialization,
+        std::span<const GenericTemplateRecord> templates,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        std::vector<internal::PendingDiagnostic>& ungrouped);
+    void emitUngroupedViolations(
+        const std::vector<internal::PendingDiagnostic>& ungrouped,
         diagnostics::DiagnosticEngine& diagnostics);
     // Las tres formas de infringir la regla de constraint primario comparten registro y
     // diagnostico; solo cambia el mensaje, que es lo unico que las distingue para el lector.

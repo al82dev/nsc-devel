@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ClassInheritanceInfo.h"
 
 #include <cstddef>
 #include <optional>
@@ -17,15 +18,6 @@ class DiagnosticEngine;
 namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess;
-
-struct ClassInheritanceInfo final
-{
-    std::size_t typeOrdinal = 0;
-    std::optional<std::size_t> baseTypeOrdinal;
-    std::string baseTypeKey;
-    std::size_t depth = 0;
-    std::vector<std::size_t> directlyDerivedTypeOrdinals;
-};
 
 class ProjectInheritanceModel final
 {
@@ -71,6 +63,25 @@ private:
     };
 
     bool resolveBaseSpecifications(diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<std::size_t> objectRootTypeOrdinal() const;
+    bool validateBaseClassDerivation(
+        const NamedTypeDeclaration& type,
+        const ClassInheritanceInfo& info,
+        const NamedTypeDeclaration& candidateType,
+        std::size_t candidateOrdinal,
+        const ast::TypeSyntax* baseSyntax,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool resolveBaseSpecification(
+        const NamedTypeDeclaration& type,
+        const ClassInheritanceInfo& info,
+        const ast::TypeSyntax* baseSyntax,
+        std::optional<std::size_t>& selectedBase,
+        const ast::TypeSyntax*& selectedSyntax,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool resolveClassBaseSpecifications(
+        ClassInheritanceInfo& info,
+        std::optional<std::size_t> objectRootOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     bool visitClass(
         std::size_t typeOrdinal,
         std::vector<VisitState>& states,

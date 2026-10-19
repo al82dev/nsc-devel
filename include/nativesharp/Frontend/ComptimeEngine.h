@@ -1,135 +1,28 @@
 #pragma once
 
-#include "nativesharp/Frontend/MacroExpansionEngine.h"
+#include "nativesharp/Frontend/ComptimeAttributeDirective.h"
+#include "nativesharp/Frontend/ComptimeAttributeRetention.h"
+#include "nativesharp/Frontend/ComptimeAttributeTarget.h"
+#include "nativesharp/Frontend/ComptimeAuthoredDiagnostic.h"
+#include "nativesharp/Frontend/ComptimeCache.h"
+#include "nativesharp/Frontend/ComptimeDependency.h"
+#include "nativesharp/Frontend/ComptimeDiagnosticSeverity.h"
+#include "nativesharp/Frontend/ComptimeEvaluation.h"
+#include "nativesharp/Frontend/ComptimeExecutionContext.h"
+#include "nativesharp/Frontend/ComptimeLimits.h"
+#include "nativesharp/Frontend/ComptimeResult.h"
+#include "nativesharp/Frontend/ProjectComptimeRecord.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
-#include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
-#include <memory>
-#include <mutex>
-#include <optional>
-#include <unordered_map>
 #include <vector>
 
 namespace nativesharp::frontend
 {
-struct ComptimeEvaluation final
-{
-    std::size_t offset = 0;
-    std::size_t length = 0;
-    std::int64_t value = 0;
-    std::string dependencyDigest;
-    bool cacheHit = false;
-};
-
-struct ComptimeDependency final
-{
-    std::string kind;
-    std::string identity;
-    std::string digest;
-};
-
-enum class ComptimeAttributeTarget { Type, Field, Method };
-enum class ComptimeAttributeRetention { CompileTime, NativeRuntimeSection };
-
-struct ComptimeAttributeDirective final
-{
-    std::size_t offset = 0;
-    std::size_t length = 0;
-    std::string identity;
-    bool isDefinition = false;
-    std::vector<ComptimeAttributeTarget> targets;
-    bool repeatable = false;
-    ComptimeAttributeRetention retention = ComptimeAttributeRetention::CompileTime;
-    std::vector<std::string> constantArguments;
-};
-
-enum class ComptimeDiagnosticSeverity { Note, Warning, Error };
-
-struct ComptimeAuthoredDiagnostic final
-{
-    ComptimeDiagnosticSeverity severity = ComptimeDiagnosticSeverity::Error;
-    std::string code;
-    std::string message;
-    std::size_t offset = 0;
-    std::size_t length = 0;
-    std::vector<std::string> notes;
-};
-
-class ComptimeCache final
-{
-public:
-    struct Entry final
-    {
-        std::int64_t value = 0;
-        std::size_t executedSteps = 0;
-    };
-
-    std::optional<Entry> find(std::string_view key) const;
-    void store(std::string key, Entry entry);
-    std::size_t size() const;
-
-private:
-    mutable std::mutex mutex_;
-    std::unordered_map<std::string, Entry> entries_;
-};
-
-struct ComptimeLimits final
-{
-    std::size_t maximumSourceBytes = 64U * 1024U * 1024U;
-    std::size_t maximumDirectives = 1024;
-    std::size_t maximumSteps = 100'000;
-    std::size_t maximumNesting = 128;
-    std::size_t maximumMemoryBytes = 128U * 1024U * 1024U;
-    std::size_t maximumMacroExpansions = 64;
-};
-
-struct ComptimeExecutionContext final
-{
-    std::filesystem::path sourceDirectory;
-    bool hermetic = true;
-    std::function<bool()> cancellationRequested;
-};
-
-struct ComptimeResult final
-{
-    bool success = false;
-    std::string source;
-    std::string error;
-    std::vector<ComptimeEvaluation> evaluations;
-    std::vector<ComptimeDependency> dependencies;
-    std::vector<ComptimeAttributeDirective> attributes;
-    std::vector<MacroExpansionRecord> macroExpansions;
-    std::vector<ComptimeAuthoredDiagnostic> authoredDiagnostics;
-    std::vector<std::pair<std::string, std::string>> declaredCapabilities;
-    std::size_t executedSteps = 0;
-    std::size_t cacheHits = 0;
-    std::size_t cacheMisses = 0;
-    std::size_t memoryUsed = 0;
-    std::string reproducibilityDigest;
-};
-
-struct ProjectComptimeRecord final
-{
-    std::size_t projectOrdinal = 0;
-    std::size_t sourceOrdinal = 0;
-    std::string moduleName;
-    std::string relativeSourcePath;
-    std::size_t evaluationCount = 0;
-    std::size_t executedSteps = 0;
-    std::size_t cacheHits = 0;
-    std::size_t cacheMisses = 0;
-    std::string reproducibilityDigest;
-    std::vector<ComptimeDependency> dependencies;
-    std::vector<ComptimeAttributeDirective> attributes;
-    std::vector<MacroExpansionRecord> macroExpansions;
-    std::vector<ComptimeAuthoredDiagnostic> authoredDiagnostics;
-    std::vector<std::pair<std::string, std::string>> declaredCapabilities;
-};
-
 // Executes the deliberately small NativeSharp 2.0 comptime core. `comptime` is a contextual
 // marker and `#run(integer-expression)` is replaced with its signed 64-bit result before lexing.
 // Replacements retain the original byte count, so every later source range still names the
@@ -144,6 +37,64 @@ public:
     ComptimeResult execute(std::string_view source) const;
 
 private:
+    enum class Scan;
+
+    bool initializeExecution(
+        std::string_view& source,
+        ComptimeResult& result) const;
+    bool cancellationRequested(ComptimeResult& result) const;
+    static bool advanceScanState(
+        std::string_view source,
+        std::size_t& cursor,
+        Scan& state,
+        bool& escaped);
+    bool processCapabilityDirective(
+        std::string_view source,
+        std::size_t& cursor,
+        ComptimeResult& result,
+        bool& matched) const;
+    static bool processAuthoredDiagnosticDirective(
+        std::string_view source,
+        std::size_t& cursor,
+        ComptimeResult& result,
+        bool& matched);
+    static bool processAttributeDirective(
+        std::string_view source,
+        std::size_t& cursor,
+        ComptimeResult& result,
+        bool& matched);
+    bool locateRunExpression(
+        std::string_view source,
+        std::size_t cursor,
+        std::size_t& open,
+        std::size_t& end,
+        ComptimeResult& result) const;
+    bool resolveRunExpression(
+        std::string_view expression,
+        std::size_t cursor,
+        std::string& resolvedExpression,
+        std::string& dependencyDigest,
+        ComptimeResult& result) const;
+    bool evaluateRunExpression(
+        const std::string& resolvedExpression,
+        const std::string& dependencyDigest,
+        std::size_t cursor,
+        std::optional<std::int64_t>& value,
+        bool& cacheHit,
+        ComptimeResult& result) const;
+    static bool commitRunEvaluation(
+        std::size_t cursor,
+        std::size_t end,
+        const std::string& dependencyDigest,
+        std::int64_t value,
+        bool cacheHit,
+        ComptimeResult& result);
+    bool processRunDirective(
+        std::string_view source,
+        std::size_t& cursor,
+        ComptimeResult& result,
+        bool& matched) const;
+
     ComptimeLimits limits_;
     std::shared_ptr<ComptimeCache> cache_;
     ComptimeExecutionContext context_;

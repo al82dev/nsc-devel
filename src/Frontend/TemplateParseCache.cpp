@@ -1,4 +1,6 @@
 #include "nativesharp/Frontend/TemplateParseCache.h"
+#include "Internal/CacheMetadata.h"
+#include "Internal/TemplateParseCacheEntry.h"
 
 #include "nativesharp/Basic/Sha256.h"
 
@@ -113,12 +115,8 @@ void quarantineInvalidEntry(
     std::filesystem::rename(payload, quarantinedPayload, filesystemError);
 }
 
-struct CacheMetadata final
-{
-    std::string key;
-    std::string digest;
-    std::uintmax_t size = 0;
-};
+using internal::CacheMetadata;
+using internal::TemplateParseCacheEntry;
 
 bool readMetadata(const std::filesystem::path& path, CacheMetadata& metadata)
 {
@@ -169,6 +167,30 @@ bool writeMetadataAtomically(
         }
     }
     return replaceFileAtomically(temporary, destination, error);
+}
+
+void evictOldestEntries(
+    std::vector<TemplateParseCacheEntry>& entries,
+    std::uintmax_t maximumBytes,
+    std::uintmax_t& totalBytes,
+    std::size_t& evictedEntries,
+    std::uintmax_t& evictedBytes)
+{
+    std::sort(entries.begin(), entries.end(),
+        [](const TemplateParseCacheEntry& left, const TemplateParseCacheEntry& right)
+        {
+            return left.publication < right.publication;
+        });
+    for (const TemplateParseCacheEntry& entry : entries)
+    {
+        if (totalBytes <= maximumBytes) break;
+        std::error_code ignored;
+        std::filesystem::remove(entry.metadata, ignored);
+        std::filesystem::remove(entry.payload, ignored);
+        ++evictedEntries;
+        evictedBytes += entry.size;
+        totalBytes -= entry.size;
+    }
 }
 } // namespace
 
@@ -305,15 +327,7 @@ bool TemplateParseCache::prune(
     }
     if (!templatesExist) return true;
 
-    struct Entry final
-    {
-        std::string key;
-        std::filesystem::path payload;
-        std::filesystem::path metadata;
-        std::filesystem::file_time_type publication;
-        std::uintmax_t size;
-    };
-    std::vector<Entry> entries;
+    std::vector<TemplateParseCacheEntry> entries;
     std::uintmax_t totalBytes = 0;
     std::filesystem::recursive_directory_iterator iterator(
         templates, std::filesystem::directory_options::skip_permission_denied, filesystemError);
@@ -346,7 +360,7 @@ bool TemplateParseCache::prune(
             continue;
         }
         totalBytes += size;
-        entries.push_back(Entry{key, payload, entry.path(), publication, size});
+        entries.push_back(TemplateParseCacheEntry{key, payload, entry.path(), publication, size});
     }
     if (filesystemError)
     {
@@ -355,18 +369,7 @@ bool TemplateParseCache::prune(
     }
     if (totalBytes <= maximumBytes) return true;
 
-    std::sort(entries.begin(), entries.end(),
-        [](const Entry& left, const Entry& right) { return left.publication < right.publication; });
-    for (const Entry& entry : entries)
-    {
-        if (totalBytes <= maximumBytes) break;
-        std::error_code ignored;
-        std::filesystem::remove(entry.metadata, ignored);
-        std::filesystem::remove(entry.payload, ignored);
-        ++evictedEntries;
-        evictedBytes += entry.size;
-        totalBytes -= entry.size;
-    }
+    evictOldestEntries(entries, maximumBytes, totalBytes, evictedEntries, evictedBytes);
     return true;
 }
 } // namespace nativesharp::frontend

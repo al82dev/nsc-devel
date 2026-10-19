@@ -1,4 +1,7 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
+#include "Internal/FunctionLookupEnvironment.h"
+#include "Internal/ProjectNamespaceFunctionWalkKind.h"
+#include "Internal/ProjectNamespaceFunctionWalkWork.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
@@ -260,11 +263,9 @@ bool compatibleDeclarations(
         symbol.isExtension == isExtensionDeclaration(*syntax);
 }
 
-struct FunctionLookupEnvironment final
-{
-    std::vector<std::string> importedNamespaces;
-    std::unordered_map<std::string, std::string> aliases;
-};
+using internal::FunctionLookupEnvironment;
+using internal::WalkKind;
+using internal::WalkWork;
 
 std::vector<std::string> splitName(std::string_view name)
 {
@@ -324,12 +325,7 @@ std::optional<std::string> expressionName(const ast::AstNode* expression)
 }
 }
 
-bool ProjectNamespaceFunctionModel::build(
-    const ProjectNameLookup& nameLookup,
-    const ProjectMemberModel& memberModel,
-    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
-    diagnostics::DiagnosticEngine& diagnostics,
-    const ProjectGenericModel* genericModel)
+void ProjectNamespaceFunctionModel::resetBuildState()
 {
     functions_.clear();
     states_.clear();
@@ -340,322 +336,378 @@ bool ProjectNamespaceFunctionModel::build(
     extensionBindings_.clear();
     extensionBindingBySyntax_.clear();
     built_ = false;
-    const std::size_t initialErrorCount = diagnostics.errorCount();
-    std::unordered_map<std::string, std::size_t> symbolByIdentity;
-    std::unordered_map<std::string, std::size_t> exportedCByName;
+}
 
-    for (const NamespaceFunctionDeclaration& declaration : nameLookup.namespaceFunctions())
+void ProjectNamespaceFunctionModel::configureNamespaceFunctionOperator(
+    NamespaceFunctionSymbol& candidate) const
+{
+    candidate.operatorToken = lexer::TokenKind::Invalid;
+    if (!candidate.isExtension) return;
+
+    // NS304-T08-F04: recover the operator token from the operator name (operator+ -> +).
+    const std::string_view name = candidate.name;
+    constexpr std::string_view prefix = "operator";
+    if (!name.starts_with(prefix)) return;
+
+    const std::string_view spelling = name.substr(prefix.size());
+    if (spelling == "+") candidate.operatorToken = lexer::TokenKind::Plus;
+    else if (spelling == "-") candidate.operatorToken = lexer::TokenKind::Minus;
+    else if (spelling == "*") candidate.operatorToken = lexer::TokenKind::Star;
+    else if (spelling == "/") candidate.operatorToken = lexer::TokenKind::Slash;
+    else if (spelling == "%") candidate.operatorToken = lexer::TokenKind::Percent;
+    else if (spelling == "!") candidate.operatorToken = lexer::TokenKind::Bang;
+    else if (spelling == "~") candidate.operatorToken = lexer::TokenKind::Tilde;
+    else if (spelling == "&") candidate.operatorToken = lexer::TokenKind::Amp;
+    else if (spelling == "|") candidate.operatorToken = lexer::TokenKind::Pipe;
+    else if (spelling == "^") candidate.operatorToken = lexer::TokenKind::Caret;
+    else if (spelling == "<<") candidate.operatorToken = lexer::TokenKind::LessLess;
+    else if (spelling == ">>") candidate.operatorToken = lexer::TokenKind::GreaterGreater;
+    else if (spelling == "==") candidate.operatorToken = lexer::TokenKind::EqualEqual;
+    else if (spelling == "!=") candidate.operatorToken = lexer::TokenKind::BangEqual;
+    else if (spelling == "<=") candidate.operatorToken = lexer::TokenKind::LessEqual;
+    else if (spelling == ">=") candidate.operatorToken = lexer::TokenKind::GreaterEqual;
+    else if (spelling == "<") candidate.operatorToken = lexer::TokenKind::Less;
+    else if (spelling == ">") candidate.operatorToken = lexer::TokenKind::Greater;
+}
+
+void ProjectNamespaceFunctionModel::initializeNamespaceFunction(
+    NamespaceFunctionSymbol& candidate,
+    const NamespaceFunctionDeclaration& declaration,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const ast::AstNode& syntax = *declaration.syntax;
+    candidate.accessibility = declaration.accessibility;
+    candidate.projectOrdinal = declaration.projectOrdinal;
+    candidate.sourceOrdinal = declaration.sourceOrdinal;
+    candidate.fileId = declaration.fileId;
+    candidate.range = declaration.range;
+    candidate.sourcePath = declaration.sourcePath;
+    candidate.moduleName = declaration.moduleName;
+    candidate.namespaceName = declaration.namespaceName;
+    candidate.name = declaration.name;
+    candidate.declaredTypeSyntax = syntax.typeSyntax();
+    candidate.declaredTypeKey = memberModel.canonicalTypeKey(syntax.typeSyntax(), nameLookup);
+    candidate.declaredErrorTypeSyntax = syntax.throwsTypeSyntax();
+    candidate.declaredErrorTypeKey = syntax.throwsTypeSyntax() == nullptr
+        ? std::string{}
+        : memberModel.canonicalTypeKey(syntax.throwsTypeSyntax(), nameLookup);
+    if (!candidate.declaredErrorTypeKey.empty())
+        candidate.effects = candidate.effects.with(sema::Effect::Throws);
+    candidate.declaredOwnership = ownershipKindFromSyntax(syntax.typeSyntax());
+    candidate.declarationSyntax = declaration.syntax;
+    candidate.definitionSyntax = declaration.hasBody ? declaration.syntax : nullptr;
+    candidate.isReferenceReturn = syntax.isReference();
+    candidate.returnLifetimeName = syntax.lifetimeName();
+    for (const ast::LifetimeParameterSyntax& parameter : syntax.lifetimeParameters())
+        candidate.lifetimeParameters.push_back(parameter.name);
+    for (const ast::LifetimeOutlivesConstraint& constraint : syntax.lifetimeOutlivesConstraints())
+        candidate.lifetimeOutlivesConstraints.emplace_back(constraint.longer, constraint.shorter);
+    candidate.isVariadic = syntax.isVariadic();
+    candidate.inliningPolicy = syntax.hasModifier(lexer::TokenKind::KwForceInline)
+        ? InliningPolicy::Required
+        : syntax.hasModifier(lexer::TokenKind::KwNoInline)
+            ? InliningPolicy::Forbidden
+            : syntax.hasModifier(lexer::TokenKind::KwInline)
+                ? InliningPolicy::Preferred
+                : InliningPolicy::Automatic;
+    candidate.isExternC = syntax.flag() || syntax.hasModifier(lexer::TokenKind::KwExtern);
+    if (candidate.isExternC && !candidate.declaredErrorTypeKey.empty())
     {
-        if (declaration.syntax == nullptr) continue;
-        const ast::AstNode& syntax = *declaration.syntax;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidExternCSignature,
+            diagnostics::DiagnosticSeverity::Error,
+            candidate.range,
+            "extern C namespace function '" + candidate.name +
+                "' cannot declare throws; catch and translate the error in an explicit non-throwing adapter");
+    }
+    candidate.isExportedC = syntax.hasModifier(lexer::TokenKind::KwExport);
+    candidate.isPrecompiled = declaration.isPrecompiled;
+    candidate.isExtension = isExtensionDeclaration(syntax);
+    candidate.isStaticExtension = isStaticExtensionDeclaration(syntax);
+    configureNamespaceFunctionOperator(candidate);
+    candidate.parts.push_back(NamespaceFunctionPart{
+        declaration.accessibility,
+        declaration.sourceOrdinal,
+        declaration.fileId,
+        declaration.range,
+        declaration.sourcePath,
+        declaration.syntax,
+        declaration.hasBody});
+}
 
-        NamespaceFunctionSymbol candidate;
-        candidate.accessibility = declaration.accessibility;
-        candidate.projectOrdinal = declaration.projectOrdinal;
-        candidate.sourceOrdinal = declaration.sourceOrdinal;
-        candidate.fileId = declaration.fileId;
-        candidate.range = declaration.range;
-        candidate.sourcePath = declaration.sourcePath;
-        candidate.moduleName = declaration.moduleName;
-        candidate.namespaceName = declaration.namespaceName;
-        candidate.name = declaration.name;
-        candidate.declaredTypeSyntax = syntax.typeSyntax();
-        candidate.declaredTypeKey = memberModel.canonicalTypeKey(syntax.typeSyntax(), nameLookup);
-        candidate.declaredErrorTypeSyntax = syntax.throwsTypeSyntax();
-        candidate.declaredErrorTypeKey = syntax.throwsTypeSyntax() == nullptr
-            ? std::string{}
-            : memberModel.canonicalTypeKey(syntax.throwsTypeSyntax(), nameLookup);
-        if (!candidate.declaredErrorTypeKey.empty())
-            candidate.effects = candidate.effects.with(sema::Effect::Throws);
-        candidate.declaredOwnership = ownershipKindFromSyntax(syntax.typeSyntax());
-        candidate.declarationSyntax = declaration.syntax;
-        candidate.definitionSyntax = declaration.hasBody ? declaration.syntax : nullptr;
-        candidate.isReferenceReturn = syntax.isReference();
-        candidate.returnLifetimeName = syntax.lifetimeName();
-        for (const ast::LifetimeParameterSyntax& parameter : syntax.lifetimeParameters())
-            candidate.lifetimeParameters.push_back(parameter.name);
-        for (const ast::LifetimeOutlivesConstraint& constraint :
-             syntax.lifetimeOutlivesConstraints())
+MethodParameterSymbol ProjectNamespaceFunctionModel::initializeNamespaceFunctionParameter(
+    const ast::AstNode& parameterNode,
+    const NamespaceFunctionDeclaration& declaration,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel) const
+{
+    MethodParameterSymbol parameter;
+    parameter.name = parameterNode.text();
+    parameter.passKind = parameterPassKind(parameterNode);
+    parameter.typeSyntax = parameterNode.typeSyntax();
+    parameter.typeKey = memberModel.canonicalTypeKey(parameter.typeSyntax, nameLookup);
+    parameter.pointerPointeeReadonly = parameter.typeSyntax != nullptr &&
+        parameter.typeSyntax->isPointeeConst();
+    parameter.ownership = ownershipKindFromSyntax(parameter.typeSyntax);
+    parameter.fileId = declaration.fileId;
+    parameter.range = parameterNode.range();
+    parameter.syntax = &parameterNode;
+    parameter.defaultValueSyntax = parameterNode.first();
+    parameter.isParameterPack = parameterNode.auxiliaryText() == "params";
+    if (parameter.passKind != ParameterPassKind::Value)
+    {
+        parameter.pointeeTypeKey = parameter.typeKey.empty() || parameter.typeKey.back() != '*'
+            ? parameter.typeKey
+            : parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
+    }
+    return parameter;
+}
+
+void ProjectNamespaceFunctionModel::validateNamespaceFunctionParameterPack(
+    MethodParameterSymbol& parameter,
+    bool& sawParameterPack,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ProjectGenericModel* genericModel) const
+{
+    if (sawParameterPack)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            parameter.range,
+            "a typed parameter pack must be the final parameter");
+    }
+    if (!parameter.isParameterPack) return;
+
+    sawParameterPack = true;
+    const bool validPackSyntax = parameter.typeSyntax != nullptr &&
+        (parameter.typeSyntax->baseName() == "ReadOnlySpan" ||
+         parameter.typeSyntax->baseName().ends_with(".ReadOnlySpan")) &&
+        parameter.typeSyntax->typeArguments().size() == 1U;
+    if (validPackSyntax)
+    {
+        parameter.parameterPackElementTypeKey = memberModel.canonicalTypeKey(
+            parameter.typeSyntax->typeArguments().front(), nameLookup);
+    }
+    else if (genericModel != nullptr)
+    {
+        const GenericSpecializationRecord* specialization =
+            genericModel->specializationForTypeKey(parameter.typeKey);
+        if (specialization != nullptr &&
+            specialization->templateKey.find("ReadOnlySpan`1") != std::string::npos &&
+            specialization->typeArguments.size() == 1U)
         {
-            candidate.lifetimeOutlivesConstraints.emplace_back(
-                constraint.longer, constraint.shorter);
+            parameter.parameterPackElementTypeKey =
+                ProjectMemberModel::canonicalGenericArgumentKey(
+                    specialization->typeArguments.front(), nameLookup);
         }
-        candidate.isVariadic = syntax.isVariadic();
-        candidate.inliningPolicy = syntax.hasModifier(lexer::TokenKind::KwForceInline)
-            ? InliningPolicy::Required
-            : syntax.hasModifier(lexer::TokenKind::KwNoInline)
-                ? InliningPolicy::Forbidden
-                : syntax.hasModifier(lexer::TokenKind::KwInline)
-                    ? InliningPolicy::Preferred
-                    : InliningPolicy::Automatic;
-        candidate.isExternC =
-            syntax.flag() || syntax.hasModifier(lexer::TokenKind::KwExtern);
-        if (candidate.isExternC && !candidate.declaredErrorTypeKey.empty())
+    }
+    if (parameter.parameterPackElementTypeKey.empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            parameter.range,
+            "params requires ReadOnlySpan<T>; implicit heap arrays are forbidden (resolved '" +
+                parameter.typeKey + "')");
+    }
+    if (parameter.defaultValueSyntax != nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            parameter.range,
+            "a typed parameter pack cannot declare a default value");
+    }
+}
+
+void ProjectNamespaceFunctionModel::bindNamespaceFunctionParameterLifetime(
+    MethodParameterSymbol& parameter,
+    const ast::AstNode& syntax,
+    std::size_t parameterIndex,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!parameter.syntax->lifetimeName().empty())
+    {
+        parameter.lifetimeName = parameter.syntax->lifetimeName();
+        if (parameter.passKind == ParameterPassKind::Out)
         {
             diagnostics.report(
-                diagnostics::DiagnosticId::InvalidExternCSignature,
+                diagnostics::DiagnosticId::InvalidType,
                 diagnostics::DiagnosticSeverity::Error,
-                candidate.range,
-                "extern C namespace function '" + candidate.name +
-                    "' cannot declare throws; catch and translate the error in an explicit non-throwing adapter");
+                parameter.range,
+                "out parameter '" + parameter.name +
+                    "' initializes storage and cannot carry an input lifetime");
         }
-        candidate.isExportedC = syntax.hasModifier(lexer::TokenKind::KwExport);
-        candidate.isPrecompiled = declaration.isPrecompiled;
-        candidate.isExtension = isExtensionDeclaration(syntax);
-        candidate.isStaticExtension = isStaticExtensionDeclaration(syntax);
-        candidate.operatorToken = lexer::TokenKind::Invalid;
-        if (candidate.isExtension)
+        else if (parameter.passKind == ParameterPassKind::Value)
         {
-            // NS304-T08-F04: recover the operator token from the operator name (operator+ -> +).
-            const std::string_view name = candidate.name;
-            constexpr std::string_view prefix = "operator";
-            if (name.starts_with(prefix))
-            {
-                const std::string_view spelling = name.substr(prefix.size());
-                if (spelling == "+") candidate.operatorToken = lexer::TokenKind::Plus;
-                else if (spelling == "-") candidate.operatorToken = lexer::TokenKind::Minus;
-                else if (spelling == "*") candidate.operatorToken = lexer::TokenKind::Star;
-                else if (spelling == "/") candidate.operatorToken = lexer::TokenKind::Slash;
-                else if (spelling == "%") candidate.operatorToken = lexer::TokenKind::Percent;
-                else if (spelling == "!") candidate.operatorToken = lexer::TokenKind::Bang;
-                else if (spelling == "~") candidate.operatorToken = lexer::TokenKind::Tilde;
-                else if (spelling == "&") candidate.operatorToken = lexer::TokenKind::Amp;
-                else if (spelling == "|") candidate.operatorToken = lexer::TokenKind::Pipe;
-                else if (spelling == "^") candidate.operatorToken = lexer::TokenKind::Caret;
-                else if (spelling == "<<") candidate.operatorToken = lexer::TokenKind::LessLess;
-                else if (spelling == ">>") candidate.operatorToken = lexer::TokenKind::GreaterGreater;
-                else if (spelling == "==") candidate.operatorToken = lexer::TokenKind::EqualEqual;
-                else if (spelling == "!=") candidate.operatorToken = lexer::TokenKind::BangEqual;
-                else if (spelling == "<=") candidate.operatorToken = lexer::TokenKind::LessEqual;
-                else if (spelling == ">=") candidate.operatorToken = lexer::TokenKind::GreaterEqual;
-                else if (spelling == "<") candidate.operatorToken = lexer::TokenKind::Less;
-                else if (spelling == ">") candidate.operatorToken = lexer::TokenKind::Greater;
-            }
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error,
+                parameter.range,
+                "only ref or in parameters may carry a named lifetime");
         }
-        candidate.parts.push_back(NamespaceFunctionPart{
-            declaration.accessibility,
-            declaration.sourceOrdinal,
-            declaration.fileId,
-            declaration.range,
-            declaration.sourcePath,
-            declaration.syntax,
-            declaration.hasBody});
-
-        std::unordered_map<std::string, const ast::AstNode*> parameterNames;
-        bool sawParameterPack = false;
-        for (const ast::AstNode* parameterNode : syntax.children())
+        else if (!declaresLifetime(syntax, parameter.lifetimeName))
         {
-            if (parameterNode == nullptr ||
-                parameterNode->kind() != ast::AstNodeKind::ParameterDeclaration)
-            {
-                continue;
-            }
-
-            MethodParameterSymbol parameter;
-            parameter.name = parameterNode->text();
-            parameter.passKind = parameterPassKind(*parameterNode);
-            parameter.typeSyntax = parameterNode->typeSyntax();
-            parameter.typeKey = memberModel.canonicalTypeKey(parameter.typeSyntax, nameLookup);
-            parameter.pointerPointeeReadonly = parameter.typeSyntax != nullptr &&
-                parameter.typeSyntax->isPointeeConst();
-            parameter.ownership = ownershipKindFromSyntax(parameter.typeSyntax);
-            parameter.fileId = declaration.fileId;
-            parameter.range = parameterNode->range();
-            parameter.syntax = parameterNode;
-            parameter.defaultValueSyntax = parameterNode->first();
-            parameter.isParameterPack = parameterNode->auxiliaryText() == "params";
-            if (sawParameterPack)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    parameter.range,
-                    "a typed parameter pack must be the final parameter");
-            }
-            if (parameter.isParameterPack)
-            {
-                sawParameterPack = true;
-                const bool validPackSyntax = parameter.typeSyntax != nullptr &&
-                    (parameter.typeSyntax->baseName() == "ReadOnlySpan" ||
-                     parameter.typeSyntax->baseName().ends_with(".ReadOnlySpan")) &&
-                    parameter.typeSyntax->typeArguments().size() == 1U;
-                if (validPackSyntax)
-                {
-                    parameter.parameterPackElementTypeKey = memberModel.canonicalTypeKey(
-                        parameter.typeSyntax->typeArguments().front(), nameLookup);
-                }
-                else if (genericModel != nullptr)
-                {
-                    const GenericSpecializationRecord* specialization =
-                        genericModel->specializationForTypeKey(parameter.typeKey);
-                    if (specialization != nullptr &&
-                        specialization->templateKey.find("ReadOnlySpan`1") !=
-                            std::string::npos &&
-                        specialization->typeArguments.size() == 1U)
-                    {
-                        parameter.parameterPackElementTypeKey =
-                            ProjectMemberModel::canonicalGenericArgumentKey(
-                                specialization->typeArguments.front(), nameLookup);
-                    }
-                }
-                if (parameter.parameterPackElementTypeKey.empty())
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidType,
-                        diagnostics::DiagnosticSeverity::Error,
-                        parameter.range,
-                        "params requires ReadOnlySpan<T>; implicit heap arrays are forbidden (resolved '" +
-                            parameter.typeKey + "')");
-                }
-                if (parameter.defaultValueSyntax != nullptr)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        parameter.range,
-                        "a typed parameter pack cannot declare a default value");
-                }
-            }
-            if (parameter.passKind != ParameterPassKind::Value)
-            {
-                parameter.pointeeTypeKey = parameter.typeKey.empty() || parameter.typeKey.back() != '*'
-                    ? parameter.typeKey
-                    : parameter.typeKey.substr(0, parameter.typeKey.size() - 1);
-            }
-            if (!parameterNode->lifetimeName().empty())
-            {
-                parameter.lifetimeName = parameterNode->lifetimeName();
-                if (parameter.passKind == ParameterPassKind::Out)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidType,
-                        diagnostics::DiagnosticSeverity::Error,
-                        parameter.range,
-                        "out parameter '" + parameter.name +
-                            "' initializes storage and cannot carry an input lifetime");
-                }
-                else if (parameter.passKind == ParameterPassKind::Value)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidType,
-                        diagnostics::DiagnosticSeverity::Error,
-                        parameter.range,
-                        "only ref or in parameters may carry a named lifetime");
-                }
-                else if (!declaresLifetime(syntax, parameter.lifetimeName))
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::UnknownIdentifier,
-                        diagnostics::DiagnosticSeverity::Error,
-                        parameter.range,
-                        "parameter '" + parameter.name + "' names undeclared lifetime '" +
-                            parameter.lifetimeName + "'");
-                }
-            }
-            else if (parameter.passKind == ParameterPassKind::Ref ||
-                     parameter.passKind == ParameterPassKind::In)
-            {
-                parameter.lifetimeName = "$p" + std::to_string(candidate.parameters.size());
-            }
-
-            const auto [previous, inserted] = parameterNames.emplace(parameter.name, parameterNode);
-            if (!inserted)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::DuplicateSymbol,
-                    diagnostics::DiagnosticSeverity::Error,
-                    parameter.range,
-                    "duplicate parameter '" + parameter.name + "' in namespace function '" +
-                        declaration.name + "'");
-                diagnostics.report(
-                    diagnostics::DiagnosticId::PreviousDeclaration,
-                    diagnostics::DiagnosticSeverity::Note,
-                    previous->second->range(),
-                    "previous parameter declaration is here");
-            }
-            candidate.parameters.push_back(std::move(parameter));
+            diagnostics.report(
+                diagnostics::DiagnosticId::UnknownIdentifier,
+                diagnostics::DiagnosticSeverity::Error,
+                parameter.range,
+                "parameter '" + parameter.name + "' names undeclared lifetime '" +
+                    parameter.lifetimeName + "'");
         }
+    }
+    else if (parameter.passKind == ParameterPassKind::Ref ||
+             parameter.passKind == ParameterPassKind::In)
+    {
+        parameter.lifetimeName = "$p" + std::to_string(parameterIndex);
+    }
+}
 
-        if (candidate.isReferenceReturn)
+void ProjectNamespaceFunctionModel::recordNamespaceFunctionParameter(
+    NamespaceFunctionSymbol& candidate,
+    MethodParameterSymbol parameter,
+    const NamespaceFunctionDeclaration& declaration,
+    std::unordered_map<std::string, const ast::AstNode*>& parameterNames,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const auto [previous, inserted] = parameterNames.emplace(parameter.name, parameter.syntax);
+    if (!inserted)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::DuplicateSymbol,
+            diagnostics::DiagnosticSeverity::Error,
+            parameter.range,
+            "duplicate parameter '" + parameter.name + "' in namespace function '" +
+                declaration.name + "'");
+        diagnostics.report(
+            diagnostics::DiagnosticId::PreviousDeclaration,
+            diagnostics::DiagnosticSeverity::Note,
+            previous->second->range(),
+            "previous parameter declaration is here");
+    }
+    candidate.parameters.push_back(std::move(parameter));
+}
+
+void ProjectNamespaceFunctionModel::collectNamespaceFunctionParameters(
+    NamespaceFunctionSymbol& candidate,
+    const NamespaceFunctionDeclaration& declaration,
+    const ast::AstNode& syntax,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ProjectGenericModel* genericModel) const
+{
+    std::unordered_map<std::string, const ast::AstNode*> parameterNames;
+    bool sawParameterPack = false;
+    for (const ast::AstNode* parameterNode : syntax.children())
+    {
+        if (parameterNode == nullptr ||
+            parameterNode->kind() != ast::AstNodeKind::ParameterDeclaration)
         {
-            if (candidate.returnLifetimeName.empty())
+            continue;
+        }
+        MethodParameterSymbol parameter = initializeNamespaceFunctionParameter(
+            *parameterNode, declaration, nameLookup, memberModel);
+        validateNamespaceFunctionParameterPack(
+            parameter,
+            sawParameterPack,
+            nameLookup,
+            memberModel,
+            diagnostics,
+            genericModel);
+        bindNamespaceFunctionParameterLifetime(
+            parameter, syntax, candidate.parameters.size(), diagnostics);
+        recordNamespaceFunctionParameter(
+            candidate, std::move(parameter), declaration, parameterNames, diagnostics);
+    }
+}
+
+void ProjectNamespaceFunctionModel::validateNamespaceFunctionReturnLifetimeSource(
+    const NamespaceFunctionSymbol& candidate,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (candidate.returnLifetimeName == "static" ||
+        candidate.returnLifetimeName == "this" ||
+        candidate.returnLifetimeName.empty())
+    {
+        return;
+    }
+    const bool hasSource = std::ranges::any_of(
+        candidate.parameters,
+        [&](const MethodParameterSymbol& parameter)
+        {
+            return (parameter.passKind == ParameterPassKind::Ref ||
+                    parameter.passKind == ParameterPassKind::In) &&
+                lifetimeOutlives(
+                    candidate.lifetimeOutlivesConstraints,
+                    parameter.lifetimeName,
+                    candidate.returnLifetimeName);
+        });
+    if (!hasSource)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidReturn,
+            diagnostics::DiagnosticSeverity::Error,
+            candidate.range,
+            "ref return lifetime '" + candidate.returnLifetimeName +
+                "' has no ref/in parameter whose lifetime outlives it");
+    }
+}
+
+void ProjectNamespaceFunctionModel::validateNamespaceFunctionLifetimes(
+    NamespaceFunctionSymbol& candidate,
+    const ast::AstNode& syntax,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (candidate.isReferenceReturn)
+    {
+        if (candidate.returnLifetimeName.empty())
+        {
+            std::unordered_set<std::string> inputs;
+            for (const MethodParameterSymbol& parameter : candidate.parameters)
             {
-                std::unordered_set<std::string> inputs;
-                for (const MethodParameterSymbol& parameter : candidate.parameters)
-                {
-                    if (parameter.passKind == ParameterPassKind::Ref ||
-                        parameter.passKind == ParameterPassKind::In)
-                        inputs.insert(parameter.lifetimeName);
-                }
-                if (inputs.size() == 1U)
-                    candidate.returnLifetimeName = *inputs.begin();
-                else if (inputs.empty())
-                    candidate.returnLifetimeName = "static";
-                else
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidReturn,
-                        diagnostics::DiagnosticSeverity::Error,
-                        candidate.range,
-                        "ref-returning function '" + candidate.name +
-                            "' has multiple input lifetimes; write ref[a] and bind the "
-                            "intended ref/in parameters to lifetime a");
-                }
+                if (parameter.passKind == ParameterPassKind::Ref ||
+                    parameter.passKind == ParameterPassKind::In)
+                    inputs.insert(parameter.lifetimeName);
             }
-            else if (candidate.returnLifetimeName == "this")
+            if (inputs.size() == 1U) candidate.returnLifetimeName = *inputs.begin();
+            else if (inputs.empty()) candidate.returnLifetimeName = "static";
+            else
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidReturn,
                     diagnostics::DiagnosticSeverity::Error,
                     candidate.range,
-                    "lifetime 'this' is unavailable on a namespace function");
-            }
-            else if (candidate.returnLifetimeName != "static" &&
-                     !declaresLifetime(syntax, candidate.returnLifetimeName))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::UnknownIdentifier,
-                    diagnostics::DiagnosticSeverity::Error,
-                    candidate.range,
-                    "ref return of '" + candidate.name + "' names undeclared lifetime '" +
-                        candidate.returnLifetimeName + "'");
-            }
-            if (candidate.returnLifetimeName != "static" &&
-                candidate.returnLifetimeName != "this" &&
-                !candidate.returnLifetimeName.empty())
-            {
-                const bool hasSource = std::ranges::any_of(
-                    candidate.parameters,
-                    [&](const MethodParameterSymbol& parameter)
-                    {
-                        return (parameter.passKind == ParameterPassKind::Ref ||
-                                parameter.passKind == ParameterPassKind::In) &&
-                            lifetimeOutlives(
-                                candidate.lifetimeOutlivesConstraints,
-                                parameter.lifetimeName,
-                                candidate.returnLifetimeName);
-                    });
-                if (!hasSource)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidReturn,
-                        diagnostics::DiagnosticSeverity::Error,
-                        candidate.range,
-                        "ref return lifetime '" + candidate.returnLifetimeName +
-                            "' has no ref/in parameter whose lifetime outlives it");
-                }
-            }
-            if (const auto cycle = lifetimeCycle(candidate.lifetimeOutlivesConstraints))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidType,
-                    diagnostics::DiagnosticSeverity::Error,
-                    candidate.range,
-                    "lifetime constraints contain a cycle between '" + cycle->first +
-                        "' and '" + cycle->second + "'");
+                    "ref-returning function '" + candidate.name +
+                        "' has multiple input lifetimes; write ref[a] and bind the "
+                        "intended ref/in parameters to lifetime a");
             }
         }
-        else if (const auto cycle = lifetimeCycle(candidate.lifetimeOutlivesConstraints))
+        else if (candidate.returnLifetimeName == "this")
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidReturn,
+                diagnostics::DiagnosticSeverity::Error,
+                candidate.range,
+                "lifetime 'this' is unavailable on a namespace function");
+        }
+        else if (candidate.returnLifetimeName != "static" &&
+                 !declaresLifetime(syntax, candidate.returnLifetimeName))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::UnknownIdentifier,
+                diagnostics::DiagnosticSeverity::Error,
+                candidate.range,
+                "ref return of '" + candidate.name + "' names undeclared lifetime '" +
+                    candidate.returnLifetimeName + "'");
+        }
+        validateNamespaceFunctionReturnLifetimeSource(candidate, diagnostics);
+        if (const auto cycle = lifetimeCycle(candidate.lifetimeOutlivesConstraints))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidType,
@@ -664,632 +716,879 @@ bool ProjectNamespaceFunctionModel::build(
                 "lifetime constraints contain a cycle between '" + cycle->first +
                     "' and '" + cycle->second + "'");
         }
+    }
+    else if (const auto cycle = lifetimeCycle(candidate.lifetimeOutlivesConstraints))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            candidate.range,
+            "lifetime constraints contain a cycle between '" + cycle->first +
+                "' and '" + cycle->second + "'");
+    }
+}
 
-        candidate.signatureKey = candidate.name + '(';
-        for (std::size_t index = 0; index < candidate.parameters.size(); ++index)
+void ProjectNamespaceFunctionModel::finalizeNamespaceFunctionIdentity(
+    NamespaceFunctionSymbol& candidate,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    candidate.signatureKey = candidate.name + '(';
+    for (std::size_t index = 0; index < candidate.parameters.size(); ++index)
+    {
+        if (index != 0) candidate.signatureKey.push_back(',');
+        const MethodParameterSymbol& parameter = candidate.parameters[index];
+        candidate.signatureKey += ownershipSignaturePrefix(parameter.ownership);
+        if (parameter.passKind != ParameterPassKind::Value)
         {
-            if (index != 0) candidate.signatureKey.push_back(',');
-            const MethodParameterSymbol& parameter = candidate.parameters[index];
-            candidate.signatureKey += ownershipSignaturePrefix(parameter.ownership);
-            if (parameter.passKind != ParameterPassKind::Value)
+            candidate.signatureKey += parameterPassKindKeyword(parameter.passKind);
+            candidate.signatureKey.push_back(' ');
+        }
+        candidate.signatureKey += parameter.typeKey;
+    }
+    candidate.signatureKey.push_back(')');
+    candidate.callableIdentityKey = "function:" + candidate.moduleName + "::" +
+        candidate.namespaceName + "." + candidate.signatureKey +
+        (candidate.isExternC ? "|extern-c" : "|native") +
+        (candidate.isVariadic ? "|variadic" : "");
+    candidate.mangledName = namespaceFunctionMangledName(candidate);
+    if (candidate.isExportedC &&
+        candidate.accessibility != NamespaceFunctionAccessibility::Public)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidExternCSignature,
+            diagnostics::DiagnosticSeverity::Error,
+            candidate.range,
+            "exported namespace function '" + candidate.name + "' must be public");
+    }
+}
+
+void ProjectNamespaceFunctionModel::mergeNamespaceFunction(
+    NamespaceFunctionSymbol candidate,
+    const NamespaceFunctionDeclaration& declaration,
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::unordered_map<std::string, std::size_t>& symbolByIdentity,
+    std::unordered_map<std::string, std::size_t>& exportedCByName)
+{
+    const std::string identity = mergeKey(candidate);
+    const auto existing = symbolByIdentity.find(identity);
+    if (existing == symbolByIdentity.end())
+    {
+        const std::size_t ordinal = functions_.size();
+        if (candidate.isExportedC)
+        {
+            const auto [previousExport, insertedExport] =
+                exportedCByName.emplace(candidate.name, ordinal);
+            if (!insertedExport)
             {
-                candidate.signatureKey += parameterPassKindKeyword(parameter.passKind);
-                candidate.signatureKey.push_back(' ');
+                diagnostics.report(
+                    diagnostics::DiagnosticId::DuplicateSymbol,
+                    diagnostics::DiagnosticSeverity::Error,
+                    candidate.range,
+                    "C ABI symbol '" + candidate.name +
+                        "' is exported by more than one namespace function");
+                reportPrevious(functions_[previousExport->second], diagnostics);
             }
-            candidate.signatureKey += parameter.typeKey;
         }
-        candidate.signatureKey.push_back(')');
-        candidate.callableIdentityKey = "function:" + candidate.moduleName + "::" +
-            candidate.namespaceName + "." + candidate.signatureKey +
-            (candidate.isExternC ? "|extern-c" : "|native") +
-            (candidate.isVariadic ? "|variadic" : "");
-        candidate.mangledName = namespaceFunctionMangledName(candidate);
-        if (candidate.isExportedC &&
-            candidate.accessibility != NamespaceFunctionAccessibility::Public)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidExternCSignature,
-                diagnostics::DiagnosticSeverity::Error,
-                candidate.range,
-                "exported namespace function '" + candidate.name +
-                    "' must be public");
-        }
+        symbolByIdentity.emplace(identity, ordinal);
+        functionsByName_[nameLookupKey(
+            candidate.projectOrdinal, candidate.namespaceName, candidate.name)].push_back(ordinal);
+        functions_.push_back(std::move(candidate));
+        return;
+    }
 
-        const std::string identity = mergeKey(candidate);
-        const auto existing = symbolByIdentity.find(identity);
-        if (existing == symbolByIdentity.end())
-        {
-            const std::size_t ordinal = functions_.size();
-            if (candidate.isExportedC)
-            {
-                const auto [previousExport, insertedExport] =
-                    exportedCByName.emplace(candidate.name, ordinal);
-                if (!insertedExport)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::DuplicateSymbol,
-                        diagnostics::DiagnosticSeverity::Error,
-                        candidate.range,
-                        "C ABI symbol '" + candidate.name +
-                            "' is exported by more than one namespace function");
-                    reportPrevious(functions_[previousExport->second], diagnostics);
-                }
-            }
-            symbolByIdentity.emplace(identity, ordinal);
-            functionsByName_[nameLookupKey(
-                candidate.projectOrdinal, candidate.namespaceName, candidate.name)].push_back(ordinal);
-            functions_.push_back(std::move(candidate));
-            continue;
-        }
+    NamespaceFunctionSymbol& symbol = functions_[existing->second];
+    const bool compatible = compatibleDeclarations(
+        symbol,
+        declaration,
+        candidate.declaredTypeKey,
+        candidate.declaredOwnership,
+        candidate.declaredErrorTypeKey);
+    if (!compatible)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::ConflictingFunctionDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            declaration.range,
+            "declaration of namespace function '" + candidate.signatureKey +
+                "' conflicts with its previous declaration");
+        reportPrevious(symbol, diagnostics);
+        return;
+    }
+    if (declaration.hasBody && symbol.definitionSyntax != nullptr)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::DuplicateFunctionDefinition,
+            diagnostics::DiagnosticSeverity::Error,
+            declaration.range,
+            "namespace function '" + candidate.signatureKey + "' already has a definition");
+        reportPrevious(symbol, diagnostics);
+        return;
+    }
+    symbol.parts.push_back(candidate.parts.front());
+    if (declaration.hasBody)
+    {
+        symbol.definitionSyntax = declaration.syntax;
+        symbol.inliningPolicy = candidate.inliningPolicy;
+    }
+}
 
-        NamespaceFunctionSymbol& symbol = functions_[existing->second];
-        const bool compatible = compatibleDeclarations(
-            symbol,
+void ProjectNamespaceFunctionModel::collectNamespaceFunction(
+    const NamespaceFunctionDeclaration& declaration,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ProjectGenericModel* genericModel,
+    std::unordered_map<std::string, std::size_t>& symbolByIdentity,
+    std::unordered_map<std::string, std::size_t>& exportedCByName)
+{
+    if (declaration.syntax == nullptr) return;
+    const ast::AstNode& syntax = *declaration.syntax;
+    NamespaceFunctionSymbol candidate;
+    initializeNamespaceFunction(candidate, declaration, nameLookup, memberModel, diagnostics);
+    collectNamespaceFunctionParameters(
+        candidate, declaration, syntax, nameLookup, memberModel, diagnostics, genericModel);
+    validateNamespaceFunctionLifetimes(candidate, syntax, diagnostics);
+    finalizeNamespaceFunctionIdentity(candidate, diagnostics);
+    mergeNamespaceFunction(
+        std::move(candidate), declaration, diagnostics, symbolByIdentity, exportedCByName);
+}
+
+void ProjectNamespaceFunctionModel::collectNamespaceFunctions(
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ProjectGenericModel* genericModel,
+    std::unordered_map<std::string, std::size_t>& symbolByIdentity,
+    std::unordered_map<std::string, std::size_t>& exportedCByName)
+{
+    for (const NamespaceFunctionDeclaration& declaration : nameLookup.namespaceFunctions())
+    {
+        collectNamespaceFunction(
             declaration,
-            candidate.declaredTypeKey,
-            candidate.declaredOwnership,
-            candidate.declaredErrorTypeKey);
-        if (!compatible)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::ConflictingFunctionDeclaration,
-                diagnostics::DiagnosticSeverity::Error,
-                declaration.range,
-                "declaration of namespace function '" + candidate.signatureKey +
-                    "' conflicts with its previous declaration");
-            reportPrevious(symbol, diagnostics);
-            continue;
-        }
-        if (declaration.hasBody && symbol.definitionSyntax != nullptr)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::DuplicateFunctionDefinition,
-                diagnostics::DiagnosticSeverity::Error,
-                declaration.range,
-                "namespace function '" + candidate.signatureKey + "' already has a definition");
-            reportPrevious(symbol, diagnostics);
-            continue;
-        }
-
-        symbol.parts.push_back(candidate.parts.front());
-        if (declaration.hasBody)
-        {
-            symbol.definitionSyntax = declaration.syntax;
-            symbol.inliningPolicy = candidate.inliningPolicy;
-        }
+            nameLookup,
+            memberModel,
+            diagnostics,
+            genericModel,
+            symbolByIdentity,
+            exportedCByName);
     }
+}
 
+void ProjectNamespaceFunctionModel::collectNamespaceState(
+    const NamespaceStateDeclaration& declaration,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (declaration.syntax == nullptr) return;
+    const ast::AstNode& syntax = *declaration.syntax;
+    NamespaceStateSymbol state;
+    state.accessibility = declaration.accessibility;
+    state.projectOrdinal = declaration.projectOrdinal;
+    state.sourceOrdinal = declaration.sourceOrdinal;
+    state.fileId = declaration.fileId;
+    state.range = declaration.range;
+    state.sourcePath = declaration.sourcePath;
+    state.moduleName = declaration.moduleName;
+    state.namespaceName = declaration.namespaceName;
+    state.name = declaration.name;
+    state.declaredTypeSyntax = syntax.typeSyntax();
+    state.declaredTypeKey = memberModel.canonicalTypeKey(syntax.typeSyntax(), nameLookup);
+    state.identityKey = "state:" + state.moduleName + "::" +
+        state.namespaceName + "." + state.name;
+    state.declarationSyntax = declaration.syntax;
+    state.initializerSyntax = syntax.first();
+    state.isConst = declaration.isConst;
+    state.isPrecompiled = declaration.isPrecompiled;
+    state.storageName = namespaceStateStorageName(state);
+
+    const std::string lookupKey =
+        nameLookupKey(state.projectOrdinal, state.namespaceName, state.name);
+    const auto previous = stateByName_.find(lookupKey);
+    if (previous != stateByName_.end())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::DuplicateSymbol,
+            diagnostics::DiagnosticSeverity::Error,
+            state.range,
+            "duplicate namespace state '" + state.namespaceName + "." + state.name + "'");
+        diagnostics.report(
+            diagnostics::DiagnosticId::PreviousDeclaration,
+            diagnostics::DiagnosticSeverity::Note,
+            states_[previous->second].range,
+            "previous namespace state declaration is here");
+        return;
+    }
+    if (!initializeNamespaceStateConstant(state))
+    {
+        diagnostics.report(
+            state.isConst
+                ? diagnostics::DiagnosticId::ConstRequiresConstant
+                : diagnostics::DiagnosticId::GlobalRequiresConstant,
+            diagnostics::DiagnosticSeverity::Error,
+            state.initializerSyntax != nullptr ? state.initializerSyntax->range() : state.range,
+            "namespace state '" + state.namespaceName + "." + state.name +
+                "' requires a constant initializer; dynamic initialization is not supported");
+    }
+    stateByName_.emplace(lookupKey, states_.size());
+    states_.push_back(std::move(state));
+}
+
+void ProjectNamespaceFunctionModel::collectNamespaceStates(
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
     for (const NamespaceStateDeclaration& declaration : nameLookup.namespaceStates())
+        collectNamespaceState(declaration, nameLookup, memberModel, diagnostics);
+}
+
+std::span<const std::size_t> ProjectNamespaceFunctionModel::visibleProjects(
+    const ProjectNameLookup& nameLookup,
+    std::size_t projectOrdinal) const
+{
+    if (projectOrdinal >= nameLookup.modules().size()) return {};
+    return nameLookup.modules()[projectOrdinal]->visibleProjectOrdinals();
+}
+
+bool ProjectNamespaceFunctionModel::namespaceExists(
+    const ProjectNameLookup& nameLookup,
+    std::size_t projectOrdinal,
+    std::string_view namespaceName) const
+{
+    const std::vector<std::string> segments = splitName(namespaceName);
+    if (projectOrdinal < nameLookup.modules().size() &&
+        nameLookup.modules()[projectOrdinal]->globalNamespace().findNamespace(segments) != nullptr)
     {
-        if (declaration.syntax == nullptr) continue;
-        const ast::AstNode& syntax = *declaration.syntax;
-
-        NamespaceStateSymbol state;
-        state.accessibility = declaration.accessibility;
-        state.projectOrdinal = declaration.projectOrdinal;
-        state.sourceOrdinal = declaration.sourceOrdinal;
-        state.fileId = declaration.fileId;
-        state.range = declaration.range;
-        state.sourcePath = declaration.sourcePath;
-        state.moduleName = declaration.moduleName;
-        state.namespaceName = declaration.namespaceName;
-        state.name = declaration.name;
-        state.declaredTypeSyntax = syntax.typeSyntax();
-        state.declaredTypeKey = memberModel.canonicalTypeKey(syntax.typeSyntax(), nameLookup);
-        state.identityKey = "state:" + state.moduleName + "::" +
-            state.namespaceName + "." + state.name;
-        state.declarationSyntax = declaration.syntax;
-        state.initializerSyntax = syntax.first();
-        state.isConst = declaration.isConst;
-        state.isPrecompiled = declaration.isPrecompiled;
-        state.storageName = namespaceStateStorageName(state);
-
-        const std::string lookupKey =
-            nameLookupKey(state.projectOrdinal, state.namespaceName, state.name);
-        const auto previous = stateByName_.find(lookupKey);
-        if (previous != stateByName_.end())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::DuplicateSymbol,
-                diagnostics::DiagnosticSeverity::Error,
-                state.range,
-                "duplicate namespace state '" + state.namespaceName + "." + state.name + "'");
-            diagnostics.report(
-                diagnostics::DiagnosticId::PreviousDeclaration,
-                diagnostics::DiagnosticSeverity::Note,
-                states_[previous->second].range,
-                "previous namespace state declaration is here");
-            continue;
-        }
-
-        if (!initializeNamespaceStateConstant(state))
-        {
-            diagnostics.report(
-                state.isConst
-                    ? diagnostics::DiagnosticId::ConstRequiresConstant
-                    : diagnostics::DiagnosticId::GlobalRequiresConstant,
-                diagnostics::DiagnosticSeverity::Error,
-                state.initializerSyntax != nullptr ? state.initializerSyntax->range() : state.range,
-                "namespace state '" + state.namespaceName + "." + state.name +
-                    "' requires a constant initializer; dynamic initialization is not supported");
-        }
-
-        stateByName_.emplace(lookupKey, states_.size());
-        states_.push_back(std::move(state));
+        return true;
     }
-
-    auto visibleProjects = [&](std::size_t projectOrdinal) -> std::span<const std::size_t>
+    for (const std::size_t visibleProject : visibleProjects(nameLookup, projectOrdinal))
     {
-        if (projectOrdinal >= nameLookup.modules().size()) return {};
-        return nameLookup.modules()[projectOrdinal]->visibleProjectOrdinals();
-    };
-    auto namespaceExists = [&](std::size_t projectOrdinal, std::string_view namespaceName)
-    {
-        const std::vector<std::string> segments = splitName(namespaceName);
-        if (projectOrdinal < nameLookup.modules().size() &&
-            nameLookup.modules()[projectOrdinal]->globalNamespace().findNamespace(segments) != nullptr)
+        if (visibleProject < nameLookup.modules().size() &&
+            nameLookup.modules()[visibleProject]->globalNamespace().findNamespace(segments) != nullptr)
         {
             return true;
         }
-        for (const std::size_t visibleProject : visibleProjects(projectOrdinal))
+    }
+    return false;
+}
+
+std::optional<std::string> ProjectNamespaceFunctionModel::resolveNamespace(
+    const ProjectNameLookup& nameLookup,
+    std::size_t projectOrdinal,
+    std::string_view lexicalNamespace,
+    const FunctionLookupEnvironment& environment,
+    std::string written) const
+{
+    const std::size_t firstDot = written.find('.');
+    const std::string first = written.substr(0, firstDot);
+    const auto alias = environment.aliases.find(first);
+    if (alias != environment.aliases.end())
+    {
+        written = alias->second +
+            (firstDot == std::string::npos ? std::string{} : written.substr(firstDot));
+        return namespaceExists(nameLookup, projectOrdinal, written)
+            ? std::optional<std::string>(std::move(written)) : std::nullopt;
+    }
+    std::vector<std::string> lexicalSegments = splitName(lexicalNamespace);
+    while (true)
+    {
+        const std::string prefix = joinName(lexicalSegments);
+        const std::string candidate = prefix.empty() ? written : prefix + "." + written;
+        if (namespaceExists(nameLookup, projectOrdinal, candidate)) return candidate;
+        if (lexicalSegments.empty()) break;
+        lexicalSegments.pop_back();
+    }
+    return std::nullopt;
+}
+
+void ProjectNamespaceFunctionModel::appendFunctionCandidates(
+    std::vector<std::size_t>& candidates,
+    std::size_t projectOrdinal,
+    std::size_t visibleProject,
+    std::string_view namespaceName,
+    std::string_view functionName) const
+{
+    for (const std::size_t ordinal :
+         findFunctions(visibleProject, namespaceName, functionName))
+    {
+        if (ordinal >= functions_.size()) continue;
+        if (visibleProject == projectOrdinal ||
+            functions_[ordinal].accessibility == NamespaceFunctionAccessibility::Public)
         {
-            if (visibleProject < nameLookup.modules().size() &&
-                nameLookup.modules()[visibleProject]->globalNamespace().findNamespace(segments) != nullptr)
+            candidates.push_back(ordinal);
+        }
+    }
+}
+
+std::vector<std::size_t> ProjectNamespaceFunctionModel::candidatesInNamespace(
+    const ProjectNameLookup& nameLookup,
+    std::size_t projectOrdinal,
+    std::string_view namespaceName,
+    std::string_view functionName) const
+{
+    std::vector<std::size_t> candidates;
+    appendFunctionCandidates(
+        candidates, projectOrdinal, projectOrdinal, namespaceName, functionName);
+    for (const std::size_t visibleProject : visibleProjects(nameLookup, projectOrdinal))
+    {
+        if (visibleProject != projectOrdinal)
+        {
+            appendFunctionCandidates(
+                candidates, projectOrdinal, visibleProject, namespaceName, functionName);
+        }
+    }
+    std::sort(candidates.begin(), candidates.end());
+    candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    return candidates;
+}
+
+std::vector<std::size_t> ProjectNamespaceFunctionModel::extensionCandidatesInNamespace(
+    const ProjectNameLookup& nameLookup,
+    std::size_t projectOrdinal,
+    std::string_view namespaceName,
+    std::string_view functionName) const
+{
+    std::vector<std::size_t> candidates = candidatesInNamespace(
+        nameLookup, projectOrdinal, namespaceName, functionName);
+    std::erase_if(candidates, [&](std::size_t ordinal)
+    {
+        return ordinal >= functions_.size() || !functions_[ordinal].isExtension;
+    });
+    return candidates;
+}
+
+void ProjectNamespaceFunctionModel::appendStateCandidate(
+    std::vector<std::size_t>& candidates,
+    std::size_t projectOrdinal,
+    std::size_t visibleProject,
+    std::string_view namespaceName,
+    std::string_view stateName) const
+{
+    const auto found = stateByName_.find(
+        nameLookupKey(visibleProject, namespaceName, stateName));
+    if (found == stateByName_.end() || found->second >= states_.size()) return;
+    if (visibleProject == projectOrdinal ||
+        states_[found->second].accessibility == NamespaceFunctionAccessibility::Public)
+    {
+        candidates.push_back(found->second);
+    }
+}
+
+std::vector<std::size_t> ProjectNamespaceFunctionModel::stateCandidatesInNamespace(
+    const ProjectNameLookup& nameLookup,
+    std::size_t projectOrdinal,
+    std::string_view namespaceName,
+    std::string_view stateName) const
+{
+    std::vector<std::size_t> candidates;
+    appendStateCandidate(candidates, projectOrdinal, projectOrdinal, namespaceName, stateName);
+    for (const std::size_t visibleProject : visibleProjects(nameLookup, projectOrdinal))
+    {
+        if (visibleProject != projectOrdinal)
+        {
+            appendStateCandidate(
+                candidates, projectOrdinal, visibleProject, namespaceName, stateName);
+        }
+    }
+    std::sort(candidates.begin(), candidates.end());
+    candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    return candidates;
+}
+
+std::vector<std::size_t> ProjectNamespaceFunctionModel::resolveFunctionCandidates(
+    const ProjectNameLookup& nameLookup,
+    std::size_t projectOrdinal,
+    std::string_view lexicalNamespace,
+    const FunctionLookupEnvironment& environment,
+    std::string_view written) const
+{
+    const std::size_t lastDot = written.find_last_of('.');
+    const bool qualified = lastDot != std::string::npos;
+    const std::string functionName = qualified
+        ? std::string(written.substr(lastDot + 1)) : std::string(written);
+    if (qualified)
+    {
+        const std::optional<std::string> resolvedNamespace = resolveNamespace(
+            nameLookup,
+            projectOrdinal,
+            lexicalNamespace,
+            environment,
+            std::string(written.substr(0, lastDot)));
+        return resolvedNamespace.has_value()
+            ? candidatesInNamespace(nameLookup, projectOrdinal, *resolvedNamespace, functionName)
+            : std::vector<std::size_t>{};
+    }
+
+    std::vector<std::size_t> candidates = candidatesInNamespace(
+        nameLookup, projectOrdinal, lexicalNamespace, functionName);
+    if (!candidates.empty()) return candidates;
+    for (const std::string& imported : environment.importedNamespaces)
+    {
+        std::vector<std::size_t> importedCandidates = candidatesInNamespace(
+            nameLookup, projectOrdinal, imported, functionName);
+        candidates.insert(candidates.end(), importedCandidates.begin(), importedCandidates.end());
+    }
+    std::sort(candidates.begin(), candidates.end());
+    candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    return candidates;
+}
+
+std::vector<std::size_t> ProjectNamespaceFunctionModel::resolveStateCandidates(
+    const ProjectNameLookup& nameLookup,
+    std::size_t projectOrdinal,
+    std::string_view lexicalNamespace,
+    const FunctionLookupEnvironment& environment,
+    std::string_view written) const
+{
+    const std::size_t lastDot = written.find_last_of('.');
+    const bool qualified = lastDot != std::string::npos;
+    const std::string stateName = qualified
+        ? std::string(written.substr(lastDot + 1)) : std::string(written);
+    if (qualified)
+    {
+        const std::optional<std::string> resolvedNamespace = resolveNamespace(
+            nameLookup,
+            projectOrdinal,
+            lexicalNamespace,
+            environment,
+            std::string(written.substr(0, lastDot)));
+        return resolvedNamespace.has_value()
+            ? stateCandidatesInNamespace(nameLookup, projectOrdinal, *resolvedNamespace, stateName)
+            : std::vector<std::size_t>{};
+    }
+
+    std::vector<std::size_t> candidates = stateCandidatesInNamespace(
+        nameLookup, projectOrdinal, lexicalNamespace, stateName);
+    if (!candidates.empty()) return candidates;
+    for (const std::string& imported : environment.importedNamespaces)
+    {
+        std::vector<std::size_t> importedCandidates = stateCandidatesInNamespace(
+            nameLookup, projectOrdinal, imported, stateName);
+        candidates.insert(candidates.end(), importedCandidates.begin(), importedCandidates.end());
+    }
+    std::sort(candidates.begin(), candidates.end());
+    candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    return candidates;
+}
+
+void ProjectNamespaceFunctionModel::bindExtensionReference(
+    const ProjectNameLookup& nameLookup,
+    const ProjectSyntaxUnit& unit,
+    const ast::AstNode* node,
+    std::string_view lexicalNamespace,
+    const FunctionLookupEnvironment& environment)
+{
+    if (node->kind() != ast::AstNodeKind::MemberExpression ||
+        node->first() == nullptr || node->text().empty())
+    {
+        return;
+    }
+    std::vector<std::size_t> candidates = extensionCandidatesInNamespace(
+        nameLookup, unit.projectOrdinal(), lexicalNamespace, node->text());
+    for (const std::string& imported : environment.importedNamespaces)
+    {
+        std::vector<std::size_t> importedCandidates = extensionCandidatesInNamespace(
+            nameLookup, unit.projectOrdinal(), imported, node->text());
+        candidates.insert(candidates.end(), importedCandidates.begin(), importedCandidates.end());
+    }
+    std::sort(candidates.begin(), candidates.end());
+    candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    if (candidates.empty()) return;
+
+    NamespaceFunctionReferenceBinding binding;
+    binding.calleeSyntax = node;
+    binding.projectOrdinal = unit.projectOrdinal();
+    binding.fileId = unit.fileId();
+    binding.lexicalNamespace = lexicalNamespace;
+    binding.writtenName = node->text();
+    binding.candidateFunctionOrdinals = std::move(candidates);
+    binding.extension = true;
+    binding.receiverSyntax = node->first();
+    extensionBindingBySyntax_.emplace(
+        extensionSourceIdentity(node), extensionBindings_.size());
+    extensionBindings_.push_back(std::move(binding));
+}
+
+void ProjectNamespaceFunctionModel::bindCallReference(
+    const ProjectNameLookup& nameLookup,
+    const ProjectSyntaxUnit& unit,
+    const ast::AstNode* node,
+    std::string_view lexicalNamespace,
+    const FunctionLookupEnvironment& environment,
+    std::unordered_set<const ast::AstNode*>& directCallCallees)
+{
+    if (node->kind() != ast::AstNodeKind::CallExpression || node->first() == nullptr) return;
+    // A direct callee already receives a binding keyed by the CallExpression below.
+    // Do not register the same spelling again as a first-class callable value when
+    // the recursive walk reaches its Identifier/MemberExpression node. Its receiver
+    // is still walked normally, so namespace-state/object expressions are preserved.
+    directCallCallees.insert(node->first());
+    const std::optional<std::string> written = expressionName(node->first());
+    if (!written.has_value()) return;
+    std::vector<std::size_t> candidates = resolveFunctionCandidates(
+        nameLookup, unit.projectOrdinal(), lexicalNamespace, environment, *written);
+    if (candidates.empty()) return;
+
+    NamespaceFunctionReferenceBinding binding;
+    binding.callSyntax = node;
+    binding.calleeSyntax = node->first();
+    binding.projectOrdinal = unit.projectOrdinal();
+    binding.fileId = unit.fileId();
+    binding.lexicalNamespace = lexicalNamespace;
+    binding.writtenName = *written;
+    binding.qualified = written->find_last_of('.') != std::string::npos;
+    binding.candidateFunctionOrdinals = std::move(candidates);
+    referenceBindingBySyntax_.emplace(node, referenceBindings_.size());
+    referenceBindings_.push_back(std::move(binding));
+}
+
+void ProjectNamespaceFunctionModel::bindFunctionValueReference(
+    const ProjectNameLookup& nameLookup,
+    const ProjectSyntaxUnit& unit,
+    const ast::AstNode* node,
+    std::string_view lexicalNamespace,
+    const FunctionLookupEnvironment& environment,
+    std::string_view written,
+    const std::unordered_set<const ast::AstNode*>& directCallCallees)
+{
+    // Calls are not the only consumers of a function name: assignment to a
+    // delegate and a target-typed argument both need the same overload set. A
+    // direct call was already bound by its parent CallExpression.
+    if (directCallCallees.contains(node)) return;
+    std::vector<std::size_t> candidates = resolveFunctionCandidates(
+        nameLookup, unit.projectOrdinal(), lexicalNamespace, environment, written);
+    if (candidates.empty()) return;
+
+    NamespaceFunctionReferenceBinding binding;
+    binding.calleeSyntax = node;
+    binding.projectOrdinal = unit.projectOrdinal();
+    binding.fileId = unit.fileId();
+    binding.lexicalNamespace = lexicalNamespace;
+    binding.writtenName = written;
+    binding.qualified = written.find_last_of('.') != std::string::npos;
+    binding.candidateFunctionOrdinals = std::move(candidates);
+    referenceBindingBySyntax_.emplace(node, referenceBindings_.size());
+    referenceBindings_.push_back(std::move(binding));
+}
+
+void ProjectNamespaceFunctionModel::bindStateReference(
+    const ProjectNameLookup& nameLookup,
+    const ProjectSyntaxUnit& unit,
+    const ast::AstNode* node,
+    std::string_view lexicalNamespace,
+    const FunctionLookupEnvironment& environment,
+    std::string_view written)
+{
+    std::vector<std::size_t> candidates = resolveStateCandidates(
+        nameLookup, unit.projectOrdinal(), lexicalNamespace, environment, written);
+    if (candidates.empty()) return;
+
+    NamespaceStateReferenceBinding binding;
+    binding.expressionSyntax = node;
+    binding.projectOrdinal = unit.projectOrdinal();
+    binding.fileId = unit.fileId();
+    binding.lexicalNamespace = lexicalNamespace;
+    binding.writtenName = written;
+    binding.qualified = written.find_last_of('.') != std::string::npos;
+    binding.candidateStateOrdinals = std::move(candidates);
+    stateReferenceBindingBySyntax_.emplace(node, stateReferenceBindings_.size());
+    stateReferenceBindings_.push_back(std::move(binding));
+}
+
+void ProjectNamespaceFunctionModel::bindValueReferences(
+    const ProjectNameLookup& nameLookup,
+    const ProjectSyntaxUnit& unit,
+    const ast::AstNode* node,
+    std::string_view lexicalNamespace,
+    const FunctionLookupEnvironment& environment,
+    const std::unordered_set<const ast::AstNode*>& directCallCallees)
+{
+    if (node->kind() != ast::AstNodeKind::IdentifierExpression &&
+        node->kind() != ast::AstNodeKind::MemberExpression)
+    {
+        return;
+    }
+    const std::optional<std::string> written = expressionName(node);
+    if (!written.has_value()) return;
+    bindFunctionValueReference(
+        nameLookup,
+        unit,
+        node,
+        lexicalNamespace,
+        environment,
+        *written,
+        directCallCallees);
+    bindStateReference(
+        nameLookup, unit, node, lexicalNamespace, environment, *written);
+}
+
+bool ProjectNamespaceFunctionModel::scheduleNamespaceNodeScope(
+    const ast::AstNode* node,
+    std::size_t namespaceIndex,
+    std::size_t environmentIndex,
+    std::vector<std::string>& lexicalNamespaces,
+    std::vector<WalkWork>& work) const
+{
+    if (node->kind() != ast::AstNodeKind::NamespaceDeclaration) return false;
+    std::string nestedNamespace = lexicalNamespaces[namespaceIndex];
+    for (const std::string& segment : splitName(node->text()))
+    {
+        if (!nestedNamespace.empty()) nestedNamespace.push_back('.');
+        nestedNamespace += segment;
+    }
+    const std::size_t nestedNamespaceIndex = lexicalNamespaces.size();
+    lexicalNamespaces.push_back(std::move(nestedNamespace));
+    work.push_back(WalkWork{
+        WalkKind::Scope,
+        node,
+        nestedNamespaceIndex,
+        environmentIndex});
+    return true;
+}
+
+void ProjectNamespaceFunctionModel::scheduleNamespaceNodeChildren(
+    const ast::AstNode* node,
+    std::size_t namespaceIndex,
+    std::size_t environmentIndex,
+    std::vector<WalkWork>& work) const
+{
+    const std::vector<ast::AstNode*>& children = node->children();
+    for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+    {
+        work.push_back(WalkWork{
+            WalkKind::Node,
+            *iterator,
+            namespaceIndex,
+            environmentIndex});
+    }
+    work.push_back(WalkWork{
+        WalkKind::Node,
+        node->third(),
+        namespaceIndex,
+        environmentIndex});
+    work.push_back(WalkWork{
+        WalkKind::Node,
+        node->second(),
+        namespaceIndex,
+        environmentIndex});
+    work.push_back(WalkWork{
+        WalkKind::Node,
+        node->first(),
+        namespaceIndex,
+        environmentIndex});
+}
+
+void ProjectNamespaceFunctionModel::walkNamespaceScope(
+    const ProjectNameLookup& nameLookup,
+    const ProjectSyntaxUnit& unit,
+    const ast::AstNode* scopeNode,
+    std::size_t namespaceIndex,
+    std::size_t inheritedEnvironmentIndex,
+    std::vector<std::string>& lexicalNamespaces,
+    std::vector<FunctionLookupEnvironment>& environments,
+    std::vector<WalkWork>& work)
+{
+    if (scopeNode == nullptr) return;
+    const std::string lexicalNamespace = lexicalNamespaces[namespaceIndex];
+    const std::size_t environmentIndex = environments.size();
+    environments.push_back(environments[inheritedEnvironmentIndex]);
+    FunctionLookupEnvironment& environment = environments[environmentIndex];
+    for (const ast::AstNode* child : scopeNode->children())
+    {
+        if (child == nullptr) continue;
+        if (child->kind() == ast::AstNodeKind::UsingNamespaceDirective)
+        {
+            const std::optional<std::string> resolved = resolveNamespace(
+                nameLookup,
+                unit.projectOrdinal(),
+                lexicalNamespace,
+                environment,
+                child->text());
+            if (resolved.has_value() &&
+                std::find(
+                    environment.importedNamespaces.begin(),
+                    environment.importedNamespaces.end(),
+                    *resolved) == environment.importedNamespaces.end())
             {
-                return true;
+                environment.importedNamespaces.push_back(*resolved);
             }
         }
-        return false;
-    };
-    auto resolveNamespace = [&](std::size_t projectOrdinal,
-                                std::string_view lexicalNamespace,
-                                const FunctionLookupEnvironment& environment,
-                                std::string written) -> std::optional<std::string>
-    {
-        const std::size_t firstDot = written.find('.');
-        const std::string first = written.substr(0, firstDot);
-        const auto alias = environment.aliases.find(first);
-        if (alias != environment.aliases.end())
+        else if (child->kind() == ast::AstNodeKind::UsingAliasDirective &&
+                 !child->auxiliaryText().empty())
         {
-            written = alias->second +
-                (firstDot == std::string::npos ? std::string{} : written.substr(firstDot));
-            return namespaceExists(projectOrdinal, written)
-                ? std::optional<std::string>(std::move(written)) : std::nullopt;
-        }
-
-        std::vector<std::string> lexicalSegments = splitName(lexicalNamespace);
-        while (true)
-        {
-            const std::string prefix = joinName(lexicalSegments);
-            const std::string candidate = prefix.empty() ? written : prefix + "." + written;
-            if (namespaceExists(projectOrdinal, candidate)) return candidate;
-            if (lexicalSegments.empty()) break;
-            lexicalSegments.pop_back();
-        }
-        return std::nullopt;
-    };
-    auto candidatesInNamespace = [&](std::size_t projectOrdinal,
-                                     std::string_view namespaceName,
-                                     std::string_view functionName)
-    {
-        std::vector<std::size_t> candidates;
-        const auto appendProject = [&](std::size_t visibleProject)
-        {
-            for (const std::size_t ordinal :
-                 findFunctions(visibleProject, namespaceName, functionName))
-            {
-                if (ordinal >= functions_.size()) continue;
-                if (visibleProject == projectOrdinal ||
-                    functions_[ordinal].accessibility == NamespaceFunctionAccessibility::Public)
-                {
-                    candidates.push_back(ordinal);
-                }
-            }
-        };
-        appendProject(projectOrdinal);
-        for (const std::size_t visibleProject : visibleProjects(projectOrdinal))
-            if (visibleProject != projectOrdinal) appendProject(visibleProject);
-        std::sort(candidates.begin(), candidates.end());
-        candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
-        return candidates;
-    };
-    auto extensionCandidatesInNamespace = [&](std::size_t projectOrdinal,
-                                               std::string_view namespaceName,
-                                               std::string_view functionName)
-    {
-        std::vector<std::size_t> candidates = candidatesInNamespace(
-            projectOrdinal, namespaceName, functionName);
-        std::erase_if(candidates, [&](std::size_t ordinal)
-        {
-            return ordinal >= functions_.size() || !functions_[ordinal].isExtension;
-        });
-        return candidates;
-    };
-    auto stateCandidatesInNamespace = [&](std::size_t projectOrdinal,
-                                          std::string_view namespaceName,
-                                          std::string_view stateName)
-    {
-        std::vector<std::size_t> candidates;
-        const auto appendProject = [&](std::size_t visibleProject)
-        {
-            const auto found = stateByName_.find(
-                nameLookupKey(visibleProject, namespaceName, stateName));
-            if (found == stateByName_.end() || found->second >= states_.size()) return;
-            if (visibleProject == projectOrdinal ||
-                states_[found->second].accessibility == NamespaceFunctionAccessibility::Public)
-            {
-                candidates.push_back(found->second);
-            }
-        };
-        appendProject(projectOrdinal);
-        for (const std::size_t visibleProject : visibleProjects(projectOrdinal))
-            if (visibleProject != projectOrdinal) appendProject(visibleProject);
-        std::sort(candidates.begin(), candidates.end());
-        candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
-        return candidates;
-    };
-
-    for (const std::unique_ptr<ProjectSyntaxUnit>& unitPointer : units)
-    {
-        if (unitPointer == nullptr || unitPointer->syntaxTree() == nullptr) continue;
-        const ProjectSyntaxUnit& unit = *unitPointer;
-        std::unordered_set<const ast::AstNode*> visited;
-        std::unordered_set<const ast::AstNode*> directCallCallees;
-        enum class WalkKind
-        {
-            Scope,
-            Node
-        };
-        struct WalkWork
-        {
-            WalkKind kind;
-            const ast::AstNode* node;
-            std::size_t namespaceIndex;
-            std::size_t environmentIndex;
-        };
-        std::vector<std::string> lexicalNamespaces{std::string{}};
-        std::vector<FunctionLookupEnvironment> environments{FunctionLookupEnvironment{}};
-        std::vector<WalkWork> work;
-
-        const auto walkScope = [&](const ast::AstNode* scopeNode,
-                                   std::size_t namespaceIndex,
-                                   std::size_t inheritedEnvironmentIndex)
-        {
-            if (scopeNode == nullptr) return;
-            const std::string lexicalNamespace = lexicalNamespaces[namespaceIndex];
-            const std::size_t environmentIndex = environments.size();
-            environments.push_back(environments[inheritedEnvironmentIndex]);
-            FunctionLookupEnvironment& environment = environments[environmentIndex];
-            for (const ast::AstNode* child : scopeNode->children())
-            {
-                if (child == nullptr) continue;
-                if (child->kind() == ast::AstNodeKind::UsingNamespaceDirective)
-                {
-                    const std::optional<std::string> resolved = resolveNamespace(
-                        unit.projectOrdinal(), lexicalNamespace, environment, child->text());
-                    if (resolved.has_value() &&
-                        std::find(environment.importedNamespaces.begin(),
-                                  environment.importedNamespaces.end(), *resolved) ==
-                            environment.importedNamespaces.end())
-                    {
-                        environment.importedNamespaces.push_back(*resolved);
-                    }
-                }
-                else if (child->kind() == ast::AstNodeKind::UsingAliasDirective &&
-                         !child->auxiliaryText().empty())
-                {
-                    const std::optional<std::string> resolved = resolveNamespace(
-                        unit.projectOrdinal(), lexicalNamespace, environment,
-                        child->auxiliaryText());
-                    if (resolved.has_value()) environment.aliases[child->text()] = *resolved;
-                }
-            }
-
-            const std::vector<ast::AstNode*>& children = scopeNode->children();
-            for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
-            {
-                const ast::AstNode* child = *iterator;
-                if (child == nullptr ||
-                    child->kind() == ast::AstNodeKind::UsingNamespaceDirective ||
-                    child->kind() == ast::AstNodeKind::UsingAliasDirective)
-                {
-                    continue;
-                }
-                if (child->kind() == ast::AstNodeKind::NamespaceDeclaration)
-                {
-                    const std::vector<std::string> segments = splitName(child->text());
-                    std::string nestedNamespace = lexicalNamespace;
-                    for (const std::string& segment : segments)
-                    {
-                        if (!nestedNamespace.empty()) nestedNamespace.push_back('.');
-                        nestedNamespace += segment;
-                    }
-                    const std::size_t nestedNamespaceIndex = lexicalNamespaces.size();
-                    lexicalNamespaces.push_back(std::move(nestedNamespace));
-                    work.push_back(WalkWork{
-                        WalkKind::Scope,
-                        child,
-                        nestedNamespaceIndex,
-                        environmentIndex});
-                }
-                else
-                {
-                    work.push_back(WalkWork{
-                        WalkKind::Node,
-                        child,
-                        namespaceIndex,
-                        environmentIndex});
-                }
-            }
-        };
-
-        const auto walkNode = [&](const ast::AstNode* node,
-                                  std::size_t namespaceIndex,
-                                  std::size_t environmentIndex)
-        {
-            if (node == nullptr || !visited.insert(node).second) return;
-            const std::string lexicalNamespace = lexicalNamespaces[namespaceIndex];
-            const FunctionLookupEnvironment& environment = environments[environmentIndex];
-            if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
-            {
-                std::string nestedNamespace = lexicalNamespace;
-                for (const std::string& segment : splitName(node->text()))
-                {
-                    if (!nestedNamespace.empty()) nestedNamespace.push_back('.');
-                    nestedNamespace += segment;
-                }
-                const std::size_t nestedNamespaceIndex = lexicalNamespaces.size();
-                lexicalNamespaces.push_back(std::move(nestedNamespace));
-                work.push_back(WalkWork{
-                    WalkKind::Scope,
-                    node,
-                    nestedNamespaceIndex,
-                    environmentIndex});
-                return;
-            }
-
-            if (node->kind() == ast::AstNodeKind::MemberExpression &&
-                node->first() != nullptr && !node->text().empty())
-            {
-                std::vector<std::size_t> candidates = extensionCandidatesInNamespace(
-                    unit.projectOrdinal(), lexicalNamespace, node->text());
-                for (const std::string& imported : environment.importedNamespaces)
-                {
-                    std::vector<std::size_t> importedCandidates =
-                        extensionCandidatesInNamespace(
-                            unit.projectOrdinal(), imported, node->text());
-                    candidates.insert(candidates.end(), importedCandidates.begin(),
-                                      importedCandidates.end());
-                }
-                std::sort(candidates.begin(), candidates.end());
-                candidates.erase(
-                    std::unique(candidates.begin(), candidates.end()), candidates.end());
-                if (!candidates.empty())
-                {
-                    NamespaceFunctionReferenceBinding binding;
-                    binding.calleeSyntax = node;
-                    binding.projectOrdinal = unit.projectOrdinal();
-                    binding.fileId = unit.fileId();
-                    binding.lexicalNamespace = lexicalNamespace;
-                    binding.writtenName = node->text();
-                    binding.candidateFunctionOrdinals = std::move(candidates);
-                    binding.extension = true;
-                    binding.receiverSyntax = node->first();
-                    extensionBindingBySyntax_.emplace(
-                        extensionSourceIdentity(node), extensionBindings_.size());
-                    extensionBindings_.push_back(std::move(binding));
-                }
-            }
-
-            if (node->kind() == ast::AstNodeKind::CallExpression && node->first() != nullptr)
-            {
-                // A direct callee already receives a binding keyed by the CallExpression below.
-                // Do not register the same spelling again as a first-class callable value when
-                // the recursive walk reaches its Identifier/MemberExpression node. Its receiver
-                // is still walked normally, so namespace-state/object expressions are preserved.
-                directCallCallees.insert(node->first());
-                const std::optional<std::string> written = expressionName(node->first());
-                if (written.has_value())
-                {
-                    const std::size_t lastDot = written->find_last_of('.');
-                    const bool qualified = lastDot != std::string::npos;
-                    const std::string functionName = qualified
-                        ? written->substr(lastDot + 1) : *written;
-                    std::vector<std::size_t> candidates;
-                    if (qualified)
-                    {
-                        const std::optional<std::string> resolvedNamespace = resolveNamespace(
-                            unit.projectOrdinal(), lexicalNamespace, environment,
-                            written->substr(0, lastDot));
-                        if (resolvedNamespace.has_value())
-                        {
-                            candidates = candidatesInNamespace(
-                                unit.projectOrdinal(), *resolvedNamespace, functionName);
-                        }
-                    }
-                    else
-                    {
-                        candidates = candidatesInNamespace(
-                            unit.projectOrdinal(), lexicalNamespace, functionName);
-                        if (candidates.empty())
-                        {
-                            for (const std::string& imported : environment.importedNamespaces)
-                            {
-                                std::vector<std::size_t> importedCandidates = candidatesInNamespace(
-                                    unit.projectOrdinal(), imported, functionName);
-                                candidates.insert(candidates.end(),
-                                                  importedCandidates.begin(), importedCandidates.end());
-                            }
-                            std::sort(candidates.begin(), candidates.end());
-                            candidates.erase(
-                                std::unique(candidates.begin(), candidates.end()), candidates.end());
-                        }
-                    }
-
-                    if (!candidates.empty())
-                    {
-                        NamespaceFunctionReferenceBinding binding;
-                        binding.callSyntax = node;
-                        binding.calleeSyntax = node->first();
-                        binding.projectOrdinal = unit.projectOrdinal();
-                        binding.fileId = unit.fileId();
-                        binding.lexicalNamespace = lexicalNamespace;
-                        binding.writtenName = *written;
-                        binding.qualified = qualified;
-                        binding.candidateFunctionOrdinals = std::move(candidates);
-                        referenceBindingBySyntax_.emplace(node, referenceBindings_.size());
-                        referenceBindings_.push_back(std::move(binding));
-                    }
-                }
-            }
-
-            if (node->kind() == ast::AstNodeKind::IdentifierExpression ||
-                node->kind() == ast::AstNodeKind::MemberExpression)
-            {
-                const std::optional<std::string> written = expressionName(node);
-                if (written.has_value())
-                {
-                    // Calls are not the only consumers of a function name: assignment to a
-                    // delegate and a target-typed argument both need the same overload set. A
-                    // direct call was already bound by its parent CallExpression.
-                    if (!directCallCallees.contains(node))
-                    {
-                        const std::size_t lastDot = written->find_last_of('.');
-                        const bool qualified = lastDot != std::string::npos;
-                        const std::string functionName = qualified
-                            ? written->substr(lastDot + 1) : *written;
-                        std::vector<std::size_t> candidates;
-                        if (qualified)
-                        {
-                            const std::optional<std::string> resolvedNamespace = resolveNamespace(
-                                unit.projectOrdinal(), lexicalNamespace, environment,
-                                written->substr(0, lastDot));
-                            if (resolvedNamespace.has_value())
-                            {
-                                candidates = candidatesInNamespace(
-                                    unit.projectOrdinal(), *resolvedNamespace, functionName);
-                            }
-                        }
-                        else
-                        {
-                            candidates = candidatesInNamespace(
-                                unit.projectOrdinal(), lexicalNamespace, functionName);
-                            if (candidates.empty())
-                            {
-                                for (const std::string& imported : environment.importedNamespaces)
-                                {
-                                    std::vector<std::size_t> importedCandidates = candidatesInNamespace(
-                                        unit.projectOrdinal(), imported, functionName);
-                                    candidates.insert(candidates.end(), importedCandidates.begin(),
-                                        importedCandidates.end());
-                                }
-                                std::sort(candidates.begin(), candidates.end());
-                                candidates.erase(
-                                    std::unique(candidates.begin(), candidates.end()), candidates.end());
-                            }
-                        }
-                        if (!candidates.empty())
-                        {
-                            NamespaceFunctionReferenceBinding binding;
-                            binding.calleeSyntax = node;
-                            binding.projectOrdinal = unit.projectOrdinal();
-                            binding.fileId = unit.fileId();
-                            binding.lexicalNamespace = lexicalNamespace;
-                            binding.writtenName = *written;
-                            binding.qualified = qualified;
-                            binding.candidateFunctionOrdinals = std::move(candidates);
-                            referenceBindingBySyntax_.emplace(node, referenceBindings_.size());
-                            referenceBindings_.push_back(std::move(binding));
-                        }
-                    }
-                    const std::size_t lastDot = written->find_last_of('.');
-                    const bool qualified = lastDot != std::string::npos;
-                    const std::string stateName = qualified
-                        ? written->substr(lastDot + 1) : *written;
-                    std::vector<std::size_t> candidates;
-                    if (qualified)
-                    {
-                        const std::optional<std::string> resolvedNamespace = resolveNamespace(
-                            unit.projectOrdinal(), lexicalNamespace, environment,
-                            written->substr(0, lastDot));
-                        if (resolvedNamespace.has_value())
-                        {
-                            candidates = stateCandidatesInNamespace(
-                                unit.projectOrdinal(), *resolvedNamespace, stateName);
-                        }
-                    }
-                    else
-                    {
-                        candidates = stateCandidatesInNamespace(
-                            unit.projectOrdinal(), lexicalNamespace, stateName);
-                        if (candidates.empty())
-                        {
-                            for (const std::string& imported : environment.importedNamespaces)
-                            {
-                                std::vector<std::size_t> importedCandidates =
-                                    stateCandidatesInNamespace(
-                                        unit.projectOrdinal(), imported, stateName);
-                                candidates.insert(candidates.end(),
-                                    importedCandidates.begin(), importedCandidates.end());
-                            }
-                            std::sort(candidates.begin(), candidates.end());
-                            candidates.erase(
-                                std::unique(candidates.begin(), candidates.end()), candidates.end());
-                        }
-                    }
-
-                    if (!candidates.empty())
-                    {
-                        NamespaceStateReferenceBinding binding;
-                        binding.expressionSyntax = node;
-                        binding.projectOrdinal = unit.projectOrdinal();
-                        binding.fileId = unit.fileId();
-                        binding.lexicalNamespace = lexicalNamespace;
-                        binding.writtenName = *written;
-                        binding.qualified = qualified;
-                        binding.candidateStateOrdinals = std::move(candidates);
-                        stateReferenceBindingBySyntax_.emplace(
-                            node, stateReferenceBindings_.size());
-                        stateReferenceBindings_.push_back(std::move(binding));
-                    }
-                }
-            }
-            const std::vector<ast::AstNode*>& children = node->children();
-            for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
-            {
-                work.push_back(WalkWork{
-                    WalkKind::Node,
-                    *iterator,
-                    namespaceIndex,
-                    environmentIndex});
-            }
-            work.push_back(WalkWork{
-                WalkKind::Node, node->third(), namespaceIndex, environmentIndex});
-            work.push_back(WalkWork{
-                WalkKind::Node, node->second(), namespaceIndex, environmentIndex});
-            work.push_back(WalkWork{
-                WalkKind::Node, node->first(), namespaceIndex, environmentIndex});
-        };
-
-        work.push_back(WalkWork{WalkKind::Scope, unit.syntaxTree(), 0U, 0U});
-        while (!work.empty())
-        {
-            const WalkWork current = work.back();
-            work.pop_back();
-            if (current.kind == WalkKind::Scope)
-            {
-                walkScope(current.node, current.namespaceIndex, current.environmentIndex);
-            }
-            else
-            {
-                walkNode(current.node, current.namespaceIndex, current.environmentIndex);
-            }
+            const std::optional<std::string> resolved = resolveNamespace(
+                nameLookup,
+                unit.projectOrdinal(),
+                lexicalNamespace,
+                environment,
+                child->auxiliaryText());
+            if (resolved.has_value()) environment.aliases[child->text()] = *resolved;
         }
     }
 
+    const std::vector<ast::AstNode*>& children = scopeNode->children();
+    for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
+    {
+        const ast::AstNode* child = *iterator;
+        if (child == nullptr ||
+            child->kind() == ast::AstNodeKind::UsingNamespaceDirective ||
+            child->kind() == ast::AstNodeKind::UsingAliasDirective)
+        {
+            continue;
+        }
+        if (child->kind() == ast::AstNodeKind::NamespaceDeclaration)
+        {
+            const std::vector<std::string> segments = splitName(child->text());
+            std::string nestedNamespace = lexicalNamespace;
+            for (const std::string& segment : segments)
+            {
+                if (!nestedNamespace.empty()) nestedNamespace.push_back('.');
+                nestedNamespace += segment;
+            }
+            const std::size_t nestedNamespaceIndex = lexicalNamespaces.size();
+            lexicalNamespaces.push_back(std::move(nestedNamespace));
+            work.push_back(WalkWork{
+                WalkKind::Scope,
+                child,
+                nestedNamespaceIndex,
+                environmentIndex});
+        }
+        else
+        {
+            work.push_back(WalkWork{
+                WalkKind::Node,
+                child,
+                namespaceIndex,
+                environmentIndex});
+        }
+    }
+}
+
+void ProjectNamespaceFunctionModel::walkNamespaceNode(
+    const ProjectNameLookup& nameLookup,
+    const ProjectSyntaxUnit& unit,
+    const ast::AstNode* node,
+    std::size_t namespaceIndex,
+    std::size_t environmentIndex,
+    std::vector<std::string>& lexicalNamespaces,
+    std::vector<FunctionLookupEnvironment>& environments,
+    std::vector<WalkWork>& work,
+    std::unordered_set<const ast::AstNode*>& visited,
+    std::unordered_set<const ast::AstNode*>& directCallCallees)
+{
+    if (node == nullptr || !visited.insert(node).second) return;
+    const std::string lexicalNamespace = lexicalNamespaces[namespaceIndex];
+    const FunctionLookupEnvironment& environment = environments[environmentIndex];
+    if (scheduleNamespaceNodeScope(
+            node,
+            namespaceIndex,
+            environmentIndex,
+            lexicalNamespaces,
+            work))
+    {
+        return;
+    }
+    bindExtensionReference(nameLookup, unit, node, lexicalNamespace, environment);
+    bindCallReference(
+        nameLookup,
+        unit,
+        node,
+        lexicalNamespace,
+        environment,
+        directCallCallees);
+    bindValueReferences(
+        nameLookup,
+        unit,
+        node,
+        lexicalNamespace,
+        environment,
+        directCallCallees);
+    scheduleNamespaceNodeChildren(node, namespaceIndex, environmentIndex, work);
+}
+
+void ProjectNamespaceFunctionModel::bindNamespaceReferencesInUnit(
+    const ProjectNameLookup& nameLookup,
+    const ProjectSyntaxUnit& unit)
+{
+    std::unordered_set<const ast::AstNode*> visited;
+    std::unordered_set<const ast::AstNode*> directCallCallees;
+    std::vector<std::string> lexicalNamespaces{std::string{}};
+    std::vector<FunctionLookupEnvironment> environments{FunctionLookupEnvironment{}};
+    std::vector<WalkWork> work;
+    work.push_back(WalkWork{
+        WalkKind::Scope,
+        unit.syntaxTree(),
+        0U,
+        0U});
+    while (!work.empty())
+    {
+        const WalkWork current = work.back();
+        work.pop_back();
+        if (current.kind == WalkKind::Scope)
+        {
+            walkNamespaceScope(
+                nameLookup,
+                unit,
+                current.node,
+                current.namespaceIndex,
+                current.environmentIndex,
+                lexicalNamespaces,
+                environments,
+                work);
+        }
+        else
+        {
+            walkNamespaceNode(
+                nameLookup,
+                unit,
+                current.node,
+                current.namespaceIndex,
+                current.environmentIndex,
+                lexicalNamespaces,
+                environments,
+                work,
+                visited,
+                directCallCallees);
+        }
+    }
+}
+
+void ProjectNamespaceFunctionModel::bindNamespaceReferences(
+    const ProjectNameLookup& nameLookup,
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units)
+{
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unitPointer : units)
+    {
+        if (unitPointer == nullptr || unitPointer->syntaxTree() == nullptr) continue;
+        bindNamespaceReferencesInUnit(nameLookup, *unitPointer);
+    }
+}
+
+bool ProjectNamespaceFunctionModel::build(
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ProjectGenericModel* genericModel)
+{
+    resetBuildState();
+    const std::size_t initialErrorCount = diagnostics.errorCount();
+    std::unordered_map<std::string, std::size_t> symbolByIdentity;
+    std::unordered_map<std::string, std::size_t> exportedCByName;
+    collectNamespaceFunctions(
+        nameLookup,
+        memberModel,
+        diagnostics,
+        genericModel,
+        symbolByIdentity,
+        exportedCByName);
+    collectNamespaceStates(nameLookup, memberModel, diagnostics);
+    bindNamespaceReferences(nameLookup, units);
     built_ = diagnostics.errorCount() == initialErrorCount;
     return built_;
 }
+
 
 bool ProjectNamespaceFunctionModel::bindPrecompiledEscapeSummaries(
     std::span<const PrecompiledNamespaceFunctionIdentity> identities,

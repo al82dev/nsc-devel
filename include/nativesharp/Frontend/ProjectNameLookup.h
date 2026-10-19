@@ -1,5 +1,17 @@
 #pragma once
 
+#include "nativesharp/Frontend/NamedTypeDeclarationKind.h"
+#include "nativesharp/Frontend/NamedTypeAccessibility.h"
+#include "nativesharp/Frontend/NamedTypeDeclarationPart.h"
+#include "nativesharp/Frontend/NamedTypeDeclaration.h"
+#include "nativesharp/Frontend/NamespaceFunctionAccessibility.h"
+#include "nativesharp/Frontend/NamespaceFunctionDeclaration.h"
+#include "nativesharp/Frontend/NamespaceStateDeclaration.h"
+#include "nativesharp/Frontend/PendingReexport.h"
+#include "nativesharp/Frontend/TypeNameBindingKind.h"
+#include "nativesharp/Frontend/TypeNameBinding.h"
+#include "nativesharp/Frontend/ExpressionTypeNameBinding.h"
+#include "nativesharp/Frontend/ModuleDeclarationSpace.h"
 #include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Basic/FileId.h"
 #include "nativesharp/Basic/SourceRange.h"
@@ -7,8 +19,10 @@
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/NamespaceSymbol.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Frontend/QualifiedNameTier.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
@@ -21,18 +35,20 @@ namespace nativesharp::diagnostics
 class DiagnosticEngine;
 }
 
+namespace nativesharp::compilation
+{
+class PartialTypeAggregator;
+}
+
+namespace nativesharp::driver
+{
+class CompilationWorkerPool;
+}
+
 namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess;
 
-enum class NamedTypeDeclarationKind
-{
-    Class,
-    Interface,
-    Struct,
-    Enum,
-    Delegate
-};
 
 // NSC-LIMIT-009. `Private` y `Protected` existen para los tipos ANIDADOS: un tipo de namespace
 // solo puede ser internal o public, y sigue siendo asi. El orden NO es una escala de mas a menos
@@ -43,158 +59,14 @@ enum class NamedTypeDeclarationKind
 // deriva del contenedor» necesita el modelo de herencia, que se construye DESPUES de resolver
 // nombres. Aqui el nombre se acepta y el binding guarda la cadena de tipos del sitio de uso;
 // ProjectInheritanceModel::checkProtectedNestedTypeUses decide con la herencia ya construida.
-enum class NamedTypeAccessibility
-{
-    Private,
-    Internal,
-    Package,
-    Protected,
-    Public
-};
 
-struct NamedTypeDeclarationPart final
-{
-    NamedTypeDeclarationKind kind = NamedTypeDeclarationKind::Struct;
-    NamedTypeAccessibility accessibility = NamedTypeAccessibility::Internal;
-    bool hasExplicitAccessibility = false;
-    // NSC-LIMIT-009. Declarado dentro de otro tipo. Se guarda aunque la identidad ya lo diga
-    // porque el agregador de partes solo entiende internal/public: para un anidado hay que
-    // saltarlo y conservar la accesibilidad que se calculo al predeclarar.
-    bool isNested = false;
-    bool isPartial = false;
-    bool isAbstract = false;
-    bool isSealed = false;
-    bool isStatic = false;
-    bool isPrecompiled = false;
-    std::size_t projectOrdinal = 0;
-    std::size_t sourceOrdinal = 0;
-    FileId fileId;
-    SourceRange range;
-    const ast::AstNode* syntax = nullptr;
-    std::string sourcePath;
-};
 
-struct NamedTypeDeclaration final
-{
-    compilation::TypeIdentity identity;
-    NamedTypeDeclarationKind kind = NamedTypeDeclarationKind::Struct;
-    NamedTypeAccessibility accessibility = NamedTypeAccessibility::Internal;
-    // NSC-LIMIT-009. El tipo que lo contiene, si lo hay. Es un ORDINAL y no un nombre porque la
-    // pregunta que se le hace --«estoy dentro de este contenedor?»-- se responde comparando
-    // ordinales con la cadena que el entorno de lookup lleva, sin volver a resolver nada.
-    std::optional<std::size_t> containingTypeOrdinal;
-    bool isPartial = false;
-    bool isAbstract = false;
-    bool isSealed = false;
-    bool isStatic = false;
-    bool isPrecompiled = false;
-    std::size_t projectOrdinal = 0;
-    std::size_t sourceOrdinal = 0;
-    FileId fileId;
-    SourceRange range;
-    const ast::AstNode* syntax = nullptr;
-    std::vector<NamedTypeDeclarationPart> parts;
-};
 
-enum class NamespaceFunctionAccessibility
-{
-    Internal,
-    Public
-};
 
-struct NamespaceFunctionDeclaration final
-{
-    NamespaceFunctionAccessibility accessibility = NamespaceFunctionAccessibility::Internal;
-    std::size_t projectOrdinal = 0;
-    std::size_t sourceOrdinal = 0;
-    FileId fileId;
-    SourceRange range;
-    const ast::AstNode* syntax = nullptr;
-    std::string sourcePath;
-    std::string moduleName;
-    std::string namespaceName;
-    std::string name;
-    bool hasBody = false;
-    bool isPrecompiled = false;
-};
 
-struct NamespaceStateDeclaration final
-{
-    NamespaceFunctionAccessibility accessibility = NamespaceFunctionAccessibility::Internal;
-    std::size_t projectOrdinal = 0;
-    std::size_t sourceOrdinal = 0;
-    FileId fileId;
-    SourceRange range;
-    const ast::AstNode* syntax = nullptr;
-    std::string sourcePath;
-    std::string moduleName;
-    std::string namespaceName;
-    std::string name;
-    bool isConst = false;
-    bool isPrecompiled = false;
-};
-enum class TypeNameBindingKind
-{
-    Builtin,
-    Resolved,
-    Unresolved,
-    Ambiguous
-};
 
-struct TypeNameBinding final
-{
-    const ast::TypeSyntax* syntax = nullptr;
-    TypeNameBindingKind kind = TypeNameBindingKind::Unresolved;
-    std::size_t projectOrdinal = 0;
-    FileId fileId;
-    std::string namespaceName;
-    std::string writtenName;
-    std::optional<std::size_t> targetTypeOrdinal;
-    std::vector<std::size_t> candidateTypeOrdinals;
-    // NSC-LIMIT-009. Los tipos dentro de los que se escribio ESTE nombre, del mas exterior al mas
-    // interior. La resolucion de nombres los usa para ver los anidados `private` del contenedor;
-    // se guardan aqui porque `protected` no se puede responder todavia --hace falta saber si el
-    // sitio deriva del contenedor, y la herencia se construye una fase mas tarde-- y quien la
-    // responda necesita saber desde donde se escribio.
-    std::vector<std::size_t> enclosingTypeOrdinals;
-};
 
-struct ExpressionTypeNameBinding final
-{
-    const ast::AstNode* expression = nullptr;
-    std::string writtenName;
-    std::vector<std::size_t> candidateTypeOrdinals;
-    // NSC-LIMIT-009, segunda vuelta. LA MISMA CADENA QUE GUARDA TypeNameBinding, y por la misma
-    // razon: `Base.Reservada.Codigo()` nombra un tipo SIN escribir un TypeSyntax --el receptor es
-    // una expresion-- de modo que un anidado `protected` se alcanzaba por este camino sin que
-    // nadie comprobara nada. Ahora los dos tipos de binding llevan el contexto lexico del sitio y
-    // la comprobacion diferida recorre los dos.
-    std::vector<std::size_t> enclosingTypeOrdinals;
-};
 
-class ModuleDeclarationSpace final
-{
-public:
-    ModuleDeclarationSpace(std::size_t projectOrdinal, std::string moduleName);
-
-    std::size_t projectOrdinal() const noexcept;
-    const std::string& moduleName() const noexcept;
-    GlobalNamespace& globalNamespace() noexcept;
-    const GlobalNamespace& globalNamespace() const noexcept;
-
-    void addTypeOrdinal(std::size_t ordinal);
-    std::span<const std::size_t> typeOrdinals() const noexcept;
-
-    void setVisibleProjectOrdinals(std::vector<std::size_t> ordinals);
-    std::span<const std::size_t> visibleProjectOrdinals() const noexcept;
-
-private:
-    std::size_t projectOrdinal_ = 0;
-    std::string moduleName_;
-    GlobalNamespace globalNamespace_;
-    std::vector<std::size_t> typeOrdinals_;
-    std::vector<std::size_t> visibleProjectOrdinals_;
-};
 
 class ProjectNameLookup final
 {
@@ -224,6 +96,8 @@ public:
 private:
     friend struct ProjectOopHirModelTestAccess;
 
+    enum class Stage : std::uint8_t;
+    struct Frame;
     struct LookupEnvironment;
 
     struct PendingTypeDeclaration final
@@ -248,6 +122,23 @@ private:
         std::unordered_map<const ast::AstNode*, std::size_t> expressionTypeBindingBySyntax;
     };
 
+    void initializeModules(const compilation::ProjectGraph& graph);
+    void collectDeclarationIndexes(
+        const compilation::ProjectGraph& graph,
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        driver::CompilationWorkerPool& workers);
+    static bool namespaceFunctionLess(
+        const NamespaceFunctionDeclaration& left,
+        const NamespaceFunctionDeclaration& right);
+    static bool namespaceStateLess(
+        const NamespaceStateDeclaration& left,
+        const NamespaceStateDeclaration& right);
+    void finalizeNamespaceDeclarations();
+    void mergeBindingIndexes(std::vector<UnitBindingIndex>& bindingIndexes);
+    void collectBindingIndexes(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics,
+        driver::CompilationWorkerPool& workers);
     void buildVisibility(const compilation::ProjectGraph& graph);
     void indexUnitDeclarations(
         const ProjectSyntaxUnit& unit,
@@ -260,10 +151,151 @@ private:
         const std::vector<compilation::TypeNameSegment>& containingTypes,
         const std::string& sourcePath,
         UnitDeclarationIndex& index) const;
+    void predeclareNamespace(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::vector<std::string>& namespaceSegments,
+        const std::vector<compilation::TypeNameSegment>& containingTypes,
+        const std::string& sourcePath,
+        UnitDeclarationIndex& index) const;
+    static void predeclareNamespaceFunction(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::vector<std::string>& namespaceSegments,
+        const std::string& sourcePath,
+        UnitDeclarationIndex& index);
+    static void predeclareNamespaceState(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::vector<std::string>& namespaceSegments,
+        const std::string& sourcePath,
+        UnitDeclarationIndex& index);
+    void predeclareExtension(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::vector<std::string>& namespaceSegments,
+        const std::vector<compilation::TypeNameSegment>& containingTypes,
+        const std::string& sourcePath,
+        UnitDeclarationIndex& index) const;
+    static NamedTypeAccessibility predeclaredTypeAccessibility(
+        const ast::AstNode* node,
+        bool isNested);
+    static NamedTypeDeclarationPart predeclaredTypePart(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::string& sourcePath,
+        bool isNested,
+        NamedTypeAccessibility accessibility);
+    void predeclareNestedTypes(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::vector<std::string>& namespaceSegments,
+        const std::vector<compilation::TypeNameSegment>& containingTypes,
+        const std::string& sourcePath,
+        UnitDeclarationIndex& index) const;
+    void predeclareNamedType(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::vector<std::string>& namespaceSegments,
+        const std::vector<compilation::TypeNameSegment>& containingTypes,
+        const std::string& sourcePath,
+        UnitDeclarationIndex& index) const;
+    void predeclareCompilationUnit(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::vector<std::string>& namespaceSegments,
+        const std::vector<compilation::TypeNameSegment>& containingTypes,
+        const std::string& sourcePath,
+        UnitDeclarationIndex& index) const;
+    static bool pendingTypeLess(
+        const PendingTypeDeclaration& left,
+        const PendingTypeDeclaration& right);
+    std::size_t pendingTypeGroupEnd(std::size_t groupBegin) const;
+    bool collectPendingTypeGroup(
+        std::size_t groupBegin,
+        std::size_t groupEnd,
+        compilation::PartialTypeAggregator& aggregator,
+        std::string& aggregationError,
+        std::optional<std::size_t>& primaryIndex) const;
+    bool moduleOwnsTraitImplementation(
+        std::size_t groupBegin,
+        std::size_t groupEnd) const;
+    void finalizeOrphanTraitImplementationGroup(
+        std::size_t groupBegin,
+        std::size_t groupEnd,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void validateTraitImplementationTarget(
+        std::size_t groupBegin,
+        std::size_t groupEnd,
+        const PendingTypeDeclaration& primary,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void reportTypeAggregationFailure(
+        std::size_t groupBegin,
+        std::size_t groupEnd,
+        std::size_t primaryIndex,
+        const std::string& aggregationError,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    NamedTypeAccessibility aggregatedTypeAccessibility(
+        std::size_t groupBegin,
+        std::size_t groupEnd,
+        const PendingTypeDeclaration& primary,
+        const compilation::PartialTypeAggregator& aggregator,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void applyAggregatedTypeProperties(
+        std::size_t groupBegin,
+        std::size_t groupEnd,
+        const PendingTypeDeclaration& primary,
+        const compilation::PartialTypeAggregator& aggregator,
+        diagnostics::DiagnosticEngine& diagnostics,
+        NamedTypeAccessibility& accessibility,
+        bool& isPartial,
+        bool& isAbstract,
+        bool& isSealed,
+        bool& isStatic) const;
+    std::vector<NamedTypeDeclarationPart> pendingDeclarationParts(
+        std::size_t groupBegin,
+        std::size_t groupEnd,
+        const PendingTypeDeclaration& primary,
+        bool aggregated) const;
+    std::size_t appendNamedType(
+        const PendingTypeDeclaration& primary,
+        NamedTypeAccessibility accessibility,
+        bool isPartial,
+        bool isAbstract,
+        bool isSealed,
+        bool isStatic,
+        std::vector<NamedTypeDeclarationPart> declarationParts);
+    void registerNestedSourceName(
+        const PendingTypeDeclaration& primary,
+        std::size_t typeOrdinal);
+    void registerTypeDeclarationIndexes(
+        const PendingTypeDeclaration& primary,
+        std::size_t typeOrdinal);
+    void finalizePredeclarationGroup(
+        std::size_t groupBegin,
+        std::size_t groupEnd,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void finalizeContainingTypeOrdinals();
     void finalizePredeclarations(diagnostics::DiagnosticEngine& diagnostics);
     void finalizeReexports(
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics);
+    void collectReexports(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::string& namespaceName,
+        std::vector<PendingReexport>& pending) const;
+    void appendReexportCandidate(
+        std::vector<std::size_t>& candidates,
+        std::size_t moduleOrdinal,
+        const std::string& targetName) const;
+    bool isReexportPubliclyExportable(std::size_t target) const;
+    void finalizeReexport(
+        const PendingReexport& item,
+        diagnostics::DiagnosticEngine& diagnostics);
+    static bool pendingReexportLess(
+        const PendingReexport& left,
+        const PendingReexport& right);
     void bindUnit(
         const ProjectSyntaxUnit& unit,
         diagnostics::DiagnosticEngine& diagnostics,
@@ -275,6 +307,25 @@ private:
         const LookupEnvironment& inheritedEnvironment,
         diagnostics::DiagnosticEngine& diagnostics,
         UnitBindingIndex& index);
+    void bindUsingDirectives(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* scopeNode,
+        const std::vector<std::string>& namespaceSegments,
+        LookupEnvironment& environment,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void bindUsingNamespaceDirective(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* directive,
+        const std::vector<std::string>& namespaceSegments,
+        LookupEnvironment& environment,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void bindUsingAliasDirective(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* directive,
+        const std::vector<std::string>& namespaceSegments,
+        LookupEnvironment& environment,
+        std::unordered_set<std::string>& localAliases,
+        diagnostics::DiagnosticEngine& diagnostics);
     void bindNode(
         const ProjectSyntaxUnit& unit,
         const ast::AstNode* node,
@@ -282,6 +333,35 @@ private:
         const LookupEnvironment& environment,
         diagnostics::DiagnosticEngine& diagnostics,
         UnitBindingIndex& index);
+    bool bindGenericTemplateConstraints(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::vector<std::string>& namespaceSegments,
+        const LookupEnvironment& environment,
+        diagnostics::DiagnosticEngine& diagnostics,
+        UnitBindingIndex& index);
+    void bindSpecialNodeTypeReferences(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::vector<std::string>& namespaceSegments,
+        const LookupEnvironment& environment,
+        diagnostics::DiagnosticEngine& diagnostics,
+        UnitBindingIndex& index);
+    void bindConstraintTypeReferences(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::vector<std::string>& namespaceSegments,
+        const LookupEnvironment& environment,
+        diagnostics::DiagnosticEngine& diagnostics,
+        UnitBindingIndex& index);
+    bool bindNamespaceDeclaration(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        const std::vector<std::string>& namespaceSegments,
+        const LookupEnvironment& environment,
+        diagnostics::DiagnosticEngine& diagnostics,
+        UnitBindingIndex& index);
+    std::optional<std::size_t> enclosingTypeOrdinal(const ast::AstNode* node) const;
     void bindTypeSyntax(
         const ProjectSyntaxUnit& unit,
         const ast::TypeSyntax* syntax,
@@ -289,6 +369,63 @@ private:
         const LookupEnvironment& environment,
         diagnostics::DiagnosticEngine& diagnostics,
         UnitBindingIndex& index);
+    static void copyFunctionTypeAlias(
+        ast::TypeSyntax& destination,
+        const ast::TypeSyntax& source);
+    static void expandTypeAlias(
+        const ast::TypeSyntax* syntax,
+        const LookupEnvironment& environment,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void bindChildTypeSyntaxes(
+        const ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* syntax,
+        const std::vector<std::string>& namespaceSegments,
+        const LookupEnvironment& environment,
+        diagnostics::DiagnosticEngine& diagnostics,
+        UnitBindingIndex& index);
+    static std::vector<std::string> effectiveTypeNamespace(
+        const ast::TypeSyntax* syntax,
+        const std::vector<std::string>& namespaceSegments);
+    static bool isBuiltinTypeSurface(
+        const ast::TypeSyntax* syntax,
+        bool portableSimd);
+    static void validatePortableSimdType(
+        const ast::TypeSyntax* syntax,
+        diagnostics::DiagnosticEngine& diagnostics);
+    static void validateBuiltinTypeBinding(
+        const ast::TypeSyntax* syntax,
+        bool portableSimd,
+        TypeNameBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void appendObjectTypeRoot(TypeNameBinding& binding, const ast::TypeSyntax* syntax) const;
+    void findReferencedInaccessibleType(
+        std::size_t projectOrdinal,
+        const std::string& wanted,
+        std::string& internalMatch,
+        std::optional<std::size_t>& inaccessibleOrdinal) const;
+    void reportInaccessibleNestedType(
+        const ast::TypeSyntax* syntax,
+        std::size_t inaccessibleOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void reportInaccessibleReferencedType(
+        const ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* syntax,
+        const std::string& internalMatch,
+        std::optional<std::size_t> inaccessibleOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void reportUnresolvedType(
+        const ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* syntax,
+        const std::vector<std::string>& namespaceSegments,
+        std::size_t projectOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void resolveTypeNameBinding(
+        const ProjectSyntaxUnit& unit,
+        const ast::TypeSyntax* syntax,
+        const std::vector<std::string>& namespaceSegments,
+        const LookupEnvironment& environment,
+        TypeNameBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void bindExpressionTypeReceiver(
         const ProjectSyntaxUnit& unit,
         const ast::AstNode* expression,
@@ -302,6 +439,28 @@ private:
         const std::vector<std::string>& namespaceSegments,
         const LookupEnvironment& environment,
         const std::string& writtenName) const;
+    std::vector<std::size_t> resolveModuleQualifiedTypeCandidates(
+        std::size_t projectOrdinal,
+        const std::string& writtenName,
+        std::size_t moduleSeparator) const;
+    void appendImportedNamespaceTypeCandidates(
+        std::vector<std::size_t>& found,
+        std::size_t projectOrdinal,
+        const LookupEnvironment& environment,
+        const std::string& candidate,
+        bool simpleName) const;
+    void appendReferencedModuleTypeCandidates(
+        std::vector<std::size_t>& found,
+        std::size_t projectOrdinal,
+        const std::string& candidate,
+        bool simpleName) const;
+    void appendQualifiedTypeCandidate(
+        std::vector<std::size_t>& found,
+        std::size_t projectOrdinal,
+        const LookupEnvironment& environment,
+        const std::string& candidate,
+        QualifiedNameTier tier,
+        bool simpleName) const;
     std::vector<std::size_t> resolveExpressionTypeCandidates(
         std::size_t projectOrdinal,
         const std::vector<std::string>& namespaceSegments,

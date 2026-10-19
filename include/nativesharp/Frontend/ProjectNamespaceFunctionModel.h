@@ -1,14 +1,23 @@
 #pragma once
 
+#include "nativesharp/Frontend/NamespaceFunctionPart.h"
+#include "nativesharp/Frontend/NamespaceFunctionSymbol.h"
+#include "nativesharp/Frontend/PrecompiledNamespaceFunctionIdentity.h"
+#include "nativesharp/Frontend/NamespaceStateInitializerKind.h"
+#include "nativesharp/Frontend/NamespaceStateSymbol.h"
+#include "nativesharp/Frontend/NamespaceFunctionReferenceBinding.h"
+#include "nativesharp/Frontend/NamespaceStateReferenceBinding.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -20,130 +29,17 @@ class DiagnosticEngine;
 namespace nativesharp::frontend
 {
 class ProjectGenericModel;
-struct NamespaceFunctionPart final
+namespace internal
 {
-    NamespaceFunctionAccessibility accessibility = NamespaceFunctionAccessibility::Internal;
-    std::size_t sourceOrdinal = 0;
-    FileId fileId;
-    SourceRange range;
-    std::string sourcePath;
-    const ast::AstNode* syntax = nullptr;
-    bool hasBody = false;
-};
+struct FunctionLookupEnvironment;
+struct WalkWork;
+}
 
-struct NamespaceFunctionSymbol final
-{
-    NamespaceFunctionAccessibility accessibility = NamespaceFunctionAccessibility::Internal;
-    std::size_t projectOrdinal = 0;
-    std::size_t sourceOrdinal = 0;
-    FileId fileId;
-    SourceRange range;
-    std::string sourcePath;
-    std::string moduleName;
-    std::string namespaceName;
-    std::string name;
-    const ast::TypeSyntax* declaredTypeSyntax = nullptr;
-    std::string declaredTypeKey;
-    const ast::TypeSyntax* declaredErrorTypeSyntax = nullptr;
-    std::string declaredErrorTypeKey;
-    sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
-    std::vector<MethodParameterSymbol> parameters;
-    std::string signatureKey;
-    std::string callableIdentityKey;
-    std::string mangledName;
-    const ast::AstNode* declarationSyntax = nullptr;
-    const ast::AstNode* definitionSyntax = nullptr;
-    std::vector<NamespaceFunctionPart> parts;
-    bool isReferenceReturn = false;
-    std::string returnLifetimeName;
-    std::vector<std::string> lifetimeParameters;
-    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
-    std::vector<language::EscapeClass> parameterEscapeSummary;
-    sema::EffectSet effects;
-    bool isVariadic = false;
-    InliningPolicy inliningPolicy = InliningPolicy::Automatic;
-    bool isExternC = false;
-    bool isExportedC = false;
-    bool isPrecompiled = false;
-    bool isExtension = false;
-    // NS304-T08-F07: static extension (`ns3-extension-static`) has no implicit receiver; distinct
-    // from `isExtension` so NSMETA can publish the "static" marker and the consumer rebuilds it
-    // without discarding the first parameter as a receiver.
-    bool isStaticExtension = false;
-    // NS304-T08-F04: for an extension operator, the operation token (Plus/Minus/...). Invalid for
-    // non-operator extension functions.
-    lexer::TokenKind operatorToken = lexer::TokenKind::Invalid;
-};
 
-struct PrecompiledNamespaceFunctionIdentity final
-{
-    std::string moduleName;
-    std::string namespaceName;
-    std::string name;
-    std::string signatureKey;
-    std::vector<language::EscapeClass> parameterEscapeSummary;
-};
 
-enum class NamespaceStateInitializerKind
-{
-    Zero,
-    Integer,
-    Floating,
-    Boolean,
-    String,
-    Null
-};
 
-struct NamespaceStateSymbol final
-{
-    NamespaceFunctionAccessibility accessibility = NamespaceFunctionAccessibility::Internal;
-    std::size_t projectOrdinal = 0;
-    std::size_t sourceOrdinal = 0;
-    FileId fileId;
-    SourceRange range;
-    std::string sourcePath;
-    std::string moduleName;
-    std::string namespaceName;
-    std::string name;
-    const ast::TypeSyntax* declaredTypeSyntax = nullptr;
-    std::string declaredTypeKey;
-    std::string identityKey;
-    std::string storageName;
-    const ast::AstNode* declarationSyntax = nullptr;
-    const ast::AstNode* initializerSyntax = nullptr;
-    NamespaceStateInitializerKind initializerKind = NamespaceStateInitializerKind::Zero;
-    std::uint64_t integerValue = 0;
-    double floatingValue = 0.0;
-    bool booleanValue = false;
-    std::string stringValue;
-    bool isConst = false;
-    bool isPrecompiled = false;
-};
 
-struct NamespaceFunctionReferenceBinding final
-{
-    const ast::AstNode* callSyntax = nullptr;
-    const ast::AstNode* calleeSyntax = nullptr;
-    std::size_t projectOrdinal = 0;
-    FileId fileId;
-    std::string lexicalNamespace;
-    std::string writtenName;
-    bool qualified = false;
-    std::vector<std::size_t> candidateFunctionOrdinals;
-    bool extension = false;
-    const ast::AstNode* receiverSyntax = nullptr;
-};
 
-struct NamespaceStateReferenceBinding final
-{
-    const ast::AstNode* expressionSyntax = nullptr;
-    std::size_t projectOrdinal = 0;
-    FileId fileId;
-    std::string lexicalNamespace;
-    std::string writtenName;
-    bool qualified = false;
-    std::vector<std::size_t> candidateStateOrdinals;
-};
 
 class ProjectNamespaceFunctionModel final
 {
@@ -179,6 +75,210 @@ public:
     bool isBuilt() const noexcept;
 
 private:
+    void resetBuildState();
+    void collectNamespaceFunctions(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ProjectGenericModel* genericModel,
+        std::unordered_map<std::string, std::size_t>& symbolByIdentity,
+        std::unordered_map<std::string, std::size_t>& exportedCByName);
+    void collectNamespaceFunction(
+        const NamespaceFunctionDeclaration& declaration,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ProjectGenericModel* genericModel,
+        std::unordered_map<std::string, std::size_t>& symbolByIdentity,
+        std::unordered_map<std::string, std::size_t>& exportedCByName);
+    void initializeNamespaceFunction(
+        NamespaceFunctionSymbol& candidate,
+        const NamespaceFunctionDeclaration& declaration,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void configureNamespaceFunctionOperator(NamespaceFunctionSymbol& candidate) const;
+    void collectNamespaceFunctionParameters(
+        NamespaceFunctionSymbol& candidate,
+        const NamespaceFunctionDeclaration& declaration,
+        const ast::AstNode& syntax,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ProjectGenericModel* genericModel) const;
+    MethodParameterSymbol initializeNamespaceFunctionParameter(
+        const ast::AstNode& parameterNode,
+        const NamespaceFunctionDeclaration& declaration,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel) const;
+    void validateNamespaceFunctionParameterPack(
+        MethodParameterSymbol& parameter,
+        bool& sawParameterPack,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ProjectGenericModel* genericModel) const;
+    void bindNamespaceFunctionParameterLifetime(
+        MethodParameterSymbol& parameter,
+        const ast::AstNode& syntax,
+        std::size_t parameterIndex,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void recordNamespaceFunctionParameter(
+        NamespaceFunctionSymbol& candidate,
+        MethodParameterSymbol parameter,
+        const NamespaceFunctionDeclaration& declaration,
+        std::unordered_map<std::string, const ast::AstNode*>& parameterNames,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateNamespaceFunctionLifetimes(
+        NamespaceFunctionSymbol& candidate,
+        const ast::AstNode& syntax,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateNamespaceFunctionReturnLifetimeSource(
+        const NamespaceFunctionSymbol& candidate,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void finalizeNamespaceFunctionIdentity(
+        NamespaceFunctionSymbol& candidate,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void mergeNamespaceFunction(
+        NamespaceFunctionSymbol candidate,
+        const NamespaceFunctionDeclaration& declaration,
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::unordered_map<std::string, std::size_t>& symbolByIdentity,
+        std::unordered_map<std::string, std::size_t>& exportedCByName);
+    void collectNamespaceStates(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void collectNamespaceState(
+        const NamespaceStateDeclaration& declaration,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::span<const std::size_t> visibleProjects(
+        const ProjectNameLookup& nameLookup,
+        std::size_t projectOrdinal) const;
+    bool namespaceExists(
+        const ProjectNameLookup& nameLookup,
+        std::size_t projectOrdinal,
+        std::string_view namespaceName) const;
+    std::optional<std::string> resolveNamespace(
+        const ProjectNameLookup& nameLookup,
+        std::size_t projectOrdinal,
+        std::string_view lexicalNamespace,
+        const internal::FunctionLookupEnvironment& environment,
+        std::string written) const;
+    void appendFunctionCandidates(
+        std::vector<std::size_t>& candidates,
+        std::size_t projectOrdinal,
+        std::size_t visibleProject,
+        std::string_view namespaceName,
+        std::string_view functionName) const;
+    std::vector<std::size_t> candidatesInNamespace(
+        const ProjectNameLookup& nameLookup,
+        std::size_t projectOrdinal,
+        std::string_view namespaceName,
+        std::string_view functionName) const;
+    std::vector<std::size_t> extensionCandidatesInNamespace(
+        const ProjectNameLookup& nameLookup,
+        std::size_t projectOrdinal,
+        std::string_view namespaceName,
+        std::string_view functionName) const;
+    void appendStateCandidate(
+        std::vector<std::size_t>& candidates,
+        std::size_t projectOrdinal,
+        std::size_t visibleProject,
+        std::string_view namespaceName,
+        std::string_view stateName) const;
+    std::vector<std::size_t> stateCandidatesInNamespace(
+        const ProjectNameLookup& nameLookup,
+        std::size_t projectOrdinal,
+        std::string_view namespaceName,
+        std::string_view stateName) const;
+    void bindNamespaceReferences(
+        const ProjectNameLookup& nameLookup,
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units);
+    void bindNamespaceReferencesInUnit(
+        const ProjectNameLookup& nameLookup,
+        const ProjectSyntaxUnit& unit);
+    void walkNamespaceScope(
+        const ProjectNameLookup& nameLookup,
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* scopeNode,
+        std::size_t namespaceIndex,
+        std::size_t inheritedEnvironmentIndex,
+        std::vector<std::string>& lexicalNamespaces,
+        std::vector<internal::FunctionLookupEnvironment>& environments,
+        std::vector<internal::WalkWork>& work);
+    void walkNamespaceNode(
+        const ProjectNameLookup& nameLookup,
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        std::size_t namespaceIndex,
+        std::size_t environmentIndex,
+        std::vector<std::string>& lexicalNamespaces,
+        std::vector<internal::FunctionLookupEnvironment>& environments,
+        std::vector<internal::WalkWork>& work,
+        std::unordered_set<const ast::AstNode*>& visited,
+        std::unordered_set<const ast::AstNode*>& directCallCallees);
+    bool scheduleNamespaceNodeScope(
+        const ast::AstNode* node,
+        std::size_t namespaceIndex,
+        std::size_t environmentIndex,
+        std::vector<std::string>& lexicalNamespaces,
+        std::vector<internal::WalkWork>& work) const;
+    void bindExtensionReference(
+        const ProjectNameLookup& nameLookup,
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        std::string_view lexicalNamespace,
+        const internal::FunctionLookupEnvironment& environment);
+    void bindCallReference(
+        const ProjectNameLookup& nameLookup,
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        std::string_view lexicalNamespace,
+        const internal::FunctionLookupEnvironment& environment,
+        std::unordered_set<const ast::AstNode*>& directCallCallees);
+    void bindValueReferences(
+        const ProjectNameLookup& nameLookup,
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        std::string_view lexicalNamespace,
+        const internal::FunctionLookupEnvironment& environment,
+        const std::unordered_set<const ast::AstNode*>& directCallCallees);
+    void bindFunctionValueReference(
+        const ProjectNameLookup& nameLookup,
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        std::string_view lexicalNamespace,
+        const internal::FunctionLookupEnvironment& environment,
+        std::string_view written,
+        const std::unordered_set<const ast::AstNode*>& directCallCallees);
+    void bindStateReference(
+        const ProjectNameLookup& nameLookup,
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        std::string_view lexicalNamespace,
+        const internal::FunctionLookupEnvironment& environment,
+        std::string_view written);
+    std::vector<std::size_t> resolveFunctionCandidates(
+        const ProjectNameLookup& nameLookup,
+        std::size_t projectOrdinal,
+        std::string_view lexicalNamespace,
+        const internal::FunctionLookupEnvironment& environment,
+        std::string_view written) const;
+    std::vector<std::size_t> resolveStateCandidates(
+        const ProjectNameLookup& nameLookup,
+        std::size_t projectOrdinal,
+        std::string_view lexicalNamespace,
+        const internal::FunctionLookupEnvironment& environment,
+        std::string_view written) const;
+    void scheduleNamespaceNodeChildren(
+        const ast::AstNode* node,
+        std::size_t namespaceIndex,
+        std::size_t environmentIndex,
+        std::vector<internal::WalkWork>& work) const;
+
     std::vector<NamespaceFunctionSymbol> functions_;
     std::vector<NamespaceStateSymbol> states_;
     std::unordered_map<std::string, std::size_t> stateByName_;

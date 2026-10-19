@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/VirtualMethodInfo.h"
+#include "nativesharp/Frontend/ClassVirtualTable.h"
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
@@ -16,23 +18,7 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
-struct VirtualMethodInfo final
-{
-    std::size_t memberOrdinal = 0;
-    std::size_t slotOrdinal = 0;
-    std::size_t rootVirtualMemberOrdinal = 0;
-    std::optional<std::size_t> overriddenMemberOrdinal;
-};
 
-struct ClassVirtualTable final
-{
-    std::size_t typeOrdinal = 0;
-    std::optional<std::size_t> baseTypeOrdinal;
-    std::vector<std::size_t> slotMemberOrdinals;
-    std::vector<bool> slotAbstract;
-    bool isAbstract = false;
-    bool isSealed = false;
-};
 
 class ProjectVirtualDispatchModel final
 {
@@ -52,6 +38,53 @@ public:
     bool isBuilt() const noexcept;
 
 private:
+    bool inheritBaseVirtualTable(
+        ClassVirtualTable& table,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateAbstractMethod(
+        const ClassVirtualTable& table,
+        const ClassMemberSymbol& method,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool overrideThrowsCompatible(
+        const ClassMemberSymbol& method,
+        const ClassMemberSymbol& baseMethod) const;
+    bool validateOverrideEffects(
+        const ClassMemberSymbol& method,
+        const ClassMemberSymbol& baseMethod,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateOverrideSignature(
+        std::size_t typeOrdinal,
+        const ClassMemberSymbol& method,
+        const ClassMemberSymbol& baseMethod,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool registerOverride(
+        std::size_t memberOrdinal,
+        std::size_t inheritedMemberOrdinal,
+        const ClassMemberSymbol& method,
+        const VirtualMethodInfo& inheritedVirtual,
+        ClassVirtualTable& table);
+    bool processOverrideMethod(
+        std::size_t typeOrdinal,
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& method,
+        std::optional<std::size_t> inheritedMemberOrdinal,
+        ClassVirtualTable& table,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool processNewVirtualMethod(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& method,
+        std::optional<std::size_t> inheritedMemberOrdinal,
+        ClassVirtualTable& table,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool processClassMethod(
+        std::size_t typeOrdinal,
+        std::size_t memberOrdinal,
+        ClassVirtualTable& table,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateConcreteVirtualSlots(
+        std::size_t typeOrdinal,
+        const ClassVirtualTable& table,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     bool buildClass(std::size_t typeOrdinal, diagnostics::DiagnosticEngine& diagnostics);
     std::optional<std::size_t> inheritedMethodWithSignature(
         std::size_t typeOrdinal,
