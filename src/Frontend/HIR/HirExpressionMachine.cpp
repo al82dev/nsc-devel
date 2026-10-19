@@ -240,6 +240,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExitValueStatement(
         error);
 }
 
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCoroutineValueStatement(
+    const ast::AstNode* statement,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    return lowerExpressionWithStatementFrame(
+        statement != nullptr ? statement->first() : nullptr,
+        memberOrdinal,
+        false,
+        statement,
+        error);
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerUsingStatement(
     const ast::AstNode* statement,
     std::size_t memberOrdinal,
@@ -289,6 +302,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         ForStatement,
         ForeachStatement,
         ExitValueStatement,
+        CoroutineValueStatement,
         UsingStatement,
         TryStatement,
         LoopExpression,
@@ -660,6 +674,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::string declaredTypeKey;
         sema::OwnershipKind declaredOwnership = sema::OwnershipKind::None;
     };
+    struct CoroutineValueStatementFrameState final
+    {
+        std::unique_ptr<ProjectOopHirNode> node;
+    };
     struct UsingStatementFrameState final
     {
         const MethodUsingBinding* binding = nullptr;
@@ -709,6 +727,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<ForStatementFrameState> forStatement;
         std::optional<ForeachStatementFrameState> foreachStatement;
         std::optional<ExitValueStatementFrameState> exitValueStatement;
+        std::optional<CoroutineValueStatementFrameState>
+            coroutineValueStatement;
         std::optional<UsingStatementFrameState> usingStatement;
         std::optional<TryStatementFrameState> tryStatement;
         std::optional<OrdinaryConstructionFrameState> ordinaryConstruction;
@@ -1709,6 +1729,42 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 return false;
         }
     };
+    const auto initializeCoroutineValueStatementFrame =
+        [&](IterativeExpressionFrame& frame,
+            const ast::AstNode* statement,
+            std::size_t statementMemberOrdinal)
+    {
+        frame.kind = IterativeExpressionKind::CoroutineValueStatement;
+        frame.syntax = statement;
+        frame.coroutineValueStatement.emplace();
+        CoroutineValueStatementFrameState& state =
+            *frame.coroutineValueStatement;
+        state.node = makeNode(
+            ProjectOopHirNodeKind::YieldValue, statement, "builtin:void");
+        state.node->integerValue = 0U;
+        state.node->cleanupRegionOrdinals.assign(
+            activeHirCleanupRegions_.begin(), activeHirCleanupRegions_.end());
+        state.node->cleanupContinuationKind =
+            MethodCleanupContinuationKind::Return;
+
+        frame.addressContext = false;
+        if (memberModel_ != nullptr &&
+            statementMemberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& member =
+                memberModel_->members()[statementMemberOrdinal];
+            std::optional<std::string_view> itemInner =
+                language::iteratorInnerTypeKey(member.declaredTypeKey);
+            if (!itemInner.has_value())
+            {
+                itemInner = language::asyncIteratorInnerTypeKey(
+                    member.declaredTypeKey);
+            }
+            frame.addressContext = itemInner.has_value() &&
+                (itemInner->starts_with("ref:") ||
+                 itemInner->starts_with("refmut:"));
+        }
+    };
     const auto initializeUsingStatementFrame =
         [&](IterativeExpressionFrame& frame, const ast::AstNode* statement) -> bool
     {
@@ -1847,6 +1903,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 frame.memberOrdinal = memberOrdinal;
                 if (!initializeExitValueStatementFrame(frame, statementContinuation))
                     return nullptr;
+                addressContext = frame.addressContext;
+            }
+            else if (statementContinuation->kind() ==
+                    ast::AstNodeKind::YieldReturnStatement &&
+                statementContinuation->first() != nullptr)
+            {
+                initializeCoroutineValueStatementFrame(
+                    frame, statementContinuation, memberOrdinal);
                 addressContext = frame.addressContext;
             }
             else if (statementContinuation->kind() == ast::AstNodeKind::UsingStatement)
@@ -5022,6 +5086,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                  statement->kind() == ast::AstNodeKind::ReturnStatement ||
                  statement->kind() == ast::AstNodeKind::ThrowStatement);
         };
+        const auto isCoroutineValueStatement =
+            [](const ast::AstNode* statement) noexcept
+        {
+            return statement != nullptr && statement->first() != nullptr &&
+                statement->kind() == ast::AstNodeKind::YieldReturnStatement;
+        };
         const auto beginExitValueStatement =
             [&](const ast::AstNode* statement, std::size_t statementMemberOrdinal) -> bool
         {
@@ -5035,6 +5105,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             currentAddressContext = valueAddressContext;
             currentInputKind = IterativeInputKind::Expression;
             return true;
+        };
+        const auto beginCoroutineValueStatement =
+            [&](const ast::AstNode* statement,
+                std::size_t statementMemberOrdinal)
+        {
+            IterativeExpressionFrame coroutineFrame;
+            coroutineFrame.memberOrdinal = statementMemberOrdinal;
+            initializeCoroutineValueStatementFrame(
+                coroutineFrame, statement, statementMemberOrdinal);
+            const bool valueAddressContext = coroutineFrame.addressContext;
+            frames.push_back(std::move(coroutineFrame));
+            current = statement->first();
+            currentMemberOrdinal = statementMemberOrdinal;
+            currentAddressContext = valueAddressContext;
+            currentInputKind = IterativeInputKind::Expression;
         };
         const auto beginUsingStatement =
             [&](const ast::AstNode* statement, std::size_t statementMemberOrdinal) -> bool
@@ -5319,6 +5404,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     if (!beginExitValueStatement(statement, frame.memberOrdinal))
                         return LoopBlockAdvance::Error;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (isCoroutineValueStatement(statement))
+                {
+                    beginCoroutineValueStatement(statement, frame.memberOrdinal);
                     return LoopBlockAdvance::Descend;
                 }
                 if (statement->kind() == ast::AstNodeKind::UsingStatement)
@@ -5632,6 +5722,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         return LoopBlockAdvance::Error;
                     return LoopBlockAdvance::Descend;
                 }
+                else if (isCoroutineValueStatement(source))
+                {
+                    beginCoroutineValueStatement(source, frame.memberOrdinal);
+                    return LoopBlockAdvance::Descend;
+                }
                 else if (source->kind() == ast::AstNodeKind::UsingStatement)
                 {
                     if (!beginUsingStatement(source, frame.memberOrdinal))
@@ -5886,6 +5981,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     if (!beginExitValueStatement(statement, frame.memberOrdinal))
                         return LoopBlockAdvance::Error;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (isCoroutineValueStatement(statement))
+                {
+                    beginCoroutineValueStatement(statement, frame.memberOrdinal);
                     return LoopBlockAdvance::Descend;
                 }
                 if (statement->kind() == ast::AstNodeKind::UsingStatement)
@@ -7589,6 +7689,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                             descend = true;
                             break;
                         }
+                        if (isCoroutineValueStatement(alternative))
+                        {
+                            beginCoroutineValueStatement(
+                                alternative, frame.memberOrdinal);
+                            descend = true;
+                            break;
+                        }
                         if (alternative->kind() == ast::AstNodeKind::UsingStatement)
                         {
                             if (!beginUsingStatement(
@@ -7839,6 +7946,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                             rollbackMatchCleanups();
                             return nullptr;
                     }
+                    state.node->children.push_back(std::move(lowered));
+                    lowered = std::move(state.node);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::CoroutineValueStatement)
+                {
+                    if (!applyExpressionBoundaryPostconditions(
+                            lowered, frame.syntax->first(), frame.memberOrdinal))
+                    {
+                        rollbackMatchCleanups();
+                        return nullptr;
+                    }
+                    CoroutineValueStatementFrameState& state =
+                        *frame.coroutineValueStatement;
                     state.node->children.push_back(std::move(lowered));
                     lowered = std::move(state.node);
                     frames.pop_back();
@@ -8472,6 +8594,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                                 frame.stage = 3U;
                                 return beginExitValueStatement(
                                     declaration, frame.memberOrdinal);
+                            }
+                            if (isCoroutineValueStatement(declaration))
+                            {
+                                frame.stage = 3U;
+                                beginCoroutineValueStatement(
+                                    declaration, frame.memberOrdinal);
+                                return true;
                             }
                             if (declaration != nullptr &&
                                 declaration->kind() == ast::AstNodeKind::UsingStatement)
@@ -10799,6 +10928,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
          statementContinuation->kind() == ast::AstNodeKind::ForeachStatement ||
          statementContinuation->kind() == ast::AstNodeKind::UsingStatement ||
          statementContinuation->kind() == ast::AstNodeKind::TryStatement ||
+         statementContinuation->kind() == ast::AstNodeKind::YieldReturnStatement ||
          statementContinuation->kind() == ast::AstNodeKind::BreakStatement ||
          statementContinuation->kind() == ast::AstNodeKind::ReturnStatement ||
          statementContinuation->kind() == ast::AstNodeKind::ThrowStatement);

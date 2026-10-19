@@ -1644,6 +1644,44 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerStatement(statement, 0U, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerCoroutineStatementForTest(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        ProjectMemberModel& memberModel,
+        const ast::AstNode* statement,
+        std::vector<ClassMemberSymbol> members,
+        std::vector<MethodLoopExpressionBinding> loops,
+        const std::vector<MethodStructuredExitBinding>& structuredExits,
+        const std::vector<MethodNameBinding>& names,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        std::vector<std::size_t> activeCleanupRegions,
+        std::string& error)
+    {
+        methodBodyModel.loopExpressionBindings_ = std::move(loops);
+        methodBodyModel.loopExpressionBindingBySyntax_.clear();
+        for (std::size_t index = 0U;
+             index < methodBodyModel.loopExpressionBindings_.size(); ++index)
+        {
+            methodBodyModel.loopExpressionBindingBySyntax_[
+                methodBodyModel.loopExpressionBindings_[index].syntax] = index;
+        }
+        memberModel.members_ = std::move(members);
+        model.methodBodyModel_ = &methodBodyModel;
+        model.memberModel_ = &memberModel;
+        model.structuredExitBySyntax_.clear();
+        for (const MethodStructuredExitBinding& binding : structuredExits)
+            model.structuredExitBySyntax_[binding.syntax] = &binding;
+        model.nameBindingBySyntax_.clear();
+        for (const MethodNameBinding& binding : names)
+            model.nameBindingBySyntax_[binding.syntax] = &binding;
+        model.expressionTypeBySyntax_.clear();
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        return model.lowerStatement(statement, 0U, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerUsingStatementForTest(
         ProjectOopHirModel& model,
         ProjectMethodBodyModel& methodBodyModel,
@@ -17296,6 +17334,241 @@ void testDeepTryStatementLowering(TestContext& tests)
         "protected-block failure restores both outer stacks before catch validation");
 }
 
+struct DeepCoroutineStatementFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<const nativesharp::ast::AstNode*> yields;
+    std::vector<nativesharp::frontend::MethodLoopExpressionBinding> loops;
+    const nativesharp::ast::AstNode* root = nullptr;
+    const nativesharp::ast::AstNode* terminal = nullptr;
+};
+
+DeepCoroutineStatementFixture makeDeepCoroutineStatementFixture(
+    std::size_t depth)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepCoroutineStatementFixture fixture;
+    fixture.nodes.reserve(depth * 3U);
+    fixture.yields.reserve(depth);
+    fixture.loops.reserve(depth > 0U ? depth - 1U : 0U);
+    const auto append = [&](AstKind kind)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return fixture.nodes.back().get();
+    };
+    fixture.terminal = append(AstKind::IntegerLiteralExpression);
+    const_cast<nativesharp::ast::AstNode*>(fixture.terminal)->setIntegerValue(29U);
+    nativesharp::ast::AstNode* currentValue =
+        const_cast<nativesharp::ast::AstNode*>(fixture.terminal);
+    nativesharp::ast::AstNode* currentYield = nullptr;
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        if (index != 0U)
+        {
+            auto* body = append(AstKind::BlockStatement);
+            body->addChild(currentYield);
+            auto* loop = append(AstKind::LoopExpression);
+            loop->setFirst(body);
+            nativesharp::frontend::MethodLoopExpressionBinding binding;
+            binding.syntax = loop;
+            binding.methodMemberOrdinal = 0U;
+            binding.scopeOrdinal = index;
+            binding.label = "yield-loop-" + std::to_string(index);
+            binding.resultTypeKey = "builtin:int";
+            fixture.loops.push_back(std::move(binding));
+            currentValue = loop;
+        }
+        currentYield = append(AstKind::YieldReturnStatement);
+        currentYield->setFirst(currentValue);
+        fixture.yields.push_back(currentYield);
+    }
+    fixture.root = currentYield;
+    return fixture;
+}
+
+bool deepCoroutineStatementChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepCoroutineStatementFixture& fixture)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using ContinuationKind = nativesharp::frontend::MethodCleanupContinuationKind;
+    for (std::size_t remaining = fixture.yields.size(); remaining > 0U; --remaining)
+    {
+        const std::size_t index = remaining - 1U;
+        if (node == nullptr || node->kind != HirKind::YieldValue ||
+            node->syntax != fixture.yields[index] ||
+            node->typeKey != "builtin:void" || node->integerValue != 0U ||
+            node->cleanupRegionOrdinals != std::vector<std::size_t>({7U, 9U}) ||
+            node->cleanupContinuationKind != ContinuationKind::Return ||
+            node->children.size() != 1U)
+        {
+            return false;
+        }
+        const auto* value = node->children.front().get();
+        if (index == 0U)
+        {
+            return value != nullptr && value->kind == HirKind::IntegerConstant &&
+                value->syntax == fixture.terminal && value->typeKey == "builtin:int" &&
+                value->integerValue == 29U;
+        }
+        if (value == nullptr || value->kind != HirKind::LoopExpression ||
+            value->typeKey != "builtin:int" || value->children.size() != 1U ||
+            value->children.front()->kind != HirKind::Block ||
+            value->children.front()->children.size() != 1U)
+        {
+            return false;
+        }
+        node = value->children.front()->children.front().get();
+    }
+    return false;
+}
+
+void testDeepCoroutineStatementLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using ExitKind = nativesharp::frontend::MethodStructuredExitKind;
+    using ContinuationKind = nativesharp::frontend::MethodCleanupContinuationKind;
+    constexpr std::size_t nestingDepth = 32768U;
+    nativesharp::frontend::MethodExpressionTypeBinding integerType;
+    integerType.typeKey = "builtin:int";
+    nativesharp::frontend::ClassMemberSymbol generator;
+    generator.kind = nativesharp::frontend::ClassMemberKind::Method;
+    generator.name = "Generate";
+    generator.signatureKey = "Generate()";
+    generator.declaredTypeKey = "iterator:builtin:int";
+
+    auto fixture = makeDeepCoroutineStatementFixture(nestingDepth);
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    nativesharp::frontend::ProjectMemberModel memberModel;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerCoroutineStatementForTest(
+            model,
+            methodBodyModel,
+            memberModel,
+            fixture.root,
+            {generator},
+            fixture.loops,
+            {},
+            {},
+            {{fixture.terminal, &integerType}},
+            {7U, 9U},
+            error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "32768 nested yield-value edges lower on one worklist (" + error + ")");
+    tests.expect(deepCoroutineStatementChainMatches(lowered.get(), fixture),
+        "iterative yield lowering preserves loop, value, cleanup and continuation order");
+    tests.expect(nativesharp::frontend::ProjectOopHirModelTestAccess::
+            activeCleanupDepth(model) == 2U,
+        "yield-value lowering leaves the active cleanup stack unchanged");
+    destroyHirTreeIteratively(lowered);
+
+    auto referenceName = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IdentifierExpression, nativesharp::SourceRange{});
+    referenceName->setText("item");
+    auto referenceYield = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::YieldReturnStatement, nativesharp::SourceRange{});
+    referenceYield->setFirst(referenceName.get());
+    nativesharp::frontend::MethodNameBinding referenceBinding;
+    referenceBinding.kind = nativesharp::frontend::MethodNameBindingKind::Local;
+    referenceBinding.syntax = referenceName.get();
+    referenceBinding.name = "item";
+    referenceBinding.typeKey = "builtin:int";
+    referenceBinding.localOrdinal = 4U;
+    auto referenceGenerator = generator;
+    referenceGenerator.declaredTypeKey = "iterator:ref:builtin:int";
+    ProjectOopHirModel referenceModel;
+    nativesharp::frontend::ProjectMethodBodyModel referenceBody;
+    nativesharp::frontend::ProjectMemberModel referenceMembers;
+    error.clear();
+    auto reference = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerCoroutineStatementForTest(
+            referenceModel, referenceBody, referenceMembers, referenceYield.get(),
+            {referenceGenerator}, {}, {}, {referenceBinding},
+            {{referenceName.get(), &integerType}}, {5U}, error);
+    tests.expect(reference != nullptr && error.empty() &&
+            reference->kind == HirKind::YieldValue &&
+            reference->cleanupRegionOrdinals == std::vector<std::size_t>({5U}) &&
+            reference->children.size() == 1U &&
+            reference->children.front()->kind == HirKind::LocalAddress &&
+            reference->children.front()->localOrdinal == 4U,
+        "Iterator<ref T> yield preserves address context and captured cleanup");
+    destroyHirTreeIteratively(reference);
+
+    auto valueGenerator = generator;
+    valueGenerator.declaredTypeKey = "async-iterator:builtin:int";
+    ProjectOopHirModel valueModel;
+    nativesharp::frontend::ProjectMethodBodyModel valueBody;
+    nativesharp::frontend::ProjectMemberModel valueMembers;
+    error.clear();
+    auto value = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerCoroutineStatementForTest(
+            valueModel, valueBody, valueMembers, referenceYield.get(),
+            {valueGenerator}, {}, {}, {referenceBinding},
+            {{referenceName.get(), &integerType}}, {}, error);
+    tests.expect(value != nullptr && error.empty() && value->children.size() == 1U &&
+            value->children.front()->kind == HirKind::LocalValue &&
+            value->children.front()->localOrdinal == 4U,
+        "AsyncIterator<T> yield preserves ordinary value context");
+    destroyHirTreeIteratively(value);
+
+    auto suspend = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::SuspendStatement, nativesharp::SourceRange{});
+    ProjectOopHirModel suspendModel;
+    nativesharp::frontend::ProjectMethodBodyModel suspendBody;
+    nativesharp::frontend::ProjectMemberModel suspendMembers;
+    error.clear();
+    auto suspended = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerCoroutineStatementForTest(
+            suspendModel, suspendBody, suspendMembers, suspend.get(),
+            {}, {}, {}, {}, {}, {}, error);
+    tests.expect(suspended != nullptr && error.empty() &&
+            suspended->kind == HirKind::SuspendPoint &&
+            suspended->integerValue == 1U && suspended->children.empty(),
+        "bare suspend remains a leaf with resume state one");
+
+    auto yieldBreak = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::YieldBreakStatement, nativesharp::SourceRange{});
+    nativesharp::frontend::MethodStructuredExitBinding exitBinding;
+    exitBinding.kind = ExitKind::Return;
+    exitBinding.syntax = yieldBreak.get();
+    exitBinding.targetScopeOrdinal = 3U;
+    exitBinding.cleanupRegionOrdinals = {8U, 6U};
+    ProjectOopHirModel breakModel;
+    nativesharp::frontend::ProjectMethodBodyModel breakBody;
+    nativesharp::frontend::ProjectMemberModel breakMembers;
+    error.clear();
+    auto stopped = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerCoroutineStatementForTest(
+            breakModel, breakBody, breakMembers, yieldBreak.get(),
+            {}, {}, {exitBinding}, {}, {}, {}, error);
+    tests.expect(stopped != nullptr && error.empty() &&
+            stopped->kind == HirKind::YieldBreak &&
+            stopped->targetScopeOrdinal == 3U &&
+            stopped->cleanupRegionOrdinals == std::vector<std::size_t>({8U, 6U}) &&
+            stopped->cleanupContinuationKind == ContinuationKind::Return,
+        "yield break preserves structured-exit cleanup and return continuation");
+
+    auto emptyYield = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::YieldReturnStatement, nativesharp::SourceRange{});
+    ProjectOopHirModel emptyModel;
+    nativesharp::frontend::ProjectMethodBodyModel emptyBody;
+    nativesharp::frontend::ProjectMemberModel emptyMembers;
+    error.clear();
+    auto empty = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerCoroutineStatementForTest(
+            emptyModel, emptyBody, emptyMembers, emptyYield.get(),
+            {}, {}, {}, {}, {}, {4U, 2U}, error);
+    tests.expect(empty != nullptr && error.empty() &&
+            empty->kind == HirKind::YieldValue && empty->children.empty() &&
+            empty->cleanupRegionOrdinals == std::vector<std::size_t>({4U, 2U}) &&
+            empty->cleanupContinuationKind == ContinuationKind::Return,
+        "empty yield-return preserves its historical leaf representation");
+}
+
 void testDeepUserIndexerGetterLowering(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -21271,6 +21544,10 @@ int main()
     else if (focusValue == "hir-try-statement-depth")
     {
         testDeepTryStatementLowering(tests);
+    }
+    else if (focusValue == "hir-coroutine-statement-depth")
+    {
+        testDeepCoroutineStatementLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {

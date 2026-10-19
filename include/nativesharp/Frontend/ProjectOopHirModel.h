@@ -1154,6 +1154,10 @@ private:
         const ast::AstNode* statement,
         std::size_t memberOrdinal,
         std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerCoroutineValueStatement(
+        const ast::AstNode* statement,
+        std::size_t memberOrdinal,
+        std::string& error);
 
     // NS304-T05-F03: rewrites every Return node of an async poll body into
     // `self->result = v; self->state = ready; return;`. self is the parameter at

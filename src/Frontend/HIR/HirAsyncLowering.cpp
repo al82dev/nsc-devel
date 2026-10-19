@@ -840,6 +840,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCoroutineStatement(
 
         case ast::AstNodeKind::YieldReturnStatement:
         {
+            if (statement->first() != nullptr)
+                return lowerCoroutineValueStatement(statement, memberOrdinal, error);
             // NS304-T06-F03: `yield return v` becomes a YieldValue node. integerValue is the yield
             // state index, assigned by splitGeneratorFunction (the MoveNext rewrite).
             auto node = makeNode(ProjectOopHirNodeKind::YieldValue, statement, "builtin:void");
@@ -850,30 +852,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCoroutineStatement(
             node->cleanupRegionOrdinals.assign(
                 activeHirCleanupRegions_.begin(), activeHirCleanupRegions_.end());
             node->cleanupContinuationKind = MethodCleanupContinuationKind::Return;
-            if (statement->first() != nullptr)
-            {
-                // NS304-T06-F05/T07-F04: a `ref`/`ref mut` item yields the ADDRESS of the local (the
-                // item is a reference into the frame), not a copy of its value. Both the synchronous
-                // `Iterator<ref T>` and the `AsyncIterator<ref T, E>` share the inner-type surface.
-                bool itemByReference = false;
-                if (memberModel_ != nullptr && memberOrdinal < memberModel_->members().size())
-                {
-                    const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-                    std::optional<std::string_view> itemInner =
-                        language::iteratorInnerTypeKey(member.declaredTypeKey);
-                    if (!itemInner.has_value())
-                        itemInner = language::asyncIteratorInnerTypeKey(member.declaredTypeKey);
-                    if (itemInner.has_value() &&
-                        (itemInner->starts_with("ref:") || itemInner->starts_with("refmut:")))
-                    {
-                        itemByReference = true;
-                    }
-                }
-                auto value = lowerExpression(
-                    statement->first(), memberOrdinal, itemByReference, error);
-                if (value == nullptr) return nullptr;
-                node->children.push_back(std::move(value));
-            }
             return node;
         }
 
