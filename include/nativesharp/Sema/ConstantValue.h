@@ -1,21 +1,12 @@
 #pragma once
 
+#include "nativesharp/Sema/ConstantKind.h"
+
 #include <cstdint>
 #include <string>
 
 namespace nativesharp::sema
 {
-enum class ConstantKind
-{
-    None,
-    SignedInteger,
-    UnsignedInteger,
-    Floating,
-    Boolean,
-    Null,
-    String
-};
-
 class ConstantValue final
 {
 public:

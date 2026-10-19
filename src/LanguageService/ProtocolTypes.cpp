@@ -1,6 +1,7 @@
 #include "nativesharp/LanguageService/ProtocolTypes.h"
 
 #include "nativesharp/Diagnostics/DiagnosticId.h"
+#include "Internal/DecodedCodePoint.h"
 
 #include <algorithm>
 
@@ -8,12 +9,6 @@ namespace nativesharp::language_service
 {
 namespace
 {
-struct DecodedCodePoint final
-{
-    std::uint32_t value = 0xFFFDU;
-    std::size_t bytes = 1;
-};
-
 DecodedCodePoint decodeUtf8(std::string_view text, std::size_t offset) noexcept
 {
     const auto byte = [&](std::size_t index) {

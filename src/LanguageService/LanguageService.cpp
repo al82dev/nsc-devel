@@ -8,6 +8,12 @@
 #include "nativesharp/Lexer/Keyword.h"
 #include "nativesharp/Lexer/Token.h"
 #include "nativesharp/Target/TargetInfo.h"
+#include "Internal/IndexedCall.h"
+#include "Internal/IndexedReference.h"
+#include "Internal/LineBraceSummary.h"
+#include "Internal/AnalysisSnapshotImplementation.h"
+#include "Internal/Implementation.h"
+#include "Internal/SemanticIndex.h"
 
 #include <algorithm>
 #include <atomic>
@@ -24,29 +30,6 @@ namespace nativesharp::language_service
 {
 namespace
 {
-struct IndexedReference final
-{
-    LanguageLocation location;
-    std::vector<std::size_t> targetSymbolIndices;
-    bool exactIdentifierRange = false;
-};
-
-struct IndexedCall final
-{
-    LanguageLocation location;
-    SignatureInformation signature;
-    std::vector<TextRange> argumentRanges;
-    std::vector<std::size_t> argumentParameterOrdinals;
-};
-
-struct SemanticIndex final
-{
-    std::shared_ptr<frontend::ProjectCompilation> compilation;
-    std::vector<LanguageSymbol> symbols;
-    std::vector<IndexedReference> references;
-    std::vector<IndexedCall> calls;
-};
-
 std::string pathKey(const std::filesystem::path& path)
 {
     std::string key = path.lexically_normal().generic_string();
@@ -130,13 +113,6 @@ std::string indentation(std::uint32_t depth, DocumentFormattingOptions options)
         return std::string(static_cast<std::size_t>(depth) * options.tabSize, ' ');
     return std::string(depth, '\t');
 }
-
-struct LineBraceSummary final
-{
-    std::uint32_t opens = 0;
-    std::uint32_t closes = 0;
-    bool beginsWithClose = false;
-};
 
 LineBraceSummary summarizeBraces(std::string_view line, bool& blockComment)
 {
@@ -343,82 +319,99 @@ std::shared_ptr<SemanticIndex> buildSemanticIndex(
     };
 
     std::vector<std::optional<std::size_t>> typeSymbols(names->namedTypes().size());
-    for (std::size_t ordinal = 0; ordinal < names->namedTypes().size(); ++ordinal)
-    {
-        const auto& type = names->namedTypes()[ordinal];
-        if (type.isPrecompiled) continue;
-        const std::string qualified = type.identity.fullyQualifiedName();
-        typeSymbols[ordinal] = makeSymbol(
-            type.identity.name(), qualified,
-            std::string(frontend::namedTypeDeclarationKindName(type.kind)) + " " + qualified,
-            typeSymbolKind(type.kind), type.fileId, type.range);
-    }
+    const auto indexTypes = [&]() {
+        for (std::size_t ordinal = 0; ordinal < names->namedTypes().size(); ++ordinal)
+        {
+            const auto& type = names->namedTypes()[ordinal];
+            if (type.isPrecompiled) continue;
+            const std::string qualified = type.identity.fullyQualifiedName();
+            typeSymbols[ordinal] = makeSymbol(
+                type.identity.name(), qualified,
+                std::string(frontend::namedTypeDeclarationKindName(type.kind)) + " " + qualified,
+                typeSymbolKind(type.kind), type.fileId, type.range);
+        }
+    };
+    indexTypes();
 
     std::vector<std::optional<std::size_t>> memberSymbols(members->members().size());
     std::unordered_map<std::uint64_t, std::size_t> parameterSymbols;
-    for (std::size_t ordinal = 0; ordinal < members->members().size(); ++ordinal)
-    {
-        const auto& member = members->members()[ordinal];
-        if (member.isPrecompiled || member.isCompilerGenerated ||
-            member.declaringTypeOrdinal >= names->namedTypes().size()) continue;
-        const std::string qualified =
-            names->namedTypes()[member.declaringTypeOrdinal].identity.fullyQualifiedName() + "." + member.name;
-        std::string detail = member.kind == frontend::ClassMemberKind::Method ||
-                member.kind == frontend::ClassMemberKind::Constructor ||
-                member.kind == frontend::ClassMemberKind::Destructor
-            ? callableDetail(member.declaredTypeKey, qualified, member.parameters)
-            : member.declaredTypeKey + " " + qualified;
-        memberSymbols[ordinal] = makeSymbol(
-            member.name, qualified, std::move(detail), memberSymbolKind(member.kind),
-            member.fileId, member.range);
-        for (std::size_t parameterOrdinal = 0; parameterOrdinal < member.parameters.size(); ++parameterOrdinal)
+    const auto indexMembers = [&]() {
+        for (std::size_t ordinal = 0; ordinal < members->members().size(); ++ordinal)
         {
-            const auto& parameter = member.parameters[parameterOrdinal];
-            const auto added = makeSymbol(
-                parameter.name, qualified + "." + parameter.name,
-                parameter.typeKey + " " + parameter.name,
-                LanguageSymbolKind::Parameter, parameter.fileId, parameter.range);
-            if (added.has_value())
+            const auto& member = members->members()[ordinal];
+            if (member.isPrecompiled || member.isCompilerGenerated ||
+                member.declaringTypeOrdinal >= names->namedTypes().size()) continue;
+            const std::string qualified =
+                names->namedTypes()[member.declaringTypeOrdinal].identity.fullyQualifiedName() + "." + member.name;
+            std::string detail = member.kind == frontend::ClassMemberKind::Method ||
+                    member.kind == frontend::ClassMemberKind::Constructor ||
+                    member.kind == frontend::ClassMemberKind::Destructor
+                ? callableDetail(member.declaredTypeKey, qualified, member.parameters)
+                : member.declaredTypeKey + " " + qualified;
+            memberSymbols[ordinal] = makeSymbol(
+                member.name, qualified, std::move(detail), memberSymbolKind(member.kind),
+                member.fileId, member.range);
+            for (std::size_t parameterOrdinal = 0; parameterOrdinal < member.parameters.size(); ++parameterOrdinal)
             {
-                parameterSymbols.emplace((static_cast<std::uint64_t>(ordinal) << 32U) | parameterOrdinal, *added);
+                const auto& parameter = member.parameters[parameterOrdinal];
+                const auto added = makeSymbol(
+                    parameter.name, qualified + "." + parameter.name,
+                    parameter.typeKey + " " + parameter.name,
+                    LanguageSymbolKind::Parameter, parameter.fileId, parameter.range);
+                if (added.has_value())
+                {
+                    parameterSymbols.emplace(
+                        (static_cast<std::uint64_t>(ordinal) << 32U) | parameterOrdinal,
+                        *added);
+                }
             }
         }
-    }
+    };
+    indexMembers();
 
     std::vector<std::optional<std::size_t>> functionSymbols(functions->functions().size());
-    for (std::size_t ordinal = 0; ordinal < functions->functions().size(); ++ordinal)
-    {
-        const auto& function = functions->functions()[ordinal];
-        if (function.isPrecompiled) continue;
-        const std::string qualified = function.namespaceName.empty()
-            ? function.name : function.namespaceName + "." + function.name;
-        functionSymbols[ordinal] = makeSymbol(
-            function.name, qualified,
-            callableDetail(function.declaredTypeKey, qualified, function.parameters),
-            LanguageSymbolKind::Function, function.fileId, function.range);
-    }
+    const auto indexFunctions = [&]() {
+        for (std::size_t ordinal = 0; ordinal < functions->functions().size(); ++ordinal)
+        {
+            const auto& function = functions->functions()[ordinal];
+            if (function.isPrecompiled) continue;
+            const std::string qualified = function.namespaceName.empty()
+                ? function.name : function.namespaceName + "." + function.name;
+            functionSymbols[ordinal] = makeSymbol(
+                function.name, qualified,
+                callableDetail(function.declaredTypeKey, qualified, function.parameters),
+                LanguageSymbolKind::Function, function.fileId, function.range);
+        }
+    };
+    indexFunctions();
 
     std::vector<std::optional<std::size_t>> stateSymbols(functions->states().size());
-    for (std::size_t ordinal = 0; ordinal < functions->states().size(); ++ordinal)
-    {
-        const auto& state = functions->states()[ordinal];
-        if (state.isPrecompiled) continue;
-        const std::string qualified = state.namespaceName.empty()
-            ? state.name : state.namespaceName + "." + state.name;
-        stateSymbols[ordinal] = makeSymbol(
-            state.name, qualified, state.declaredTypeKey + " " + qualified,
-            LanguageSymbolKind::Variable, state.fileId, state.range);
-    }
+    const auto indexStates = [&]() {
+        for (std::size_t ordinal = 0; ordinal < functions->states().size(); ++ordinal)
+        {
+            const auto& state = functions->states()[ordinal];
+            if (state.isPrecompiled) continue;
+            const std::string qualified = state.namespaceName.empty()
+                ? state.name : state.namespaceName + "." + state.name;
+            stateSymbols[ordinal] = makeSymbol(
+                state.name, qualified, state.declaredTypeKey + " " + qualified,
+                LanguageSymbolKind::Variable, state.fileId, state.range);
+        }
+    };
+    indexStates();
 
     std::vector<std::optional<std::size_t>> localSymbols(bodies->locals().size());
-    for (std::size_t ordinal = 0; ordinal < bodies->locals().size(); ++ordinal)
-    {
-        const auto& local = bodies->locals()[ordinal];
-        const std::string qualified = "local::" + local.name;
-        localSymbols[ordinal] = makeSymbol(
-            local.name, qualified, local.typeKey + " " + local.name,
-            LanguageSymbolKind::Variable, local.fileId, local.range);
-    }
+    const auto indexLocals = [&]() {
+        for (std::size_t ordinal = 0; ordinal < bodies->locals().size(); ++ordinal)
+        {
+            const auto& local = bodies->locals()[ordinal];
+            const std::string qualified = "local::" + local.name;
+            localSymbols[ordinal] = makeSymbol(
+                local.name, qualified, local.typeKey + " " + local.name,
+                LanguageSymbolKind::Variable, local.fileId, local.range);
+        }
+    };
+    indexLocals();
 
     const auto addReference = [&](FileId fileId, SourceRange range, std::vector<std::size_t> targets,
                                   std::string_view name) {
@@ -448,78 +441,99 @@ std::shared_ptr<SemanticIndex> buildSemanticIndex(
         }
         index->calls.push_back(std::move(indexed));
     };
-    for (const auto& binding : names->bindings())
-    {
-        if (binding.syntax == nullptr || !binding.targetTypeOrdinal.has_value()) continue;
-        const std::size_t target = *binding.targetTypeOrdinal;
-        if (target < typeSymbols.size() && typeSymbols[target].has_value())
-            addReference(binding.fileId, binding.syntax->range(), {*typeSymbols[target]},
-                         index->symbols[*typeSymbols[target]].name);
-    }
-    for (const auto& binding : bodies->nameBindings())
-    {
-        if (binding.syntax == nullptr) continue;
-        std::vector<std::size_t> targets;
-        if (binding.localOrdinal.has_value() && *binding.localOrdinal < localSymbols.size() &&
-            localSymbols[*binding.localOrdinal].has_value())
-            targets.push_back(*localSymbols[*binding.localOrdinal]);
-        if (binding.parameterOrdinal.has_value())
+    const auto indexTypeReferences = [&]() {
+        for (const auto& binding : names->bindings())
         {
-            const std::uint64_t key = (static_cast<std::uint64_t>(binding.methodMemberOrdinal) << 32U) |
-                *binding.parameterOrdinal;
-            if (const auto found = parameterSymbols.find(key); found != parameterSymbols.end())
-                targets.push_back(found->second);
+            if (binding.syntax == nullptr || !binding.targetTypeOrdinal.has_value()) continue;
+            const std::size_t target = *binding.targetTypeOrdinal;
+            if (target < typeSymbols.size() && typeSymbols[target].has_value())
+                addReference(binding.fileId, binding.syntax->range(), {*typeSymbols[target]},
+                             index->symbols[*typeSymbols[target]].name);
         }
-        for (const std::size_t member : binding.candidateMemberOrdinals)
+    };
+    indexTypeReferences();
+    const auto indexNameReferences = [&]() {
+        for (const auto& binding : bodies->nameBindings())
+        {
+            if (binding.syntax == nullptr) continue;
+            std::vector<std::size_t> targets;
+            if (binding.localOrdinal.has_value() && *binding.localOrdinal < localSymbols.size() &&
+                localSymbols[*binding.localOrdinal].has_value())
+                targets.push_back(*localSymbols[*binding.localOrdinal]);
+            if (binding.parameterOrdinal.has_value())
+            {
+                const std::uint64_t key = (static_cast<std::uint64_t>(binding.methodMemberOrdinal) << 32U) |
+                    *binding.parameterOrdinal;
+                if (const auto found = parameterSymbols.find(key); found != parameterSymbols.end())
+                    targets.push_back(found->second);
+            }
+            for (const std::size_t member : binding.candidateMemberOrdinals)
+                if (member < memberSymbols.size() && memberSymbols[member].has_value())
+                    targets.push_back(*memberSymbols[member]);
+            addReference(binding.syntax->range().begin().fileId(), binding.syntax->range(), std::move(targets),
+                         binding.name);
+        }
+    };
+    indexNameReferences();
+    const auto indexMemberCalls = [&]() {
+        for (const auto& call : bodies->calls())
+        {
+            if (call.syntax == nullptr || !call.selectedMemberOrdinal.has_value()) continue;
+            const std::size_t member = *call.selectedMemberOrdinal;
             if (member < memberSymbols.size() && memberSymbols[member].has_value())
-                targets.push_back(*memberSymbols[member]);
-        addReference(binding.syntax->range().begin().fileId(), binding.syntax->range(), std::move(targets),
-                     binding.name);
-    }
-    for (const auto& call : bodies->calls())
-    {
-        if (call.syntax == nullptr || !call.selectedMemberOrdinal.has_value()) continue;
-        const std::size_t member = *call.selectedMemberOrdinal;
-        if (member < memberSymbols.size() && memberSymbols[member].has_value())
-        {
-            const ast::AstNode* callee = call.syntax->first() != nullptr ? call.syntax->first() : call.syntax;
-            addReference(callee->range().begin().fileId(), callee->range(), {*memberSymbols[member]},
-                         call.methodName);
-            addCall(call.syntax, index->symbols[*memberSymbols[member]], members->members()[member].parameters,
-                    call.selectedArgumentParameterOrdinals);
+            {
+                const ast::AstNode* callee = call.syntax->first() != nullptr ? call.syntax->first() : call.syntax;
+                addReference(callee->range().begin().fileId(), callee->range(), {*memberSymbols[member]},
+                             call.methodName);
+                addCall(call.syntax, index->symbols[*memberSymbols[member]], members->members()[member].parameters,
+                        call.selectedArgumentParameterOrdinals);
+            }
         }
-    }
-    for (const auto& reference : functions->referenceBindings())
-    {
-        if (reference.calleeSyntax == nullptr) continue;
-        std::vector<std::size_t> targets;
-        for (const std::size_t function : reference.candidateFunctionOrdinals)
-            if (function < functionSymbols.size() && functionSymbols[function].has_value())
-                targets.push_back(*functionSymbols[function]);
-        addReference(reference.fileId, reference.calleeSyntax->range(), std::move(targets),
-                     reference.writtenName.substr(reference.writtenName.find_last_of('.') + 1));
-    }
-    for (const auto& reference : functions->stateReferenceBindings())
-    {
-        if (reference.expressionSyntax == nullptr) continue;
-        std::vector<std::size_t> targets;
-        for (const std::size_t state : reference.candidateStateOrdinals)
-            if (state < stateSymbols.size() && stateSymbols[state].has_value())
-                targets.push_back(*stateSymbols[state]);
-        addReference(reference.fileId, reference.expressionSyntax->range(), std::move(targets),
-                     reference.writtenName.substr(reference.writtenName.find_last_of('.') + 1));
-    }
-    for (const auto& call : bodies->namespaceFunctionCalls())
-    {
-        if (call.syntax == nullptr || !call.selectedFunctionOrdinal.has_value()) continue;
-        const std::size_t function = *call.selectedFunctionOrdinal;
-        if (function >= functionSymbols.size() || !functionSymbols[function].has_value()) continue;
-        const ast::AstNode* callee = call.syntax->first() != nullptr ? call.syntax->first() : call.syntax;
-        addReference(callee->range().begin().fileId(), callee->range(), {*functionSymbols[function]},
-                     call.writtenName.substr(call.writtenName.find_last_of('.') + 1));
-        addCall(call.syntax, index->symbols[*functionSymbols[function]], functions->functions()[function].parameters,
+    };
+    indexMemberCalls();
+    const auto indexFunctionReferences = [&]() {
+        for (const auto& reference : functions->referenceBindings())
+        {
+            if (reference.calleeSyntax == nullptr) continue;
+            std::vector<std::size_t> targets;
+            for (const std::size_t function : reference.candidateFunctionOrdinals)
+                if (function < functionSymbols.size() && functionSymbols[function].has_value())
+                    targets.push_back(*functionSymbols[function]);
+            addReference(reference.fileId, reference.calleeSyntax->range(), std::move(targets),
+                         reference.writtenName.substr(reference.writtenName.find_last_of('.') + 1));
+        }
+    };
+    indexFunctionReferences();
+    const auto indexStateReferences = [&]() {
+        for (const auto& reference : functions->stateReferenceBindings())
+        {
+            if (reference.expressionSyntax == nullptr) continue;
+            std::vector<std::size_t> targets;
+            for (const std::size_t state : reference.candidateStateOrdinals)
+                if (state < stateSymbols.size() && stateSymbols[state].has_value())
+                    targets.push_back(*stateSymbols[state]);
+            addReference(reference.fileId, reference.expressionSyntax->range(), std::move(targets),
+                         reference.writtenName.substr(reference.writtenName.find_last_of('.') + 1));
+        }
+    };
+    indexStateReferences();
+    const auto indexNamespaceFunctionCalls = [&]() {
+        for (const auto& call : bodies->namespaceFunctionCalls())
+        {
+            if (call.syntax == nullptr || !call.selectedFunctionOrdinal.has_value()) continue;
+            const std::size_t function = *call.selectedFunctionOrdinal;
+            if (function >= functionSymbols.size() || !functionSymbols[function].has_value()) continue;
+            const ast::AstNode* callee = call.syntax->first() != nullptr ? call.syntax->first() : call.syntax;
+            addReference(callee->range().begin().fileId(), callee->range(), {*functionSymbols[function]},
+                         call.writtenName.substr(call.writtenName.find_last_of('.') + 1));
+            addCall(
+                call.syntax,
+                index->symbols[*functionSymbols[function]],
+                functions->functions()[function].parameters,
                 call.selectedArgumentParameterOrdinals);
-    }
+        }
+    };
+    indexNamespaceFunctionCalls();
     return index;
 }
 
@@ -574,51 +588,6 @@ std::vector<std::size_t> targetIndicesAt(
     return result;
 }
 }
-
-class AnalysisSnapshot::Implementation final
-{
-public:
-    std::uint64_t generation = 0;
-    std::filesystem::path projectPath;
-    bool currentAnalysisSucceeded = false;
-    bool usedPreviousSemanticModel = false;
-    bool cancelled = false;
-    std::string error;
-    std::vector<LanguageDiagnostic> diagnostics;
-    std::shared_ptr<frontend::ProjectCompilation> currentCompilation;
-    std::shared_ptr<SemanticIndex> semanticIndex;
-};
-
-class LanguageService::Implementation final
-{
-public:
-    struct StoredDocument final
-    {
-        std::filesystem::path path;
-        std::string text;
-        std::int64_t version = 0;
-    };
-
-    static std::optional<std::pair<std::string, std::filesystem::path>> documentKey(
-        const std::filesystem::path& path)
-    {
-        if (path.empty()) return std::nullopt;
-        std::error_code error;
-        std::filesystem::path absolute = std::filesystem::absolute(path, error);
-        if (error) return std::nullopt;
-        absolute = absolute.lexically_normal();
-        std::string key = absolute.generic_string();
-        std::ranges::transform(key, key.begin(), [](unsigned char value) {
-            return static_cast<char>(std::tolower(value));
-        });
-        return std::pair{std::move(key), std::move(absolute)};
-    }
-
-    mutable std::mutex mutex;
-    std::unordered_map<std::string, StoredDocument> documents;
-    std::unordered_map<std::string, std::shared_ptr<SemanticIndex>> lastGoodSemantic;
-    std::atomic_uint64_t nextGeneration = 1;
-};
 
 AnalysisSnapshot::AnalysisSnapshot(std::shared_ptr<Implementation> implementation) noexcept
     : implementation_(std::move(implementation))

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Sema/ConstantValue.h"
+#include "nativesharp/Sema/ValueCategory.h"
 
 #include <string_view>
 
@@ -8,20 +9,6 @@ namespace nativesharp::sema
 {
 class Symbol;
 class Type;
-
-enum class ValueCategory
-{
-    // Preserve the numeric identities used by the 2.0 frontend.
-    Value = 0,
-    Place = 1,
-    Temporary,
-    BorrowedValue,
-    MovedFrom,
-
-    // Compatibility spellings for the 2.0 frontend. New 3.0 code uses Place/Value.
-    LValue = Place,
-    RValue = Value
-};
 
 constexpr bool isPlaceCategory(ValueCategory category) noexcept
 {

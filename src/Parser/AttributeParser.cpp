@@ -314,11 +314,15 @@ bool Parser::tryParseGlobalFunctionPrefix(GlobalDeclarationAttributeState& state
 
 bool Parser::tryParseGlobalValueTypePrefix(GlobalDeclarationAttributeState& state)
 {
+    return tryParseGlobalRecordOrCopyPrefix(state) ||
+        tryParseGlobalReadonlyOrPartialPrefix(state) ||
+        tryParseGlobalBorrowedPrefix(state);
+}
+
+bool Parser::tryParseGlobalRecordOrCopyPrefix(GlobalDeclarationAttributeState& state)
+{
     auto& isRecordStruct = state.isRecordStruct;
     auto& isCopyType = state.isCopyType;
-    auto& isReadonlyType = state.isReadonlyType;
-    auto& isPartial = state.isPartial;
-    auto& isBorrowedView = state.isBorrowedView;
     // NativeSharp 3.0 keeps `record` contextual. Only the unambiguous `record struct`
     // declaration shape consumes it, so a 2.x declaration named record remains compatible.
     if (atContextualKeyword("record") && peek().kind() == TokenKind::KwStruct)
@@ -364,7 +368,13 @@ bool Parser::tryParseGlobalValueTypePrefix(GlobalDeclarationAttributeState& stat
         isCopyType = true;
         return true;
     }
+    return false;
+}
 
+bool Parser::tryParseGlobalReadonlyOrPartialPrefix(GlobalDeclarationAttributeState& state)
+{
+    auto& isReadonlyType = state.isReadonlyType;
+    auto& isPartial = state.isPartial;
     const bool readonlyTypeModifier = at(TokenKind::KwReadonly) &&
         (peek().kind() == TokenKind::KwStruct || peek().kind() == TokenKind::KwClass ||
          peek().kind() == TokenKind::KwInterface || peek().kind() == TokenKind::KwEnum ||
@@ -416,6 +426,12 @@ bool Parser::tryParseGlobalValueTypePrefix(GlobalDeclarationAttributeState& stat
         isPartial = true;
         return true;
     }
+    return false;
+}
+
+bool Parser::tryParseGlobalBorrowedPrefix(GlobalDeclarationAttributeState& state)
+{
+    auto& isBorrowedView = state.isBorrowedView;
     // LA GUARDA NO ES OPCIONAL, y costo una regresion descubrirlo:
     // `borrowed` YA existe como calificativo de tipo de retorno de una FUNCION GLOBAL --
     // `borrowed Resource Observe(owned Resource source)` es codigo valido desde Stage 50 y
@@ -654,7 +670,24 @@ bool Parser::tryDispatchValueGlobal(
         }
         declaration = parseOpaqueTypeDeclaration(isCopyType);
     }
-    else if (at(TokenKind::KwStruct) ||
+    else return tryDispatchStructOrEnumGlobal(state, declaration);
+    return true;
+}
+
+bool Parser::tryDispatchStructOrEnumGlobal(
+    GlobalDeclarationAttributeState& state,
+    ast::AstNode*& declaration)
+{
+    const std::size_t declarationBeginIndex = state.declarationBeginIndex;
+    const bool isPartial = state.isPartial;
+    const bool isAbstract = state.isAbstract;
+    const bool isSealed = state.isSealed;
+    const bool isStatic = state.isStatic;
+    const bool isReadonlyType = state.isReadonlyType;
+    const bool isRecordStruct = state.isRecordStruct;
+    const bool isBorrowedView = state.isBorrowedView;
+    const bool isCopyType = state.isCopyType;
+    if (at(TokenKind::KwStruct) ||
              (atContextualKeyword("union") && peek().kind() == TokenKind::Identifier))
     {
         // SHR-013: `borrowed union` queda fuera a proposito. Una union no tiene un miembro vivo

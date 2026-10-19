@@ -43,6 +43,20 @@ bool SimpleXmlParser::parse(std::string_view source, SimpleXmlElement& root, std
 
 bool SimpleXmlParser::parseElement(SimpleXmlElement& element, std::size_t depth)
 {
+    if (!parseElementStart(element, depth))
+    {
+        return false;
+    }
+    bool selfClosing = false;
+    if (!parseElementAttributes(element, selfClosing))
+    {
+        return false;
+    }
+    return selfClosing || parseElementContent(element, depth);
+}
+
+bool SimpleXmlParser::parseElementStart(SimpleXmlElement& element, std::size_t depth)
+{
     constexpr std::size_t kMaximumXmlDepth = 128U;
     if (depth > kMaximumXmlDepth)
         return fail("XML nesting exceeds the 128-element safety limit");
@@ -58,17 +72,22 @@ bool SimpleXmlParser::parseElement(SimpleXmlElement& element, std::size_t depth)
     {
         return false;
     }
+    return true;
+}
 
+bool SimpleXmlParser::parseElementAttributes(SimpleXmlElement& element, bool& selfClosing)
+{
     while (true)
     {
         skipWhitespace();
         if (consume("/>"))
         {
+            selfClosing = true;
             return true;
         }
         if (consume('>'))
         {
-            break;
+            return true;
         }
 
         std::string attributeName;
@@ -101,7 +120,10 @@ bool SimpleXmlParser::parseElement(SimpleXmlElement& element, std::size_t depth)
         }
         element.attributes.emplace_back(std::move(attributeName), std::move(attributeValue));
     }
+}
 
+bool SimpleXmlParser::parseElementContent(SimpleXmlElement& element, std::size_t depth)
+{
     while (offset_ < source_.size())
     {
         if (startsWith("<!--"))

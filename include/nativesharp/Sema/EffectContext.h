@@ -1,46 +1,13 @@
 #pragma once
 
-#include <cstdint>
+#include "nativesharp/Sema/Effect.h"
+#include "nativesharp/Sema/EffectSet.h"
+
 #include <optional>
 #include <string_view>
 
 namespace nativesharp::sema
 {
-enum class Effect : std::uint32_t
-{
-    Unsafe = 1U << 0U,
-    Throws = 1U << 1U,
-    Async = 1U << 2U,
-    Comptime = 1U << 3U,
-    NoHeap = 1U << 4U,
-    Generator = 1U << 5U
-};
-
-class EffectSet final
-{
-public:
-    constexpr EffectSet() noexcept = default;
-    constexpr explicit EffectSet(Effect effect) noexcept
-        : bits_(static_cast<std::uint32_t>(effect)) {}
-
-    constexpr EffectSet with(Effect effect) const noexcept
-    {
-        EffectSet result = *this;
-        result.bits_ |= static_cast<std::uint32_t>(effect);
-        return result;
-    }
-
-    constexpr bool contains(Effect effect) const noexcept
-    {
-        return (bits_ & static_cast<std::uint32_t>(effect)) != 0;
-    }
-
-    constexpr std::uint32_t bits() const noexcept { return bits_; }
-
-private:
-    std::uint32_t bits_ = 0;
-};
-
 constexpr std::string_view effectName(Effect effect) noexcept
 {
     switch (effect)

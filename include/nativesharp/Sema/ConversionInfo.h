@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Sema/ConversionKind.h"
+#include "nativesharp/Sema/ConversionRole.h"
 
 namespace nativesharp::ast
 {
@@ -10,13 +11,6 @@ class AstNode;
 namespace nativesharp::sema
 {
 class Type;
-
-enum class ConversionRole
-{
-    Contextual,
-    Operand,
-    Result
-};
 
 struct ConversionInfo
 {

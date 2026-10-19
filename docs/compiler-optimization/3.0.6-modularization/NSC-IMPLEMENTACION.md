@@ -1,10 +1,10 @@
 # NSC — IMPLEMENTACIÓN
 
-Progreso absoluto: **846/1227**
+Progreso absoluto: **918/1227**
 
-Completados: **846**
+Completados: **918**
 
-Pendientes: **381**
+Pendientes: **309**
 
 Fuente canónica: `NSC-GUIA-DE-IMPLEMENTACION.md` y sus anexos A, B, C, D y F, medidos el 2026-10-19.
 
@@ -14,7 +14,7 @@ casillas se agrupen por integración.
 Quedan fuera del denominador: cambios a NSC Builder, cambios de CLI/sintaxis/ABI/NSMETA/contratos 3.0.4,
 eliminación de recursión y las tareas de rendimiento que requieren autorización funcional independiente.
 
-## Refactor mecánico y reorganización sin cambios funcionales — 846/1225
+## Refactor mecánico y reorganización sin cambios funcionales — 918/1225
 
 Política de integración: **10 commits técnicos**, uno por límite de subsistema. Un commit se crea únicamente
 cuando su conjunto está completo, revisado y cuenta con la evidencia focal aplicable. Ninguna optimización entra
@@ -2871,242 +2871,248 @@ MIR, cinco tipos anidados con identidad calificada preservada, comentarios y dia
 quedaron en ≤60 líneas ejecutables y las líneas nuevas en ≤120 columnas. No se ejecutaron compilación, pruebas,
 suites ni baseline por instrucción del propietario.
 
-### Commit REF-06 — Parser, análisis semántico y servicio de lenguaje — 0/72
+### Commit REF-06 — Parser, análisis semántico y servicio de lenguaje — 72/72
 
 Ordena Parser, Sema y LanguageService conservando vistas privadas, shims, cursor y contratos de pruebas.
 
-- [ ] NSC-IMPL-0106 — Extraer el struct IndexedReference desde src/LanguageService/LanguageService.cpp:27-32 (6) hacia
+- [x] NSC-IMPL-0106 — Extraer el struct IndexedReference desde src/LanguageService/LanguageService.cpp:27-32 (6) hacia
   src/LanguageService/Internal/IndexedReference.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0107 — Extraer el struct IndexedCall desde src/LanguageService/LanguageService.cpp:34-40 (7) hacia
+- [x] NSC-IMPL-0107 — Extraer el struct IndexedCall desde src/LanguageService/LanguageService.cpp:34-40 (7) hacia
   src/LanguageService/Internal/IndexedCall.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0108 — Extraer el struct SemanticIndex desde src/LanguageService/LanguageService.cpp:42-48 (7) hacia
+- [x] NSC-IMPL-0108 — Extraer el struct SemanticIndex desde src/LanguageService/LanguageService.cpp:42-48 (7) hacia
   src/LanguageService/Internal/SemanticIndex.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0109 — Extraer el struct LineBraceSummary desde src/LanguageService/LanguageService.cpp:134-139 (6) hacia
+- [x] NSC-IMPL-0109 — Extraer el struct LineBraceSummary desde src/LanguageService/LanguageService.cpp:134-139 (6) hacia
   src/LanguageService/Internal/LineBraceSummary.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0110 — Extraer el class AnalysisSnapshot::Implementation desde
+- [x] NSC-IMPL-0110 — Extraer el class AnalysisSnapshot::Implementation desde
   src/LanguageService/LanguageService.cpp:578-590 (13) hacia src/LanguageService/Internal/Implementation.h, sin .cpp
   adicional; conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0111 — Extraer el class LanguageService::Implementation desde
+- [x] NSC-IMPL-0111 — Extraer el class LanguageService::Implementation desde
   src/LanguageService/LanguageService.cpp:592-621 (30) hacia src/LanguageService/Internal/Implementation.h, y mover sus
   cuerpos a src/LanguageService/Internal/Implementation.cpp; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0112 — Extraer el struct DecodedCodePoint desde src/LanguageService/ProtocolTypes.cpp:11-15 (5) hacia
+- [x] NSC-IMPL-0112 — Extraer el struct DecodedCodePoint desde src/LanguageService/ProtocolTypes.cpp:11-15 (5) hacia
   src/LanguageService/Internal/DecodedCodePoint.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0117 — Extraer el class Parser::MatchExpressionPatternAnalyzer desde
+- [x] NSC-IMPL-0117 — Extraer el class Parser::MatchExpressionPatternAnalyzer desde
   src/Parser/ExpressionParser.cpp:230-424 (195) hacia src/Parser/Internal/MatchExpressionPatternAnalyzer.h, y mover sus
   cuerpos a src/Parser/Internal/MatchExpressionPatternAnalyzer.cpp; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0118 — Extraer el class Parser::ExpressionIterationMachine desde src/Parser/ExpressionParser.cpp:670-711
+- [x] NSC-IMPL-0118 — Extraer el class Parser::ExpressionIterationMachine desde src/Parser/ExpressionParser.cpp:670-711
   (42) hacia src/Parser/Internal/ExpressionIterationMachine.h, y mover sus cuerpos a
   src/Parser/Internal/ExpressionIterationMachine.cpp; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0119 — Extraer el class Parser::PostfixIterationMachine desde src/Parser/ExpressionParser.cpp:1492-1638
+- [x] NSC-IMPL-0119 — Extraer el class Parser::PostfixIterationMachine desde src/Parser/ExpressionParser.cpp:1492-1638
   (147) hacia src/Parser/Internal/PostfixIterationMachine.h, y mover sus cuerpos a
   src/Parser/Internal/PostfixIterationMachine.cpp; conservar texto, comentarios, firmas, orden y conducta. Restricción
   de pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0120 — Extraer el enum BinaryRightHandSide desde src/Parser/ExpressionParser.cpp:1833-1833 (1) hacia
+- [x] NSC-IMPL-0120 — Extraer el enum BinaryRightHandSide desde src/Parser/ExpressionParser.cpp:1833-1833 (1) hacia
   src/Parser/Internal/BinaryRightHandSide.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0121 — Extraer el struct BinaryOperatorInfo desde src/Parser/ExpressionParser.cpp:1835-1841 (7) hacia
+- [x] NSC-IMPL-0121 — Extraer el struct BinaryOperatorInfo desde src/Parser/ExpressionParser.cpp:1835-1841 (7) hacia
   src/Parser/Internal/BinaryOperatorInfo.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0122 — Extraer el class Parser::ParseContinuationCoordinator desde
+- [x] NSC-IMPL-0122 — Extraer el class Parser::ParseContinuationCoordinator desde
   src/Parser/ParserContinuationCoordinator.cpp:25-671 (647) hacia src/Parser/Internal/ParseContinuationCoordinator.h,
   sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: shim + vista
   privada (A-1).
-- [ ] NSC-IMPL-0123 — Extraer el class Parser::PatternIterationParser desde src/Parser/PatternParser.cpp:27-97 (71)
+- [x] NSC-IMPL-0123 — Extraer el class Parser::PatternIterationParser desde src/Parser/PatternParser.cpp:27-97 (71)
   hacia src/Parser/Internal/PatternIterationParser.h, y mover sus cuerpos a
   src/Parser/Internal/PatternIterationParser.cpp; conservar texto, comentarios, firmas, orden y conducta. Restricción de
   pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0124 — Extraer el class Parser::PatternAlternativeExpander desde src/Parser/PatternParser.cpp:99-127 (29)
+- [x] NSC-IMPL-0124 — Extraer el class Parser::PatternAlternativeExpander desde src/Parser/PatternParser.cpp:99-127 (29)
   hacia src/Parser/Internal/PatternAlternativeExpander.h, y mover sus cuerpos a
   src/Parser/Internal/PatternAlternativeExpander.cpp; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0125 — Extraer el class Parser::PatternConditionBuilder desde src/Parser/PatternParser.cpp:129-212 (84)
+- [x] NSC-IMPL-0125 — Extraer el class Parser::PatternConditionBuilder desde src/Parser/PatternParser.cpp:129-212 (84)
   hacia src/Parser/Internal/PatternConditionBuilder.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0126 — Extraer el class Parser::PatternLoweringMachine desde src/Parser/PatternParser.cpp:214-328 (115)
+- [x] NSC-IMPL-0126 — Extraer el class Parser::PatternLoweringMachine desde src/Parser/PatternParser.cpp:214-328 (115)
   hacia src/Parser/Internal/PatternLoweringMachine.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0127 — Extraer el class Parser::PatternBindingEmitter desde src/Parser/PatternParser.cpp:330-496 (167)
+- [x] NSC-IMPL-0127 — Extraer el class Parser::PatternBindingEmitter desde src/Parser/PatternParser.cpp:330-496 (167)
   hacia src/Parser/Internal/PatternBindingEmitter.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0128 — Extraer el class Parser::StructuredControlParser desde src/Parser/StatementParser.cpp:1479-3111
+- [x] NSC-IMPL-0128 — Extraer el class Parser::StructuredControlParser desde src/Parser/StatementParser.cpp:1479-3111
   (1633) hacia src/Parser/Internal/StructuredControlParser.h, y mover sus cuerpos a
   src/Parser/Internal/StructuredControlParser.cpp; conservar texto, comentarios, firmas, orden y conducta. Restricción
   de pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0139 — Mover fuera de línea método KnownGenericTypeScope::KnownGenericTypeScope de
+- [x] NSC-IMPL-0139 — Mover fuera de línea método KnownGenericTypeScope::KnownGenericTypeScope de
   src/Parser/KnownGenericTypeScope.h:18 (21 líneas) a un único .cpp, dejando la declaración intacta y conservando
   exactamente el cuerpo.
-- [ ] NSC-IMPL-0140 — Mover fuera de línea método KnownGenericTypeScope::~KnownGenericTypeScope de
+- [x] NSC-IMPL-0140 — Mover fuera de línea método KnownGenericTypeScope::~KnownGenericTypeScope de
   src/Parser/KnownGenericTypeScope.h:40 (4 líneas) a un único .cpp, dejando la declaración intacta y conservando
   exactamente el cuerpo.
-- [ ] NSC-IMPL-0757 — Extraer el struct LanguageServiceIdentity desde
+- [x] NSC-IMPL-0757 — Extraer el struct LanguageServiceIdentity desde
   include/nativesharp/LanguageService/LanguageService.h:20-27 hacia
   include/nativesharp/LanguageService/LanguageServiceIdentity.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0758 — Extraer el struct DocumentSnapshot desde
+- [x] NSC-IMPL-0758 — Extraer el struct DocumentSnapshot desde
   include/nativesharp/LanguageService/LanguageService.h:29-34 hacia
   include/nativesharp/LanguageService/DocumentSnapshot.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0759 — Extraer el class AnalysisSnapshot desde
+- [x] NSC-IMPL-0759 — Extraer el class AnalysisSnapshot desde
   include/nativesharp/LanguageService/LanguageService.h:36-87 hacia
   include/nativesharp/LanguageService/AnalysisSnapshot.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0760 — Conservar el class LanguageService como tipo principal de
+- [x] NSC-IMPL-0760 — Conservar el class LanguageService como tipo principal de
   include/nativesharp/LanguageService/LanguageService.h:91-131 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0761 — Extraer el struct TextPosition desde include/nativesharp/LanguageService/ProtocolTypes.h:16-22
+- [x] NSC-IMPL-0761 — Extraer el struct TextPosition desde include/nativesharp/LanguageService/ProtocolTypes.h:16-22
   hacia include/nativesharp/LanguageService/TextPosition.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0762 — Extraer el struct TextRange desde include/nativesharp/LanguageService/ProtocolTypes.h:24-30 hacia
+- [x] NSC-IMPL-0762 — Extraer el struct TextRange desde include/nativesharp/LanguageService/ProtocolTypes.h:24-30 hacia
   include/nativesharp/LanguageService/TextRange.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0763 — Extraer el enum LanguageDiagnosticSeverity desde
+- [x] NSC-IMPL-0763 — Extraer el enum LanguageDiagnosticSeverity desde
   include/nativesharp/LanguageService/ProtocolTypes.h:32-37 hacia
   include/nativesharp/LanguageService/LanguageDiagnosticSeverity.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0764 — Extraer el struct LanguageDiagnostic desde
+- [x] NSC-IMPL-0764 — Extraer el struct LanguageDiagnostic desde
   include/nativesharp/LanguageService/ProtocolTypes.h:39-46 hacia
   include/nativesharp/LanguageService/LanguageDiagnostic.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0765 — Extraer el enum LanguageSymbolKind desde include/nativesharp/LanguageService/ProtocolTypes.h:48-63
+- [x] NSC-IMPL-0765 — Extraer el enum LanguageSymbolKind desde include/nativesharp/LanguageService/ProtocolTypes.h:48-63
   hacia include/nativesharp/LanguageService/LanguageSymbolKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0766 — Extraer el struct LanguageLocation desde include/nativesharp/LanguageService/ProtocolTypes.h:65-69
+- [x] NSC-IMPL-0766 — Extraer el struct LanguageLocation desde include/nativesharp/LanguageService/ProtocolTypes.h:65-69
   hacia include/nativesharp/LanguageService/LanguageLocation.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0767 — Extraer el struct LanguageSymbol desde include/nativesharp/LanguageService/ProtocolTypes.h:71-80
+- [x] NSC-IMPL-0767 — Extraer el struct LanguageSymbol desde include/nativesharp/LanguageService/ProtocolTypes.h:71-80
   hacia include/nativesharp/LanguageService/LanguageSymbol.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0768 — Extraer el struct CompletionItem desde include/nativesharp/LanguageService/ProtocolTypes.h:82-87
+- [x] NSC-IMPL-0768 — Extraer el struct CompletionItem desde include/nativesharp/LanguageService/ProtocolTypes.h:82-87
   hacia include/nativesharp/LanguageService/CompletionItem.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0769 — Extraer el struct SignatureInformation desde
+- [x] NSC-IMPL-0769 — Extraer el struct SignatureInformation desde
   include/nativesharp/LanguageService/ProtocolTypes.h:89-93 hacia
   include/nativesharp/LanguageService/SignatureInformation.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0770 — Extraer el struct SignatureHelp desde include/nativesharp/LanguageService/ProtocolTypes.h:95-100
+- [x] NSC-IMPL-0770 — Extraer el struct SignatureHelp desde include/nativesharp/LanguageService/ProtocolTypes.h:95-100
   hacia include/nativesharp/LanguageService/SignatureHelp.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0771 — Extraer el struct LanguageTextEdit desde
+- [x] NSC-IMPL-0771 — Extraer el struct LanguageTextEdit desde
   include/nativesharp/LanguageService/ProtocolTypes.h:102-106 hacia
   include/nativesharp/LanguageService/LanguageTextEdit.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0772 — Extraer el struct DocumentFormattingOptions desde
+- [x] NSC-IMPL-0772 — Extraer el struct DocumentFormattingOptions desde
   include/nativesharp/LanguageService/ProtocolTypes.h:108-112 hacia
   include/nativesharp/LanguageService/DocumentFormattingOptions.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0773 — Extraer el enum LanguageCodeActionKind desde
+- [x] NSC-IMPL-0773 — Extraer el enum LanguageCodeActionKind desde
   include/nativesharp/LanguageService/ProtocolTypes.h:114-118 hacia
   include/nativesharp/LanguageService/LanguageCodeActionKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0774 — Extraer el struct LanguageCodeAction desde
+- [x] NSC-IMPL-0774 — Extraer el struct LanguageCodeAction desde
   include/nativesharp/LanguageService/ProtocolTypes.h:120-127 hacia
   include/nativesharp/LanguageService/LanguageCodeAction.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0775 — Extraer el struct RenameResult desde include/nativesharp/LanguageService/ProtocolTypes.h:129-134
+- [x] NSC-IMPL-0775 — Extraer el struct RenameResult desde include/nativesharp/LanguageService/ProtocolTypes.h:129-134
   hacia include/nativesharp/LanguageService/RenameResult.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0776 — Extraer el struct LanguageSemanticToken desde
+- [x] NSC-IMPL-0776 — Extraer el struct LanguageSemanticToken desde
   include/nativesharp/LanguageService/ProtocolTypes.h:136-141 hacia
   include/nativesharp/LanguageService/LanguageSemanticToken.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0797 — Extraer el enum ConstantKind desde include/nativesharp/Sema/ConstantValue.h:8-17 hacia
+- [x] NSC-IMPL-0797 — Extraer el enum ConstantKind desde include/nativesharp/Sema/ConstantValue.h:8-17 hacia
   include/nativesharp/Sema/ConstantKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0798 — Conservar el class ConstantValue como tipo principal de
+- [x] NSC-IMPL-0798 — Conservar el class ConstantValue como tipo principal de
   include/nativesharp/Sema/ConstantValue.h:19-43 y convertir ese archivo en umbrella de sus tipos extraídos, sin alterar
   el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0799 — Extraer el enum ConversionRole desde include/nativesharp/Sema/ConversionInfo.h:14-19 hacia
+- [x] NSC-IMPL-0799 — Extraer el enum ConversionRole desde include/nativesharp/Sema/ConversionInfo.h:14-19 hacia
   include/nativesharp/Sema/ConversionRole.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0800 — Conservar el struct ConversionInfo como tipo principal de
+- [x] NSC-IMPL-0800 — Conservar el struct ConversionInfo como tipo principal de
   include/nativesharp/Sema/ConversionInfo.h:21-29 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0801 — Extraer el enum Effect desde include/nativesharp/Sema/EffectContext.h:9-17 hacia
+- [x] NSC-IMPL-0801 — Extraer el enum Effect desde include/nativesharp/Sema/EffectContext.h:9-17 hacia
   include/nativesharp/Sema/Effect.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0802 — Extraer el class EffectSet desde include/nativesharp/Sema/EffectContext.h:19-42 hacia
+- [x] NSC-IMPL-0802 — Extraer el class EffectSet desde include/nativesharp/Sema/EffectContext.h:19-42 hacia
   include/nativesharp/Sema/EffectSet.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante
   el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0803 — Conservar el class EffectContext como tipo principal de
+- [x] NSC-IMPL-0803 — Conservar el class EffectContext como tipo principal de
   include/nativesharp/Sema/EffectContext.h:63-86 y convertir ese archivo en umbrella de sus tipos extraídos, sin alterar
   el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0804 — Extraer el enum ValueCategory desde include/nativesharp/Sema/ExpressionInfo.h:12-24 hacia
+- [x] NSC-IMPL-0804 — Extraer el enum ValueCategory desde include/nativesharp/Sema/ExpressionInfo.h:12-24 hacia
   include/nativesharp/Sema/ValueCategory.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0805 — Conservar el struct ExpressionInfo como tipo principal de
+- [x] NSC-IMPL-0805 — Conservar el struct ExpressionInfo como tipo principal de
   include/nativesharp/Sema/ExpressionInfo.h:54-64 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0945 — Descomponer SemanticAnalyzer::evaluateConstantBinary en src/Sema/SemanticAnalyzer.cpp:3317 (165
+- [x] NSC-IMPL-0945 — Descomponer SemanticAnalyzer::evaluateConstantBinary en src/Sema/SemanticAnalyzer.cpp:3317 (165
   líneas ejecutables; 250 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0950 — Descomponer buildSemanticIndex en src/LanguageService/LanguageService.cpp:317 (162 líneas
+- [x] NSC-IMPL-0950 — Descomponer buildSemanticIndex en src/LanguageService/LanguageService.cpp:317 (162 líneas
   ejecutables; 208 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0963 — Descomponer SemanticAnalyzer::analyzeBinary en src/Sema/SemanticAnalyzer.cpp:1370 (144 líneas
+- [x] NSC-IMPL-0963 — Descomponer SemanticAnalyzer::analyzeBinary en src/Sema/SemanticAnalyzer.cpp:1370 (144 líneas
   ejecutables; 225 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1018 — Descomponer Parser::tryParseGlobalValueTypePrefix en src/Parser/AttributeParser.cpp:315 (104
+- [x] NSC-IMPL-1018 — Descomponer Parser::tryParseGlobalValueTypePrefix en src/Parser/AttributeParser.cpp:315 (104
   líneas ejecutables; 148 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1050 — Descomponer SemanticAnalyzer::analyzeIndex en src/Sema/SemanticAnalyzer.cpp:1800 (90 líneas
+- [x] NSC-IMPL-1050 — Descomponer SemanticAnalyzer::analyzeIndex en src/Sema/SemanticAnalyzer.cpp:1800 (90 líneas
   ejecutables; 136 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1051 — Descomponer Parser::lowerForeachRange en src/Parser/StatementParser.cpp:3652 (90 líneas
+- [x] NSC-IMPL-1051 — Descomponer Parser::lowerForeachRange en src/Parser/StatementParser.cpp:3652 (90 líneas
   ejecutables; 109 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1068 — Descomponer SemanticAnalyzer::analyzeFunction en src/Sema/SemanticAnalyzer.cpp:490 (85 líneas
+- [x] NSC-IMPL-1068 — Descomponer SemanticAnalyzer::analyzeFunction en src/Sema/SemanticAnalyzer.cpp:490 (85 líneas
   ejecutables; 139 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1074 — Descomponer Parser::tryDispatchValueGlobal en src/Parser/AttributeParser.cpp:602 (84 líneas
+- [x] NSC-IMPL-1074 — Descomponer Parser::tryDispatchValueGlobal en src/Parser/AttributeParser.cpp:602 (84 líneas
   ejecutables; 114 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1087 — Descomponer Parser::ParseContinuationCoordinator::execute en
+- [x] NSC-IMPL-1087 — Descomponer Parser::ParseContinuationCoordinator::execute en
   src/Parser/ParserContinuationCoordinator.cpp:731 (81 líneas ejecutables; 86 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1098 — Descomponer SemanticAnalyzer::analyzeStatement en src/Sema/SemanticAnalyzer.cpp:707 (78 líneas
+- [x] NSC-IMPL-1098 — Descomponer SemanticAnalyzer::analyzeStatement en src/Sema/SemanticAnalyzer.cpp:707 (78 líneas
   ejecutables; 101 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1115 — Descomponer SemanticAnalyzer::analyzeEnum en src/Sema/SemanticAnalyzer.cpp:355 (75 líneas
+- [x] NSC-IMPL-1115 — Descomponer SemanticAnalyzer::analyzeEnum en src/Sema/SemanticAnalyzer.cpp:355 (75 líneas
   ejecutables; 126 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1116 — Descomponer SemanticAnalyzer::analyzeUnary en src/Sema/SemanticAnalyzer.cpp:1252 (75 líneas
+- [x] NSC-IMPL-1116 — Descomponer SemanticAnalyzer::analyzeUnary en src/Sema/SemanticAnalyzer.cpp:1252 (75 líneas
   ejecutables; 117 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1134 — Descomponer SemanticAnalyzer::analyzeLiteral en src/Sema/SemanticAnalyzer.cpp:1143 (72 líneas
+- [x] NSC-IMPL-1134 — Descomponer SemanticAnalyzer::analyzeLiteral en src/Sema/SemanticAnalyzer.cpp:1143 (72 líneas
   ejecutables; 108 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1164 — Descomponer SimpleXmlParser::parseElement en src/Compilation/SimpleXmlParser.cpp:44 (65 líneas
+- [x] NSC-IMPL-1164 — Descomponer SimpleXmlParser::parseElement en src/Compilation/SimpleXmlParser.cpp:44 (65 líneas
   ejecutables; 121 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1165 — Descomponer SemanticAnalyzer::analyzeStruct en src/Sema/SemanticAnalyzer.cpp:252 (65 líneas
+- [x] NSC-IMPL-1165 — Descomponer SemanticAnalyzer::analyzeStruct en src/Sema/SemanticAnalyzer.cpp:252 (65 líneas
   ejecutables; 102 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1175 — Descomponer SemanticAnalyzer::analyzeExpression en src/Sema/SemanticAnalyzer.cpp:1011 (63 líneas
+- [x] NSC-IMPL-1175 — Descomponer SemanticAnalyzer::analyzeExpression en src/Sema/SemanticAnalyzer.cpp:1011 (63 líneas
   ejecutables; 71 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1181 — Descomponer Parser::parseOperatorTail en src/Parser/MemberParser.cpp:2528 (63 líneas ejecutables;
+- [x] NSC-IMPL-1181 — Descomponer Parser::parseOperatorTail en src/Parser/MemberParser.cpp:2528 (63 líneas ejecutables;
   79 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1195 — Descomponer Parser::PostfixIterationMachine::startPostfix en src/Parser/ExpressionParser.cpp:2847
+- [x] NSC-IMPL-1195 — Descomponer Parser::PostfixIterationMachine::startPostfix en src/Parser/ExpressionParser.cpp:2847
   (62 líneas ejecutables; 77 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control
   de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1200 — Descomponer Parser::parseNameOfExpression en src/Parser/ExpressionParser.cpp:3646 (61 líneas
+- [x] NSC-IMPL-1200 — Descomponer Parser::parseNameOfExpression en src/Parser/ExpressionParser.cpp:3646 (61 líneas
   ejecutables; 94 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1212 — Partir ParseContinuationCoordinator por familias de métodos sin alterar su ciclo, cursor, campos
+- [x] NSC-IMPL-1212 — Partir ParseContinuationCoordinator por familias de métodos sin alterar su ciclo, cursor, campos
   ni algoritmo recursivo.
-- [ ] NSC-IMPL-1213 — Partir SemanticAnalyzer.cpp en familias con shims autorizados, conservando maskForWidth y todos
+- [x] NSC-IMPL-1213 — Partir SemanticAnalyzer.cpp en familias con shims autorizados, conservando maskForWidth y todos
   los miembros congelados.
-- [ ] NSC-IMPL-1211 — Cerrar Parser mediante R1 y R5 sin crear colaboradores para sus métodos y sin mover helpers
+- [x] NSC-IMPL-1211 — Cerrar Parser mediante R1 y R5 sin crear colaboradores para sus métodos y sin mover helpers
   congelados por los shims.
+
+Nota de cierre REF-06: Parser, Sema y LanguageService se modularizaron sin introducir colaboradores conceptuales
+nuevos, cambiar el cursor, mover campos ni alterar los shims existentes. La auditoría estática comprobó 108/108
+métodos de Sema, preservación de métodos, comentarios y literales de Parser, cero tipos definidos en `.cpp`, balance
+léxico y líneas nuevas dentro de 120 columnas. No se ejecutaron compilación, pruebas, suites ni baseline por
+instrucción del propietario.
 
 ### Commit REF-07 — Backend LLVM — 0/150
 

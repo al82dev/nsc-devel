@@ -16,6 +16,9 @@ public:
 
 private:
     bool parseElement(SimpleXmlElement& element, std::size_t depth);
+    bool parseElementStart(SimpleXmlElement& element, std::size_t depth);
+    bool parseElementAttributes(SimpleXmlElement& element, bool& selfClosing);
+    bool parseElementContent(SimpleXmlElement& element, std::size_t depth);
     bool parseName(std::string& name);
     bool parseAttributeValue(std::string& value);
     bool parseText(std::string& text);

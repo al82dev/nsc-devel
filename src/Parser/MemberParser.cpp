@@ -2598,11 +2598,16 @@ ast::AstNode* Parser::parseOperatorTail(
     }
 
     parseOperatorBody(method, allowBodyless);
+    finishOperatorMethod(method, beginIndex);
+    return method;
+}
+
+void Parser::finishOperatorMethod(ast::AstNode* method, std::size_t beginIndex)
+{
     if (method->first() != nullptr && method->floatingPointMode() !=
             ast::FloatingPointModeSyntaxKind::Inherit)
         applyMemberFloatingPointMode(method->first(), method->floatingPointMode());
     method->setRange(tokenRangeFrom(beginIndex));
-    return method;
 }
 
 void Parser::parseCallableParameterList(ast::AstNode* callable)

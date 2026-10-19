@@ -44,13 +44,25 @@ private:
 
     void analyzeGlobal(ast::AstNode* node);
     void analyzeStruct(ast::AstNode* node);
+    std::vector<Type*> analyzeStructFields(ast::AstNode* node, Symbol* structSymbol);
+    void assignStructFieldLayout(Symbol* structSymbol, const std::vector<Type*>& fieldTypes);
     void analyzeEnum(ast::AstNode* node);
+    void analyzeEnumMembers(ast::AstNode* node, Symbol* enumSymbol);
     void analyzeExternC(ast::AstNode* node);
     void analyzeFunction(ast::AstNode* node, bool externC);
+    std::vector<Type*> resolveFunctionParameterTypes(ast::AstNode* node);
+    Symbol* declareFunctionSymbol(ast::AstNode* node, Type* functionType, bool externC);
+    void analyzeFunctionBody(
+        ast::AstNode* node,
+        Type* returnType,
+        const std::vector<Type*>& parameterTypes,
+        Symbol* functionSymbol,
+        bool externC);
     void analyzeGlobalVariable(ast::AstNode* node);
 
     void analyzeBlock(ast::AstNode* node, bool createNestedScope);
     void analyzeStatement(ast::AstNode* node);
+    void analyzeInlineAssemblyStatement(ast::AstNode* node);
     void analyzeStaticAssert(ast::AstNode* node);
     void analyzeVariable(ast::AstNode* node);
     void analyzeIf(ast::AstNode* node);
@@ -59,14 +71,53 @@ private:
     void analyzeReturn(ast::AstNode* node);
 
     ExpressionInfo analyzeExpression(ast::AstNode* node, bool allowFunctionDesignator = false);
+    ExpressionInfo analyzeExtendedExpression(ast::AstNode* node);
     ExpressionInfo analyzeIdentifier(ast::AstNode* node, bool allowFunctionDesignator);
     ExpressionInfo analyzeLiteral(ast::AstNode* node);
+    ExpressionInfo analyzeIntegerLiteral(ast::AstNode* node);
     ExpressionInfo analyzeUnary(ast::AstNode* node);
+    std::optional<ExpressionInfo> analyzeStorageUnary(
+        ast::AstNode* node,
+        const ExpressionInfo& operand,
+        lexer::TokenKind operation);
     ExpressionInfo analyzeBinary(ast::AstNode* node);
+    std::optional<ExpressionInfo> analyzeLogicalBinary(
+        ast::AstNode* node,
+        const ExpressionInfo& left,
+        const ExpressionInfo& right,
+        lexer::TokenKind operation,
+        bool shortCircuit);
+    std::optional<ExpressionInfo> analyzeEqualityBinary(
+        ast::AstNode* node,
+        const ExpressionInfo& left,
+        const ExpressionInfo& right,
+        lexer::TokenKind operation,
+        bool shortCircuit);
+    std::optional<ExpressionInfo> analyzeRelationalBinary(
+        ast::AstNode* node,
+        const ExpressionInfo& left,
+        const ExpressionInfo& right,
+        lexer::TokenKind operation,
+        bool shortCircuit);
+    std::optional<ExpressionInfo> analyzeArithmeticBinary(
+        ast::AstNode* node,
+        const ExpressionInfo& left,
+        const ExpressionInfo& right,
+        lexer::TokenKind operation,
+        bool shortCircuit);
     ExpressionInfo analyzeConditional(ast::AstNode* node);
     ExpressionInfo analyzeAssignment(ast::AstNode* node);
     ExpressionInfo analyzeCall(ast::AstNode* node);
     ExpressionInfo analyzeIndex(ast::AstNode* node);
+    bool validateIndexOperands(
+        ast::AstNode* node,
+        const ExpressionInfo& base,
+        const std::vector<std::pair<ast::AstNode*, ExpressionInfo>>& indices);
+    Type* resolveIndexedElement(
+        ast::AstNode* node,
+        const ExpressionInfo& base,
+        const std::vector<std::pair<ast::AstNode*, ExpressionInfo>>& indices,
+        bool& fixedArray);
     ExpressionInfo analyzeMember(ast::AstNode* node, bool pointerForm);
     ExpressionInfo analyzeCast(ast::AstNode* node);
     ExpressionInfo analyzeSizeof(ast::AstNode* node, bool typeForm);
@@ -148,6 +199,50 @@ private:
         const ExpressionInfo& left,
         const ExpressionInfo& right,
         ExpressionInfo result);
+    ExpressionInfo evaluateConstantLogical(
+        ast::AstNode* node,
+        const ExpressionInfo& left,
+        const ExpressionInfo& right,
+        ExpressionInfo result);
+    ExpressionInfo evaluateConstantEquality(
+        ast::AstNode* node,
+        const ExpressionInfo& left,
+        const ExpressionInfo& right,
+        ExpressionInfo result);
+    ExpressionInfo evaluateConstantRelational(
+        ast::AstNode* node,
+        const ExpressionInfo& left,
+        const ExpressionInfo& right,
+        ExpressionInfo result);
+    ExpressionInfo evaluateConstantFloating(
+        ast::AstNode* node,
+        const ExpressionInfo& left,
+        const ExpressionInfo& right,
+        ExpressionInfo result);
+    ExpressionInfo evaluateConstantInteger(
+        ast::AstNode* node,
+        const ExpressionInfo& left,
+        const ExpressionInfo& right,
+        ExpressionInfo result);
+    ExpressionInfo evaluateConstantShift(
+        ast::AstNode* node,
+        const ExpressionInfo& right,
+        Type* common,
+        std::uint32_t width,
+        std::uint64_t bits,
+        ExpressionInfo result);
+    ExpressionInfo evaluateConstantDivision(
+        ast::AstNode* node,
+        Type* common,
+        std::uint32_t width,
+        std::uint64_t left,
+        std::uint64_t right,
+        ExpressionInfo result);
+    ExpressionInfo finishConstantInteger(
+        Type* common,
+        std::uint32_t width,
+        std::uint64_t bits,
+        ExpressionInfo result) const;
 
     bool statementPreventsFallthrough(ast::AstNode* node) const;
     bool containsBreakTargetingLoop(ast::AstNode* node) const;

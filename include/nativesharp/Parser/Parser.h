@@ -450,12 +450,18 @@ private:
     bool tryParseGlobalLayoutPrefix(GlobalDeclarationAttributeState& state);
     bool tryParseGlobalFunctionPrefix(GlobalDeclarationAttributeState& state);
     bool tryParseGlobalValueTypePrefix(GlobalDeclarationAttributeState& state);
+    bool tryParseGlobalRecordOrCopyPrefix(GlobalDeclarationAttributeState& state);
+    bool tryParseGlobalReadonlyOrPartialPrefix(GlobalDeclarationAttributeState& state);
+    bool tryParseGlobalBorrowedPrefix(GlobalDeclarationAttributeState& state);
     bool tryParseGlobalInheritancePrefix(GlobalDeclarationAttributeState& state);
     ast::AstNode* dispatchGlobalDeclaration(GlobalDeclarationAttributeState& state);
     bool tryDispatchReferenceGlobal(
         GlobalDeclarationAttributeState& state,
         ast::AstNode*& declaration);
     bool tryDispatchValueGlobal(
+        GlobalDeclarationAttributeState& state,
+        ast::AstNode*& declaration);
+    bool tryDispatchStructOrEnumGlobal(
         GlobalDeclarationAttributeState& state,
         ast::AstNode*& declaration);
     bool tryDispatchExternGlobal(
@@ -1049,6 +1055,7 @@ private:
         ast::AstNode* method,
         const lexer::Token& operation);
     void parseOperatorBody(ast::AstNode* method, bool allowBodyless);
+    void finishOperatorMethod(ast::AstNode* method, std::size_t beginIndex);
     ast::AstNode* parseConversionOperatorTail(
         bool implicitConversion,
         lexer::TokenKind accessibility,
@@ -1440,6 +1447,7 @@ private:
     ast::AstNode* parseMatchExpression();
     ast::AstNode* parseLoopExpression();
     ast::AstNode* parseNameOfExpression();
+    static void setNameOfExpressionText(ast::AstNode* expression, const ast::AstNode* operand);
     bool nameOfHasQualifiedGenericOperand() const noexcept;
     ast::AstNode* parseOverflowPolicyExpression();
     ast::AstNode* parseCollectionExpression();
@@ -1472,6 +1480,18 @@ private:
         ForeachParseState& state,
         ast::AstNode* body,
         SourceRange range);
+    ast::AstNode* buildForeachRangeLoop(
+        ForeachParseState& state,
+        ast::AstNode* body,
+        SourceRange range,
+        ast::AstNode* collection,
+        ast::AstNode* begin,
+        ast::AstNode* end,
+        ast::AstNode* step);
+    ast::AstNode* buildForeachRangeCondition(
+        const ForeachParseState& state,
+        SourceRange range,
+        const ast::AstNode* collection);
     void reportInvalidForeachRangeReference(
         const ForeachParseState& state,
         const ast::AstNode* collection);

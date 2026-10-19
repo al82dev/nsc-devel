@@ -317,6 +317,23 @@ add_library(nsc_frontend STATIC
     src/Parser/PatternParser.cpp
     src/Parser/GenericSyntaxParser.cpp
     src/Parser/AttributeParser.cpp
+    src/Parser/KnownGenericTypeScope.cpp
+    src/Parser/Internal/ExpressionIterationMachine.cpp
+    src/Parser/Internal/MatchExpressionPatternAnalyzer.cpp
+    src/Parser/Internal/PatternAlternativeExpander.cpp
+    src/Parser/Internal/PatternIterationParser.cpp
+    src/Parser/Internal/PostfixIterationMachine.cpp
+    src/Parser/Internal/StructuredControlParser.cpp
+    src/Parser/Internal/ParseContinuation/ControlFlow.cpp
+    src/Parser/Internal/ParseContinuation/Exceptions.cpp
+    src/Parser/Internal/ParseContinuation/Expressions.cpp
+    src/Parser/Internal/ParseContinuation/Scopes.cpp
+    src/Parser/Internal/ParseContinuation/Statements.cpp
+    src/Sema/Semantic/Constants.cpp
+    src/Sema/Semantic/Declarations.cpp
+    src/Sema/Semantic/Expressions.cpp
+    src/Sema/Semantic/Statements.cpp
+    src/Sema/Semantic/Types.cpp
     src/Sema/OwnershipKind.cpp
     src/Sema/TypeKind.cpp
     src/Sema/Type.cpp
@@ -605,6 +622,7 @@ nsc_enable_warnings(nsc_frontend)
 
 add_library(nsc_language_service STATIC
     src/LanguageService/LanguageService.cpp
+    src/LanguageService/Internal/Implementation.cpp
     src/LanguageService/ProtocolTypes.cpp)
 
 target_include_directories(nsc_language_service PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
