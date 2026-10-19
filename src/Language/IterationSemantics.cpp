@@ -15,6 +15,75 @@ bool validateIteratorProtocol(const IteratorProtocol& protocol, std::string& err
     return true;
 }
 
+std::string iteratorTypeKey(std::string_view itemTypeKey)
+{
+    std::string key = "iterator:";
+    key.append(itemTypeKey);
+    return key;
+}
+
+std::optional<std::string_view> iteratorInnerTypeKey(std::string_view typeKey) noexcept
+{
+    constexpr std::string_view prefix = "iterator:";
+    if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    return pipe == std::string_view::npos ? rest : rest.substr(0, pipe);
+}
+
+std::string iteratorTypeKey(std::string_view itemTypeKey, std::string_view errorTypeKey)
+{
+    std::string key = "iterator:";
+    key.append(itemTypeKey);
+    if (!errorTypeKey.empty())
+    {
+        key.push_back('|');
+        key.append(errorTypeKey);
+    }
+    return key;
+}
+
+std::optional<std::string_view> iteratorErrorTypeKey(std::string_view typeKey) noexcept
+{
+    constexpr std::string_view prefix = "iterator:";
+    if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    if (pipe == std::string_view::npos) return std::nullopt;
+    return rest.substr(pipe + 1);
+}
+
+std::string asyncIteratorTypeKey(std::string_view itemTypeKey, std::string_view errorTypeKey)
+{
+    std::string key = "async-iterator:";
+    key.append(itemTypeKey);
+    if (!errorTypeKey.empty())
+    {
+        key.push_back('|');
+        key.append(errorTypeKey);
+    }
+    return key;
+}
+
+std::optional<std::string_view> asyncIteratorInnerTypeKey(std::string_view typeKey) noexcept
+{
+    constexpr std::string_view prefix = "async-iterator:";
+    if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    return pipe == std::string_view::npos ? rest : rest.substr(0, pipe);
+}
+
+std::optional<std::string_view> asyncIteratorErrorTypeKey(std::string_view typeKey) noexcept
+{
+    constexpr std::string_view prefix = "async-iterator:";
+    if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    if (pipe == std::string_view::npos) return std::nullopt;
+    return rest.substr(pipe + 1);
+}
+
 std::optional<std::size_t> lazyRangeCount(const LazyIntegerRange& range, std::string& error) noexcept
 {
     error.clear();
@@ -88,32 +157,31 @@ bool checkedAlignAndAdvance(
     cursor += size;
     return true;
 }
-}
 
-std::optional<SynchronousGeneratorPlan> buildSynchronousGeneratorPlan(
-    std::span<const GeneratorLocal> locals,
+bool initializeGeneratorPlan(
     std::span<const GeneratorSuspension> suspensions,
     GeneratorStorage storage,
-    bool hasSelfReference,
-    std::string& error) noexcept
+    SynchronousGeneratorPlan& plan,
+    std::string& error)
 {
-    error.clear();
     if (suspensions.empty())
     {
         error = "a synchronous generator requires at least one productive yield";
-        return std::nullopt;
+        return false;
     }
-
-    SynchronousGeneratorPlan plan;
     plan.storage = storage;
     plan.itemType = suspensions.front().itemType;
     plan.completedState = suspensions.size() + 1U;
-    if (plan.itemType.empty())
-    {
-        error = "a generator yield must have a resolved item type";
-        return std::nullopt;
-    }
+    if (!plan.itemType.empty()) return true;
+    error = "a generator yield must have a resolved item type";
+    return false;
+}
 
+bool validateGeneratorSuspensions(
+    std::span<const GeneratorSuspension> suspensions,
+    SynchronousGeneratorPlan& plan,
+    std::string& error)
+{
     for (std::size_t index = 0; index < suspensions.size(); ++index)
     {
         const GeneratorSuspension& suspension = suspensions[index];
@@ -121,74 +189,102 @@ std::optional<SynchronousGeneratorPlan> buildSynchronousGeneratorPlan(
         if (suspension.state != expectedState)
         {
             error = "generator suspension states must be contiguous and start at one";
-            return std::nullopt;
+            return false;
         }
         if (suspension.itemType != plan.itemType)
         {
             error = "all generator yields must resolve to one item type";
-            return std::nullopt;
+            return false;
         }
-        if (suspension.kind != GeneratorYieldKind::Value)
+        if (suspension.kind == GeneratorYieldKind::Value) continue;
+        if (!suspension.lifetimeTiedToFrame)
         {
-            if (!suspension.lifetimeTiedToFrame)
-            {
-                error = "a borrowed generator yield must be tied to frame-owned or captured storage";
-                return std::nullopt;
-            }
-            plan.yieldsBorrowedItems = true;
+            error = "a borrowed generator yield must be tied to frame-owned or captured storage";
+            return false;
         }
+        plan.yieldsBorrowedItems = true;
     }
+    return true;
+}
 
+bool appendGeneratorFrameSlot(
+    const GeneratorLocal& local,
+    std::size_t localIndex,
+    std::size_t suspensionCount,
+    std::size_t& cursor,
+    std::size_t& frameAlignment,
+    SynchronousGeneratorPlan& plan,
+    std::string& error)
+{
+    if (!validGeneratorLocal(local))
+    {
+        error = "generator local has an invalid size or alignment";
+        return false;
+    }
+    if (local.firstLiveState == 0 || local.lastLiveState < local.firstLiveState ||
+        local.lastLiveState > suspensionCount)
+    {
+        error = "generator local liveness must name a valid inclusive suspension interval";
+        return false;
+    }
+    const std::size_t offsetBefore = cursor;
+    if (!checkedAlignAndAdvance(cursor, local.alignment, local.size))
+    {
+        error = "generator frame layout overflows size_t";
+        return false;
+    }
+    const std::size_t alignedOffset =
+        (offsetBefore + local.alignment - 1U) / local.alignment * local.alignment;
+    frameAlignment = std::max(frameAlignment, local.alignment);
+    plan.slots.push_back(GeneratorFrameSlot{
+        localIndex,
+        alignedOffset,
+        local.size,
+        local.alignment,
+        local.firstLiveState,
+        local.lastLiveState,
+        local.requiresDrop,
+        local.moveOnly,
+        local.borrowed});
+    return true;
+}
+
+bool layoutGeneratorFrame(
+    std::span<const GeneratorLocal> locals,
+    std::size_t suspensionCount,
+    bool hasSelfReference,
+    SynchronousGeneratorPlan& plan,
+    std::string& error)
+{
     std::size_t cursor = 1U; // stable one-byte state discriminator
     std::size_t frameAlignment = 1U;
     for (std::size_t localIndex = 0; localIndex < locals.size(); ++localIndex)
     {
         const GeneratorLocal& local = locals[localIndex];
         if (!local.livesAcrossYield) continue;
-        if (!validGeneratorLocal(local))
+        if (!appendGeneratorFrameSlot(
+                local, localIndex, suspensionCount, cursor, frameAlignment, plan, error))
         {
-            error = "generator local has an invalid size or alignment";
-            return std::nullopt;
+            return false;
         }
-        if (local.firstLiveState == 0 || local.lastLiveState < local.firstLiveState ||
-            local.lastLiveState > suspensions.size())
-        {
-            error = "generator local liveness must name a valid inclusive suspension interval";
-            return std::nullopt;
-        }
-
-        const std::size_t offsetBefore = cursor;
-        if (!checkedAlignAndAdvance(cursor, local.alignment, local.size))
-        {
-            error = "generator frame layout overflows size_t";
-            return std::nullopt;
-        }
-        const std::size_t alignedOffset =
-            (offsetBefore + local.alignment - 1U) / local.alignment * local.alignment;
-        frameAlignment = std::max(frameAlignment, local.alignment);
-        plan.slots.push_back(GeneratorFrameSlot{
-            localIndex,
-            alignedOffset,
-            local.size,
-            local.alignment,
-            local.firstLiveState,
-            local.lastLiveState,
-            local.requiresDrop,
-            local.moveOnly,
-            local.borrowed});
     }
-
     if (cursor > std::numeric_limits<std::size_t>::max() - (frameAlignment - 1U))
     {
         error = "generator frame final alignment overflows size_t";
-        return std::nullopt;
+        return false;
     }
     cursor = (cursor + frameAlignment - 1U) / frameAlignment * frameAlignment;
     plan.frame = GeneratorFrame{
         cursor,
         frameAlignment,
         hasSelfReference || plan.yieldsBorrowedItems};
+    return true;
+}
 
+void appendGeneratorStates(
+    std::span<const GeneratorSuspension> suspensions,
+    SynchronousGeneratorPlan& plan)
+{
     plan.states.reserve(suspensions.size());
     for (const GeneratorSuspension& suspension : suspensions)
     {
@@ -207,6 +303,23 @@ std::optional<SynchronousGeneratorPlan> buildSynchronousGeneratorPlan(
         }
         plan.states.push_back(std::move(state));
     }
+}
+}
+
+std::optional<SynchronousGeneratorPlan> buildSynchronousGeneratorPlan(
+    std::span<const GeneratorLocal> locals,
+    std::span<const GeneratorSuspension> suspensions,
+    GeneratorStorage storage,
+    bool hasSelfReference,
+    std::string& error) noexcept
+{
+    error.clear();
+    SynchronousGeneratorPlan plan;
+    if (!initializeGeneratorPlan(suspensions, storage, plan, error)) return std::nullopt;
+    if (!validateGeneratorSuspensions(suspensions, plan, error)) return std::nullopt;
+    if (!layoutGeneratorFrame(
+            locals, suspensions.size(), hasSelfReference, plan, error)) return std::nullopt;
+    appendGeneratorStates(suspensions, plan);
     return plan;
 }
 

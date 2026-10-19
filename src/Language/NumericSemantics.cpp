@@ -147,6 +147,130 @@ std::optional<std::uint64_t> decimal128StableHash(Decimal128Bits value) noexcept
     return hash;
 }
 
+namespace
+{
+bool scanDecimalCoefficientText(
+    std::string_view spelling,
+    std::size_t& cursor,
+    std::string& digits,
+    int& fractionalDigits,
+    std::string& error)
+{
+    bool sawDigit = false;
+    bool sawDot = false;
+    for (; cursor < spelling.size(); ++cursor)
+    {
+        const char value = spelling[cursor];
+        if (value == '_') continue;
+        if (value == '.')
+        {
+            if (sawDot)
+            {
+                error = "decimal literal has more than one decimal point";
+                return false;
+            }
+            sawDot = true;
+            continue;
+        }
+        if (value == 'e' || value == 'E' || value == 'm' || value == 'M') break;
+        if (value < '0' || value > '9')
+        {
+            error = "decimal literal has an invalid digit";
+            return false;
+        }
+        digits.push_back(value);
+        sawDigit = true;
+        if (sawDot) ++fractionalDigits;
+    }
+    if (sawDigit) return true;
+    error = "decimal literal requires at least one digit";
+    return false;
+}
+
+bool scanDecimalExponent(
+    std::string_view spelling,
+    std::size_t& cursor,
+    int& exponent,
+    std::string& error)
+{
+    if (cursor >= spelling.size() || (spelling[cursor] != 'e' && spelling[cursor] != 'E'))
+        return true;
+    ++cursor;
+    bool exponentNegative = false;
+    if (cursor < spelling.size() && (spelling[cursor] == '-' || spelling[cursor] == '+'))
+    {
+        exponentNegative = spelling[cursor] == '-';
+        ++cursor;
+    }
+    if (cursor >= spelling.size())
+    {
+        error = "decimal exponent requires digits";
+        return false;
+    }
+    for (; cursor < spelling.size(); ++cursor)
+    {
+        const char value = spelling[cursor];
+        if (value == '_') continue;
+        if (value < '0' || value > '9')
+        {
+            error = "decimal exponent has an invalid digit";
+            return false;
+        }
+        if (exponent > 1000)
+        {
+            error = "decimal exponent is out of range";
+            return false;
+        }
+        exponent = exponent * 10 + (value - '0');
+    }
+    if (exponentNegative) exponent = -exponent;
+    return true;
+}
+
+std::optional<DecimalCoefficient> parseDecimalCoefficient(
+    std::string& digits,
+    std::string& error)
+{
+    const std::size_t first = digits.find_first_not_of('0');
+    if (first == std::string::npos) return DecimalCoefficient{0};
+    digits = digits.substr(first);
+    DecimalCoefficient coefficient = 0;
+    for (const char value : digits)
+    {
+        coefficient = coefficient * 10U + static_cast<unsigned>(value - '0');
+        if (coefficient > ((DecimalCoefficient{1} << 96U) - 1U))
+        {
+            error = "decimal coefficient exceeds 96 bits";
+            return std::nullopt;
+        }
+    }
+    return coefficient;
+}
+
+bool applyDecimalLiteralScale(
+    DecimalCoefficient& coefficient,
+    int& scale,
+    std::string& error)
+{
+    if (scale < 0)
+    {
+        for (int index = 0; index < -scale; ++index)
+        {
+            if (coefficient > ((DecimalCoefficient{1} << 96U) - 1U) / 10U)
+            {
+                error = "decimal coefficient exceeds 96 bits";
+                return false;
+            }
+            coefficient *= 10U;
+        }
+        scale = 0;
+    }
+    if (scale <= static_cast<int>(DecimalMaximumScale)) return true;
+    error = "decimal scale exceeds 28";
+    return false;
+}
+}
+
 std::optional<DecimalLiteralValue> parseDecimalLiteral(
     std::string_view spelling,
     std::string& error) noexcept
@@ -166,81 +290,20 @@ std::optional<DecimalLiteralValue> parseDecimalLiteral(
     }
     std::string digits;
     int fractionalDigits = 0;
-    bool sawDigit = false;
-    bool sawDot = false;
-    for (; cursor < spelling.size(); ++cursor)
-    {
-        const char value = spelling[cursor];
-        if (value == '_') continue;
-        if (value == '.')
-        {
-            if (sawDot) { error = "decimal literal has more than one decimal point"; return std::nullopt; }
-            sawDot = true;
-            continue;
-        }
-        if (value == 'e' || value == 'E' || value == 'm' || value == 'M') break;
-        if (value < '0' || value > '9')
-        { error = "decimal literal has an invalid digit"; return std::nullopt; }
-        digits.push_back(value);
-        sawDigit = true;
-        if (sawDot) ++fractionalDigits;
-    }
-    if (!sawDigit)
-    { error = "decimal literal requires at least one digit"; return std::nullopt; }
+    if (!scanDecimalCoefficientText(spelling, cursor, digits, fractionalDigits, error))
+        return std::nullopt;
     int exponent = 0;
-    if (cursor < spelling.size() && (spelling[cursor] == 'e' || spelling[cursor] == 'E'))
-    {
-        ++cursor;
-        bool exponentNegative = false;
-        if (cursor < spelling.size() && (spelling[cursor] == '-' || spelling[cursor] == '+'))
-        {
-            exponentNegative = spelling[cursor] == '-';
-            ++cursor;
-        }
-        if (cursor >= spelling.size())
-        { error = "decimal exponent requires digits"; return std::nullopt; }
-        for (; cursor < spelling.size(); ++cursor)
-        {
-            const char value = spelling[cursor];
-            if (value == '_') continue;
-            if (value < '0' || value > '9')
-            { error = "decimal exponent has an invalid digit"; return std::nullopt; }
-            if (exponent > 1000)
-            { error = "decimal exponent is out of range"; return std::nullopt; }
-            exponent = exponent * 10 + (value - '0');
-        }
-        if (exponentNegative) exponent = -exponent;
-    }
+    if (!scanDecimalExponent(spelling, cursor, exponent, error)) return std::nullopt;
     if (cursor < spelling.size() && (spelling[cursor] == 'm' || spelling[cursor] == 'M')) ++cursor;
     if (cursor != spelling.size())
     { error = "decimal literal has trailing characters"; return std::nullopt; }
 
-    const std::size_t first = digits.find_first_not_of('0');
-    if (first == std::string::npos)
-    {
-        return DecimalLiteralValue{0, 0, 0, false};
-    }
-    digits = digits.substr(first);
-    DecimalCoefficient coefficient = 0;
-    for (const char value : digits)
-    {
-        coefficient = coefficient * 10U + static_cast<unsigned>(value - '0');
-        if (coefficient > ((DecimalCoefficient{1} << 96U) - 1U))
-        { error = "decimal coefficient exceeds 96 bits"; return std::nullopt; }
-    }
+    const auto parsedCoefficient = parseDecimalCoefficient(digits, error);
+    if (!parsedCoefficient.has_value()) return std::nullopt;
+    if (*parsedCoefficient == 0) return DecimalLiteralValue{0, 0, 0, false};
+    DecimalCoefficient coefficient = *parsedCoefficient;
     int scale = fractionalDigits - exponent;
-    if (scale < 0)
-    {
-        for (int index = 0; index < -scale; ++index)
-        {
-            if (coefficient > ((DecimalCoefficient{1} << 96U) - 1U) / 10U)
-            { error = "decimal coefficient exceeds 96 bits"; return std::nullopt; }
-            coefficient *= 10U;
-        }
-        scale = 0;
-    }
-    if (scale > static_cast<int>(DecimalMaximumScale))
-    { error = "decimal scale exceeds 28"; return std::nullopt; }
+    if (!applyDecimalLiteralScale(coefficient, scale, error)) return std::nullopt;
 
     DecimalLiteralValue result;
     result.coefficientLow = static_cast<std::uint64_t>(coefficient);
@@ -544,41 +607,31 @@ std::optional<std::int64_t> addInteger(
     return static_cast<std::int64_t>((raw ^ sign) - sign);
 }
 
-std::optional<IntegerArithmeticResult> evaluateIntegerArithmetic(
-    const IntegerArithmeticRequest& request,
-    std::string& error) noexcept
+namespace
 {
-    error.clear();
-    if (request.type.bits == 0 || request.type.bits > 64)
-    {
-        error = "integer arithmetic width must be between 1 and 64 bits";
-        return std::nullopt;
-    }
+__int128 integerOperandValue(
+    std::uint64_t bits,
+    IntegerType type,
+    std::uint64_t mask) noexcept
+{
+    bits &= mask;
+    if (!type.isSigned) return static_cast<__int128>(bits);
+    const std::uint64_t sign = std::uint64_t{1} << (type.bits - 1U);
+    if ((bits & sign) == 0) return static_cast<__int128>(bits);
+    return static_cast<__int128>(bits) - (static_cast<__int128>(1) << type.bits);
+}
 
-    const std::uint64_t mask = unsignedMaximum(request.type.bits);
-    const auto signedOperand = [&](std::uint64_t bits) -> __int128
-    {
-        bits &= mask;
-        if (!request.type.isSigned) return static_cast<__int128>(bits);
-        const std::uint64_t sign = std::uint64_t{1} << (request.type.bits - 1U);
-        if ((bits & sign) == 0) return static_cast<__int128>(bits);
-        return static_cast<__int128>(bits) -
-            (static_cast<__int128>(1) << request.type.bits);
-    };
-
-    const __int128 left = signedOperand(request.leftBits);
-    const __int128 right = signedOperand(request.rightBits);
-    const __int128 minimum = request.type.isSigned
-        ? -(static_cast<__int128>(1) << (request.type.bits - 1U))
-        : 0;
-    const __int128 maximum = request.type.isSigned
-        ? (static_cast<__int128>(1) << (request.type.bits - 1U)) - 1
-        : request.type.bits == 64
-            ? static_cast<__int128>(std::numeric_limits<std::uint64_t>::max())
-            : (static_cast<__int128>(1) << request.type.bits) - 1;
-
-    __int128 wide = 0;
-    bool forcedOverflow = false;
+bool evaluateRequestedIntegerOperation(
+    const IntegerArithmeticRequest& request,
+    __int128 left,
+    __int128 right,
+    __int128 minimum,
+    __int128 maximum,
+    std::uint64_t mask,
+    __int128& wide,
+    bool& forcedOverflow,
+    std::string& error)
+{
     switch (request.operation)
     {
         case IntegerArithmeticOperation::Add: wide = left + right; break;
@@ -588,7 +641,7 @@ std::optional<IntegerArithmeticResult> evaluateIntegerArithmetic(
             if (right == 0)
             {
                 error = "integer division by zero";
-                return std::nullopt;
+                return false;
             }
             if (request.type.isSigned && left == minimum && right == -1)
             {
@@ -596,11 +649,9 @@ std::optional<IntegerArithmeticResult> evaluateIntegerArithmetic(
                 forcedOverflow = true;
             }
             else if (request.type.isSigned)
-                wide = static_cast<std::int64_t>(left) /
-                    static_cast<std::int64_t>(right);
+                wide = static_cast<std::int64_t>(left) / static_cast<std::int64_t>(right);
             else
-                wide = static_cast<std::uint64_t>(left) /
-                    static_cast<std::uint64_t>(right);
+                wide = static_cast<std::uint64_t>(left) / static_cast<std::uint64_t>(right);
             break;
         case IntegerArithmeticOperation::ShiftLeft:
         case IntegerArithmeticOperation::ShiftRight:
@@ -612,7 +663,7 @@ std::optional<IntegerArithmeticResult> evaluateIntegerArithmetic(
                 if (request.policy == OverflowPolicy::Checked)
                 {
                     error = "integer shift count is outside the operand width";
-                    return std::nullopt;
+                    return false;
                 }
                 shift %= request.type.bits;
             }
@@ -625,6 +676,38 @@ std::optional<IntegerArithmeticResult> evaluateIntegerArithmetic(
             break;
         }
     }
+    return true;
+}
+}
+
+std::optional<IntegerArithmeticResult> evaluateIntegerArithmetic(
+    const IntegerArithmeticRequest& request,
+    std::string& error) noexcept
+{
+    error.clear();
+    if (request.type.bits == 0 || request.type.bits > 64)
+    {
+        error = "integer arithmetic width must be between 1 and 64 bits";
+        return std::nullopt;
+    }
+
+    const std::uint64_t mask = unsignedMaximum(request.type.bits);
+    const __int128 left = integerOperandValue(request.leftBits, request.type, mask);
+    const __int128 right = integerOperandValue(request.rightBits, request.type, mask);
+    const __int128 minimum = request.type.isSigned
+        ? -(static_cast<__int128>(1) << (request.type.bits - 1U))
+        : 0;
+    const __int128 maximum = request.type.isSigned
+        ? (static_cast<__int128>(1) << (request.type.bits - 1U)) - 1
+        : request.type.bits == 64
+            ? static_cast<__int128>(std::numeric_limits<std::uint64_t>::max())
+            : (static_cast<__int128>(1) << request.type.bits) - 1;
+
+    __int128 wide = 0;
+    bool forcedOverflow = false;
+    if (!evaluateRequestedIntegerOperation(
+            request, left, right, minimum, maximum, mask, wide, forcedOverflow, error))
+        return std::nullopt;
 
     const bool overflow = forcedOverflow || wide < minimum || wide > maximum;
     if (overflow && request.policy == OverflowPolicy::Checked)

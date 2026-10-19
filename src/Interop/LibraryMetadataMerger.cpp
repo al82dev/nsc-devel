@@ -267,7 +267,7 @@ void canonicalizeStrings(std::vector<std::string>& values)
     values.erase(std::unique(values.begin(), values.end()), values.end());
 }
 
-bool canonicalizeModel(LibraryMetadata& metadata, std::string& error)
+bool canonicalizeNestedRecords(LibraryMetadata& metadata, std::string& error)
 {
     for (LibraryMetadataType& type : metadata.types)
     {
@@ -295,7 +295,11 @@ bool canonicalizeModel(LibraryMetadata& metadata, std::string& error)
             return false;
     }
     canonicalizeStrings(metadata.externalTypeKeys);
+    return true;
+}
 
+bool canonicalizeDeclarationRecords(LibraryMetadata& metadata, std::string& error)
+{
     if (!canonicalize(
             metadata.types,
             [](const auto& item) -> const std::string& { return item.identityKey; },
@@ -303,6 +307,11 @@ bool canonicalizeModel(LibraryMetadata& metadata, std::string& error)
             "type",
             error))
         return false;
+    return true;
+}
+
+bool canonicalizeGenericRecords(LibraryMetadata& metadata, std::string& error)
+{
     if (!canonicalize(
             metadata.members,
             [](const auto& item) {
@@ -361,6 +370,11 @@ bool canonicalizeModel(LibraryMetadata& metadata, std::string& error)
         "C ABI export",
         error))
         return false;
+    return true;
+}
+
+bool canonicalizeDependencyRecords(LibraryMetadata& metadata, std::string& error)
+{
     if (!canonicalize(
             metadata.binaryDependencies,
             [](const auto& item) -> const std::string& { return item.moduleName; },
@@ -374,6 +388,14 @@ bool canonicalizeModel(LibraryMetadata& metadata, std::string& error)
         equalPlatformImport,
         "platform import",
         error);
+}
+
+bool canonicalizeModel(LibraryMetadata& metadata, std::string& error)
+{
+    return canonicalizeNestedRecords(metadata, error) &&
+        canonicalizeDeclarationRecords(metadata, error) &&
+        canonicalizeGenericRecords(metadata, error) &&
+        canonicalizeDependencyRecords(metadata, error);
 }
 
 template <typename Record>

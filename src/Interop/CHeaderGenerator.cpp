@@ -11,6 +11,8 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 
+#include "Internal/HostContext.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
@@ -36,16 +38,6 @@ using frontend::ProjectCompilation;
 using frontend::ProjectMemberModel;
 using frontend::ProjectNameLookup;
 using frontend::ProjectObjectLayoutModel;
-
-struct HostContext final
-{
-    const ProjectNameLookup& names;
-    const ProjectMemberModel& members;
-    const ProjectObjectLayoutModel& layouts;
-    const frontend::ProjectNamespaceFunctionModel& namespaceFunctions;
-    std::size_t rootProjectOrdinal = 0;
-    std::unordered_map<std::string, std::string> cNames;
-};
 
 std::string sanitizeIdentifier(std::string_view text)
 {
@@ -423,6 +415,208 @@ bool isPromotedAnonymousLayoutType(const NamedTypeDeclaration& type) noexcept
         type.syntax->auxiliaryText().find("promote") != std::string::npos;
 }
 
+bool emitStructField(
+    std::ostringstream& out,
+    const HostContext& context,
+    const ClassMemberSymbol& field,
+    std::string_view indentation,
+    bool& aggregatePendingAlignment,
+    std::uint64_t aggregateMinimumAlignment,
+    std::string& error);
+
+bool emitAnonymousStructField(
+    std::ostringstream& out,
+    const HostContext& context,
+    const ClassMemberSymbol& field,
+    std::string_view indentation,
+    bool& aggregatePendingAlignment,
+    std::uint64_t aggregateMinimumAlignment,
+    std::string& error)
+{
+    const NamedTypeDeclaration* nestedType =
+        namedTypeForCoreKey(field.declaredTypeKey, context.names);
+    const auto namedTypes = context.names.namedTypes();
+    if (nestedType == nullptr || nestedType->kind != NamedTypeDeclarationKind::Struct)
+    {
+        error = "host header cannot resolve anonymous carrier type '" +
+            field.declaredTypeKey + "'";
+        return false;
+    }
+    const std::size_t nestedOrdinal =
+        static_cast<std::size_t>(nestedType - namedTypes.data());
+    const frontend::StructValueLayout* nestedLayout =
+        context.layouts.structLayoutForType(nestedOrdinal);
+    if (nestedLayout == nullptr)
+    {
+        error = "missing layout for anonymous host aggregate '" +
+            nestedType->identity.fullyQualifiedName() + "'";
+        return false;
+    }
+    if (nestedLayout->hasExplicitFieldOffsets)
+    {
+        error = "host header cannot express explicit field offsets in anonymous aggregate '" +
+            nestedType->identity.fullyQualifiedName() + "'";
+        return false;
+    }
+    if (nestedLayout->pack != 0)
+        out << "#pragma pack(push, " << nestedLayout->pack << ")\n";
+    out << indentation;
+    if (field.explicitFieldAlignment.has_value())
+        out << "NS_ALIGNAS(" << *field.explicitFieldAlignment << ") ";
+    if (aggregatePendingAlignment)
+    {
+        out << "NS_ALIGNAS(" << aggregateMinimumAlignment << ") ";
+        aggregatePendingAlignment = false;
+    }
+    out << (nestedLayout->isUnion ? "union" : "struct") << "\n"
+        << indentation << "{\n";
+    bool nestedPendingAlignment = nestedLayout->minimumAlignment != 0;
+    for (const std::size_t nestedMemberOrdinal : context.members.membersOfType(nestedOrdinal))
+    {
+        const ClassMemberSymbol& nestedField = context.members.members()[nestedMemberOrdinal];
+        if (nestedField.kind != ClassMemberKind::Field || nestedField.isStatic) continue;
+        if (!emitStructField(
+                out,
+                context,
+                nestedField,
+                std::string(indentation) + "    ",
+                nestedPendingAlignment,
+                nestedLayout->minimumAlignment,
+                error))
+        {
+            return false;
+        }
+    }
+    out << indentation << "};\n";
+    if (nestedLayout->pack != 0) out << "#pragma pack(pop)\n";
+    return true;
+}
+
+bool emitRegularStructField(
+    std::ostringstream& out,
+    const HostContext& context,
+    const ClassMemberSymbol& field,
+    std::string_view indentation,
+    bool& aggregatePendingAlignment,
+    std::uint64_t aggregateMinimumAlignment,
+    std::string& error)
+{
+    // C2.1 "fixed arrays": C spells an array field with the extent AFTER the name, so the
+    // element type and the count are emitted on either side of it.
+    const std::optional<std::string> element =
+        frontend::ProjectMemberModel::fixedArrayElementTypeKey(field.declaredTypeKey);
+    const std::optional<std::string> flexibleElement =
+        frontend::ProjectMemberModel::flexibleArrayElementTypeKey(field.declaredTypeKey);
+    const std::string fieldType = hostType(
+        element.has_value() ? *element
+            : flexibleElement.has_value() ? *flexibleElement : field.declaredTypeKey,
+        context,
+        error);
+    if (!error.empty()) return false;
+    out << indentation;
+    if (field.explicitFieldAlignment.has_value())
+        out << "NS_ALIGNAS(" << *field.explicitFieldAlignment << ") ";
+    if (aggregatePendingAlignment)
+    {
+        out << "NS_ALIGNAS(" << aggregateMinimumAlignment << ") ";
+        aggregatePendingAlignment = false;
+    }
+    out << fieldType;
+    if (!field.isUnnamedBitField)
+        out << ' ' << sanitizeIdentifier(field.name);
+    if (element.has_value())
+    {
+        const std::optional<std::uint64_t> count =
+            frontend::ProjectMemberModel::fixedArrayCount(field.declaredTypeKey);
+        if (!count.has_value())
+        {
+            error = "host header cannot express fixed-array field '" + field.name + "'";
+            return false;
+        }
+        out << '[' << *count << ']';
+    }
+    else if (flexibleElement.has_value())
+    {
+        out << "[]";
+    }
+    if (field.isBitField)
+    {
+        const frontend::ObjectFieldLayout* bitLayout =
+            context.layouts.fieldLayoutForMember(static_cast<std::size_t>(
+                &field - context.members.members().data()));
+        if (bitLayout == nullptr || !bitLayout->bitWidth.has_value())
+        {
+            error = "missing physical width for host bit-field '" + field.name + "'";
+            return false;
+        }
+        out << " : " << *bitLayout->bitWidth;
+    }
+    out << ";\n";
+    return true;
+}
+
+bool emitStructField(
+    std::ostringstream& out,
+    const HostContext& context,
+    const ClassMemberSymbol& field,
+    std::string_view indentation,
+    bool& aggregatePendingAlignment,
+    std::uint64_t aggregateMinimumAlignment,
+    std::string& error)
+{
+    if (isAnonymousMemberCarrier(field))
+        return emitAnonymousStructField(
+            out,
+            context,
+            field,
+            indentation,
+            aggregatePendingAlignment,
+            aggregateMinimumAlignment,
+            error);
+    return emitRegularStructField(
+        out,
+        context,
+        field,
+        indentation,
+        aggregatePendingAlignment,
+        aggregateMinimumAlignment,
+        error);
+}
+
+void emitStructAssertions(
+    std::ostringstream& out,
+    const HostContext& context,
+    std::size_t typeOrdinal,
+    const frontend::StructValueLayout& layout,
+    std::string_view hostName)
+{
+    out << "NS_STATIC_ASSERT(sizeof(" << hostName << ") == " << layout.size
+        << ", \"NativeSharp host struct size mismatch: " << hostName << "\");\n";
+    out << "NS_STATIC_ASSERT(NS_ALIGNOF(" << hostName << ") == " << layout.alignment
+        << ", \"NativeSharp host struct alignment mismatch: " << hostName << "\");\n";
+    for (const frontend::ObjectFieldLayout& fieldLayout : layout.fields)
+    {
+        if (fieldLayout.memberOrdinal >= context.members.members().size()) continue;
+        const ClassMemberSymbol& field = context.members.members()[fieldLayout.memberOrdinal];
+        if (isAnonymousMemberCarrier(field) || field.isBitField) continue;
+        out << "NS_STATIC_ASSERT(offsetof(" << hostName << ", " << sanitizeIdentifier(field.name)
+            << ") == " << fieldLayout.offset << ", \"NativeSharp host struct offset mismatch: "
+            << hostName << '.' << sanitizeIdentifier(field.name) << "\");\n";
+    }
+    for (const std::size_t promotedOrdinal : context.members.promotedMembersOfType(typeOrdinal))
+    {
+        if (promotedOrdinal >= context.members.members().size()) continue;
+        const ClassMemberSymbol& promoted = context.members.members()[promotedOrdinal];
+        if (promoted.isBitField) continue;
+        const frontend::ObjectFieldLayout* promotedLayout =
+            context.layouts.fieldLayoutForMember(promotedOrdinal);
+        if (promotedLayout == nullptr) continue;
+        out << "NS_STATIC_ASSERT(offsetof(" << hostName << ", " << sanitizeIdentifier(promoted.name)
+            << ") == " << promotedLayout->offset << ", \"NativeSharp host struct offset mismatch: "
+            << hostName << '.' << sanitizeIdentifier(promoted.name) << "\");\n";
+    }
+}
+
 bool emitStruct(
     std::ostringstream& out,
     const HostContext& context,
@@ -460,159 +654,20 @@ bool emitStruct(
     // `align(N)` becomes an alignment specifier on the FIRST member, which is where C11 accepts
     // one and where it raises the whole aggregate's alignment. (After the tag it is not valid C.)
     bool pendingAlignment = layout->minimumAlignment != 0;
-    std::function<bool(
-        const ClassMemberSymbol&,
-        std::string_view,
-        bool&,
-        std::uint64_t)> emitField;
-    emitField = [&](const ClassMemberSymbol& field,
-                    const std::string_view indentation,
-                    bool& aggregatePendingAlignment,
-                    const std::uint64_t aggregateMinimumAlignment) -> bool
-    {
-        const bool anonymousCarrier = isAnonymousMemberCarrier(field);
-        if (anonymousCarrier)
-        {
-            const NamedTypeDeclaration* nestedType =
-                namedTypeForCoreKey(field.declaredTypeKey, context.names);
-            const auto namedTypes = context.names.namedTypes();
-            if (nestedType == nullptr || nestedType->kind != NamedTypeDeclarationKind::Struct)
-            {
-                error = "host header cannot resolve anonymous carrier type '" +
-                    field.declaredTypeKey + "'";
-                return false;
-            }
-            const std::size_t nestedOrdinal =
-                static_cast<std::size_t>(nestedType - namedTypes.data());
-            const frontend::StructValueLayout* nestedLayout =
-                context.layouts.structLayoutForType(nestedOrdinal);
-            if (nestedLayout == nullptr)
-            {
-                error = "missing layout for anonymous host aggregate '" +
-                    nestedType->identity.fullyQualifiedName() + "'";
-                return false;
-            }
-            if (nestedLayout->hasExplicitFieldOffsets)
-            {
-                error = "host header cannot express explicit field offsets in anonymous aggregate '" +
-                    nestedType->identity.fullyQualifiedName() + "'";
-                return false;
-            }
-            if (nestedLayout->pack != 0)
-                out << "#pragma pack(push, " << nestedLayout->pack << ")\n";
-            out << indentation;
-            if (field.explicitFieldAlignment.has_value())
-                out << "NS_ALIGNAS(" << *field.explicitFieldAlignment << ") ";
-            if (aggregatePendingAlignment)
-            {
-                out << "NS_ALIGNAS(" << aggregateMinimumAlignment << ") ";
-                aggregatePendingAlignment = false;
-            }
-            out << (nestedLayout->isUnion ? "union" : "struct") << "\n"
-                << indentation << "{\n";
-            bool nestedPendingAlignment = nestedLayout->minimumAlignment != 0;
-            for (const std::size_t nestedMemberOrdinal : context.members.membersOfType(nestedOrdinal))
-            {
-                const ClassMemberSymbol& nestedField = context.members.members()[nestedMemberOrdinal];
-                if (nestedField.kind != ClassMemberKind::Field || nestedField.isStatic) continue;
-                if (!emitField(nestedField, std::string(indentation) + "    ",
-                        nestedPendingAlignment, nestedLayout->minimumAlignment))
-                    return false;
-            }
-            out << indentation << "};\n";
-            if (nestedLayout->pack != 0) out << "#pragma pack(pop)\n";
-            return true;
-        }
-
-        // C2.1 "fixed arrays": C spells an array field with the extent AFTER the name, so the
-        // element type and the count are emitted on either side of it.
-        const std::optional<std::string> element =
-            frontend::ProjectMemberModel::fixedArrayElementTypeKey(field.declaredTypeKey);
-        const std::optional<std::string> flexibleElement =
-            frontend::ProjectMemberModel::flexibleArrayElementTypeKey(field.declaredTypeKey);
-        const std::string fieldType = hostType(
-            element.has_value() ? *element
-                : flexibleElement.has_value() ? *flexibleElement : field.declaredTypeKey,
-            context,
-            error);
-        if (!error.empty()) return false;
-        out << indentation;
-        if (field.explicitFieldAlignment.has_value())
-            out << "NS_ALIGNAS(" << *field.explicitFieldAlignment << ") ";
-        if (aggregatePendingAlignment)
-        {
-            out << "NS_ALIGNAS(" << aggregateMinimumAlignment << ") ";
-            aggregatePendingAlignment = false;
-        }
-        out << fieldType;
-        if (!field.isUnnamedBitField)
-            out << ' ' << sanitizeIdentifier(field.name);
-        if (element.has_value())
-        {
-            const std::optional<std::uint64_t> count =
-                frontend::ProjectMemberModel::fixedArrayCount(field.declaredTypeKey);
-            if (!count.has_value())
-            {
-                error = "host header cannot express fixed-array field '" + field.name + "'";
-                return false;
-            }
-            out << '[' << *count << ']';
-        }
-        else if (flexibleElement.has_value())
-        {
-            out << "[]";
-        }
-        if (field.isBitField)
-        {
-            const frontend::ObjectFieldLayout* bitLayout =
-                context.layouts.fieldLayoutForMember(static_cast<std::size_t>(
-                    &field - context.members.members().data()));
-            if (bitLayout == nullptr || !bitLayout->bitWidth.has_value())
-            {
-                error = "missing physical width for host bit-field '" + field.name + "'";
-                return false;
-            }
-            out << " : " << *bitLayout->bitWidth;
-        }
-        out << ";\n";
-        return true;
-    };
     for (const std::size_t ordinal : context.members.membersOfType(typeOrdinal))
     {
         const ClassMemberSymbol& field = context.members.members()[ordinal];
         if (field.kind != ClassMemberKind::Field || field.isStatic) continue;
-        if (!emitField(field, "    ", pendingAlignment, layout->minimumAlignment)) return false;
+        if (!emitStructField(
+                out, context, field, "    ", pendingAlignment, layout->minimumAlignment, error))
+            return false;
     }
     out << "};\n";
     if (layout->pack != 0)
     {
         out << "#pragma pack(pop)\n";
     }
-    out << "NS_STATIC_ASSERT(sizeof(" << hostName << ") == " << layout->size
-        << ", \"NativeSharp host struct size mismatch: " << hostName << "\");\n";
-    out << "NS_STATIC_ASSERT(NS_ALIGNOF(" << hostName << ") == " << layout->alignment
-        << ", \"NativeSharp host struct alignment mismatch: " << hostName << "\");\n";
-    for (const frontend::ObjectFieldLayout& fieldLayout : layout->fields)
-    {
-        if (fieldLayout.memberOrdinal >= context.members.members().size()) continue;
-        const ClassMemberSymbol& field = context.members.members()[fieldLayout.memberOrdinal];
-        if (isAnonymousMemberCarrier(field) || field.isBitField) continue;
-        out << "NS_STATIC_ASSERT(offsetof(" << hostName << ", " << sanitizeIdentifier(field.name)
-            << ") == " << fieldLayout.offset << ", \"NativeSharp host struct offset mismatch: "
-            << hostName << '.' << sanitizeIdentifier(field.name) << "\");\n";
-    }
-    for (const std::size_t promotedOrdinal : context.members.promotedMembersOfType(typeOrdinal))
-    {
-        if (promotedOrdinal >= context.members.members().size()) continue;
-        const ClassMemberSymbol& promoted = context.members.members()[promotedOrdinal];
-        if (promoted.isBitField) continue;
-        const frontend::ObjectFieldLayout* promotedLayout =
-            context.layouts.fieldLayoutForMember(promotedOrdinal);
-        if (promotedLayout == nullptr) continue;
-        out << "NS_STATIC_ASSERT(offsetof(" << hostName << ", " << sanitizeIdentifier(promoted.name)
-            << ") == " << promotedLayout->offset << ", \"NativeSharp host struct offset mismatch: "
-            << hostName << '.' << sanitizeIdentifier(promoted.name) << "\");\n";
-    }
+    emitStructAssertions(out, context, typeOrdinal, *layout, hostName);
     return true;
 }
 
@@ -792,26 +847,12 @@ bool emitOrderedDefinitions(
     }
     return true;
 }
-}
 
-bool CHeaderGenerator::writeHeader(
-    const ProjectCompilation& compilation,
-    const std::filesystem::path& destination,
-    std::string& error) const
+void emitHeaderPreamble(
+    std::ostringstream& out,
+    const compilation::Project& root,
+    std::string_view guard)
 {
-    error.clear();
-    const std::optional<HostContext> maybeContext = makeContext(compilation, error);
-    if (!maybeContext.has_value()) return false;
-    const HostContext& context = *maybeContext;
-    const compilation::Project* root = compilation.projectGraph()->rootProject();
-    if (root == nullptr)
-    {
-        error = "missing root project";
-        return false;
-    }
-
-    std::ostringstream out;
-    const std::string guard = "NATIVESHARP_" + upperIdentifier(root->moduleName()) + "_HOST_H";
     out << "/* Generated by nsc " << kCompilerVersion << ". Do not edit. */\n";
     out << "#ifndef " << guard << "\n#define " << guard << "\n\n";
     out << "#if !defined(_WIN32) && !defined(__CYGWIN__)\n"
@@ -842,9 +883,9 @@ bool CHeaderGenerator::writeHeader(
            "#else\n"
            "#define NS_VECTORCALL\n"
            "#endif\n";
-    if (root->outputKind() == compilation::ProjectOutputKind::SharedLibrary)
+    if (root.outputKind() == compilation::ProjectOutputKind::SharedLibrary)
     {
-        out << "#if defined(" << upperIdentifier(root->moduleName()) << "_BUILDING_DLL)\n"
+        out << "#if defined(" << upperIdentifier(root.moduleName()) << "_BUILDING_DLL)\n"
                "#define NS_API __declspec(dllexport)\n"
                "#else\n"
                "#define NS_API __declspec(dllimport)\n"
@@ -862,15 +903,20 @@ bool CHeaderGenerator::writeHeader(
     out << "/* NS304-T15-F03: declared decimal carrier (128-bit). lo = coefficient bits 0..63,\n"
            "   hi = coefficient bits 64..95 | scale bits 96..101 | sign bit 127. */\n"
            "typedef struct { uint64_t lo; uint64_t hi; } NS_Decimal;\n\n";
+}
 
-    const std::set<std::string> reachable = collectReachableHostTypes(context);
-    const auto namedTypes = context.names.namedTypes();
-
+void emitForwardDeclarations(
+    std::ostringstream& out,
+    const HostContext& context,
+    const std::set<std::string>& reachable,
+    std::span<const NamedTypeDeclaration> namedTypes)
+{
     for (const NamedTypeDeclaration& type : namedTypes)
     {
         if (!reachable.contains(type.identity.key())) continue;
         if (isPromotedAnonymousLayoutType(type)) continue;
-        if (type.kind == NamedTypeDeclarationKind::Class || type.kind == NamedTypeDeclarationKind::Interface ||
+        if (type.kind == NamedTypeDeclarationKind::Class ||
+            type.kind == NamedTypeDeclarationKind::Interface ||
             type.kind == NamedTypeDeclarationKind::Struct)
         {
             const frontend::StructValueLayout* forwardLayout =
@@ -882,10 +928,19 @@ bool CHeaderGenerator::writeHeader(
         }
     }
     if (!reachable.empty()) out << '\n';
+}
 
+bool emitEnumDeclarations(
+    std::ostringstream& out,
+    const HostContext& context,
+    const std::set<std::string>& reachable,
+    std::span<const NamedTypeDeclaration> namedTypes,
+    std::string& error)
+{
     for (const NamedTypeDeclaration& type : namedTypes)
     {
-        if (!reachable.contains(type.identity.key()) || type.kind != NamedTypeDeclarationKind::Enum) continue;
+        if (!reachable.contains(type.identity.key()) || type.kind != NamedTypeDeclarationKind::Enum)
+            continue;
         // EL TYPEDEF LLEVA EL TIPO SUBYACENTE, no `int32_t` siempre.
         //
         // Esta linea es la cara de C del contrato: un `enum E : byte` que se declarara aqui como
@@ -907,31 +962,65 @@ bool CHeaderGenerator::writeHeader(
         out << "typedef " << carrier << " " << hostNamedTypeName(context, type) << ";\n";
     }
     if (!reachable.empty()) out << '\n';
+    return true;
+}
 
-    if (!emitOrderedDefinitions(out, context, reachable, error)) return false;
-
+bool emitExports(
+    std::ostringstream& out,
+    const HostContext& context,
+    std::span<const NamedTypeDeclaration> namedTypes,
+    std::string& error)
+{
     out << "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n";
     std::size_t exportCount = 0;
     for (const ClassMemberSymbol& member : context.members.members())
     {
         if (!member.isExportedC || member.declaringTypeOrdinal >= namedTypes.size()) continue;
-        if (namedTypes[member.declaringTypeOrdinal].projectOrdinal != context.rootProjectOrdinal) continue;
+        if (namedTypes[member.declaringTypeOrdinal].projectOrdinal != context.rootProjectOrdinal)
+            continue;
         if (!emitExport(out, context, member, error)) return false;
         ++exportCount;
     }
     for (const frontend::NamespaceFunctionSymbol& function :
          context.namespaceFunctions.functions())
     {
-        if (!function.isExportedC ||
-            function.projectOrdinal != context.rootProjectOrdinal)
-        {
+        if (!function.isExportedC || function.projectOrdinal != context.rootProjectOrdinal)
             continue;
-        }
         if (!emitExport(out, context, function, error)) return false;
         ++exportCount;
     }
     if (exportCount == 0) out << "/* This library has no export extern C host functions. */\n";
     out << "\n#ifdef __cplusplus\n}\n#endif\n\n";
+    return true;
+}
+}
+
+bool CHeaderGenerator::writeHeader(
+    const ProjectCompilation& compilation,
+    const std::filesystem::path& destination,
+    std::string& error) const
+{
+    error.clear();
+    const std::optional<HostContext> maybeContext = makeContext(compilation, error);
+    if (!maybeContext.has_value()) return false;
+    const HostContext& context = *maybeContext;
+    const compilation::Project* root = compilation.projectGraph()->rootProject();
+    if (root == nullptr)
+    {
+        error = "missing root project";
+        return false;
+    }
+
+    std::ostringstream out;
+    const std::string guard = "NATIVESHARP_" + upperIdentifier(root->moduleName()) + "_HOST_H";
+    emitHeaderPreamble(out, *root, guard);
+
+    const std::set<std::string> reachable = collectReachableHostTypes(context);
+    const auto namedTypes = context.names.namedTypes();
+    emitForwardDeclarations(out, context, reachable, namedTypes);
+    if (!emitEnumDeclarations(out, context, reachable, namedTypes, error)) return false;
+    if (!emitOrderedDefinitions(out, context, reachable, error)) return false;
+    if (!emitExports(out, context, namedTypes, error)) return false;
     out << "#undef NS_API\n#undef NS_CALL\n#undef NS_VECTORCALL\n#undef NS_ALIGNOF\n#undef NS_ALIGNAS\n#undef NS_STATIC_ASSERT\n\n";
     out << "#endif /* " << guard << " */\n";
     return writeText(destination, out.str(), error);

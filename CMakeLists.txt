@@ -243,6 +243,7 @@ add_library(nsc_compilation STATIC
     src/Language/AbiSemantics.cpp
     src/Language/AggregateSemantics.cpp
     src/Language/CallableSemantics.cpp
+    src/Language/CheckedLayoutArithmetic.cpp
     src/Language/CompatibilitySemantics.cpp
     src/Language/CrossModuleLifetime.cpp
     src/Language/CoroutineSemantics.cpp
@@ -250,6 +251,7 @@ add_library(nsc_compilation STATIC
     src/Language/MetaprogrammingSemantics.cpp
     src/Language/ModuleSemantics.cpp
     src/Language/NumericSemantics.cpp
+    src/Language/Internal/BuiltinStaticInterpolationHandler.cpp
     src/Language/ExpressionErgonomics.cpp
     src/Language/GenericSemantics.cpp
     src/Language/IterationSemantics.cpp
@@ -722,7 +724,13 @@ add_library(nsc_driver STATIC
     src/Interop/LibraryCapabilityAudit.cpp
     src/Interop/LibraryAbiReport.cpp
     src/Interop/LibraryApiDiff.cpp
+    src/Interop/Internal/ByteReader.cpp
+    src/Interop/Internal/ByteWriter.cpp
     src/Interop/LibraryMetadata.cpp
+    src/Interop/LibraryMetadataCodec.cpp
+    src/Interop/LibraryMetadataConstruction.cpp
+    src/Interop/LibraryMetadataPayload.cpp
+    src/Interop/LibraryMetadataVerification.cpp
     src/Interop/LibraryMetadataMerger.cpp)
 
 target_include_directories(nsc_driver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

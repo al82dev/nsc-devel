@@ -10,82 +10,59 @@
 
 #include "nativesharp/Language/MemoryModel.h"
 #include "nativesharp/Language/IterationSemantics.h"
+#include "nativesharp/Language/AsyncFunctionPlan.h"
+#include "nativesharp/Language/ActiveAsyncDefer.h"
+#include "nativesharp/Language/AsyncCancellationPlan.h"
+#include "nativesharp/Language/AsyncCleanupAction.h"
+#include "nativesharp/Language/AsyncCleanupKind.h"
+#include "nativesharp/Language/AsyncGeneratorPlan.h"
+#include "nativesharp/Language/AsyncGeneratorPollOutcome.h"
+#include "nativesharp/Language/AsyncGeneratorProtocolState.h"
+#include "nativesharp/Language/AsyncGeneratorState.h"
+#include "nativesharp/Language/AsyncGeneratorSuspension.h"
+#include "nativesharp/Language/AsyncGeneratorSuspensionKind.h"
+#include "nativesharp/Language/AwaitContext.h"
+#include "nativesharp/Language/AwaitSuspension.h"
+#include "nativesharp/Language/FrameStorage.h"
+#include "nativesharp/Language/FutureCompletion.h"
+#include "nativesharp/Language/FutureProtocol.h"
+#include "nativesharp/Language/FutureStart.h"
+#include "nativesharp/Language/FutureState.h"
+#include "nativesharp/Language/PollOutcome.h"
+#include "nativesharp/Language/PollState.h"
+#include "nativesharp/Language/CancellationReason.h"
+#include "nativesharp/Language/ConcurrencyContractVersion.h"
+#include "nativesharp/Language/ScopedTask.h"
+#include "nativesharp/Language/TaskExecutorProtocol.h"
+#include "nativesharp/Language/TaskScopeAction.h"
+#include "nativesharp/Language/TaskScopeActionKind.h"
+#include "nativesharp/Language/TaskScopeExitReason.h"
+#include "nativesharp/Language/TaskScopePlan.h"
+#include "nativesharp/Language/ThreadSafetyDecision.h"
+#include "nativesharp/Language/ThreadSafetyFacts.h"
+#include "nativesharp/Language/ThreadSafetyMemberFacts.h"
+#include "nativesharp/Language/ThreadSafetyMemberKind.h"
+#include "nativesharp/Language/ThreadSafetyMetadata.h"
+#include "nativesharp/Language/ThreadSafetyTypeFacts.h"
 
 namespace nativesharp::language
 {
-inline constexpr std::uint16_t kConcurrencyContractMajor = 1;
-inline constexpr std::uint16_t kConcurrencyContractMinor = 0;
-
-enum class FutureStart { Lazy, Eager };
-enum class FrameStorage { CallerStack, CallerArena, ExplicitHeap };
 FutureStart nativeFutureStart() noexcept;
 bool asyncFrameHasImplicitHeap(FrameStorage storage) noexcept;
 bool borrowMayCrossAwait(bool sourceOutlivesFrame, bool addressStable) noexcept;
 
 // NS304-T05-F03: surface type key of an async function's opaque lazy future.
 // futureTypeKey("builtin:int") == "future:builtin:int"; the inverse strips the prefix.
-inline std::string futureTypeKey(std::string_view innerTypeKey)
-{
-    std::string key = "future:";
-    key.append(innerTypeKey);
-    return key;
-}
+std::string futureTypeKey(std::string_view innerTypeKey);
 
 // NS304-T05-F07: an async function that throws carries its error type in the future key as
 // `future:<T>|<E>` (the pipe separates value from error; absent for non-throwing async).
-inline std::string futureTypeKey(std::string_view innerTypeKey, std::string_view errorTypeKey)
-{
-    std::string key = futureTypeKey(innerTypeKey);
-    if (!errorTypeKey.empty())
-    {
-        key.push_back('|');
-        key.append(errorTypeKey);
-    }
-    return key;
-}
+std::string futureTypeKey(std::string_view innerTypeKey, std::string_view errorTypeKey);
 
-inline std::optional<std::string_view> futureInnerTypeKey(std::string_view typeKey) noexcept
-{
-    constexpr std::string_view prefix = "future:";
-    if (!typeKey.starts_with(prefix)) return std::nullopt;
-    // A trailing `*` is the pointer-to-future form (`future:<T>*`, the poll's `self` parameter),
-    // not a future surface. Future-of-pointer is not representable with this spelling.
-    if (typeKey.ends_with('*')) return std::nullopt;
-    const std::string_view rest = typeKey.substr(prefix.size());
-    const std::size_t pipe = rest.find('|');
-    return pipe == std::string_view::npos ? rest : rest.substr(0, pipe);
-}
+std::optional<std::string_view> futureInnerTypeKey(std::string_view typeKey) noexcept;
 
 // NS304-T05-F07: the error type carried by a throwing async future (`future:<T>|<E>`), if any.
-inline std::optional<std::string_view> futureErrorTypeKey(std::string_view typeKey) noexcept
-{
-    constexpr std::string_view prefix = "future:";
-    if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
-    const std::string_view rest = typeKey.substr(prefix.size());
-    const std::size_t pipe = rest.find('|');
-    return pipe == std::string_view::npos ? std::nullopt
-        : std::optional<std::string_view>(rest.substr(pipe + 1));
-}
-
-struct AwaitSuspension final
-{
-    std::size_t state = 0;
-    std::size_t cleanupDepth = 0;
-    bool carriesBorrow = false;
-    bool borrowSourceOutlivesFrame = false;
-    bool borrowAddressStable = false;
-};
-
-struct AsyncFunctionPlan final
-{
-    std::string returnType;
-    std::string opaqueFutureIdentity;
-    FutureStart start = FutureStart::Lazy;
-    FrameStorage storage = FrameStorage::CallerStack;
-    SynchronousGeneratorPlan stateMachine;
-    bool completesSynchronously = false;
-    bool hasImplicitHeapAllocation = false;
-};
+std::optional<std::string_view> futureErrorTypeKey(std::string_view typeKey) noexcept;
 
 // Builds the opaque future and native frame contract from liveness computed by the frontend.
 // GeneratorLocal is intentionally shared with synchronous generators so await/yield cannot drift
@@ -98,77 +75,13 @@ std::optional<AsyncFunctionPlan> buildAsyncFunctionPlan(
     bool hasSelfReference,
     std::string& error) noexcept;
 
-enum class PollState { Created, Pending, Ready, Cancelled, Consumed };
-enum class FutureCompletion { None, Value, Error };
-enum class PollOutcome { Pending, ReadyValue, ReadyError };
-
-struct FutureProtocol final
-{
-    std::string valueType;
-    std::string errorType;
-    std::string cancellationType;
-    // NS304-T05-F02: tipo del Waker (callback de readiness del executor). Vacio = sin Waker
-    // (el Future solo se sondea por busqueda activa); el lowering productivo (T05-F03) lo fija.
-    std::string wakerType;
-    bool hasPoll = true;
-    bool hasResume = true;
-    bool singleConsumer = true;
-    bool staticDispatch = true;
-};
-
 bool validateFutureProtocol(const FutureProtocol& protocol, std::string& error) noexcept;
 
-struct AwaitContext final
-{
-    bool insideAsyncFunction = false;
-    bool insideComptime = false;
-    bool insideNoSuspendCleanup = false;
-};
-
 bool awaitAllowed(const AwaitContext& context, std::string& error) noexcept;
-
-class FutureState final
-{
-public:
-    PollState state() const noexcept { return state_; }
-    FutureCompletion completion() const noexcept { return completion_; }
-    bool poll(PollOutcome outcome, std::string& error);
-    bool poll(bool ready, std::string& error);
-    bool consume(std::string& error);
-    bool cancel(std::string& error);
-private:
-    PollState state_ = PollState::Created;
-    FutureCompletion completion_ = FutureCompletion::None;
-};
 
 std::vector<std::string> cancellationCleanup(
     std::span<const std::string> activeLocals,
     std::span<const std::string> activeDefers);
-
-enum class CancellationReason { Requested, FutureDropped, ParentScopeExited };
-enum class AsyncCleanupKind { Defer, LocalDrop };
-
-struct ActiveAsyncDefer final
-{
-    std::string name;
-    std::size_t depth = 0;
-};
-
-struct AsyncCleanupAction final
-{
-    AsyncCleanupKind kind = AsyncCleanupKind::LocalDrop;
-    std::string name;
-    std::optional<std::size_t> frameSlot;
-};
-
-struct AsyncCancellationPlan final
-{
-    CancellationReason reason = CancellationReason::Requested;
-    std::size_t suspendedState = 0;
-    std::vector<AsyncCleanupAction> actions;
-    bool cooperative = true;
-    bool usesThreadAbort = false;
-};
 
 std::optional<AsyncCancellationPlan> buildAsyncCancellationPlan(
     const AsyncFunctionPlan& function,
@@ -178,33 +91,9 @@ std::optional<AsyncCancellationPlan> buildAsyncCancellationPlan(
     CancellationReason reason,
     std::string& error) noexcept;
 
-enum class AsyncGeneratorState { Pending, ItemReady, Completed, Error, Cancelled };
 bool asyncGeneratorMayProduce(
     AsyncGeneratorState state,
     bool consumerRequestedNext) noexcept;
-
-enum class AsyncGeneratorSuspensionKind { Await, Yield };
-
-struct AsyncGeneratorSuspension final
-{
-    std::size_t state = 0;
-    AsyncGeneratorSuspensionKind kind = AsyncGeneratorSuspensionKind::Await;
-    std::size_t cleanupDepth = 0;
-    bool carriesBorrow = false;
-    bool borrowSourceOutlivesFrame = false;
-    bool borrowAddressStable = false;
-};
-
-struct AsyncGeneratorPlan final
-{
-    std::string itemType;
-    std::string errorType;
-    std::string cancellationType;
-    FrameStorage storage = FrameStorage::CallerStack;
-    SynchronousGeneratorPlan stateMachine;
-    bool explicitBackpressure = true;
-    bool moveOnlyItems = false;
-};
 
 std::optional<AsyncGeneratorPlan> buildAsyncGeneratorPlan(
     std::string_view itemType,
@@ -217,89 +106,11 @@ std::optional<AsyncGeneratorPlan> buildAsyncGeneratorPlan(
     bool moveOnlyItems,
     std::string& error) noexcept;
 
-enum class AsyncGeneratorPollOutcome { Pending, ItemReady, ReadyError, Completed };
-
-class AsyncGeneratorProtocolState final
-{
-public:
-    AsyncGeneratorState state() const noexcept { return state_; }
-    bool demandOutstanding() const noexcept { return demandOutstanding_; }
-    bool itemOutstanding() const noexcept { return itemOutstanding_; }
-    bool requestNext(std::string& error);
-    bool resume(AsyncGeneratorPollOutcome outcome, std::string& error);
-    bool takeItem(std::string& error);
-    bool stopEarly(std::string& error);
-private:
-    AsyncGeneratorState state_ = AsyncGeneratorState::Pending;
-    bool demandOutstanding_ = false;
-    bool itemOutstanding_ = false;
-};
-
-struct ThreadSafetyFacts final
-{
-    bool fieldsSend = true;
-    bool fieldsSync = true;
-    bool containsRawPointer = false;
-    bool negativeSendImpl = false;
-    bool negativeSyncImpl = false;
-};
 bool structurallySend(const ThreadSafetyFacts& facts) noexcept;
 bool structurallySync(const ThreadSafetyFacts& facts) noexcept;
 
-enum class ThreadSafetyMemberKind
-{
-    Value,
-    Atomic,
-    SharedReference,
-    MutableReference,
-    RawPointer,
-    DynamicTrait
-};
-
-struct ThreadSafetyMemberFacts final
-{
-    std::string name;
-    ThreadSafetyMemberKind kind = ThreadSafetyMemberKind::Value;
-    bool send = true;
-    bool sync = true;
-    bool dynamicTraitSend = false;
-    bool dynamicTraitSync = false;
-};
-
-struct ThreadSafetyTypeFacts final
-{
-    std::string typeName;
-    std::vector<ThreadSafetyMemberFacts> members;
-    bool negativeSendImpl = false;
-    bool negativeSyncImpl = false;
-    bool unsafeSendImpl = false;
-    bool unsafeSyncImpl = false;
-    bool unsafeProofReviewed = false;
-    bool asyncClosure = false;
-};
-
-struct ThreadSafetyDecision final
-{
-    bool send = false;
-    bool sync = false;
-    bool usedUnsafeSend = false;
-    bool usedUnsafeSync = false;
-    std::string reason;
-};
-
 ThreadSafetyDecision evaluateThreadSafety(
     const ThreadSafetyTypeFacts& facts) noexcept;
-
-struct ThreadSafetyMetadata final
-{
-    std::uint16_t contractMajor = kConcurrencyContractMajor;
-    std::uint16_t contractMinor = kConcurrencyContractMinor;
-    std::string typeName;
-    bool send = false;
-    bool sync = false;
-    bool unsafeSend = false;
-    bool unsafeSync = false;
-};
 
 ThreadSafetyMetadata exportThreadSafetyMetadata(
     std::string_view typeName,
@@ -310,48 +121,12 @@ std::optional<ThreadSafetyDecision> importThreadSafetyMetadata(
 
 bool taskBorrowMayEscapeScope(bool childJoined, bool borrowOutlivesScope) noexcept;
 
-struct TaskExecutorProtocol final
-{
-    std::string typeName;
-    bool hasSpawn = true;
-    bool hasPollJoin = true;
-    bool hasCancel = true;
-    bool staticDispatch = true;
-    bool supportsNoHeap = false;
-};
-
-struct ScopedTask final
-{
-    std::string name;
-    bool borrowsFromScope = false;
-    bool borrowOutlivesScope = false;
-    bool joinedBeforeScopeExit = true;
-};
-
-struct TaskScopePlan final
-{
-    std::string executorType;
-    std::vector<ScopedTask> children;
-    std::size_t nestingDepth = 0;
-    bool noHeap = false;
-    bool fixesThreadPool = false;
-};
-
 std::optional<TaskScopePlan> buildTaskScopePlan(
     const TaskExecutorProtocol& executor,
     std::span<const ScopedTask> children,
     std::size_t nestingDepth,
     bool noHeap,
     std::string& error) noexcept;
-
-enum class TaskScopeExitReason { Normal, EarlyError, Cancellation, Panic };
-enum class TaskScopeActionKind { Cancel, Join, PropagateError, PropagateCancellation, PropagatePanic };
-
-struct TaskScopeAction final
-{
-    TaskScopeActionKind kind = TaskScopeActionKind::Join;
-    std::string child;
-};
 
 std::vector<TaskScopeAction> planTaskScopeExit(
     const TaskScopePlan& scope,

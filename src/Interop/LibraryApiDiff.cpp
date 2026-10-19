@@ -157,13 +157,8 @@ std::string canonicalGenericSource(std::string_view source)
     return result;
 }
 
-Surface sourceSurface(const LibraryMetadata& metadata)
+void appendSourceTypes(const LibraryMetadata& metadata, Surface& result)
 {
-    Surface result;
-    std::string header;
-    field(header, canonicalModule(metadata.moduleName));
-    result.emplace("module", std::move(header));
-
     for (const LibraryMetadataType& type : metadata.types)
     {
         if (type.accessibility != kPublicAccessibility &&
@@ -226,7 +221,10 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         number(contract, type.traitObjectWordCount);
         result.emplace("type:" + type.identityKey, std::move(contract));
     }
+}
 
+void appendSourceMembers(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataMember& member : metadata.members)
     {
         if (member.accessibility != kPublicAccessibility &&
@@ -256,7 +254,10 @@ Surface sourceSurface(const LibraryMetadata& metadata)
                 std::to_string(member.kind) + ":" + member.signatureKey,
             std::move(contract));
     }
+}
 
+void appendSourceNamespaceFunctions(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
     {
         std::string contract;
@@ -274,7 +275,10 @@ Surface sourceSurface(const LibraryMetadata& metadata)
             "namespace-function:" + function.namespaceName + ":" + function.signatureKey,
             std::move(contract));
     }
+}
 
+void appendSourceNamespaceStates(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
     {
         std::string contract;
@@ -287,7 +291,10 @@ Surface sourceSurface(const LibraryMetadata& metadata)
             "namespace-state:" + state.namespaceName + ":" + state.name,
             std::move(contract));
     }
+}
 
+void appendSourceGenericTemplates(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
     {
         if (generic.accessibility != kPublicAccessibility) continue;
@@ -323,7 +330,10 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         field(contract, canonicalGenericSource(generic.sourceText));
         result.emplace("generic:" + generic.canonicalKey, std::move(contract));
     }
+}
 
+void appendSourceExports(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataExport& exported : metadata.exports)
     {
         std::string contract;
@@ -332,29 +342,25 @@ Surface sourceSurface(const LibraryMetadata& metadata)
         strings(contract, exported.parameterTypeKeys, false);
         result.emplace("extern-c:" + exported.cAbiName, std::move(contract));
     }
-    return result;
 }
 
-Surface abiSurface(const LibraryMetadata& metadata)
+Surface sourceSurface(const LibraryMetadata& metadata)
 {
     Surface result;
     std::string header;
     field(header, canonicalModule(metadata.moduleName));
-    field(header, metadata.targetTriple);
-    number(header, metadata.targetId);
-    number(header, metadata.pointerSize);
-    number(header, metadata.pointerAlignment);
-    number(header, metadata.nativeAbiMajor);
-    number(header, metadata.nativeAbiMinor);
-    number(header, metadata.runtimeAbiMajor);
-    number(header, metadata.runtimeAbiMinor);
-    number(header, metadata.manglingAbiVersion);
-    number(header, metadata.objectAbiVersion);
-    number(header, metadata.delegateAbiVersion);
-    number(header, metadata.exceptionAbiVersion);
-    number(header, metadata.managedDelegateCellSize);
     result.emplace("module", std::move(header));
+    appendSourceTypes(metadata, result);
+    appendSourceMembers(metadata, result);
+    appendSourceNamespaceFunctions(metadata, result);
+    appendSourceNamespaceStates(metadata, result);
+    appendSourceGenericTemplates(metadata, result);
+    appendSourceExports(metadata, result);
+    return result;
+}
 
+void appendAbiTypes(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataType& type : metadata.types)
     {
         if (type.accessibility != kPublicAccessibility &&
@@ -408,7 +414,10 @@ Surface abiSurface(const LibraryMetadata& metadata)
         }
         result.emplace("type:" + type.identityKey, std::move(contract));
     }
+}
 
+void appendAbiMembers(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataMember& member : metadata.members)
     {
         if (member.accessibility != kPublicAccessibility &&
@@ -428,7 +437,10 @@ Surface abiSurface(const LibraryMetadata& metadata)
                 std::to_string(member.kind) + ":" + member.signatureKey,
             std::move(contract));
     }
+}
 
+void appendAbiNamespaceFunctions(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
     {
         std::string contract;
@@ -444,7 +456,10 @@ Surface abiSurface(const LibraryMetadata& metadata)
             "namespace-function:" + function.namespaceName + ":" + function.signatureKey,
             std::move(contract));
     }
+}
 
+void appendAbiNamespaceStates(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
     {
         std::string contract;
@@ -456,7 +471,10 @@ Surface abiSurface(const LibraryMetadata& metadata)
             "namespace-state:" + state.namespaceName + ":" + state.name,
             std::move(contract));
     }
+}
 
+void appendAbiSpecializations(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataGenericSpecialization& specialization :
          metadata.genericSpecializations)
     {
@@ -467,7 +485,10 @@ Surface abiSurface(const LibraryMetadata& metadata)
         strings(contract, specialization.typeArguments, false);
         result.emplace("specialization:" + specialization.specializationKey, std::move(contract));
     }
+}
 
+void appendAbiDispatchTables(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
     {
         std::string contract;
@@ -490,7 +511,10 @@ Surface abiSurface(const LibraryMetadata& metadata)
         }
         result.emplace("dispatch:" + dispatch.typeKey, std::move(contract));
     }
+}
 
+void appendAbiExports(const LibraryMetadata& metadata, Surface& result)
+{
     for (const LibraryMetadataExport& exported : metadata.exports)
     {
         std::string contract;
@@ -500,6 +524,34 @@ Surface abiSurface(const LibraryMetadata& metadata)
         field(contract, exported.nativeMangledName);
         result.emplace("extern-c:" + exported.cAbiName, std::move(contract));
     }
+}
+
+Surface abiSurface(const LibraryMetadata& metadata)
+{
+    Surface result;
+    std::string header;
+    field(header, canonicalModule(metadata.moduleName));
+    field(header, metadata.targetTriple);
+    number(header, metadata.targetId);
+    number(header, metadata.pointerSize);
+    number(header, metadata.pointerAlignment);
+    number(header, metadata.nativeAbiMajor);
+    number(header, metadata.nativeAbiMinor);
+    number(header, metadata.runtimeAbiMajor);
+    number(header, metadata.runtimeAbiMinor);
+    number(header, metadata.manglingAbiVersion);
+    number(header, metadata.objectAbiVersion);
+    number(header, metadata.delegateAbiVersion);
+    number(header, metadata.exceptionAbiVersion);
+    number(header, metadata.managedDelegateCellSize);
+    result.emplace("module", std::move(header));
+    appendAbiTypes(metadata, result);
+    appendAbiMembers(metadata, result);
+    appendAbiNamespaceFunctions(metadata, result);
+    appendAbiNamespaceStates(metadata, result);
+    appendAbiSpecializations(metadata, result);
+    appendAbiDispatchTables(metadata, result);
+    appendAbiExports(metadata, result);
     return result;
 }
 

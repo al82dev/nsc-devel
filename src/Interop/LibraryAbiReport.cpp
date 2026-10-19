@@ -108,9 +108,8 @@ void writeParameters(
         output << '\n';
     }
 }
-}
 
-void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& output)
+void writeAbiReportHeader(const LibraryMetadata& metadata, std::ostream& output)
 {
     output << "NativeSharp ABI report v1\n"
            << "module: " << metadata.moduleName << '\n'
@@ -126,7 +125,122 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
            << "abi-surface-fingerprint: " << LibraryApiDiffer::abiSurfaceFingerprint(metadata) << '\n'
            << "metadata-abi-fingerprint: "
            << LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint) << '\n';
+}
 
+void writeDelegateType(const LibraryMetadataType& type, std::ostream& output)
+{
+    if (type.kind != LibraryMetadataTypeKind::Delegate) return;
+    output << "    delegate calling-convention=" << delegateConvention(type)
+           << " return="
+           << (type.delegateReturnDynamicTrait ? "dyn:" : "")
+           << type.delegateReturnTypeKey;
+    if (!type.delegateErrorTypeKey.empty())
+        output << " throws=" << type.delegateErrorTypeKey;
+    output << '\n';
+    for (std::size_t ordinal = 0; ordinal < type.delegateParameterTypeKeys.size(); ++ordinal)
+        output << "      parameter #" << ordinal
+               << " type="
+               << (ordinal < type.delegateParameterDynamicTraits.size() &&
+                           type.delegateParameterDynamicTraits[ordinal] != 0U
+                       ? "dyn:"
+                       : "")
+               << type.delegateParameterTypeKeys[ordinal] << '\n';
+}
+
+void writeVariantType(const LibraryMetadataType& type, std::ostream& output)
+{
+    if ((type.flags & kMetadataTypeVariant) == 0U) return;
+    for (std::size_t ordinal = 0; ordinal < type.variantCases.size(); ++ordinal)
+    {
+        const LibraryMetadataVariantCase& variantCase = type.variantCases[ordinal];
+        output << "    variant-case #" << ordinal << " name=" << variantCase.name;
+        if (!variantCase.payloadTypeKey.empty())
+            output << " payload=" << variantCase.payloadTypeKey;
+        output << '\n';
+    }
+}
+
+void writeTraitType(const LibraryMetadataType& type, std::ostream& output)
+{
+    for (std::size_t ordinal = 0; ordinal < type.traitMethodSignatures.size(); ++ordinal)
+        output << "    trait-slot #" << ordinal
+               << " signature=" << type.traitMethodSignatures[ordinal] << '\n';
+    if ((type.flags & kMetadataTypeTrait) != 0U)
+        output << "    trait-object representation=descriptor-reference"
+               << " words=" << static_cast<unsigned>(type.traitObjectWordCount)
+               << " object-safe=" <<
+                    ((type.traitObjectFlags & kMetadataTraitObjectObjectSafe) != 0U ? "yes" : "no")
+               << " null=zero conversion-allocation=none\n";
+    for (std::size_t ordinal = 0; ordinal < type.associatedItems.size(); ++ordinal)
+    {
+        const LibraryMetadataAssociatedItem& item = type.associatedItems[ordinal];
+        output << "    associated-item #" << ordinal
+               << " kind=" << (item.kind == LibraryMetadataAssociatedItemKind::Type
+                       ? "type" : "constant")
+               << " name=" << item.name
+               << " type=" << (item.typeKey.empty() ? "<required>" : item.typeKey)
+               << " default=" << (item.hasDefault ? "yes" : "no");
+        if (item.kind == LibraryMetadataAssociatedItemKind::Constant && item.hasDefault)
+            output << " bits=" << item.valueBits;
+        output << '\n';
+    }
+}
+
+void writeTypeFields(const LibraryMetadataType& type, std::ostream& output)
+{
+    std::vector<const LibraryMetadataField*> fields;
+    for (const LibraryMetadataField& field : type.fields) fields.push_back(&field);
+    std::ranges::sort(fields, [](const LibraryMetadataField* left, const LibraryMetadataField* right)
+    {
+        return std::tie(left->offset, left->bitOffset, left->name) <
+            std::tie(right->offset, right->bitOffset, right->name);
+    });
+    for (const LibraryMetadataField* field : fields)
+    {
+        output << "    field " << field->name
+               << " type=" << field->typeKey
+               << " ownership=" << ownershipName(field->ownership)
+               << " offset=" << field->offset
+               << " size=" << field->size
+               << " align=" << field->alignment
+               << " flags=" << flagsHex(field->flags);
+        if (field->bitWidth != 0U)
+            output << " bit-offset=" << field->bitOffset << " bit-width=" << field->bitWidth;
+        output << '\n';
+    }
+}
+
+void writeType(const LibraryMetadataType& type, std::ostream& output)
+{
+    output << "  type " << type.identityKey
+           << " kind=" << (((type.flags & kMetadataTypeOpaqueResult) != 0U)
+                   ? "opaque-result"
+                   : ((type.flags & kMetadataTypeTrait) != 0U)
+                       ? "trait"
+                       : typeKindName(type.kind))
+           << " access=" << static_cast<unsigned>(type.accessibility)
+           << " flags=" << flagsHex(type.flags)
+           << " size=" << type.size
+           << " align=" << type.alignment
+           << " header=" << type.headerSize
+           << " ref-size=" << type.referenceSize
+           << " ref-align=" << type.referenceAlignment
+           << " stable-id=" << flagsHex(type.stableTypeId) << '\n';
+    if (!type.dropGlueEntryName.empty())
+        output << "    drop-glue " << type.dropGlueEntryName << '\n';
+    if (!type.baseTypeKey.empty()) output << "    base " << type.baseTypeKey << '\n';
+    for (const std::string& interfaceKey : type.interfaceTypeKeys)
+        output << "    interface " << interfaceKey << '\n';
+    if (type.kind == LibraryMetadataTypeKind::Enum)
+        output << "    enum-underlying " << type.enumUnderlyingTypeKey << '\n';
+    writeDelegateType(type, output);
+    writeVariantType(type, output);
+    writeTraitType(type, output);
+    writeTypeFields(type, output);
+}
+
+void writeTypes(const LibraryMetadata& metadata, std::ostream& output)
+{
     std::vector<const LibraryMetadataType*> types;
     for (const LibraryMetadataType& type : metadata.types) types.push_back(&type);
     std::ranges::sort(types, {}, [](const LibraryMetadataType* type)
@@ -134,102 +248,11 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
         return type->identityKey;
     });
     output << "types: " << types.size() << '\n';
-    for (const LibraryMetadataType* type : types)
-    {
-        output << "  type " << type->identityKey
-               << " kind=" << (((type->flags & kMetadataTypeOpaqueResult) != 0U)
-                       ? "opaque-result"
-                       : ((type->flags & kMetadataTypeTrait) != 0U)
-                           ? "trait"
-                           : typeKindName(type->kind))
-               << " access=" << static_cast<unsigned>(type->accessibility)
-               << " flags=" << flagsHex(type->flags)
-               << " size=" << type->size
-               << " align=" << type->alignment
-               << " header=" << type->headerSize
-               << " ref-size=" << type->referenceSize
-               << " ref-align=" << type->referenceAlignment
-               << " stable-id=" << flagsHex(type->stableTypeId) << '\n';
-        if (!type->dropGlueEntryName.empty())
-            output << "    drop-glue " << type->dropGlueEntryName << '\n';
-        if (!type->baseTypeKey.empty()) output << "    base " << type->baseTypeKey << '\n';
-        for (const std::string& interfaceKey : type->interfaceTypeKeys)
-            output << "    interface " << interfaceKey << '\n';
-        if (type->kind == LibraryMetadataTypeKind::Enum)
-            output << "    enum-underlying " << type->enumUnderlyingTypeKey << '\n';
-        if (type->kind == LibraryMetadataTypeKind::Delegate)
-        {
-            output << "    delegate calling-convention=" << delegateConvention(*type)
-                   << " return="
-                   << (type->delegateReturnDynamicTrait ? "dyn:" : "")
-                   << type->delegateReturnTypeKey;
-            if (!type->delegateErrorTypeKey.empty())
-                output << " throws=" << type->delegateErrorTypeKey;
-            output << '\n';
-            for (std::size_t ordinal = 0; ordinal < type->delegateParameterTypeKeys.size(); ++ordinal)
-                output << "      parameter #" << ordinal
-                       << " type="
-                       << (ordinal < type->delegateParameterDynamicTraits.size() &&
-                                   type->delegateParameterDynamicTraits[ordinal] != 0U
-                               ? "dyn:"
-                               : "")
-                       << type->delegateParameterTypeKeys[ordinal] << '\n';
-        }
-        if ((type->flags & kMetadataTypeVariant) != 0U)
-        {
-            for (std::size_t ordinal = 0; ordinal < type->variantCases.size(); ++ordinal)
-            {
-                const LibraryMetadataVariantCase& variantCase = type->variantCases[ordinal];
-                output << "    variant-case #" << ordinal << " name=" << variantCase.name;
-                if (!variantCase.payloadTypeKey.empty())
-                    output << " payload=" << variantCase.payloadTypeKey;
-                output << '\n';
-            }
-        }
-        for (std::size_t ordinal = 0; ordinal < type->traitMethodSignatures.size(); ++ordinal)
-            output << "    trait-slot #" << ordinal
-                   << " signature=" << type->traitMethodSignatures[ordinal] << '\n';
-        if ((type->flags & kMetadataTypeTrait) != 0U)
-            output << "    trait-object representation=descriptor-reference"
-                   << " words=" << static_cast<unsigned>(type->traitObjectWordCount)
-                   << " object-safe=" <<
-                       ((type->traitObjectFlags & kMetadataTraitObjectObjectSafe) != 0U ? "yes" : "no")
-                   << " null=zero conversion-allocation=none\n";
-        for (std::size_t ordinal = 0; ordinal < type->associatedItems.size(); ++ordinal)
-        {
-            const LibraryMetadataAssociatedItem& item = type->associatedItems[ordinal];
-            output << "    associated-item #" << ordinal
-                   << " kind=" << (item.kind == LibraryMetadataAssociatedItemKind::Type
-                           ? "type" : "constant")
-                   << " name=" << item.name
-                   << " type=" << (item.typeKey.empty() ? "<required>" : item.typeKey)
-                   << " default=" << (item.hasDefault ? "yes" : "no");
-            if (item.kind == LibraryMetadataAssociatedItemKind::Constant && item.hasDefault)
-                output << " bits=" << item.valueBits;
-            output << '\n';
-        }
-        std::vector<const LibraryMetadataField*> fields;
-        for (const LibraryMetadataField& field : type->fields) fields.push_back(&field);
-        std::ranges::sort(fields, [](const LibraryMetadataField* left, const LibraryMetadataField* right)
-        {
-            return std::tie(left->offset, left->bitOffset, left->name) <
-                std::tie(right->offset, right->bitOffset, right->name);
-        });
-        for (const LibraryMetadataField* field : fields)
-        {
-            output << "    field " << field->name
-                   << " type=" << field->typeKey
-                   << " ownership=" << ownershipName(field->ownership)
-                   << " offset=" << field->offset
-                   << " size=" << field->size
-                   << " align=" << field->alignment
-                   << " flags=" << flagsHex(field->flags);
-            if (field->bitWidth != 0U)
-                output << " bit-offset=" << field->bitOffset << " bit-width=" << field->bitWidth;
-            output << '\n';
-        }
-    }
+    for (const LibraryMetadataType* type : types) writeType(*type, output);
+}
 
+void writeMembers(const LibraryMetadata& metadata, std::ostream& output)
+{
     std::vector<const LibraryMetadataMember*> members;
     for (const LibraryMetadataMember& member : metadata.members) members.push_back(&member);
     std::ranges::sort(members, [](const LibraryMetadataMember* left, const LibraryMetadataMember* right)
@@ -258,7 +281,10 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
         output << '\n';
         writeParameters(member->parameters, output);
     }
+}
 
+void writeDispatchTables(const LibraryMetadata& metadata, std::ostream& output)
+{
     std::vector<const LibraryMetadataDispatch*> dispatches;
     for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
         dispatches.push_back(&dispatch);
@@ -287,7 +313,10 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
                    << " symbol=" << interface.methodTableName
                    << " slots=" << interface.interfaceSignatures.size() << '\n';
     }
+}
 
+void writeExports(const LibraryMetadata& metadata, std::ostream& output)
+{
     std::vector<const LibraryMetadataExport*> exports;
     for (const LibraryMetadataExport& exported : metadata.exports) exports.push_back(&exported);
     std::ranges::sort(exports, {}, [](const LibraryMetadataExport* exported)
@@ -306,5 +335,15 @@ void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& ou
             output << "    parameter #" << ordinal
                    << " type=" << exported->parameterTypeKeys[ordinal] << '\n';
     }
+}
+}
+
+void LibraryAbiReporter::write(const LibraryMetadata& metadata, std::ostream& output)
+{
+    writeAbiReportHeader(metadata, output);
+    writeTypes(metadata, output);
+    writeMembers(metadata, output);
+    writeDispatchTables(metadata, output);
+    writeExports(metadata, output);
 }
 }

@@ -5,19 +5,23 @@
 #include <string_view>
 #include <vector>
 
+#include "nativesharp/Language/Availability.h"
+#include "nativesharp/Language/AvailabilityStatus.h"
+#include "nativesharp/Language/Import.h"
+#include "nativesharp/Language/ImportKind.h"
+#include "nativesharp/Language/ModuleDependency.h"
+#include "nativesharp/Language/ModuleDependencyKind.h"
+#include "nativesharp/Language/PublicApiSymbol.h"
+#include "nativesharp/Language/Visibility.h"
+
 namespace nativesharp::language
 {
 std::string canonicalWindowsModuleIdentity(std::string_view package, std::string_view module);
 
-enum class ModuleDependencyKind { Binding, Layout };
-struct ModuleDependency final { std::string from; std::string to; ModuleDependencyKind kind; };
 bool moduleGraphResolvable(std::span<const ModuleDependency> dependencies, std::string& error);
 
-enum class ImportKind { Module, Symbol, Trait, Extensions, RestrictedGlob };
-struct Import final { ImportKind kind; std::string identity; std::string alias; };
 bool normalizeImports(std::span<const Import> imports, std::vector<Import>& result, std::string& error);
 
-enum class Visibility { Private, Module, Package, Public };
 bool canAccess(
     Visibility visibility,
     bool sameModule,
@@ -27,23 +31,10 @@ bool canAccess(
 
 std::string reexportedIdentity(std::string_view originalIdentity, std::string_view facadeName);
 
-struct Availability final
-{
-    std::string architecture;
-};
-enum class AvailabilityStatus { Available, Deprecated, WrongTarget };
 AvailabilityStatus availabilityStatus(
     const Availability& availability,
     std::string_view architecture,
     bool deprecated) noexcept;
 
-struct PublicApiSymbol final
-{
-    std::string identity;
-    std::string signature;
-    std::string effects;
-    std::string layoutContract;
-    bool isPublic = true;
-};
 std::string publicApiFingerprintInput(std::span<const PublicApiSymbol> symbols);
 }

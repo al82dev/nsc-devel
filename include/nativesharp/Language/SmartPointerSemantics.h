@@ -1,5 +1,11 @@
 #pragma once
 
+#include "nativesharp/Language/SmartPointerFamily.h"
+#include "nativesharp/Language/SmartPointerFamilyContract.h"
+#include "nativesharp/Language/SmartPointerOperation.h"
+#include "nativesharp/Language/SmartPointerOperationContext.h"
+#include "nativesharp/Language/SmartPointerThreadModel.h"
+
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -10,33 +16,6 @@ namespace nativesharp::language
 {
 inline constexpr std::uint16_t kSmartPointerContractMajor = 1;
 inline constexpr std::uint16_t kSmartPointerContractMinor = 0;
-
-enum class SmartPointerFamily : std::uint8_t
-{
-    Unique,
-    Rc,
-    WeakRc,
-    Arc,
-    WeakArc
-};
-
-enum class SmartPointerThreadModel : std::uint8_t
-{
-    UniqueTransfer,
-    LocalOnly,
-    AtomicShared
-};
-
-struct SmartPointerFamilyContract final
-{
-    SmartPointerFamily family;
-    std::string_view name;
-    SmartPointerThreadModel threadModel;
-    bool nullable;
-    bool implicitCopy;
-    bool explicitClone;
-    bool weak;
-};
 
 inline constexpr std::array kSmartPointerFamilies = {
     SmartPointerFamilyContract{SmartPointerFamily::Unique, "Unique", SmartPointerThreadModel::UniqueTransfer,
@@ -49,28 +28,6 @@ inline constexpr std::array kSmartPointerFamilies = {
         true, false, true, false},
     SmartPointerFamilyContract{SmartPointerFamily::WeakArc, "WeakArc", SmartPointerThreadModel::AtomicShared,
         true, false, true, true},
-};
-
-enum class SmartPointerOperation : std::uint8_t
-{
-    Move,
-    ImplicitCopy,
-    Clone,
-    Downgrade,
-    Upgrade,
-    Release,
-    Reset,
-    CrossThread
-};
-
-struct SmartPointerOperationContext final
-{
-    SmartPointerFamily family = SmartPointerFamily::Unique;
-    SmartPointerOperation operation = SmartPointerOperation::Move;
-    std::uint64_t strongCount = 1;
-    std::uint64_t weakCount = 0;
-    bool payloadSendSync = false;
-    bool producerModulePinned = true;
 };
 
 const SmartPointerFamilyContract* smartPointerFamilyContract(SmartPointerFamily family) noexcept;

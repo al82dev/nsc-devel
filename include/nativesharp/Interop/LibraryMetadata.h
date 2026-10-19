@@ -2,16 +2,35 @@
 
 #include "nativesharp/Runtime/RuntimeAbiContract.h"
 
+#include "nativesharp/Interop/LibraryMetadataAssociatedItem.h"
+#include "nativesharp/Interop/LibraryMetadataAssociatedItemKind.h"
+#include "nativesharp/Interop/LibraryMetadataBinaryDependency.h"
+#include "nativesharp/Interop/LibraryMetadataDefaultValueKind.h"
+#include "nativesharp/Interop/LibraryMetadataDispatch.h"
+#include "nativesharp/Interop/LibraryMetadataDispatchInterface.h"
+#include "nativesharp/Interop/LibraryMetadataField.h"
+#include "nativesharp/Interop/LibraryMetadataEscapeClass.h"
+#include "nativesharp/Interop/LibraryMetadataGenericTemplate.h"
+#include "nativesharp/Interop/LibraryMetadataGenericSpecialization.h"
+#include "nativesharp/Interop/LibraryMetadataMember.h"
+#include "nativesharp/Interop/LibraryMetadataNamespaceFunction.h"
+#include "nativesharp/Interop/LibraryMetadataNamespaceState.h"
+#include "nativesharp/Interop/LibraryMetadataNamespaceStateInitializerKind.h"
+#include "nativesharp/Interop/LibraryMetadataOwnershipKind.h"
+#include "nativesharp/Interop/LibraryMetadataParameter.h"
+#include "nativesharp/Interop/LibraryMetadataParameterPassKind.h"
+#include "nativesharp/Interop/LibraryMetadataPlatformImport.h"
+#include "nativesharp/Interop/LibraryMetadataExport.h"
+#include "nativesharp/Interop/LibraryMetadataTraitImpl.h"
+#include "nativesharp/Interop/LibraryMetadataType.h"
+#include "nativesharp/Interop/LibraryMetadataTypeKind.h"
+#include "nativesharp/Interop/LibraryMetadataVariantCase.h"
+
 #include <array>
 #include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
-
-namespace nativesharp::frontend
-{
-class ProjectCompilation;
-}
 
 namespace nativesharp::interop
 {
@@ -190,290 +209,6 @@ inline constexpr std::uint16_t kObjectAbiVersion = 2;
 inline constexpr std::uint16_t kDelegateAbiVersion = 1;
 inline constexpr std::uint16_t kExceptionAbiVersion = 1;
 inline constexpr std::uint32_t kManagedDelegateCellSize = 32;
-enum class LibraryMetadataTypeKind : std::uint8_t
-{
-    Class = 0,
-    Interface = 1,
-    Struct = 2,
-    Enum = 3,
-    Delegate = 4
-};
-
-enum class LibraryMetadataOwnershipKind : std::uint8_t
-{
-    None = 0,
-    Owned = 1,
-    Borrowed = 2
-};
-
-enum class LibraryMetadataDefaultValueKind : std::uint8_t
-{
-    None = 0,
-    Null = 1,
-    Boolean = 2,
-    Integer = 3,
-    Floating = 4,
-    Character = 5,
-    String = 6
-};
-
-enum class LibraryMetadataParameterPassKind : std::uint8_t
-{
-    Value = 0,
-    Ref = 1,
-    Out = 2,
-    In = 3
-};
-
-struct LibraryMetadataField final
-{
-    std::string name;
-    std::string typeKey;
-    LibraryMetadataOwnershipKind ownership = LibraryMetadataOwnershipKind::None;
-    std::string lifetimeName;
-    std::uint64_t offset = 0;
-    std::uint64_t size = 0;
-    std::uint64_t alignment = 1;
-    std::uint32_t flags = 0;
-    std::uint64_t bitOffset = 0;
-    std::uint64_t bitWidth = 0;
-};
-
-struct LibraryMetadataVariantCase final
-{
-    std::string name;
-    // Empty for a unit case; otherwise the canonical type key of the in-place payload.
-    std::string payloadTypeKey;
-};
-
-enum class LibraryMetadataAssociatedItemKind : std::uint8_t
-{
-    Type = 0,
-    Constant = 1
-};
-
-struct LibraryMetadataAssociatedItem final
-{
-    LibraryMetadataAssociatedItemKind kind = LibraryMetadataAssociatedItemKind::Type;
-    std::string name;
-    // Associated type: canonical default/definition type key, empty for a requirement.
-    // Associated constant: canonical declared value type key.
-    std::string typeKey;
-    bool hasDefault = false;
-    // Normalized typed integral/boolean bits for a constant default/definition. Zero otherwise.
-    std::uint64_t valueBits = 0;
-};
-
-struct LibraryMetadataType final
-{
-    LibraryMetadataTypeKind kind = LibraryMetadataTypeKind::Struct;
-    std::uint8_t accessibility = 0;
-    std::uint16_t flags = 0;
-    std::string identityKey;
-    std::string fullyQualifiedName;
-    std::string baseTypeKey;
-    std::vector<std::string> interfaceTypeKeys;
-    std::uint64_t size = 0;
-    std::uint64_t alignment = 1;
-    std::uint64_t headerSize = 0;
-    std::uint64_t referenceSize = 0;
-    std::uint64_t referenceAlignment = 1;
-    std::uint64_t stableTypeId = 0;
-    // EL TIPO ENTERO SUBYACENTE DE UN ENUM ("builtin:byte", "builtin:sbyte"...). Vacio para todo
-    // lo que no sea un enum.
-    //
-    // POR QUE NO BASTA CON `size`. `enum : byte` y `enum : sbyte` miden LOS DOS un byte, asi que
-    // un consumidor que solo lea el tamano no puede distinguirlos -- y un generador de host que
-    // eligiera el signo contrario convertiria un 200 en un -56. El signo es parte del ABI igual
-    // que el ancho, y estos metadatos son lo que los generadores de host leen.
-    //
-    // Se guarda la CLAVE y no un par (ancho, signo) porque la clave es lo que ya circula por todo
-    // el compilador, y porque lleva las dos respuestas sin que nadie tenga que recomponerlas.
-    std::string enumUnderlyingTypeKey;
-    // NSMETA 1.5. Delegate declarations are types, not ordinary member records. Without their
-    // return and parameter keys a precompiled consumer can know that `Transform` exists but not
-    // reconstruct `int Transform(int)`. Bit 0 marks a raw-function-pointer extern delegate and
-    // bit 1 selects Microsoft x64 vectorcall rather than the ordinary C convention.
-    std::uint8_t delegateFlags = 0;
-    std::string delegateReturnTypeKey;
-    std::string delegateErrorTypeKey;
-    std::vector<std::string> delegateParameterTypeKeys;
-    // NSMETA 1.31. `dyn` is a source-level trait-object contract. It uses the same
-    // physical reference ABI as the nominal interface key, but must survive source
-    // materialization and API-diff round trips.
-    bool delegateReturnDynamicTrait = false;
-    std::vector<std::uint8_t> delegateParameterDynamicTraits;
-    // NSMETA 1.27. Declaration order is deliberately retained because it defines CaseTag().
-    std::vector<LibraryMetadataVariantCase> variantCases;
-    // NSMETA 1.28. Effective instance-method signatures in their normative trait-dispatch order.
-    // Default method bodies compiled by the producer use these ordinals, so a consumer must not
-    // reconstruct the trait from the signature-sorted public member catalogue.
-    std::vector<std::string> traitMethodSignatures;
-    // NSMETA 1.29. Ordered as declared. These are logical compile-time items and never fields,
-    // vtable slots, or exported storage.
-    std::vector<LibraryMetadataAssociatedItem> associatedItems;
-    // NSMETA 1.31. Zero for non-traits. NativeSharp's Windows x64 representation is one
-    // object-reference word; dispatch is selected through the object's descriptor/interface map.
-    std::uint8_t traitObjectFlags = 0;
-    std::uint8_t traitObjectWordCount = 0;
-    std::vector<LibraryMetadataField> fields;
-    std::vector<std::string> lifetimeParameters;
-    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
-    // NSMETA 1.36. Empty for trivially destructible values and all reference-shaped types.
-    // Consumers call this producer-owned thunk instead of rebuilding private layout/destructors.
-    std::string dropGlueEntryName;
-    bool delegateReferenceReturn = false;
-    std::string delegateReturnLifetimeName;
-    std::vector<LibraryMetadataParameterPassKind> delegateParameterPassKinds;
-    std::vector<std::string> delegateParameterLifetimeNames;
-};
-
-struct LibraryMetadataParameter final
-{
-    std::string name;
-    std::string typeKey;
-    LibraryMetadataOwnershipKind ownership = LibraryMetadataOwnershipKind::None;
-    LibraryMetadataParameterPassKind passKind = LibraryMetadataParameterPassKind::Value;
-    // NSMETA 1.24. The final parameter keeps its `params ReadOnlySpan<T>` call-site contract
-    // across a LibraryReference boundary; the physical type and ABI remain unchanged.
-    bool isParameterPack = false;
-    // NSMETA 1.31. Source-level dynamic dispatch marker; physical typeKey is unchanged.
-    bool isDynamicTrait = false;
-    std::string lifetimeName;
-    // NSMETA 1.3. `defaultValueBits` stores the integer/character magnitude, a boolean bit, or
-    // the IEEE-754 bits of the parsed double literal. Strings use `defaultValueText`; null has no
-    // payload. Bit 0 of `defaultValueFlags` preserves a unary minus for integer literals.
-    LibraryMetadataDefaultValueKind defaultValueKind = LibraryMetadataDefaultValueKind::None;
-    std::uint8_t defaultValueFlags = 0;
-    std::uint64_t defaultValueBits = 0;
-    std::string defaultValueText;
-    // NSMETA 1.38. UINT32_MAX means no length link. Callback lifetime: 0 none, 1 scoped,
-    // 2 escaping. These contracts are semantic and do not alter the physical parameter ABI.
-    std::uint32_t ffiLengthParameter = UINT32_MAX;
-    std::string ffiLengthParameterName;
-    std::uint8_t ffiCallbackLifetime = 0;
-};
-
-enum class LibraryMetadataEscapeClass : std::uint8_t
-{
-    NoEscape = 0,
-    Return = 1,
-    CallerOwned = 2,
-    Global = 3,
-    Unknown = 4
-};
-
-struct LibraryMetadataMember final
-{
-    std::uint8_t kind = 0;
-    std::uint8_t accessibility = 0;
-    std::uint32_t flags = 0;
-    std::string declaringTypeKey;
-    std::string name;
-    std::string signatureKey;
-    std::string declaredTypeKey;
-    std::string declaredErrorTypeKey;
-    LibraryMetadataOwnershipKind declaredOwnership = LibraryMetadataOwnershipKind::None;
-    std::string cAbiName;
-    std::string mangledName;
-    std::vector<LibraryMetadataParameter> parameters;
-    std::string returnLifetimeName;
-    std::vector<std::string> lifetimeParameters;
-    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
-    // NSMETA 1.35. One entry per parameter. Missing contracts in older metadata are treated as
-    // Unknown rather than silently assuming that a borrow cannot escape.
-    std::vector<LibraryMetadataEscapeClass> parameterEscapeSummary;
-    std::uint8_t constantKind = 0;
-    std::uint64_t constantBits = 0;
-    // NSMETA 1.9. Payload UTF-8 de una constante string; vacio para los demas kinds.
-    std::string constantText;
-    // NSMETA 1.10. DLL de origen para `extern C from`; vacia para imports estaticos y miembros
-    // NativeSharp ordinarios. El bit ImportedC de flags distingue los dos ultimos casos.
-    std::string importDllName;
-    // NSMETA 1.13. Declaracion completa, incluido el cuerpo, de un metodo ordinario `inline` o
-    // `forceinline`. Vacio para contratos, imports, miembros no inline y especializaciones cuya
-    // plantilla reutilizable ya viaja en `genericTemplates`.
-    std::string inlineSourceText;
-    // NSMETA 1.38: 0 implicit/default, 1 forbidden, 2 abort-on-violation.
-    std::uint8_t ffiUnwindPolicy = 0;
-};
-
-struct LibraryMetadataNamespaceFunction final
-{
-    std::uint8_t accessibility = 0;
-    std::uint8_t flags = 0;
-    std::string namespaceName;
-    std::string name;
-    std::string signatureKey;
-    std::string declaredTypeKey;
-    std::string declaredErrorTypeKey;
-    LibraryMetadataOwnershipKind declaredOwnership = LibraryMetadataOwnershipKind::None;
-    std::string mangledName;
-    std::vector<LibraryMetadataParameter> parameters;
-    std::string returnLifetimeName;
-    std::vector<std::string> lifetimeParameters;
-    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
-    std::vector<LibraryMetadataEscapeClass> parameterEscapeSummary;
-};
-
-enum class LibraryMetadataNamespaceStateInitializerKind : std::uint8_t
-{
-    Zero = 0,
-    Integer = 1,
-    Floating = 2,
-    Boolean = 3,
-    String = 4,
-    Null = 5
-};
-
-struct LibraryMetadataNamespaceState final
-{
-    std::uint8_t accessibility = 0;
-    std::uint8_t flags = 0;
-    LibraryMetadataNamespaceStateInitializerKind initializerKind =
-        LibraryMetadataNamespaceStateInitializerKind::Zero;
-    std::string namespaceName;
-    std::string name;
-    std::string declaredTypeKey;
-    std::string storageName;
-    std::string accessorName;
-    std::uint64_t initializerBits = 0;
-    std::string initializerText;
-};
-struct LibraryMetadataGenericTemplate final
-{
-    std::uint8_t kind = 0;
-    std::uint8_t accessibility = 0;
-    std::string canonicalKey;
-    std::string moduleName;
-    std::string namespaceName;
-    std::string ownerName;
-    std::string name;
-    std::vector<std::string> parameters;
-    // NSMETA 1.7: declaration slice as authored by the producer. Public entries are reusable API;
-    // non-public entries are materialization-only dependencies and retain their original access.
-    // The consumer parses both in the producer's synthetic project, while only public roots are
-    // nameable from the consumer project.
-    std::string sourceText;
-    // NSMETA 1.11: canonical template identities directly required by this declaration/body.
-    // Same-module edges must be present in the file; external-module edges are resolved from the
-    // consumer's other LibraryReferences.
-    std::vector<std::string> dependencies;
-    struct ParameterContract final
-    {
-        std::string name;
-        std::uint8_t kind = 0;
-        std::uint16_t flags = 0;
-        std::string constantTypeKey;
-        std::string equalityTypeKey;
-        std::string associatedProjectionKey;
-        std::vector<std::string> typeConstraintKeys;
-    };
-    std::vector<ParameterContract> parameterContracts;
-    std::vector<std::string> lifetimeParameters;
-    std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
-};
-
 inline constexpr std::uint16_t kMetadataGenericRequiresClass = 1U << 0U;
 inline constexpr std::uint16_t kMetadataGenericRequiresValueType = 1U << 1U;
 inline constexpr std::uint16_t kMetadataGenericRequiresDefaultConstructor = 1U << 2U;
@@ -487,75 +222,6 @@ inline constexpr std::uint16_t kMetadataGenericConstraintMask =
     kMetadataGenericRequiresDefaultConstructor | kMetadataGenericRequiresCopy |
     kMetadataGenericRequiresMove | kMetadataGenericRequiresDrop |
     kMetadataGenericRequiresUnmanaged | kMetadataGenericRequiresNotNull;
-
-struct LibraryMetadataGenericSpecialization final
-{
-    std::uint8_t kind = 0;
-    std::string templateKey;
-    std::string specializationKey;
-    std::string specializedName;
-    std::vector<std::string> typeArguments;
-};
-
-struct LibraryMetadataDispatchInterface final
-{
-    std::string interfaceTypeKey;
-    std::uint64_t stableInterfaceTypeId = 0;
-    std::string methodTableName;
-    std::vector<std::string> interfaceSignatures;
-    std::vector<std::string> implementationSignatures;
-    std::vector<std::string> calleeNames;
-};
-
-struct LibraryMetadataDispatch final
-{
-    std::string typeKey;
-    std::uint64_t stableTypeId = 0;
-    std::string descriptorName;
-    // NSMETA 1.6. PE imports functions and data through different indirections. Consumers call
-    // this no-argument function to obtain the producer's actual descriptor address instead of
-    // treating an import-address-table cell as the descriptor itself.
-    std::string descriptorAccessorName;
-    std::string vtableName;
-    std::string destructionEntryName;
-    std::vector<std::string> slotSignatures;
-    std::vector<std::string> slotCalleeNames;
-    std::vector<LibraryMetadataDispatchInterface> interfaces;
-};
-
-struct LibraryMetadataExport final
-{
-    std::string cAbiName;
-    std::string declaringTypeKey;
-    std::string returnTypeKey;
-    std::vector<std::string> parameterTypeKeys;
-    std::string nativeMangledName;
-};
-
-struct LibraryMetadataBinaryDependency final
-{
-    std::string moduleName;
-    std::string libraryFileName;
-    std::string metadataFileName;
-    std::string runtimeFileName;
-    std::array<std::uint8_t, 32> abiFingerprint{};
-};
-
-struct LibraryMetadataPlatformImport final
-{
-    std::string dllName;
-    std::string symbolName;
-};
-
-// NSMETA 1.40 (NS304-T08-F05). Una conformance `impl Trait for Type` cuyo target es un tipo
-// externo (el modulo posee el trait, no el tipo). El consumidor reconstruye el impl para que el
-// dispatch estatico sobre el tipo externo resuelva los metodos sin las fuentes del productor.
-struct LibraryMetadataTraitImpl final
-{
-    std::string targetTypeKey;
-    std::string traitTypeKey;
-    std::vector<LibraryMetadataMember> methods;
-};
 
 struct LibraryMetadata final
 {
@@ -613,44 +279,6 @@ struct LibraryMetadata final
 // or reusing bits.
 bool verifyLibraryMetadataInvariants(const LibraryMetadata& metadata, std::string& error) noexcept;
 
-class LibraryMetadataCodec final
-{
-public:
-    bool write(
-        const frontend::ProjectCompilation& compilation,
-        const std::filesystem::path& destination,
-        std::string& error) const;
-
-    bool write(
-        const frontend::ProjectCompilation& compilation,
-        const std::filesystem::path& destination,
-        LibraryMetadata& writtenModel,
-        std::string& error) const;
-
-    // Escribe un modelo ya construido, en la version menor que el modelo dice. Es lo que permite
-    // MEDIR la compatibilidad hacia atras en vez de afirmarla: produce un fichero de una version
-    // anterior y leelo con el lector actual.
-    bool writeModel(
-        const LibraryMetadata& model,
-        const std::filesystem::path& destination,
-        std::string& error) const;
-
-    bool read(
-        const std::filesystem::path& source,
-        LibraryMetadata& metadata,
-        std::string& error) const;
-
-    bool verifyCurrentCompiler(
-        const LibraryMetadata& metadata,
-        std::string& error) const;
-
-    static std::string fingerprintHex(const std::array<std::uint8_t, 32>& fingerprint);
-
-private:
-    bool writeModelImpl(
-        const LibraryMetadata& model,
-        const std::filesystem::path& destination,
-        LibraryMetadata* writtenModel,
-        std::string& error) const;
-};
 }
+
+#include "nativesharp/Interop/LibraryMetadataCodec.h"

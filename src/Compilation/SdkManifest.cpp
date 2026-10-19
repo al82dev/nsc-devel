@@ -290,13 +290,11 @@ bool parseLibraries(const SimpleXmlElement& libraries, SdkManifest& manifest, st
     });
     return true;
 }
-}
 
-std::optional<SdkManifest> SdkManifestLoader::load(
+std::optional<std::filesystem::path> canonicalManifestPath(
     const std::filesystem::path& manifestPath,
-    std::string& error) const
+    std::string& error)
 {
-    error.clear();
     std::error_code filesystemError;
     const std::filesystem::path canonical =
         std::filesystem::weakly_canonical(manifestPath, filesystemError);
@@ -306,13 +304,17 @@ std::optional<SdkManifest> SdkManifestLoader::load(
             manifestPath.string() + "'";
         return std::nullopt;
     }
-    if (canonical.extension() != ".nssdk")
-    {
-        error = "NativeSharp SDK manifest must use the canonical .nssdk extension";
-        return std::nullopt;
-    }
+    if (canonical.extension() == ".nssdk") return canonical;
+    error = "NativeSharp SDK manifest must use the canonical .nssdk extension";
+    return std::nullopt;
+}
 
+std::optional<std::string> readManifestSource(
+    const std::filesystem::path& canonical,
+    std::string& error)
+{
     constexpr std::uintmax_t kMaximumManifestBytes = 4U * 1024U * 1024U;
+    std::error_code filesystemError;
     const std::uintmax_t byteCount = std::filesystem::file_size(canonical, filesystemError);
     if (filesystemError || byteCount > kMaximumManifestBytes)
     {
@@ -330,45 +332,51 @@ std::optional<SdkManifest> SdkManifestLoader::load(
         error = "cannot read SDK manifest '" + canonical.string() + "'";
         return std::nullopt;
     }
+    return source;
+}
 
-    SimpleXmlElement root;
-    SimpleXmlParser parser;
-    if (!parser.parse(source, root, error))
-    {
-        error = canonical.string() + ": " + error;
-        return std::nullopt;
-    }
+bool validateManifestRoot(
+    const SimpleXmlElement& root,
+    const std::filesystem::path& canonical,
+    std::string& error)
+{
     if (root.name != "NativeSharpSdk")
     {
         error = canonical.string() + ": SDK root element must be 'NativeSharpSdk'";
-        return std::nullopt;
+        return false;
     }
     if (!trim(root.text).empty())
     {
         error = canonical.string() + ": NativeSharpSdk does not accept text";
-        return std::nullopt;
+        return false;
     }
     for (const auto& [name, value] : root.attributes)
     {
         static_cast<void>(value);
-        if (name != "Name" && name != "FormatVersion")
-        {
-            error = canonical.string() + ": NativeSharpSdk has unsupported attribute '" + name + "'";
-            return std::nullopt;
-        }
+        if (name == "Name" || name == "FormatVersion") continue;
+        error = canonical.string() + ": NativeSharpSdk has unsupported attribute '" + name + "'";
+        return false;
     }
+    return true;
+}
 
+bool initializeManifest(
+    const SimpleXmlElement& root,
+    const std::filesystem::path& canonical,
+    SdkManifest& manifest,
+    std::string& error)
+{
     const std::string* name = attribute(root, "Name");
     const std::string* version = attribute(root, "FormatVersion");
     if (name == nullptr || !isIdentifier(trim(*name)))
     {
         error = canonical.string() + ": SDK Name must be a NativeSharp identifier";
-        return std::nullopt;
+        return false;
     }
     if (version == nullptr)
     {
         error = canonical.string() + ": SDK FormatVersion is required";
-        return std::nullopt;
+        return false;
     }
     const std::string versionText = trim(*version);
     std::uint32_t parsedVersion = 0;
@@ -379,65 +387,90 @@ std::optional<SdkManifest> SdkManifestLoader::load(
     {
         error = canonical.string() + ": unsupported SDK FormatVersion '" + versionText +
             "'; expected 1";
-        return std::nullopt;
+        return false;
     }
-    SdkManifest manifest;
     manifest.manifestPath = canonical;
     manifest.name = trim(*name);
     manifest.formatVersion = parsedVersion;
+    return true;
+}
+
+bool parseManifestChildren(
+    const SimpleXmlElement& root,
+    const std::filesystem::path& canonical,
+    SdkManifest& manifest,
+    std::string& error)
+{
     bool sawMappings = false;
     bool sawTargets = false;
     bool sawLibraries = false;
     for (const SimpleXmlElement& child : root.children)
     {
+        bool parsed = false;
         if (child.name == "Mappings")
         {
             if (sawMappings)
             {
                 error = canonical.string() + ": SDK Mappings is declared more than once";
-                return std::nullopt;
+                return false;
             }
             sawMappings = true;
-            if (!parseMappings(child, manifest, error))
-            {
-                error = canonical.string() + ": " + error;
-                return std::nullopt;
-            }
+            parsed = parseMappings(child, manifest, error);
         }
         else if (child.name == "Targets")
         {
             if (sawTargets)
             {
                 error = canonical.string() + ": SDK Targets is declared more than once";
-                return std::nullopt;
+                return false;
             }
             sawTargets = true;
-            if (!parseTargets(child, manifest, error))
-            {
-                error = canonical.string() + ": " + error;
-                return std::nullopt;
-            }
+            parsed = parseTargets(child, manifest, error);
         }
         else if (child.name == "Libraries")
         {
             if (sawLibraries)
             {
                 error = canonical.string() + ": SDK Libraries is declared more than once";
-                return std::nullopt;
+                return false;
             }
             sawLibraries = true;
-            if (!parseLibraries(child, manifest, error))
-            {
-                error = canonical.string() + ": " + error;
-                return std::nullopt;
-            }
+            parsed = parseLibraries(child, manifest, error);
         }
         else
         {
             error = canonical.string() + ": unsupported NativeSharpSdk child '" + child.name + "'";
-            return std::nullopt;
+            return false;
         }
+        if (parsed) continue;
+        error = canonical.string() + ": " + error;
+        return false;
     }
+    return true;
+}
+}
+
+std::optional<SdkManifest> SdkManifestLoader::load(
+    const std::filesystem::path& manifestPath,
+    std::string& error) const
+{
+    error.clear();
+    const auto canonical = canonicalManifestPath(manifestPath, error);
+    if (!canonical.has_value()) return std::nullopt;
+    const auto source = readManifestSource(*canonical, error);
+    if (!source.has_value()) return std::nullopt;
+
+    SimpleXmlElement root;
+    SimpleXmlParser parser;
+    if (!parser.parse(*source, root, error))
+    {
+        error = canonical->string() + ": " + error;
+        return std::nullopt;
+    }
+    if (!validateManifestRoot(root, *canonical, error)) return std::nullopt;
+    SdkManifest manifest;
+    if (!initializeManifest(root, *canonical, manifest, error)) return std::nullopt;
+    if (!parseManifestChildren(root, *canonical, manifest, error)) return std::nullopt;
     return manifest;
 }
 

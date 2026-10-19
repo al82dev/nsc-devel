@@ -1,47 +1,16 @@
 #pragma once
 
+#include "nativesharp/Language/Language3Disposition.h"
+#include "nativesharp/Language/Language3Feature.h"
+#include "nativesharp/Language/Language3SurfaceEntry.h"
+#include "nativesharp/Language/StaticInitializationState.h"
+
 #include <span>
 #include <string>
 #include <string_view>
 
 namespace nativesharp::language
 {
-enum class Language3Feature
-{
-    RecordStructs,
-    PrimaryConstructors,
-    RawStringLiterals,
-    AsyncAwait,
-    AsyncStreams,
-    YieldGenerators,
-    DefaultInterfaceImplementations,
-    ListPatterns,
-    StaticConstructors,
-    Decimal,
-    ExtensionMethods,
-    TraitOperators,
-    MoveOnlyDefaults,
-    LongDouble,
-    ConditionDeclarations,
-    StaticLocals
-};
-
-enum class Language3Disposition
-{
-    Implemented,
-    PlannedFor304,
-    DeferredTo4,
-    RejectedFor3
-};
-
-enum class StaticInitializationState
-{
-    Uninitialized,
-    Initializing,
-    Initialized,
-    Failed
-};
-
 constexpr std::string_view staticInitializationStateName(
     StaticInitializationState state) noexcept
 {
@@ -67,14 +36,6 @@ constexpr bool staticInitializationStateMayRetry(
 {
     return state == StaticInitializationState::Uninitialized;
 }
-
-struct Language3SurfaceEntry final
-{
-    Language3Feature feature;
-    std::string_view name;
-    Language3Disposition disposition;
-    std::string_view rationale;
-};
 
 std::span<const Language3SurfaceEntry> language3Surface() noexcept;
 const Language3SurfaceEntry& language3SurfaceEntry(Language3Feature feature) noexcept;

@@ -15,6 +15,46 @@ bool borrowMayCrossAwait(bool sourceOutlivesFrame, bool addressStable) noexcept
     return sourceOutlivesFrame && addressStable;
 }
 
+std::string futureTypeKey(std::string_view innerTypeKey)
+{
+    std::string key = "future:";
+    key.append(innerTypeKey);
+    return key;
+}
+
+std::string futureTypeKey(std::string_view innerTypeKey, std::string_view errorTypeKey)
+{
+    std::string key = futureTypeKey(innerTypeKey);
+    if (!errorTypeKey.empty())
+    {
+        key.push_back('|');
+        key.append(errorTypeKey);
+    }
+    return key;
+}
+
+std::optional<std::string_view> futureInnerTypeKey(std::string_view typeKey) noexcept
+{
+    constexpr std::string_view prefix = "future:";
+    if (!typeKey.starts_with(prefix)) return std::nullopt;
+    // A trailing `*` is the pointer-to-future form (`future:<T>*`, the poll's `self` parameter),
+    // not a future surface. Future-of-pointer is not representable with this spelling.
+    if (typeKey.ends_with('*')) return std::nullopt;
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    return pipe == std::string_view::npos ? rest : rest.substr(0, pipe);
+}
+
+std::optional<std::string_view> futureErrorTypeKey(std::string_view typeKey) noexcept
+{
+    constexpr std::string_view prefix = "future:";
+    if (!typeKey.starts_with(prefix) || typeKey.ends_with('*')) return std::nullopt;
+    const std::string_view rest = typeKey.substr(prefix.size());
+    const std::size_t pipe = rest.find('|');
+    return pipe == std::string_view::npos ? std::nullopt
+        : std::optional<std::string_view>(rest.substr(pipe + 1));
+}
+
 namespace
 {
 GeneratorStorage generatorStorage(FrameStorage storage) noexcept

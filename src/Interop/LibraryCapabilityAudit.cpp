@@ -1,5 +1,7 @@
 #include "nativesharp/Interop/LibraryCapabilityAudit.h"
 
+#include "Internal/Requirement.h"
+
 #include <algorithm>
 #include <array>
 
@@ -7,13 +9,6 @@ namespace nativesharp::interop
 {
 namespace
 {
-struct Requirement final
-{
-    std::string_view id;
-    std::string_view name;
-    std::span<const std::string_view> types;
-};
-
 bool matchesTypeName(std::string_view qualified, std::string_view expected)
 {
     if (qualified == expected) return true;
