@@ -10738,10 +10738,64 @@ private:
                     values.push_back(failValue(error, "binary MIR requires two operands"));
                     continue;
                 }
-                if (current->operation == lexer::TokenKind::AmpAmp ||
-                    current->operation == lexer::TokenKind::PipePipe)
+                const bool shortCircuit =
+                    current->operation == lexer::TokenKind::AmpAmp ||
+                    current->operation == lexer::TokenKind::PipePipe;
+                if (shortCircuit && frame.phase == 0)
                 {
-                    values.push_back(lowerShortCircuit(current, error));
+                    frames.push_back({current, 3, nullptr});
+                    frames.push_back({current->children[0].get(), 0, nullptr});
+                    continue;
+                }
+                if (shortCircuit && frame.phase == 3)
+                {
+                    LLVMValueRef left = values.back();
+                    values.pop_back();
+                    if (left == nullptr || terminated())
+                    {
+                        values.push_back(left);
+                        continue;
+                    }
+                    LLVMBasicBlockRef leftBlock = LLVMGetInsertBlock(builder_);
+                    LLVMBasicBlockRef rhsBlock = appendBlock("logic.rhs");
+                    LLVMBasicBlockRef endBlock = appendBlock("logic.end");
+                    const bool isAnd = current->operation == lexer::TokenKind::AmpAmp;
+                    LLVMBuildCondBr(
+                        builder_, left, isAnd ? rhsBlock : endBlock,
+                        isAnd ? endBlock : rhsBlock);
+                    LLVMPositionBuilderAtEnd(builder_, rhsBlock);
+                    frames.push_back(
+                        {current, 4, nullptr, 0, {}, nullptr, nullptr, leftBlock, endBlock});
+                    frames.push_back({current->children[1].get(), 0, nullptr});
+                    continue;
+                }
+                if (shortCircuit)
+                {
+                    LLVMValueRef right = values.back();
+                    values.pop_back();
+                    if (right == nullptr)
+                    {
+                        values.push_back(nullptr);
+                        continue;
+                    }
+                    LLVMBasicBlockRef rightBlock = LLVMGetInsertBlock(builder_);
+                    const bool rightReachesEnd = !terminated();
+                    if (rightReachesEnd) LLVMBuildBr(builder_, frame.endBlock);
+                    LLVMPositionBuilderAtEnd(builder_, frame.endBlock);
+                    const bool isAnd = current->operation == lexer::TokenKind::AmpAmp;
+                    LLVMValueRef shortValue = LLVMConstInt(
+                        LLVMInt1TypeInContext(context_), isAnd ? 0U : 1U, 0);
+                    if (!rightReachesEnd)
+                    {
+                        values.push_back(shortValue);
+                        continue;
+                    }
+                    LLVMValueRef phi = LLVMBuildPhi(
+                        builder_, LLVMInt1TypeInContext(context_), "logic");
+                    LLVMValueRef incomingValues[] = {shortValue, right};
+                    LLVMBasicBlockRef incomingBlocks[] = {frame.nullBlock, rightBlock};
+                    LLVMAddIncoming(phi, incomingValues, incomingBlocks, 2);
+                    values.push_back(phi);
                     continue;
                 }
                 if (frame.phase == 0)
@@ -19544,33 +19598,6 @@ private:
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcond.index.store.result");
         LLVMValueRef values[] = {LLVMConstNull(resultType), value};
         LLVMBasicBlockRef blocks[] = {nullBlock, valueExit};
-        LLVMAddIncoming(phi, values, blocks, 2);
-        return phi;
-    }
-
-    LLVMValueRef lowerShortCircuit(const frontend::ProjectOopMirNode* node, std::string& error)
-    {
-        LLVMValueRef left = lowerExpression(node->children[0].get(), error);
-        if (left == nullptr) return nullptr;
-        if (terminated()) return left;
-        LLVMBasicBlockRef leftBlock = LLVMGetInsertBlock(builder_);
-        LLVMBasicBlockRef rhsBlock = appendBlock("logic.rhs");
-        LLVMBasicBlockRef endBlock = appendBlock("logic.end");
-        const bool isAnd = node->operation == lexer::TokenKind::AmpAmp;
-        LLVMBuildCondBr(builder_, left, isAnd ? rhsBlock : endBlock, isAnd ? endBlock : rhsBlock);
-        LLVMPositionBuilderAtEnd(builder_, rhsBlock);
-        LLVMValueRef right = lowerExpression(node->children[1].get(), error);
-        if (right == nullptr) return nullptr;
-        LLVMBasicBlockRef rightBlock = LLVMGetInsertBlock(builder_);
-        const bool rightReachesEnd = !terminated();
-        if (rightReachesEnd) LLVMBuildBr(builder_, endBlock);
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
-        LLVMValueRef shortValue = LLVMConstInt(
-            LLVMInt1TypeInContext(context_), isAnd ? 0U : 1U, 0);
-        if (!rightReachesEnd) return shortValue;
-        LLVMValueRef phi = LLVMBuildPhi(builder_, LLVMInt1TypeInContext(context_), "logic");
-        LLVMValueRef values[] = {shortValue, right};
-        LLVMBasicBlockRef blocks[] = {leftBlock, rightBlock};
         LLVMAddIncoming(phi, values, blocks, 2);
         return phi;
     }
