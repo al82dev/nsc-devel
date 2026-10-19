@@ -168,6 +168,27 @@ int main()
             readBytes(restored) == "verified-object-bytes",
         "matching cache entry restores exact object bytes");
 
+#if defined(_WIN32)
+    std::filesystem::path deepCacheRoot = root;
+    while ((deepCacheRoot / "objects" / key.substr(0, 2) /
+            (key + ".obj.lock")).native().size() <= 280U)
+        deepCacheRoot /= "deep-builder-case-01";
+    CompilationArtifactCache deepCache = cache;
+    deepCache.setRoot(deepCacheRoot);
+    const auto deepRestored = root / "deep-restored.obj";
+    error.clear();
+    const bool deepStored = deepCache.storeObject(key, source, error);
+    tests.expect(deepStored && error.empty(),
+        "artifact cache stores through a Win32 lock path longer than MAX_PATH (" + error + ")");
+    hit = false;
+    error.clear();
+    const bool deepRestoredSuccessfully =
+        deepCache.restoreObject(key, deepRestored, hit, error);
+    tests.expect(deepRestoredSuccessfully && hit &&
+            readBytes(deepRestored) == "verified-object-bytes",
+        "artifact cache restores through a Win32 lock path longer than MAX_PATH (" + error + ")");
+#endif
+
     const auto cachedObject = cache.root() / "objects" / key.substr(0, 2) / (key + ".obj");
     writeBytes(cachedObject, "corrupt");
     hit = true;

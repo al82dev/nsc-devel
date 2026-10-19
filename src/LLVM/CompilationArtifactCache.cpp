@@ -34,6 +34,29 @@ namespace
 thread_local const CompilationArtifactCache* activeCache = nullptr;
 std::atomic<unsigned long long> temporaryOrdinal = 0;
 
+#if defined(_WIN32)
+std::filesystem::path extendedWindowsPath(const std::filesystem::path& input)
+{
+    std::error_code filesystemError;
+    std::filesystem::path absolute = std::filesystem::absolute(input, filesystemError);
+    if (filesystemError) absolute = input;
+    const std::wstring value = absolute.native();
+    if (value.starts_with(L"\\\\?\\")) return absolute;
+    if (value.starts_with(L"\\\\"))
+        return std::filesystem::path(L"\\\\?\\UNC\\" + value.substr(2));
+    return std::filesystem::path(L"\\\\?\\" + value);
+}
+#endif
+
+std::filesystem::path cacheFilesystemPath(const std::filesystem::path& input)
+{
+#if defined(_WIN32)
+    return extendedWindowsPath(input);
+#else
+    return input;
+#endif
+}
+
 class CachePruneMeasurement final
 {
 public:
@@ -80,11 +103,14 @@ bool replaceFileAtomically(
     // but do not force every parallel object and metadata publication through a volume-wide
     // durability barrier. A power-loss partial publication remains a safe miss because metadata
     // is published last and restore verifies both size and SHA-256 before copying any object.
-    if (::MoveFileExW(temporary.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING) != 0)
+    if (::MoveFileExW(
+            extendedWindowsPath(temporary).c_str(),
+            extendedWindowsPath(destination).c_str(),
+            MOVEFILE_REPLACE_EXISTING) != 0)
         return true;
     const unsigned long failure = ::GetLastError();
     std::error_code ignored;
-    std::filesystem::remove(temporary, ignored);
+    std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
     error = "cannot atomically publish artifact-cache file '" + destination.string() +
         "' (Win32 error " + std::to_string(failure) + ")";
     return false;
@@ -121,7 +147,8 @@ public:
         constexpr unsigned attempts = 3000;
         for (unsigned attempt = 0; attempt < attempts; ++attempt)
         {
-            handle_ = ::CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0,
+            handle_ = ::CreateFileW(extendedWindowsPath(path).c_str(),
+                GENERIC_READ | GENERIC_WRITE, 0,
                 nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, nullptr);
             if (handle_ != INVALID_HANDLE_VALUE) return true;
             const unsigned long failure = ::GetLastError();
@@ -224,9 +251,11 @@ void quarantineInvalidEntry(
     const std::filesystem::path quarantinedObject =
         quarantine / (std::string(key) + "." + suffix + ".obj");
     filesystemError.clear();
-    std::filesystem::rename(metadata, quarantinedMetadata, filesystemError);
+    std::filesystem::rename(
+        cacheFilesystemPath(metadata), cacheFilesystemPath(quarantinedMetadata), filesystemError);
     filesystemError.clear();
-    std::filesystem::rename(object, quarantinedObject, filesystemError);
+    std::filesystem::rename(
+        cacheFilesystemPath(object), cacheFilesystemPath(quarantinedObject), filesystemError);
 }
 
 void quarantineInvalidCodePartitionPlan(
@@ -243,11 +272,13 @@ void quarantineInvalidCodePartitionPlan(
         temporaryOrdinal.fetch_add(1, std::memory_order_relaxed));
     filesystemError.clear();
     std::filesystem::rename(
-        metadata, quarantine / (std::string(key) + "." + suffix + ".partition.meta"),
+        cacheFilesystemPath(metadata), cacheFilesystemPath(
+            quarantine / (std::string(key) + "." + suffix + ".partition.meta")),
         filesystemError);
     filesystemError.clear();
     std::filesystem::rename(
-        payload, quarantine / (std::string(key) + "." + suffix + ".partition.plan"),
+        cacheFilesystemPath(payload), cacheFilesystemPath(
+            quarantine / (std::string(key) + "." + suffix + ".partition.plan")),
         filesystemError);
 }
 
@@ -260,7 +291,7 @@ struct CacheMetadata final
 
 bool readMetadata(const std::filesystem::path& path, CacheMetadata& metadata)
 {
-    std::ifstream stream(path, std::ios::binary);
+    std::ifstream stream(cacheFilesystemPath(path), std::ios::binary);
     std::string header;
     std::string keyLine;
     std::string digestLine;
@@ -290,7 +321,7 @@ bool writeMetadataAtomically(
 {
     const std::filesystem::path temporary = temporarySibling(destination);
     {
-        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+        std::ofstream stream(cacheFilesystemPath(temporary), std::ios::binary | std::ios::trunc);
         if (!stream)
         {
             error = "cannot open artifact-cache metadata temporary '" +
@@ -302,7 +333,7 @@ bool writeMetadataAtomically(
         if (!stream)
         {
             std::error_code ignored;
-            std::filesystem::remove(temporary, ignored);
+            std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
             error = "cannot write artifact-cache metadata '" + temporary.string() + "'";
             return false;
         }
@@ -312,7 +343,7 @@ bool writeMetadataAtomically(
 
 bool readCodePartitionMetadata(const std::filesystem::path& path, CacheMetadata& metadata)
 {
-    std::ifstream stream(path, std::ios::binary);
+    std::ifstream stream(cacheFilesystemPath(path), std::ios::binary);
     std::string header;
     std::string keyLine;
     std::string digestLine;
@@ -342,7 +373,7 @@ bool writeCodePartitionMetadataAtomically(
 {
     const std::filesystem::path temporary = temporarySibling(destination);
     {
-        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+        std::ofstream stream(cacheFilesystemPath(temporary), std::ios::binary | std::ios::trunc);
         if (!stream)
         {
             error = "cannot open code-partition metadata temporary '" +
@@ -354,7 +385,7 @@ bool writeCodePartitionMetadataAtomically(
         if (!stream)
         {
             std::error_code ignored;
-            std::filesystem::remove(temporary, ignored);
+            std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
             error = "cannot write code-partition metadata '" + temporary.string() + "'";
             return false;
         }
@@ -541,10 +572,12 @@ bool CompilationArtifactCache::restoreObject(
     const std::filesystem::path cachedObject = objectPath(root_, key);
     const std::filesystem::path cachedMetadata = metadataPath(root_, key);
     std::error_code filesystemError;
-    if (!std::filesystem::is_regular_file(cachedObject, filesystemError) || filesystemError)
+    if (!std::filesystem::is_regular_file(
+            cacheFilesystemPath(cachedObject), filesystemError) || filesystemError)
         return true;
     filesystemError.clear();
-    if (!std::filesystem::is_regular_file(cachedMetadata, filesystemError) || filesystemError)
+    if (!std::filesystem::is_regular_file(
+            cacheFilesystemPath(cachedMetadata), filesystemError) || filesystemError)
     {
         if (reason != nullptr) *reason = CacheMissReason::IncompletePublication;
         return true;
@@ -553,10 +586,12 @@ bool CompilationArtifactCache::restoreObject(
     CacheEntryLock entryLock;
     if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
     filesystemError.clear();
-    if (!std::filesystem::is_regular_file(cachedObject, filesystemError) || filesystemError)
+    if (!std::filesystem::is_regular_file(
+            cacheFilesystemPath(cachedObject), filesystemError) || filesystemError)
         return true;
     filesystemError.clear();
-    if (!std::filesystem::is_regular_file(cachedMetadata, filesystemError) || filesystemError)
+    if (!std::filesystem::is_regular_file(
+            cacheFilesystemPath(cachedMetadata), filesystemError) || filesystemError)
     {
         if (reason != nullptr) *reason = CacheMissReason::IncompletePublication;
         return true;
@@ -572,7 +607,7 @@ bool CompilationArtifactCache::restoreObject(
     basic::Sha256Digest digest{};
     std::uintmax_t size = 0;
     std::string hashError;
-    if (!basic::sha256File(cachedObject, digest, size, hashError)) return true;
+    if (!basic::sha256File(cacheFilesystemPath(cachedObject), digest, size, hashError)) return true;
     if (size != metadata.size || basic::sha256Hex(digest) != metadata.digest)
     {
         if (reason != nullptr) *reason = CacheMissReason::Corruption;
@@ -581,7 +616,8 @@ bool CompilationArtifactCache::restoreObject(
     }
 
     std::filesystem::copy_file(
-        cachedObject, destination, std::filesystem::copy_options::overwrite_existing,
+        cacheFilesystemPath(cachedObject), cacheFilesystemPath(destination),
+        std::filesystem::copy_options::overwrite_existing,
         filesystemError);
     if (filesystemError)
     {
@@ -608,7 +644,7 @@ bool CompilationArtifactCache::storeObject(
     }
     basic::Sha256Digest digest{};
     std::uintmax_t size = 0;
-    if (!basic::sha256File(source, digest, size, error)) return false;
+    if (!basic::sha256File(cacheFilesystemPath(source), digest, size, error)) return false;
 
     const std::filesystem::path directory = objectDirectory(root_, key);
     std::error_code filesystemError;
@@ -623,7 +659,7 @@ bool CompilationArtifactCache::storeObject(
     CacheEntryLock entryLock;
     if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
     const std::filesystem::path temporaryObject = temporarySibling(cachedObject);
-    std::filesystem::copy_file(source, temporaryObject,
+    std::filesystem::copy_file(cacheFilesystemPath(source), cacheFilesystemPath(temporaryObject),
         std::filesystem::copy_options::overwrite_existing, filesystemError);
     if (filesystemError)
     {
@@ -632,11 +668,11 @@ bool CompilationArtifactCache::storeObject(
         return false;
     }
     const std::filesystem::path cachedMetadata = metadataPath(root_, key);
-    std::filesystem::remove(cachedMetadata, filesystemError);
+    std::filesystem::remove(cacheFilesystemPath(cachedMetadata), filesystemError);
     if (filesystemError)
     {
         std::error_code ignored;
-        std::filesystem::remove(temporaryObject, ignored);
+        std::filesystem::remove(cacheFilesystemPath(temporaryObject), ignored);
         error = "cannot invalidate artifact-cache metadata '" + cachedMetadata.string() +
             "': " + filesystemError.message();
         return false;
@@ -665,7 +701,8 @@ bool CompilationArtifactCache::restoreCodePartitionPlan(
     const std::filesystem::path payloadFile = codePartitionPayloadPath(root_, key);
     const std::filesystem::path metadataFile = codePartitionMetadataPath(root_, key);
     std::error_code filesystemError;
-    if (!std::filesystem::is_regular_file(payloadFile, filesystemError) || filesystemError)
+    if (!std::filesystem::is_regular_file(
+            cacheFilesystemPath(payloadFile), filesystemError) || filesystemError)
         return true;
 
     CacheEntryLock entryLock;
@@ -676,14 +713,15 @@ bool CompilationArtifactCache::restoreCodePartitionPlan(
         quarantineInvalidCodePartitionPlan(root_, key, payloadFile, metadataFile);
         return true;
     }
-    const std::uintmax_t size = std::filesystem::file_size(payloadFile, filesystemError);
+    const std::uintmax_t size =
+        std::filesystem::file_size(cacheFilesystemPath(payloadFile), filesystemError);
     if (filesystemError || size != metadata.size ||
         size > std::numeric_limits<std::size_t>::max())
     {
         quarantineInvalidCodePartitionPlan(root_, key, payloadFile, metadataFile);
         return true;
     }
-    std::ifstream stream(payloadFile, std::ios::binary);
+    std::ifstream stream(cacheFilesystemPath(payloadFile), std::ios::binary);
     payload.resize(static_cast<std::size_t>(size));
     if (!stream.read(payload.data(), static_cast<std::streamsize>(size)))
     {
@@ -729,7 +767,7 @@ bool CompilationArtifactCache::storeCodePartitionPlan(
     if (!entryLock.acquire(payloadFile.string() + ".lock", error)) return false;
     const std::filesystem::path temporary = temporarySibling(payloadFile);
     {
-        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+        std::ofstream stream(cacheFilesystemPath(temporary), std::ios::binary | std::ios::trunc);
         if (!stream)
         {
             error = "cannot open code-partition payload temporary '" + temporary.string() + "'";
@@ -739,16 +777,16 @@ bool CompilationArtifactCache::storeCodePartitionPlan(
         if (!stream)
         {
             std::error_code ignored;
-            std::filesystem::remove(temporary, ignored);
+            std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
             error = "cannot write code-partition payload '" + temporary.string() + "'";
             return false;
         }
     }
-    std::filesystem::remove(metadataFile, filesystemError);
+    std::filesystem::remove(cacheFilesystemPath(metadataFile), filesystemError);
     if (filesystemError)
     {
         std::error_code ignored;
-        std::filesystem::remove(temporary, ignored);
+        std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
         error = "cannot invalidate code-partition metadata '" + metadataFile.string() +
             "': " + filesystemError.message();
         return false;
