@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Compilation/SimpleXmlElement.h"
+
 #include <string>
 #include <string_view>
 #include <utility>
@@ -7,14 +9,6 @@
 
 namespace nativesharp::compilation
 {
-struct SimpleXmlElement final
-{
-    std::string name;
-    std::vector<std::pair<std::string, std::string>> attributes;
-    std::string text;
-    std::vector<SimpleXmlElement> children;
-};
-
 class SimpleXmlParser final
 {
 public:

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Compilation/ProjectSource.h"
+
 #include <filesystem>
 #include <span>
 #include <string>
@@ -7,13 +9,6 @@
 
 namespace nativesharp::compilation
 {
-struct ProjectSource final
-{
-    std::filesystem::path absolutePath;
-    std::filesystem::path projectRelativePath;
-    std::size_t ordinal = 0;
-};
-
 class ProjectSourceSet final
 {
 public:

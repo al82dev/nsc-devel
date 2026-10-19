@@ -1,33 +1,14 @@
 #pragma once
 
+#include "nativesharp/Target/Architecture.h"
+#include "nativesharp/Target/CpuFeatureLevel.h"
+#include "nativesharp/Target/ObjectFormat.h"
+#include "nativesharp/Target/OperatingSystem.h"
+
 #include <string_view>
 
 namespace nativesharp::target
 {
-enum class Architecture
-{
-    X86_64,
-    Arm64
-};
-
-enum class OperatingSystem
-{
-    Windows
-};
-
-enum class ObjectFormat
-{
-    COFF
-};
-
-enum class CpuFeatureLevel
-{
-    Baseline,
-    X86_64_V2,
-    X86_64_V3,
-    X86_64_V4
-};
-
 class TargetInfo final
 {
 public:

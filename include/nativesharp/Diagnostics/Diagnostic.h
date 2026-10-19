@@ -2,6 +2,7 @@
 
 #include "nativesharp/Basic/SourceLocation.h"
 #include "nativesharp/Basic/SourceRange.h"
+#include "nativesharp/Diagnostics/DiagnosticLabel.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 
@@ -11,12 +12,6 @@
 
 namespace nativesharp::diagnostics
 {
-struct DiagnosticLabel final
-{
-    SourceRange range;
-    std::string message;
-};
-
 class Diagnostic final
 {
 public:

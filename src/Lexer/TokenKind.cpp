@@ -2,7 +2,9 @@
 
 namespace nativesharp::lexer
 {
-std::string_view tokenKindName(TokenKind kind) noexcept
+namespace
+{
+std::string_view tokenKindNamePart1(TokenKind kind) noexcept
 {
     switch (kind)
     {
@@ -47,6 +49,17 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(KwProtected);
         NS_TOKEN_CASE(KwPrivate);
         NS_TOKEN_CASE(KwIf);
+#undef NS_TOKEN_CASE
+    }
+
+    return {};
+}
+
+std::string_view tokenKindNamePart2(TokenKind kind) noexcept
+{
+    switch (kind)
+    {
+#define NS_TOKEN_CASE(name) case TokenKind::name: return #name
         NS_TOKEN_CASE(KwElse);
         NS_TOKEN_CASE(KwWhile);
         NS_TOKEN_CASE(KwDo);
@@ -87,6 +100,17 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(KwVirtual);
         NS_TOKEN_CASE(KwOverride);
         NS_TOKEN_CASE(KwAbstract);
+#undef NS_TOKEN_CASE
+    }
+
+    return {};
+}
+
+std::string_view tokenKindNamePart3(TokenKind kind) noexcept
+{
+    switch (kind)
+    {
+#define NS_TOKEN_CASE(name) case TokenKind::name: return #name
         NS_TOKEN_CASE(KwSealed);
         NS_TOKEN_CASE(KwGet);
         NS_TOKEN_CASE(KwSet);
@@ -127,6 +151,17 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(MinusMinus);
         NS_TOKEN_CASE(EqualEqual);
         NS_TOKEN_CASE(BangEqual);
+#undef NS_TOKEN_CASE
+    }
+
+    return {};
+}
+
+std::string_view tokenKindNamePart4(TokenKind kind) noexcept
+{
+    switch (kind)
+    {
+#define NS_TOKEN_CASE(name) case TokenKind::name: return #name
         NS_TOKEN_CASE(Less);
         NS_TOKEN_CASE(LessEqual);
         NS_TOKEN_CASE(Greater);
@@ -160,6 +195,37 @@ std::string_view tokenKindName(TokenKind kind) noexcept
         NS_TOKEN_CASE(DotDotEqual);
         NS_TOKEN_CASE(Utf8StringLiteral);
 #undef NS_TOKEN_CASE
+    }
+
+    return {};
+}
+
+}
+
+std::string_view tokenKindName(TokenKind kind) noexcept
+{
+    const std::string_view part1 = tokenKindNamePart1(kind);
+    if (!part1.empty())
+    {
+        return part1;
+    }
+
+    const std::string_view part2 = tokenKindNamePart2(kind);
+    if (!part2.empty())
+    {
+        return part2;
+    }
+
+    const std::string_view part3 = tokenKindNamePart3(kind);
+    if (!part3.empty())
+    {
+        return part3;
+    }
+
+    const std::string_view part4 = tokenKindNamePart4(kind);
+    if (!part4.empty())
+    {
+        return part4;
     }
 
     return "Invalid";

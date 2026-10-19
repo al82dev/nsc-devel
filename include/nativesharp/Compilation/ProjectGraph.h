@@ -1,6 +1,8 @@
 #pragma once
 
+#include "nativesharp/Compilation/PrecompiledProjectDescriptor.h"
 #include "nativesharp/Compilation/Project.h"
+#include "nativesharp/Compilation/SourceLibraryReferenceReplacement.h"
 
 #include <filesystem>
 #include <span>
@@ -9,20 +11,6 @@
 
 namespace nativesharp::compilation
 {
-struct PrecompiledProjectDescriptor final
-{
-    std::filesystem::path ownerProjectFile;
-    std::filesystem::path metadataPath;
-    std::string moduleName;
-};
-
-struct SourceLibraryReferenceReplacement final
-{
-    std::filesystem::path ownerProjectFile;
-    std::filesystem::path metadataPath;
-    std::filesystem::path sourceProjectFile;
-};
-
 class ProjectGraph final
 {
 public:

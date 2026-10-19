@@ -1,6 +1,9 @@
 #pragma once
 
+#include "nativesharp/Compilation/ProjectBuildSettings.h"
+#include "nativesharp/Compilation/ProjectLoadOptions.h"
 #include "nativesharp/Compilation/Project.h"
+#include "nativesharp/Compilation/ProjectLoaderStatistics.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -12,43 +15,6 @@ namespace nativesharp::compilation
 {
 inline constexpr std::size_t MaximumGenericInstantiationDepth = 4096;
 inline constexpr std::size_t MaximumGenericInstantiationCount = 1'048'576;
-
-struct ProjectLoadOptions final
-{
-    // Relative LibraryReference Include, Metadata, and Runtime paths are
-    // resolved from this directory instead of the directory that owns the
-    // project file. Absolute paths keep their existing meaning.
-    std::optional<std::filesystem::path> libraryReferenceRoot;
-
-    // Environment-provided package roots are fallbacks, not project rewrites. A relative
-    // LibraryReference that already exists beside its project keeps that local meaning; only a
-    // missing project-relative artifact is searched below this directory.
-    std::optional<std::filesystem::path> libraryReferenceFallbackRoot;
-
-    // Frontend resource budgets. The driver fills these from explicit CLI options or from the
-    // root project's build settings. An absent value selects the language's normative defaults.
-    std::optional<std::size_t> genericInstantiationDepth;
-    std::optional<std::size_t> genericInstantiationCount;
-};
-
-// Build defaults declared by the root .nsproj. The driver applies explicit
-// command-line options after these values, so automation can keep stable
-// defaults in the project without losing one-off overrides.
-struct ProjectBuildSettings final
-{
-    std::optional<unsigned> optimizationLevel;
-    std::optional<std::filesystem::path> outputPath;
-    std::optional<std::filesystem::path> libraryReferenceRoot;
-    std::optional<std::size_t> compilerJobs;
-    std::optional<std::size_t> genericInstantiationDepth;
-    std::optional<std::size_t> genericInstantiationCount;
-};
-
-struct ProjectLoaderStatistics final
-{
-    std::size_t descriptorFileReads = 0;
-    std::size_t descriptorCacheHits = 0;
-};
 
 class ProjectLoaderCache;
 

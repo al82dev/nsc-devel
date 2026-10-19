@@ -103,7 +103,7 @@ constexpr bool isNativeSharp3Diagnostic(DiagnosticId id) noexcept
 
 // These names are the stable machine-facing diagnostic codes used by editor integrations. New
 // IDs may be added without changing existing spellings.
-constexpr std::string_view diagnosticIdName(DiagnosticId id) noexcept
+constexpr std::string_view diagnosticIdNamePart1(DiagnosticId id) noexcept
 {
     switch (id)
     {
@@ -145,6 +145,16 @@ constexpr std::string_view diagnosticIdName(DiagnosticId id) noexcept
         NSC_DIAGNOSTIC_NAME(InvalidAssignmentTarget);
         NSC_DIAGNOSTIC_NAME(InvalidAddressOf);
         NSC_DIAGNOSTIC_NAME(InvalidDereference);
+#undef NSC_DIAGNOSTIC_NAME
+        default: return {};
+    }
+}
+
+constexpr std::string_view diagnosticIdNamePart2(DiagnosticId id) noexcept
+{
+    switch (id)
+    {
+#define NSC_DIAGNOSTIC_NAME(name) case DiagnosticId::name: return #name
         NSC_DIAGNOSTIC_NAME(InvalidCall);
         NSC_DIAGNOSTIC_NAME(InvalidArgumentCount);
         NSC_DIAGNOSTIC_NAME(InvalidMemberAccess);
@@ -178,6 +188,18 @@ constexpr std::string_view diagnosticIdName(DiagnosticId id) noexcept
         NSC_DIAGNOSTIC_NAME(InvalidMainSignature);
         NSC_DIAGNOSTIC_NAME(InvalidExternCSignature);
 #undef NSC_DIAGNOSTIC_NAME
+        default: return {};
+    }
+}
+
+constexpr std::string_view diagnosticIdName(DiagnosticId id) noexcept
+{
+    const std::string_view part1 = diagnosticIdNamePart1(id);
+    if (!part1.empty()) return part1;
+    const std::string_view part2 = diagnosticIdNamePart2(id);
+    if (!part2.empty()) return part2;
+    switch (id)
+    {
         case DiagnosticId::NS3010InvalidCompilationStage: return "NS3010";
         case DiagnosticId::NS3020InvalidValueCategory: return "NS3020";
         case DiagnosticId::NS3030MissingEffectContext: return "NS3030";

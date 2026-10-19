@@ -1,5 +1,9 @@
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 
+#include "Internal/GraphLoadState.h"
+#include "Internal/LoadedProject.h"
+#include "Internal/VisitState.h"
+
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Language/ModuleSemantics.h"
@@ -18,26 +22,9 @@ namespace nativesharp::compilation
 {
 namespace
 {
-enum class VisitState
-{
-    Visiting,
-    Complete
-};
-
-struct GraphLoadState final
-{
-    std::unordered_map<std::string, VisitState> visits;
-    std::vector<std::filesystem::path> pathStack;
-    std::vector<std::string> moduleStack;
-    std::vector<Project> orderedProjects;
-};
-
-struct LoadedProject final
-{
-    std::filesystem::path path;
-    std::optional<Project> project;
-    std::string error;
-};
+using detail::GraphLoadState;
+using detail::LoadedProject;
+using detail::VisitState;
 
 std::string pathKey(const std::filesystem::path& path)
 {

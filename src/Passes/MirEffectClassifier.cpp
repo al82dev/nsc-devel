@@ -41,24 +41,17 @@ bool conversionMayTrap(const mir::MirInstruction* instruction) noexcept
             return false;
     }
 }
-}
 
-MirEffectInfo MirEffectClassifier::classify(const mir::MirInstruction* instruction) noexcept
+bool classifyValueEffect(
+    const mir::MirInstruction* instruction,
+    MirEffectInfo& result) noexcept
 {
-    MirEffectInfo result;
-    if (instruction == nullptr)
-    {
-        result.structural = true;
-        return result;
-    }
-
     using mir::MirOpcode;
     switch (instruction->opcode())
     {
         case MirOpcode::Parameter:
             result.structural = true;
-            return result;
-
+            return true;
         case MirOpcode::Undef:
         case MirOpcode::Phi:
         case MirOpcode::Constant:
@@ -85,56 +78,79 @@ MirEffectInfo MirEffectClassifier::classify(const mir::MirInstruction* instructi
         case MirOpcode::FieldAddress:
         case MirOpcode::IndexAddress:
         case MirOpcode::ExtractField:
-            return result;
-
+            return true;
         case MirOpcode::Convert:
             result.mayTrap = conversionMayTrap(instruction);
-            return result;
-
+            return true;
         case MirOpcode::Divide:
         case MirOpcode::Remainder:
         case MirOpcode::ShiftLeft:
         case MirOpcode::ShiftRight:
         case MirOpcode::BoundsCheck:
             result.mayTrap = true;
-            return result;
+            return true;
+        default:
+            return false;
+    }
+}
 
+bool classifyMemoryEffect(
+    const mir::MirInstruction* instruction,
+    MirEffectInfo& result) noexcept
+{
+    using mir::MirOpcode;
+    switch (instruction->opcode())
+    {
         case MirOpcode::LoadSymbol:
         case MirOpcode::Load:
             result.readsMemory = true;
-            return result;
-
+            return true;
         case MirOpcode::StoreSymbol:
         case MirOpcode::Store:
             result.hasSideEffects = true;
             result.writesMemory = true;
-            return result;
-
+            return true;
         case MirOpcode::Call:
             result.hasSideEffects = true;
-            return result;
-
+            return true;
         case MirOpcode::Allocate:
         case MirOpcode::AllocateArray:
         case MirOpcode::StackAllocate:
             result.hasSideEffects = true;
             result.mayTrap = instruction->opcode() == MirOpcode::AllocateArray ||
                 instruction->opcode() == MirOpcode::StackAllocate;
-            return result;
-
+            return true;
         case MirOpcode::Deallocate:
         case MirOpcode::DeallocateArray:
             result.hasSideEffects = true;
             result.writesMemory = true;
-            return result;
-
+            return true;
         case MirOpcode::Jump:
         case MirOpcode::Branch:
         case MirOpcode::Return:
         case MirOpcode::Unreachable:
             result.hasSideEffects = true;
             result.structural = true;
-            return result;
+            return true;
+        default:
+            return false;
+    }
+}
+}
+
+MirEffectInfo MirEffectClassifier::classify(const mir::MirInstruction* instruction) noexcept
+{
+    MirEffectInfo result;
+    if (instruction == nullptr)
+    {
+        result.structural = true;
+        return result;
+    }
+
+    if (classifyValueEffect(instruction, result) ||
+        classifyMemoryEffect(instruction, result))
+    {
+        return result;
     }
 
     result.structural = true;

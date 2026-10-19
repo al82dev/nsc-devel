@@ -1,5 +1,10 @@
 #include "nativesharp/Compilation/ProjectLoader.h"
 
+#include "Internal/LibraryReferenceDescriptor.h"
+#include "Internal/ProjectDescriptor.h"
+#include "Internal/ProjectLoaderCache.h"
+#include "Internal/SourceIncludeRule.h"
+
 #include "nativesharp/Compilation/GlobPattern.h"
 #include "nativesharp/Compilation/SimpleXmlParser.h"
 #include "nativesharp/Compilation/SdkManifest.h"
@@ -19,43 +24,6 @@
 
 namespace nativesharp::compilation
 {
-struct SourceIncludeRule final
-{
-    GlobPattern include;
-    std::vector<GlobPattern> excludes;
-};
-
-struct LibraryReferenceDescriptor final
-{
-    std::string include;
-    std::optional<std::string> metadata;
-    std::optional<std::string> runtime;
-};
-
-struct ProjectDescriptor final
-{
-    std::optional<std::string> name;
-    std::optional<std::string> packageName;
-    std::optional<ProjectOutputKind> outputKind;
-    std::optional<language::PanicProfile> panicProfile;
-    std::optional<std::string> panicHandler;
-    ProjectBuildSettings buildSettings;
-    std::vector<SourceIncludeRule> includes;
-    std::vector<GlobPattern> removes;
-    std::vector<std::string> projectReferences;
-    std::vector<LibraryReferenceDescriptor> libraryReferences;
-    std::vector<std::string> sdkReferences;
-    std::vector<std::string> friendModules;
-};
-
-class ProjectLoaderCache final
-{
-public:
-    mutable std::mutex mutex;
-    std::unordered_map<std::string, ProjectDescriptor> descriptors;
-    ProjectLoaderStatistics statistics;
-};
-
 namespace
 {
 
@@ -227,6 +195,219 @@ bool validateEmptyBody(const SimpleXmlElement& element, std::string& error)
     return true;
 }
 
+std::optional<bool> parseIdentityProperty(
+    const SimpleXmlElement& property,
+    const std::string& value,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    if (property.name == "Name")
+    {
+        if (descriptor.name.has_value())
+        {
+            error = "project property 'Name' is declared more than once";
+            return false;
+        }
+        descriptor.name = value;
+        return true;
+    }
+    if (property.name == "Package")
+    {
+        if (descriptor.packageName.has_value())
+        {
+            error = "project property 'Package' is declared more than once";
+            return false;
+        }
+        if (!isIdentifier(value))
+        {
+            error = "Package must be a NativeSharp identifier";
+            return false;
+        }
+        descriptor.packageName = value;
+        return true;
+    }
+    if (property.name == "OutputType")
+    {
+        if (descriptor.outputKind.has_value())
+        {
+            error = "project property 'OutputType' is declared more than once";
+            return false;
+        }
+        if (equalsFolded(value, "Exe"))
+        {
+            descriptor.outputKind = ProjectOutputKind::Executable;
+        }
+        else if (equalsFolded(value, "Library") || equalsFolded(value, "StaticLibrary"))
+        {
+            descriptor.outputKind = ProjectOutputKind::Library;
+        }
+        else if (equalsFolded(value, "SharedLibrary"))
+        {
+            descriptor.outputKind = ProjectOutputKind::SharedLibrary;
+        }
+        else
+        {
+            error = "OutputType must be 'Exe', 'Library', 'StaticLibrary', or 'SharedLibrary'";
+            return false;
+        }
+        return true;
+    }
+    return std::nullopt;
+}
+
+std::optional<bool> parseExecutionProperty(
+    const SimpleXmlElement& property,
+    const std::string& value,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    if (property.name == "OptimizationLevel")
+    {
+        if (descriptor.buildSettings.optimizationLevel.has_value())
+        {
+            error = "project property 'OptimizationLevel' is declared more than once";
+            return false;
+        }
+        if (value.size() != 2U || (value[0] != 'O' && value[0] != 'o') ||
+            value[1] < '0' || value[1] > '3')
+        {
+            error = "OptimizationLevel must be 'O0', 'O1', 'O2', or 'O3'";
+            return false;
+        }
+        descriptor.buildSettings.optimizationLevel = static_cast<unsigned>(value[1] - '0');
+        return true;
+    }
+    if (property.name == "Language")
+    {
+        // Compatibility-only input. Historical project files remain readable, but this
+        // value cannot select, hide, or reject syntax in the cumulative language.
+        (void)value;
+        return true;
+    }
+    if (property.name == "PanicProfile")
+    {
+        if (descriptor.panicProfile.has_value())
+        {
+            error = "project property 'PanicProfile' is declared more than once";
+            return false;
+        }
+        descriptor.panicProfile = language::parsePanicProfile(value);
+        if (!descriptor.panicProfile.has_value())
+        {
+            error = "PanicProfile must be 'abort' or 'unwind-native'";
+            return false;
+        }
+        return true;
+    }
+    if (property.name == "PanicHandler")
+    {
+        if (descriptor.panicHandler.has_value())
+        {
+            error = "project property 'PanicHandler' is declared more than once";
+            return false;
+        }
+        if (value.empty() || value.size() > 255U ||
+            std::ranges::any_of(value, [](unsigned char ch) {
+                return ch <= 0x20U || ch == 0x7fU;
+            }))
+        {
+            error = "PanicHandler must be a non-empty qualified function name without whitespace";
+            return false;
+        }
+        descriptor.panicHandler = value;
+        return true;
+    }
+    return std::nullopt;
+}
+
+std::optional<bool> parsePathProperty(
+    const SimpleXmlElement& property,
+    const std::string& value,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    if (property.name == "OutputPath")
+    {
+        if (descriptor.buildSettings.outputPath.has_value())
+        {
+            error = "project property 'OutputPath' is declared more than once";
+            return false;
+        }
+        descriptor.buildSettings.outputPath = std::filesystem::path(value);
+        return true;
+    }
+    if (property.name == "LibraryReferenceRoot")
+    {
+        if (descriptor.buildSettings.libraryReferenceRoot.has_value())
+        {
+            error = "project property 'LibraryReferenceRoot' is declared more than once";
+            return false;
+        }
+        descriptor.buildSettings.libraryReferenceRoot = std::filesystem::path(value);
+        return true;
+    }
+    if (property.name == "CompilerJobs")
+    {
+        if (descriptor.buildSettings.compilerJobs.has_value())
+        {
+            error = "project property 'CompilerJobs' is declared more than once";
+            return false;
+        }
+        std::size_t jobs = 0;
+        if (!parsePositiveDecimal(value, 1024U, jobs))
+        {
+            error = "CompilerJobs must be an integer from 1 through 1024";
+            return false;
+        }
+        descriptor.buildSettings.compilerJobs = jobs;
+        return true;
+    }
+    return std::nullopt;
+}
+
+std::optional<bool> parseGenericLimitProperty(
+    const SimpleXmlElement& property,
+    const std::string& value,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    if (property.name == "GenericInstantiationDepth")
+    {
+        if (descriptor.buildSettings.genericInstantiationDepth.has_value())
+        {
+            error = "project property 'GenericInstantiationDepth' is declared more than once";
+            return false;
+        }
+        std::size_t depth = 0;
+        if (!parsePositiveDecimal(value, MaximumGenericInstantiationDepth, depth))
+        {
+            error = "GenericInstantiationDepth must be an integer from 1 through " +
+                std::to_string(MaximumGenericInstantiationDepth);
+            return false;
+        }
+        descriptor.buildSettings.genericInstantiationDepth = depth;
+        return true;
+    }
+    if (property.name == "GenericInstantiationLimit")
+    {
+        if (descriptor.buildSettings.genericInstantiationCount.has_value())
+        {
+            error = "project property 'GenericInstantiationLimit' is declared more than once";
+            return false;
+        }
+        std::size_t count = 0;
+        if (!parsePositiveDecimal(value, MaximumGenericInstantiationCount, count))
+        {
+            error = "GenericInstantiationLimit must be an integer from 1 through " +
+                std::to_string(MaximumGenericInstantiationCount);
+            return false;
+        }
+        descriptor.buildSettings.genericInstantiationCount = count;
+        return true;
+    }
+    return std::nullopt;
+}
+
 bool parsePropertyGroup(
     const SimpleXmlElement& group,
     ProjectDescriptor& descriptor,
@@ -250,177 +431,35 @@ bool parsePropertyGroup(
             error = "project property '" + property.name + "' cannot be empty";
             return false;
         }
-        if (property.name == "Name")
+        const std::optional<bool> identity =
+            parseIdentityProperty(property, value, descriptor, error);
+        if (identity.has_value())
         {
-            if (descriptor.name.has_value())
-            {
-                error = "project property 'Name' is declared more than once";
-                return false;
-            }
-            descriptor.name = value;
+            if (!*identity) return false;
+            continue;
         }
-        else if (property.name == "Package")
+        const std::optional<bool> execution =
+            parseExecutionProperty(property, value, descriptor, error);
+        if (execution.has_value())
         {
-            if (descriptor.packageName.has_value())
-            {
-                error = "project property 'Package' is declared more than once";
-                return false;
-            }
-            if (!isIdentifier(value))
-            {
-                error = "Package must be a NativeSharp identifier";
-                return false;
-            }
-            descriptor.packageName = value;
+            if (!*execution) return false;
+            continue;
         }
-        else if (property.name == "OutputType")
+        const std::optional<bool> path = parsePathProperty(property, value, descriptor, error);
+        if (path.has_value())
         {
-            if (descriptor.outputKind.has_value())
-            {
-                error = "project property 'OutputType' is declared more than once";
-                return false;
-            }
-            if (equalsFolded(value, "Exe"))
-            {
-                descriptor.outputKind = ProjectOutputKind::Executable;
-            }
-            else if (equalsFolded(value, "Library") || equalsFolded(value, "StaticLibrary"))
-            {
-                descriptor.outputKind = ProjectOutputKind::Library;
-            }
-            else if (equalsFolded(value, "SharedLibrary"))
-            {
-                descriptor.outputKind = ProjectOutputKind::SharedLibrary;
-            }
-            else
-            {
-                error = "OutputType must be 'Exe', 'Library', 'StaticLibrary', or 'SharedLibrary'";
-                return false;
-            }
+            if (!*path) return false;
+            continue;
         }
-        else if (property.name == "OptimizationLevel")
+        const std::optional<bool> generic =
+            parseGenericLimitProperty(property, value, descriptor, error);
+        if (generic.has_value())
         {
-            if (descriptor.buildSettings.optimizationLevel.has_value())
-            {
-                error = "project property 'OptimizationLevel' is declared more than once";
-                return false;
-            }
-            if (value.size() != 2U || (value[0] != 'O' && value[0] != 'o') ||
-                value[1] < '0' || value[1] > '3')
-            {
-                error = "OptimizationLevel must be 'O0', 'O1', 'O2', or 'O3'";
-                return false;
-            }
-            descriptor.buildSettings.optimizationLevel =
-                static_cast<unsigned>(value[1] - '0');
+            if (!*generic) return false;
+            continue;
         }
-        else if (property.name == "Language")
-        {
-            // Compatibility-only input. Historical project files remain readable, but this
-            // value cannot select, hide, or reject syntax in the cumulative language.
-            (void)value;
-        }
-        else if (property.name == "PanicProfile")
-        {
-            if (descriptor.panicProfile.has_value())
-            {
-                error = "project property 'PanicProfile' is declared more than once";
-                return false;
-            }
-            descriptor.panicProfile = language::parsePanicProfile(value);
-            if (!descriptor.panicProfile.has_value())
-            {
-                error = "PanicProfile must be 'abort' or 'unwind-native'";
-                return false;
-            }
-        }
-        else if (property.name == "PanicHandler")
-        {
-            if (descriptor.panicHandler.has_value())
-            {
-                error = "project property 'PanicHandler' is declared more than once";
-                return false;
-            }
-            if (value.empty() || value.size() > 255U ||
-                std::ranges::any_of(value, [](unsigned char ch) {
-                    return ch <= 0x20U || ch == 0x7fU;
-                }))
-            {
-                error = "PanicHandler must be a non-empty qualified function name without whitespace";
-                return false;
-            }
-            descriptor.panicHandler = value;
-        }
-        else if (property.name == "OutputPath")
-        {
-            if (descriptor.buildSettings.outputPath.has_value())
-            {
-                error = "project property 'OutputPath' is declared more than once";
-                return false;
-            }
-            descriptor.buildSettings.outputPath = std::filesystem::path(value);
-        }
-        else if (property.name == "LibraryReferenceRoot")
-        {
-            if (descriptor.buildSettings.libraryReferenceRoot.has_value())
-            {
-                error = "project property 'LibraryReferenceRoot' is declared more than once";
-                return false;
-            }
-            descriptor.buildSettings.libraryReferenceRoot = std::filesystem::path(value);
-        }
-        else if (property.name == "CompilerJobs")
-        {
-            if (descriptor.buildSettings.compilerJobs.has_value())
-            {
-                error = "project property 'CompilerJobs' is declared more than once";
-                return false;
-            }
-            std::size_t jobs = 0;
-            if (!parsePositiveDecimal(value, 1024U, jobs))
-            {
-                error = "CompilerJobs must be an integer from 1 through 1024";
-                return false;
-            }
-            descriptor.buildSettings.compilerJobs = jobs;
-        }
-        else if (property.name == "GenericInstantiationDepth")
-        {
-            if (descriptor.buildSettings.genericInstantiationDepth.has_value())
-            {
-                error = "project property 'GenericInstantiationDepth' is declared more than once";
-                return false;
-            }
-            std::size_t depth = 0;
-            if (!parsePositiveDecimal(value, MaximumGenericInstantiationDepth, depth))
-            {
-                error = "GenericInstantiationDepth must be an integer from 1 through " +
-                    std::to_string(MaximumGenericInstantiationDepth);
-                return false;
-            }
-            descriptor.buildSettings.genericInstantiationDepth = depth;
-        }
-        else if (property.name == "GenericInstantiationLimit")
-        {
-            if (descriptor.buildSettings.genericInstantiationCount.has_value())
-            {
-                error = "project property 'GenericInstantiationLimit' is declared more than once";
-                return false;
-            }
-            std::size_t count = 0;
-            if (!parsePositiveDecimal(value, MaximumGenericInstantiationCount, count))
-            {
-                error = "GenericInstantiationLimit must be an integer from 1 through " +
-                    std::to_string(MaximumGenericInstantiationCount);
-                return false;
-            }
-            descriptor.buildSettings.genericInstantiationCount = count;
-        }
-        else
-        {
-            error = "unsupported project property '" + property.name + "'";
-            return false;
-        }
+        error = "unsupported project property '" + property.name + "'";
+        return false;
     }
     return true;
 }
@@ -470,6 +509,131 @@ bool parseCompileItem(
     return true;
 }
 
+bool parseProjectReferenceItem(
+    const SimpleXmlElement& item,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    if (!validateEmptyBody(item, error) || !hasOnlyAttributes(item, {"Include"}, error))
+    {
+        return false;
+    }
+    const std::string* include = attribute(item, "Include");
+    if (include == nullptr || trim(*include).empty())
+    {
+        error = "ProjectReference requires a non-empty Include attribute";
+        return false;
+    }
+    if (include->find(';') != std::string::npos)
+    {
+        error = "ProjectReference Include accepts one project path per item";
+        return false;
+    }
+    descriptor.projectReferences.push_back(trim(*include));
+    return true;
+}
+
+bool parseLibraryReferenceItem(
+    const SimpleXmlElement& item,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    if (!validateEmptyBody(item, error) ||
+        !hasOnlyAttributes(item, {"Include", "Metadata", "Runtime"}, error))
+    {
+        return false;
+    }
+    const std::string* include = attribute(item, "Include");
+    const std::string* metadata = attribute(item, "Metadata");
+    const std::string* runtime = attribute(item, "Runtime");
+    if (include == nullptr || trim(*include).empty())
+    {
+        error = "LibraryReference requires a non-empty Include attribute";
+        return false;
+    }
+    if (include->find(';') != std::string::npos)
+    {
+        error = "LibraryReference Include accepts one library path per item";
+        return false;
+    }
+    LibraryReferenceDescriptor reference;
+    reference.include = trim(*include);
+    if (metadata != nullptr)
+    {
+        const std::string value = trim(*metadata);
+        if (value.empty())
+        {
+            error = "LibraryReference Metadata cannot be empty";
+            return false;
+        }
+        reference.metadata = value;
+    }
+    if (runtime != nullptr)
+    {
+        const std::string value = trim(*runtime);
+        if (value.empty())
+        {
+            error = "LibraryReference Runtime cannot be empty";
+            return false;
+        }
+        reference.runtime = value;
+    }
+    descriptor.libraryReferences.push_back(std::move(reference));
+    return true;
+}
+
+bool parseSdkReferenceItem(
+    const SimpleXmlElement& item,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    if (!validateEmptyBody(item, error) || !hasOnlyAttributes(item, {"Include"}, error))
+    {
+        return false;
+    }
+    const std::string* include = attribute(item, "Include");
+    if (include == nullptr || trim(*include).empty())
+    {
+        error = "SdkReference requires a non-empty Include attribute";
+        return false;
+    }
+    if (include->find(';') != std::string::npos)
+    {
+        error = "SdkReference Include accepts one SDK manifest path per item";
+        return false;
+    }
+    descriptor.sdkReferences.push_back(trim(*include));
+    return true;
+}
+
+bool parseFriendItem(
+    const SimpleXmlElement& item,
+    ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    if (!validateEmptyBody(item, error) || !hasOnlyAttributes(item, {"Include"}, error))
+    {
+        return false;
+    }
+    const std::string* include = attribute(item, "Include");
+    const std::string module = include == nullptr ? std::string{} : trim(*include);
+    if (!isIdentifier(module))
+    {
+        error = "Friend requires one NativeSharp module identifier in Include";
+        return false;
+    }
+    const auto duplicate = std::ranges::find_if(
+        descriptor.friendModules,
+        [&](const std::string& existing) { return equalsFolded(existing, module); });
+    if (duplicate != descriptor.friendModules.end())
+    {
+        error = "Friend module '" + module + "' is declared more than once";
+        return false;
+    }
+    descriptor.friendModules.push_back(module);
+    return true;
+}
+
 bool parseItemGroup(
     const SimpleXmlElement& group,
     ProjectDescriptor& descriptor,
@@ -491,108 +655,19 @@ bool parseItemGroup(
         }
         else if (item.name == "ProjectReference")
         {
-            if (!validateEmptyBody(item, error) || !hasOnlyAttributes(item, {"Include"}, error))
-            {
-                return false;
-            }
-            const std::string* include = attribute(item, "Include");
-            if (include == nullptr || trim(*include).empty())
-            {
-                error = "ProjectReference requires a non-empty Include attribute";
-                return false;
-            }
-            if (include->find(';') != std::string::npos)
-            {
-                error = "ProjectReference Include accepts one project path per item";
-                return false;
-            }
-            descriptor.projectReferences.push_back(trim(*include));
+            if (!parseProjectReferenceItem(item, descriptor, error)) return false;
         }
         else if (item.name == "LibraryReference")
         {
-            if (!validateEmptyBody(item, error) ||
-                !hasOnlyAttributes(item, {"Include", "Metadata", "Runtime"}, error))
-            {
-                return false;
-            }
-            const std::string* include = attribute(item, "Include");
-            const std::string* metadata = attribute(item, "Metadata");
-            const std::string* runtime = attribute(item, "Runtime");
-            if (include == nullptr || trim(*include).empty())
-            {
-                error = "LibraryReference requires a non-empty Include attribute";
-                return false;
-            }
-            if (include->find(';') != std::string::npos)
-            {
-                error = "LibraryReference Include accepts one library path per item";
-                return false;
-            }
-            LibraryReferenceDescriptor reference;
-            reference.include = trim(*include);
-            if (metadata != nullptr)
-            {
-                const std::string value = trim(*metadata);
-                if (value.empty())
-                {
-                    error = "LibraryReference Metadata cannot be empty";
-                    return false;
-                }
-                reference.metadata = value;
-            }
-            if (runtime != nullptr)
-            {
-                const std::string value = trim(*runtime);
-                if (value.empty())
-                {
-                    error = "LibraryReference Runtime cannot be empty";
-                    return false;
-                }
-                reference.runtime = value;
-            }
-            descriptor.libraryReferences.push_back(std::move(reference));
+            if (!parseLibraryReferenceItem(item, descriptor, error)) return false;
         }
         else if (item.name == "SdkReference")
         {
-            if (!validateEmptyBody(item, error) || !hasOnlyAttributes(item, {"Include"}, error))
-            {
-                return false;
-            }
-            const std::string* include = attribute(item, "Include");
-            if (include == nullptr || trim(*include).empty())
-            {
-                error = "SdkReference requires a non-empty Include attribute";
-                return false;
-            }
-            if (include->find(';') != std::string::npos)
-            {
-                error = "SdkReference Include accepts one SDK manifest path per item";
-                return false;
-            }
-            descriptor.sdkReferences.push_back(trim(*include));
+            if (!parseSdkReferenceItem(item, descriptor, error)) return false;
         }
         else if (item.name == "Friend")
         {
-            if (!validateEmptyBody(item, error) || !hasOnlyAttributes(item, {"Include"}, error))
-            {
-                return false;
-            }
-            const std::string* include = attribute(item, "Include");
-            const std::string module = include == nullptr ? std::string{} : trim(*include);
-            if (!isIdentifier(module))
-            {
-                error = "Friend requires one NativeSharp module identifier in Include";
-                return false;
-            }
-            const auto duplicate = std::ranges::find_if(
-                descriptor.friendModules,
-                [&](const std::string& existing) { return equalsFolded(existing, module); });
-            if (duplicate != descriptor.friendModules.end())
-            {
-                error = "Friend module '" + module + "' is declared more than once";
-                return false;
-            }
-            descriptor.friendModules.push_back(module);
+            if (!parseFriendItem(item, descriptor, error)) return false;
         }
         else
         {
@@ -741,6 +816,341 @@ std::filesystem::path resolveProjectPath(
 {
     return (value.is_absolute() ? value : projectDirectory / value).lexically_normal();
 }
+
+ProjectLoadOptions effectiveLoadOptions(const ProjectLoadOptions& options)
+{
+    ProjectLoadOptions effectiveOptions = options;
+    if (effectiveOptions.libraryReferenceRoot.has_value() ||
+        effectiveOptions.libraryReferenceFallbackRoot.has_value())
+    {
+        return effectiveOptions;
+    }
+    char* environmentRoot = nullptr;
+    std::size_t environmentRootLength = 0;
+    if (_dupenv_s(&environmentRoot, &environmentRootLength, "NS_LIB_ROOT") == 0 &&
+        environmentRoot != nullptr && *environmentRoot != '\0')
+    {
+        const std::filesystem::path root{environmentRoot};
+        if (root.is_absolute())
+            effectiveOptions.libraryReferenceFallbackRoot = root.lexically_normal();
+    }
+    std::free(environmentRoot);
+    return effectiveOptions;
+}
+
+bool prepareProjectDescriptor(
+    const std::filesystem::path& canonicalProject,
+    ProjectDescriptor& descriptor,
+    std::string& moduleName,
+    std::string& error)
+{
+    moduleName = descriptor.name.value_or(canonicalProject.stem().string());
+    if (!isIdentifier(moduleName))
+    {
+        error = "project Name '" + moduleName + "' is not a valid NativeSharp identifier";
+        return false;
+    }
+    if (descriptor.includes.empty())
+    {
+        descriptor.includes.push_back(SourceIncludeRule{GlobPattern("**/*.ns"), {}});
+    }
+    return true;
+}
+
+bool collectSourceCandidates(
+    const std::filesystem::path& projectDirectory,
+    const ProjectDescriptor& descriptor,
+    std::vector<std::filesystem::path>& candidates,
+    std::string& error)
+{
+    std::vector<std::string> candidateKeys;
+    std::error_code filesystemError;
+    std::filesystem::recursive_directory_iterator iterator(
+        projectDirectory,
+        std::filesystem::directory_options::skip_permission_denied,
+        filesystemError);
+    const std::filesystem::recursive_directory_iterator end;
+    while (!filesystemError && iterator != end)
+    {
+        const std::filesystem::directory_entry entry = *iterator;
+        if (entry.is_directory(filesystemError) && isReservedDirectory(entry.path()))
+        {
+            iterator.disable_recursion_pending();
+        }
+        else if (!filesystemError && entry.is_regular_file(filesystemError) &&
+            entry.path().extension() == ".ns")
+        {
+            const std::filesystem::path relative =
+                std::filesystem::relative(entry.path(), projectDirectory, filesystemError).lexically_normal();
+            if (!filesystemError)
+            {
+                bool included = false;
+                for (const SourceIncludeRule& rule : descriptor.includes)
+                {
+                    if (rule.include.matches(relative) && !matchesAny(rule.excludes, relative))
+                    {
+                        included = true;
+                        break;
+                    }
+                }
+                if (included && !matchesAny(descriptor.removes, relative))
+                {
+                    const std::string key = pathKey(relative);
+                    if (std::find(candidateKeys.begin(), candidateKeys.end(), key) == candidateKeys.end())
+                    {
+                        candidates.push_back(entry.path());
+                        candidateKeys.push_back(key);
+                    }
+                }
+            }
+        }
+        iterator.increment(filesystemError);
+    }
+    if (!filesystemError) return true;
+    error = "cannot enumerate project sources: " + filesystemError.message();
+    return false;
+}
+
+bool populateSourceSet(
+    const std::vector<std::filesystem::path>& candidates,
+    bool hasProjectReferences,
+    ProjectSourceSet& sourceSet,
+    std::string& error)
+{
+    for (const std::filesystem::path& sourcePath : candidates)
+    {
+        if (!sourceSet.add(sourcePath, error)) return false;
+    }
+    return sourceSet.finalize(error, hasProjectReferences);
+}
+
+std::optional<std::vector<std::filesystem::path>> loadProjectReferences(
+    const std::filesystem::path& projectDirectory,
+    const ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    std::vector<std::filesystem::path> projectReferences;
+    std::vector<std::string> referenceKeys;
+    std::error_code filesystemError;
+    for (const std::string& referenceText : descriptor.projectReferences)
+    {
+        const std::filesystem::path unresolved = projectDirectory / referenceText;
+        const std::filesystem::path reference =
+            std::filesystem::weakly_canonical(unresolved, filesystemError);
+        if (filesystemError || !std::filesystem::is_regular_file(reference))
+        {
+            error = "referenced project does not exist: '" + unresolved.string() + "'";
+            return std::nullopt;
+        }
+        if (reference.extension() != ".nsproj")
+        {
+            error = "ProjectReference must refer to a .nsproj file: '" + reference.string() + "'";
+            return std::nullopt;
+        }
+        const std::string key = pathKey(reference);
+        if (std::find(referenceKeys.begin(), referenceKeys.end(), key) != referenceKeys.end())
+        {
+            error = "duplicate ProjectReference: '" + reference.string() + "'";
+            return std::nullopt;
+        }
+        referenceKeys.push_back(key);
+        projectReferences.push_back(reference);
+    }
+    std::sort(
+        projectReferences.begin(),
+        projectReferences.end(),
+        [](const std::filesystem::path& left, const std::filesystem::path& right)
+        {
+            return pathKey(left) < pathKey(right);
+        });
+    return projectReferences;
+}
+
+std::filesystem::path resolveLibraryReferencePath(
+    const std::filesystem::path& projectDirectory,
+    const ProjectDescriptor& descriptor,
+    const ProjectLoadOptions& options,
+    std::string_view text)
+{
+    const std::filesystem::path path{std::string(text)};
+    const std::optional<std::filesystem::path>& explicitRoot =
+        options.libraryReferenceRoot.has_value()
+            ? options.libraryReferenceRoot
+            : descriptor.buildSettings.libraryReferenceRoot;
+    if (path.is_absolute()) return projectDirectory / path;
+    if (explicitRoot.has_value())
+    {
+        return resolveProjectPath(projectDirectory, *explicitRoot) / path;
+    }
+    const std::filesystem::path local = projectDirectory / path;
+    if (!options.libraryReferenceFallbackRoot.has_value()) return local;
+    std::error_code existenceError;
+    if (std::filesystem::is_regular_file(local, existenceError)) return local;
+    return *options.libraryReferenceFallbackRoot / path;
+}
+
+bool loadLibraryArtifact(
+    const std::filesystem::path& unresolvedLibrary,
+    std::filesystem::path& library,
+    std::string& error)
+{
+    std::error_code filesystemError;
+    library = std::filesystem::weakly_canonical(unresolvedLibrary, filesystemError);
+    if (filesystemError || !std::filesystem::is_regular_file(library))
+    {
+        error = "referenced library does not exist: '" + unresolvedLibrary.string() + "'";
+        return false;
+    }
+    if (equalsFolded(library.extension().string(), ".lib")) return true;
+    error = "LibraryReference Include must refer to a .lib file: '" + library.string() + "'";
+    return false;
+}
+
+bool loadMetadataArtifact(
+    const LibraryReferenceDescriptor& reference,
+    const std::filesystem::path& unresolvedLibrary,
+    const std::filesystem::path& projectDirectory,
+    const ProjectDescriptor& descriptor,
+    const ProjectLoadOptions& options,
+    std::filesystem::path& metadata,
+    std::string& error)
+{
+    std::filesystem::path unresolvedMetadata;
+    if (reference.metadata.has_value())
+        unresolvedMetadata = resolveLibraryReferencePath(
+            projectDirectory, descriptor, options, *reference.metadata);
+    else
+    {
+        unresolvedMetadata = unresolvedLibrary;
+        unresolvedMetadata.replace_extension(".nsmeta");
+    }
+    std::error_code filesystemError;
+    metadata = std::filesystem::weakly_canonical(unresolvedMetadata, filesystemError);
+    if (filesystemError || !std::filesystem::is_regular_file(metadata))
+    {
+        error = "LibraryReference metadata does not exist: '" + unresolvedMetadata.string() + "'";
+        return false;
+    }
+    if (equalsFolded(metadata.extension().string(), ".nsmeta")) return true;
+    error = "LibraryReference Metadata must refer to a .nsmeta file: '" + metadata.string() + "'";
+    return false;
+}
+
+bool loadRuntimeArtifact(
+    const LibraryReferenceDescriptor& reference,
+    const std::filesystem::path& projectDirectory,
+    const ProjectDescriptor& descriptor,
+    const ProjectLoadOptions& options,
+    std::filesystem::path& runtime,
+    std::string& error)
+{
+    if (!reference.runtime.has_value()) return true;
+    const std::filesystem::path unresolvedRuntime = resolveLibraryReferencePath(
+        projectDirectory, descriptor, options, *reference.runtime);
+    std::error_code filesystemError;
+    runtime = std::filesystem::weakly_canonical(unresolvedRuntime, filesystemError);
+    if (filesystemError || !std::filesystem::is_regular_file(runtime))
+    {
+        error = "LibraryReference runtime DLL does not exist: '" + unresolvedRuntime.string() + "'";
+        return false;
+    }
+    if (equalsFolded(runtime.extension().string(), ".dll")) return true;
+    error = "LibraryReference Runtime must refer to a .dll file: '" + runtime.string() + "'";
+    return false;
+}
+
+std::optional<std::vector<LibraryReference>> loadLibraryReferences(
+    const std::filesystem::path& projectDirectory,
+    const ProjectDescriptor& descriptor,
+    const ProjectLoadOptions& options,
+    std::string& error)
+{
+    std::vector<LibraryReference> libraryReferences;
+    std::vector<std::string> libraryReferenceKeys;
+    for (const LibraryReferenceDescriptor& reference : descriptor.libraryReferences)
+    {
+        const std::filesystem::path unresolvedLibrary = resolveLibraryReferencePath(
+            projectDirectory, descriptor, options, reference.include);
+        std::filesystem::path library;
+        if (!loadLibraryArtifact(unresolvedLibrary, library, error)) return std::nullopt;
+        std::filesystem::path metadata;
+        if (!loadMetadataArtifact(
+                reference, unresolvedLibrary, projectDirectory, descriptor, options, metadata, error))
+            return std::nullopt;
+        std::filesystem::path runtime;
+        if (!loadRuntimeArtifact(
+                reference, projectDirectory, descriptor, options, runtime, error))
+            return std::nullopt;
+        const std::string key = pathKey(library);
+        if (std::find(libraryReferenceKeys.begin(), libraryReferenceKeys.end(), key) !=
+            libraryReferenceKeys.end())
+        {
+            error = "duplicate LibraryReference: '" + library.string() + "'";
+            return std::nullopt;
+        }
+        libraryReferenceKeys.push_back(key);
+        libraryReferences.push_back(LibraryReference{library, metadata, runtime});
+    }
+    std::sort(
+        libraryReferences.begin(),
+        libraryReferences.end(),
+        [](const LibraryReference& left, const LibraryReference& right)
+        {
+            return pathKey(left.libraryPath) < pathKey(right.libraryPath);
+        });
+    return libraryReferences;
+}
+
+std::optional<std::vector<SdkManifest>> loadSdkReferences(
+    const std::filesystem::path& projectDirectory,
+    const ProjectDescriptor& descriptor,
+    std::string& error)
+{
+    std::vector<SdkManifest> sdkReferences;
+    std::vector<std::string> sdkReferenceKeys;
+    SdkManifestLoader sdkLoader;
+    for (const std::string& reference : descriptor.sdkReferences)
+    {
+        const std::filesystem::path unresolved = projectDirectory / reference;
+        std::string sdkError;
+        std::optional<SdkManifest> manifest = sdkLoader.load(unresolved, sdkError);
+        if (!manifest.has_value())
+        {
+            error = sdkError;
+            return std::nullopt;
+        }
+        for (const SdkLibraryDependency& dependency : manifest->libraries)
+        {
+            const std::filesystem::path libraryPath =
+                manifest->manifestPath.parent_path() / dependency.relativePath;
+            std::error_code dependencyError;
+            if (!std::filesystem::is_regular_file(libraryPath, dependencyError))
+            {
+                error = "NSC-SDK-004: SDK '" + manifest->name +
+                    "' required library '" + dependency.name + "' is missing: '" +
+                    libraryPath.string() + "'";
+                return std::nullopt;
+            }
+        }
+        const std::string key = pathKey(manifest->manifestPath);
+        if (std::find(sdkReferenceKeys.begin(), sdkReferenceKeys.end(), key) !=
+            sdkReferenceKeys.end())
+        {
+            error = "duplicate SdkReference: '" + manifest->manifestPath.string() + "'";
+            return std::nullopt;
+        }
+        sdkReferenceKeys.push_back(key);
+        sdkReferences.push_back(std::move(*manifest));
+    }
+    std::sort(
+        sdkReferences.begin(),
+        sdkReferences.end(),
+        [](const SdkManifest& left, const SdkManifest& right)
+        {
+            return pathKey(left.manifestPath) < pathKey(right.manifestPath);
+        });
+    return sdkReferences;
+}
 }
 
 ProjectLoader::ProjectLoader()
@@ -784,292 +1194,46 @@ std::optional<Project> ProjectLoader::load(
     const ProjectLoadOptions& options,
     std::string& error) const
 {
-    ProjectLoadOptions effectiveOptions = options;
-    if (!effectiveOptions.libraryReferenceRoot.has_value() &&
-        !effectiveOptions.libraryReferenceFallbackRoot.has_value())
-    {
-        char* environmentRoot = nullptr;
-        std::size_t environmentRootLength = 0;
-        if (_dupenv_s(&environmentRoot, &environmentRootLength, "NS_LIB_ROOT") == 0 &&
-            environmentRoot != nullptr && *environmentRoot != '\0')
-        {
-            const std::filesystem::path root{environmentRoot};
-            if (root.is_absolute())
-                effectiveOptions.libraryReferenceFallbackRoot = root.lexically_normal();
-        }
-        std::free(environmentRoot);
-    }
-
+    const ProjectLoadOptions effectiveOptions = effectiveLoadOptions(options);
     std::filesystem::path canonicalProject;
     ProjectDescriptor descriptor;
     if (!loadDescriptorFile(projectFile, canonicalProject, descriptor, *cache_, error))
     {
         return std::nullopt;
     }
-    std::error_code filesystemError;
-
-    const std::string moduleName = descriptor.name.value_or(canonicalProject.stem().string());
-    if (!isIdentifier(moduleName))
-    {
-        error = "project Name '" + moduleName + "' is not a valid NativeSharp identifier";
+    std::string moduleName;
+    if (!prepareProjectDescriptor(canonicalProject, descriptor, moduleName, error))
         return std::nullopt;
-    }
-    if (descriptor.includes.empty())
-    {
-        descriptor.includes.push_back(SourceIncludeRule{GlobPattern("**/*.ns"), {}});
-    }
 
     const std::filesystem::path projectDirectory = canonicalProject.parent_path();
     ProjectSourceSet sourceSet(projectDirectory);
     std::vector<std::filesystem::path> candidates;
-    std::vector<std::string> candidateKeys;
-
-    std::filesystem::recursive_directory_iterator iterator(
-        projectDirectory,
-        std::filesystem::directory_options::skip_permission_denied,
-        filesystemError);
-    const std::filesystem::recursive_directory_iterator end;
-    while (!filesystemError && iterator != end)
-    {
-        const std::filesystem::directory_entry entry = *iterator;
-        if (entry.is_directory(filesystemError) && isReservedDirectory(entry.path()))
-        {
-            iterator.disable_recursion_pending();
-        }
-        else if (!filesystemError && entry.is_regular_file(filesystemError) && entry.path().extension() == ".ns")
-        {
-            const std::filesystem::path relative =
-                std::filesystem::relative(entry.path(), projectDirectory, filesystemError).lexically_normal();
-            if (!filesystemError)
-            {
-                bool included = false;
-                for (const SourceIncludeRule& rule : descriptor.includes)
-                {
-                    if (rule.include.matches(relative) && !matchesAny(rule.excludes, relative))
-                    {
-                        included = true;
-                        break;
-                    }
-                }
-                if (included && !matchesAny(descriptor.removes, relative))
-                {
-                    const std::string key = pathKey(relative);
-                    if (std::find(candidateKeys.begin(), candidateKeys.end(), key) == candidateKeys.end())
-                    {
-                        candidates.push_back(entry.path());
-                        candidateKeys.push_back(key);
-                    }
-                }
-            }
-        }
-        iterator.increment(filesystemError);
-    }
-    if (filesystemError)
-    {
-        error = "cannot enumerate project sources: " + filesystemError.message();
+    if (!collectSourceCandidates(projectDirectory, descriptor, candidates, error))
         return std::nullopt;
-    }
-
-    for (const std::filesystem::path& sourcePath : candidates)
-    {
-        if (!sourceSet.add(sourcePath, error))
-        {
-            return std::nullopt;
-        }
-    }
-    if (!sourceSet.finalize(error, !descriptor.projectReferences.empty()))
-    {
+    if (!populateSourceSet(
+            candidates, !descriptor.projectReferences.empty(), sourceSet, error))
         return std::nullopt;
-    }
 
-    std::vector<std::filesystem::path> projectReferences;
-    std::vector<std::string> referenceKeys;
-    for (const std::string& referenceText : descriptor.projectReferences)
-    {
-        const std::filesystem::path unresolved = projectDirectory / referenceText;
-        const std::filesystem::path reference =
-            std::filesystem::weakly_canonical(unresolved, filesystemError);
-        if (filesystemError || !std::filesystem::is_regular_file(reference))
-        {
-            error = "referenced project does not exist: '" + unresolved.string() + "'";
-            return std::nullopt;
-        }
-        if (reference.extension() != ".nsproj")
-        {
-            error = "ProjectReference must refer to a .nsproj file: '" + reference.string() + "'";
-            return std::nullopt;
-        }
-        const std::string key = pathKey(reference);
-        if (std::find(referenceKeys.begin(), referenceKeys.end(), key) != referenceKeys.end())
-        {
-            error = "duplicate ProjectReference: '" + reference.string() + "'";
-            return std::nullopt;
-        }
-        referenceKeys.push_back(key);
-        projectReferences.push_back(reference);
-    }
-    std::sort(
-        projectReferences.begin(),
-        projectReferences.end(),
-        [](const std::filesystem::path& left, const std::filesystem::path& right)
-        {
-            return pathKey(left) < pathKey(right);
-        });
+    std::optional<std::vector<std::filesystem::path>> projectReferences =
+        loadProjectReferences(projectDirectory, descriptor, error);
+    if (!projectReferences.has_value()) return std::nullopt;
 
-    std::vector<LibraryReference> libraryReferences;
-    std::vector<std::string> libraryReferenceKeys;
-    const auto resolveLibraryReferencePath = [&](std::string_view text)
-    {
-        const std::filesystem::path path{std::string(text)};
-        const std::optional<std::filesystem::path>& explicitRoot =
-            effectiveOptions.libraryReferenceRoot.has_value()
-                ? effectiveOptions.libraryReferenceRoot
-                : descriptor.buildSettings.libraryReferenceRoot;
-        if (path.is_absolute())
-        {
-            return projectDirectory / path;
-        }
-        if (explicitRoot.has_value())
-        {
-            return resolveProjectPath(projectDirectory, *explicitRoot) / path;
-        }
+    std::optional<std::vector<LibraryReference>> libraryReferences =
+        loadLibraryReferences(projectDirectory, descriptor, effectiveOptions, error);
+    if (!libraryReferences.has_value()) return std::nullopt;
 
-        const std::filesystem::path local = projectDirectory / path;
-        if (!effectiveOptions.libraryReferenceFallbackRoot.has_value()) return local;
-        std::error_code existenceError;
-        if (std::filesystem::is_regular_file(local, existenceError)) return local;
-        return *effectiveOptions.libraryReferenceFallbackRoot / path;
-    };
-    for (const LibraryReferenceDescriptor& descriptorReference : descriptor.libraryReferences)
-    {
-        const std::filesystem::path unresolvedLibrary =
-            resolveLibraryReferencePath(descriptorReference.include);
-        filesystemError.clear();
-        const std::filesystem::path library =
-            std::filesystem::weakly_canonical(unresolvedLibrary, filesystemError);
-        if (filesystemError || !std::filesystem::is_regular_file(library))
-        {
-            error = "referenced library does not exist: '" + unresolvedLibrary.string() + "'";
-            return std::nullopt;
-        }
-        if (!equalsFolded(library.extension().string(), ".lib"))
-        {
-            error = "LibraryReference Include must refer to a .lib file: '" + library.string() + "'";
-            return std::nullopt;
-        }
-
-        std::filesystem::path unresolvedMetadata;
-        if (descriptorReference.metadata.has_value())
-        {
-            unresolvedMetadata = resolveLibraryReferencePath(*descriptorReference.metadata);
-        }
-        else
-        {
-            unresolvedMetadata = unresolvedLibrary;
-            unresolvedMetadata.replace_extension(".nsmeta");
-        }
-        filesystemError.clear();
-        const std::filesystem::path metadata =
-            std::filesystem::weakly_canonical(unresolvedMetadata, filesystemError);
-        if (filesystemError || !std::filesystem::is_regular_file(metadata))
-        {
-            error = "LibraryReference metadata does not exist: '" + unresolvedMetadata.string() + "'";
-            return std::nullopt;
-        }
-        if (!equalsFolded(metadata.extension().string(), ".nsmeta"))
-        {
-            error = "LibraryReference Metadata must refer to a .nsmeta file: '" + metadata.string() + "'";
-            return std::nullopt;
-        }
-
-        std::filesystem::path runtime;
-        if (descriptorReference.runtime.has_value())
-        {
-            const std::filesystem::path unresolvedRuntime =
-                resolveLibraryReferencePath(*descriptorReference.runtime);
-            filesystemError.clear();
-            runtime = std::filesystem::weakly_canonical(unresolvedRuntime, filesystemError);
-            if (filesystemError || !std::filesystem::is_regular_file(runtime))
-            {
-                error = "LibraryReference runtime DLL does not exist: '" + unresolvedRuntime.string() + "'";
-                return std::nullopt;
-            }
-            if (!equalsFolded(runtime.extension().string(), ".dll"))
-            {
-                error = "LibraryReference Runtime must refer to a .dll file: '" + runtime.string() + "'";
-                return std::nullopt;
-            }
-        }
-
-        const std::string key = pathKey(library);
-        if (std::find(libraryReferenceKeys.begin(), libraryReferenceKeys.end(), key) !=
-            libraryReferenceKeys.end())
-        {
-            error = "duplicate LibraryReference: '" + library.string() + "'";
-            return std::nullopt;
-        }
-        libraryReferenceKeys.push_back(key);
-        libraryReferences.push_back(LibraryReference{library, metadata, runtime});
-    }
-    std::sort(
-        libraryReferences.begin(),
-        libraryReferences.end(),
-        [](const LibraryReference& left, const LibraryReference& right)
-        {
-            return pathKey(left.libraryPath) < pathKey(right.libraryPath);
-        });
-
-    std::vector<SdkManifest> sdkReferences;
-    std::vector<std::string> sdkReferenceKeys;
-    SdkManifestLoader sdkLoader;
-    for (const std::string& reference : descriptor.sdkReferences)
-    {
-        const std::filesystem::path unresolved = projectDirectory / reference;
-        std::string sdkError;
-        std::optional<SdkManifest> manifest = sdkLoader.load(unresolved, sdkError);
-        if (!manifest.has_value())
-        {
-            error = sdkError;
-            return std::nullopt;
-        }
-        for (const SdkLibraryDependency& dependency : manifest->libraries)
-        {
-            const std::filesystem::path libraryPath =
-                manifest->manifestPath.parent_path() / dependency.relativePath;
-            std::error_code dependencyError;
-            if (!std::filesystem::is_regular_file(libraryPath, dependencyError))
-            {
-                error = "NSC-SDK-004: SDK '" + manifest->name +
-                    "' required library '" + dependency.name + "' is missing: '" +
-                    libraryPath.string() + "'";
-                return std::nullopt;
-            }
-        }
-        const std::string key = pathKey(manifest->manifestPath);
-        if (std::find(sdkReferenceKeys.begin(), sdkReferenceKeys.end(), key) != sdkReferenceKeys.end())
-        {
-            error = "duplicate SdkReference: '" + manifest->manifestPath.string() + "'";
-            return std::nullopt;
-        }
-        sdkReferenceKeys.push_back(key);
-        sdkReferences.push_back(std::move(*manifest));
-    }
-    std::sort(
-        sdkReferences.begin(),
-        sdkReferences.end(),
-        [](const SdkManifest& left, const SdkManifest& right)
-        {
-            return pathKey(left.manifestPath) < pathKey(right.manifestPath);
-        });
+    std::optional<std::vector<SdkManifest>> sdkReferences =
+        loadSdkReferences(projectDirectory, descriptor, error);
+    if (!sdkReferences.has_value()) return std::nullopt;
 
     return Project(
         canonicalProject,
         moduleName,
         descriptor.outputKind.value_or(ProjectOutputKind::Executable),
         std::move(sourceSet),
-        std::move(projectReferences),
-        std::move(libraryReferences),
-        std::move(sdkReferences),
+        std::move(*projectReferences),
+        std::move(*libraryReferences),
+        std::move(*sdkReferences),
         descriptor.panicProfile.value_or(language::PanicProfile::Abort),
         descriptor.panicHandler.value_or(std::string{}),
         descriptor.packageName.value_or(moduleName),

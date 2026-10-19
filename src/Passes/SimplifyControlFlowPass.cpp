@@ -158,6 +158,98 @@ std::size_t prunePhiIncoming(
     }
     return removed;
 }
+
+bool simplifyBranches(
+    mir::MirFunction* function,
+    const ConstantDefinitions& constants,
+    PassRunResult& result)
+{
+    bool functionChanged = false;
+    for (mir::MirBlock* block : function->blocks())
+    {
+        if (block == nullptr || block->instructions().empty())
+        {
+            continue;
+        }
+        mir::MirInstruction* terminator = block->instructions().back();
+        if (terminator->opcode() != mir::MirOpcode::Branch)
+        {
+            continue;
+        }
+        mir::MirBlock* selected = nullptr;
+        if (terminator->firstTarget() == terminator->secondTarget())
+        {
+            selected = terminator->firstTarget();
+        }
+        else if (terminator->operands().size() == 1)
+        {
+            const auto found = constants.find(terminator->operands()[0]);
+            if (found != constants.end() &&
+                found->second->constant().kind() == sema::ConstantKind::Boolean)
+            {
+                selected = found->second->constant().boolean()
+                    ? terminator->firstTarget()
+                    : terminator->secondTarget();
+            }
+        }
+        if (selected != nullptr)
+        {
+            terminator->resetTo(mir::MirOpcode::Jump);
+            terminator->setFirstTarget(selected);
+            functionChanged = true;
+            result.changed = true;
+            ++result.transformations;
+        }
+    }
+    return functionChanged;
+}
+
+bool retainReachableBlocks(
+    mir::MirFunction* function,
+    PassRunResult& result,
+    std::string& error)
+{
+    const std::unordered_set<mir::MirBlock*> reachable = computeReachable(function);
+    std::vector<mir::MirBlock*> retainedBlocks;
+    retainedBlocks.reserve(function->blocks().size());
+    for (mir::MirBlock* block : function->blocks())
+    {
+        if (reachable.contains(block))
+        {
+            retainedBlocks.push_back(block);
+        }
+        else
+        {
+            ++result.transformations;
+        }
+    }
+    if (retainedBlocks.empty() || retainedBlocks.front() != function->entryBlock())
+    {
+        error = "control-flow simplification lost the function entry block";
+        return false;
+    }
+    function->replaceBlocks(retainedBlocks);
+    return true;
+}
+
+bool pruneFunctionPhiIncoming(
+    mir::MirFunction* function,
+    PassRunResult& result,
+    std::string& error)
+{
+    const PredecessorMap predecessors = buildPredecessors(function->blocks());
+    for (mir::MirBlock* block : function->blocks())
+    {
+        const auto found = predecessors.find(block);
+        if (found == predecessors.end())
+        {
+            error = "control-flow simplification cannot derive predecessor set";
+            return false;
+        }
+        result.transformations += prunePhiIncoming(block, found->second);
+    }
+    return true;
+}
 }
 
 std::string_view SimplifyControlFlowPass::name() const noexcept
@@ -199,91 +291,12 @@ PassRunResult SimplifyControlFlowPass::run(
         }
 
         const ConstantDefinitions constants = collectConstants(function);
-        bool functionChanged = false;
-
-        for (mir::MirBlock* block : function->blocks())
-        {
-            if (block == nullptr || block->instructions().empty())
-            {
-                continue;
-            }
-
-            mir::MirInstruction* terminator = block->instructions().back();
-            if (terminator->opcode() != mir::MirOpcode::Branch)
-            {
-                continue;
-            }
-
-            mir::MirBlock* selected = nullptr;
-            if (terminator->firstTarget() == terminator->secondTarget())
-            {
-                selected = terminator->firstTarget();
-            }
-            else if (terminator->operands().size() == 1)
-            {
-                const auto found = constants.find(terminator->operands()[0]);
-                if (found != constants.end() &&
-                    found->second->constant().kind() ==
-                        sema::ConstantKind::Boolean)
-                {
-                    selected = found->second->constant().boolean()
-                        ? terminator->firstTarget()
-                        : terminator->secondTarget();
-                }
-            }
-
-            if (selected != nullptr)
-            {
-                terminator->resetTo(mir::MirOpcode::Jump);
-                terminator->setFirstTarget(selected);
-                functionChanged = true;
-                result.changed = true;
-                ++result.transformations;
-            }
-        }
-
-        if (!functionChanged)
+        if (!simplifyBranches(function, constants, result))
         {
             continue;
         }
-
-        const std::unordered_set<mir::MirBlock*> reachable =
-            computeReachable(function);
-        std::vector<mir::MirBlock*> retainedBlocks;
-        retainedBlocks.reserve(function->blocks().size());
-        for (mir::MirBlock* block : function->blocks())
-        {
-            if (reachable.contains(block))
-            {
-                retainedBlocks.push_back(block);
-            }
-            else
-            {
-                ++result.transformations;
-            }
-        }
-
-        if (retainedBlocks.empty() ||
-            retainedBlocks.front() != function->entryBlock())
-        {
-            error = "control-flow simplification lost the function entry block";
-            return result;
-        }
-
-        function->replaceBlocks(retainedBlocks);
-        const PredecessorMap predecessors =
-            buildPredecessors(function->blocks());
-
-        for (mir::MirBlock* block : function->blocks())
-        {
-            const auto found = predecessors.find(block);
-            if (found == predecessors.end())
-            {
-                error = "control-flow simplification cannot derive predecessor set";
-                return result;
-            }
-            result.transformations += prunePhiIncoming(block, found->second);
-        }
+        if (!retainReachableBlocks(function, result, error)) return result;
+        if (!pruneFunctionPhiIncoming(function, result, error)) return result;
     }
 
     return result;

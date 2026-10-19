@@ -50,7 +50,9 @@ int hexValue(char value) noexcept
 }
 }
 
-TokenKind keywordKind(std::string_view text) noexcept
+namespace
+{
+TokenKind keywordKindPart1(std::string_view text) noexcept
 {
     static const std::unordered_map<std::string_view, TokenKind> keywords = {
         {"void", TokenKind::KwVoid},
@@ -86,7 +88,16 @@ TokenKind keywordKind(std::string_view text) noexcept
         {"readonly", TokenKind::KwReadonly},
         {"volatile", TokenKind::KwVolatile},
         {"inline", TokenKind::KwInline},
-        {"forceinline", TokenKind::KwForceInline},
+        {"forceinline", TokenKind::KwForceInline}
+    };
+
+    const auto iterator = keywords.find(text);
+    return iterator == keywords.end() ? TokenKind::Identifier : iterator->second;
+}
+
+TokenKind keywordKindPart2(std::string_view text) noexcept
+{
+    static const std::unordered_map<std::string_view, TokenKind> keywords = {
         {"noinline", TokenKind::KwNoInline},
         {"noheap", TokenKind::KwNoHeap},
         {"public", TokenKind::KwPublic},
@@ -120,7 +131,16 @@ TokenKind keywordKind(std::string_view text) noexcept
         {"sizeof", TokenKind::KwSizeof},
         {"alignof", TokenKind::KwAlignof},
         {"offsetof", TokenKind::KwOffsetof},
-        {"static_assert", TokenKind::KwStaticAssert},
+        {"static_assert", TokenKind::KwStaticAssert}
+    };
+
+    const auto iterator = keywords.find(text);
+    return iterator == keywords.end() ? TokenKind::Identifier : iterator->second;
+}
+
+TokenKind keywordKindPart3(std::string_view text) noexcept
+{
+    static const std::unordered_map<std::string_view, TokenKind> keywords = {
         {"default", TokenKind::KwDefault},
         {"extern", TokenKind::KwExtern},
         {"export", TokenKind::KwExport},
@@ -154,6 +174,31 @@ TokenKind keywordKind(std::string_view text) noexcept
 
     const auto iterator = keywords.find(text);
     return iterator == keywords.end() ? TokenKind::Identifier : iterator->second;
+}
+
+}
+
+TokenKind keywordKind(std::string_view text) noexcept
+{
+    const TokenKind part1 = keywordKindPart1(text);
+    if (part1 != TokenKind::Identifier)
+    {
+        return part1;
+    }
+
+    const TokenKind part2 = keywordKindPart2(text);
+    if (part2 != TokenKind::Identifier)
+    {
+        return part2;
+    }
+
+    const TokenKind part3 = keywordKindPart3(text);
+    if (part3 != TokenKind::Identifier)
+    {
+        return part3;
+    }
+
+    return TokenKind::Identifier;
 }
 
 Lexer::Lexer(
@@ -456,9 +501,30 @@ Token Lexer::lexNumber(std::uint32_t begin)
 {
     int base = 10;
     std::uint32_t digitsBegin = begin;
+    bool prefixed = false;
+    if (std::optional<Token> token = lexPrefixedNumber(begin, base, digitsBegin, prefixed))
+    {
+        return std::move(*token);
+    }
+    if (!prefixed)
+    {
+        if (std::optional<Token> token = lexDecimalNumber(begin))
+        {
+            return std::move(*token);
+        }
+    }
+    return lexIntegerNumber(begin, digitsBegin, base);
+}
 
+std::optional<Token> Lexer::lexPrefixedNumber(
+    std::uint32_t begin,
+    int& base,
+    std::uint32_t& digitsBegin,
+    bool& prefixed)
+{
     if (current() == '0' && (peek() == 'x' || peek() == 'X'))
     {
+        prefixed = true;
         base = 16;
         advance();
         advance();
@@ -480,6 +546,7 @@ Token Lexer::lexNumber(std::uint32_t begin)
     }
     else if (current() == '0' && (peek() == 'b' || peek() == 'B'))
     {
+        prefixed = true;
         base = 2;
         advance();
         advance();
@@ -499,76 +566,81 @@ Token Lexer::lexNumber(std::uint32_t begin)
             return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
         }
     }
-    else
+    return std::nullopt;
+}
+
+std::optional<Token> Lexer::lexDecimalNumber(std::uint32_t begin)
+{
+    while (isDecimalDigit(current()))
     {
+        advance();
+    }
+
+    bool floating = false;
+    if (current() == '.' && isDecimalDigit(peek()))
+    {
+        floating = true;
+        advance();
+        while (isDecimalDigit(current()))
+        {
+            advance();
+        }
+    }
+
+    if (current() == 'e' || current() == 'E')
+    {
+        floating = true;
+        advance();
+        if (current() == '+' || current() == '-')
+        {
+            advance();
+        }
+
+        const std::uint32_t exponentBegin = offset_;
         while (isDecimalDigit(current()))
         {
             advance();
         }
 
-        bool floating = false;
-        if (current() == '.' && isDecimalDigit(peek()))
+        if (exponentBegin == offset_)
         {
-            floating = true;
-            advance();
-            while (isDecimalDigit(current()))
-            {
-                advance();
-            }
-        }
-
-        if (current() == 'e' || current() == 'E')
-        {
-            floating = true;
-            advance();
-            if (current() == '+' || current() == '-')
-            {
-                advance();
-            }
-
-            const std::uint32_t exponentBegin = offset_;
-            while (isDecimalDigit(current()))
-            {
-                advance();
-            }
-
-            if (exponentBegin == offset_)
-            {
-                reportInvalid(
+            reportInvalid(
                 begin,
                 offset_,
                 "floating literal exponent requires decimal digits",
                 diagnostics::DiagnosticId::InvalidNumericLiteral);
-                return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
-            }
+            return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
         }
+    }
 
-        // NS304-T15-F02: `m`/`M` marks an exact decimal literal; the lexeme keeps the suffix.
-        if (current() == 'f' || current() == 'F' || current() == 'm' || current() == 'M')
-        {
-            floating = true;
-            advance();
-        }
+    // NS304-T15-F02: `m`/`M` marks an exact decimal literal; the lexeme keeps the suffix.
+    if (current() == 'f' || current() == 'F' || current() == 'm' || current() == 'M')
+    {
+        floating = true;
+        advance();
+    }
 
-        if (floating)
+    if (floating)
+    {
+        const std::string lexeme(text(begin, offset_));
+        char* end = nullptr;
+        const double value = std::strtod(lexeme.c_str(), &end);
+        if (end == nullptr || static_cast<std::size_t>(end - lexeme.c_str()) == 0)
         {
-            const std::string lexeme(text(begin, offset_));
-            char* end = nullptr;
-            const double value = std::strtod(lexeme.c_str(), &end);
-            if (end == nullptr || static_cast<std::size_t>(end - lexeme.c_str()) == 0)
-            {
-                reportInvalid(
+            reportInvalid(
                 begin,
                 offset_,
                 "invalid floating-point literal",
                 diagnostics::DiagnosticId::InvalidNumericLiteral);
-                return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
-            }
-
-            return Token(TokenKind::FloatingLiteral, range(begin, offset_), text(begin, offset_), value);
+            return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
         }
+        return Token(TokenKind::FloatingLiteral, range(begin, offset_), text(begin, offset_), value);
     }
+    return std::nullopt;
+}
 
+Token Lexer::lexIntegerNumber(std::uint32_t begin, std::uint32_t digitsBegin, int base)
+{
     const std::uint32_t digitsEnd = offset_;
     std::string suffix;
     while ((current() == 'u' || current() == 'U' || current() == 'l' || current() == 'L') && suffix.size() < 2)
@@ -764,7 +836,7 @@ Token Lexer::lexString(std::uint32_t begin)
     return Token(TokenKind::StringLiteral, range(begin, offset_), text(begin, offset_), std::move(decoded));
 }
 
-Token Lexer::lexRawString(std::uint32_t begin)
+std::uint32_t Lexer::lexRawStringDelimiter()
 {
     std::uint32_t delimiterWidth = 0;
     while (peek(delimiterWidth) == '"') ++delimiterWidth;
@@ -775,7 +847,69 @@ Token Lexer::lexRawString(std::uint32_t begin)
         delimiterWidth = 3;
     }
     for (std::uint32_t index = 0; index < delimiterWidth; ++index) advance();
+    return delimiterWidth;
+}
 
+void Lexer::appendRawStringByte(std::string& decoded, bool& valid)
+{
+    const unsigned char raw = static_cast<unsigned char>(advance());
+    if (raw < 0x20)
+    {
+        if (raw != '\t' && raw != '\n' && raw != '\r') valid = false;
+        decoded.push_back(static_cast<char>(raw));
+        return;
+    }
+    if (raw < 0x80)
+    {
+        decoded.push_back(static_cast<char>(raw));
+        return;
+    }
+    unsigned continuationCount = 0;
+    unsigned char secondMinimum = 0x80;
+    unsigned char secondMaximum = 0xBF;
+    if (raw >= 0xC2 && raw <= 0xDF)
+    {
+        continuationCount = 1;
+    }
+    else if (raw >= 0xE0 && raw <= 0xEF)
+    {
+        continuationCount = 2;
+        if (raw == 0xE0) secondMinimum = 0xA0;
+        if (raw == 0xED) secondMaximum = 0x9F;
+    }
+    else if (raw >= 0xF0 && raw <= 0xF4)
+    {
+        continuationCount = 3;
+        if (raw == 0xF0) secondMinimum = 0x90;
+        if (raw == 0xF4) secondMaximum = 0x8F;
+    }
+    else
+    {
+        valid = false;
+    }
+    decoded.push_back(static_cast<char>(raw));
+    for (unsigned index = 0; index < continuationCount; ++index)
+    {
+        if (isAtEnd())
+        {
+            valid = false;
+            break;
+        }
+        const unsigned char continuation = static_cast<unsigned char>(current());
+        const unsigned char minimum = index == 0 ? secondMinimum : 0x80;
+        const unsigned char maximum = index == 0 ? secondMaximum : 0xBF;
+        if (continuation < minimum || continuation > maximum)
+        {
+            valid = false;
+            break;
+        }
+        decoded.push_back(advance());
+    }
+}
+
+Token Lexer::lexRawString(std::uint32_t begin)
+{
+    const std::uint32_t delimiterWidth = lexRawStringDelimiter();
     std::string decoded;
     bool valid = true;
     while (!isAtEnd())
@@ -801,61 +935,7 @@ Token Lexer::lexRawString(std::uint32_t begin)
             }
         }
 
-        const unsigned char raw = static_cast<unsigned char>(advance());
-        if (raw < 0x20)
-        {
-            if (raw != '\t' && raw != '\n' && raw != '\r') valid = false;
-            decoded.push_back(static_cast<char>(raw));
-            continue;
-        }
-        if (raw < 0x80)
-        {
-            decoded.push_back(static_cast<char>(raw));
-            continue;
-        }
-
-        unsigned continuationCount = 0;
-        unsigned char secondMinimum = 0x80;
-        unsigned char secondMaximum = 0xBF;
-        if (raw >= 0xC2 && raw <= 0xDF)
-        {
-            continuationCount = 1;
-        }
-        else if (raw >= 0xE0 && raw <= 0xEF)
-        {
-            continuationCount = 2;
-            if (raw == 0xE0) secondMinimum = 0xA0;
-            if (raw == 0xED) secondMaximum = 0x9F;
-        }
-        else if (raw >= 0xF0 && raw <= 0xF4)
-        {
-            continuationCount = 3;
-            if (raw == 0xF0) secondMinimum = 0x90;
-            if (raw == 0xF4) secondMaximum = 0x8F;
-        }
-        else
-        {
-            valid = false;
-        }
-
-        decoded.push_back(static_cast<char>(raw));
-        for (unsigned index = 0; index < continuationCount; ++index)
-        {
-            if (isAtEnd())
-            {
-                valid = false;
-                break;
-            }
-            const unsigned char continuation = static_cast<unsigned char>(current());
-            const unsigned char minimum = index == 0 ? secondMinimum : 0x80;
-            const unsigned char maximum = index == 0 ? secondMaximum : 0xBF;
-            if (continuation < minimum || continuation > maximum)
-            {
-                valid = false;
-                break;
-            }
-            decoded.push_back(advance());
-        }
+        appendRawStringByte(decoded, valid);
     }
 
     diagnostics_.report(
@@ -1025,10 +1105,8 @@ Token Lexer::lexRawInterpolatedString(std::uint32_t begin)
     return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
 }
 
-Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
+std::optional<Token> Lexer::lexPunctuation(std::uint32_t begin, char first)
 {
-    const char first = advance();
-
     switch (first)
     {
         case '(':
@@ -1073,7 +1151,15 @@ Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
             return makeToken(TokenKind::Dot, begin);
         case '~':
             return makeToken(TokenKind::Tilde, begin);
+        default:
+            return std::nullopt;
+    }
+}
 
+std::optional<Token> Lexer::lexArithmeticOperator(std::uint32_t begin, char first)
+{
+    switch (first)
+    {
         case '+':
             if (match('+')) return makeToken(TokenKind::PlusPlus, begin);
             if (match('=')) return makeToken(TokenKind::PlusEqual, begin);
@@ -1096,7 +1182,15 @@ Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
         case '%':
             if (match('=')) return makeToken(TokenKind::PercentEqual, begin);
             return makeToken(TokenKind::Percent, begin);
+        default:
+            return std::nullopt;
+    }
+}
 
+std::optional<Token> Lexer::lexComparisonOperator(std::uint32_t begin, char first)
+{
+    switch (first)
+    {
         case '=':
             if (match('=')) return makeToken(TokenKind::EqualEqual, begin);
             if (match('>')) return makeToken(TokenKind::FatArrow, begin);
@@ -1139,9 +1233,16 @@ Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
             return makeToken(TokenKind::Greater, begin);
 
         default:
-            break;
+            return std::nullopt;
     }
+}
 
+Token Lexer::lexOperatorOrPunctuation(std::uint32_t begin)
+{
+    const char first = advance();
+    if (std::optional<Token> token = lexPunctuation(begin, first)) return std::move(*token);
+    if (std::optional<Token> token = lexArithmeticOperator(begin, first)) return std::move(*token);
+    if (std::optional<Token> token = lexComparisonOperator(begin, first)) return std::move(*token);
     reportInvalid(begin, offset_, "unexpected character in source");
     return Token(TokenKind::Invalid, range(begin, offset_), text(begin, offset_));
 }

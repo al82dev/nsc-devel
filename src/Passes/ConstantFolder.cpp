@@ -415,107 +415,96 @@ std::optional<sema::ConstantValue> foldComparison(
     return sema::ConstantValue::boolean(value);
 }
 
-std::optional<sema::ConstantValue> foldBinary(
+std::optional<sema::ConstantValue> foldFloatingBinary(
     mir::MirOpcode opcode,
     const sema::ConstantValue& left,
     const sema::ConstantValue& right,
-    const sema::Type* resultType,
-    const sema::Type* rightType)
+    const sema::Type* resultType)
 {
-    if (isFloating(resultType) &&
-        left.kind() == sema::ConstantKind::Floating &&
-        right.kind() == sema::ConstantKind::Floating)
+    const double a = left.floating();
+    const double b = right.floating();
+    double result = 0.0;
+    switch (opcode)
     {
-        const double a = left.floating();
-        const double b = right.floating();
-        double result = 0.0;
-
-        switch (opcode)
-        {
-            case mir::MirOpcode::Add: result = a + b; break;
-            case mir::MirOpcode::Subtract: result = a - b; break;
-            case mir::MirOpcode::Multiply: result = a * b; break;
-            case mir::MirOpcode::Divide:
-                if (b == 0.0)
-                {
-                    return std::nullopt;
-                }
-                result = a / b;
-                break;
-            default:
+        case mir::MirOpcode::Add: result = a + b; break;
+        case mir::MirOpcode::Subtract: result = a - b; break;
+        case mir::MirOpcode::Multiply: result = a * b; break;
+        case mir::MirOpcode::Divide:
+            if (b == 0.0)
+            {
                 return std::nullopt;
-        }
-
-        if (resultType->kind() == sema::TypeKind::Float)
-        {
-            result = static_cast<double>(static_cast<float>(result));
-        }
-        return sema::ConstantValue::floating(result);
-    }
-
-    if (!isInteger(resultType))
-    {
-        return std::nullopt;
-    }
-
-    const std::optional<std::uint64_t> aBits = integerBits(left, resultType);
-    if (!aBits.has_value())
-    {
-        return std::nullopt;
-    }
-
-    const std::uint32_t width = integerWidth(resultType);
-    std::uint64_t result = 0;
-
-    if (opcode == mir::MirOpcode::ShiftLeft ||
-        opcode == mir::MirOpcode::ShiftRight)
-    {
-        const std::optional<std::int64_t> count = shiftCount(right);
-        if (!count.has_value() || *count < 0 ||
-            static_cast<std::uint64_t>(*count) >= width)
-        {
+            }
+            result = a / b;
+            break;
+        default:
             return std::nullopt;
-        }
+    }
+    if (resultType->kind() == sema::TypeKind::Float)
+    {
+        result = static_cast<double>(static_cast<float>(result));
+    }
+    return sema::ConstantValue::floating(result);
+}
 
-        const unsigned shift = static_cast<unsigned>(*count);
-        if (opcode == mir::MirOpcode::ShiftLeft)
+std::optional<sema::ConstantValue> foldShiftBinary(
+    mir::MirOpcode opcode,
+    std::uint64_t aBits,
+    const sema::ConstantValue& right,
+    const sema::Type* resultType,
+    std::uint32_t width)
+{
+    const std::optional<std::int64_t> count = shiftCount(right);
+    if (!count.has_value() || *count < 0 ||
+        static_cast<std::uint64_t>(*count) >= width)
+    {
+        return std::nullopt;
+    }
+    const unsigned shift = static_cast<unsigned>(*count);
+    std::uint64_t result = 0;
+    if (opcode == mir::MirOpcode::ShiftLeft)
+    {
+        result = (aBits << shift) & maskForWidth(width);
+    }
+    else if (isSignedInteger(resultType))
+    {
+        const std::int64_t signedValue = signedFromBits(aBits, width);
+        if (shift == 0)
         {
-            result = (*aBits << shift) & maskForWidth(width);
+            result = aBits;
         }
-        else if (isSignedInteger(resultType))
+        else if (signedValue >= 0)
         {
-            const std::int64_t signedValue = signedFromBits(*aBits, width);
-            if (shift == 0)
-            {
-                result = *aBits;
-            }
-            else if (signedValue >= 0)
-            {
-                result = *aBits >> shift;
-            }
-            else
-            {
-                const std::uint64_t highMask = maskForWidth(width) ^
-                    maskForWidth(width - shift);
-                result = (*aBits >> shift) | highMask;
-            }
+            result = aBits >> shift;
         }
         else
         {
-            result = *aBits >> shift;
+            const std::uint64_t highMask = maskForWidth(width) ^ maskForWidth(width - shift);
+            result = (aBits >> shift) | highMask;
         }
-        return integerFromBits(result, resultType);
     }
+    else
+    {
+        result = aBits >> shift;
+    }
+    return integerFromBits(result, resultType);
+}
 
+std::optional<sema::ConstantValue> foldIntegerBinary(
+    mir::MirOpcode opcode,
+    std::uint64_t aBits,
+    const sema::ConstantValue& right,
+    const sema::Type* resultType,
+    const sema::Type* rightType,
+    std::uint32_t width)
+{
     const std::optional<std::uint64_t> bBits = integerBits(right, rightType);
     if (!bBits.has_value())
     {
         return std::nullopt;
     }
-
-    const std::uint64_t a = *aBits & maskForWidth(width);
+    const std::uint64_t a = aBits & maskForWidth(width);
     const std::uint64_t b = *bBits & maskForWidth(width);
-
+    std::uint64_t result = 0;
     switch (opcode)
     {
         case mir::MirOpcode::Add: result = a + b; break;
@@ -557,8 +546,31 @@ std::optional<sema::ConstantValue> foldBinary(
         default:
             return std::nullopt;
     }
-
     return integerFromBits(result & maskForWidth(width), resultType);
+}
+
+std::optional<sema::ConstantValue> foldBinary(
+    mir::MirOpcode opcode,
+    const sema::ConstantValue& left,
+    const sema::ConstantValue& right,
+    const sema::Type* resultType,
+    const sema::Type* rightType)
+{
+    if (isFloating(resultType) &&
+        left.kind() == sema::ConstantKind::Floating &&
+        right.kind() == sema::ConstantKind::Floating)
+    {
+        return foldFloatingBinary(opcode, left, right, resultType);
+    }
+    if (!isInteger(resultType)) return std::nullopt;
+    const std::optional<std::uint64_t> aBits = integerBits(left, resultType);
+    if (!aBits.has_value()) return std::nullopt;
+    const std::uint32_t width = integerWidth(resultType);
+    if (opcode == mir::MirOpcode::ShiftLeft || opcode == mir::MirOpcode::ShiftRight)
+    {
+        return foldShiftBinary(opcode, *aBits, right, resultType, width);
+    }
+    return foldIntegerBinary(opcode, *aBits, right, resultType, rightType, width);
 }
 
 const sema::ConstantValue* knownValue(
@@ -567,6 +579,88 @@ const sema::ConstantValue* knownValue(
 {
     const auto found = known.find(value);
     return found == known.end() ? nullptr : &found->second;
+}
+
+std::optional<sema::ConstantValue> foldPhiInstruction(
+    const mir::MirInstruction* instruction,
+    const std::unordered_map<const mir::MirValue*, sema::ConstantValue>& known)
+{
+    const sema::ConstantValue* first = nullptr;
+    for (const mir::MirPhiIncoming& incoming : instruction->phiIncoming())
+    {
+        const sema::ConstantValue* value = knownValue(incoming.value, known);
+        if (value == nullptr) return std::nullopt;
+        if (first == nullptr)
+        {
+            first = value;
+        }
+        else if (!ConstantFolder::equal(*first, *value))
+        {
+            return std::nullopt;
+        }
+    }
+    return first == nullptr
+        ? std::nullopt
+        : std::optional<sema::ConstantValue>(*first);
+}
+
+std::optional<sema::ConstantValue> foldSingleOperandInstruction(
+    const mir::MirInstruction* instruction,
+    const std::unordered_map<const mir::MirValue*, sema::ConstantValue>& known)
+{
+    const sema::ConstantValue* operand = knownValue(instruction->operands()[0], known);
+    if (operand == nullptr) return std::nullopt;
+    if (instruction->opcode() == mir::MirOpcode::Convert)
+    {
+        return convertConstant(
+            *operand,
+            instruction->operands()[0]->type(),
+            instruction->result()->type());
+    }
+    return foldUnary(instruction->opcode(), *operand, instruction->result()->type());
+}
+
+std::optional<sema::ConstantValue> foldTwoOperandInstruction(
+    const mir::MirInstruction* instruction,
+    const std::unordered_map<const mir::MirValue*, sema::ConstantValue>& known)
+{
+    if (instruction->operands().size() != 2) return std::nullopt;
+    const sema::ConstantValue* left = knownValue(instruction->operands()[0], known);
+    const sema::ConstantValue* right = knownValue(instruction->operands()[1], known);
+    if (left == nullptr || right == nullptr) return std::nullopt;
+    using mir::MirOpcode;
+    switch (instruction->opcode())
+    {
+        case MirOpcode::CompareEqual:
+        case MirOpcode::CompareNotEqual:
+        case MirOpcode::CompareLess:
+        case MirOpcode::CompareLessEqual:
+        case MirOpcode::CompareGreater:
+        case MirOpcode::CompareGreaterEqual:
+            return foldComparison(
+                instruction->opcode(),
+                *left,
+                *right,
+                instruction->operands()[0]->type());
+        case MirOpcode::Add:
+        case MirOpcode::Subtract:
+        case MirOpcode::Multiply:
+        case MirOpcode::Divide:
+        case MirOpcode::Remainder:
+        case MirOpcode::BitAnd:
+        case MirOpcode::BitOr:
+        case MirOpcode::BitXor:
+        case MirOpcode::ShiftLeft:
+        case MirOpcode::ShiftRight:
+            return foldBinary(
+                instruction->opcode(),
+                *left,
+                *right,
+                instruction->result()->type(),
+                instruction->operands()[1]->type());
+        default:
+            return std::nullopt;
+    }
 }
 }
 
@@ -596,26 +690,7 @@ std::optional<sema::ConstantValue> ConstantFolder::fold(
 
     if (instruction->opcode() == MirOpcode::Phi)
     {
-        const sema::ConstantValue* first = nullptr;
-        for (const mir::MirPhiIncoming& incoming : instruction->phiIncoming())
-        {
-            const sema::ConstantValue* value = knownValue(incoming.value, known);
-            if (value == nullptr)
-            {
-                return std::nullopt;
-            }
-            if (first == nullptr)
-            {
-                first = value;
-            }
-            else if (!equal(*first, *value))
-            {
-                return std::nullopt;
-            }
-        }
-        return first == nullptr
-            ? std::nullopt
-            : std::optional<sema::ConstantValue>(*first);
+        return foldPhiInstruction(instruction, known);
     }
 
     if (instruction->result() == nullptr)
@@ -626,15 +701,7 @@ std::optional<sema::ConstantValue> ConstantFolder::fold(
     if (instruction->opcode() == MirOpcode::Convert &&
         instruction->operands().size() == 1)
     {
-        const sema::ConstantValue* operand = knownValue(instruction->operands()[0], known);
-        if (operand == nullptr)
-        {
-            return std::nullopt;
-        }
-        return convertConstant(
-            *operand,
-            instruction->operands()[0]->type(),
-            instruction->result()->type());
+        return foldSingleOperandInstruction(instruction, known);
     }
 
     if ((instruction->opcode() == MirOpcode::Negate ||
@@ -642,60 +709,9 @@ std::optional<sema::ConstantValue> ConstantFolder::fold(
          instruction->opcode() == MirOpcode::LogicalNot) &&
         instruction->operands().size() == 1)
     {
-        const sema::ConstantValue* operand = knownValue(instruction->operands()[0], known);
-        if (operand == nullptr)
-        {
-            return std::nullopt;
-        }
-        return foldUnary(instruction->opcode(), *operand, instruction->result()->type());
+        return foldSingleOperandInstruction(instruction, known);
     }
-
-    if (instruction->operands().size() != 2)
-    {
-        return std::nullopt;
-    }
-
-    const sema::ConstantValue* left = knownValue(instruction->operands()[0], known);
-    const sema::ConstantValue* right = knownValue(instruction->operands()[1], known);
-    if (left == nullptr || right == nullptr)
-    {
-        return std::nullopt;
-    }
-
-    switch (instruction->opcode())
-    {
-        case MirOpcode::CompareEqual:
-        case MirOpcode::CompareNotEqual:
-        case MirOpcode::CompareLess:
-        case MirOpcode::CompareLessEqual:
-        case MirOpcode::CompareGreater:
-        case MirOpcode::CompareGreaterEqual:
-            return foldComparison(
-                instruction->opcode(),
-                *left,
-                *right,
-                instruction->operands()[0]->type());
-
-        case MirOpcode::Add:
-        case MirOpcode::Subtract:
-        case MirOpcode::Multiply:
-        case MirOpcode::Divide:
-        case MirOpcode::Remainder:
-        case MirOpcode::BitAnd:
-        case MirOpcode::BitOr:
-        case MirOpcode::BitXor:
-        case MirOpcode::ShiftLeft:
-        case MirOpcode::ShiftRight:
-            return foldBinary(
-                instruction->opcode(),
-                *left,
-                *right,
-                instruction->result()->type(),
-                instruction->operands()[1]->type());
-
-        default:
-            return std::nullopt;
-    }
+    return foldTwoOperandInstruction(instruction, known);
 }
 
 bool ConstantFolder::equal(

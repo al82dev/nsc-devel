@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Passes/MirEffectInfo.h"
+
 namespace nativesharp::mir
 {
 class MirInstruction;
@@ -7,15 +9,6 @@ class MirInstruction;
 
 namespace nativesharp::passes
 {
-struct MirEffectInfo
-{
-    bool hasSideEffects = false;
-    bool mayTrap = false;
-    bool readsMemory = false;
-    bool writesMemory = false;
-    bool structural = false;
-};
-
 class MirEffectClassifier final
 {
 public:

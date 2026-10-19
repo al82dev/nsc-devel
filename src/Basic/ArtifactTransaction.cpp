@@ -1,4 +1,5 @@
 #include "nativesharp/Basic/ArtifactTransaction.h"
+#include "Internal/ArtifactCommitState.h"
 
 #include <atomic>
 #include <fstream>
@@ -269,6 +270,135 @@ bool ArtifactTransaction::addStaged(const std::filesystem::path& destination,
     return true;
 }
 
+bool ArtifactTransaction::prepareCommitEntry(
+    std::size_t index,
+    std::vector<detail::ArtifactCommitState>& states,
+    const std::string& suffix,
+    std::string& error)
+{
+    const Entry& entry = entries_[index];
+    std::error_code filesystemError;
+    if (!std::filesystem::is_regular_file(entry.stage, filesystemError) || filesystemError)
+    {
+        error = "artifact transaction stage is missing: '" + pathText(entry.stage) + "'";
+        return false;
+    }
+    if (!ensureDirectory(entry.destination.parent_path(), error)) return false;
+    if (!destinationCanBeReplaced(entry.destination, error)) return false;
+    states[index].sibling = entry.destination;
+    states[index].sibling += suffix + ".new";
+    states[index].backup = entry.destination;
+    states[index].backup += suffix + ".old";
+#if defined(_WIN32)
+    if (entry.destination.native().size() >= 32767U)
+    {
+        error = "artifact preflight failed for '" + pathText(entry.destination) +
+            "': path-limit (Windows extended path exceeds 32767 UTF-16 code units)";
+        return false;
+    }
+    ULARGE_INTEGER available{};
+    if (::GetDiskFreeSpaceExW(extendedPath(entry.destination.parent_path()).c_str(),
+            &available, nullptr, nullptr) == 0)
+    {
+        return failWin32(
+            "artifact free-space preflight", entry.destination, ::GetLastError(), error);
+    }
+    const auto required = std::filesystem::file_size(entry.stage, filesystemError);
+    if (filesystemError)
+    {
+        error = "cannot measure staged artifact '" + pathText(entry.stage) + "': " +
+            filesystemError.message();
+        return false;
+    }
+    if (available.QuadPart < required)
+    {
+        error = "artifact preflight failed for '" + pathText(entry.destination) +
+            "': insufficient-space";
+        return false;
+    }
+    removeNoThrow(states[index].sibling);
+    removeNoThrow(states[index].backup);
+    return copyToSibling(entry.stage, states[index].sibling, error);
+#else
+    std::filesystem::copy_file(
+        entry.stage,
+        states[index].sibling,
+        std::filesystem::copy_options::overwrite_existing,
+        filesystemError);
+    if (!filesystemError) return true;
+    error = "artifact staging copy failed for '" + pathText(entry.destination) + "': " +
+        filesystemError.message();
+    return false;
+#endif
+}
+
+bool ArtifactTransaction::installCommitEntry(
+    std::size_t index,
+    std::vector<detail::ArtifactCommitState>& states,
+    std::string& error)
+{
+    const Entry& entry = entries_[index];
+    detail::ArtifactCommitState& state = states[index];
+#if defined(_WIN32)
+    if (!exists(entry.destination, state.hadDestination, error)) return false;
+    if (state.hadDestination)
+    {
+        if (!moveReplace(entry.destination, state.backup, error)) return false;
+        state.backedUp = true;
+    }
+    if (!moveReplace(state.sibling, entry.destination, error)) return false;
+#else
+    std::error_code filesystemError;
+    state.hadDestination = std::filesystem::exists(entry.destination, filesystemError);
+    if (state.hadDestination)
+    {
+        std::filesystem::rename(entry.destination, state.backup, filesystemError);
+        state.backedUp = !filesystemError;
+    }
+    if (filesystemError)
+    {
+        error = filesystemError.message();
+        return false;
+    }
+    std::filesystem::rename(state.sibling, entry.destination, filesystemError);
+    if (filesystemError)
+    {
+        error = filesystemError.message();
+        return false;
+    }
+#endif
+    state.installed = true;
+    return true;
+}
+
+void ArtifactTransaction::rollbackCommit(
+    std::vector<detail::ArtifactCommitState>& states,
+    std::string& error)
+{
+    const std::string commitError = error;
+    bool rollbackFailed = false;
+    for (std::size_t reverse = entries_.size(); reverse != 0; --reverse)
+    {
+        const std::size_t index = reverse - 1U;
+        const Entry& entry = entries_[index];
+        detail::ArtifactCommitState& state = states[index];
+        if (state.installed) removeNoThrow(entry.destination);
+        if (state.backedUp)
+        {
+#if defined(_WIN32)
+            std::string ignored;
+            if (!moveReplace(state.backup, entry.destination, ignored)) rollbackFailed = true;
+#else
+            std::error_code filesystemError;
+            std::filesystem::rename(state.backup, entry.destination, filesystemError);
+            rollbackFailed = rollbackFailed || static_cast<bool>(filesystemError);
+#endif
+        }
+        removeNoThrow(state.sibling);
+    }
+    error = commitError + (rollbackFailed ? "; rollback-incomplete" : "; rollback-complete");
+}
+
 bool ArtifactTransaction::commit(std::string& error)
 {
     error.clear();
@@ -283,154 +413,30 @@ bool ArtifactTransaction::commit(std::string& error)
         return true;
     }
 
-    struct State final
-    {
-        std::filesystem::path sibling;
-        std::filesystem::path backup;
-        bool hadDestination = false;
-        bool backedUp = false;
-        bool installed = false;
-    };
-    std::vector<State> states(entries_.size());
+    std::vector<detail::ArtifactCommitState> states(entries_.size());
     const std::string suffix = ".nsc-transaction-" +
         std::to_string(transactionOrdinal.fetch_add(1, std::memory_order_relaxed));
-    const auto cleanupPrepared = [&states] {
-        for (const State& state : states)
+    for (std::size_t index = 0; index < entries_.size(); ++index)
+    {
+        if (prepareCommitEntry(index, states, suffix, error)) continue;
+        for (const detail::ArtifactCommitState& state : states)
         {
             removeNoThrow(state.sibling);
             removeNoThrow(state.backup);
         }
-    };
-
-    for (std::size_t index = 0; index < entries_.size(); ++index)
-    {
-        const Entry& entry = entries_[index];
-        std::error_code filesystemError;
-        if (!std::filesystem::is_regular_file(entry.stage, filesystemError) || filesystemError)
-        {
-            error = "artifact transaction stage is missing: '" + pathText(entry.stage) + "'";
-            cleanupPrepared();
-            return false;
-        }
-        if (!ensureDirectory(entry.destination.parent_path(), error))
-        {
-            cleanupPrepared();
-            return false;
-        }
-        if (!destinationCanBeReplaced(entry.destination, error))
-        {
-            cleanupPrepared();
-            return false;
-        }
-        states[index].sibling = entry.destination;
-        states[index].sibling += suffix + ".new";
-        states[index].backup = entry.destination;
-        states[index].backup += suffix + ".old";
-#if defined(_WIN32)
-        if (entry.destination.native().size() >= 32767U)
-        {
-            error = "artifact preflight failed for '" + pathText(entry.destination) +
-                "': path-limit (Windows extended path exceeds 32767 UTF-16 code units)";
-            cleanupPrepared();
-            return false;
-        }
-        ULARGE_INTEGER available{};
-        if (::GetDiskFreeSpaceExW(extendedPath(entry.destination.parent_path()).c_str(),
-                &available, nullptr, nullptr) == 0)
-        {
-            failWin32("artifact free-space preflight", entry.destination, ::GetLastError(), error);
-            cleanupPrepared();
-            return false;
-        }
-        const auto required = std::filesystem::file_size(entry.stage, filesystemError);
-        if (filesystemError)
-        {
-            error = "cannot measure staged artifact '" + pathText(entry.stage) + "': " + filesystemError.message();
-            cleanupPrepared();
-            return false;
-        }
-        if (available.QuadPart < required)
-        {
-            error = "artifact preflight failed for '" + pathText(entry.destination) + "': insufficient-space";
-            cleanupPrepared();
-            return false;
-        }
-        removeNoThrow(states[index].sibling);
-        removeNoThrow(states[index].backup);
-        if (!copyToSibling(entry.stage, states[index].sibling, error))
-        {
-            cleanupPrepared();
-            return false;
-        }
-#else
-        std::filesystem::copy_file(entry.stage, states[index].sibling,
-            std::filesystem::copy_options::overwrite_existing, filesystemError);
-        if (filesystemError)
-        {
-            error = "artifact staging copy failed for '" + pathText(entry.destination) + "': " + filesystemError.message();
-            cleanupPrepared();
-            return false;
-        }
-#endif
-    }
-
-    for (std::size_t index = 0; index < entries_.size(); ++index)
-    {
-        const Entry& entry = entries_[index];
-        State& state = states[index];
-#if defined(_WIN32)
-        if (!exists(entry.destination, state.hadDestination, error)) goto rollback;
-        if (state.hadDestination)
-        {
-            if (!moveReplace(entry.destination, state.backup, error)) goto rollback;
-            state.backedUp = true;
-        }
-        if (!moveReplace(state.sibling, entry.destination, error)) goto rollback;
-#else
-        std::error_code filesystemError;
-        state.hadDestination = std::filesystem::exists(entry.destination, filesystemError);
-        if (state.hadDestination)
-        {
-            std::filesystem::rename(entry.destination, state.backup, filesystemError);
-            state.backedUp = !filesystemError;
-        }
-        if (filesystemError) { error = filesystemError.message(); goto rollback; }
-        std::filesystem::rename(state.sibling, entry.destination, filesystemError);
-        if (filesystemError) { error = filesystemError.message(); goto rollback; }
-#endif
-        state.installed = true;
-    }
-
-    for (const State& state : states) removeNoThrow(state.backup);
-    committed_ = true;
-    return true;
-
-rollback:
-    {
-        const std::string commitError = error;
-        bool rollbackFailed = false;
-        for (std::size_t reverse = entries_.size(); reverse != 0; --reverse)
-        {
-            const std::size_t index = reverse - 1U;
-            const Entry& entry = entries_[index];
-            State& state = states[index];
-            if (state.installed) removeNoThrow(entry.destination);
-            if (state.backedUp)
-            {
-#if defined(_WIN32)
-                std::string ignored;
-                if (!moveReplace(state.backup, entry.destination, ignored)) rollbackFailed = true;
-#else
-                std::error_code filesystemError;
-                std::filesystem::rename(state.backup, entry.destination, filesystemError);
-                rollbackFailed = rollbackFailed || static_cast<bool>(filesystemError);
-#endif
-            }
-            removeNoThrow(state.sibling);
-        }
-        error = commitError + (rollbackFailed ? "; rollback-incomplete" : "; rollback-complete");
         return false;
     }
+
+    for (std::size_t index = 0; index < entries_.size(); ++index)
+    {
+        if (installCommitEntry(index, states, error)) continue;
+        rollbackCommit(states, error);
+        return false;
+    }
+
+    for (const detail::ArtifactCommitState& state : states) removeNoThrow(state.backup);
+    committed_ = true;
+    return true;
 }
 
 bool writeFileTransactionally(const std::filesystem::path& destination,

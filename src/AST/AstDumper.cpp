@@ -19,6 +19,19 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
         return;
     }
 
+    dumpNodeHeader(node, output, depth, edge);
+    dumpGenericConstraints(node, output);
+    dumpNodeProperties(node, output);
+    output << '\n';
+    dumpNodeChildren(node, output, depth);
+}
+
+void AstDumper::dumpNodeHeader(
+    const AstNode* node,
+    std::ostream& output,
+    int depth,
+    const char* edge) const
+{
     for (int index = 0; index < depth; ++index)
     {
         output << "  ";
@@ -60,7 +73,10 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
     for (const LifetimeOutlivesConstraint& constraint : node->lifetimeOutlivesConstraints())
         output << " outlives=" << constraint.longer << ':' << constraint.shorter;
     if (!node->lifetimeName().empty()) output << " lifetime-name=" << node->lifetimeName();
+}
 
+void AstDumper::dumpGenericConstraints(const AstNode* node, std::ostream& output) const
+{
     // NSC-LIMIT-007: `where T : class, IFoo` se vuelca junto a los parametros, porque es parte
     // de la firma generica y no de los hijos. Sin esto, una clausula perdida en el parser no se
     // veria en ningun volcado.
@@ -98,7 +114,10 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
             dumpType(constraint, output);
         }
     }
+}
 
+void AstDumper::dumpNodeProperties(const AstNode* node, std::ostream& output) const
+{
     if (node->tokenKind() != lexer::TokenKind::Invalid)
     {
         output << " op=" << lexer::tokenKindName(node->tokenKind());
@@ -134,9 +153,10 @@ void AstDumper::dumpNode(const AstNode* node, std::ostream& output, int depth, c
         case FloatingPointModeSyntaxKind::Precise: output << " fp=precise"; break;
         case FloatingPointModeSyntaxKind::Fast: output << " fp=fast"; break;
     }
+}
 
-    output << '\n';
-
+void AstDumper::dumpNodeChildren(const AstNode* node, std::ostream& output, int depth) const
+{
     dumpNode(node->first(), output, depth + 1, "first: ");
     dumpNode(node->second(), output, depth + 1, "second: ");
     dumpNode(node->third(), output, depth + 1, "third: ");
@@ -155,6 +175,30 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
         return;
     }
 
+    dumpTypePrefix(typeSyntax, output);
+    if (typeSyntax->isFunction())
+    {
+        dumpFunctionType(typeSyntax, output);
+    }
+    else if (typeSyntax->isTuple())
+    {
+        dumpTupleType(typeSyntax, output);
+    }
+    else
+    {
+        output << typeSyntax->baseName();
+    }
+    if (!typeSyntax->isFunction() && !typeSyntax->isTuple() &&
+        !typeSyntax->typeArguments().empty())
+    {
+        dumpTypeArguments(typeSyntax, output);
+    }
+    if (typeSyntax->isPointeeConst()) output << " const";
+    dumpTypeModifiers(typeSyntax, output);
+}
+
+void AstDumper::dumpTypePrefix(const TypeSyntax* typeSyntax, std::ostream& output) const
+{
     if (typeSyntax->ownershipQualifier() != OwnershipQualifierSyntaxKind::None)
     {
         output << ownershipQualifierSyntaxKindName(typeSyntax->ownershipQualifier());
@@ -162,69 +206,73 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
         output << ' ';
     }
     if (typeSyntax->isDynamicTrait()) output << "dyn ";
-    if (typeSyntax->isFunction())
+}
+
+void AstDumper::dumpFunctionType(const TypeSyntax* typeSyntax, std::ostream& output) const
+{
+    output << "fn" << (typeSyntax->functionCarrier() ==
+        FunctionTypeCarrierSyntaxKind::Pointer ? '*' : '&');
+    if (typeSyntax->functionIsNullable()) output << '?';
+    if (!typeSyntax->functionLifetimeName().empty())
+        output << '[' << typeSyntax->functionLifetimeName() << ']';
+    switch (typeSyntax->functionCallingConvention())
     {
-        output << "fn" << (typeSyntax->functionCarrier() ==
-            FunctionTypeCarrierSyntaxKind::Pointer ? '*' : '&');
-        if (typeSyntax->functionIsNullable()) output << '?';
-        if (!typeSyntax->functionLifetimeName().empty())
-            output << '[' << typeSyntax->functionLifetimeName() << ']';
-        switch (typeSyntax->functionCallingConvention())
-        {
-            case FunctionCallingConventionSyntaxKind::NativeSharp: output << " native"; break;
-            case FunctionCallingConventionSyntaxKind::C: output << " C"; break;
-            case FunctionCallingConventionSyntaxKind::StdCall: output << " stdcall"; break;
-            case FunctionCallingConventionSyntaxKind::FastCall: output << " fastcall"; break;
-            case FunctionCallingConventionSyntaxKind::VectorCall: output << " vectorcall"; break;
-            case FunctionCallingConventionSyntaxKind::Win64: output << " win64"; break;
-        }
-        output << '(';
-        for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)
-        {
-            if (index != 0) output << ',';
-            dumpType(typeSyntax->typeArguments()[index], output);
-        }
-        if (typeSyntax->functionIsVariadic())
-            output << (typeSyntax->typeArguments().empty() ? "..." : ",...");
-        output << ")->";
-        if (typeSyntax->functionReturnType() != nullptr)
-            dumpType(typeSyntax->functionReturnType(), output);
-        else output << "<missing>";
-        if (typeSyntax->functionIsUnsafe()) output << " unsafe";
-        if (typeSyntax->functionIsNoHeap()) output << " noheap";
-        if (typeSyntax->functionIsAsync()) output << " async";
-        if (typeSyntax->functionErrorType() != nullptr)
-        {
-            output << " throws ";
-            dumpType(typeSyntax->functionErrorType(), output);
-        }
+        case FunctionCallingConventionSyntaxKind::NativeSharp: output << " native"; break;
+        case FunctionCallingConventionSyntaxKind::C: output << " C"; break;
+        case FunctionCallingConventionSyntaxKind::StdCall: output << " stdcall"; break;
+        case FunctionCallingConventionSyntaxKind::FastCall: output << " fastcall"; break;
+        case FunctionCallingConventionSyntaxKind::VectorCall: output << " vectorcall"; break;
+        case FunctionCallingConventionSyntaxKind::Win64: output << " win64"; break;
     }
-    else if (typeSyntax->isTuple())
+    output << '(';
+    for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)
     {
-        output << '(';
-        for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)
-        {
-            if (index != 0) output << ',';
-            dumpType(typeSyntax->typeArguments()[index], output);
-            if (index < typeSyntax->tupleElementNames().size() &&
-                !typeSyntax->tupleElementNames()[index].empty())
-                output << ' ' << typeSyntax->tupleElementNames()[index];
-        }
-        output << ')';
+        if (index != 0) output << ',';
+        dumpType(typeSyntax->typeArguments()[index], output);
     }
-    else output << typeSyntax->baseName();
-    if (!typeSyntax->isFunction() && !typeSyntax->isTuple() &&
-        !typeSyntax->typeArguments().empty())
+    if (typeSyntax->functionIsVariadic())
+        output << (typeSyntax->typeArguments().empty() ? "..." : ",...");
+    output << ")->";
+    if (typeSyntax->functionReturnType() != nullptr)
+        dumpType(typeSyntax->functionReturnType(), output);
+    else output << "<missing>";
+    if (typeSyntax->functionIsUnsafe()) output << " unsafe";
+    if (typeSyntax->functionIsNoHeap()) output << " noheap";
+    if (typeSyntax->functionIsAsync()) output << " async";
+    if (typeSyntax->functionErrorType() != nullptr)
     {
-        output << '<';
-        for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)
-        {
-            if (index != 0) output << ',';
-            dumpType(typeSyntax->typeArguments()[index], output);
-        }
-        output << '>';
+        output << " throws ";
+        dumpType(typeSyntax->functionErrorType(), output);
     }
-    if (typeSyntax->isPointeeConst()) output << " const";
+}
+
+void AstDumper::dumpTupleType(const TypeSyntax* typeSyntax, std::ostream& output) const
+{
+    output << '(';
+    for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)
+    {
+        if (index != 0) output << ',';
+        dumpType(typeSyntax->typeArguments()[index], output);
+        if (index < typeSyntax->tupleElementNames().size() &&
+            !typeSyntax->tupleElementNames()[index].empty())
+            output << ' ' << typeSyntax->tupleElementNames()[index];
+    }
+    output << ')';
+}
+
+void AstDumper::dumpTypeArguments(const TypeSyntax* typeSyntax, std::ostream& output) const
+{
+    output << '<';
+    for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)
+    {
+        if (index != 0) output << ',';
+        dumpType(typeSyntax->typeArguments()[index], output);
+    }
+    output << '>';
+}
+
+void AstDumper::dumpTypeModifiers(const TypeSyntax* typeSyntax, std::ostream& output) const
+{
     for (const TypeModifierSyntax& modifier : typeSyntax->modifiers())
     {
         if (modifier.kind == TypeModifierSyntaxKind::Pointer)

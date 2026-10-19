@@ -69,6 +69,74 @@ bool incomingConstantsEqual(
     }
     return !first;
 }
+
+void simplifyPhiBlock(
+    mir::MirBlock* block,
+    const DefinitionMap& definitions,
+    PassContext& context,
+    PassRunResult& result)
+{
+    std::vector<mir::MirInstruction*> phis;
+    std::vector<mir::MirInstruction*> replacements;
+    std::vector<mir::MirInstruction*> body;
+    bool inPhiPrefix = true;
+    for (mir::MirInstruction* instruction : block->instructions())
+    {
+        if (inPhiPrefix && instruction->opcode() == mir::MirOpcode::Phi)
+        {
+            mir::MirValue* common = nullptr;
+            bool sameValue = !instruction->phiIncoming().empty();
+            for (const mir::MirPhiIncoming& incoming : instruction->phiIncoming())
+            {
+                if (common == nullptr)
+                {
+                    common = incoming.value;
+                }
+                else if (common != incoming.value)
+                {
+                    sameValue = false;
+                    break;
+                }
+            }
+            if (sameValue && common != nullptr && common != instruction->result())
+            {
+                mir::MirInstruction* copy = context.arena().makeInstruction(
+                    mir::MirOpcode::Copy,
+                    instruction->range());
+                copy->setResult(instruction->result());
+                copy->addOperand(common);
+                replacements.push_back(copy);
+                result.changed = true;
+                ++result.transformations;
+                continue;
+            }
+            sema::ConstantValue constant;
+            if (incomingConstantsEqual(instruction, definitions, constant))
+            {
+                mir::MirInstruction* folded = context.arena().makeInstruction(
+                    mir::MirOpcode::Constant,
+                    instruction->range());
+                folded->setResult(instruction->result());
+                folded->setConstant(constant);
+                replacements.push_back(folded);
+                result.changed = true;
+                ++result.transformations;
+                continue;
+            }
+            phis.push_back(instruction);
+            continue;
+        }
+        inPhiPrefix = false;
+        body.push_back(instruction);
+    }
+    if (replacements.empty()) return;
+    std::vector<mir::MirInstruction*> instructions;
+    instructions.reserve(phis.size() + replacements.size() + body.size());
+    instructions.insert(instructions.end(), phis.begin(), phis.end());
+    instructions.insert(instructions.end(), replacements.begin(), replacements.end());
+    instructions.insert(instructions.end(), body.begin(), body.end());
+    block->replaceInstructions(std::move(instructions));
+}
 }
 
 std::string_view PhiSimplificationPass::name() const noexcept
@@ -108,77 +176,7 @@ PassRunResult PhiSimplificationPass::run(
         const DefinitionMap definitions = collectDefinitions(function);
         for (mir::MirBlock* block : function->blocks())
         {
-            std::vector<mir::MirInstruction*> phis;
-            std::vector<mir::MirInstruction*> replacements;
-            std::vector<mir::MirInstruction*> body;
-            bool inPhiPrefix = true;
-
-            for (mir::MirInstruction* instruction : block->instructions())
-            {
-                if (inPhiPrefix && instruction->opcode() == mir::MirOpcode::Phi)
-                {
-                    mir::MirValue* common = nullptr;
-                    bool sameValue = !instruction->phiIncoming().empty();
-                    for (const mir::MirPhiIncoming& incoming : instruction->phiIncoming())
-                    {
-                        if (common == nullptr)
-                        {
-                            common = incoming.value;
-                        }
-                        else if (common != incoming.value)
-                        {
-                            sameValue = false;
-                            break;
-                        }
-                    }
-
-                    if (sameValue && common != nullptr && common != instruction->result())
-                    {
-                        mir::MirInstruction* copy = context.arena().makeInstruction(
-                            mir::MirOpcode::Copy,
-                            instruction->range());
-                        copy->setResult(instruction->result());
-                        copy->addOperand(common);
-                        replacements.push_back(copy);
-                        result.changed = true;
-                        ++result.transformations;
-                        continue;
-                    }
-
-                    sema::ConstantValue constant;
-                    if (incomingConstantsEqual(instruction, definitions, constant))
-                    {
-                        mir::MirInstruction* folded = context.arena().makeInstruction(
-                            mir::MirOpcode::Constant,
-                            instruction->range());
-                        folded->setResult(instruction->result());
-                        folded->setConstant(constant);
-                        replacements.push_back(folded);
-                        result.changed = true;
-                        ++result.transformations;
-                        continue;
-                    }
-
-                    phis.push_back(instruction);
-                    continue;
-                }
-
-                inPhiPrefix = false;
-                body.push_back(instruction);
-            }
-
-            if (!replacements.empty())
-            {
-                std::vector<mir::MirInstruction*> instructions;
-                instructions.reserve(phis.size() + replacements.size() + body.size());
-                instructions.insert(instructions.end(), phis.begin(), phis.end());
-                instructions.insert(
-                    instructions.end(),
-                    replacements.begin(),
-                    replacements.end());
-                instructions.insert(instructions.end(), body.begin(), body.end());
-                block->replaceInstructions(std::move(instructions));
-            }
+            simplifyPhiBlock(block, definitions, context, result);
         }
     }
     return result;

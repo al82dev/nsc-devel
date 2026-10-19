@@ -1,23 +1,13 @@
 #pragma once
 
+#include "nativesharp/Basic/CompilationEventKind.h"
+
 #include <chrono>
 #include <cstddef>
 #include <string_view>
 
 namespace nativesharp::basic
 {
-enum class CompilationEventKind
-{
-    PhaseStarted,
-    PhaseFinished,
-    WorkStarted,
-    WorkFinished,
-    CacheHit,
-    CacheMiss,
-    Skipped,
-    Failed
-};
-
 struct CompilationEvent final
 {
     CompilationEventKind kind = CompilationEventKind::PhaseStarted;

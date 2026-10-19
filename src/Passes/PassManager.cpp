@@ -17,6 +17,127 @@
 
 namespace nativesharp::passes
 {
+namespace
+{
+bool ensurePassRequirements(
+    MirPass* pass,
+    AnalysisManager& analyses,
+    std::string& error)
+{
+    const PassRequirements requirements = pass->requirements();
+    if (requirements.needsDominance())
+    {
+        if (analyses.ensureDominance() == nullptr)
+        {
+            error = "pass '" + std::string(pass->name()) +
+                "' cannot obtain dominance: " + analyses.error();
+            return false;
+        }
+    }
+    else if (requirements.needsCfg())
+    {
+        if (analyses.ensureCfg() == nullptr)
+        {
+            error = "pass '" + std::string(pass->name()) +
+                "' cannot obtain CFG: " + analyses.error();
+            return false;
+        }
+    }
+    return true;
+}
+
+PassRecord beginPassRecord(
+    MirPass* pass,
+    OptimizationModule* module,
+    std::size_t iteration)
+{
+    PassRecord record;
+    record.iteration = iteration;
+    record.name = std::string(pass->name());
+    record.instructionsBefore = MirRewriter::instructionCount(module->module());
+    record.blocksBefore = MirRewriter::blockCount(module->module());
+    return record;
+}
+
+PreservedAnalyses completePassRecord(
+    PassRecord& record,
+    const PassRunResult& result,
+    MirPass* pass,
+    OptimizationModule* module)
+{
+    record.changed = result.changed;
+    record.transformations = result.transformations;
+    record.instructionsAfter = MirRewriter::instructionCount(module->module());
+    record.blocksAfter = MirRewriter::blockCount(module->module());
+    const PreservedAnalyses preserved = pass->preservedAnalyses();
+    record.preservedCfg = preserved.preserves(AnalysisKind::Cfg);
+    record.preservedDominance = preserved.preserves(AnalysisKind::Dominance);
+    return preserved;
+}
+
+bool runPass(
+    MirPass* pass,
+    OptimizationModule* module,
+    AnalysisManager& analyses,
+    OptimizationVerifier& verifier,
+    std::size_t iteration,
+    bool& iterationChanged,
+    std::string& error)
+{
+    if (!ensurePassRequirements(pass, analyses, error)) return false;
+    PassRecord record = beginPassRecord(pass, module, iteration);
+    PassContext context(module->module(), *module->arena(), analyses);
+    std::string passError;
+    const PassRunResult result = pass->run(context, passError);
+    if (!passError.empty())
+    {
+        error = "pass '" + std::string(pass->name()) + "' failed: " + passError;
+        return false;
+    }
+    const PreservedAnalyses preserved = completePassRecord(record, result, pass, module);
+    if (result.changed)
+    {
+        iterationChanged = true;
+        analyses.invalidate(preserved);
+        if (!verifier.verify(module, analyses))
+        {
+            error = "pass '" + std::string(pass->name()) +
+                "' produced invalid optimized SSA: " + verifier.error();
+            return false;
+        }
+    }
+    record.cfgBuildsAfter = analyses.cfgBuildCount();
+    record.dominanceBuildsAfter = analyses.dominanceBuildCount();
+    module->addRecord(std::move(record));
+    return true;
+}
+
+bool runPassIteration(
+    const std::vector<MirPass*>& passes,
+    OptimizationModule* module,
+    AnalysisManager& analyses,
+    OptimizationVerifier& verifier,
+    std::size_t iteration,
+    bool& iterationChanged,
+    std::string& error)
+{
+    for (MirPass* pass : passes)
+    {
+        if (pass == nullptr)
+        {
+            error = "pass manager pipeline contains null pass";
+            return false;
+        }
+        if (!runPass(
+                pass, module, analyses, verifier, iteration, iterationChanged, error))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+}
+
 PassManager::PassManager(OptimizationArena& arena) : arena_(arena) {}
 
 PassManager::~PassManager()
@@ -77,85 +198,11 @@ bool PassManager::run(OptimizationModule* module)
          ++iteration)
     {
         bool iterationChanged = false;
-
-        for (MirPass* pass : passes_)
+        std::string iterationError;
+        if (!runPassIteration(
+                passes_, module, analyses, verifier, iteration, iterationChanged, iterationError))
         {
-            if (pass == nullptr)
-            {
-                return fail("pass manager pipeline contains null pass");
-            }
-
-            const PassRequirements requirements = pass->requirements();
-            if (requirements.needsDominance())
-            {
-                if (analyses.ensureDominance() == nullptr)
-                {
-                    return fail("pass '" + std::string(pass->name()) +
-                        "' cannot obtain dominance: " + analyses.error());
-                }
-            }
-            else if (requirements.needsCfg())
-            {
-                if (analyses.ensureCfg() == nullptr)
-                {
-                    return fail("pass '" + std::string(pass->name()) +
-                        "' cannot obtain CFG: " + analyses.error());
-                }
-            }
-
-            PassRecord record;
-            record.iteration = iteration;
-            record.name = std::string(pass->name());
-            record.instructionsBefore =
-                MirRewriter::instructionCount(module->module());
-            record.blocksBefore =
-                MirRewriter::blockCount(module->module());
-
-            PassContext context(
-                module->module(),
-                *module->arena(),
-                analyses);
-            std::string passError;
-            const PassRunResult result =
-                pass->run(context, passError);
-
-            if (!passError.empty())
-            {
-                return fail("pass '" + std::string(pass->name()) +
-                    "' failed: " + passError);
-            }
-
-            record.changed = result.changed;
-            record.transformations = result.transformations;
-            record.instructionsAfter =
-                MirRewriter::instructionCount(module->module());
-            record.blocksAfter =
-                MirRewriter::blockCount(module->module());
-
-            const PreservedAnalyses preserved =
-                pass->preservedAnalyses();
-            record.preservedCfg =
-                preserved.preserves(AnalysisKind::Cfg);
-            record.preservedDominance =
-                preserved.preserves(AnalysisKind::Dominance);
-
-            if (result.changed)
-            {
-                iterationChanged = true;
-                analyses.invalidate(preserved);
-
-                if (!verifier.verify(module, analyses))
-                {
-                    return fail("pass '" + std::string(pass->name()) +
-                        "' produced invalid optimized SSA: " +
-                        verifier.error());
-                }
-            }
-
-            record.cfgBuildsAfter = analyses.cfgBuildCount();
-            record.dominanceBuildsAfter =
-                analyses.dominanceBuildCount();
-            module->addRecord(std::move(record));
+            return fail(std::move(iterationError));
         }
 
         completedIterations = iteration;

@@ -2,7 +2,9 @@
 
 namespace nativesharp::ast
 {
-std::string_view astNodeKindName(AstNodeKind kind) noexcept
+namespace
+{
+std::string_view astNodeKindNamePart1(AstNodeKind kind) noexcept
 {
     switch (kind)
     {
@@ -47,6 +49,17 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(CatchClause);
         NS_AST_KIND(ThrowStatement);
         NS_AST_KIND(UsingStatement);
+#undef NS_AST_KIND
+    }
+
+    return {};
+}
+
+std::string_view astNodeKindNamePart2(AstNodeKind kind) noexcept
+{
+    switch (kind)
+    {
+#define NS_AST_KIND(name) case AstNodeKind::name: return #name
         NS_AST_KIND(StaticAssertStatement);
         NS_AST_KIND(InlineAssemblyStatement);
         NS_AST_KIND(InlineAssemblyLine);
@@ -87,6 +100,17 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(PlacementConstructionExpression);
         NS_AST_KIND(DeleteExpression);
         NS_AST_KIND(DestroyExpression);
+#undef NS_AST_KIND
+    }
+
+    return {};
+}
+
+std::string_view astNodeKindNamePart3(AstNodeKind kind) noexcept
+{
+    switch (kind)
+    {
+#define NS_AST_KIND(name) case AstNodeKind::name: return #name
         NS_AST_KIND(StackallocExpression);
         NS_AST_KIND(MoveExpression);
         NS_AST_KIND(AggregateInitializerExpression);
@@ -116,6 +140,31 @@ std::string_view astNodeKindName(AstNodeKind kind) noexcept
         NS_AST_KIND(NameOfExpression);
         NS_AST_KIND(OverflowPolicyExpression);
 #undef NS_AST_KIND
+    }
+
+    return {};
+}
+
+}
+
+std::string_view astNodeKindName(AstNodeKind kind) noexcept
+{
+    const std::string_view part1 = astNodeKindNamePart1(kind);
+    if (!part1.empty())
+    {
+        return part1;
+    }
+
+    const std::string_view part2 = astNodeKindNamePart2(kind);
+    if (!part2.empty())
+    {
+        return part2;
+    }
+
+    const std::string_view part3 = astNodeKindNamePart3(kind);
+    if (!part3.empty())
+    {
+        return part3;
     }
 
     return "UnknownAstNode";

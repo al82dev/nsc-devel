@@ -1,5 +1,9 @@
 #pragma once
 
+#include "nativesharp/Basic/ArtifactTransactionEntry.h"
+#include "nativesharp/Basic/OutputFailureKind.h"
+
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <span>
@@ -9,22 +13,10 @@
 
 namespace nativesharp::basic
 {
-enum class OutputFailureKind : std::uint8_t
+namespace detail
 {
-    None,
-    PathLimit,
-    MissingComponent,
-    PermissionDenied,
-    FileLocked,
-    InsufficientSpace,
-    IoError
-};
-
-std::string_view outputFailureKindName(OutputFailureKind kind) noexcept;
-
-#if defined(_WIN32)
-OutputFailureKind classifyWindowsOutputError(unsigned long code) noexcept;
-#endif
+struct ArtifactCommitState;
+}
 
 // LLVM and lld receive short staging paths. commit() copies each completed artifact beside its
 // final destination and replaces the complete set with rollback through Win32 wide-path APIs.
@@ -42,13 +34,21 @@ public:
     bool commit(std::string& error);
 
 private:
-    struct Entry final
-    {
-        std::filesystem::path destination;
-        std::filesystem::path stage;
-    };
+    using Entry = ArtifactTransactionEntry;
 
     bool ensureStaging(std::string& error);
+    bool prepareCommitEntry(
+        std::size_t index,
+        std::vector<detail::ArtifactCommitState>& states,
+        const std::string& suffix,
+        std::string& error);
+    bool installCommitEntry(
+        std::size_t index,
+        std::vector<detail::ArtifactCommitState>& states,
+        std::string& error);
+    void rollbackCommit(
+        std::vector<detail::ArtifactCommitState>& states,
+        std::string& error);
     std::filesystem::path stagingRoot_;
     std::vector<Entry> entries_;
     bool committed_ = false;

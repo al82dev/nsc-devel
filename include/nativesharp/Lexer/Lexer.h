@@ -6,6 +6,7 @@
 #include "nativesharp/Source/SourceFile.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -36,13 +37,25 @@ private:
 
     Token lexIdentifierOrKeyword(std::uint32_t begin);
     Token lexNumber(std::uint32_t begin);
+    std::optional<Token> lexPrefixedNumber(
+        std::uint32_t begin,
+        int& base,
+        std::uint32_t& digitsBegin,
+        bool& prefixed);
+    std::optional<Token> lexDecimalNumber(std::uint32_t begin);
+    Token lexIntegerNumber(std::uint32_t begin, std::uint32_t digitsBegin, int base);
     Token lexCharacter(std::uint32_t begin);
     Token lexString(std::uint32_t begin);
     Token lexUtf8String(std::uint32_t begin);
     Token lexRawString(std::uint32_t begin);
+    std::uint32_t lexRawStringDelimiter();
+    void appendRawStringByte(std::string& decoded, bool& valid);
     Token lexInterpolatedString(std::uint32_t begin);
     Token lexRawInterpolatedString(std::uint32_t begin);
     Token lexOperatorOrPunctuation(std::uint32_t begin);
+    std::optional<Token> lexPunctuation(std::uint32_t begin, char first);
+    std::optional<Token> lexArithmeticOperator(std::uint32_t begin, char first);
+    std::optional<Token> lexComparisonOperator(std::uint32_t begin, char first);
     Token lexAssemblyBodyToken();
 
     Token makeToken(TokenKind kind, std::uint32_t begin) const;

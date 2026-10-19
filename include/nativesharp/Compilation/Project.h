@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Compilation/LibraryReference.h"
+#include "nativesharp/Compilation/ProjectOutputKind.h"
 #include "nativesharp/Compilation/ProjectSourceSet.h"
 #include "nativesharp/Compilation/SdkManifest.h"
 #include "nativesharp/Language/ErrorSemantics.h"
@@ -12,23 +14,6 @@
 
 namespace nativesharp::compilation
 {
-enum class ProjectOutputKind
-{
-    Executable,
-    Library,
-    SharedLibrary
-};
-
-// NativeSharp 1.0.1: a precompiled library is a three-part contract. `libraryPath` is either a
-// static COFF archive or the import library of `runtimePath`; metadata is mandatory because a
-// bare .lib cannot describe NativeSharp types, ownership, defaults, or ABI identity.
-struct LibraryReference final
-{
-    std::filesystem::path libraryPath;
-    std::filesystem::path metadataPath;
-    std::filesystem::path runtimePath;
-};
-
 class Project final
 {
 public:

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Compilation/TypeNameSegment.h"
+
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -7,14 +9,6 @@
 
 namespace nativesharp::compilation
 {
-struct TypeNameSegment final
-{
-    std::string name;
-    std::uint32_t arity = 0;
-
-    bool operator==(const TypeNameSegment&) const noexcept = default;
-};
-
 // NSC-LIMIT-009. EL FRAGMENTO DE SIMBOLO NATIVO de una clave de identidad, y por que tiene que
 // ser una codificacion REVERSIBLE y no un saneador.
 //

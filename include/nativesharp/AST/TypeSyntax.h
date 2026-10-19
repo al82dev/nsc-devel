@@ -1,5 +1,12 @@
 #pragma once
 
+#include "nativesharp/AST/FunctionCallingConventionSyntaxKind.h"
+#include "nativesharp/AST/FunctionTypeCarrierSyntaxKind.h"
+#include "nativesharp/AST/OwnershipQualifierSyntaxKind.h"
+#include "nativesharp/AST/PointerNullabilitySyntaxKind.h"
+#include "nativesharp/AST/ReferenceQualifierSyntaxKind.h"
+#include "nativesharp/AST/TypeModifierSyntax.h"
+#include "nativesharp/AST/TypeModifierSyntaxKind.h"
 #include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
@@ -12,71 +19,6 @@
 namespace nativesharp::ast
 {
 class AstNode;
-
-enum class OwnershipQualifierSyntaxKind
-{
-    None,
-    Owned,
-    Borrowed
-};
-
-std::string_view ownershipQualifierSyntaxKindName(OwnershipQualifierSyntaxKind kind) noexcept;
-
-enum class TypeModifierSyntaxKind
-{
-    Pointer,
-    Array,
-    DynamicArray,
-    RangeArray,
-    FlexibleArray
-};
-
-// NS304-T06-F05: `ref T` / `ref mut T` as a type-level qualifier (an item by reference), distinct
-// from ownership (`borrowed`) and from a declaration's leading `ref` return marker.
-enum class ReferenceQualifierSyntaxKind
-{
-    None,
-    Ref,
-    RefMut
-};
-
-enum class FunctionTypeCarrierSyntaxKind
-{
-    Pointer,
-    Reference
-};
-
-enum class PointerNullabilitySyntaxKind
-{
-    LegacyNullable,
-    Nullable,
-    NonNull
-};
-
-enum class FunctionCallingConventionSyntaxKind
-{
-    NativeSharp,
-    C,
-    StdCall,
-    FastCall,
-    VectorCall,
-    Win64
-};
-
-struct TypeModifierSyntax
-{
-    TypeModifierSyntaxKind kind = TypeModifierSyntaxKind::Pointer;
-    AstNode* arrayCount = nullptr;
-    SourceRange range;
-    std::size_t arrayRank = 0;
-    // T13-F03 semantic pointer guarantees. LLVM uses opaque pointers and Win64 layout is
-    // unchanged, so these promises travel beside the physical canonical key.
-    PointerNullabilitySyntaxKind pointerNullability =
-        PointerNullabilitySyntaxKind::LegacyNullable;
-    bool pointerHasProvenance = true;
-    std::size_t pointerKnownAlignment = 1;
-    unsigned pointerAddressSpace = 0;
-};
 
 class TypeSyntax final
 {
