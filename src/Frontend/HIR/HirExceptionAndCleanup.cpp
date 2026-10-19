@@ -122,47 +122,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExceptionOrExitState
         }
 
         case ast::AstNodeKind::UsingStatement:
-        {
-            const MethodUsingBinding* binding = usingBinding(statement);
-            const MethodCleanupRegion* region = cleanupRegion(statement);
-            const std::optional<std::size_t> cleanupOrdinal = cleanupOrdinalFor(region);
-            if (binding == nullptr || !cleanupOrdinal.has_value())
-            {
-                error = "Stage 45.6 using statement has no frozen using/cleanup binding";
-                return nullptr;
-            }
-            auto node = makeNode(ProjectOopHirNodeKind::UsingRegion, statement, "builtin:void");
-            node->localOrdinal = binding->resourceLocalOrdinal;
-            node->elementTypeKey = binding->resourceTypeKey;
-            if (binding->resourceLocalOrdinal < methodBodyModel_->locals().size())
-                node->stringValue = methodBodyModel_->locals()[binding->resourceLocalOrdinal].name;
-            node->cleanupRegionOrdinal = cleanupOrdinal;
-            node->disposeContractMemberOrdinal = binding->disposeContractMemberOrdinal;
-            node->disposeImplementationMemberOrdinal = binding->disposeImplementationMemberOrdinal;
-            node->interfaceCleanupDispatch = binding->interfaceDispatch;
-
-            auto initializer = lowerExpression(statement->first(), memberOrdinal, false, error);
-            if (initializer == nullptr) return nullptr;
-            const MethodExpressionTypeBinding* sourceType = expressionType(statement->first());
-            const ProjectImplicitConversion conversion = classifyImplicit(
-                initializer->typeKey, binding->resourceTypeKey,
-                sourceType != nullptr ? sourceType->integerConstant : std::nullopt);
-            if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
-                initializer = wrapImplicitConversion(std::move(initializer), conversion, statement->first());
-            node->children.push_back(std::move(initializer));
-
-            activeHirCleanupRegions_.push_back(*cleanupOrdinal);
-            auto body = lowerBlock(statement->second(), memberOrdinal, error);
-            activeHirCleanupRegions_.pop_back();
-            if (body == nullptr) return nullptr;
-            node->children.push_back(std::move(body));
-
-            auto continuation = makeNode(ProjectOopHirNodeKind::CleanupContinuation, statement, "builtin:void");
-            continuation->cleanupRegionOrdinal = cleanupOrdinal;
-            continuation->cleanupContinuationKind = MethodCleanupContinuationKind::Normal;
-            node->children.push_back(std::move(continuation));
-            return node;
-        }
+            return lowerUsingStatement(statement, memberOrdinal, error);
 
         case ast::AstNodeKind::TryStatement:
         {

@@ -1638,6 +1638,45 @@ struct ProjectOopHirModelTestAccess final
         return model.lowerStatement(statement, 0U, error);
     }
 
+    static std::unique_ptr<ProjectOopHirNode> lowerUsingStatementForTest(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* statement,
+        std::vector<MethodUsingBinding> usingBindings,
+        std::vector<MethodCleanupRegion> cleanupRegions,
+        std::vector<MethodLocalSymbol> locals,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        std::vector<std::size_t> activeCleanupRegions,
+        std::string& error)
+    {
+        methodBodyModel.usingBindings_ = std::move(usingBindings);
+        methodBodyModel.cleanupRegions_ = std::move(cleanupRegions);
+        methodBodyModel.locals_ = std::move(locals);
+        model.methodBodyModel_ = &methodBodyModel;
+        model.usingBindingBySyntax_.clear();
+        model.cleanupRegionBySyntax_.clear();
+        for (std::size_t index = 0U;
+             index < methodBodyModel.usingBindings_.size(); ++index)
+        {
+            model.usingBindingBySyntax_[
+                methodBodyModel.usingBindings_[index].syntax] =
+                &methodBodyModel.usingBindings_[index];
+        }
+        for (std::size_t index = 0U;
+             index < methodBodyModel.cleanupRegions_.size(); ++index)
+        {
+            model.cleanupRegionBySyntax_[
+                methodBodyModel.cleanupRegions_[index].syntax] =
+                &methodBodyModel.cleanupRegions_[index];
+        }
+        model.expressionTypeBySyntax_.clear();
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        return model.lowerStatement(statement, 0U, error);
+    }
+
     static std::unique_ptr<ProjectOopHirNode>
     lowerDeconstructionDeclarationStatement(
         ProjectOopHirModel& model,
@@ -16686,6 +16725,210 @@ void testDeepExitValueStatementLowering(TestContext& tests)
     destroyHirTreeIteratively(empty);
 }
 
+struct DeepUsingStatementFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<const nativesharp::ast::AstNode*> usingSyntaxes;
+    std::vector<nativesharp::frontend::MethodUsingBinding> bindings;
+    std::vector<nativesharp::frontend::MethodCleanupRegion> cleanupRegions;
+    std::vector<nativesharp::frontend::MethodLocalSymbol> locals;
+    const nativesharp::ast::AstNode* root = nullptr;
+    const nativesharp::ast::AstNode* initializer = nullptr;
+};
+
+DeepUsingStatementFixture makeDeepUsingStatementFixture(std::size_t depth)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepUsingStatementFixture fixture;
+    fixture.nodes.reserve(depth * 2U + 1U);
+    fixture.usingSyntaxes.reserve(depth);
+    fixture.bindings.reserve(depth);
+    fixture.cleanupRegions.reserve(depth);
+    fixture.locals.reserve(depth);
+
+    fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::IntegerLiteralExpression, nativesharp::SourceRange{}));
+    fixture.nodes.back()->setIntegerValue(23U);
+    fixture.initializer = fixture.nodes.back().get();
+
+    nativesharp::ast::AstNode* innerUsing = nullptr;
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::BlockStatement, nativesharp::SourceRange{}));
+        auto* body = fixture.nodes.back().get();
+        if (innerUsing != nullptr) body->addChild(innerUsing);
+
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::UsingStatement, nativesharp::SourceRange{}));
+        auto* statement = fixture.nodes.back().get();
+        statement->setFirst(const_cast<nativesharp::ast::AstNode*>(fixture.initializer));
+        statement->setSecond(body);
+        fixture.usingSyntaxes.push_back(statement);
+
+        nativesharp::frontend::MethodUsingBinding binding;
+        binding.syntax = statement;
+        binding.resourceLocalOrdinal = index;
+        binding.resourceTypeKey = "builtin:int";
+        binding.disposeContractMemberOrdinal = 100U + index;
+        binding.disposeImplementationMemberOrdinal = 200U + index;
+        binding.interfaceDispatch = (index & 1U) != 0U;
+        fixture.bindings.push_back(std::move(binding));
+
+        nativesharp::frontend::MethodCleanupRegion cleanup;
+        cleanup.kind = nativesharp::frontend::MethodCleanupRegionKind::UsingDispose;
+        cleanup.syntax = statement;
+        cleanup.cleanupSyntax = statement;
+        cleanup.resourceLocalOrdinal = index;
+        cleanup.disposeContractMemberOrdinal = 100U + index;
+        cleanup.disposeImplementationMemberOrdinal = 200U + index;
+        cleanup.depth = index;
+        fixture.cleanupRegions.push_back(std::move(cleanup));
+
+        nativesharp::frontend::MethodLocalSymbol local;
+        local.name = "resource-" + std::to_string(index);
+        local.typeKey = "builtin:int";
+        fixture.locals.push_back(std::move(local));
+        innerUsing = statement;
+    }
+    fixture.root = innerUsing;
+    return fixture;
+}
+
+bool deepUsingStatementChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepUsingStatementFixture& fixture)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using ContinuationKind = nativesharp::frontend::MethodCleanupContinuationKind;
+    for (std::size_t remaining = fixture.usingSyntaxes.size(); remaining > 0U; --remaining)
+    {
+        const std::size_t index = remaining - 1U;
+        if (node == nullptr || node->kind != HirKind::UsingRegion ||
+            node->syntax != fixture.usingSyntaxes[index] ||
+            node->typeKey != "builtin:void" || node->localOrdinal != index ||
+            node->elementTypeKey != "builtin:int" ||
+            node->stringValue != "resource-" + std::to_string(index) ||
+            node->cleanupRegionOrdinal != index ||
+            node->disposeContractMemberOrdinal != 100U + index ||
+            node->disposeImplementationMemberOrdinal != 200U + index ||
+            node->interfaceCleanupDispatch != ((index & 1U) != 0U) ||
+            node->children.size() != 3U ||
+            node->children[0]->kind != HirKind::IntegerConstant ||
+            node->children[0]->integerValue != 23U ||
+            node->children[1]->kind != HirKind::Block ||
+            node->children[2]->kind != HirKind::CleanupContinuation ||
+            node->children[2]->cleanupRegionOrdinal != index ||
+            node->children[2]->cleanupContinuationKind != ContinuationKind::Normal)
+        {
+            return false;
+        }
+        const auto* body = node->children[1].get();
+        if (index == 0U) return body->children.empty();
+        if (body->children.size() != 1U) return false;
+        node = body->children.front().get();
+    }
+    return false;
+}
+
+void testDeepUsingStatementLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    constexpr std::size_t nestingDepth = 32768U;
+    nativesharp::frontend::MethodExpressionTypeBinding integerType;
+    integerType.typeKey = "builtin:int";
+
+    auto fixture = makeDeepUsingStatementFixture(nestingDepth);
+    ProjectOopHirModel model;
+    nativesharp::frontend::ProjectMethodBodyModel methodBodyModel;
+    std::string error;
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerUsingStatementForTest(
+            model,
+            methodBodyModel,
+            fixture.root,
+            std::move(fixture.bindings),
+            std::move(fixture.cleanupRegions),
+            std::move(fixture.locals),
+            {{fixture.initializer, &integerType}},
+            {7U, 9U},
+            error);
+    tests.expect(lowered != nullptr && error.empty(),
+        "32768 nested using statements lower on one worklist (" + error + ")");
+    tests.expect(deepUsingStatementChainMatches(lowered.get(), fixture),
+        "iterative using lowering preserves resource, cleanup, dispose and body order");
+    tests.expect(nativesharp::frontend::ProjectOopHirModelTestAccess::
+            activeCleanupDepth(model) == 2U,
+        "using lowering restores the outer cleanup stack after deep success");
+    destroyHirTreeIteratively(lowered);
+
+    auto poison = std::make_unique<nativesharp::ast::AstNode>(
+        static_cast<AstKind>(0xFFFF), nativesharp::SourceRange{});
+    auto missingBinding = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::UsingStatement, nativesharp::SourceRange{});
+    missingBinding->setFirst(poison.get());
+    ProjectOopHirModel missingModel;
+    nativesharp::frontend::ProjectMethodBodyModel missingBody;
+    error.clear();
+    auto missing = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerUsingStatementForTest(
+            missingModel, missingBody, missingBinding.get(), {}, {}, {}, {}, {}, error);
+    tests.expect(missing == nullptr &&
+            error == "Stage 45.6 using statement has no frozen using/cleanup binding",
+        "using binding failure wins before lowering its initializer");
+
+    auto conversionFixture = makeDeepUsingStatementFixture(1U);
+    conversionFixture.bindings[0].resourceTypeKey = "builtin:long";
+    conversionFixture.locals[0].typeKey = "builtin:long";
+    ProjectOopHirModel conversionModel;
+    nativesharp::frontend::ProjectMethodBodyModel conversionBody;
+    error.clear();
+    auto converted = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerUsingStatementForTest(
+            conversionModel,
+            conversionBody,
+            conversionFixture.root,
+            std::move(conversionFixture.bindings),
+            std::move(conversionFixture.cleanupRegions),
+            std::move(conversionFixture.locals),
+            {{conversionFixture.initializer, &integerType}},
+            {},
+            error);
+    tests.expect(converted != nullptr && error.empty() &&
+            converted->kind == HirKind::UsingRegion &&
+            converted->elementTypeKey == "builtin:long" &&
+            converted->children.size() == 3U &&
+            converted->children.front()->kind == HirKind::Conversion &&
+            converted->children.front()->typeKey == "builtin:long" &&
+            converted->children.front()->children.size() == 1U &&
+            converted->children.front()->children.front()->kind == HirKind::IntegerConstant,
+        "using applies its frozen implicit initializer conversion before entering cleanup");
+    destroyHirTreeIteratively(converted);
+
+    auto failureFixture = makeDeepUsingStatementFixture(1U);
+    const_cast<nativesharp::ast::AstNode*>(failureFixture.root)->setSecond(poison.get());
+    ProjectOopHirModel failureModel;
+    nativesharp::frontend::ProjectMethodBodyModel failureBody;
+    error.clear();
+    auto failed = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerUsingStatementForTest(
+            failureModel,
+            failureBody,
+            failureFixture.root,
+            std::move(failureFixture.bindings),
+            std::move(failureFixture.cleanupRegions),
+            std::move(failureFixture.locals),
+            {{failureFixture.initializer, &integerType}},
+            {13U},
+            error);
+    tests.expect(failed == nullptr &&
+            error == "Stage 34 OOP HIR requires block statement body" &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeCleanupDepth(failureModel) == 1U,
+        "using body failure restores the outer cleanup stack exactly");
+}
+
 void testDeepUserIndexerGetterLowering(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -20653,6 +20896,10 @@ int main()
     else if (focusValue == "hir-exit-value-depth")
     {
         testDeepExitValueStatementLowering(tests);
+    }
+    else if (focusValue == "hir-using-statement-depth")
+    {
+        testDeepUsingStatementLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {

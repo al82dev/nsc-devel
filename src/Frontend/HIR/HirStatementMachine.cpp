@@ -481,6 +481,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
                 return lowerExitValueStatement(statement, memberOrdinal, error);
             return lowerExceptionOrExitStatement(statement, memberOrdinal, error);
         case ast::AstNodeKind::UsingStatement:
+            return lowerUsingStatement(statement, memberOrdinal, error);
         case ast::AstNodeKind::TryStatement:
             return lowerExceptionOrExitStatement(statement, memberOrdinal, error);
         default:
