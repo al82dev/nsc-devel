@@ -483,7 +483,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
         case ast::AstNodeKind::UsingStatement:
             return lowerUsingStatement(statement, memberOrdinal, error);
         case ast::AstNodeKind::TryStatement:
-            return lowerExceptionOrExitStatement(statement, memberOrdinal, error);
+            return lowerTryStatement(statement, memberOrdinal, error);
         default:
             error = "unsupported Stage 34 OOP statement kind: " +
                 std::string(ast::astNodeKindName(statement->kind()));

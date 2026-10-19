@@ -253,6 +253,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerUsingStatement(
         error);
 }
 
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerTryStatement(
+    const ast::AstNode* statement,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    return lowerExpressionWithStatementFrame(
+        statement != nullptr ? statement->first() : nullptr,
+        memberOrdinal,
+        false,
+        statement,
+        error);
+}
+
 // Executes expression lowering with an optional bottom frame that owns the
 // statement continuation. Ordinary expression callers pass no such frame.
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatementFrame(
@@ -277,6 +290,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         ForeachStatement,
         ExitValueStatement,
         UsingStatement,
+        TryStatement,
         LoopExpression,
         LoopBlock,
         LoopBlockExpressionStatement,
@@ -652,6 +666,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::unique_ptr<ProjectOopHirNode> node;
         std::size_t cleanupOrdinal = 0U;
     };
+    struct TryStatementFrameState final
+    {
+        std::unique_ptr<ProjectOopHirNode> node;
+        std::unique_ptr<ProjectOopHirNode> regionNode;
+        const ast::AstNode* catchSyntax = nullptr;
+        std::optional<std::size_t> cleanupOrdinal;
+        std::size_t nextCatch = 0U;
+        std::size_t exceptionHandlerDepth = 0U;
+        bool handlerActive = false;
+    };
     struct IterativeExpressionFrame final
     {
         IterativeExpressionKind kind = IterativeExpressionKind::BuiltinUnary;
@@ -686,6 +710,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         std::optional<ForeachStatementFrameState> foreachStatement;
         std::optional<ExitValueStatementFrameState> exitValueStatement;
         std::optional<UsingStatementFrameState> usingStatement;
+        std::optional<TryStatementFrameState> tryStatement;
         std::optional<OrdinaryConstructionFrameState> ordinaryConstruction;
         std::optional<AllocatorConstructionFrameState> allocatorConstruction;
         const MethodCallBinding* environmentExitBinding = nullptr;
@@ -1720,12 +1745,42 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         state.node->interfaceCleanupDispatch = binding->interfaceDispatch;
         return true;
     };
+    const auto initializeTryStatementFrame =
+        [&](IterativeExpressionFrame& frame, const ast::AstNode* statement)
+    {
+        frame.kind = IterativeExpressionKind::TryStatement;
+        frame.syntax = statement;
+        frame.tryStatement.emplace();
+        TryStatementFrameState& state = *frame.tryStatement;
+        state.node = makeNode(
+            ProjectOopHirNodeKind::TryRegion, statement, "builtin:void");
+        state.node->hirRegionOrdinal = nextHirRegionOrdinal_++;
+        state.cleanupOrdinal = cleanupRegionOrdinal(cleanupRegion(statement));
+        frame.cleanupDepth = activeHirCleanupRegions_.size();
+        if (state.cleanupOrdinal.has_value())
+        {
+            state.node->cleanupRegionOrdinal = state.cleanupOrdinal;
+            activeHirCleanupRegions_.push_back(*state.cleanupOrdinal);
+            frame.cleanupActive = true;
+        }
+        state.exceptionHandlerDepth = activeHirExceptionHandlers_.size();
+        if (!statement->children().empty())
+        {
+            activeHirExceptionHandlers_.push_back(HirExceptionHandlerContext{
+                *state.node->hirRegionOrdinal,
+                activeHirCleanupRegions_.size()});
+            state.handlerActive = true;
+        }
+    };
 
     const std::optional<IterativeExpressionKind> rootKind =
         iterativeKind(expression, addressContext);
     if (rootKind.has_value() || statementContinuation != nullptr)
     {
         std::vector<IterativeExpressionFrame> frames;
+        const std::size_t rootCleanupDepth = activeHirCleanupRegions_.size();
+        const std::size_t rootExceptionHandlerDepth =
+            activeHirExceptionHandlers_.size();
         if (statementContinuation != nullptr)
         {
             IterativeExpressionFrame frame;
@@ -1799,6 +1854,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 if (!initializeUsingStatementFrame(frame, statementContinuation))
                     return nullptr;
             }
+            else if (statementContinuation->kind() == ast::AstNodeKind::TryStatement)
+            {
+                initializeTryStatementFrame(frame, statementContinuation);
+            }
             else
             {
                 frame.kind = IterativeExpressionKind::ExpressionStatement;
@@ -1810,8 +1869,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         const ast::AstNode* current = expression;
         bool currentAddressContext = addressContext;
         std::size_t currentMemberOrdinal = memberOrdinal;
-        IterativeInputKind currentInputKind = IterativeInputKind::Expression;
-        const std::size_t rootCleanupDepth = activeHirCleanupRegions_.size();
+        IterativeInputKind currentInputKind = statementContinuation != nullptr &&
+                statementContinuation->kind() == ast::AstNodeKind::TryStatement
+            ? IterativeInputKind::LoopBlock
+            : IterativeInputKind::Expression;
         const auto rollbackMatchCleanups = [&]()
         {
             // A failed If condition must still lower its then block to preserve
@@ -1847,10 +1908,30 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     activeHirCleanupRegions_.resize(frame->cleanupDepth);
                 }
+                if (frame->kind == IterativeExpressionKind::TryStatement &&
+                    frame->tryStatement.has_value())
+                {
+                    TryStatementFrameState& state = *frame->tryStatement;
+                    if (state.handlerActive)
+                    {
+                        activeHirExceptionHandlers_.resize(
+                            state.exceptionHandlerDepth);
+                        state.handlerActive = false;
+                    }
+                    if (frame->cleanupActive)
+                    {
+                        activeHirCleanupRegions_.resize(frame->cleanupDepth);
+                        frame->cleanupActive = false;
+                    }
+                }
                 if (frame->kind == IterativeExpressionKind::LoopBlock)
                     loopBlockActive = true;
             }
-            if (loopBlockActive) activeHirCleanupRegions_.resize(rootCleanupDepth);
+            if (loopBlockActive)
+            {
+                activeHirCleanupRegions_.resize(rootCleanupDepth);
+                activeHirExceptionHandlers_.resize(rootExceptionHandlerDepth);
+            }
         };
         const auto resumePendingConditionStatementAfterFailure = [&]() -> bool
         {
@@ -1865,6 +1946,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 }
 
                 std::size_t retainedCleanupDepth = activeHirCleanupRegions_.size();
+                std::size_t retainedExceptionHandlerDepth =
+                    activeHirExceptionHandlers_.size();
                 for (std::size_t child = index; child < frames.size(); ++child)
                 {
                     if (frames[child].kind == IterativeExpressionKind::LoopBlock)
@@ -1878,8 +1961,28 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         retainedCleanupDepth = std::min(
                             retainedCleanupDepth, frames[child].cleanupDepth);
                     }
+                    if (frames[child].kind == IterativeExpressionKind::TryStatement &&
+                        frames[child].tryStatement.has_value())
+                    {
+                        const TryStatementFrameState& state =
+                            *frames[child].tryStatement;
+                        if (frames[child].cleanupActive)
+                        {
+                            retainedCleanupDepth = std::min(
+                                retainedCleanupDepth,
+                                frames[child].cleanupDepth);
+                        }
+                        if (state.handlerActive)
+                        {
+                            retainedExceptionHandlerDepth = std::min(
+                                retainedExceptionHandlerDepth,
+                                state.exceptionHandlerDepth);
+                        }
+                    }
                 }
                 activeHirCleanupRegions_.resize(retainedCleanupDepth);
+                activeHirExceptionHandlers_.resize(
+                    retainedExceptionHandlerDepth);
                 frames.resize(index);
 
                 IterativeExpressionFrame& pendingStatement = frames.back();
@@ -4946,6 +5049,18 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
             currentInputKind = IterativeInputKind::Expression;
             return true;
         };
+        const auto beginTryStatement =
+            [&](const ast::AstNode* statement, std::size_t statementMemberOrdinal)
+        {
+            IterativeExpressionFrame tryFrame;
+            tryFrame.memberOrdinal = statementMemberOrdinal;
+            initializeTryStatementFrame(tryFrame, statement);
+            frames.push_back(std::move(tryFrame));
+            current = statement->first();
+            currentMemberOrdinal = statementMemberOrdinal;
+            currentAddressContext = false;
+            currentInputKind = IterativeInputKind::LoopBlock;
+        };
         std::function<LoopBlockAdvance(std::size_t)> advanceForStatement;
         std::function<LoopBlockAdvance(std::size_t)> advanceForeachStatement;
         const auto advanceSwitchStatement =
@@ -5210,6 +5325,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     if (!beginUsingStatement(statement, frame.memberOrdinal))
                         return LoopBlockAdvance::Error;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement->kind() == ast::AstNodeKind::TryStatement)
+                {
+                    beginTryStatement(statement, frame.memberOrdinal);
                     return LoopBlockAdvance::Descend;
                 }
 
@@ -5518,6 +5638,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                         return LoopBlockAdvance::Error;
                     return LoopBlockAdvance::Descend;
                 }
+                else if (source->kind() == ast::AstNodeKind::TryStatement)
+                {
+                    beginTryStatement(source, frame.memberOrdinal);
+                    return LoopBlockAdvance::Descend;
+                }
                 else
                 {
                     auto sourceNode = lowerStatement(source, frame.memberOrdinal, error);
@@ -5767,6 +5892,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                 {
                     if (!beginUsingStatement(statement, frame.memberOrdinal))
                         return LoopBlockAdvance::Error;
+                    return LoopBlockAdvance::Descend;
+                }
+                if (statement->kind() == ast::AstNodeKind::TryStatement)
+                {
+                    beginTryStatement(statement, frame.memberOrdinal);
                     return LoopBlockAdvance::Descend;
                 }
 
@@ -7470,6 +7600,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                             descend = true;
                             break;
                         }
+                        if (alternative->kind() == ast::AstNodeKind::TryStatement)
+                        {
+                            beginTryStatement(alternative, frame.memberOrdinal);
+                            descend = true;
+                            break;
+                        }
                         lowered = lowerStatement(
                             alternative, frame.memberOrdinal, error);
                         if (lowered == nullptr)
@@ -7757,6 +7893,146 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                     continuation->cleanupContinuationKind =
                         MethodCleanupContinuationKind::Normal;
                     state.node->children.push_back(std::move(continuation));
+                    lowered = std::move(state.node);
+                    frames.pop_back();
+                    continue;
+                }
+                if (frame.kind == IterativeExpressionKind::TryStatement)
+                {
+                    TryStatementFrameState& state = *frame.tryStatement;
+                    if (frame.stage == 0U)
+                    {
+                        if (state.handlerActive)
+                        {
+                            activeHirExceptionHandlers_.resize(
+                                state.exceptionHandlerDepth);
+                            state.handlerActive = false;
+                        }
+                        state.node->children.push_back(std::move(lowered));
+                    }
+                    else if (frame.stage == 1U)
+                    {
+                        const ast::AstNode* filterSyntax =
+                            state.catchSyntax != nullptr
+                            ? state.catchSyntax->second()
+                            : nullptr;
+                        if (!applyExpressionBoundaryPostconditions(
+                                lowered, filterSyntax, frame.memberOrdinal))
+                        {
+                            rollbackMatchCleanups();
+                            return nullptr;
+                        }
+                        state.regionNode->children.push_back(std::move(lowered));
+                        frame.stage = 2U;
+                        current = state.catchSyntax != nullptr
+                            ? state.catchSyntax->first()
+                            : nullptr;
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        currentInputKind = IterativeInputKind::LoopBlock;
+                        descend = true;
+                        break;
+                    }
+                    else if (frame.stage == 2U)
+                    {
+                        state.regionNode->children.push_back(std::move(lowered));
+                        state.node->children.push_back(std::move(state.regionNode));
+                        state.catchSyntax = nullptr;
+                    }
+                    else
+                    {
+                        state.regionNode->children.push_back(std::move(lowered));
+                        auto continuation = makeNode(
+                            ProjectOopHirNodeKind::CleanupContinuation,
+                            frame.syntax,
+                            "builtin:void");
+                        continuation->cleanupRegionOrdinal = state.cleanupOrdinal;
+                        continuation->cleanupContinuationKind =
+                            MethodCleanupContinuationKind::Normal;
+                        state.regionNode->children.push_back(
+                            std::move(continuation));
+                        state.node->children.push_back(std::move(state.regionNode));
+                        lowered = std::move(state.node);
+                        frames.pop_back();
+                        continue;
+                    }
+
+                    if (state.nextCatch < frame.syntax->children().size())
+                    {
+                        state.catchSyntax =
+                            frame.syntax->children()[state.nextCatch++];
+                        const MethodExceptionBinding* catchBinding =
+                            exceptionBinding(state.catchSyntax);
+                        if (catchBinding == nullptr ||
+                            catchBinding->kind != MethodExceptionOperationKind::Catch)
+                        {
+                            error = "Stage 45.6 catch clause has no Stage 45.2 catch binding";
+                            rollbackMatchCleanups();
+                            return nullptr;
+                        }
+                        state.regionNode = makeNode(
+                            ProjectOopHirNodeKind::CatchRegion,
+                            state.catchSyntax,
+                            "builtin:void");
+                        state.regionNode->elementTypeKey =
+                            catchBinding->exceptionTypeKey;
+                        state.regionNode->exceptionTypeOrdinal =
+                            catchBinding->exceptionTypeOrdinal;
+                        state.regionNode->catchAll = catchBinding->catchAll;
+                        state.regionNode->catchHasFilter = catchBinding->hasFilter;
+                        state.regionNode->catchExhaustive = catchBinding->exhaustive;
+                        state.regionNode->catchMatchedErrorTypeKeys =
+                            catchBinding->matchedErrorTypeKeys;
+                        if (const MethodLocalSymbol* local =
+                                localSymbol(state.catchSyntax);
+                            local != nullptr)
+                        {
+                            state.regionNode->localOrdinal =
+                                static_cast<std::size_t>(
+                                    local - methodBodyModel_->locals().data());
+                            state.regionNode->stringValue = local->name;
+                        }
+                        frame.stage = catchBinding->hasFilter ? 1U : 2U;
+                        current = catchBinding->hasFilter
+                            ? state.catchSyntax->second()
+                            : state.catchSyntax->first();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        currentInputKind = catchBinding->hasFilter
+                            ? IterativeInputKind::Expression
+                            : IterativeInputKind::LoopBlock;
+                        descend = true;
+                        break;
+                    }
+
+                    if (frame.cleanupActive)
+                    {
+                        activeHirCleanupRegions_.resize(frame.cleanupDepth);
+                        frame.cleanupActive = false;
+                    }
+                    if (frame.syntax->second() != nullptr)
+                    {
+                        if (!state.cleanupOrdinal.has_value())
+                        {
+                            error = "Stage 45.6 finally block has no cleanup region";
+                            rollbackMatchCleanups();
+                            return nullptr;
+                        }
+                        state.regionNode = makeNode(
+                            ProjectOopHirNodeKind::FinallyRegion,
+                            frame.syntax->second(),
+                            "builtin:void");
+                        state.regionNode->cleanupRegionOrdinal =
+                            state.cleanupOrdinal;
+                        frame.stage = 3U;
+                        current = frame.syntax->second();
+                        currentMemberOrdinal = frame.memberOrdinal;
+                        currentAddressContext = false;
+                        currentInputKind = IterativeInputKind::LoopBlock;
+                        descend = true;
+                        break;
+                    }
+
                     lowered = std::move(state.node);
                     frames.pop_back();
                     continue;
@@ -8203,6 +8479,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
                                 frame.stage = 3U;
                                 return beginUsingStatement(
                                     declaration, frame.memberOrdinal);
+                            }
+                            if (declaration != nullptr &&
+                                declaration->kind() == ast::AstNodeKind::TryStatement)
+                            {
+                                frame.stage = 3U;
+                                beginTryStatement(declaration, frame.memberOrdinal);
+                                return true;
                             }
                             auto declarationNode = lowerStatement(
                                 declaration, frame.memberOrdinal, error);
@@ -10515,6 +10798,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
          statementContinuation->kind() == ast::AstNodeKind::ForStatement ||
          statementContinuation->kind() == ast::AstNodeKind::ForeachStatement ||
          statementContinuation->kind() == ast::AstNodeKind::UsingStatement ||
+         statementContinuation->kind() == ast::AstNodeKind::TryStatement ||
          statementContinuation->kind() == ast::AstNodeKind::BreakStatement ||
          statementContinuation->kind() == ast::AstNodeKind::ReturnStatement ||
          statementContinuation->kind() == ast::AstNodeKind::ThrowStatement);

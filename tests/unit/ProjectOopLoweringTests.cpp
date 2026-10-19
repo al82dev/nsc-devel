@@ -947,6 +947,12 @@ struct ProjectOopHirModelTestAccess final
         return model.activeHirCleanupRegions_.size();
     }
 
+    static std::size_t activeExceptionHandlerDepth(
+        const ProjectOopHirModel& model)
+    {
+        return model.activeHirExceptionHandlers_.size();
+    }
+
     static std::unique_ptr<ProjectOopHirNode> lowerFieldExpression(
         ProjectOopHirModel& model,
         const ast::AstNode* root,
@@ -1674,6 +1680,50 @@ struct ProjectOopHirModelTestAccess final
         for (const auto& [syntax, type] : typedSyntax)
             model.expressionTypeBySyntax_[syntax] = type;
         model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        return model.lowerStatement(statement, 0U, error);
+    }
+
+    static std::unique_ptr<ProjectOopHirNode> lowerTryStatementForTest(
+        ProjectOopHirModel& model,
+        ProjectMethodBodyModel& methodBodyModel,
+        const ast::AstNode* statement,
+        const std::vector<MethodExceptionBinding>& exceptionBindings,
+        std::vector<MethodCleanupRegion> cleanupRegions,
+        std::vector<MethodLocalSymbol> locals,
+        const std::vector<std::pair<const ast::AstNode*,
+            const MethodExpressionTypeBinding*>>& typedSyntax,
+        std::vector<std::size_t> activeCleanupRegions,
+        std::optional<std::pair<std::size_t, std::size_t>> activeExceptionHandler,
+        std::string& error)
+    {
+        methodBodyModel.cleanupRegions_ = std::move(cleanupRegions);
+        methodBodyModel.locals_ = std::move(locals);
+        model.methodBodyModel_ = &methodBodyModel;
+        model.exceptionBindingBySyntax_.clear();
+        for (const MethodExceptionBinding& binding : exceptionBindings)
+            model.exceptionBindingBySyntax_[binding.syntax] = &binding;
+        model.cleanupRegionBySyntax_.clear();
+        for (std::size_t index = 0U;
+             index < methodBodyModel.cleanupRegions_.size(); ++index)
+        {
+            model.cleanupRegionBySyntax_[
+                methodBodyModel.cleanupRegions_[index].syntax] =
+                &methodBodyModel.cleanupRegions_[index];
+        }
+        model.localBySyntax_.clear();
+        for (const MethodLocalSymbol& local : methodBodyModel.locals_)
+            model.localBySyntax_[local.syntax] = &local;
+        model.expressionTypeBySyntax_.clear();
+        for (const auto& [syntax, type] : typedSyntax)
+            model.expressionTypeBySyntax_[syntax] = type;
+        model.activeHirCleanupRegions_ = std::move(activeCleanupRegions);
+        model.activeHirExceptionHandlers_.clear();
+        if (activeExceptionHandler.has_value())
+        {
+            model.activeHirExceptionHandlers_.push_back({
+                activeExceptionHandler->first,
+                activeExceptionHandler->second});
+        }
         return model.lowerStatement(statement, 0U, error);
     }
 
@@ -16929,6 +16979,323 @@ void testDeepUsingStatementLowering(TestContext& tests)
         "using body failure restores the outer cleanup stack exactly");
 }
 
+struct DeepTryStatementFixture final
+{
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    std::vector<const nativesharp::ast::AstNode*> tries;
+    const nativesharp::ast::AstNode* root = nullptr;
+};
+
+DeepTryStatementFixture makeDeepTryStatementFixture(std::size_t depth)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    DeepTryStatementFixture fixture;
+    fixture.nodes.reserve(depth * 2U);
+    fixture.tries.reserve(depth);
+    nativesharp::ast::AstNode* innerTry = nullptr;
+    for (std::size_t index = 0U; index < depth; ++index)
+    {
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::BlockStatement, nativesharp::SourceRange{}));
+        auto* body = fixture.nodes.back().get();
+        if (innerTry != nullptr) body->addChild(innerTry);
+
+        fixture.nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            AstKind::TryStatement, nativesharp::SourceRange{}));
+        auto* statement = fixture.nodes.back().get();
+        statement->setFirst(body);
+        fixture.tries.push_back(statement);
+        innerTry = statement;
+    }
+    fixture.root = innerTry;
+    return fixture;
+}
+
+bool deepTryStatementChainMatches(
+    const nativesharp::frontend::ProjectOopHirNode* node,
+    const DeepTryStatementFixture& fixture)
+{
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    for (std::size_t remaining = fixture.tries.size(); remaining > 0U; --remaining)
+    {
+        const std::size_t syntaxIndex = remaining - 1U;
+        const std::size_t regionOrdinal = fixture.tries.size() - remaining;
+        if (node == nullptr || node->kind != HirKind::TryRegion ||
+            node->syntax != fixture.tries[syntaxIndex] ||
+            node->typeKey != "builtin:void" ||
+            node->hirRegionOrdinal != regionOrdinal ||
+            node->cleanupRegionOrdinal.has_value() ||
+            node->children.size() != 1U ||
+            node->children.front()->kind != HirKind::Block)
+        {
+            return false;
+        }
+        const auto* body = node->children.front().get();
+        if (syntaxIndex == 0U) return body->children.empty();
+        if (body->children.size() != 1U) return false;
+        node = body->children.front().get();
+    }
+    return false;
+}
+
+void testDeepTryStatementLowering(TestContext& tests)
+{
+    using AstKind = nativesharp::ast::AstNodeKind;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using ExceptionKind = nativesharp::frontend::MethodExceptionOperationKind;
+    using ContinuationKind = nativesharp::frontend::MethodCleanupContinuationKind;
+    constexpr std::size_t nestingDepth = 32768U;
+
+    auto deepFixture = makeDeepTryStatementFixture(nestingDepth);
+    ProjectOopHirModel deepModel;
+    nativesharp::frontend::ProjectMethodBodyModel deepBody;
+    std::string error;
+    auto deep = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerTryStatementForTest(
+            deepModel, deepBody, deepFixture.root, {}, {}, {}, {}, {}, {}, error);
+    tests.expect(deep != nullptr && error.empty(),
+        "32768 nested try statements lower on one worklist (" + error + ")");
+    tests.expect(deepTryStatementChainMatches(deep.get(), deepFixture),
+        "iterative try lowering preserves protected-block order and region ordinals");
+    tests.expect(
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeCleanupDepth(deepModel) == 0U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeExceptionHandlerDepth(deepModel) == 0U,
+        "deep try success restores empty cleanup and exception-handler stacks");
+    destroyHirTreeIteratively(deep);
+
+    std::vector<std::unique_ptr<nativesharp::ast::AstNode>> nodes;
+    nodes.reserve(12U);
+    const auto makeNode = [&](AstKind kind)
+    {
+        nodes.push_back(std::make_unique<nativesharp::ast::AstNode>(
+            kind, nativesharp::SourceRange{}));
+        return nodes.back().get();
+    };
+    auto* protectedThrow = makeNode(AstKind::ThrowStatement);
+    auto* protectedBlock = makeNode(AstKind::BlockStatement);
+    protectedBlock->addChild(protectedThrow);
+    auto* filter = makeNode(AstKind::BooleanLiteralExpression);
+    filter->setTokenKind(nativesharp::lexer::TokenKind::KwTrue);
+    auto* firstCatchBody = makeNode(AstKind::BlockStatement);
+    auto* firstCatch = makeNode(AstKind::CatchClause);
+    firstCatch->setFirst(firstCatchBody);
+    firstCatch->setSecond(filter);
+    auto* catchThrow = makeNode(AstKind::ThrowStatement);
+    auto* secondCatchBody = makeNode(AstKind::BlockStatement);
+    secondCatchBody->addChild(catchThrow);
+    auto* secondCatch = makeNode(AstKind::CatchClause);
+    secondCatch->setFirst(secondCatchBody);
+    auto* finallyThrow = makeNode(AstKind::ThrowStatement);
+    auto* finallyBody = makeNode(AstKind::BlockStatement);
+    finallyBody->addChild(finallyThrow);
+    auto* statement = makeNode(AstKind::TryStatement);
+    statement->setFirst(protectedBlock);
+    statement->setSecond(finallyBody);
+    statement->addChild(firstCatch);
+    statement->addChild(secondCatch);
+
+    std::vector<nativesharp::frontend::MethodExceptionBinding> bindings;
+    const auto appendThrowBinding = [&](const nativesharp::ast::AstNode* syntax,
+                                        std::string typeKey,
+                                        std::size_t typeOrdinal)
+    {
+        nativesharp::frontend::MethodExceptionBinding binding;
+        binding.kind = ExceptionKind::Throw;
+        binding.syntax = syntax;
+        binding.exceptionTypeKey = std::move(typeKey);
+        binding.exceptionTypeOrdinal = typeOrdinal;
+        bindings.push_back(std::move(binding));
+    };
+    appendThrowBinding(protectedThrow, "type:Protected.Error", 10U);
+    nativesharp::frontend::MethodExceptionBinding firstCatchBinding;
+    firstCatchBinding.kind = ExceptionKind::Catch;
+    firstCatchBinding.syntax = firstCatch;
+    firstCatchBinding.exceptionTypeKey = "type:First.Error";
+    firstCatchBinding.exceptionTypeOrdinal = 11U;
+    firstCatchBinding.hasFilter = true;
+    firstCatchBinding.matchedErrorTypeKeys = {
+        "type:First.Error", "type:Derived.Error"};
+    bindings.push_back(std::move(firstCatchBinding));
+    nativesharp::frontend::MethodExceptionBinding secondCatchBinding;
+    secondCatchBinding.kind = ExceptionKind::Catch;
+    secondCatchBinding.syntax = secondCatch;
+    secondCatchBinding.exceptionTypeKey = "type:Second.Error";
+    secondCatchBinding.exceptionTypeOrdinal = 12U;
+    secondCatchBinding.catchAll = true;
+    secondCatchBinding.exhaustive = true;
+    secondCatchBinding.matchedErrorTypeKeys = {"type:Second.Error"};
+    bindings.push_back(std::move(secondCatchBinding));
+    appendThrowBinding(catchThrow, "type:Catch.Error", 13U);
+    appendThrowBinding(finallyThrow, "type:Finally.Error", 14U);
+
+    nativesharp::frontend::MethodCleanupRegion cleanup;
+    cleanup.kind = nativesharp::frontend::MethodCleanupRegionKind::Finally;
+    cleanup.syntax = statement;
+    cleanup.cleanupSyntax = finallyBody;
+    nativesharp::frontend::MethodLocalSymbol catchLocal;
+    catchLocal.syntax = firstCatch;
+    catchLocal.name = "caught";
+    catchLocal.typeKey = "type:First.Error";
+    nativesharp::frontend::MethodExpressionTypeBinding booleanType;
+    booleanType.typeKey = "builtin:bool";
+
+    ProjectOopHirModel contractModel;
+    nativesharp::frontend::ProjectMethodBodyModel contractBody;
+    error.clear();
+    auto lowered = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerTryStatementForTest(
+            contractModel,
+            contractBody,
+            statement,
+            bindings,
+            {cleanup},
+            {catchLocal},
+            {{filter, &booleanType}},
+            {7U, 9U},
+            std::pair<std::size_t, std::size_t>{55U, 1U},
+            error);
+    const auto* protectedHir = lowered != nullptr && !lowered->children.empty()
+        ? lowered->children[0].get() : nullptr;
+    const auto* firstCatchHir = lowered != nullptr && lowered->children.size() > 1U
+        ? lowered->children[1].get() : nullptr;
+    const auto* secondCatchHir = lowered != nullptr && lowered->children.size() > 2U
+        ? lowered->children[2].get() : nullptr;
+    const auto* finallyHir = lowered != nullptr && lowered->children.size() > 3U
+        ? lowered->children[3].get() : nullptr;
+    tests.expect(lowered != nullptr && error.empty() &&
+            lowered->kind == HirKind::TryRegion && lowered->hirRegionOrdinal == 0U &&
+            lowered->cleanupRegionOrdinal == 0U && lowered->children.size() == 4U &&
+            firstCatchHir != nullptr && firstCatchHir->kind == HirKind::CatchRegion &&
+            firstCatchHir->elementTypeKey == "type:First.Error" &&
+            firstCatchHir->exceptionTypeOrdinal == 11U &&
+            firstCatchHir->catchHasFilter && !firstCatchHir->catchAll &&
+            !firstCatchHir->catchExhaustive &&
+            firstCatchHir->catchMatchedErrorTypeKeys ==
+                std::vector<std::string>({"type:First.Error", "type:Derived.Error"}) &&
+            firstCatchHir->localOrdinal == 0U && firstCatchHir->stringValue == "caught" &&
+            firstCatchHir->children.size() == 2U &&
+            firstCatchHir->children[0]->kind == HirKind::BooleanConstant &&
+            firstCatchHir->children[1]->kind == HirKind::Block,
+        "try lowering preserves catch metadata, local, filter and source order");
+    const auto* protectedExit = protectedHir != nullptr && !protectedHir->children.empty()
+        ? protectedHir->children.front().get() : nullptr;
+    tests.expect(protectedExit != nullptr && protectedExit->kind == HirKind::Throw &&
+            protectedExit->exceptionTargetRegionOrdinal == 0U &&
+            protectedExit->cleanupRegionOrdinals.empty(),
+        "protected throw targets the current try handler at its retained cleanup depth");
+    const auto* catchExit = secondCatchHir != nullptr &&
+            secondCatchHir->children.size() == 1U &&
+            !secondCatchHir->children.front()->children.empty()
+        ? secondCatchHir->children.front()->children.front().get() : nullptr;
+    const auto* finallyExit = finallyHir != nullptr &&
+            finallyHir->children.size() == 2U &&
+            !finallyHir->children.front()->children.empty()
+        ? finallyHir->children.front()->children.front().get() : nullptr;
+    tests.expect(secondCatchHir != nullptr && secondCatchHir->kind == HirKind::CatchRegion &&
+            secondCatchHir->catchAll && secondCatchHir->catchExhaustive &&
+            catchExit != nullptr && catchExit->exceptionTargetRegionOrdinal == 55U &&
+            catchExit->cleanupRegionOrdinals == std::vector<std::size_t>({0U, 9U}) &&
+            finallyHir != nullptr && finallyHir->kind == HirKind::FinallyRegion &&
+            finallyHir->cleanupRegionOrdinal == 0U && finallyExit != nullptr &&
+            finallyExit->exceptionTargetRegionOrdinal == 55U &&
+            finallyExit->cleanupRegionOrdinals == std::vector<std::size_t>({9U}) &&
+            finallyHir->children[1]->kind == HirKind::CleanupContinuation &&
+            finallyHir->children[1]->cleanupRegionOrdinal == 0U &&
+            finallyHir->children[1]->cleanupContinuationKind == ContinuationKind::Normal,
+        "catch and finally preserve outer-handler routing and exact cleanup lifetimes");
+    tests.expect(
+        nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeCleanupDepth(contractModel) == 2U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeExceptionHandlerDepth(contractModel) == 1U,
+        "try success restores the outer cleanup and exception-handler stacks");
+    destroyHirTreeIteratively(lowered);
+
+    auto missingProtected = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    auto missingCatchBody = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    auto missingCatch = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::CatchClause, nativesharp::SourceRange{});
+    missingCatch->setFirst(missingCatchBody.get());
+    auto missingTry = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::TryStatement, nativesharp::SourceRange{});
+    missingTry->setFirst(missingProtected.get());
+    missingTry->addChild(missingCatch.get());
+    ProjectOopHirModel missingModel;
+    nativesharp::frontend::ProjectMethodBodyModel missingBody;
+    error.clear();
+    auto missing = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerTryStatementForTest(
+            missingModel, missingBody, missingTry.get(), {}, {}, {}, {}, {3U}, {}, error);
+    tests.expect(missing == nullptr &&
+            error == "Stage 45.6 catch clause has no Stage 45.2 catch binding" &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeCleanupDepth(missingModel) == 1U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeExceptionHandlerDepth(missingModel) == 0U,
+        "missing catch binding keeps historical diagnostic priority and restores context");
+
+    auto noCleanupProtected = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    auto noCleanupFinally = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    auto noCleanupTry = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::TryStatement, nativesharp::SourceRange{});
+    noCleanupTry->setFirst(noCleanupProtected.get());
+    noCleanupTry->setSecond(noCleanupFinally.get());
+    ProjectOopHirModel noCleanupModel;
+    nativesharp::frontend::ProjectMethodBodyModel noCleanupBody;
+    error.clear();
+    auto noCleanup = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerTryStatementForTest(
+            noCleanupModel, noCleanupBody, noCleanupTry.get(), {}, {}, {}, {}, {}, {}, error);
+    tests.expect(noCleanup == nullptr &&
+            error == "Stage 45.6 finally block has no cleanup region",
+        "finally without a cleanup region preserves its exact historical diagnostic");
+
+    auto badUsing = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::UsingStatement, nativesharp::SourceRange{});
+    auto failedProtected = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    failedProtected->addChild(badUsing.get());
+    auto unreachableCatchBody = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::BlockStatement, nativesharp::SourceRange{});
+    auto unreachableCatch = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::CatchClause, nativesharp::SourceRange{});
+    unreachableCatch->setFirst(unreachableCatchBody.get());
+    auto failedTry = std::make_unique<nativesharp::ast::AstNode>(
+        AstKind::TryStatement, nativesharp::SourceRange{});
+    failedTry->setFirst(failedProtected.get());
+    failedTry->addChild(unreachableCatch.get());
+    nativesharp::frontend::MethodCleanupRegion failedCleanup;
+    failedCleanup.syntax = failedTry.get();
+    ProjectOopHirModel failedModel;
+    nativesharp::frontend::ProjectMethodBodyModel failedBody;
+    error.clear();
+    auto failed = nativesharp::frontend::ProjectOopHirModelTestAccess::
+        lowerTryStatementForTest(
+            failedModel,
+            failedBody,
+            failedTry.get(),
+            {},
+            {failedCleanup},
+            {},
+            {},
+            {13U},
+            std::pair<std::size_t, std::size_t>{77U, 0U},
+            error);
+    tests.expect(failed == nullptr &&
+            error == "Stage 45.6 using statement has no frozen using/cleanup binding" &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeCleanupDepth(failedModel) == 1U &&
+            nativesharp::frontend::ProjectOopHirModelTestAccess::
+                activeExceptionHandlerDepth(failedModel) == 1U,
+        "protected-block failure restores both outer stacks before catch validation");
+}
+
 void testDeepUserIndexerGetterLowering(
     TestContext& tests,
     const std::filesystem::path& root)
@@ -20900,6 +21267,10 @@ int main()
     else if (focusValue == "hir-using-statement-depth")
     {
         testDeepUsingStatementLowering(tests);
+    }
+    else if (focusValue == "hir-try-statement-depth")
+    {
+        testDeepTryStatementLowering(tests);
     }
     else if (focusValue == "hir-user-indexer-getter-depth")
     {

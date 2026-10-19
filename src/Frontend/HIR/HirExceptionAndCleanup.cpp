@@ -55,11 +55,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExceptionOrExitState
     std::size_t memberOrdinal,
     std::string& error)
 {
-    const auto cleanupOrdinalFor = [&](
-        const MethodCleanupRegion* region) -> std::optional<std::size_t>
-    {
-        return cleanupRegionOrdinal(region);
-    };
     const auto attachStructuredExit = [&](ProjectOopHirNode& node)
     {
         applyStructuredExitBinding(node, statement);
@@ -125,97 +120,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExceptionOrExitState
             return lowerUsingStatement(statement, memberOrdinal, error);
 
         case ast::AstNodeKind::TryStatement:
-        {
-            auto node = makeNode(ProjectOopHirNodeKind::TryRegion, statement, "builtin:void");
-            node->hirRegionOrdinal = nextHirRegionOrdinal_++;
-            const MethodCleanupRegion* region = cleanupRegion(statement);
-            const std::optional<std::size_t> cleanupOrdinal = cleanupOrdinalFor(region);
-            if (cleanupOrdinal.has_value())
-            {
-                node->cleanupRegionOrdinal = cleanupOrdinal;
-                activeHirCleanupRegions_.push_back(*cleanupOrdinal);
-            }
-
-            const bool hasCatches = !statement->children().empty();
-            if (hasCatches)
-            {
-                activeHirExceptionHandlers_.push_back(HirExceptionHandlerContext{
-                    *node->hirRegionOrdinal, activeHirCleanupRegions_.size()});
-            }
-            auto protectedBlock = lowerBlock(statement->first(), memberOrdinal, error);
-            if (hasCatches) activeHirExceptionHandlers_.pop_back();
-            if (protectedBlock == nullptr)
-            {
-                if (cleanupOrdinal.has_value()) activeHirCleanupRegions_.pop_back();
-                return nullptr;
-            }
-            node->children.push_back(std::move(protectedBlock));
-
-            for (const ast::AstNode* catchClause : statement->children())
-            {
-                const MethodExceptionBinding* catchBinding = exceptionBinding(catchClause);
-                if (catchBinding == nullptr || catchBinding->kind != MethodExceptionOperationKind::Catch)
-                {
-                    if (cleanupOrdinal.has_value()) activeHirCleanupRegions_.pop_back();
-                    error = "Stage 45.6 catch clause has no Stage 45.2 catch binding";
-                    return nullptr;
-                }
-                auto catchNode = makeNode(ProjectOopHirNodeKind::CatchRegion, catchClause, "builtin:void");
-                catchNode->elementTypeKey = catchBinding->exceptionTypeKey;
-                catchNode->exceptionTypeOrdinal = catchBinding->exceptionTypeOrdinal;
-                catchNode->catchAll = catchBinding->catchAll;
-                catchNode->catchHasFilter = catchBinding->hasFilter;
-                catchNode->catchExhaustive = catchBinding->exhaustive;
-                catchNode->catchMatchedErrorTypeKeys = catchBinding->matchedErrorTypeKeys;
-                if (const MethodLocalSymbol* local = localSymbol(catchClause); local != nullptr)
-                {
-                    catchNode->localOrdinal = static_cast<std::size_t>(
-                        local - methodBodyModel_->locals().data());
-                    catchNode->stringValue = local->name;
-                }
-                if (catchBinding->hasFilter)
-                {
-                    auto catchFilter = lowerExpression(
-                        catchClause->second(), memberOrdinal, false, error);
-                    if (catchFilter == nullptr)
-                    {
-                        if (cleanupOrdinal.has_value()) activeHirCleanupRegions_.pop_back();
-                        return nullptr;
-                    }
-                    catchNode->children.push_back(std::move(catchFilter));
-                }
-                auto catchBody = lowerBlock(catchClause->first(), memberOrdinal, error);
-                if (catchBody == nullptr)
-                {
-                    if (cleanupOrdinal.has_value()) activeHirCleanupRegions_.pop_back();
-                    return nullptr;
-                }
-                catchNode->children.push_back(std::move(catchBody));
-                node->children.push_back(std::move(catchNode));
-            }
-
-            if (cleanupOrdinal.has_value()) activeHirCleanupRegions_.pop_back();
-
-            if (statement->second() != nullptr)
-            {
-                if (!cleanupOrdinal.has_value())
-                {
-                    error = "Stage 45.6 finally block has no cleanup region";
-                    return nullptr;
-                }
-                auto finallyNode = makeNode(ProjectOopHirNodeKind::FinallyRegion, statement->second(), "builtin:void");
-                finallyNode->cleanupRegionOrdinal = cleanupOrdinal;
-                auto finallyBody = lowerBlock(statement->second(), memberOrdinal, error);
-                if (finallyBody == nullptr) return nullptr;
-                finallyNode->children.push_back(std::move(finallyBody));
-                auto continuation = makeNode(ProjectOopHirNodeKind::CleanupContinuation, statement, "builtin:void");
-                continuation->cleanupRegionOrdinal = cleanupOrdinal;
-                continuation->cleanupContinuationKind = MethodCleanupContinuationKind::Normal;
-                finallyNode->children.push_back(std::move(continuation));
-                node->children.push_back(std::move(finallyNode));
-            }
-            return node;
-        }
+            return lowerTryStatement(statement, memberOrdinal, error);
         default:
             error = "non-exception/exit statement reached HIR exception lowering";
             return nullptr;
