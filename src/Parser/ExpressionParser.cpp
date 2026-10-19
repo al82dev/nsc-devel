@@ -1779,6 +1779,11 @@ void Parser::PostfixIterationMachine::execute(Work work)
 Parser::ExpressionContinuationStatus Parser::PostfixIterationMachine::advance(
     ast::AstNode* completedBlock)
 {
+#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
+    ++scheduler_test_hooks::activeDepth;
+    scheduler_test_hooks::maximumDepth = std::max(
+        scheduler_test_hooks::maximumDepth, scheduler_test_hooks::activeDepth);
+#endif
     if (!started_)
     {
         WorkKind root = WorkKind::Expression;
@@ -1808,9 +1813,14 @@ Parser::ExpressionContinuationStatus Parser::PostfixIterationMachine::advance(
         work_.pop_back();
         execute(std::move(work));
     }
-    return results_[rootSlot_].ready
+    const ExpressionContinuationStatus status = results_[rootSlot_].ready
         ? ExpressionContinuationStatus::Complete
         : ExpressionContinuationStatus::NeedsBlock;
+#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
+    scheduler_test_hooks::unfinishedResults = outstandingResults_;
+    --scheduler_test_hooks::activeDepth;
+#endif
+    return status;
 }
 
 ast::AstNode* Parser::PostfixIterationMachine::result() const noexcept
