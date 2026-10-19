@@ -32,6 +32,11 @@ from .configuration import *
 from .toolchain import *
 
 
+NSLINK_SOURCE_ROOT = Path("A:/nslink-devel")
+NSASM_SOURCE_ROOT = Path("A:/nsasm-devel")
+NSDBG_SOURCE_ROOT = Path("A:/nsc-debugger")
+
+
 def effective_build_dir(config: BuilderConfig, mode: str) -> Path:
     """Keep Debug and Release test infrastructure in independent trees."""
     return Path(config.build_root).resolve() / mode.casefold()
@@ -260,6 +265,167 @@ def compiler_output(config: BuilderConfig, mode: str) -> Path:
     return compiler_build_dir(config, mode) / "bin" / "nsc.exe"
 
 
+def compiler_sibling_output(config: BuilderConfig, mode: str, name: str) -> Path:
+    """Return one Win32 sibling tool published beside the selected NSC build."""
+    if name not in {"nslink", "nsasm", "nsdbg"}:
+        raise ValueError(f"unsupported NativeSharp sibling tool: {name}")
+    return compiler_build_dir(config, mode) / "bin" / f"{name}.exe"
+
+
+def _sibling_build_dir(source_root: Path, mode: str) -> Path:
+    """Keep Builder-owned sibling builds isolated by product and configuration."""
+    return source_root / f"build-nscbuilder3-{mode.casefold()}"
+
+
+def _validated_sibling_source(path: Path, label: str) -> Path:
+    """Require the fixed A-drive Win32 source checkout and its CMake entry point."""
+    source = require_directory_path(path, label, require_a_drive=True, must_exist=True)
+    require_file_path(source / "CMakeLists.txt", f"{label} CMakeLists", require_a_drive=True)
+    return source
+
+
+def compiler_nslink_commands(
+    config: BuilderConfig, modes: Sequence[str]
+) -> list[tuple[str, list[str], Path]]:
+    """Configure and build the Win32 NSLink consumed by each NSC configuration."""
+    tools = discover_compiler_build_tools(str(config.llvm_root_path()))
+    source = _validated_sibling_source(NSLINK_SOURCE_ROOT, "NSLink source root")
+    llvm_config = Path(tools["llvm_root"]) / "bin" / "llvm-config.exe"
+    if not llvm_config.is_file():
+        raise ValueError(f"required LLVM 23 tool does not exist: {llvm_config}")
+    commands: list[tuple[str, list[str], Path]] = []
+    for mode in modes:
+        build = _sibling_build_dir(source, mode)
+        output = compiler_sibling_output(config, mode, "nslink").parent
+        commands.append(
+            (
+                f"Configurar NSLink {mode}",
+                [
+                    tools["cmake"],
+                    "-S",
+                    source.as_posix(),
+                    "-B",
+                    build.as_posix(),
+                    "-G",
+                    "Ninja",
+                    f"-DCMAKE_MAKE_PROGRAM={Path(tools['ninja']).as_posix()}",
+                    f"-DCMAKE_BUILD_TYPE={mode}",
+                    f"-DCMAKE_CXX_COMPILER={Path(tools['clang_cl']).as_posix()}",
+                    f"-DCMAKE_LINKER={Path(tools['lld_link']).as_posix()}",
+                    f"-DNSLINK_LLVM_CONFIG={llvm_config.as_posix()}",
+                    f"-DNSLINK_PRODUCT_OUTPUT_DIR={output.as_posix()}",
+                ],
+                source,
+            )
+        )
+        commands.append(
+            (
+                f"Construir NSLink {mode}",
+                [
+                    tools["cmake"],
+                    "--build",
+                    build.as_posix(),
+                    "--target",
+                    "nslink",
+                    "--parallel",
+                    str(config.jobs),
+                ],
+                source,
+            )
+        )
+    return commands
+
+
+def compiler_post_build_sibling_commands(
+    config: BuilderConfig, modes: Sequence[str]
+) -> list[tuple[str, list[str], Path]]:
+    """Build NSAsm and then NSDBG beside each completed Win32 NSC build."""
+    tools = discover_compiler_build_tools(str(config.llvm_root_path()))
+    llvm_root = Path(tools["llvm_root"]).resolve()
+    nsasm_source = _validated_sibling_source(NSASM_SOURCE_ROOT, "NSAsm source root")
+    nsdbg_source = _validated_sibling_source(NSDBG_SOURCE_ROOT, "NSDBG source root")
+    commands: list[tuple[str, list[str], Path]] = []
+    for mode in modes:
+        compiler_build = compiler_build_dir(config, mode)
+        output = compiler_build / "bin"
+        nsasm_build = _sibling_build_dir(nsasm_source, mode)
+        nsdbg_build = _sibling_build_dir(nsdbg_source, mode)
+        commands.extend(
+            [
+                (
+                    f"Configurar NSAsm {mode}",
+                    [
+                        tools["cmake"],
+                        "-S",
+                        nsasm_source.as_posix(),
+                        "-B",
+                        nsasm_build.as_posix(),
+                        "-G",
+                        "Ninja",
+                        f"-DCMAKE_MAKE_PROGRAM={Path(tools['ninja']).as_posix()}",
+                        f"-DCMAKE_BUILD_TYPE={mode}",
+                        f"-DCMAKE_INSTALL_PREFIX={compiler_build.as_posix()}",
+                        f"-DNATIVESHARP_LLVM_ROOT={llvm_root.as_posix()}",
+                        f"-DNSASM_PRODUCT_OUTPUT_DIR={output.as_posix()}",
+                    ],
+                    nsasm_source,
+                ),
+                (
+                    f"Construir NSAsm {mode}",
+                    [
+                        tools["cmake"],
+                        "--build",
+                        nsasm_build.as_posix(),
+                        "--target",
+                        "nsasm",
+                        "--parallel",
+                        str(config.jobs),
+                    ],
+                    nsasm_source,
+                ),
+                (
+                    f"Configurar NSDBG {mode}",
+                    [
+                        tools["cmake"],
+                        "-S",
+                        nsdbg_source.as_posix(),
+                        "-B",
+                        nsdbg_build.as_posix(),
+                        "-G",
+                        "Ninja",
+                        f"-DCMAKE_MAKE_PROGRAM={Path(tools['ninja']).as_posix()}",
+                        f"-DCMAKE_BUILD_TYPE={mode}",
+                        f"-DCMAKE_INSTALL_PREFIX={compiler_build.as_posix()}",
+                        f"-DNATIVESHARP_LLVM_ROOT={llvm_root.as_posix()}",
+                        "-DNSDBG_BUILD_TESTS=OFF",
+                        f"-DNSDBG_NATIVE_SHARP_ROOT={compiler_build.as_posix()}",
+                        f"-DNSDBG_PRODUCT_OUTPUT_DIR={output.as_posix()}",
+                        f"-DNSDBG_ZLIB_LIBRARY={(compiler_build / 'lib' / 'nsc-zlib.lib').as_posix()}",
+                        f"-DNSDBG_ZSTD_LIBRARY={(compiler_build / 'lib' / 'nsc-zstd.lib').as_posix()}",
+                        f"-DNSDBG_NSASM_EXECUTABLE={compiler_sibling_output(config, mode, 'nsasm').as_posix()}",
+                        f"-DNSDBG_NSLINK_EXECUTABLE={compiler_sibling_output(config, mode, 'nslink').as_posix()}",
+                        f"-DNSDBG_NSC_EXECUTABLE={compiler_output(config, mode).as_posix()}",
+                    ],
+                    nsdbg_source,
+                ),
+                (
+                    f"Construir NSDBG {mode}",
+                    [
+                        tools["cmake"],
+                        "--build",
+                        nsdbg_build.as_posix(),
+                        "--target",
+                        "nsdbg",
+                        "--parallel",
+                        str(config.jobs),
+                    ],
+                    nsdbg_source,
+                ),
+            ]
+        )
+    return commands
+
+
 def compiler_runtime_library(config: BuilderConfig) -> Path:
     """Return the runtime produced with the selected compiler identity."""
     if config.build_id_header:
@@ -480,12 +646,18 @@ def compiler_configure_commands(
     modes: Sequence[str],
     linkage: str,
     host_optimization: str,
+    use_sibling_nslink: bool = False,
 ) -> list[tuple[str, list[str], Path]]:
     """Configure NSC itself with the canonical Clang/LLVM/LLD Windows toolchain."""
     tools = discover_compiler_build_tools(str(config.llvm_root_path()))
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
         build = compiler_build_dir(config, mode)
+        selected_nslink = (
+            compiler_sibling_output(config, mode, "nslink")
+            if use_sibling_nslink
+            else Path(config.nslink_executable).resolve()
+        )
         command = [
             tools["cmake"],
             "-S",
@@ -509,7 +681,7 @@ def compiler_configure_commands(
             "-DNSC_WARNINGS_AS_ERRORS=ON",
             f"-DNSC_HOST_LINKAGE={linkage.upper()}",
             f"-DNSC_HOST_OPTIMIZATION={host_optimization}",
-            f"-DNSC_NSLINK_EXECUTABLE={Path(config.nslink_executable).resolve().as_posix()}",
+            f"-DNSC_NSLINK_EXECUTABLE={selected_nslink.as_posix()}",
             "-DNSC_BUILD_ID_OVERRIDE=",
         ]
         commands.append((f"Configurar NSC {mode}", command, SOURCE_ROOT))

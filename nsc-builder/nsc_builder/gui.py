@@ -1121,27 +1121,30 @@ def launch_gui(smoke_only: bool = False) -> int:
                 )
                 modes = ("Debug", "Release") if selected == "Todos" else (selected,)
                 if compiler_operation:
-                    nslink = require_a_path(
-                        Path(config.nslink_executable), "NSLink executable", True
-                    )
-                    configure = compiler_configure_commands(
+                    nslink_commands = compiler_nslink_commands(config, modes)
+                    configure_commands_for_compiler = compiler_configure_commands(
                         config,
                         modes,
                         self.compiler_linkage.currentText(),
                         self.compiler_optimization.currentText(),
+                        use_sibling_nslink=True,
                     )
                     if operation == "compiler-configure":
-                        commands = configure
+                        commands = nslink_commands + configure_commands_for_compiler
                     else:
-                        commands = compiler_configure_commands(
-                            config,
-                            modes,
-                            self.compiler_linkage.currentText(),
-                            self.compiler_optimization.currentText(),
-                        ) + compiler_build_commands(config, modes)
+                        commands = (
+                            nslink_commands
+                            + configure_commands_for_compiler
+                            + compiler_build_commands(config, modes)
+                            + compiler_post_build_sibling_commands(config, modes)
+                        )
                     receipt: dict[str, Any] = {
                         "captured_at": utc_now(),
-                        "tools": [file_receipt("nslink", nslink)],
+                        "sibling_sources": {
+                            "nslink": str(NSLINK_SOURCE_ROOT.resolve()),
+                            "nsasm": str(NSASM_SOURCE_ROOT.resolve()),
+                            "nsdbg": str(NSDBG_SOURCE_ROOT.resolve()),
+                        },
                         "build_tools": tools,
                     }
                 else:
@@ -1220,6 +1223,23 @@ def launch_gui(smoke_only: bool = False) -> int:
             failed = evidence.startswith("ERROR:") or any(
                 item.status in TERMINAL_FAILURES for item in typed
             )
+            preferred = ""
+            compiler_products: tuple[Path, ...] = ()
+            if not failed and not cancelled and self.active_operation == "compiler-build":
+                preferred = "Release" if "Release" in self.active_modes else self.active_modes[0]
+                config = self._config_from_ui()
+                compiler_products = (
+                    compiler_output(config, preferred),
+                    compiler_sibling_output(config, preferred, "nslink"),
+                    compiler_sibling_output(config, preferred, "nsasm"),
+                    compiler_sibling_output(config, preferred, "nsdbg"),
+                )
+                missing = tuple(path for path in compiler_products if not path.is_file())
+                if missing:
+                    failed = True
+                    evidence = "ERROR: faltan productos Win32: " + ", ".join(
+                        str(path) for path in missing
+                    )
             if evidence.startswith("ERROR:"):
                 message = evidence
             elif cancelled:
@@ -1241,13 +1261,15 @@ def launch_gui(smoke_only: bool = False) -> int:
                     "TERMINADO: la operación concluyó correctamente."
                 )
                 if self.active_operation == "compiler-build":
-                    preferred = "Release" if "Release" in self.active_modes else self.active_modes[0]
                     config = self._config_from_ui()
-                    built = compiler_output(config, preferred)
-                    if built.is_file():
-                        self.path_edits["nsc_executable"].setText(str(built))
-                        self._config_from_ui().save()
-                        message += f" NSC seleccionado: {built}"
+                    compiler, nslink, nsasm, nsdbg = compiler_products
+                    self.path_edits["nsc_executable"].setText(str(compiler))
+                    self.path_edits["nslink_executable"].setText(str(nslink))
+                    self._config_from_ui().save()
+                    message += (
+                        f" Toolchain Win32 seleccionado: {compiler}, {nslink}, "
+                        f"{nsasm}, {nsdbg}"
+                    )
             self.infrastructure_stage.setText(message)
             self._render_error_report(typed, cancelled, evidence)
             if failed:
