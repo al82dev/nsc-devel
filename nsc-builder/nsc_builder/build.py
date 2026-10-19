@@ -588,7 +588,7 @@ def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tupl
             "-DCMAKE_EXE_LINKER_FLAGS=",
             f"-DNSC_COMPILER_SUITE_NSC_EXECUTABLE="
             f"{Path(config.nsc_executable).resolve().as_posix()}",
-            f"-DNSC_NSLINK_EXECUTABLE={Path(config.nslink_executable).resolve().as_posix()}",
+            f"-DNSC_NSLINK_EXECUTABLE={compiler_sibling_output(config, mode, 'nslink').as_posix()}",
             f"-DNSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY="
             f"{runtime_library}",
         ]
@@ -646,18 +646,12 @@ def compiler_configure_commands(
     modes: Sequence[str],
     linkage: str,
     host_optimization: str,
-    use_sibling_nslink: bool = False,
 ) -> list[tuple[str, list[str], Path]]:
     """Configure NSC itself with the canonical Clang/LLVM/LLD Windows toolchain."""
     tools = discover_compiler_build_tools(str(config.llvm_root_path()))
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
         build = compiler_build_dir(config, mode)
-        selected_nslink = (
-            compiler_sibling_output(config, mode, "nslink")
-            if use_sibling_nslink
-            else Path(config.nslink_executable).resolve()
-        )
         command = [
             tools["cmake"],
             "-S",
@@ -681,7 +675,7 @@ def compiler_configure_commands(
             "-DNSC_WARNINGS_AS_ERRORS=ON",
             f"-DNSC_HOST_LINKAGE={linkage.upper()}",
             f"-DNSC_HOST_OPTIMIZATION={host_optimization}",
-            f"-DNSC_NSLINK_EXECUTABLE={selected_nslink.as_posix()}",
+            f"-DNSC_NSLINK_EXECUTABLE={Path(config.nslink_executable).resolve().as_posix()}",
             "-DNSC_BUILD_ID_OVERRIDE=",
         ]
         commands.append((f"Configurar NSC {mode}", command, SOURCE_ROOT))
