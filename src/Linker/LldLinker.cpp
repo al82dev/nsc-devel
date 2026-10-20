@@ -360,6 +360,129 @@ bool validateLibraries(
     }
     return true;
 }
+
+#ifdef _WIN32
+bool openLinkerHandles(
+    const std::filesystem::path& executable,
+    const std::filesystem::path& logPath,
+    SECURITY_ATTRIBUTES& securityAttributes,
+    HANDLE& inputHandle,
+    HANDLE& logHandle,
+    std::string& error)
+{
+    securityAttributes.nLength = sizeof(securityAttributes);
+    securityAttributes.bInheritHandle = TRUE;
+    logHandle = CreateFileW(
+        logPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &securityAttributes,
+        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (logHandle == INVALID_HANDLE_VALUE)
+    {
+        error = "could not create " + linkerProductName(executable) + " log file: " +
+            std::system_category().message(static_cast<int>(GetLastError()));
+        return false;
+    }
+    inputHandle = CreateFileW(
+        L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &securityAttributes,
+        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (inputHandle != INVALID_HANDLE_VALUE) return true;
+    const DWORD lastError = GetLastError();
+    CloseHandle(logHandle);
+    error = "could not open NUL for " + linkerProductName(executable) + " stdin: " +
+        std::system_category().message(static_cast<int>(lastError));
+    return false;
+}
+
+bool startLinkerProcess(
+    const std::filesystem::path& executable,
+    const std::filesystem::path& responsePath,
+    const std::filesystem::path& workingDirectory,
+    bool libraryMode,
+    HANDLE inputHandle,
+    HANDLE logHandle,
+    PROCESS_INFORMATION& processInfo,
+    std::string& error)
+{
+    STARTUPINFOW startupInfo{};
+    startupInfo.cb = sizeof(startupInfo);
+    startupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startupInfo.hStdInput = inputHandle;
+    startupInfo.hStdOutput = logHandle;
+    startupInfo.hStdError = logHandle;
+    std::wstring commandLine = L"\"" + executable.wstring() + L"\"";
+    if (libraryMode) commandLine += L" /lib";
+    commandLine += L" @\"" + responsePath.wstring() + L"\"";
+    std::vector<wchar_t> mutableCommandLine(commandLine.begin(), commandLine.end());
+    mutableCommandLine.push_back(L'\0');
+    const BOOL created = CreateProcessW(
+        executable.c_str(), mutableCommandLine.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
+        nullptr, workingDirectory.empty() ? nullptr : workingDirectory.c_str(),
+        &startupInfo, &processInfo);
+    const DWORD createError = created ? ERROR_SUCCESS : GetLastError();
+    CloseHandle(inputHandle);
+    CloseHandle(logHandle);
+    if (created) return true;
+    error = "could not start " + linkerProductName(executable) + ": " +
+        std::system_category().message(static_cast<int>(createError));
+    return false;
+}
+
+bool waitForLinkerProcess(
+    const std::filesystem::path& executable,
+    const std::filesystem::path& logPath,
+    PROCESS_INFORMATION& processInfo,
+    std::string& error)
+{
+    const DWORD waitResult = WaitForSingleObject(processInfo.hProcess, INFINITE);
+    if (waitResult != WAIT_OBJECT_0)
+    {
+        const DWORD waitError = GetLastError();
+        CloseHandle(processInfo.hThread);
+        CloseHandle(processInfo.hProcess);
+        error = "waiting for " + linkerProductName(executable) + " failed: " +
+            std::system_category().message(static_cast<int>(waitError));
+        return false;
+    }
+    DWORD exitCode = 0;
+    if (!GetExitCodeProcess(processInfo.hProcess, &exitCode))
+    {
+        const DWORD exitError = GetLastError();
+        CloseHandle(processInfo.hThread);
+        CloseHandle(processInfo.hProcess);
+        error = "could not obtain " + linkerProductName(executable) + " exit code: " +
+            std::system_category().message(static_cast<int>(exitError));
+        return false;
+    }
+    CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
+    const std::string diagnostic = trimTrailingWhitespace(readText(logPath));
+    if (exitCode == 0) return true;
+    std::ostringstream message;
+    message << linkerProductName(executable) << " failed with process status " << exitCode;
+    if (!diagnostic.empty()) message << ":\n" << diagnostic;
+    error = message.str();
+    return false;
+}
+#else
+bool runPortableLinkerProcess(
+    const std::filesystem::path& executable,
+    const std::filesystem::path& responsePath,
+    const std::filesystem::path& logPath,
+    bool libraryMode,
+    std::string& error)
+{
+    const std::string command =
+        shellQuote(executable) + (libraryMode ? " /lib @" : " @") +
+        shellQuote(responsePath) + " >" + shellQuote(logPath) + " 2>&1";
+    const int status = std::system(command.c_str());
+    const std::string diagnostic = trimTrailingWhitespace(readText(logPath));
+    if (status == 0) return true;
+    std::ostringstream message;
+    message << linkerProductName(executable) << " failed with process status " << status;
+    if (!diagnostic.empty()) message << ":\n" << diagnostic;
+    error = message.str();
+    return false;
+}
+#endif
 }
 
 LldLinker::LldLinker(std::filesystem::path executablePath) noexcept
@@ -411,139 +534,23 @@ bool LldLinker::runResponseFile(
 
 #ifdef _WIN32
     SECURITY_ATTRIBUTES securityAttributes{};
-    securityAttributes.nLength = sizeof(securityAttributes);
-    securityAttributes.bInheritHandle = TRUE;
-
-    HANDLE logHandle = CreateFileW(
-        logPath.c_str(),
-        GENERIC_WRITE,
-        FILE_SHARE_READ,
-        &securityAttributes,
-        CREATE_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
-    if (logHandle == INVALID_HANDLE_VALUE)
+    HANDLE inputHandle = INVALID_HANDLE_VALUE;
+    HANDLE logHandle = INVALID_HANDLE_VALUE;
+    if (!openLinkerHandles(
+            executablePath_, logPath, securityAttributes, inputHandle, logHandle, error))
     {
-        error = "could not create " + linkerProductName(executablePath_) + " log file: " +
-            std::system_category().message(static_cast<int>(GetLastError()));
         return false;
     }
-
-    HANDLE inputHandle = CreateFileW(
-        L"NUL",
-        GENERIC_READ,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        &securityAttributes,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
-    if (inputHandle == INVALID_HANDLE_VALUE)
-    {
-        const DWORD lastError = GetLastError();
-        CloseHandle(logHandle);
-        error = "could not open NUL for " + linkerProductName(executablePath_) + " stdin: " +
-            std::system_category().message(static_cast<int>(lastError));
-        return false;
-    }
-
-    STARTUPINFOW startupInfo{};
-    startupInfo.cb = sizeof(startupInfo);
-    startupInfo.dwFlags = STARTF_USESTDHANDLES;
-    startupInfo.hStdInput = inputHandle;
-    startupInfo.hStdOutput = logHandle;
-    startupInfo.hStdError = logHandle;
-
     PROCESS_INFORMATION processInfo{};
-    std::wstring commandLine = L"\"" + executablePath_.wstring() + L"\"";
-    if (libraryMode)
+    if (!startLinkerProcess(
+            executablePath_, responsePath, workingDirectory, libraryMode,
+            inputHandle, logHandle, processInfo, error))
     {
-        commandLine += L" /lib";
-    }
-    commandLine += L" @\"" + responsePath.wstring() + L"\"";
-    std::vector<wchar_t> mutableCommandLine(
-        commandLine.begin(),
-        commandLine.end());
-    mutableCommandLine.push_back(L'\0');
-
-    const BOOL created = CreateProcessW(
-        executablePath_.c_str(),
-        mutableCommandLine.data(),
-        nullptr,
-        nullptr,
-        TRUE,
-        CREATE_NO_WINDOW,
-        nullptr,
-        workingDirectory.empty() ? nullptr : workingDirectory.c_str(),
-        &startupInfo,
-        &processInfo);
-
-    const DWORD createError = created ? ERROR_SUCCESS : GetLastError();
-    CloseHandle(inputHandle);
-    CloseHandle(logHandle);
-
-    if (!created)
-    {
-        error = "could not start " + linkerProductName(executablePath_) + ": " +
-            std::system_category().message(static_cast<int>(createError));
         return false;
     }
-
-    const DWORD waitResult = WaitForSingleObject(processInfo.hProcess, INFINITE);
-    if (waitResult != WAIT_OBJECT_0)
-    {
-        const DWORD waitError = GetLastError();
-        CloseHandle(processInfo.hThread);
-        CloseHandle(processInfo.hProcess);
-        error = "waiting for " + linkerProductName(executablePath_) + " failed: " +
-            std::system_category().message(static_cast<int>(waitError));
-        return false;
-    }
-
-    DWORD exitCode = 0;
-    if (!GetExitCodeProcess(processInfo.hProcess, &exitCode))
-    {
-        const DWORD exitError = GetLastError();
-        CloseHandle(processInfo.hThread);
-        CloseHandle(processInfo.hProcess);
-        error = "could not obtain " + linkerProductName(executablePath_) + " exit code: " +
-            std::system_category().message(static_cast<int>(exitError));
-        return false;
-    }
-
-    CloseHandle(processInfo.hThread);
-    CloseHandle(processInfo.hProcess);
-
-    const std::string diagnostic = trimTrailingWhitespace(readText(logPath));
-    if (exitCode != 0)
-    {
-        std::ostringstream message;
-        message << linkerProductName(executablePath_) << " failed with process status " << exitCode;
-        if (!diagnostic.empty())
-        {
-            message << ":\n" << diagnostic;
-        }
-        error = message.str();
-        return false;
-    }
-    return true;
+    return waitForLinkerProcess(executablePath_, logPath, processInfo, error);
 #else
-    const std::string command =
-        shellQuote(executablePath_) + (libraryMode ? " /lib @" : " @") +
-        shellQuote(responsePath) + " >" + shellQuote(logPath) + " 2>&1";
-    const int status = std::system(command.c_str());
-    const std::string diagnostic = trimTrailingWhitespace(readText(logPath));
-    if (status != 0)
-    {
-        std::ostringstream message;
-        message << linkerProductName(executablePath_) << " failed with process status " << status;
-        if (!diagnostic.empty())
-        {
-            message << ":\n" << diagnostic;
-        }
-        error = message.str();
-        return false;
-    }
-    return true;
+    return runPortableLinkerProcess(executablePath_, responsePath, logPath, libraryMode, error);
 #endif
 }
 
@@ -632,52 +639,53 @@ bool LldLinker::createImportLibrary(
     return true;
 }
 
-bool LldLinker::createStaticLibrary(
+namespace
+{
+bool validateStaticLibraryRequest(
     std::span<const std::filesystem::path> objectFiles,
     const std::filesystem::path& outputPath,
-    std::string& error) const
+    const std::filesystem::path& linkerPath,
+    std::filesystem::path& librarianPath,
+    std::string& error)
 {
-    error.clear();
-    if (!validateObjectFiles(objectFiles, "static-library generation", error))
-    {
-        return false;
-    }
+    if (!validateObjectFiles(objectFiles, "static-library generation", error)) return false;
     if (outputPath.empty() || containsQuote(outputPath))
     {
         error = "static-library output path is empty or contains an unsupported quote character";
         return false;
     }
-
-    const std::filesystem::path librarianPath = findLibrarian(executablePath_);
+    librarianPath = findLibrarian(linkerPath);
     if (librarianPath.empty())
     {
         error = "static-library generation requires llvm-lib when NSC_LINKER selects a "
             "linker without /lib mode; set NSC_LLVM_LIB to the librarian executable";
         return false;
     }
-    if (!std::filesystem::is_regular_file(librarianPath) || containsQuote(librarianPath))
-    {
-        error = "NSC_LLVM_LIB does not name a usable librarian executable: " +
-            librarianPath.string();
-        return false;
-    }
+    if (std::filesystem::is_regular_file(librarianPath) && !containsQuote(librarianPath))
+        return true;
+    error = "NSC_LLVM_LIB does not name a usable librarian executable: " +
+        librarianPath.string();
+    return false;
+}
 
-    std::filesystem::path responsePath = outputPath;
-    std::filesystem::path logPath = outputPath;
-    responsePath += ".lib.rsp";
-    logPath += ".lib.log";
-    std::vector<std::string> arguments = {
-        "/machine:x64",
-        responsePathArgument("/out:", outputPath)};
+std::filesystem::path staticLibraryWorkingDirectory(
+    const std::filesystem::path& outputPath)
+{
 #ifdef _WIN32
     // llvm-lib preserves the spelling of an input path as the COFF archive member name.  Use
     // basenames from a common working directory so deterministic archives do not leak build-tree
     // paths into downstream PDB module records.
-    const std::filesystem::path workingDirectory =
-        outputPath.is_absolute() ? outputPath.parent_path() : std::filesystem::path{};
+    return outputPath.is_absolute() ? outputPath.parent_path() : std::filesystem::path{};
 #else
-    const std::filesystem::path workingDirectory;
+    return {};
 #endif
+}
+
+void appendStaticLibraryObjects(
+    std::vector<std::string>& arguments,
+    std::span<const std::filesystem::path> objectFiles,
+    const std::filesystem::path& workingDirectory)
+{
     for (const std::filesystem::path& path : objectFiles)
     {
 #ifdef _WIN32
@@ -694,11 +702,38 @@ bool LldLinker::createStaticLibrary(
             arguments.push_back(responseFileArgument(path));
         }
     }
-    if (!writeResponseFile(responsePath, arguments, error))
-    {
-        return false;
-    }
+}
 
+void cleanupLinkerTemporaries(
+    const std::filesystem::path& responsePath,
+    const std::filesystem::path& logPath,
+    std::error_code& cleanupError)
+{
+    if (keepLinkTemporaries()) return;
+    std::filesystem::remove(responsePath, cleanupError);
+    std::filesystem::remove(logPath, cleanupError);
+}
+}
+
+bool LldLinker::createStaticLibrary(
+    std::span<const std::filesystem::path> objectFiles,
+    const std::filesystem::path& outputPath,
+    std::string& error) const
+{
+    error.clear();
+    std::filesystem::path librarianPath;
+    if (!validateStaticLibraryRequest(
+            objectFiles, outputPath, executablePath_, librarianPath, error)) return false;
+    std::filesystem::path responsePath = outputPath;
+    std::filesystem::path logPath = outputPath;
+    responsePath += ".lib.rsp";
+    logPath += ".lib.log";
+    std::vector<std::string> arguments = {
+        "/machine:x64",
+        responsePathArgument("/out:", outputPath)};
+    const std::filesystem::path workingDirectory = staticLibraryWorkingDirectory(outputPath);
+    appendStaticLibraryObjects(arguments, objectFiles, workingDirectory);
+    if (!writeResponseFile(responsePath, arguments, error)) return false;
     std::error_code cleanupError;
     std::filesystem::remove(outputPath, cleanupError);
     LldLinker librarian(librarianPath);
@@ -708,11 +743,7 @@ bool LldLinker::createStaticLibrary(
         error,
         false,
         workingDirectory);
-    if (!keepLinkTemporaries())
-    {
-        std::filesystem::remove(responsePath, cleanupError);
-        std::filesystem::remove(logPath, cleanupError);
-    }
+    cleanupLinkerTemporaries(responsePath, logPath, cleanupError);
     if (!success)
     {
         std::filesystem::remove(outputPath, cleanupError);
@@ -726,21 +757,19 @@ bool LldLinker::createStaticLibrary(
     return true;
 }
 
-bool LldLinker::linkDynamicLibrary(
+namespace
+{
+bool validateDynamicLibraryRequest(
     std::span<const std::filesystem::path> objectFiles,
     std::span<const std::filesystem::path> importLibraries,
     std::span<const std::string> exportSymbols,
     const std::filesystem::path& outputPath,
     const std::filesystem::path& importLibraryPath,
     const std::filesystem::path& pdbPath,
-    std::string& error) const
+    std::string& error)
 {
-    error.clear();
     if (!validateObjectFiles(objectFiles, "DLL linking", error) ||
-        !validateLibraries(importLibraries, "DLL linking", error))
-    {
-        return false;
-    }
+        !validateLibraries(importLibraries, "DLL linking", error)) return false;
     if (outputPath.empty() || importLibraryPath.empty() ||
         containsQuote(outputPath) || containsQuote(importLibraryPath) ||
         (!pdbPath.empty() && containsQuote(pdbPath)))
@@ -756,20 +785,20 @@ bool LldLinker::linkDynamicLibrary(
             return false;
         }
     }
+    return true;
+}
 
-    std::filesystem::path responsePath = outputPath;
-    std::filesystem::path logPath = outputPath;
-    responsePath += ".dll.rsp";
-    logPath += ".dll.log";
+std::vector<std::string> dynamicLibraryArguments(
+    std::span<const std::filesystem::path> objectFiles,
+    std::span<const std::filesystem::path> importLibraries,
+    std::span<const std::string> exportSymbols,
+    const std::filesystem::path& outputPath,
+    const std::filesystem::path& importLibraryPath,
+    const std::filesystem::path& pdbPath)
+{
     std::vector<std::string> arguments = {
-        "/dll",
-        "/noentry",
-        "/nodefaultlib",
-        "/machine:x64",
-        "/dynamicbase",
-        "/nxcompat",
-        "/highentropyva",
-        responsePathArgument("/out:", outputPath)};
+        "/dll", "/noentry", "/nodefaultlib", "/machine:x64", "/dynamicbase", "/nxcompat",
+        "/highentropyva", responsePathArgument("/out:", outputPath)};
     // NSLink ya fija TimeDateStamp=0 y deliberadamente rechaza switches desconocidos. /Brepro
     // sólo pertenece a lld-link; allí elimina el reloj de pared sin reescribir el PE después.
     if (!pdbPath.empty())
@@ -781,55 +810,47 @@ bool LldLinker::linkDynamicLibrary(
     if (!exportSymbols.empty())
         arguments.push_back(responsePathArgument("/implib:", importLibraryPath));
     for (const std::string& symbol : exportSymbols)
-    {
         arguments.push_back("/export:" + symbol);
-    }
     for (const std::filesystem::path& path : objectFiles)
-    {
         arguments.push_back(responseFileArgument(path));
-    }
     for (const std::filesystem::path& path : importLibraries)
-    {
         arguments.push_back(responseFileArgument(path));
-    }
-    if (!writeResponseFile(responsePath, arguments, error))
-    {
-        return false;
-    }
+    return arguments;
+}
 
-    std::error_code cleanupError;
+void removeDynamicLibraryOutputs(
+    const std::filesystem::path& outputPath,
+    const std::filesystem::path& importLibraryPath,
+    const std::filesystem::path& pdbPath,
+    std::error_code& cleanupError)
+{
     std::filesystem::remove(outputPath, cleanupError);
     std::filesystem::remove(importLibraryPath, cleanupError);
     if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
-    const bool success = runResponseFile(responsePath, logPath, error);
-    if (!keepLinkTemporaries())
-    {
-        std::filesystem::remove(responsePath, cleanupError);
-        std::filesystem::remove(logPath, cleanupError);
-    }
-    if (!success)
-    {
-        std::filesystem::remove(outputPath, cleanupError);
-        std::filesystem::remove(importLibraryPath, cleanupError);
-        if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
-        return false;
-    }
+}
+
+bool verifyDynamicLibraryProducts(
+    const LldLinker& linker,
+    std::span<const std::filesystem::path> objectFiles,
+    std::span<const std::string> exportSymbols,
+    const std::filesystem::path& outputPath,
+    const std::filesystem::path& importLibraryPath,
+    const std::filesystem::path& pdbPath,
+    std::string& error)
+{
+    std::error_code cleanupError;
     if (!std::filesystem::is_regular_file(outputPath))
     {
-        error = linkerProductName(executablePath_) +
+        error = linkerProductName(linker.executablePath()) +
             " reported success but did not create the requested DLL";
-        std::filesystem::remove(outputPath, cleanupError);
-        std::filesystem::remove(importLibraryPath, cleanupError);
-        if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
+        removeDynamicLibraryOutputs(outputPath, importLibraryPath, pdbPath, cleanupError);
         return false;
     }
     if (!pdbPath.empty() && !std::filesystem::is_regular_file(pdbPath))
     {
-        error = linkerProductName(executablePath_) +
+        error = linkerProductName(linker.executablePath()) +
             " reported success but did not create the requested DLL PDB";
-        std::filesystem::remove(outputPath, cleanupError);
-        std::filesystem::remove(importLibraryPath, cleanupError);
-        std::filesystem::remove(pdbPath, cleanupError);
+        removeDynamicLibraryOutputs(outputPath, importLibraryPath, pdbPath, cleanupError);
         return false;
     }
     if (exportSymbols.empty())
@@ -839,22 +860,133 @@ bool LldLinker::linkDynamicLibrary(
         // the NSMETA-only product, so archive one producer object without inventing
         // an import thunk or a callable export.
         const std::span<const std::filesystem::path> companionObject = objectFiles.first(1);
-        if (!createStaticLibrary(companionObject, importLibraryPath, error))
-        {
-            std::filesystem::remove(outputPath, cleanupError);
-            if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
-            return false;
-        }
-    }
-    else if (!std::filesystem::is_regular_file(importLibraryPath))
-    {
-        error = linkerProductName(executablePath_) +
-            " reported success but did not create the requested import library";
+        if (linker.createStaticLibrary(companionObject, importLibraryPath, error)) return true;
         std::filesystem::remove(outputPath, cleanupError);
         if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
         return false;
     }
-    return true;
+    if (std::filesystem::is_regular_file(importLibraryPath)) return true;
+    error = linkerProductName(linker.executablePath()) +
+        " reported success but did not create the requested import library";
+    std::filesystem::remove(outputPath, cleanupError);
+    if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
+    return false;
+}
+}
+
+bool LldLinker::linkDynamicLibrary(
+    std::span<const std::filesystem::path> objectFiles,
+    std::span<const std::filesystem::path> importLibraries,
+    std::span<const std::string> exportSymbols,
+    const std::filesystem::path& outputPath,
+    const std::filesystem::path& importLibraryPath,
+    const std::filesystem::path& pdbPath,
+    std::string& error) const
+{
+    error.clear();
+    if (!validateDynamicLibraryRequest(
+            objectFiles, importLibraries, exportSymbols,
+            outputPath, importLibraryPath, pdbPath, error)) return false;
+    std::filesystem::path responsePath = outputPath;
+    std::filesystem::path logPath = outputPath;
+    responsePath += ".dll.rsp";
+    logPath += ".dll.log";
+    const std::vector<std::string> arguments = dynamicLibraryArguments(
+        objectFiles, importLibraries, exportSymbols, outputPath, importLibraryPath, pdbPath);
+    if (!writeResponseFile(responsePath, arguments, error)) return false;
+    std::error_code cleanupError;
+    removeDynamicLibraryOutputs(outputPath, importLibraryPath, pdbPath, cleanupError);
+    const bool success = runResponseFile(responsePath, logPath, error);
+    cleanupLinkerTemporaries(responsePath, logPath, cleanupError);
+    if (!success)
+    {
+        removeDynamicLibraryOutputs(outputPath, importLibraryPath, pdbPath, cleanupError);
+        return false;
+    }
+    return verifyDynamicLibraryProducts(
+        *this, objectFiles, exportSymbols, outputPath, importLibraryPath, pdbPath, error);
+}
+
+namespace
+{
+bool validateExecutableRequest(
+    std::span<const std::filesystem::path> objectFiles,
+    std::span<const std::filesystem::path> importLibraries,
+    const std::filesystem::path& outputPath,
+    const std::filesystem::path& pdbPath,
+    std::string& error)
+{
+    if (!validateObjectFiles(objectFiles, "PE linking", error) ||
+        !validateLibraries(importLibraries, "PE linking", error)) return false;
+    if (outputPath.empty() || containsQuote(outputPath))
+    {
+        error = "PE output path is empty or contains an unsupported quote character";
+        return false;
+    }
+    if (pdbPath.empty() || !containsQuote(pdbPath)) return true;
+    error = "PDB output path contains an unsupported quote character";
+    return false;
+}
+
+std::vector<std::string> executableArguments(
+    std::span<const std::filesystem::path> objectFiles,
+    std::span<const std::filesystem::path> importLibraries,
+    const std::filesystem::path& outputPath,
+    WindowsExecutableSubsystem subsystem,
+    const std::filesystem::path& pdbPath)
+{
+    std::vector<std::string> arguments = {
+        "/nodefaultlib",
+        "/entry:__nativesharp_start",
+        subsystem == WindowsExecutableSubsystem::Windows
+            ? "/subsystem:windows"
+            : "/subsystem:console",
+        "/machine:x64",
+        "/dynamicbase",
+        "/nxcompat",
+        "/highentropyva",
+        responsePathArgument("/out:", outputPath)};
+    if (!pdbPath.empty())
+    {
+        arguments.push_back("/debug:full");
+        arguments.push_back(responsePathArgument("/pdb:", pdbPath));
+        arguments.push_back("/pdbaltpath:%_PDB%");
+    }
+    for (const std::filesystem::path& path : objectFiles)
+        arguments.push_back(responseFileArgument(path));
+    for (const std::filesystem::path& path : importLibraries)
+        arguments.push_back(responseFileArgument(path));
+    return arguments;
+}
+
+void removeExecutableOutputs(
+    const std::filesystem::path& outputPath,
+    const std::filesystem::path& pdbPath,
+    std::error_code& cleanupError)
+{
+    std::filesystem::remove(outputPath, cleanupError);
+    if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
+}
+
+bool verifyExecutableProducts(
+    const std::filesystem::path& executable,
+    const std::filesystem::path& outputPath,
+    const std::filesystem::path& pdbPath,
+    std::string& error)
+{
+    if (!std::filesystem::is_regular_file(outputPath))
+    {
+        error = linkerProductName(executable) +
+            " reported success but did not create the requested PE executable";
+        return false;
+    }
+    if (pdbPath.empty() || std::filesystem::is_regular_file(pdbPath)) return true;
+    std::error_code cleanupError;
+    std::filesystem::remove(outputPath, cleanupError);
+    error = linkerProductName(executable) +
+        " reported success but did not create the requested PDB";
+    return false;
+}
 }
 
 bool LldLinker::linkExecutable(
@@ -876,84 +1008,24 @@ bool LldLinker::linkExecutable(
     std::string& error) const
 {
     error.clear();
-    if (!validateObjectFiles(objectFiles, "PE linking", error) ||
-        !validateLibraries(importLibraries, "PE linking", error))
-    {
-        return false;
-    }
-    if (outputPath.empty() || containsQuote(outputPath))
-    {
-        error = "PE output path is empty or contains an unsupported quote character";
-        return false;
-    }
-    if (!pdbPath.empty() && containsQuote(pdbPath))
-    {
-        error = "PDB output path contains an unsupported quote character";
-        return false;
-    }
-
+    if (!validateExecutableRequest(
+            objectFiles, importLibraries, outputPath, pdbPath, error)) return false;
     std::filesystem::path responsePath = outputPath;
     std::filesystem::path logPath = outputPath;
     responsePath += ".link.rsp";
     logPath += ".link.log";
-    std::vector<std::string> arguments = {
-        "/nodefaultlib",
-        "/entry:__nativesharp_start",
-        subsystem == WindowsExecutableSubsystem::Windows
-            ? "/subsystem:windows"
-            : "/subsystem:console",
-        "/machine:x64",
-        "/dynamicbase",
-        "/nxcompat",
-        "/highentropyva",
-        responsePathArgument("/out:", outputPath)};
-    if (!pdbPath.empty())
-    {
-        arguments.push_back("/debug:full");
-        arguments.push_back(responsePathArgument("/pdb:", pdbPath));
-        arguments.push_back("/pdbaltpath:%_PDB%");
-    }
-    for (const std::filesystem::path& path : objectFiles)
-    {
-        arguments.push_back(responseFileArgument(path));
-    }
-    for (const std::filesystem::path& path : importLibraries)
-    {
-        arguments.push_back(responseFileArgument(path));
-    }
-    if (!writeResponseFile(responsePath, arguments, error))
-    {
-        return false;
-    }
-
+    const std::vector<std::string> arguments = executableArguments(
+        objectFiles, importLibraries, outputPath, subsystem, pdbPath);
+    if (!writeResponseFile(responsePath, arguments, error)) return false;
     std::error_code cleanupError;
-    std::filesystem::remove(outputPath, cleanupError);
-    if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
+    removeExecutableOutputs(outputPath, pdbPath, cleanupError);
     const bool success = runResponseFile(responsePath, logPath, error);
-    if (!keepLinkTemporaries())
-    {
-        std::filesystem::remove(responsePath, cleanupError);
-        std::filesystem::remove(logPath, cleanupError);
-    }
+    cleanupLinkerTemporaries(responsePath, logPath, cleanupError);
     if (!success)
     {
-        std::filesystem::remove(outputPath, cleanupError);
-        if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
+        removeExecutableOutputs(outputPath, pdbPath, cleanupError);
         return false;
     }
-    if (!std::filesystem::is_regular_file(outputPath))
-    {
-        error = linkerProductName(executablePath_) +
-            " reported success but did not create the requested PE executable";
-        return false;
-    }
-    if (!pdbPath.empty() && !std::filesystem::is_regular_file(pdbPath))
-    {
-        std::filesystem::remove(outputPath, cleanupError);
-        error = linkerProductName(executablePath_) +
-            " reported success but did not create the requested PDB";
-        return false;
-    }
-    return true;
+    return verifyExecutableProducts(executablePath_, outputPath, pdbPath, error);
 }
 }

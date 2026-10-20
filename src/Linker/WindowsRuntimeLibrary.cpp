@@ -1,4 +1,5 @@
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
+#include "Internal/TemporaryFiles.h"
 
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/LlvmModule.h"
@@ -27,30 +28,6 @@ namespace nativesharp::linker
 {
 namespace
 {
-class TemporaryFiles final
-{
-public:
-    TemporaryFiles(
-        std::filesystem::path directory,
-        std::filesystem::path object,
-        std::filesystem::path archive)
-        : directory_(std::move(directory)),
-          object_(std::move(object)),
-          archive_(std::move(archive)) {}
-    ~TemporaryFiles()
-    {
-        std::error_code ignored;
-        std::filesystem::remove_all(directory_, ignored);
-    }
-    const std::filesystem::path& object() const noexcept { return object_; }
-    const std::filesystem::path& archive() const noexcept { return archive_; }
-
-private:
-    std::filesystem::path directory_;
-    std::filesystem::path object_;
-    std::filesystem::path archive_;
-};
-
 std::filesystem::path executablePath()
 {
 #ifdef _WIN32
@@ -137,38 +114,43 @@ bool verifyWindowsRuntimeLibrary(const std::filesystem::path& source, std::strin
     return true;
 }
 
-bool writeWindowsRuntimeLibrary(const std::filesystem::path& destination, std::string& error)
+namespace
 {
-    error.clear();
+bool prepareRuntimeLibraryDestination(
+    const std::filesystem::path& destination,
+    std::filesystem::path& parent,
+    std::string& error)
+{
     if (destination.empty())
     {
         error = "Windows runtime library destination is empty";
         return false;
     }
-    const std::filesystem::path parent = destination.parent_path();
+    parent = destination.parent_path();
+    if (parent.empty()) return true;
     std::error_code filesystemError;
-    if (!parent.empty())
-    {
-        std::filesystem::create_directories(parent, filesystemError);
-        if (filesystemError)
-        {
-            error = "cannot create Windows runtime library directory '" + parent.string() +
-                "': " + filesystemError.message();
-            return false;
-        }
-    }
+    std::filesystem::create_directories(parent, filesystemError);
+    if (!filesystemError) return true;
+    error = "cannot create Windows runtime library directory '" + parent.string() +
+        "': " + filesystemError.message();
+    return false;
+}
 
+bool buildOptimizedWindowsRuntime(
+    std::unique_ptr<llvm_backend::LlvmModule>& module,
+    std::unique_ptr<llvm_backend::LlvmTargetMachine>& targetMachine,
+    std::string& error)
+{
     runtime::WindowsRuntimeBuilder builder;
-    std::unique_ptr<llvm_backend::LlvmModule> module = builder.buildSupport(error);
+    module = builder.buildSupport(error);
     if (module == nullptr)
     {
         error = "cannot construct independent Windows runtime: " + error;
         return false;
     }
     std::string targetError;
-    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine =
-        llvm_backend::LlvmTargetMachine::createWindowsX64(
-            llvm_backend::LlvmOptimizationLevel::O2, targetError);
+    targetMachine = llvm_backend::LlvmTargetMachine::createWindowsX64(
+        llvm_backend::LlvmOptimizationLevel::O2, targetError);
     if (targetMachine == nullptr)
     {
         error = "cannot create Windows runtime target machine: " + targetError;
@@ -176,16 +158,24 @@ bool writeWindowsRuntimeLibrary(const std::filesystem::path& destination, std::s
     }
     llvm_backend::LlvmOptimizer optimizer;
     llvm_backend::LlvmOptimizationObservation observation;
-    if (!optimizer.optimize(*module, *targetMachine, llvm_backend::LlvmOptimizationLevel::O2,
+    if (optimizer.optimize(*module, *targetMachine, llvm_backend::LlvmOptimizationLevel::O2,
             &observation, targetError))
     {
-        error = "independent Windows runtime optimization failed: " + targetError;
-        return false;
+        return true;
     }
+    error = "independent Windows runtime optimization failed: " + targetError;
+    return false;
+}
 
+bool createRuntimeTemporaryFiles(
+    const std::filesystem::path& parent,
+    std::unique_ptr<TemporaryFiles>& temporary,
+    std::string& error)
+{
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     const std::filesystem::path temporaryDirectory =
         parent / (".nsc-runtime-" + std::to_string(stamp));
+    std::error_code filesystemError;
     std::filesystem::create_directories(temporaryDirectory, filesystemError);
     if (filesystemError)
     {
@@ -193,23 +183,35 @@ bool writeWindowsRuntimeLibrary(const std::filesystem::path& destination, std::s
             temporaryDirectory.string() + "': " + filesystemError.message();
         return false;
     }
-    TemporaryFiles temporary(
+    temporary = std::make_unique<TemporaryFiles>(
         temporaryDirectory,
         temporaryDirectory / "NativeSharp.Runtime.Win32.obj",
         temporaryDirectory / std::string(kWindowsRuntimeLibraryFileName));
-    if (!targetMachine->emit(*module, temporary.object(),
+    return true;
+}
+
+bool emitAndVerifyRuntimeObject(
+    const llvm_backend::LlvmModule& module,
+    const llvm_backend::LlvmTargetMachine& targetMachine,
+    const TemporaryFiles& temporary,
+    std::string& error)
+{
+    std::string targetError;
+    if (!targetMachine.emit(module, temporary.object(),
             llvm_backend::LlvmCodeGenFileType::Object, targetError))
     {
         error = "independent Windows runtime object emission failed: " + targetError;
         return false;
     }
     llvm_backend::CoffObjectVerifier objectVerifier;
-    if (!objectVerifier.verify(temporary.object()))
-    {
-        error = "independent Windows runtime object verification failed: " + objectVerifier.error();
-        return false;
-    }
+    if (objectVerifier.verify(temporary.object())) return true;
+    error = "independent Windows runtime object verification failed: " + objectVerifier.error();
+    return false;
+}
 
+bool createAndVerifyRuntimeArchive(const TemporaryFiles& temporary, std::string& error)
+{
+    std::string targetError;
     std::unique_ptr<LldLinker> linker = LldLinker::discover(targetError);
     if (linker == nullptr)
     {
@@ -222,21 +224,37 @@ bool writeWindowsRuntimeLibrary(const std::filesystem::path& destination, std::s
         error = "independent Windows runtime archive creation failed: " + targetError;
         return false;
     }
-    if (!verifyWindowsRuntimeLibrary(temporary.archive(), error))
-    {
-        return false;
-    }
+    return verifyWindowsRuntimeLibrary(temporary.archive(), error);
+}
 
-    filesystemError.clear();
+bool publishRuntimeArchive(
+    const TemporaryFiles& temporary,
+    const std::filesystem::path& destination,
+    std::string& error)
+{
+    std::error_code filesystemError;
     std::filesystem::remove(destination, filesystemError);
     filesystemError.clear();
     std::filesystem::rename(temporary.archive(), destination, filesystemError);
-    if (filesystemError)
-    {
-        error = "cannot publish Windows runtime library '" + destination.string() +
-            "': " + filesystemError.message();
-        return false;
-    }
-    return true;
+    if (!filesystemError) return true;
+    error = "cannot publish Windows runtime library '" + destination.string() +
+        "': " + filesystemError.message();
+    return false;
+}
+}
+
+bool writeWindowsRuntimeLibrary(const std::filesystem::path& destination, std::string& error)
+{
+    error.clear();
+    std::filesystem::path parent;
+    if (!prepareRuntimeLibraryDestination(destination, parent, error)) return false;
+    std::unique_ptr<llvm_backend::LlvmModule> module;
+    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
+    if (!buildOptimizedWindowsRuntime(module, targetMachine, error)) return false;
+    std::unique_ptr<TemporaryFiles> temporary;
+    if (!createRuntimeTemporaryFiles(parent, temporary, error)) return false;
+    if (!emitAndVerifyRuntimeObject(*module, *targetMachine, *temporary, error)) return false;
+    if (!createAndVerifyRuntimeArchive(*temporary, error)) return false;
+    return publishRuntimeArchive(*temporary, destination, error);
 }
 }

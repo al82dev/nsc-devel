@@ -1,10 +1,10 @@
 # NSC — IMPLEMENTACIÓN
 
-Progreso absoluto: **1152/1227**
+Progreso absoluto: **1207/1227**
 
-Completados: **1152**
+Completados: **1207**
 
-Pendientes: **75**
+Pendientes: **20**
 
 Fuente canónica: `NSC-GUIA-DE-IMPLEMENTACION.md` y sus anexos A, B, C, D y F, medidos el 2026-10-19.
 
@@ -14,7 +14,7 @@ casillas se agrupen por integración.
 Quedan fuera del denominador: cambios a NSC Builder, cambios de CLI/sintaxis/ABI/NSMETA/contratos 3.0.4,
 eliminación de recursión y las tareas de rendimiento que requieren autorización funcional independiente.
 
-## Refactor mecánico y reorganización sin cambios funcionales — 1152/1225
+## Refactor mecánico y reorganización sin cambios funcionales — 1207/1225
 
 Política de integración: **10 commits técnicos**, uno por límite de subsistema. Un commit se crea únicamente
 cuando su conjunto está completo, revisado y cuenta con la evidencia focal aplicable. Ninguna optimización entra
@@ -3854,175 +3854,183 @@ resolución de includes, cero tipos definidos en .cpp, cero líneas mayores de 1
 las 25 funciones inventariadas hasta un máximo de 60 líneas ejecutables por función. No se ejecutaron
 compilación, pruebas, suites ni baseline por instrucción del propietario.
 
-### Commit REF-09 — Linker, runtime y ejecutable — 0/55
+### Commit REF-09 — Linker, runtime y ejecutable — 55/55
 
 Ordena linker, runtime y entrada ejecutable sin cambiar artefactos, símbolos, mensajes ni enlazado.
 
-- [ ] NSC-IMPL-0113 — Extraer el struct SectionView desde src/Linker/PeExecutableVerifier.cpp:58-64 (7) hacia
+- [x] NSC-IMPL-0113 — Extraer el struct SectionView desde src/Linker/PeExecutableVerifier.cpp:58-64 (7) hacia
   src/Linker/Internal/SectionView.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0114 — Extraer el class TemporaryDirectory desde src/Linker/WindowsExecutableBuilder.cpp:76-106 (31)
+- [x] NSC-IMPL-0114 — Extraer el class TemporaryDirectory desde src/Linker/WindowsExecutableBuilder.cpp:76-106 (31)
   hacia src/Linker/Internal/TemporaryDirectory.h, y mover sus cuerpos a src/Linker/Internal/TemporaryDirectory.cpp;
   conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0115 — Extraer el class TemporaryDirectory desde src/Linker/WindowsLibraryBuilder.cpp:29-53 (25) hacia
+- [x] NSC-IMPL-0115 — Extraer el class TemporaryDirectory desde src/Linker/WindowsLibraryBuilder.cpp:29-53 (25) hacia
   src/Linker/Internal/TemporaryDirectory.h, y mover sus cuerpos a src/Linker/Internal/TemporaryDirectory.cpp; conservar
   texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0116 — Extraer el class TemporaryFiles desde src/Linker/WindowsRuntimeLibrary.cpp:30-52 (23) hacia
+- [x] NSC-IMPL-0116 — Extraer el class TemporaryFiles desde src/Linker/WindowsRuntimeLibrary.cpp:30-52 (23) hacia
   src/Linker/Internal/TemporaryFiles.h, y mover sus cuerpos a src/Linker/Internal/TemporaryFiles.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0129 — Extraer el struct ActualSymbol desde src/Runtime/RuntimeAbiContract.cpp:16-20 (5) hacia
+- [x] NSC-IMPL-0129 — Extraer el struct ActualSymbol desde src/Runtime/RuntimeAbiContract.cpp:16-20 (5) hacia
   src/Runtime/Internal/ActualSymbol.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0130 — Extraer el class TeeBuffer desde src/nsc/main.cpp:36-61 (26) hacia src/nsc/Internal/TeeBuffer.h, y
+- [x] NSC-IMPL-0130 — Extraer el class TeeBuffer desde src/nsc/main.cpp:36-61 (26) hacia src/nsc/Internal/TeeBuffer.h, y
   mover sus cuerpos a src/nsc/Internal/TeeBuffer.cpp; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0777 — Extraer el struct CoffArchiveInfo desde include/nativesharp/Linker/CoffArchiveVerifier.h:10-14
+- [x] NSC-IMPL-0777 — Extraer el struct CoffArchiveInfo desde include/nativesharp/Linker/CoffArchiveVerifier.h:10-14
   hacia include/nativesharp/Linker/CoffArchiveInfo.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0778 — Conservar el class CoffArchiveVerifier como tipo principal de
+- [x] NSC-IMPL-0778 — Conservar el class CoffArchiveVerifier como tipo principal de
   include/nativesharp/Linker/CoffArchiveVerifier.h:16-26 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0779 — Extraer el enum WindowsExecutableSubsystem desde include/nativesharp/Linker/LldLinker.h:11-15
+- [x] NSC-IMPL-0779 — Extraer el enum WindowsExecutableSubsystem desde include/nativesharp/Linker/LldLinker.h:11-15
   hacia include/nativesharp/Linker/WindowsExecutableSubsystem.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0780 — Conservar el class LldLinker como tipo principal de include/nativesharp/Linker/LldLinker.h:17-74 y
+- [x] NSC-IMPL-0780 — Conservar el class LldLinker como tipo principal de include/nativesharp/Linker/LldLinker.h:17-74 y
   convertir ese archivo en umbrella de sus tipos extraídos, sin alterar el cierre transitivo. Restricción de pruebas:
   ninguna.
-- [ ] NSC-IMPL-0781 — Extraer el struct PdbInfo desde include/nativesharp/Linker/PdbVerifier.h:10-21 hacia
+- [x] NSC-IMPL-0781 — Extraer el struct PdbInfo desde include/nativesharp/Linker/PdbVerifier.h:10-21 hacia
   include/nativesharp/Linker/PdbInfo.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante
   el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0782 — Conservar el class PdbVerifier como tipo principal de
+- [x] NSC-IMPL-0782 — Conservar el class PdbVerifier como tipo principal de
   include/nativesharp/Linker/PdbVerifier.h:23-33 y convertir ese archivo en umbrella de sus tipos extraídos, sin alterar
   el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0783 — Extraer el struct PeImportedSymbol desde include/nativesharp/Linker/PeExecutableVerifier.h:11-15
+- [x] NSC-IMPL-0783 — Extraer el struct PeImportedSymbol desde include/nativesharp/Linker/PeExecutableVerifier.h:11-15
   hacia include/nativesharp/Linker/PeImportedSymbol.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0784 — Extraer el struct PeExecutableInfo desde include/nativesharp/Linker/PeExecutableVerifier.h:17-40
+- [x] NSC-IMPL-0784 — Extraer el struct PeExecutableInfo desde include/nativesharp/Linker/PeExecutableVerifier.h:17-40
   hacia include/nativesharp/Linker/PeExecutableInfo.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0785 — Conservar el class PeExecutableVerifier como tipo principal de
+- [x] NSC-IMPL-0785 — Conservar el class PeExecutableVerifier como tipo principal de
   include/nativesharp/Linker/PeExecutableVerifier.h:42-55 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0792 — Extraer el enum RuntimeAbiSymbolKind desde include/nativesharp/Runtime/RuntimeAbiContract.h:20-24
+- [x] NSC-IMPL-0792 — Extraer el enum RuntimeAbiSymbolKind desde include/nativesharp/Runtime/RuntimeAbiContract.h:20-24
   hacia include/nativesharp/Runtime/RuntimeAbiSymbolKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0793 — Extraer el enum RuntimeAbiImageKind desde include/nativesharp/Runtime/RuntimeAbiContract.h:26-31
+- [x] NSC-IMPL-0793 — Extraer el enum RuntimeAbiImageKind desde include/nativesharp/Runtime/RuntimeAbiContract.h:26-31
   hacia include/nativesharp/Runtime/RuntimeAbiImageKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0794 — Extraer el struct RuntimeAbiSymbol desde include/nativesharp/Runtime/RuntimeAbiContract.h:33-40
+- [x] NSC-IMPL-0794 — Extraer el struct RuntimeAbiSymbol desde include/nativesharp/Runtime/RuntimeAbiContract.h:33-40
   hacia include/nativesharp/Runtime/RuntimeAbiSymbol.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0795 — Extraer el enum RuntimeCapabilityStatus desde
+- [x] NSC-IMPL-0795 — Extraer el enum RuntimeCapabilityStatus desde
   include/nativesharp/Runtime/RuntimeCapabilityReport.h:9-14 hacia
   include/nativesharp/Runtime/RuntimeCapabilityStatus.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0796 — Extraer el struct RuntimeCapability desde
+- [x] NSC-IMPL-0796 — Extraer el struct RuntimeCapability desde
   include/nativesharp/Runtime/RuntimeCapabilityReport.h:16-23 hacia include/nativesharp/Runtime/RuntimeCapability.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0872 — Descomponer WindowsRuntimeBuilder::buildInternal en src/Runtime/WindowsRuntimeBuilder.cpp:5840
+- [x] NSC-IMPL-0872 — Descomponer WindowsRuntimeBuilder::buildInternal en src/Runtime/WindowsRuntimeBuilder.cpp:5840
   (509 líneas ejecutables; 703 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0908 — Descomponer PeExecutableVerifier::verifyImage en src/Linker/PeExecutableVerifier.cpp:129 (241
+- [x] NSC-IMPL-0908 — Descomponer PeExecutableVerifier::verifyImage en src/Linker/PeExecutableVerifier.cpp:129 (241
   líneas ejecutables; 374 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0934 — Descomponer runCompiler en src/nsc/main.cpp:272 (190 líneas ejecutables; 237 totales) hasta que
+- [x] NSC-IMPL-0934 — Descomponer runCompiler en src/nsc/main.cpp:272 (190 líneas ejecutables; 237 totales) hasta que
   cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0935 — Descomponer buildConsoleReadLine en src/Runtime/WindowsRuntimeBuilder.cpp:415 (187 líneas
+- [x] NSC-IMPL-0935 — Descomponer buildConsoleReadLine en src/Runtime/WindowsRuntimeBuilder.cpp:415 (187 líneas
   ejecutables; 208 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0960 — Descomponer buildEnvironmentGetCommandLineArgs en src/Runtime/WindowsRuntimeBuilder.cpp:2508 (145
+- [x] NSC-IMPL-0960 — Descomponer buildEnvironmentGetCommandLineArgs en src/Runtime/WindowsRuntimeBuilder.cpp:2508 (145
   líneas ejecutables; 188 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0964 — Descomponer buildPuts en src/Runtime/WindowsRuntimeBuilder.cpp:5233 (142 líneas ejecutables; 158
+- [x] NSC-IMPL-0964 — Descomponer buildPuts en src/Runtime/WindowsRuntimeBuilder.cpp:5233 (142 líneas ejecutables; 158
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0984 — Descomponer WindowsLibraryBuilder::buildStaticObjects en src/Linker/WindowsLibraryBuilder.cpp:495
+- [x] NSC-IMPL-0984 — Descomponer WindowsLibraryBuilder::buildStaticObjects en src/Linker/WindowsLibraryBuilder.cpp:495
   (126 líneas ejecutables; 166 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0986 — Descomponer WindowsLibraryBuilder::buildDynamic en src/Linker/WindowsLibraryBuilder.cpp:294 (124
+- [x] NSC-IMPL-0986 — Descomponer WindowsLibraryBuilder::buildDynamic en src/Linker/WindowsLibraryBuilder.cpp:294 (124
   líneas ejecutables; 200 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0988 — Descomponer buildProcessRun en src/Runtime/WindowsRuntimeBuilder.cpp:1940 (123 líneas ejecutables;
+- [x] NSC-IMPL-0988 — Descomponer buildProcessRun en src/Runtime/WindowsRuntimeBuilder.cpp:1940 (123 líneas ejecutables;
   173 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0989 — Descomponer createWindowsImportLibraries en src/Linker/WindowsRuntimeImports.cpp:21 (123 líneas
+- [x] NSC-IMPL-0989 — Descomponer createWindowsImportLibraries en src/Linker/WindowsRuntimeImports.cpp:21 (123 líneas
   ejecutables; 247 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0997 — Descomponer PdbVerifier::verify en src/Linker/PdbVerifier.cpp:56 (117 líneas ejecutables; 171
+- [x] NSC-IMPL-0997 — Descomponer PdbVerifier::verify en src/Linker/PdbVerifier.cpp:56 (117 líneas ejecutables; 171
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1002 — Descomponer LldLinker::runResponseFile en src/Linker/LldLinker.cpp:398 (114 líneas ejecutables;
+- [x] NSC-IMPL-1002 — Descomponer LldLinker::runResponseFile en src/Linker/LldLinker.cpp:398 (114 líneas ejecutables;
   151 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1007 — Descomponer buildDirectoryGetEntries en src/Runtime/WindowsRuntimeBuilder.cpp:3009 (110 líneas
+- [x] NSC-IMPL-1007 — Descomponer buildDirectoryGetEntries en src/Runtime/WindowsRuntimeBuilder.cpp:3009 (110 líneas
   ejecutables; 131 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1009 — Descomponer WindowsExecutableBuilder::build en src/Linker/WindowsExecutableBuilder.cpp:280 (109
+- [x] NSC-IMPL-1009 — Descomponer WindowsExecutableBuilder::build en src/Linker/WindowsExecutableBuilder.cpp:280 (109
   líneas ejecutables; 190 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1013 — Descomponer WindowsExecutableBuilder::buildObjects en src/Linker/WindowsExecutableBuilder.cpp:471
+- [x] NSC-IMPL-1013 — Descomponer WindowsExecutableBuilder::buildObjects en src/Linker/WindowsExecutableBuilder.cpp:471
   (107 líneas ejecutables; 154 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1035 — Descomponer WindowsLibraryBuilder::buildDynamicObjects en src/Linker/WindowsLibraryBuilder.cpp:662
+- [x] NSC-IMPL-1035 — Descomponer WindowsLibraryBuilder::buildDynamicObjects en src/Linker/WindowsLibraryBuilder.cpp:662
   (97 líneas ejecutables; 137 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1046 — Descomponer buildHalfCompilerRtSupport en src/Runtime/WindowsRuntimeBuilder.cpp:4952 (91 líneas
+- [x] NSC-IMPL-1046 — Descomponer buildHalfCompilerRtSupport en src/Runtime/WindowsRuntimeBuilder.cpp:4952 (91 líneas
   ejecutables; 96 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1058 — Descomponer buildEhFilter en src/Runtime/WindowsRuntimeBuilder.cpp:5618 (87 líneas ejecutables;
+- [x] NSC-IMPL-1058 — Descomponer buildEhFilter en src/Runtime/WindowsRuntimeBuilder.cpp:5618 (87 líneas ejecutables;
   106 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1059 — Descomponer LldLinker::linkDynamicLibrary en src/Linker/LldLinker.cpp:729 (87 líneas ejecutables;
+- [x] NSC-IMPL-1059 — Descomponer LldLinker::linkDynamicLibrary en src/Linker/LldLinker.cpp:729 (87 líneas ejecutables;
   130 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1072 — Descomponer buildPathGetFullPath en src/Runtime/WindowsRuntimeBuilder.cpp:2307 (84 líneas
+- [x] NSC-IMPL-1072 — Descomponer buildPathGetFullPath en src/Runtime/WindowsRuntimeBuilder.cpp:2307 (84 líneas
   ejecutables; 110 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1083 — Descomponer buildDirectoryGetEntryCount en src/Runtime/WindowsRuntimeBuilder.cpp:2900 (81 líneas
+- [x] NSC-IMPL-1083 — Descomponer buildDirectoryGetEntryCount en src/Runtime/WindowsRuntimeBuilder.cpp:2900 (81 líneas
   ejecutables; 98 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1099 — Descomponer buildFileReadAllText en src/Runtime/WindowsRuntimeBuilder.cpp:1294 (78 líneas
+- [x] NSC-IMPL-1099 — Descomponer buildFileReadAllText en src/Runtime/WindowsRuntimeBuilder.cpp:1294 (78 líneas
   ejecutables; 110 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1112 — Descomponer buildConsoleWrite en src/Runtime/WindowsRuntimeBuilder.cpp:321 (76 líneas ejecutables;
+- [x] NSC-IMPL-1112 — Descomponer buildConsoleWrite en src/Runtime/WindowsRuntimeBuilder.cpp:321 (76 líneas ejecutables;
   93 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1119 — Descomponer buildFileReadAllBytes en src/Runtime/WindowsRuntimeBuilder.cpp:1520 (75 líneas
+- [x] NSC-IMPL-1119 — Descomponer buildFileReadAllBytes en src/Runtime/WindowsRuntimeBuilder.cpp:1520 (75 líneas
   ejecutables; 93 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1136 — Descomponer CoffArchiveVerifier::verify en src/Linker/CoffArchiveVerifier.cpp:101 (72 líneas
+- [x] NSC-IMPL-1136 — Descomponer CoffArchiveVerifier::verify en src/Linker/CoffArchiveVerifier.cpp:101 (72 líneas
   ejecutables; 117 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1143 — Descomponer WindowsLibraryBuilder::buildStatic en src/Linker/WindowsLibraryBuilder.cpp:170 (70
+- [x] NSC-IMPL-1143 — Descomponer WindowsLibraryBuilder::buildStatic en src/Linker/WindowsLibraryBuilder.cpp:170 (70
   líneas ejecutables; 123 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1144 — Descomponer buildFileWriteAllBytes en src/Runtime/WindowsRuntimeBuilder.cpp:1722 (69 líneas
+- [x] NSC-IMPL-1144 — Descomponer buildFileWriteAllBytes en src/Runtime/WindowsRuntimeBuilder.cpp:1722 (69 líneas
   ejecutables; 85 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1145 — Descomponer writeWindowsRuntimeLibrary en src/Linker/WindowsRuntimeLibrary.cpp:140 (69 líneas
+- [x] NSC-IMPL-1145 — Descomponer writeWindowsRuntimeLibrary en src/Linker/WindowsRuntimeLibrary.cpp:140 (69 líneas
   ejecutables; 102 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1159 — Descomponer buildStart en src/Runtime/WindowsRuntimeBuilder.cpp:221 (67 líneas ejecutables; 81
+- [x] NSC-IMPL-1159 — Descomponer buildStart en src/Runtime/WindowsRuntimeBuilder.cpp:221 (67 líneas ejecutables; 81
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1167 — Descomponer buildFileReadBytes en src/Runtime/WindowsRuntimeBuilder.cpp:1629 (65 líneas
+- [x] NSC-IMPL-1167 — Descomponer buildFileReadBytes en src/Runtime/WindowsRuntimeBuilder.cpp:1629 (65 líneas
   ejecutables; 79 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1177 — Descomponer buildThrow en src/Runtime/WindowsRuntimeBuilder.cpp:5543 (63 líneas ejecutables; 74
+- [x] NSC-IMPL-1177 — Descomponer buildThrow en src/Runtime/WindowsRuntimeBuilder.cpp:5543 (63 líneas ejecutables; 74
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1187 — Descomponer LldLinker::createStaticLibrary en src/Linker/LldLinker.cpp:635 (62 líneas ejecutables;
+- [x] NSC-IMPL-1187 — Descomponer LldLinker::createStaticLibrary en src/Linker/LldLinker.cpp:635 (62 líneas ejecutables;
   93 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1188 — Descomponer LldLinker::linkExecutable en src/Linker/LldLinker.cpp:870 (62 líneas ejecutables; 89
+- [x] NSC-IMPL-1188 — Descomponer LldLinker::linkExecutable en src/Linker/LldLinker.cpp:870 (62 líneas ejecutables; 89
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1197 — Descomponer buildFileAppendAllText en src/Runtime/WindowsRuntimeBuilder.cpp:2195 (61 líneas
+- [x] NSC-IMPL-1197 — Descomponer buildFileAppendAllText en src/Runtime/WindowsRuntimeBuilder.cpp:2195 (61 líneas
   ejecutables; 83 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1220 — Convertir WindowsRuntimeBuilder en fachada y separar sus familias sin cambiar runtime, ABI,
+- [x] NSC-IMPL-1220 — Convertir WindowsRuntimeBuilder en fachada y separar sus familias sin cambiar runtime, ABI,
   objetos ni enlazado.
+
+Nota de cierre REF-09: linker, runtime y entrada ejecutable quedaron reorganizados con tipos separados,
+umbrellas compatibles, utilidades temporales compartidas y WindowsRuntimeBuilder reducido a fachada con familias
+internas explícitas. La auditoría estática comprobó 55/55 ítems, cero funciones mayores de 60 líneas ejecutables
+en el corpus modificado, cero tipos definidos en .cpp, un tipo por header nuevo, resolución completa de includes,
+registro exacto de los CPP nuevos en CMake, orden idéntico de 73 imports/globales y 98 constructores del runtime,
+y preservación de los 1,335 comentarios del corpus original. No se ejecutaron compilación, pruebas, suites ni
+baseline por instrucción del propietario.
 
 ### Commit REF-10 — Utilidades compartidas, includes y cierre transversal — 0/9
 

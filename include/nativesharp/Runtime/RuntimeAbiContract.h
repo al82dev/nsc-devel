@@ -1,5 +1,9 @@
 #pragma once
 
+#include "nativesharp/Runtime/RuntimeAbiImageKind.h"
+#include "nativesharp/Runtime/RuntimeAbiSymbol.h"
+#include "nativesharp/Runtime/RuntimeAbiSymbolKind.h"
+
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -16,28 +20,6 @@ inline constexpr std::uint16_t kRuntimeAbiMinor = 2;
 // Version 4 adds the dedicated NativeSharp panic SEH filter. It keeps panic non-catchable by
 // typed language catches while allowing entry points and C boundaries to stop native unwind.
 inline constexpr std::uint16_t kRuntimeSymbolSetVersion = 4;
-
-enum class RuntimeAbiSymbolKind : std::uint8_t
-{
-    Function,
-    Data
-};
-
-enum class RuntimeAbiImageKind : std::uint8_t
-{
-    Executable,
-    SupportLibrary,
-    EntryPoint
-};
-
-struct RuntimeAbiSymbol
-{
-    std::string_view name;
-    RuntimeAbiSymbolKind kind;
-    // Canonical opaque-pointer LLVM type. Parameter names and implementation
-    // details are deliberately excluded: this is the binary boundary.
-    std::string_view llvmType;
-};
 
 inline constexpr std::array kRuntimeAbiSymbols = {
     RuntimeAbiSymbol{"__nativesharp_alloc", RuntimeAbiSymbolKind::Function, "ptr(i64)"},

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Linker/WindowsExecutableSubsystem.h"
+
 #include <filesystem>
 #include <memory>
 #include <span>
@@ -8,12 +10,6 @@
 
 namespace nativesharp::linker
 {
-enum class WindowsExecutableSubsystem
-{
-    Console,
-    Windows,
-};
-
 class LldLinker final
 {
 public:

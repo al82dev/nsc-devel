@@ -51,17 +51,16 @@ bool containsChecksumSubsection(const std::vector<std::uint8_t>& stream)
     }
     return false;
 }
-}
 
-bool PdbVerifier::verify(const std::filesystem::path& path)
+bool readPdbBytes(
+    const std::filesystem::path& path,
+    std::vector<std::uint8_t>& bytes,
+    std::string& error)
 {
-    info_ = {};
-    error_.clear();
-
     std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input)
     {
-        error_ = "could not open PDB";
+        error = "could not open PDB";
         return false;
     }
     const std::streamoff length = input.tellg();
@@ -69,51 +68,57 @@ bool PdbVerifier::verify(const std::filesystem::path& path)
         static_cast<std::uint64_t>(length) > std::numeric_limits<std::size_t>::max() ||
         static_cast<std::uint64_t>(length) > kMaximumPdbBytes)
     {
-        error_ = "PDB has an invalid or unsupported MSF file size (maximum 1 GiB)";
+        error = "PDB has an invalid or unsupported MSF file size (maximum 1 GiB)";
         return false;
     }
-    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(length));
+    bytes.resize(static_cast<std::size_t>(length));
     input.seekg(0);
     input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     if (!input)
     {
-        error_ = "could not read the complete PDB";
+        error = "could not read the complete PDB";
         return false;
     }
     if (std::memcmp(bytes.data(), kMsfMagic, sizeof(kMsfMagic) - 1) != 0)
     {
-        error_ = "PDB does not contain the MSF 7.00 signature";
+        error = "PDB does not contain the MSF 7.00 signature";
         return false;
     }
+    return true;
+}
 
-    const std::uint32_t blockSize = readU32(bytes, 32);
-    const std::uint32_t blockCount = readU32(bytes, 40);
+bool readPdbDirectory(
+    const std::vector<std::uint8_t>& bytes,
+    std::uint32_t& blockSize,
+    std::uint32_t& blockCount,
+    std::vector<std::uint8_t>& directory,
+    std::string& error)
+{
+    blockSize = readU32(bytes, 32);
+    blockCount = readU32(bytes, 40);
     const std::uint32_t directoryByteCount = readU32(bytes, 44);
     const std::uint32_t blockMapIndex = readU32(bytes, 52);
     if (!validBlockSize(blockSize) || blockCount == 0 ||
         static_cast<std::uint64_t>(blockCount) * blockSize > bytes.size() ||
         directoryByteCount < 4 || directoryByteCount > bytes.size() || blockMapIndex >= blockCount)
     {
-        error_ = "PDB MSF superblock is inconsistent";
+        error = "PDB MSF superblock is inconsistent";
         return false;
     }
-
-    const std::uint32_t directoryBlockCount =
-        (directoryByteCount + blockSize - 1U) / blockSize;
+    const std::uint32_t directoryBlockCount = (directoryByteCount + blockSize - 1U) / blockSize;
     const std::size_t blockMapOffset = static_cast<std::size_t>(blockMapIndex) * blockSize;
     if (!rangeFits(blockMapOffset, static_cast<std::size_t>(directoryBlockCount) * 4, bytes.size()))
     {
-        error_ = "PDB directory block map is truncated";
+        error = "PDB directory block map is truncated";
         return false;
     }
-    std::vector<std::uint8_t> directory;
     directory.reserve(directoryByteCount);
     for (std::uint32_t index = 0; index < directoryBlockCount; ++index)
     {
         const std::uint32_t block = readU32(bytes, blockMapOffset + (index * 4U));
         if (block >= blockCount)
         {
-            error_ = "PDB directory references a block outside the MSF file";
+            error = "PDB directory references a block outside the MSF file";
             return false;
         }
         const std::size_t sourceOffset = static_cast<std::size_t>(block) * blockSize;
@@ -121,35 +126,44 @@ bool PdbVerifier::verify(const std::filesystem::path& path)
         const std::size_t copySize = std::min<std::size_t>(blockSize, remaining);
         if (!rangeFits(sourceOffset, copySize, bytes.size()))
         {
-            error_ = "PDB directory block is truncated";
+            error = "PDB directory block is truncated";
             return false;
         }
         directory.insert(directory.end(), bytes.begin() + sourceOffset, bytes.begin() + sourceOffset + copySize);
     }
+    return true;
+}
 
+bool parsePdbStreams(
+    const std::vector<std::uint8_t>& directory,
+    const std::uint32_t blockSize,
+    const std::uint32_t blockCount,
+    std::vector<std::uint32_t>& streamSizes,
+    std::vector<std::vector<std::uint32_t>>& streamBlocks,
+    std::string& error)
+{
     const std::uint32_t streamCount = readU32(directory, 0);
     if (streamCount < 4 || streamCount > 65536 ||
         !rangeFits(4, static_cast<std::size_t>(streamCount) * 4, directory.size()))
     {
-        error_ = "PDB stream directory has an invalid stream count";
+        error = "PDB stream directory has an invalid stream count";
         return false;
     }
-    info_.streamCount = streamCount;
-    std::vector<std::uint32_t> streamSizes(streamCount);
+    streamSizes.resize(streamCount);
     std::size_t cursor = 4;
     for (std::uint32_t index = 0; index < streamCount; ++index)
     {
         streamSizes[index] = readU32(directory, cursor);
         cursor += 4;
     }
-    std::vector<std::vector<std::uint32_t>> streamBlocks(streamCount);
+    streamBlocks.resize(streamCount);
     for (std::uint32_t stream = 0; stream < streamCount; ++stream)
     {
         if (streamSizes[stream] == kAbsentStream) continue;
         const std::uint32_t count = (streamSizes[stream] + blockSize - 1U) / blockSize;
         if (!rangeFits(cursor, static_cast<std::size_t>(count) * 4, directory.size()))
         {
-            error_ = "PDB stream block list is truncated";
+            error = "PDB stream block list is truncated";
             return false;
         }
         streamBlocks[stream].reserve(count);
@@ -159,67 +173,118 @@ bool PdbVerifier::verify(const std::filesystem::path& path)
             cursor += 4;
             if (block >= blockCount)
             {
-                error_ = "PDB stream references a block outside the MSF file";
+                error = "PDB stream references a block outside the MSF file";
                 return false;
             }
             streamBlocks[stream].push_back(block);
         }
     }
+    return true;
+}
 
-    const auto materializeStream = [&](std::uint32_t stream) -> std::optional<std::vector<std::uint8_t>> {
-        if (stream >= streamCount || streamSizes[stream] == kAbsentStream) return std::nullopt;
-        std::vector<std::uint8_t> result;
-        result.reserve(streamSizes[stream]);
-        for (const std::uint32_t block : streamBlocks[stream])
-        {
-            const std::size_t sourceOffset = static_cast<std::size_t>(block) * blockSize;
-            const std::size_t remaining = streamSizes[stream] - result.size();
-            const std::size_t copySize = std::min<std::size_t>(blockSize, remaining);
-            if (!rangeFits(sourceOffset, copySize, bytes.size())) return std::nullopt;
-            result.insert(result.end(), bytes.begin() + sourceOffset, bytes.begin() + sourceOffset + copySize);
-        }
-        return result;
-    };
+std::optional<std::vector<std::uint8_t>> materializePdbStream(
+    const std::uint32_t stream,
+    const std::uint32_t blockSize,
+    const std::vector<std::uint8_t>& bytes,
+    const std::vector<std::uint32_t>& streamSizes,
+    const std::vector<std::vector<std::uint32_t>>& streamBlocks)
+{
+    if (stream >= streamSizes.size() || streamSizes[stream] == kAbsentStream) return std::nullopt;
+    std::vector<std::uint8_t> result;
+    result.reserve(streamSizes[stream]);
+    for (const std::uint32_t block : streamBlocks[stream])
+    {
+        const std::size_t sourceOffset = static_cast<std::size_t>(block) * blockSize;
+        const std::size_t remaining = streamSizes[stream] - result.size();
+        const std::size_t copySize = std::min<std::size_t>(blockSize, remaining);
+        if (!rangeFits(sourceOffset, copySize, bytes.size())) return std::nullopt;
+        result.insert(result.end(), bytes.begin() + sourceOffset, bytes.begin() + sourceOffset + copySize);
+    }
+    return result;
+}
 
-    const std::optional<std::vector<std::uint8_t>> pdbStream = materializeStream(1);
-    if (!pdbStream.has_value() || pdbStream->size() < 28)
+bool verifyPdbInformationStream(
+    const std::vector<std::uint8_t>& stream,
+    PdbInfo& info,
+    std::string& error)
+{
+    if (stream.size() < 28)
+    {
+        error = "PDB information stream is missing or truncated";
+        return false;
+    }
+    info.version = readU32(stream, 0);
+    info.signature = readU32(stream, 4);
+    info.age = readU32(stream, 8);
+    std::copy_n(stream.begin() + 12, info.guid.size(), info.guid.begin());
+    if (info.age == 0)
+    {
+        error = "PDB information stream has a zero age";
+        return false;
+    }
+    return true;
+}
+
+bool verifyPdbDbiStream(
+    const std::vector<std::uint8_t>& stream,
+    const std::vector<std::uint32_t>& streamSizes,
+    PdbInfo& info,
+    std::string& error)
+{
+    if (stream.size() < 64)
+    {
+        error = "PDB DBI stream is missing or truncated";
+        return false;
+    }
+    if (readU32(stream, 0) != 0xffffffffU)
+    {
+        error = "PDB DBI stream has an invalid signature";
+        return false;
+    }
+    const std::uint16_t publicStreamIndex = readU16(stream, 16);
+    const std::uint32_t moduleInfoSize = readU32(stream, 24);
+    const std::uint32_t fileInfoSize = readU32(stream, 36);
+    info.hasModuleRecords = moduleInfoSize != 0 && rangeFits(64, moduleInfoSize, stream.size());
+    info.hasSourceFiles = fileInfoSize != 0;
+    info.hasPublicSymbols = publicStreamIndex < streamSizes.size() &&
+        streamSizes[publicStreamIndex] != kAbsentStream && streamSizes[publicStreamIndex] != 0;
+    return true;
+}
+}
+
+bool PdbVerifier::verify(const std::filesystem::path& path)
+{
+    info_ = {};
+    error_.clear();
+
+    std::vector<std::uint8_t> bytes;
+    if (!readPdbBytes(path, bytes, error_)) return false;
+    std::uint32_t blockSize = 0;
+    std::uint32_t blockCount = 0;
+    std::vector<std::uint8_t> directory;
+    if (!readPdbDirectory(bytes, blockSize, blockCount, directory, error_)) return false;
+    std::vector<std::uint32_t> streamSizes;
+    std::vector<std::vector<std::uint32_t>> streamBlocks;
+    if (!parsePdbStreams(directory, blockSize, blockCount, streamSizes, streamBlocks, error_)) return false;
+    info_.streamCount = static_cast<std::uint32_t>(streamSizes.size());
+    const auto pdbStream = materializePdbStream(1, blockSize, bytes, streamSizes, streamBlocks);
+    if (!pdbStream.has_value())
     {
         error_ = "PDB information stream is missing or truncated";
         return false;
     }
-    info_.version = readU32(*pdbStream, 0);
-    info_.signature = readU32(*pdbStream, 4);
-    info_.age = readU32(*pdbStream, 8);
-    std::copy_n(pdbStream->begin() + 12, info_.guid.size(), info_.guid.begin());
-    if (info_.age == 0)
-    {
-        error_ = "PDB information stream has a zero age";
-        return false;
-    }
-
-    const std::optional<std::vector<std::uint8_t>> dbiStream = materializeStream(3);
-    if (!dbiStream.has_value() || dbiStream->size() < 64)
+    if (!verifyPdbInformationStream(*pdbStream, info_, error_)) return false;
+    const auto dbiStream = materializePdbStream(3, blockSize, bytes, streamSizes, streamBlocks);
+    if (!dbiStream.has_value())
     {
         error_ = "PDB DBI stream is missing or truncated";
         return false;
     }
-    if (readU32(*dbiStream, 0) != 0xffffffffU)
-    {
-        error_ = "PDB DBI stream has an invalid signature";
-        return false;
-    }
-    const std::uint16_t publicStreamIndex = readU16(*dbiStream, 16);
-    const std::uint32_t moduleInfoSize = readU32(*dbiStream, 24);
-    const std::uint32_t fileInfoSize = readU32(*dbiStream, 36);
-    info_.hasModuleRecords = moduleInfoSize != 0 && rangeFits(64, moduleInfoSize, dbiStream->size());
-    info_.hasSourceFiles = fileInfoSize != 0;
-    info_.hasPublicSymbols = publicStreamIndex < streamCount &&
-        streamSizes[publicStreamIndex] != kAbsentStream && streamSizes[publicStreamIndex] != 0;
-
-    for (std::uint32_t stream = 0; stream < streamCount && !info_.hasSourceChecksums; ++stream)
+    if (!verifyPdbDbiStream(*dbiStream, streamSizes, info_, error_)) return false;
+    for (std::uint32_t stream = 0; stream < streamSizes.size() && !info_.hasSourceChecksums; ++stream)
     {
         if (streamSizes[stream] == kAbsentStream || streamSizes[stream] < 8) continue;
-        const std::optional<std::vector<std::uint8_t>> data = materializeStream(stream);
+        const auto data = materializePdbStream(stream, blockSize, bytes, streamSizes, streamBlocks);
         if (data.has_value()) info_.hasSourceChecksums = containsChecksumSubsection(*data);
     }
     return true;

@@ -871,6 +871,8 @@ nsc_enable_warnings(nsc_runtime)
 add_library(nsc_linker STATIC
     src/Linker/LldLinker.cpp
     src/Linker/CoffArchiveVerifier.cpp
+    src/Linker/Internal/TemporaryDirectory.cpp
+    src/Linker/Internal/TemporaryFiles.cpp
     src/Linker/PeExecutableVerifier.cpp
     src/Linker/PdbVerifier.cpp
     src/Linker/WindowsExecutableBuilder.cpp
@@ -959,7 +961,9 @@ nsc_enable_warnings(nsc_driver)
 # nsc cae en build/bin/ -- CMAKE_RUNTIME_OUTPUT_DIRECTORY ya quedo en ${CMAKE_BINARY_DIR}/bin
 # desde el bloque de arriba (justo despues de los option()), asi que no hace falta reasignarla
 # aqui; solo cambia de nuevo mas abajo, justo antes del primer add_executable() de test.
-add_executable(nsc src/nsc/main.cpp)
+add_executable(nsc
+    src/nsc/Internal/TeeBuffer.cpp
+    src/nsc/main.cpp)
 target_link_libraries(nsc PRIVATE nsc_driver)
 if(WIN32)
     target_link_options(nsc PRIVATE "/libpath:${NSC_VS2026_CRT_LIBRARY_DIR}")

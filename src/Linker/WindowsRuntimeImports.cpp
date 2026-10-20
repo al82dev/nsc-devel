@@ -1,5 +1,7 @@
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 
+#include "Internal/PlannedLibrary.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -16,31 +18,70 @@ std::string upperAscii(std::string_view text)
         [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
     return result;
 }
+
+template <std::size_t Size>
+void addSymbols(
+    std::vector<PlannedLibrary>& planned,
+    std::map<std::string, std::size_t>& byUpperName,
+    std::string_view dll,
+    const std::array<std::string_view, Size>& symbols)
+{
+    const std::string upper = upperAscii(dll);
+    const auto found = byUpperName.find(upper);
+    std::size_t index;
+    if (found == byUpperName.end())
+    {
+        index = planned.size();
+        planned.push_back(PlannedLibrary{std::string(dll), {}});
+        byUpperName.emplace(upper, index);
+    }
+    else
+    {
+        index = found->second;
+    }
+    for (const std::string_view symbol : symbols)
+    {
+        const std::string name(symbol);
+        auto& list = planned[index].symbols;
+        if (std::find(list.begin(), list.end(), name) == list.end())
+        {
+            list.push_back(name);
+        }
+    }
 }
 
-bool createWindowsImportLibraries(
-    const LldLinker& linker,
-    const std::filesystem::path& directory,
-    std::string_view combinedIrText,
-    std::span<const ExternalImportModule> externalImports,
-    std::vector<std::filesystem::path>& libraries,
-    std::string& error)
+void addSymbols(
+    std::vector<PlannedLibrary>& planned,
+    std::map<std::string, std::size_t>& byUpperName,
+    std::string_view dll,
+    const std::vector<std::string>& symbols)
 {
-    libraries.clear();
-    (void)combinedIrText; // Kept in the API for compatibility; precompiled archives require a stable closure.
+    const std::string upper = upperAscii(dll);
+    const auto found = byUpperName.find(upper);
+    std::size_t index;
+    if (found == byUpperName.end())
+    {
+        index = planned.size();
+        planned.push_back(PlannedLibrary{std::string(dll), {}});
+        byUpperName.emplace(upper, index);
+    }
+    else
+    {
+        index = found->second;
+    }
+    for (const std::string& symbol : symbols)
+    {
+        auto& list = planned[index].symbols;
+        if (std::find(list.begin(), list.end(), symbol) == list.end())
+        {
+            list.push_back(symbol);
+        }
+    }
+}
 
-    // The canonical runtime tables. The KERNEL32 list's per-stage comments are the project's
-    // import history and moved here verbatim from the (formerly duplicated) builder copies.
-    //
-    // EL TAMANO SE DEDUCE, Y ESO ES UNA CORRECCION, NO UN ADORNO. Estas tres tablas se
-    // declaraban como `std::array<std::string_view, N>` con la N escrita a mano. Anadir un
-    // simbolo y no tocar la N da "error: excess elements in struct initializer" apuntando al
-    // ULTIMO elemento de la lista -- no al que acabas de meter -- asi que el error senala una
-    // linea que no se ha cambiado en meses. Medido el 2026-09-02: las tres altas del Bloque 4
-    // (GetCurrentDirectoryA, CreateProcessA, GetExitCodeProcess) dejaron la N en 62 con 65
-    // entradas y tumbaron el build de LAS DOS PASADAS de all.bat. Con std::to_array la cuenta
-    // la lleva el compilador y ese fallo ya no se puede escribir.
-    const auto kernel32Symbols = std::to_array<std::string_view>({
+auto kernel32FoundationSymbols()
+{
+    return std::to_array<std::string_view>({
         "ExitProcess",
         "GetProcessHeap",
         "HeapAlloc",
@@ -106,7 +147,12 @@ bool createWindowsImportLibraries(
         // from KERNEL32.dll. CommandLineToArgvW itself lives in SHELL32.dll, not here -- see the
         // separate shell32Library block below.
         "GetCommandLineW",
-        "WideCharToMultiByte",
+        "WideCharToMultiByte"});
+}
+
+auto kernel32PlatformSymbols()
+{
+    return std::to_array<std::string_view>({
         "MultiByteToWideChar",
         "LocalFree",
         // Stage 53.6 "Enumeracion de directorios" -- Directory.GetFileCount/GetFiles/
@@ -173,6 +219,15 @@ bool createWindowsImportLibraries(
         "Sleep",
         "CopyFileA",
         "MoveFileA"});
+}
+
+std::vector<PlannedLibrary> planWindowsImportLibraries(
+    std::span<const ExternalImportModule> externalImports)
+{
+    std::vector<PlannedLibrary> planned;
+    std::map<std::string, std::size_t> byUpperName;
+    addSymbols(planned, byUpperName, "KERNEL32.dll", kernel32FoundationSymbols());
+    addSymbols(planned, byUpperName, "KERNEL32.dll", kernel32PlatformSymbols());
     const auto kernelbaseSymbols = std::to_array<std::string_view>({"__chkstk"});
     // Stage 53.5 "Command-line arguments" -- CommandLineToArgvW is the one Win32 symbol the
     // runtime imports from SHELL32.dll rather than KERNEL32/KERNELBASE.
@@ -198,55 +253,26 @@ bool createWindowsImportLibraries(
     // LLVM-generated memcpy/memset/memmove calls no longer have IR available to scan. Keeping
     // this tiny support set stable lets object-only archives compose transitively without
     // vendoring process import libraries into every .lib.
-    const auto ucrtSymbols = std::to_array<std::string_view>({
-        "strlen", "__C_specific_handler", "memset", "memcpy", "memmove", "fmaf"});
-
-    // Merge: runtime tables first, then the project's external imports. A DLL is matched
-    // case-insensitively ("user32.dll" == "USER32.DLL"); symbols are deduplicated so a project
-    // may freely re-declare something the runtime already imports (GetTickCount64, say) without
-    // producing a duplicate .def entry. New DLLs keep the canonical spelling the project wrote.
-    struct PlannedLibrary final
-    {
-        std::string canonicalDll;
-        std::vector<std::string> symbols;
-    };
-    std::vector<PlannedLibrary> planned;
-    std::map<std::string, std::size_t> byUpperName;
-    const auto addSymbols = [&](std::string_view dll, auto&& symbolRange)
-    {
-        const std::string upper = upperAscii(dll);
-        const auto found = byUpperName.find(upper);
-        std::size_t index;
-        if (found == byUpperName.end())
-        {
-            index = planned.size();
-            planned.push_back(PlannedLibrary{std::string(dll), {}});
-            byUpperName.emplace(upper, index);
-        }
-        else
-        {
-            index = found->second;
-        }
-        for (const auto& symbol : symbolRange)
-        {
-            const std::string name(symbol);
-            auto& list = planned[index].symbols;
-            if (std::find(list.begin(), list.end(), name) == list.end())
-            {
-                list.push_back(name);
-            }
-        }
-    };
-    addSymbols("KERNEL32.dll", kernel32Symbols);
-    addSymbols("KERNELBASE.dll", kernelbaseSymbols);
-    addSymbols("SHELL32.dll", shell32Symbols);
-    addSymbols("ucrtbase.dll", ucrtSymbols);
+    const auto ucrtSymbols = std::to_array<std::string_view>(
+        {"strlen", "__C_specific_handler", "memset", "memcpy", "memmove", "fmaf"});
+    addSymbols(planned, byUpperName, "KERNELBASE.dll", kernelbaseSymbols);
+    addSymbols(planned, byUpperName, "SHELL32.dll", shell32Symbols);
+    addSymbols(planned, byUpperName, "ucrtbase.dll", ucrtSymbols);
     for (const ExternalImportModule& module : externalImports)
     {
         if (module.dllName.empty() || module.symbols.empty()) continue;
-        addSymbols(module.dllName, module.symbols);
+        addSymbols(planned, byUpperName, module.dllName, module.symbols);
     }
+    return planned;
+}
 
+bool materializeWindowsImportLibraries(
+    const LldLinker& linker,
+    const std::filesystem::path& directory,
+    const std::vector<PlannedLibrary>& planned,
+    std::vector<std::filesystem::path>& libraries,
+    std::string& error)
+{
     for (const PlannedLibrary& library : planned)
     {
         std::filesystem::path stem = upperAscii(library.canonicalDll);
@@ -264,5 +290,36 @@ bool createWindowsImportLibraries(
         libraries.push_back(output);
     }
     return true;
+}
+}
+
+bool createWindowsImportLibraries(
+    const LldLinker& linker,
+    const std::filesystem::path& directory,
+    std::string_view combinedIrText,
+    std::span<const ExternalImportModule> externalImports,
+    std::vector<std::filesystem::path>& libraries,
+    std::string& error)
+{
+    libraries.clear();
+    (void)combinedIrText; // Kept in the API for compatibility; precompiled archives require a stable closure.
+    // The canonical runtime tables. The KERNEL32 list's per-stage comments are the project's
+    // import history and moved here verbatim from the (formerly duplicated) builder copies.
+    //
+    // EL TAMANO SE DEDUCE, Y ESO ES UNA CORRECCION, NO UN ADORNO. Estas tres tablas se
+    // declaraban como `std::array<std::string_view, N>` con la N escrita a mano. Anadir un
+    // simbolo y no tocar la N da "error: excess elements in struct initializer" apuntando al
+    // ULTIMO elemento de la lista -- no al que acabas de meter -- asi que el error senala una
+    // linea que no se ha cambiado en meses. Medido el 2026-09-02: las tres altas del Bloque 4
+    // (GetCurrentDirectoryA, CreateProcessA, GetExitCodeProcess) dejaron la N en 62 con 65
+    // entradas y tumbaron el build de LAS DOS PASADAS de all.bat. Con std::to_array la cuenta
+    // la lleva el compilador y ese fallo ya no se puede escribir.
+    //
+    // Merge: runtime tables first, then the project's external imports. A DLL is matched
+    // case-insensitively ("user32.dll" == "USER32.DLL"); symbols are deduplicated so a project
+    // may freely re-declare something the runtime already imports (GetTickCount64, say) without
+    // producing a duplicate .def entry. New DLLs keep the canonical spelling the project wrote.
+    const std::vector<PlannedLibrary> planned = planWindowsImportLibraries(externalImports);
+    return materializeWindowsImportLibraries(linker, directory, planned, libraries, error);
 }
 }

@@ -1,4 +1,5 @@
 #include "nativesharp/Runtime/RuntimeAbiContract.h"
+#include "Internal/ActualSymbol.h"
 
 #include <algorithm>
 #include <fstream>
@@ -13,12 +14,6 @@ namespace nativesharp::runtime
 {
 namespace
 {
-struct ActualSymbol
-{
-    RuntimeAbiSymbolKind kind;
-    std::string llvmType;
-};
-
 std::string_view trim(std::string_view value)
 {
     while (!value.empty() && (value.front() == ' ' || value.front() == '\t'))
