@@ -20,10 +20,12 @@ extraction. It is a development aid only and is never imported at runtime.
 Run the modular application from the repository root:
 
 ```powershell
-python nsc-builder/nscbuilder3.py
-python nsc-builder/nscbuilder3.py --audit-catalog
-python nsc-builder/nscbuilder3.py --gui-smoke
+python nsc-builder/nscbuilder3.pyw
+python nsc-builder/nscbuilder3.pyw --audit-catalog
+python nsc-builder/nscbuilder3.pyw --gui-smoke
 ```
+
+On Windows, double-click `nscbuilder3.pyw` to open the GUI without a console window.
 
 The package does not configure or build NSC unless the operator explicitly
 uses those GUI actions.
