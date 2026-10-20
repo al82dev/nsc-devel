@@ -1366,7 +1366,7 @@ class ExecutionEngine:
             archive_executable=archive,
             source_root=SUITE_ROOT,
             repository_root=SOURCE_ROOT,
-            installation_root=Path(self.config.nsc_executable).resolve().parent.parent,
+            installation_root=Path(self.config.install_prefix).resolve(),
             work_parent=self.store.root,
             build_mode=variant.build_mode,
         )

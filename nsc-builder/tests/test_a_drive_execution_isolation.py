@@ -224,6 +224,34 @@ class ADriveExecutionIsolationTests(unittest.TestCase):
         external_runner.assert_not_called()
         self.assertEqual(Path(received["TEMP"]).drive.casefold(), "a:")
 
+    def test_packaging_dispatch_uses_the_installed_prefix(self) -> None:
+        run_root = self.root / "packaging-dispatch"
+        archive = run_root / "tools" / "7z.exe"
+        archive.parent.mkdir(parents=True)
+        archive.write_bytes(b"archive")
+        installation = run_root / "installation"
+        build_compiler = run_root / "build" / "bin" / "nsc.exe"
+        engine = ExecutionEngine(
+            SimpleNamespace(
+                archive_executable=str(archive),
+                install_prefix=str(installation),
+                nsc_executable=str(build_compiler),
+            ),
+            FakeStore(run_root),
+            lambda _line: None,
+            lambda *_args: None,
+            lambda *_args: None,
+        )
+        engine._load_gate = Mock(return_value=object())
+        engine._run_python_gate_case = Mock(return_value=("PASS", "", ""))
+
+        result = engine._run_packaging(make_variant("T12B-01070", "Packaging"))
+
+        self.assertEqual(result, ("PASS", "", ""))
+        options = engine._run_python_gate_case.call_args.args[2]
+        self.assertEqual(options.installation_root, installation.resolve())
+        self.assertNotEqual(options.installation_root, build_compiler.parent.parent.resolve())
+
 
 if __name__ == "__main__":
     unittest.main()
