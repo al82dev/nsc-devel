@@ -1,5 +1,26 @@
 #pragma once
 
+#include "LLVMTailCallKind.h"
+#include "LLVMModuleFlagBehavior.h"
+#include "LLVMDWARFSourceLanguage.h"
+#include "LLVMDWARFEmissionKind.h"
+#include "LLVMChecksumKind.h"
+#include "LLVMDIFlags.h"
+#include "LLVMIntPredicate.h"
+#include "LLVMRealPredicate.h"
+#include "LLVMDenormalModeKind.h"
+#include "LLVMAtomicRMWBinOp.h"
+#include "LLVMAtomicOrdering.h"
+#include "LLVMCodeGenOptLevel.h"
+#include "LLVMRelocMode.h"
+#include "LLVMCodeModel.h"
+#include "LLVMCodeGenFileType.h"
+#include "LLVMVerifierFailureAction.h"
+#include "LLVMLinkage.h"
+#include "LLVMComdatSelectionKind.h"
+#include "LLVMInlineAsmDialect.h"
+#include "LLVMFastMathFlags.h"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -42,57 +63,20 @@ using LLVMDbgRecordRef = LLVMOpaqueDbgRecord*;
 using LLVMComdatRef = LLVMComdat*;
 using LLVMBool = int;
 
-enum LLVMTailCallKind
-{
-    LLVMTailCallKindNone = 0,
-    LLVMTailCallKindTail = 1,
-    LLVMTailCallKindMustTail = 2,
-    LLVMTailCallKindNoTail = 3,
-};
+
 
 // llvm-c/Core.h LLVMCallConv::LLVMX86VectorCallCallConv.
 inline constexpr unsigned LLVMX86VectorCallCallConv = 80;
 
-enum LLVMModuleFlagBehavior
-{
-    LLVMModuleFlagBehaviorError = 0,
-    LLVMModuleFlagBehaviorWarning = 1,
-    LLVMModuleFlagBehaviorRequire = 2,
-    LLVMModuleFlagBehaviorOverride = 3,
-    LLVMModuleFlagBehaviorAppend = 4,
-    LLVMModuleFlagBehaviorAppendUnique = 5,
-};
 
-enum LLVMDWARFSourceLanguage
-{
-    // Exact ordinal from llvm-c/DebugInfo.h in LLVM 23.
-    LLVMDWARFSourceLanguageC_sharp = 48,
-};
 
-enum LLVMDWARFEmissionKind
-{
-    LLVMDWARFEmissionNone = 0,
-    LLVMDWARFEmissionFull = 1,
-    LLVMDWARFEmissionLineTablesOnly = 2,
-};
 
-enum LLVMChecksumKind
-{
-    CSK_MD5,
-    CSK_SHA1,
-    CSK_SHA256
-};
 
-enum LLVMDIFlags
-{
-    LLVMDIFlagZero = 0,
-    LLVMDIFlagPrivate = 1,
-    LLVMDIFlagProtected = 2,
-    LLVMDIFlagPublic = 3,
-    LLVMDIFlagArtificial = 1 << 6,
-    LLVMDIFlagObjectPointer = 1 << 10,
-    LLVMDIFlagThunk = 1 << 25,
-};
+
+
+
+
+
 
 constexpr unsigned LLVMDWARFTagClassType = 0x02;
 constexpr unsigned LLVMDWARFTagReferenceType = 0x10;
@@ -108,47 +92,11 @@ constexpr LLVMDWARFTypeEncoding LLVMDWARFTypeEncodingUnsigned = 0x07;
 constexpr LLVMDWARFTypeEncoding LLVMDWARFTypeEncodingUnsignedChar = 0x08;
 
 // Values are fixed by llvm-c/Core.h and llvm-c/Analysis.h.
-enum LLVMIntPredicate
-{
-    LLVMIntEQ = 32,
-    LLVMIntNE = 33,
-    LLVMIntUGT = 34,
-    LLVMIntUGE = 35,
-    LLVMIntULT = 36,
-    LLVMIntULE = 37,
-    LLVMIntSGT = 38,
-    LLVMIntSGE = 39,
-    LLVMIntSLT = 40,
-    LLVMIntSLE = 41
-};
 
-enum LLVMRealPredicate
-{
-    LLVMRealPredicateFalse = 0,
-    LLVMRealOEQ = 1,
-    LLVMRealOGT = 2,
-    LLVMRealOGE = 3,
-    LLVMRealOLT = 4,
-    LLVMRealOLE = 5,
-    LLVMRealONE = 6,
-    LLVMRealORD = 7,
-    LLVMRealUNO = 8,
-    LLVMRealUEQ = 9,
-    LLVMRealUGT = 10,
-    LLVMRealUGE = 11,
-    LLVMRealULT = 12,
-    LLVMRealULE = 13,
-    LLVMRealUNE = 14,
-    LLVMRealPredicateTrue = 15
-};
 
-enum LLVMDenormalModeKind
-{
-    LLVMDenormalModeKindIEEE = 0,
-    LLVMDenormalModeKindPreserveSign = 1,
-    LLVMDenormalModeKindPositiveZero = 2,
-    LLVMDenormalModeKindDynamic = 3
-};
+
+
+
 
 // Stage 54.2 "Atomics" -- values fixed by llvm-c/Core.h, same "hand-maintained subset, exact
 // upstream numeric values" discipline as LLVMIntPredicate/LLVMRealPredicate above. Only the
@@ -158,102 +106,33 @@ enum LLVMDenormalModeKind
 // rest (And/Or/Xor/Max/Min/floating-point variants/UIncWrap/UUSubCond/etc.) does not change
 // their real enumerator values, since C enums are numbered in declaration order starting at 0
 // and every earlier member is still present here in the same order.
-enum LLVMAtomicRMWBinOp
-{
-    LLVMAtomicRMWBinOpXchg = 0,
-    LLVMAtomicRMWBinOpAdd = 1
-};
+
 
 // Stage 54.2 "Atomics" -- values fixed by llvm-c/Core.h. Only SequentiallyConsistent is used
 // (the strongest, simplest-to-reason-about ordering -- C#'s System.Threading.Interlocked
 // documented contract is itself full sequential consistency, so this is not a place to economize
 // with a weaker ordering), but every earlier enumerator is listed in its real declared order so
 // the numeric value fixed below (7) is correct.
-enum LLVMAtomicOrdering
-{
-    LLVMAtomicOrderingNotAtomic = 0,
-    LLVMAtomicOrderingUnordered = 1,
-    LLVMAtomicOrderingMonotonic = 2,
-    LLVMAtomicOrderingAcquire = 4,
-    LLVMAtomicOrderingRelease = 5,
-    LLVMAtomicOrderingAcquireRelease = 6,
-    LLVMAtomicOrderingSequentiallyConsistent = 7
-};
 
-enum LLVMCodeGenOptLevel
-{
-    LLVMCodeGenLevelNone = 0,
-    LLVMCodeGenLevelLess = 1,
-    LLVMCodeGenLevelDefault = 2,
-    LLVMCodeGenLevelAggressive = 3
-};
 
-enum LLVMRelocMode
-{
-    LLVMRelocDefault = 0,
-    LLVMRelocStatic = 1,
-    LLVMRelocPIC = 2,
-    LLVMRelocDynamicNoPic = 3,
-    LLVMRelocROPI = 4,
-    LLVMRelocRWPI = 5,
-    LLVMRelocROPI_RWPI = 6
-};
 
-enum LLVMCodeModel
-{
-    LLVMCodeModelDefault = 0,
-    LLVMCodeModelJITDefault = 1,
-    LLVMCodeModelTiny = 2,
-    LLVMCodeModelSmall = 3,
-    LLVMCodeModelKernel = 4,
-    LLVMCodeModelMedium = 5,
-    LLVMCodeModelLarge = 6
-};
 
-enum LLVMCodeGenFileType
-{
-    LLVMAssemblyFile = 0,
-    LLVMObjectFile = 1
-};
 
-enum LLVMVerifierFailureAction
-{
-    LLVMAbortProcessAction = 0,
-    LLVMPrintMessageAction = 1,
-    LLVMReturnStatusAction = 2
-};
+
+
+
+
+
+
 
 // Exact values from llvm-c/Core.h. NativeSharp only needs external (the default), internal and
 // private today; spelling the numeric values explicitly avoids recreating unrelated linkage modes
 // merely to keep their upstream ordinals.
-enum LLVMLinkage
-{
-    LLVMExternalLinkage = 0,
-    LLVMAvailableExternallyLinkage = 1,
-    LLVMLinkOnceAnyLinkage = 2,
-    LLVMLinkOnceODRLinkage = 3,
-    LLVMLinkOnceODRAutoHideLinkage = 4,
-    LLVMWeakAnyLinkage = 5,
-    LLVMWeakODRLinkage = 6,
-    LLVMAppendingLinkage = 7,
-    LLVMInternalLinkage = 8,
-    LLVMPrivateLinkage = 9
-};
 
-enum LLVMComdatSelectionKind
-{
-    LLVMAnyComdatSelectionKind = 0,
-    LLVMExactMatchComdatSelectionKind = 1,
-    LLVMLargestComdatSelectionKind = 2,
-    LLVMNoDeduplicateComdatSelectionKind = 3,
-    LLVMSameSizeComdatSelectionKind = 4
-};
 
-enum LLVMInlineAsmDialect
-{
-    LLVMInlineAsmDialectATT = 0,
-    LLVMInlineAsmDialectIntel = 1
-};
+
+
+
 
 LLVMComdatRef LLVMGetOrInsertComdat(LLVMModuleRef module, const char* name);
 void LLVMSetComdat(LLVMValueRef value, LLVMComdatRef comdat);
@@ -778,20 +657,7 @@ void LLVMSetAlignment(LLVMValueRef value, unsigned bytes);
 // atomic ordering and synchronization remain separate APIs and contracts.
 void LLVMSetVolatile(LLVMValueRef memoryAccessInstruction, LLVMBool isVolatile);
 
-enum LLVMFastMathFlags
-{
-    LLVMFastMathNone = 0,
-    LLVMFastMathAllowReassoc = 1 << 0,
-    LLVMFastMathNoNaNs = 1 << 1,
-    LLVMFastMathNoInfs = 1 << 2,
-    LLVMFastMathNoSignedZeros = 1 << 3,
-    LLVMFastMathAllowReciprocal = 1 << 4,
-    LLVMFastMathAllowContract = 1 << 5,
-    LLVMFastMathApproxFunc = 1 << 6,
-    LLVMFastMathFast = LLVMFastMathAllowReassoc | LLVMFastMathNoNaNs | LLVMFastMathNoInfs |
-        LLVMFastMathNoSignedZeros | LLVMFastMathAllowReciprocal | LLVMFastMathAllowContract |
-        LLVMFastMathApproxFunc
-};
+
 void LLVMSetFastMathFlags(LLVMValueRef floatingPointInstruction, LLVMFastMathFlags flags);
 LLVMBool LLVMCanValueUseFastMathFlags(LLVMValueRef instruction);
 

@@ -782,7 +782,26 @@ add_library(nsc_llvm STATIC
     src/LLVM/CompilationArtifactCache.cpp
     src/LLVM/DebugInformationKind.cpp
     src/LLVM/FloatingPointMode.cpp
+    src/LLVM/Internal/ArtifactCacheFilesystemPath.cpp
+    src/LLVM/Internal/CacheEntryLock.cpp
+    src/LLVM/Internal/CachePruneMeasurement.cpp
+    src/LLVM/Internal/CodeUnitProgress.cpp
+    src/LLVM/Internal/ColdLlvmTrace.cpp
+    src/LLVM/Internal/ColdLlvmTraceScope.cpp
+    src/LLVM/Internal/Implementation.cpp
+    src/LLVM/Internal/ImplementationExpressions.cpp
+    src/LLVM/Internal/ImplementationStatements.cpp
+    src/LLVM/Internal/ImplementationTypes.cpp
+    src/LLVM/Internal/MatchValuePop.cpp
+    src/LLVM/Internal/OopLlvmImplementation.cpp
+    src/LLVM/Internal/PhaseClock.cpp
+    src/LLVM/Internal/ScopedDebugLocation.cpp
+    src/LLVM/Internal/ScopedDebugScope.cpp
+    src/LLVM/Internal/StandardErrorCapture.cpp
+    src/LLVM/LlvmDebugPrefixMap.cpp
     src/LLVM/LlvmModule.cpp
+    src/LLVM/LlvmTypeClassification.cpp
+    src/LLVM/LlvmTypeLayout.cpp
     src/LLVM/LinkTimeOptimizationMode.cpp
     src/LLVM/LlvmNativeSanitizer.cpp
     src/LLVM/LlvmVersion.cpp
@@ -791,12 +810,43 @@ add_library(nsc_llvm STATIC
     src/LLVM/LlvmProcessTrace.cpp
     src/LLVM/LlvmOptimizer.cpp
     src/LLVM/LlvmLowerer.cpp
+    src/LLVM/Lowering/OopLlvmAggregatesAndStrings.cpp
+    src/LLVM/Lowering/OopLlvmArraysAndStores.cpp
+    src/LLVM/Lowering/OopLlvmCalls.cpp
+    src/LLVM/Lowering/OopLlvmCleanup.cpp
+    src/LLVM/Lowering/OopLlvmClosuresDelegatesEvents.cpp
+    src/LLVM/Lowering/OopLlvmConditionalsAndNullAware.cpp
+    src/LLVM/Lowering/OopLlvmConstruction.cpp
+    src/LLVM/Lowering/OopLlvmControlFlow.cpp
+    src/LLVM/Lowering/OopLlvmDebugInfo.cpp
+    src/LLVM/Lowering/OopLlvmDeclarations.cpp
+    src/LLVM/Lowering/OopLlvmExpressionDispatch.cpp
+    src/LLVM/Lowering/OopLlvmExpressionLeaves.cpp
+    src/LLVM/Lowering/OopLlvmExpressionMachine.cpp
+    src/LLVM/Lowering/OopLlvmFieldsAndConversions.cpp
+    src/LLVM/Lowering/OopLlvmFunctionDefinition.cpp
+    src/LLVM/Lowering/OopLlvmInlineAssembly.cpp
+    src/LLVM/Lowering/OopLlvmOperators.cpp
+    src/LLVM/Lowering/OopLlvmRuntimeDebugTrace.cpp
+    src/LLVM/Lowering/OopLlvmRuntimeDeclarations.cpp
+    src/LLVM/Lowering/OopLlvmStatements.cpp
+    src/LLVM/Lowering/OopLlvmStaticLocals.cpp
+    src/LLVM/Lowering/OopLlvmStaticState.cpp
+    src/LLVM/Lowering/OopLlvmStructuredExits.cpp
+    src/LLVM/Lowering/OopLlvmThunksAndWrappers.cpp
+    src/LLVM/Lowering/OopLlvmTypesAbiAttributes.cpp
+    src/LLVM/Lowering/Support/AtomicOrdering.cpp
+    src/LLVM/Lowering/Support/DebugInfoEmission.cpp
+    src/LLVM/Lowering/Support/DispatchGlobals.cpp
+    src/LLVM/Lowering/Support/LlvmTypeMapping.cpp
+    src/LLVM/Lowering/Support/NumericHelpers.cpp
     src/LLVM/ProjectOopCodePartition.cpp
     src/LLVM/ProjectOopFunctionAnalysis.cpp
     src/LLVM/ProjectOopFunctionReachability.cpp
     src/LLVM/ProjectOopMirCacheIdentity.cpp
     src/LLVM/ProjectOopObjectGenerator.cpp
     src/LLVM/ProjectOopLlvmLowerer.cpp
+    src/LLVM/SignedDivisionCorrection.cpp
     src/LLVM/LlvmTargetMachine.cpp
     src/LLVM/CoffObjectVerifier.cpp)
 

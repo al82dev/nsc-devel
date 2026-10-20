@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/LLVM/LlvmCodeGenFileType.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 
 #include <filesystem>
@@ -18,12 +19,6 @@ class LlvmModule;
 class LlvmNativeSanitizer;
 class LlvmOptimizer;
 class ProjectOopObjectGenerator;
-
-enum class LlvmCodeGenFileType
-{
-    Assembly,
-    Object
-};
 
 class LlvmTargetMachine final
 {

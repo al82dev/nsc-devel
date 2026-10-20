@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/LLVM/NativeSanitizerKind.h"
+
 #include <string>
 #include <string_view>
 
@@ -7,11 +9,6 @@ namespace nativesharp::llvm_backend
 {
 class LlvmModule;
 class LlvmTargetMachine;
-
-enum class NativeSanitizerKind
-{
-    Address
-};
 
 std::string_view nativeSanitizerName(NativeSanitizerKind kind) noexcept;
 std::string_view nativeSanitizerPipeline(NativeSanitizerKind kind) noexcept;

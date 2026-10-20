@@ -1,10 +1,10 @@
 # NSC — IMPLEMENTACIÓN
 
-Progreso absoluto: **918/1227**
+Progreso absoluto: **1068/1227**
 
-Completados: **918**
+Completados: **1068**
 
-Pendientes: **309**
+Pendientes: **159**
 
 Fuente canónica: `NSC-GUIA-DE-IMPLEMENTACION.md` y sus anexos A, B, C, D y F, medidos el 2026-10-19.
 
@@ -14,7 +14,7 @@ casillas se agrupen por integración.
 Quedan fuera del denominador: cambios a NSC Builder, cambios de CLI/sintaxis/ABI/NSMETA/contratos 3.0.4,
 eliminación de recursión y las tareas de rendimiento que requieren autorización funcional independiente.
 
-## Refactor mecánico y reorganización sin cambios funcionales — 918/1225
+## Refactor mecánico y reorganización sin cambios funcionales — 1068/1225
 
 Política de integración: **10 commits técnicos**, uno por límite de subsistema. Un commit se crea únicamente
 cuando su conjunto está completo, revisado y cuenta con la evidencia focal aplicable. Ninguna optimización entra
@@ -3114,467 +3114,474 @@ métodos de Sema, preservación de métodos, comentarios y literales de Parser, 
 léxico y líneas nuevas dentro de 120 columnas. No se ejecutaron compilación, pruebas, suites ni baseline por
 instrucción del propietario.
 
-### Commit REF-07 — Backend LLVM — 0/150
+### Commit REF-07 — Backend LLVM — 150/150
 
 Separa lowering, generación y soporte LLVM sin cambiar IR, objetos, depuración ni ABI.
 
-- [ ] NSC-IMPL-0088 — Extraer el class CachePruneMeasurement desde src/LLVM/CompilationArtifactCache.cpp:60-83 (24)
+- [x] NSC-IMPL-0088 — Extraer el class CachePruneMeasurement desde src/LLVM/CompilationArtifactCache.cpp:60-83 (24)
   hacia src/LLVM/Internal/CachePruneMeasurement.h, y mover sus cuerpos a src/LLVM/Internal/CachePruneMeasurement.cpp;
   conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0089 — Extraer el class CacheEntryLock desde src/LLVM/CompilationArtifactCache.cpp:127-181 (55) hacia
+- [x] NSC-IMPL-0089 — Extraer el class CacheEntryLock desde src/LLVM/CompilationArtifactCache.cpp:127-181 (55) hacia
   src/LLVM/Internal/CacheEntryLock.h, y mover sus cuerpos a src/LLVM/Internal/CacheEntryLock.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0090 — Extraer el struct CacheMetadata desde src/LLVM/CompilationArtifactCache.cpp:285-290 (6) hacia
+- [x] NSC-IMPL-0090 — Extraer el struct CacheMetadata desde src/LLVM/CompilationArtifactCache.cpp:285-290 (6) hacia
   src/LLVM/Internal/CacheMetadata.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0091 — Extraer el struct CachePruneEntry desde src/LLVM/CompilationArtifactCache.cpp:396-403 (8) hacia
+- [x] NSC-IMPL-0091 — Extraer el struct CachePruneEntry desde src/LLVM/CompilationArtifactCache.cpp:396-403 (8) hacia
   src/LLVM/Internal/CachePruneEntry.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0092 — Extraer el class LlvmLowerer::Implementation desde src/LLVM/LlvmLowerer.cpp:207-1943 (1737) hacia
+- [x] NSC-IMPL-0092 — Extraer el class LlvmLowerer::Implementation desde src/LLVM/LlvmLowerer.cpp:207-1943 (1737) hacia
   src/LLVM/Internal/Implementation.h, y mover sus cuerpos a src/LLVM/Internal/Implementation.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0093 — Extraer el class StandardErrorCapture desde src/LLVM/LlvmOptimizer.cpp:144-188 (45) hacia
+- [x] NSC-IMPL-0093 — Extraer el class StandardErrorCapture desde src/LLVM/LlvmOptimizer.cpp:144-188 (45) hacia
   src/LLVM/Internal/StandardErrorCapture.h, y mover sus cuerpos a src/LLVM/Internal/StandardErrorCapture.cpp; conservar
   texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0094 — Extraer el struct PartitionCandidate desde src/LLVM/ProjectOopCodePartition.cpp:20-25 (6) hacia
+- [x] NSC-IMPL-0094 — Extraer el struct PartitionCandidate desde src/LLVM/ProjectOopCodePartition.cpp:20-25 (6) hacia
   src/LLVM/Internal/PartitionCandidate.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0095 — Extraer el struct StaticLocalStorage desde src/LLVM/ProjectOopLlvmLowerer.cpp:1287-1293 (7) hacia
+- [x] NSC-IMPL-0095 — Extraer el struct StaticLocalStorage desde src/LLVM/ProjectOopLlvmLowerer.cpp:1287-1293 (7) hacia
   src/LLVM/Internal/StaticLocalStorage.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0096 — Extraer el struct StaticLocalGuard desde src/LLVM/ProjectOopLlvmLowerer.cpp:1295-1301 (7) hacia
+- [x] NSC-IMPL-0096 — Extraer el struct StaticLocalGuard desde src/LLVM/ProjectOopLlvmLowerer.cpp:1295-1301 (7) hacia
   src/LLVM/Internal/StaticLocalGuard.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0097 — Extraer el class OopLlvmImplementation desde src/LLVM/ProjectOopLlvmLowerer.cpp:1303-22851 (21549)
+- [x] NSC-IMPL-0097 — Extraer el class OopLlvmImplementation desde src/LLVM/ProjectOopLlvmLowerer.cpp:1303-22851 (21549)
   hacia src/LLVM/Internal/OopLlvmImplementation.h, y mover sus cuerpos a src/LLVM/Internal/OopLlvmImplementation.cpp;
   conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0099 — Extraer el class CodeUnitProgress desde src/LLVM/ProjectOopObjectGenerator.cpp:37-69 (33) hacia
+- [x] NSC-IMPL-0099 — Extraer el class CodeUnitProgress desde src/LLVM/ProjectOopObjectGenerator.cpp:37-69 (33) hacia
   src/LLVM/Internal/CodeUnitProgress.h, y mover sus cuerpos a src/LLVM/Internal/CodeUnitProgress.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0100 — Extraer el class PhaseClock desde src/LLVM/ProjectOopObjectGenerator.cpp:101-114 (14) hacia
+- [x] NSC-IMPL-0100 — Extraer el class PhaseClock desde src/LLVM/ProjectOopObjectGenerator.cpp:101-114 (14) hacia
   src/LLVM/Internal/PhaseClock.h, y mover sus cuerpos a src/LLVM/Internal/PhaseClock.cpp; conservar texto, comentarios,
   firmas, orden y conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0101 — Extraer el struct ColdLlvmPreambleTelemetry desde src/LLVM/ProjectOopObjectGenerator.cpp:116-129
+- [x] NSC-IMPL-0101 — Extraer el struct ColdLlvmPreambleTelemetry desde src/LLVM/ProjectOopObjectGenerator.cpp:116-129
   (14) hacia src/LLVM/Internal/ColdLlvmPreambleTelemetry.h, sin .cpp adicional; conservar texto, comentarios, firmas,
   orden y conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0102 — Extraer el class ColdLlvmTrace desde src/LLVM/ProjectOopObjectGenerator.cpp:133-223 (91) hacia
+- [x] NSC-IMPL-0102 — Extraer el class ColdLlvmTrace desde src/LLVM/ProjectOopObjectGenerator.cpp:133-223 (91) hacia
   src/LLVM/Internal/ColdLlvmTrace.h, y mover sus cuerpos a src/LLVM/Internal/ColdLlvmTrace.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0103 — Extraer el class ColdLlvmTraceScope desde src/LLVM/ProjectOopObjectGenerator.cpp:225-252 (28)
+- [x] NSC-IMPL-0103 — Extraer el class ColdLlvmTraceScope desde src/LLVM/ProjectOopObjectGenerator.cpp:225-252 (28)
   hacia src/LLVM/Internal/ColdLlvmTraceScope.h, y mover sus cuerpos a src/LLVM/Internal/ColdLlvmTraceScope.cpp;
   conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0141 — Mover fuera de línea función libre correctedSignedDivisor de
+- [x] NSC-IMPL-0141 — Mover fuera de línea función libre correctedSignedDivisor de
   src/LLVM/SignedDivisionCorrection.h:66 (33 líneas) a un único .cpp, dejando la declaración intacta y conservando
   exactamente el cuerpo.
-- [ ] NSC-IMPL-0183 — Mover fuera de línea función libre portablePath de
+- [x] NSC-IMPL-0183 — Mover fuera de línea función libre portablePath de
   include/nativesharp/LLVM/LlvmDebugPrefixMap.h:15 (12 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0184 — Mover fuera de línea función libre foldedWindowsPath de
+- [x] NSC-IMPL-0184 — Mover fuera de línea función libre foldedWindowsPath de
   include/nativesharp/LLVM/LlvmDebugPrefixMap.h:28 (8 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0185 — Mover fuera de línea función libre pathHasPrefix de
+- [x] NSC-IMPL-0185 — Mover fuera de línea función libre pathHasPrefix de
   include/nativesharp/LLVM/LlvmDebugPrefixMap.h:37 (6 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0186 — Mover fuera de línea función libre remapDebugSourcePath de
+- [x] NSC-IMPL-0186 — Mover fuera de línea función libre remapDebugSourcePath de
   include/nativesharp/LLVM/LlvmDebugPrefixMap.h:44 (33 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0187 — Mover fuera de línea función libre isPointerLikeType de
+- [x] NSC-IMPL-0187 — Mover fuera de línea función libre isPointerLikeType de
   include/nativesharp/LLVM/LlvmTypeClassification.h:13 (7 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0188 — Mover fuera de línea función libre isDelegateReferenceType de
+- [x] NSC-IMPL-0188 — Mover fuera de línea función libre isDelegateReferenceType de
   include/nativesharp/LLVM/LlvmTypeClassification.h:21 (15 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0189 — Mover fuera de línea función libre isClassReferenceType de
+- [x] NSC-IMPL-0189 — Mover fuera de línea función libre isClassReferenceType de
   include/nativesharp/LLVM/LlvmTypeClassification.h:37 (13 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0190 — Mover fuera de línea función libre findStructLayout de
+- [x] NSC-IMPL-0190 — Mover fuera de línea función libre findStructLayout de
   include/nativesharp/LLVM/LlvmTypeLayout.h:14 (9 líneas) a un único .cpp, dejando la declaración intacta y conservando
   exactamente el cuerpo.
-- [ ] NSC-IMPL-0191 — Mover fuera de línea función libre findClassLayout de include/nativesharp/LLVM/LlvmTypeLayout.h:24
+- [x] NSC-IMPL-0191 — Mover fuera de línea función libre findClassLayout de include/nativesharp/LLVM/LlvmTypeLayout.h:24
   (9 líneas) a un único .cpp, dejando la declaración intacta y conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0192 — Mover fuera de línea función libre findEnumUnderlyingInfo de
+- [x] NSC-IMPL-0192 — Mover fuera de línea función libre findEnumUnderlyingInfo de
   include/nativesharp/LLVM/LlvmTypeLayout.h:34 (14 líneas) a un único .cpp, dejando la declaración intacta y conservando
   exactamente el cuerpo.
-- [ ] NSC-IMPL-0193 — Mover fuera de línea función libre isEnumTypeKey de include/nativesharp/LLVM/LlvmTypeLayout.h:49
+- [x] NSC-IMPL-0193 — Mover fuera de línea función libre isEnumTypeKey de include/nativesharp/LLVM/LlvmTypeLayout.h:49
   (5 líneas) a un único .cpp, dejando la declaración intacta y conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0499 — Extraer el struct CoffObjectInfo desde include/nativesharp/LLVM/CoffObjectVerifier.h:9-14 hacia
+- [x] NSC-IMPL-0499 — Extraer el struct CoffObjectInfo desde include/nativesharp/LLVM/CoffObjectVerifier.h:9-14 hacia
   include/nativesharp/LLVM/CoffObjectInfo.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0500 — Conservar el class CoffObjectVerifier como tipo principal de
+- [x] NSC-IMPL-0500 — Conservar el class CoffObjectVerifier como tipo principal de
   include/nativesharp/LLVM/CoffObjectVerifier.h:16-26 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0501 — Extraer el enum CacheMissReason desde include/nativesharp/LLVM/CompilationArtifactCache.h:18-26
+- [x] NSC-IMPL-0501 — Extraer el enum CacheMissReason desde include/nativesharp/LLVM/CompilationArtifactCache.h:18-26
   hacia include/nativesharp/LLVM/CacheMissReason.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0502 — Extraer el struct CachePruneTelemetry desde
+- [x] NSC-IMPL-0502 — Extraer el struct CachePruneTelemetry desde
   include/nativesharp/LLVM/CompilationArtifactCache.h:33-41 hacia include/nativesharp/LLVM/CachePruneTelemetry.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0503 — Conservar el class CompilationArtifactCache como tipo principal de
+- [x] NSC-IMPL-0503 — Conservar el class CompilationArtifactCache como tipo principal de
   include/nativesharp/LLVM/CompilationArtifactCache.h:43-104 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0504 — Extraer el class CompilationArtifactCacheScope desde
+- [x] NSC-IMPL-0504 — Extraer el class CompilationArtifactCacheScope desde
   include/nativesharp/LLVM/CompilationArtifactCache.h:106-117 hacia
   include/nativesharp/LLVM/CompilationArtifactCacheScope.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0505 — Conservar el enum FloatingPointMode como tipo principal de
+- [x] NSC-IMPL-0505 — Conservar el enum FloatingPointMode como tipo principal de
   include/nativesharp/LLVM/FloatingPointMode.h:8-14 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0506 — Extraer el enum FmaContractPolicy desde include/nativesharp/LLVM/FloatingPointMode.h:16-21 hacia
+- [x] NSC-IMPL-0506 — Extraer el enum FmaContractPolicy desde include/nativesharp/LLVM/FloatingPointMode.h:16-21 hacia
   include/nativesharp/LLVM/FmaContractPolicy.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0507 — Extraer el enum FloatingPointRoundingMode desde include/nativesharp/LLVM/FloatingPointMode.h:23-30
+- [x] NSC-IMPL-0507 — Extraer el enum FloatingPointRoundingMode desde include/nativesharp/LLVM/FloatingPointMode.h:23-30
   hacia include/nativesharp/LLVM/FloatingPointRoundingMode.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0508 — Extraer el enum FloatingPointDenormalMode desde include/nativesharp/LLVM/FloatingPointMode.h:32-38
+- [x] NSC-IMPL-0508 — Extraer el enum FloatingPointDenormalMode desde include/nativesharp/LLVM/FloatingPointMode.h:32-38
   hacia include/nativesharp/LLVM/FloatingPointDenormalMode.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0509 — Extraer el struct FloatingPointState desde include/nativesharp/LLVM/FloatingPointMode.h:54-62
+- [x] NSC-IMPL-0509 — Extraer el struct FloatingPointState desde include/nativesharp/LLVM/FloatingPointMode.h:54-62
   hacia include/nativesharp/LLVM/FloatingPointState.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0510 — Extraer el class FloatingPointModeScope desde include/nativesharp/LLVM/FloatingPointMode.h:70-86
+- [x] NSC-IMPL-0510 — Extraer el class FloatingPointModeScope desde include/nativesharp/LLVM/FloatingPointMode.h:70-86
   hacia include/nativesharp/LLVM/FloatingPointModeScope.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0511 — Extraer el enum NativeSanitizerKind desde include/nativesharp/LLVM/LlvmNativeSanitizer.h:11-14
+- [x] NSC-IMPL-0511 — Extraer el enum NativeSanitizerKind desde include/nativesharp/LLVM/LlvmNativeSanitizer.h:11-14
   hacia include/nativesharp/LLVM/NativeSanitizerKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0512 — Conservar el class LlvmNativeSanitizer como tipo principal de
+- [x] NSC-IMPL-0512 — Conservar el class LlvmNativeSanitizer como tipo principal de
   include/nativesharp/LLVM/LlvmNativeSanitizer.h:20-28 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0513 — Conservar el struct LlvmOptimizationObservation como tipo principal de
+- [x] NSC-IMPL-0513 — Conservar el struct LlvmOptimizationObservation como tipo principal de
   include/nativesharp/LLVM/LlvmOptimizationObservation.h:32-106 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0514 — Extraer el struct LlvmProcessTraceLog desde
+- [x] NSC-IMPL-0514 — Extraer el struct LlvmProcessTraceLog desde
   include/nativesharp/LLVM/LlvmOptimizationObservation.h:120-128 hacia include/nativesharp/LLVM/LlvmProcessTraceLog.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0515 — Extraer el class LlvmOptimizationBudgetTracker desde
+- [x] NSC-IMPL-0515 — Extraer el class LlvmOptimizationBudgetTracker desde
   include/nativesharp/LLVM/LlvmOptimizationObservation.h:158-177 hacia
   include/nativesharp/LLVM/LlvmOptimizationBudgetTracker.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0516 — Extraer el class LlvmOptimizationBudgetScope desde
+- [x] NSC-IMPL-0516 — Extraer el class LlvmOptimizationBudgetScope desde
   include/nativesharp/LLVM/LlvmOptimizationObservation.h:181-192 hacia
   include/nativesharp/LLVM/LlvmOptimizationBudgetScope.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0517 — Extraer el enum AutomaticInliningCostModel desde include/nativesharp/LLVM/LlvmOptimizer.h:20-26
+- [x] NSC-IMPL-0517 — Extraer el enum AutomaticInliningCostModel desde include/nativesharp/LLVM/LlvmOptimizer.h:20-26
   hacia include/nativesharp/LLVM/AutomaticInliningCostModel.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0518 — Extraer el struct AutomaticInliningConfiguration desde
+- [x] NSC-IMPL-0518 — Extraer el struct AutomaticInliningConfiguration desde
   include/nativesharp/LLVM/LlvmOptimizer.h:28-37 hacia include/nativesharp/LLVM/AutomaticInliningConfiguration.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0519 — Conservar el class LlvmOptimizer como tipo principal de
+- [x] NSC-IMPL-0519 — Conservar el class LlvmOptimizer como tipo principal de
   include/nativesharp/LLVM/LlvmOptimizer.h:42-90 y convertir ese archivo en umbrella de sus tipos extraídos, sin alterar
   el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0520 — Extraer el enum LlvmCodeGenFileType desde include/nativesharp/LLVM/LlvmTargetMachine.h:22-26 hacia
+- [x] NSC-IMPL-0520 — Extraer el enum LlvmCodeGenFileType desde include/nativesharp/LLVM/LlvmTargetMachine.h:22-26 hacia
   include/nativesharp/LLVM/LlvmCodeGenFileType.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0521 — Conservar el class LlvmTargetMachine como tipo principal de
+- [x] NSC-IMPL-0521 — Conservar el class LlvmTargetMachine como tipo principal de
   include/nativesharp/LLVM/LlvmTargetMachine.h:28-103 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0522 — Extraer el enum ProjectOopCodePartitionPolicy desde
+- [x] NSC-IMPL-0522 — Extraer el enum ProjectOopCodePartitionPolicy desde
   include/nativesharp/LLVM/ProjectOopCodePartition.h:18-23 hacia
   include/nativesharp/LLVM/ProjectOopCodePartitionPolicy.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0523 — Extraer el struct ProjectOopCodeUnit desde
+- [x] NSC-IMPL-0523 — Extraer el struct ProjectOopCodeUnit desde
   include/nativesharp/LLVM/ProjectOopCodePartition.h:25-35 hacia include/nativesharp/LLVM/ProjectOopCodeUnit.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0524 — Conservar el class ProjectOopCodePartition como tipo principal de
+- [x] NSC-IMPL-0524 — Conservar el class ProjectOopCodePartition como tipo principal de
   include/nativesharp/LLVM/ProjectOopCodePartition.h:37-70 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0525 — Extraer el class ProjectOopLlvmLoweringRequest desde
+- [x] NSC-IMPL-0525 — Extraer el class ProjectOopLlvmLoweringRequest desde
   include/nativesharp/LLVM/ProjectOopLlvmLowerer.h:33-82 hacia include/nativesharp/LLVM/ProjectOopLlvmLoweringRequest.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0526 — Conservar el class ProjectOopLlvmLowerer como tipo principal de
+- [x] NSC-IMPL-0526 — Conservar el class ProjectOopLlvmLowerer como tipo principal de
   include/nativesharp/LLVM/ProjectOopLlvmLowerer.h:84-120 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0527 — Extraer el struct CodeUnitTelemetry desde
+- [x] NSC-IMPL-0527 — Extraer el struct CodeUnitTelemetry desde
   include/nativesharp/LLVM/ProjectOopObjectGenerator.h:36-52 hacia include/nativesharp/LLVM/CodeUnitTelemetry.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0528 — Extraer el class ProjectOopObjectBundle desde
+- [x] NSC-IMPL-0528 — Extraer el class ProjectOopObjectBundle desde
   include/nativesharp/LLVM/ProjectOopObjectGenerator.h:54-85 hacia include/nativesharp/LLVM/ProjectOopObjectBundle.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0529 — Conservar el class ProjectOopObjectGenerator como tipo principal de
+- [x] NSC-IMPL-0529 — Conservar el class ProjectOopObjectGenerator como tipo principal de
   include/nativesharp/LLVM/ProjectOopObjectGenerator.h:87-117 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0828 — Extraer el enum LLVMTailCallKind desde src/LLVM/LlvmCApi.h:45-51 hacia
+- [x] NSC-IMPL-0828 — Extraer el enum LLVMTailCallKind desde src/LLVM/LlvmCApi.h:45-51 hacia
   src/LLVM/LLVMTailCallKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0829 — Extraer el enum LLVMModuleFlagBehavior desde src/LLVM/LlvmCApi.h:56-64 hacia
+- [x] NSC-IMPL-0829 — Extraer el enum LLVMModuleFlagBehavior desde src/LLVM/LlvmCApi.h:56-64 hacia
   src/LLVM/LLVMModuleFlagBehavior.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0830 — Extraer el enum LLVMDWARFSourceLanguage desde src/LLVM/LlvmCApi.h:66-70 hacia
+- [x] NSC-IMPL-0830 — Extraer el enum LLVMDWARFSourceLanguage desde src/LLVM/LlvmCApi.h:66-70 hacia
   src/LLVM/LLVMDWARFSourceLanguage.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0831 — Extraer el enum LLVMDWARFEmissionKind desde src/LLVM/LlvmCApi.h:72-77 hacia
+- [x] NSC-IMPL-0831 — Extraer el enum LLVMDWARFEmissionKind desde src/LLVM/LlvmCApi.h:72-77 hacia
   src/LLVM/LLVMDWARFEmissionKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0832 — Extraer el enum LLVMChecksumKind desde src/LLVM/LlvmCApi.h:79-84 hacia
+- [x] NSC-IMPL-0832 — Extraer el enum LLVMChecksumKind desde src/LLVM/LlvmCApi.h:79-84 hacia
   src/LLVM/LLVMChecksumKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0833 — Extraer el enum LLVMDIFlags desde src/LLVM/LlvmCApi.h:86-95 hacia src/LLVM/LLVMDIFlags.h;
+- [x] NSC-IMPL-0833 — Extraer el enum LLVMDIFlags desde src/LLVM/LlvmCApi.h:86-95 hacia src/LLVM/LLVMDIFlags.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0834 — Extraer el enum LLVMIntPredicate desde src/LLVM/LlvmCApi.h:111-123 hacia
+- [x] NSC-IMPL-0834 — Extraer el enum LLVMIntPredicate desde src/LLVM/LlvmCApi.h:111-123 hacia
   src/LLVM/LLVMIntPredicate.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0835 — Extraer el enum LLVMRealPredicate desde src/LLVM/LlvmCApi.h:125-143 hacia
+- [x] NSC-IMPL-0835 — Extraer el enum LLVMRealPredicate desde src/LLVM/LlvmCApi.h:125-143 hacia
   src/LLVM/LLVMRealPredicate.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0836 — Extraer el enum LLVMDenormalModeKind desde src/LLVM/LlvmCApi.h:145-151 hacia
+- [x] NSC-IMPL-0836 — Extraer el enum LLVMDenormalModeKind desde src/LLVM/LlvmCApi.h:145-151 hacia
   src/LLVM/LLVMDenormalModeKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0837 — Extraer el enum LLVMAtomicRMWBinOp desde src/LLVM/LlvmCApi.h:161-165 hacia
+- [x] NSC-IMPL-0837 — Extraer el enum LLVMAtomicRMWBinOp desde src/LLVM/LlvmCApi.h:161-165 hacia
   src/LLVM/LLVMAtomicRMWBinOp.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0838 — Extraer el enum LLVMAtomicOrdering desde src/LLVM/LlvmCApi.h:172-181 hacia
+- [x] NSC-IMPL-0838 — Extraer el enum LLVMAtomicOrdering desde src/LLVM/LlvmCApi.h:172-181 hacia
   src/LLVM/LLVMAtomicOrdering.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0839 — Extraer el enum LLVMCodeGenOptLevel desde src/LLVM/LlvmCApi.h:183-189 hacia
+- [x] NSC-IMPL-0839 — Extraer el enum LLVMCodeGenOptLevel desde src/LLVM/LlvmCApi.h:183-189 hacia
   src/LLVM/LLVMCodeGenOptLevel.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0840 — Extraer el enum LLVMRelocMode desde src/LLVM/LlvmCApi.h:191-200 hacia src/LLVM/LLVMRelocMode.h;
+- [x] NSC-IMPL-0840 — Extraer el enum LLVMRelocMode desde src/LLVM/LlvmCApi.h:191-200 hacia src/LLVM/LLVMRelocMode.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0841 — Extraer el enum LLVMCodeModel desde src/LLVM/LlvmCApi.h:202-211 hacia src/LLVM/LLVMCodeModel.h;
+- [x] NSC-IMPL-0841 — Extraer el enum LLVMCodeModel desde src/LLVM/LlvmCApi.h:202-211 hacia src/LLVM/LLVMCodeModel.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0842 — Extraer el enum LLVMCodeGenFileType desde src/LLVM/LlvmCApi.h:213-217 hacia
+- [x] NSC-IMPL-0842 — Extraer el enum LLVMCodeGenFileType desde src/LLVM/LlvmCApi.h:213-217 hacia
   src/LLVM/LLVMCodeGenFileType.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0843 — Extraer el enum LLVMVerifierFailureAction desde src/LLVM/LlvmCApi.h:219-224 hacia
+- [x] NSC-IMPL-0843 — Extraer el enum LLVMVerifierFailureAction desde src/LLVM/LlvmCApi.h:219-224 hacia
   src/LLVM/LLVMVerifierFailureAction.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante
   el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0844 — Extraer el enum LLVMLinkage desde src/LLVM/LlvmCApi.h:229-241 hacia src/LLVM/LLVMLinkage.h;
+- [x] NSC-IMPL-0844 — Extraer el enum LLVMLinkage desde src/LLVM/LlvmCApi.h:229-241 hacia src/LLVM/LLVMLinkage.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0845 — Extraer el enum LLVMComdatSelectionKind desde src/LLVM/LlvmCApi.h:243-250 hacia
+- [x] NSC-IMPL-0845 — Extraer el enum LLVMComdatSelectionKind desde src/LLVM/LlvmCApi.h:243-250 hacia
   src/LLVM/LLVMComdatSelectionKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0846 — Extraer el enum LLVMInlineAsmDialect desde src/LLVM/LlvmCApi.h:252-256 hacia
+- [x] NSC-IMPL-0846 — Extraer el enum LLVMInlineAsmDialect desde src/LLVM/LlvmCApi.h:252-256 hacia
   src/LLVM/LLVMInlineAsmDialect.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0847 — Extraer el enum LLVMFastMathFlags desde src/LLVM/LlvmCApi.h:781-794 hacia
+- [x] NSC-IMPL-0847 — Extraer el enum LLVMFastMathFlags desde src/LLVM/LlvmCApi.h:781-794 hacia
   src/LLVM/LLVMFastMathFlags.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0854 — Descomponer lowerExpressionIterative en src/LLVM/ProjectOopLlvmLowerer.cpp:10657 (2967 líneas
+- [x] NSC-IMPL-0854 — Descomponer lowerExpressionIterative en src/LLVM/ProjectOopLlvmLowerer.cpp:10657 (2967 líneas
   ejecutables; 3949 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0869 — Descomponer lowerExpression en src/LLVM/ProjectOopLlvmLowerer.cpp:14607 (565 líneas ejecutables;
+- [x] NSC-IMPL-0869 — Descomponer lowerExpression en src/LLVM/ProjectOopLlvmLowerer.cpp:14607 (565 líneas ejecutables;
   803 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0873 — Descomponer lowerStatement en src/LLVM/ProjectOopLlvmLowerer.cpp:8413 (502 líneas ejecutables; 698
+- [x] NSC-IMPL-0873 — Descomponer lowerStatement en src/LLVM/ProjectOopLlvmLowerer.cpp:8413 (502 líneas ejecutables; 698
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0875 — Descomponer declareRuntime en src/LLVM/ProjectOopLlvmLowerer.cpp:3051 (481 líneas ejecutables; 646
+- [x] NSC-IMPL-0875 — Descomponer declareRuntime en src/LLVM/ProjectOopLlvmLowerer.cpp:3051 (481 líneas ejecutables; 646
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0878 — Descomponer ProjectOopObjectGenerator::generate en src/LLVM/ProjectOopObjectGenerator.cpp:390 (376
+- [x] NSC-IMPL-0878 — Descomponer ProjectOopObjectGenerator::generate en src/LLVM/ProjectOopObjectGenerator.cpp:390 (376
   líneas ejecutables; 506 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0890 — Descomponer lowerAwaitExpression en src/LLVM/ProjectOopLlvmLowerer.cpp:10231 (307 líneas
+- [x] NSC-IMPL-0890 — Descomponer lowerAwaitExpression en src/LLVM/ProjectOopLlvmLowerer.cpp:10231 (307 líneas
   ejecutables; 422 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0902 — Descomponer convert en src/LLVM/ProjectOopLlvmLowerer.cpp:21426 (267 líneas ejecutables; 334
+- [x] NSC-IMPL-0902 — Descomponer convert en src/LLVM/ProjectOopLlvmLowerer.cpp:21426 (267 líneas ejecutables; 334
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0907 — Descomponer applyBinaryOperation en src/LLVM/ProjectOopLlvmLowerer.cpp:18237 (256 líneas
+- [x] NSC-IMPL-0907 — Descomponer applyBinaryOperation en src/LLVM/ProjectOopLlvmLowerer.cpp:18237 (256 líneas
   ejecutables; 317 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0921 — Descomponer lowerMatchExpression en src/LLVM/ProjectOopLlvmLowerer.cpp:18609 (209 líneas
+- [x] NSC-IMPL-0921 — Descomponer lowerMatchExpression en src/LLVM/ProjectOopLlvmLowerer.cpp:18609 (209 líneas
   ejecutables; 298 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0925 — Descomponer ProjectOopCodePartition::build en src/LLVM/ProjectOopCodePartition.cpp:127 (200 líneas
+- [x] NSC-IMPL-0925 — Descomponer ProjectOopCodePartition::build en src/LLVM/ProjectOopCodePartition.cpp:127 (200 líneas
   ejecutables; 288 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0927 — Descomponer lowerTryRegion en src/LLVM/ProjectOopLlvmLowerer.cpp:9154 (197 líneas ejecutables; 357
+- [x] NSC-IMPL-0927 — Descomponer lowerTryRegion en src/LLVM/ProjectOopLlvmLowerer.cpp:9154 (197 líneas ejecutables; 357
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0929 — Descomponer lowerInlineAssembly en src/LLVM/ProjectOopLlvmLowerer.cpp:7926 (196 líneas
+- [x] NSC-IMPL-0929 — Descomponer lowerInlineAssembly en src/LLVM/ProjectOopLlvmLowerer.cpp:7926 (196 líneas
   ejecutables; 270 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0931 — Descomponer lowerInstruction en src/LLVM/LlvmLowerer.cpp:631 (194 líneas ejecutables; 307 totales)
+- [x] NSC-IMPL-0931 — Descomponer lowerInstruction en src/LLVM/LlvmLowerer.cpp:631 (194 líneas ejecutables; 307 totales)
   hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni
   resultados.
-- [ ] NSC-IMPL-0932 — Descomponer defineFunction en src/LLVM/ProjectOopLlvmLowerer.cpp:5915 (194 líneas ejecutables; 263
+- [x] NSC-IMPL-0932 — Descomponer defineFunction en src/LLVM/ProjectOopLlvmLowerer.cpp:5915 (194 líneas ejecutables; 263
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0933 — Descomponer debugType en src/LLVM/ProjectOopLlvmLowerer.cpp:2424 (191 líneas ejecutables; 241
+- [x] NSC-IMPL-0933 — Descomponer debugType en src/LLVM/ProjectOopLlvmLowerer.cpp:2424 (191 líneas ejecutables; 241
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0944 — Descomponer LlvmOptimizer::optimizeImpl en src/LLVM/LlvmOptimizer.cpp:252 (167 líneas ejecutables;
+- [x] NSC-IMPL-0944 — Descomponer LlvmOptimizer::optimizeImpl en src/LLVM/LlvmOptimizer.cpp:252 (167 líneas ejecutables;
   278 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0947 — Descomponer defineTypeInitializers en src/LLVM/ProjectOopLlvmLowerer.cpp:3979 (165 líneas
+- [x] NSC-IMPL-0947 — Descomponer defineTypeInitializers en src/LLVM/ProjectOopLlvmLowerer.cpp:3979 (165 líneas
   ejecutables; 259 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0958 — Descomponer callbackGuardThunk en src/LLVM/ProjectOopLlvmLowerer.cpp:5109 (148 líneas ejecutables;
+- [x] NSC-IMPL-0958 — Descomponer callbackGuardThunk en src/LLVM/ProjectOopLlvmLowerer.cpp:5109 (148 líneas ejecutables;
   211 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0962 — Descomponer lowerPlacementConstruction en src/LLVM/ProjectOopLlvmLowerer.cpp:20919 (145 líneas
+- [x] NSC-IMPL-0962 — Descomponer lowerPlacementConstruction en src/LLVM/ProjectOopLlvmLowerer.cpp:20919 (145 líneas
   ejecutables; 192 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0978 — Descomponer defineDestructionEntries en src/LLVM/ProjectOopLlvmLowerer.cpp:5729 (131 líneas
+- [x] NSC-IMPL-0978 — Descomponer defineDestructionEntries en src/LLVM/ProjectOopLlvmLowerer.cpp:5729 (131 líneas
   ejecutables; 185 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0979 — Descomponer lowerStructuredExit en src/LLVM/ProjectOopLlvmLowerer.cpp:7483 (130 líneas
+- [x] NSC-IMPL-0979 — Descomponer lowerStructuredExit en src/LLVM/ProjectOopLlvmLowerer.cpp:7483 (130 líneas
   ejecutables; 222 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0983 — Descomponer defineRttiHelpers en src/LLVM/ProjectOopLlvmLowerer.cpp:4649 (127 líneas ejecutables;
+- [x] NSC-IMPL-0983 — Descomponer defineRttiHelpers en src/LLVM/ProjectOopLlvmLowerer.cpp:4649 (127 líneas ejecutables;
   155 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0995 — Descomponer closureContextDestroy en src/LLVM/ProjectOopLlvmLowerer.cpp:15632 (118 líneas
+- [x] NSC-IMPL-0995 — Descomponer closureContextDestroy en src/LLVM/ProjectOopLlvmLowerer.cpp:15632 (118 líneas
   ejecutables; 147 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0996 — Descomponer lowerArrayAllocate en src/LLVM/ProjectOopLlvmLowerer.cpp:17787 (118 líneas
+- [x] NSC-IMPL-0996 — Descomponer lowerArrayAllocate en src/LLVM/ProjectOopLlvmLowerer.cpp:17787 (118 líneas
   ejecutables; 148 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1019 — Descomponer runCurrentExecutableWithCapturedStandardError en src/LLVM/LlvmProcessTrace.cpp:94 (104
+- [x] NSC-IMPL-1019 — Descomponer runCurrentExecutableWithCapturedStandardError en src/LLVM/LlvmProcessTrace.cpp:94 (104
   líneas ejecutables; 141 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1020 — Descomponer emitDispatchMetadata en src/LLVM/ProjectOopLlvmLowerer.cpp:4493 (104 líneas
+- [x] NSC-IMPL-1020 — Descomponer emitDispatchMetadata en src/LLVM/ProjectOopLlvmLowerer.cpp:4493 (104 líneas
   ejecutables; 155 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1029 — Descomponer emitVariantDropAddress en src/LLVM/ProjectOopLlvmLowerer.cpp:6931 (101 líneas
+- [x] NSC-IMPL-1029 — Descomponer emitVariantDropAddress en src/LLVM/ProjectOopLlvmLowerer.cpp:6931 (101 líneas
   ejecutables; 124 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1038 — Descomponer lowerResultPropagation en src/LLVM/ProjectOopLlvmLowerer.cpp:19113 (96 líneas
+- [x] NSC-IMPL-1038 — Descomponer lowerResultPropagation en src/LLVM/ProjectOopLlvmLowerer.cpp:19113 (96 líneas
   ejecutables; 113 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1040 — Descomponer emitDelegateCall en src/LLVM/ProjectOopLlvmLowerer.cpp:16141 (94 líneas ejecutables;
+- [x] NSC-IMPL-1040 — Descomponer emitDelegateCall en src/LLVM/ProjectOopLlvmLowerer.cpp:16141 (94 líneas ejecutables;
   118 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1041 — Descomponer lowerConstruction en src/LLVM/ProjectOopLlvmLowerer.cpp:20769 (93 líneas ejecutables;
+- [x] NSC-IMPL-1041 — Descomponer lowerConstruction en src/LLVM/ProjectOopLlvmLowerer.cpp:20769 (93 líneas ejecutables;
   149 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1045 — Descomponer initializeAggregateIntoSlot en src/LLVM/ProjectOopLlvmLowerer.cpp:20613 (92 líneas
+- [x] NSC-IMPL-1045 — Descomponer initializeAggregateIntoSlot en src/LLVM/ProjectOopLlvmLowerer.cpp:20613 (92 líneas
   ejecutables; 128 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1060 — Descomponer emitInterfaceDispose en src/LLVM/ProjectOopLlvmLowerer.cpp:6634 (87 líneas
+- [x] NSC-IMPL-1060 — Descomponer emitInterfaceDispose en src/LLVM/ProjectOopLlvmLowerer.cpp:6634 (87 líneas
   ejecutables; 105 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1061 — Descomponer lowerLeafExpression en src/LLVM/ProjectOopLlvmLowerer.cpp:9831 (87 líneas ejecutables;
+- [x] NSC-IMPL-1061 — Descomponer lowerLeafExpression en src/LLVM/ProjectOopLlvmLowerer.cpp:9831 (87 líneas ejecutables;
   139 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1062 — Descomponer lowerStringEquals en src/LLVM/ProjectOopLlvmLowerer.cpp:17180 (87 líneas ejecutables;
+- [x] NSC-IMPL-1062 — Descomponer lowerStringEquals en src/LLVM/ProjectOopLlvmLowerer.cpp:17180 (87 líneas ejecutables;
   103 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1063 — Descomponer lowerVirtualCall en src/LLVM/ProjectOopLlvmLowerer.cpp:20095 (87 líneas ejecutables;
+- [x] NSC-IMPL-1063 — Descomponer lowerVirtualCall en src/LLVM/ProjectOopLlvmLowerer.cpp:20095 (87 líneas ejecutables;
   120 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1064 — Descomponer lowerInterfaceCall en src/LLVM/ProjectOopLlvmLowerer.cpp:20299 (87 líneas ejecutables;
+- [x] NSC-IMPL-1064 — Descomponer lowerInterfaceCall en src/LLVM/ProjectOopLlvmLowerer.cpp:20299 (87 líneas ejecutables;
   119 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1067 — Descomponer declareFunctions en src/LLVM/ProjectOopLlvmLowerer.cpp:4239 (86 líneas ejecutables;
+- [x] NSC-IMPL-1067 — Descomponer declareFunctions en src/LLVM/ProjectOopLlvmLowerer.cpp:4239 (86 líneas ejecutables;
   149 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1070 — Descomponer emitValueDropAddress en src/LLVM/ProjectOopLlvmLowerer.cpp:7056 (85 líneas
+- [x] NSC-IMPL-1070 — Descomponer emitValueDropAddress en src/LLVM/ProjectOopLlvmLowerer.cpp:7056 (85 líneas
   ejecutables; 112 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1075 — Descomponer defineTypedCatchFilters en src/LLVM/ProjectOopLlvmLowerer.cpp:4820 (84 líneas
+- [x] NSC-IMPL-1075 — Descomponer defineTypedCatchFilters en src/LLVM/ProjectOopLlvmLowerer.cpp:4820 (84 líneas
   ejecutables; 118 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1076 — Descomponer defineRuntimeBoundImport en src/LLVM/ProjectOopLlvmLowerer.cpp:5366 (84 líneas
+- [x] NSC-IMPL-1076 — Descomponer defineRuntimeBoundImport en src/LLVM/ProjectOopLlvmLowerer.cpp:5366 (84 líneas
   ejecutables; 129 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1092 — Descomponer defineCAbiWrappers en src/LLVM/ProjectOopLlvmLowerer.cpp:5530 (80 líneas ejecutables;
+- [x] NSC-IMPL-1092 — Descomponer defineCAbiWrappers en src/LLVM/ProjectOopLlvmLowerer.cpp:5530 (80 líneas ejecutables;
   135 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1093 — Descomponer lowerRangeArrayAllocate en src/LLVM/ProjectOopLlvmLowerer.cpp:17939 (80 líneas
+- [x] NSC-IMPL-1093 — Descomponer lowerRangeArrayAllocate en src/LLVM/ProjectOopLlvmLowerer.cpp:17939 (80 líneas
   ejecutables; 97 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1100 — Descomponer projectOopCoordinatorFunctionDeclarations en
+- [x] NSC-IMPL-1100 — Descomponer projectOopCoordinatorFunctionDeclarations en
   src/LLVM/ProjectOopFunctionReachability.cpp:181 (78 líneas ejecutables; 97 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1107 — Descomponer emitExternCDelegateCall en src/LLVM/ProjectOopLlvmLowerer.cpp:16260 (77 líneas
+- [x] NSC-IMPL-1107 — Descomponer emitExternCDelegateCall en src/LLVM/ProjectOopLlvmLowerer.cpp:16260 (77 líneas
   ejecutables; 100 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1124 — Descomponer createDebugSubprogram en src/LLVM/ProjectOopLlvmLowerer.cpp:1708 (75 líneas
+- [x] NSC-IMPL-1124 — Descomponer createDebugSubprogram en src/LLVM/ProjectOopLlvmLowerer.cpp:1708 (75 líneas
   ejecutables; 86 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1125 — Descomponer lowerExceptionExpression en src/LLVM/ProjectOopLlvmLowerer.cpp:10064 (75 líneas
+- [x] NSC-IMPL-1125 — Descomponer lowerExceptionExpression en src/LLVM/ProjectOopLlvmLowerer.cpp:10064 (75 líneas
   ejecutables; 109 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1128 — Descomponer emitExceptionalCleanupChain en src/LLVM/ProjectOopLlvmLowerer.cpp:6424 (74 líneas
+- [x] NSC-IMPL-1128 — Descomponer emitExceptionalCleanupChain en src/LLVM/ProjectOopLlvmLowerer.cpp:6424 (74 líneas
   ejecutables; 126 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1131 — Descomponer debugClassPointee en src/LLVM/ProjectOopLlvmLowerer.cpp:2023 (73 líneas ejecutables;
+- [x] NSC-IMPL-1131 — Descomponer debugClassPointee en src/LLVM/ProjectOopLlvmLowerer.cpp:2023 (73 líneas ejecutables;
   91 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1132 — Descomponer collectLocalAllocas en src/LLVM/ProjectOopLlvmLowerer.cpp:6220 (73 líneas ejecutables;
+- [x] NSC-IMPL-1132 — Descomponer collectLocalAllocas en src/LLVM/ProjectOopLlvmLowerer.cpp:6220 (73 líneas ejecutables;
   98 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1133 — Descomponer storeFromParts en src/LLVM/ProjectOopLlvmLowerer.cpp:17640 (73 líneas ejecutables; 97
+- [x] NSC-IMPL-1133 — Descomponer storeFromParts en src/LLVM/ProjectOopLlvmLowerer.cpp:17640 (73 líneas ejecutables; 97
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1141 — Descomponer emitInterfaceMapGlobals en src/LLVM/ProjectOopLlvmLowerer.cpp:882 (71 líneas
+- [x] NSC-IMPL-1141 — Descomponer emitInterfaceMapGlobals en src/LLVM/ProjectOopLlvmLowerer.cpp:882 (71 líneas
   ejecutables; 94 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1142 — Descomponer loadInterfaceTarget en src/LLVM/ProjectOopLlvmLowerer.cpp:20216 (71 líneas
+- [x] NSC-IMPL-1142 — Descomponer loadInterfaceTarget en src/LLVM/ProjectOopLlvmLowerer.cpp:20216 (71 líneas
   ejecutables; 82 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1149 — Descomponer projectOopReachableDefinitionMask en src/LLVM/ProjectOopFunctionReachability.cpp:13
+- [x] NSC-IMPL-1149 — Descomponer projectOopReachableDefinitionMask en src/LLVM/ProjectOopFunctionReachability.cpp:13
   (69 líneas ejecutables; 90 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control
   de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1150 — Descomponer emitLocalDebugInfo en src/LLVM/ProjectOopLlvmLowerer.cpp:668 (69 líneas ejecutables;
+- [x] NSC-IMPL-1150 — Descomponer emitLocalDebugInfo en src/LLVM/ProjectOopLlvmLowerer.cpp:668 (69 líneas ejecutables;
   76 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1151 — Descomponer declareStaticFields en src/LLVM/ProjectOopLlvmLowerer.cpp:3714 (69 líneas ejecutables;
+- [x] NSC-IMPL-1151 — Descomponer declareStaticFields en src/LLVM/ProjectOopLlvmLowerer.cpp:3714 (69 líneas ejecutables;
   105 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1152 — Descomponer beginStaticLocalInitialization en src/LLVM/ProjectOopLlvmLowerer.cpp:8197 (69 líneas
+- [x] NSC-IMPL-1152 — Descomponer beginStaticLocalInitialization en src/LLVM/ProjectOopLlvmLowerer.cpp:8197 (69 líneas
   ejecutables; 84 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1153 — Descomponer lowerEnumName en src/LLVM/ProjectOopLlvmLowerer.cpp:16876 (69 líneas ejecutables; 111
+- [x] NSC-IMPL-1153 — Descomponer lowerEnumName en src/LLVM/ProjectOopLlvmLowerer.cpp:16876 (69 líneas ejecutables; 111
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1154 — Descomponer lowerCall en src/LLVM/ProjectOopLlvmLowerer.cpp:19782 (69 líneas ejecutables; 99
+- [x] NSC-IMPL-1154 — Descomponer lowerCall en src/LLVM/ProjectOopLlvmLowerer.cpp:19782 (69 líneas ejecutables; 99
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1156 — Descomponer lowerLambdaCreate en src/LLVM/ProjectOopLlvmLowerer.cpp:15978 (68 líneas ejecutables;
+- [x] NSC-IMPL-1156 — Descomponer lowerLambdaCreate en src/LLVM/ProjectOopLlvmLowerer.cpp:15978 (68 líneas ejecutables;
   93 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1157 — Descomponer lowerOptionalCoalescing en src/LLVM/ProjectOopLlvmLowerer.cpp:18998 (68 líneas
+- [x] NSC-IMPL-1157 — Descomponer lowerOptionalCoalescing en src/LLVM/ProjectOopLlvmLowerer.cpp:18998 (68 líneas
   ejecutables; 85 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1168 — Descomponer emitParameterDebugInfo en src/LLVM/ProjectOopLlvmLowerer.cpp:587 (65 líneas
+- [x] NSC-IMPL-1168 — Descomponer emitParameterDebugInfo en src/LLVM/ProjectOopLlvmLowerer.cpp:587 (65 líneas
   ejecutables; 78 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1172 — Descomponer emitNativeArrayDestroy en src/LLVM/ProjectOopLlvmLowerer.cpp:6802 (64 líneas
+- [x] NSC-IMPL-1172 — Descomponer emitNativeArrayDestroy en src/LLVM/ProjectOopLlvmLowerer.cpp:6802 (64 líneas
   ejecutables; 80 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1173 — Descomponer emitRaiiDestroy en src/LLVM/ProjectOopLlvmLowerer.cpp:7195 (64 líneas ejecutables; 108
+- [x] NSC-IMPL-1173 — Descomponer emitRaiiDestroy en src/LLVM/ProjectOopLlvmLowerer.cpp:7195 (64 líneas ejecutables; 108
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1182 — Descomponer debugPlacementType en src/LLVM/ProjectOopLlvmLowerer.cpp:2250 (63 líneas ejecutables;
+- [x] NSC-IMPL-1182 — Descomponer debugPlacementType en src/LLVM/ProjectOopLlvmLowerer.cpp:2250 (63 líneas ejecutables;
   79 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1183 — Descomponer lowerExceptionalTransfer en src/LLVM/ProjectOopLlvmLowerer.cpp:7733 (63 líneas
+- [x] NSC-IMPL-1183 — Descomponer lowerExceptionalTransfer en src/LLVM/ProjectOopLlvmLowerer.cpp:7733 (63 líneas
   ejecutables; 110 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1201 — Descomponer CompilationArtifactCache::restoreObject en src/LLVM/CompilationArtifactCache.cpp:551
+- [x] NSC-IMPL-1201 — Descomponer CompilationArtifactCache::restoreObject en src/LLVM/CompilationArtifactCache.cpp:551
   (61 líneas ejecutables; 81 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control
   de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1202 — Descomponer emitDescriptorInitializer en src/LLVM/ProjectOopLlvmLowerer.cpp:1008 (61 líneas
+- [x] NSC-IMPL-1202 — Descomponer emitDescriptorInitializer en src/LLVM/ProjectOopLlvmLowerer.cpp:1008 (61 líneas
   ejecutables; 82 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1203 — Descomponer ensureRuntimeDebugTrace en src/LLVM/ProjectOopLlvmLowerer.cpp:2834 (61 líneas
+- [x] NSC-IMPL-1203 — Descomponer ensureRuntimeDebugTrace en src/LLVM/ProjectOopLlvmLowerer.cpp:2834 (61 líneas
   ejecutables; 80 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1204 — Descomponer declareTypeInitializers en src/LLVM/ProjectOopLlvmLowerer.cpp:3872 (61 líneas
+- [x] NSC-IMPL-1204 — Descomponer declareTypeInitializers en src/LLVM/ProjectOopLlvmLowerer.cpp:3872 (61 líneas
   ejecutables; 106 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1205 — Descomponer compoundStoreFromParts en src/LLVM/ProjectOopLlvmLowerer.cpp:17489 (61 líneas
+- [x] NSC-IMPL-1205 — Descomponer compoundStoreFromParts en src/LLVM/ProjectOopLlvmLowerer.cpp:17489 (61 líneas
   ejecutables; 81 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1210 — Cerrar OopLlvmImplementation como fachada interna y familias de lowering, sin mover estado ni
+- [x] NSC-IMPL-1210 — Cerrar OopLlvmImplementation como fachada interna y familias de lowering, sin mover estado ni
   alterar la fachada pública.
-- [ ] NSC-IMPL-1214 — Partir LlvmLowerer::Implementation por expresiones, sentencias y tipos, conservando el pipeline
+- [x] NSC-IMPL-1214 — Partir LlvmLowerer::Implementation por expresiones, sentencias y tipos, conservando el pipeline
   heredado y todos sus campos.
+
+Nota de cierre REF-07: el backend LLVM se separó en archivos de implementación, familias de lowering y soporte
+sin introducir colaboradores conceptuales nuevos, mover estado ni alterar las fachadas públicas. La auditoría estática
+comprobó 150/150 ítems, 590/590 definiciones de OopLlvmImplementation, 46/46 definiciones de
+LlvmLowerer::Implementation, preservación de campos, métodos, comentarios, literales y ramas originales, cero
+tipos definidos en .cpp, cero funciones mayores de 60 líneas ejecutables y líneas dentro de 120 columnas.
+No se ejecutaron compilación, pruebas, suites ni baseline por instrucción del propietario.
 
 ### Commit REF-08 — Driver, comandos de proyecto y superficie pública — 0/84
 

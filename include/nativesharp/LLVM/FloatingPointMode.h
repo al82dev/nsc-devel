@@ -13,29 +13,16 @@ enum class FloatingPointMode
     Deterministic
 };
 
-enum class FmaContractPolicy
-{
-    Off,
-    On,
-    Fast
-};
+}
 
-enum class FloatingPointRoundingMode
-{
-    Dynamic,
-    NearestEven,
-    TowardZero,
-    Upward,
-    Downward
-};
+#include "nativesharp/LLVM/FloatingPointDenormalMode.h"
+#include "nativesharp/LLVM/FloatingPointModeScope.h"
+#include "nativesharp/LLVM/FloatingPointRoundingMode.h"
+#include "nativesharp/LLVM/FloatingPointState.h"
+#include "nativesharp/LLVM/FmaContractPolicy.h"
 
-enum class FloatingPointDenormalMode
+namespace nativesharp::llvm_backend
 {
-    Preserve,
-    FlushToZero,
-    DenormalsAreZero,
-    FlushToZeroAndDenormalsAreZero
-};
 
 std::optional<FloatingPointMode> parseFloatingPointMode(std::string_view value) noexcept;
 std::string_view floatingPointModeName(FloatingPointMode mode) noexcept;
@@ -51,37 +38,10 @@ std::optional<FloatingPointDenormalMode> parseFloatingPointDenormalMode(std::str
 std::string_view floatingPointDenormalModeName(FloatingPointDenormalMode mode) noexcept;
 FloatingPointDenormalMode activeFloatingPointDenormalMode() noexcept;
 
-struct FloatingPointState final
-{
-    FloatingPointMode mode = FloatingPointMode::Precise;
-    FmaContractPolicy fmaContractPolicy = FmaContractPolicy::Off;
-    FloatingPointRoundingMode roundingMode = FloatingPointRoundingMode::Dynamic;
-    FloatingPointDenormalMode denormalMode = FloatingPointDenormalMode::Preserve;
-
-    bool operator==(const FloatingPointState&) const = default;
-};
-
 FloatingPointState captureFloatingPointState() noexcept;
 
 // Installs a captured contract in a freshly-created long-lived worker thread. Unlike the scoped
 // API below, this deliberately has no restore step: the worker owns the state until it exits.
 void initializeFloatingPointStateForWorker(const FloatingPointState& state) noexcept;
 
-class FloatingPointModeScope final
-{
-public:
-    FloatingPointModeScope() noexcept;
-    FloatingPointModeScope(const FloatingPointModeScope&) = delete;
-    FloatingPointModeScope& operator=(const FloatingPointModeScope&) = delete;
-    ~FloatingPointModeScope();
-
-    void set(FloatingPointMode mode) noexcept;
-    void setFmaContractPolicy(FmaContractPolicy policy) noexcept;
-    void setRoundingMode(FloatingPointRoundingMode mode) noexcept;
-    void setDenormalMode(FloatingPointDenormalMode mode) noexcept;
-    void setState(const FloatingPointState& state) noexcept;
-
-private:
-    FloatingPointState previous_;
-};
 }

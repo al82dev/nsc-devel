@@ -1,0 +1,812 @@
+#include "../Internal/OopLlvmImplementation.h"
+#include "../Internal/DropCase.h"
+#include "../Internal/LlvmExpressionFrame.h"
+#include "../Internal/MatchValuePop.h"
+#include "OopLlvmSupport.h"
+
+namespace nativesharp::llvm_backend
+{
+using namespace llvm_api;
+
+LLVMValueRef OopLlvmImplementation::normalizeNativeIndex(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error)
+{
+        LLVMValueRef value = lowerExpression(node, error);
+        if (value == nullptr) return nullptr;
+        return convert(value, node->typeKey, "builtin:nuint", error);
+    }
+
+LLVMValueRef OopLlvmImplementation::normalizeNativeIndexFromValue(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef value,
+        std::string& error)
+{
+        if (value == nullptr) return nullptr;
+        return convert(value, node->typeKey, "builtin:nuint", error);
+    }
+
+LLVMValueRef OopLlvmImplementation::lowerNativeLength(
+        const frontend::ProjectOopMirNode* node,
+        bool stringValue,
+        std::string& error)
+{
+        (void)stringValue;
+        if (node->children.size() != 1)
+            return failValue(error, "Stage 41 native Length requires one receiver");
+        const std::string beginRecord =
+            runtimeDebugArrayRecord(*node, "ARRAY-LENGTH-BEGIN");
+        if (!beginRecord.empty() && !emitRuntimeDebugTrace(4U, beginRecord, error))
+            return nullptr;
+        LLVMValueRef object = lowerExpression(node->children.front().get(), error);
+        if (object == nullptr) return nullptr;
+        object = checkedReceiver(object, error);
+        if (object == nullptr) return nullptr;
+        LLVMValueRef length64 = LLVMBuildLoad2(builder_, LLVMInt64TypeInContext(context_), object, "native.length64");
+        LLVMValueRef length =
+            LLVMBuildTrunc(builder_, length64, LLVMInt32TypeInContext(context_), "native.length");
+        const std::string endRecord =
+            runtimeDebugArrayRecord(*node, "ARRAY-LENGTH-END");
+        return !endRecord.empty() && !emitRuntimeDebugTrace(4U, endRecord, error)
+            ? nullptr
+            : length;
+    }
+
+LLVMValueRef OopLlvmImplementation::arrayElementAddressFromParts(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef object,
+        LLVMValueRef index,
+        bool stringValue,
+        std::string& error)
+{
+        LLVMValueRef length = LLVMBuildLoad2(builder_, LLVMInt64TypeInContext(context_), object, "native.index.length");
+        if (node->booleanValue)
+        {
+            index = LLVMBuildSub(builder_, length, index, "native.index.fromend");
+        }
+        LLVMValueRef inRange = LLVMBuildICmp(builder_, LLVMIntULT, index, length, "native.index.inrange");
+        if (isSignedInteger(node->children[1]->typeKey))
+        {
+            LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+            LLVMValueRef nonNegative = LLVMBuildICmp(builder_, LLVMIntSGE, index, zero, "native.index.nonnegative");
+            inRange = LLVMBuildAnd(builder_, nonNegative, inRange, "native.index.valid");
+        }
+        if (!emitGuard(inRange, LlvmTrapReason::BoundsViolation, "native.index", error)) return nullptr;
+        const std::uint64_t elementSize = stringValue ? 1U : node->immediate;
+        const std::uint64_t elementAlignment = stringValue ? 1U : node->alignment;
+        const std::uint64_t dataOffset = (8U + elementAlignment - 1U) / elementAlignment * elementAlignment;
+        LLVMValueRef scaled = LLVMBuildMul(
+            builder_, index, LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0), "native.index.scaled");
+        LLVMValueRef offset = LLVMBuildAdd(
+            builder_, scaled, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0), "native.index.offset");
+        LLVMValueRef indices[] = {offset};
+        return LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), object, indices, 1, "native.element.addr");
+    }
+
+LLVMValueRef OopLlvmImplementation::rawElementAddressFromParts(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef base,
+        LLVMValueRef index,
+        std::string& error)
+{
+        if (node->hasTrailingLengthBounds)
+        {
+            LLVMValueRef lengthAddress = byteOffset(
+                base, static_cast<std::uint64_t>(node->trailingLengthRelativeOffset),
+                "flexible.length.addr");
+            LLVMValueRef length = LLVMBuildLoad2(
+                builder_, LLVMInt32TypeInContext(context_), lengthAddress, "flexible.length");
+            LLVMValueRef lengthWide = LLVMBuildZExt(
+                builder_, length, LLVMInt64TypeInContext(context_), "flexible.length.i64");
+            LLVMValueRef inBounds = LLVMBuildICmp(
+                builder_, LLVMIntULT, index, lengthWide, "flexible.inbounds");
+            if (!emitGuard(inBounds, LlvmTrapReason::BoundsViolation, "flexible.index", error))
+                return nullptr;
+        }
+        LLVMValueRef offset = LLVMBuildMul(
+            builder_, index,
+            LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
+            "raw.element.offset");
+        LLVMValueRef indices[] = {offset};
+        return LLVMBuildGEP2(
+            builder_, LLVMInt8TypeInContext(context_), base, indices, 1, "raw.element.addr");
+    }
+
+LLVMValueRef OopLlvmImplementation::pointerArithmeticFromParts(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef left,
+        LLVMValueRef right,
+        std::string& error)
+{
+        LLVMTypeRef i64Type = LLVMInt64TypeInContext(context_);
+        LLVMValueRef stride = LLVMConstInt(i64Type, node->immediate, 0);
+        if (!node->typeKey.ends_with("*"))
+        {
+            LLVMValueRef leftInt = LLVMBuildPtrToInt(builder_, left, i64Type, "ptrdiff.left");
+            LLVMValueRef rightInt = LLVMBuildPtrToInt(builder_, right, i64Type, "ptrdiff.right");
+            LLVMValueRef bytes = LLVMBuildSub(builder_, leftInt, rightInt, "ptrdiff.bytes");
+            return LLVMBuildSDiv(builder_, bytes, stride, "ptrdiff.elements");
+        }
+        const bool leftIsPointer = node->children[0]->typeKey.ends_with("*");
+        LLVMValueRef pointer = leftIsPointer ? left : right;
+        const frontend::ProjectOopMirNode* offsetNode =
+            leftIsPointer ? node->children[1].get() : node->children[0].get();
+        LLVMValueRef index = normalizeNativeIndexFromValue(
+            offsetNode, leftIsPointer ? right : left, error);
+        if (index == nullptr) return nullptr;
+        LLVMValueRef offset = LLVMBuildMul(builder_, index, stride, "pointer.offset");
+        if (node->operation == lexer::TokenKind::Minus)
+        {
+            offset = LLVMBuildNeg(builder_, offset, "pointer.offset.neg");
+        }
+        LLVMValueRef indices[] = {offset};
+        return LLVMBuildGEP2(
+            builder_, LLVMInt8TypeInContext(context_), pointer, indices, 1, "pointer.arith");
+    }
+
+LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef address,
+        LLVMValueRef value,
+        std::string& error)
+{
+        LLVMTypeRef targetType = llvmType(node->typeKey, error);
+        if (targetType == nullptr) return nullptr;
+        const bool bitField =
+            node->children[0]->kind == frontend::ProjectOopMirNodeKind::BitFieldAddress;
+        LLVMValueRef previousStorage = nullptr;
+        LLVMValueRef previous = nullptr;
+        if (bitField)
+        {
+            LLVMTypeRef storageType = bitFieldStorageType(node->children[0].get(), error);
+            if (storageType == nullptr) return nullptr;
+            previousStorage = LLVMBuildLoad2(
+                builder_, storageType, address, "bitfield.compound.storage.load");
+            LLVMSetAlignment(
+                previousStorage, static_cast<unsigned>(node->children[0]->alignment));
+            if (node->children[0]->volatileAccess) LLVMSetVolatile(previousStorage, 1);
+            previous = extractBitField(node->children[0].get(), previousStorage, error);
+        }
+        else
+        {
+            previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
+            if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+        }
+        if (previous == nullptr) return nullptr;
+
+        LLVMValueRef updated = compoundUpdatedValue(node, previous, value, error);
+        if (updated == nullptr) return nullptr;
+        LLVMValueRef storedValue = updated;
+        if (bitField)
+        {
+            LLVMValueRef merged = insertBitField(
+                node->children[0].get(), previousStorage, updated, error);
+            if (merged == nullptr) return nullptr;
+            LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
+            LLVMSetAlignment(store, static_cast<unsigned>(node->children[0]->alignment));
+            if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            storedValue = extractBitField(node->children[0].get(), merged, error);
+        }
+        else
+        {
+            LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
+            if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+        }
+        if (storedValue == nullptr) return nullptr;
+        return node->booleanValue ? previous : storedValue;
+    }
+
+LLVMValueRef OopLlvmImplementation::compoundUpdatedValue(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef previous,
+        LLVMValueRef value,
+        std::string& error)
+{
+        LLVMValueRef updated = nullptr;
+        if (node->immediate != 0)
+        {
+            if (node->operation != lexer::TokenKind::Plus &&
+                node->operation != lexer::TokenKind::Minus)
+                return failValue(error, "a pointer target supports only '+' and '-' updates");
+            LLVMValueRef index = normalizeNativeIndexFromValue(node->children[1].get(), value, error);
+            if (index == nullptr) return nullptr;
+            LLVMValueRef stride = LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0);
+            LLVMValueRef offset = LLVMBuildMul(builder_, index, stride, "compound.offset");
+            if (node->operation == lexer::TokenKind::Minus)
+            {
+                offset = LLVMBuildNeg(builder_, offset, "compound.offset.neg");
+            }
+            LLVMValueRef indices[] = {offset};
+            updated = LLVMBuildGEP2(
+                builder_, LLVMInt8TypeInContext(context_), previous, indices, 1, "compound.arith");
+        }
+        else
+        {
+            LLVMValueRef operand = value;
+            if (node->operation == lexer::TokenKind::LessLess ||
+                node->operation == lexer::TokenKind::GreaterGreater)
+            {
+                operand = normalizeShiftCount(
+                    operand, node->children[1]->typeKey, node->typeKey, error);
+                if (operand == nullptr) return nullptr;
+            }
+            updated = applyBinaryOperation(
+                node->operation, previous, operand, node->typeKey, error, false);
+        }
+        return updated;
+    }
+
+LLVMValueRef OopLlvmImplementation::stackAllocationFromParts(
+        const frontend::ProjectOopMirNode* node,
+        const std::vector<LLVMValueRef>& rawExtents,
+        std::string& error)
+{
+        constexpr std::uint64_t kMaximumStackAllocationBytes = std::uint64_t{1} << 20;
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMValueRef total = LLVMConstInt(i64, 1, 0);
+        const std::uint64_t maximumElements =
+            kMaximumStackAllocationBytes / node->immediate;
+        LLVMValueRef maximum = LLVMConstInt(i64, maximumElements, 0);
+        for (std::size_t extentIndex = 0; extentIndex < node->children.size(); ++extentIndex)
+        {
+            const frontend::ProjectOopMirNode* extentNode = node->children[extentIndex].get();
+            LLVMValueRef rawExtent = rawExtents[extentIndex];
+            if (isSignedInteger(extentNode->typeKey))
+            {
+                LLVMTypeRef extentType = llvmType(extentNode->typeKey, error);
+                if (extentType == nullptr) return nullptr;
+                LLVMValueRef zero = LLVMConstNull(extentType);
+                LLVMValueRef nonNegative = LLVMBuildICmp(
+                    builder_, LLVMIntSGE, rawExtent, zero, "stack.extent.nonnegative");
+                if (!emitGuard(
+                        nonNegative,
+                        LlvmTrapReason::AllocationSizeOverflow,
+                        "stack.extent",
+                        error))
+                    return nullptr;
+            }
+            LLVMValueRef extent = convert(
+                rawExtent, extentNode->typeKey, "builtin:nuint", error);
+            if (extent == nullptr) return nullptr;
+
+            LLVMValueRef totalIsZero = LLVMBuildICmp(
+                builder_, LLVMIntEQ, total, LLVMConstInt(i64, 0, 0),
+                "stack.total.zero");
+            LLVMValueRef safeDivisor = LLVMBuildSelect(
+                builder_, totalIsZero, LLVMConstInt(i64, 1, 0), total,
+                "stack.total.divisor");
+            LLVMValueRef remaining = LLVMBuildUDiv(
+                builder_, maximum, safeDivisor, "stack.extent.maximum");
+            LLVMValueRef extentFits = LLVMBuildICmp(
+                builder_, LLVMIntULE, extent, remaining, "stack.extent.fits");
+            LLVMValueRef fits = LLVMBuildOr(
+                builder_, totalIsZero, extentFits, "stack.extent.safe");
+            if (!emitGuard(
+                    fits,
+                    LlvmTrapReason::AllocationSizeOverflow,
+                    "stack.size",
+                    error))
+                return nullptr;
+            total = LLVMBuildMul(builder_, total, extent, "stack.element.count");
+        }
+        LLVMValueRef bytes = LLVMBuildMul(
+            builder_, total,
+            LLVMConstInt(i64, node->immediate, 0),
+            "stackalloc.bytes");
+        LLVMValueRef storage = LLVMBuildArrayAlloca(
+            builder_, LLVMInt8TypeInContext(context_), bytes, "stackalloc.storage");
+        if (storage == nullptr)
+            return failValue(error, "CC1 stackalloc failed to emit its array alloca");
+        LLVMSetAlignment(storage, static_cast<unsigned>(node->alignment == 0 ? 1 : node->alignment));
+        return storage;
+    }
+
+LLVMValueRef OopLlvmImplementation::storeFromParts(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef address,
+        LLVMValueRef value,
+        std::string& error)
+{
+        if (terminated()) return value;
+        if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::BitFieldAddress)
+        {
+            return storeBitFieldFromParts(node->children[0].get(), address, value, error);
+        }
+        if (node->booleanValue && node->localOrdinal.has_value())
+        {
+            const auto cleanup = std::find_if(
+                cleanupRegions_.begin(), cleanupRegions_.end(),
+                [&](const auto& entry)
+                {
+                    return entry.second != nullptr &&
+                        entry.second->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
+                        entry.second->localOrdinal == node->localOrdinal;
+                });
+            if (cleanup == cleanupRegions_.end() || !emitRaiiDestroy(cleanup->second, error)) return nullptr;
+        }
+        else if (node->booleanValue && memberModel_ != nullptr &&
+                 memberModel_->typeRequiresValueDrop(node->typeKey))
+        {
+            if (!emitValueDropAddress(address, node->typeKey, "value.replace", error))
+                return nullptr;
+        }
+        else if (node->booleanValue && requiresOwnedDestruction(node->typeKey))
+        {
+            LLVMTypeRef ptrType = LLVMPointerTypeInContext(context_, 0);
+            LLVMValueRef previous = LLVMBuildLoad2(
+                builder_, ptrType, address, "owned.field.previous");
+            LLVMValueRef previousIsNull = LLVMBuildICmp(
+                builder_, LLVMIntEQ, previous, LLVMConstNull(ptrType),
+                "owned.field.previous.isnull");
+            LLVMBasicBlockRef releaseBlock = appendBlock("owned.field.replace");
+            LLVMBasicBlockRef readyBlock = appendBlock("owned.field.ready");
+            LLVMBuildCondBr(builder_, previousIsNull, readyBlock, releaseBlock);
+
+            LLVMPositionBuilderAtEnd(builder_, releaseBlock);
+            LLVMBuildStore(builder_, LLVMConstNull(ptrType), address);
+            if (node->typeKey == "builtin:string")
+            {
+                if (deallocationFunction_ == nullptr)
+                {
+                    return failValue(error, "Bloque 1 owned string overwrite has no deallocation ABI");
+                }
+                LLVMValueRef stringArguments[] = {previous};
+                buildNoUnwindCall(
+                    deallocationFunctionType_, deallocationFunction_, stringArguments, 1, "");
+            }
+            else
+            {
+                if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
+                {
+                    return failValue(error, "Bloque 1 owned field overwrite has no destruction ABI");
+                }
+                LLVMValueRef previousDescriptor = LLVMBuildLoad2(
+                    builder_, ptrType, previous, "owned.field.previous.descriptor");
+                LLVMValueRef previousEntryAddress = LLVMBuildStructGEP2(
+                    builder_, descriptorType_, previousDescriptor, 5,
+                    "owned.field.previous.entry.addr");
+                LLVMValueRef previousEntry = LLVMBuildLoad2(
+                    builder_, ptrType, previousEntryAddress, "owned.field.previous.entry");
+                LLVMValueRef releaseArguments[] = {previous};
+                buildNoUnwindCall(
+                    destructionEntryFunctionType_, previousEntry, releaseArguments, 1, "");
+            }
+            LLVMBuildBr(builder_, readyBlock);
+            LLVMPositionBuilderAtEnd(builder_, readyBlock);
+        }
+        LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+        if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+        if (node->localOrdinal.has_value())
+        {
+            const auto flag = localValueDropFlags_.find(*node->localOrdinal);
+            if (flag != localValueDropFlags_.end())
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
+                    flag->second);
+        }
+        return value;
+    }
+
+LLVMValueRef OopLlvmImplementation::storeBitFieldFromParts(
+        const frontend::ProjectOopMirNode* field,
+        LLVMValueRef address,
+        LLVMValueRef value,
+        std::string& error)
+{
+        LLVMTypeRef storageType = bitFieldStorageType(field, error);
+        if (storageType == nullptr) return nullptr;
+        LLVMValueRef previous = LLVMBuildLoad2(
+            builder_, storageType, address, "bitfield.store.storage.load");
+        LLVMSetAlignment(previous, static_cast<unsigned>(field->alignment));
+        if (field->volatileAccess) LLVMSetVolatile(previous, 1);
+        LLVMValueRef merged = insertBitField(field, previous, value, error);
+        if (merged == nullptr) return nullptr;
+        LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
+        LLVMSetAlignment(store, static_cast<unsigned>(field->alignment));
+        if (field->volatileAccess) LLVMSetVolatile(store, 1);
+        return extractBitField(field, merged, error);
+    }
+
+LLVMValueRef OopLlvmImplementation::tupleDeconstructFromParts(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef sourceValue,
+        const std::vector<LLVMValueRef>& targetAddresses,
+        std::string& error)
+{
+        const frontend::ProjectOopMirStructLayout* sourceLayout = findStructLayout(mirModel_, node->typeKey);
+        LLVMTypeRef sourceCarrier = llvmType(node->typeKey, error);
+        if (sourceLayout == nullptr || sourceCarrier == nullptr)
+            return failValue(error, "tuple deconstruction source has no physical carrier");
+        if (terminated()) return sourceValue;
+        LLVMValueRef sourceSlot = entryBlockAlloca(
+            sourceCarrier,
+            static_cast<unsigned>(sourceLayout->alignment),
+            "tuple.deconstruct.source");
+        LLVMValueRef sourceStore = LLVMBuildStore(builder_, sourceValue, sourceSlot);
+        if (sourceLayout->alignment > 1U)
+            LLVMSetAlignment(sourceStore, static_cast<unsigned>(sourceLayout->alignment));
+        for (std::size_t index = 1; index < node->children.size(); ++index)
+        {
+            const frontend::ProjectOopMirNode* element = node->children[index].get();
+            LLVMTypeRef sourceType = llvmType(element->elementTypeKey, error);
+            if (sourceType == nullptr) return nullptr;
+            LLVMValueRef sourceAddress = byteOffset(
+                sourceSlot, element->immediate, "tuple.deconstruct.element.source");
+            LLVMValueRef value = LLVMBuildLoad2(
+                builder_, sourceType, sourceAddress, "tuple.deconstruct.element.value");
+            const auto sourceField = std::ranges::find_if(
+                sourceLayout->fields,
+                [&](const frontend::ObjectFieldLayout& field)
+                {
+                    return field.offset == element->immediate &&
+                        field.typeKey == element->elementTypeKey;
+                });
+            if (sourceField != sourceLayout->fields.end() && sourceField->alignment > 1U)
+                LLVMSetAlignment(value, static_cast<unsigned>(sourceField->alignment));
+            value = convert(value, element->elementTypeKey, element->typeKey, error);
+            if (value == nullptr) return nullptr;
+            LLVMValueRef store = LLVMBuildStore(builder_, value, targetAddresses[index - 1]);
+            const frontend::ProjectOopMirStructLayout* targetStruct =
+                findStructLayout(mirModel_, element->typeKey);
+            if (targetStruct != nullptr && targetStruct->alignment > 1U)
+                LLVMSetAlignment(store, static_cast<unsigned>(targetStruct->alignment));
+        }
+        return sourceValue;
+    }
+
+LLVMValueRef OopLlvmImplementation::collectArrayAllocationCount(
+        const frontend::ProjectOopMirNode* node,
+        std::vector<LLVMValueRef>& segmentValues,
+        std::vector<LLVMValueRef>& segmentLengths,
+        std::string& error)
+{
+        const bool hasCollectionSegments = !node->collectionSegments.empty();
+        if (hasCollectionSegments)
+        {
+            // Evaluate every source segment exactly once and in source order before allocation.
+            LLVMValueRef count = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+            segmentValues.reserve(node->children.size());
+            segmentLengths.reserve(node->children.size());
+            for (std::size_t index = 0; index < node->children.size(); ++index)
+            {
+                LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+                if (value == nullptr) return nullptr;
+                segmentValues.push_back(value);
+                LLVMValueRef length = LLVMConstInt(LLVMInt64TypeInContext(context_), 1, 0);
+                if (node->collectionSegments[index] ==
+                    frontend::ProjectCollectionSegmentKind::Spread)
+                {
+                    length = LLVMBuildLoad2(
+                        builder_, LLVMInt64TypeInContext(context_), value,
+                        "array.spread.length");
+                }
+                segmentLengths.push_back(length);
+                LLVMValueRef nextCount = LLVMBuildAdd(
+                    builder_, count, length, "array.segment.count");
+                LLVMValueRef noOverflow = LLVMBuildICmp(
+                    builder_, LLVMIntUGE, nextCount, count, "array.segment.count.valid");
+                if (!emitGuard(
+                        noOverflow, LlvmTrapReason::AllocationSizeOverflow,
+                        "array.segment.count", error))
+                    return nullptr;
+                count = nextCount;
+            }
+            return count;
+        }
+        LLVMValueRef count = normalizeNativeIndex(node->children.front().get(), error);
+        if (count == nullptr) return nullptr;
+        if (isSignedInteger(node->children.front()->typeKey))
+        {
+            LLVMValueRef zero = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+            LLVMValueRef nonNegative = LLVMBuildICmp(
+                builder_, LLVMIntSGE, count, zero, "array.count.nonnegative");
+            if (!emitGuard(
+                    nonNegative, LlvmTrapReason::AllocationSizeOverflow, "array.count", error))
+                return nullptr;
+        }
+        return count;
+    }
+
+bool OopLlvmImplementation::initializeArrayElements(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef memory,
+        std::uint64_t dataOffset,
+        const std::vector<LLVMValueRef>& segmentValues,
+        const std::vector<LLVMValueRef>& segmentLengths,
+        std::string& error)
+{
+        LLVMTypeRef elementType = llvmType(node->elementTypeKey, error);
+        if (elementType == nullptr) return false;
+        if (!node->collectionSegments.empty())
+        {
+            LLVMValueRef cursor = LLVMConstInt(LLVMInt64TypeInContext(context_), 0, 0);
+            for (std::size_t index = 0; index < segmentValues.size(); ++index)
+            {
+                LLVMValueRef byteBase = LLVMBuildMul(
+                    builder_, cursor,
+                    LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
+                    "array.segment.bytebase");
+                LLVMValueRef offset = LLVMBuildAdd(
+                    builder_, byteBase, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0),
+                    "array.segment.offset");
+                LLVMValueRef destination = dynamicByteOffset(memory, offset, "array.segment.dest");
+                if (node->collectionSegments[index] == frontend::ProjectCollectionSegmentKind::Spread)
+                {
+                    LLVMValueRef sourceData = byteOffset(
+                        segmentValues[index], dataOffset, "array.spread.source");
+                    LLVMValueRef sourceBytes = LLVMBuildMul(
+                        builder_, segmentLengths[index],
+                        LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
+                        "array.spread.bytes");
+                    if (!emitMemcpyBytes(
+                            destination, sourceData, sourceBytes, "array.spread.copy", error))
+                        return false;
+                }
+                else
+                {
+                    LLVMBuildStore(builder_, segmentValues[index], destination);
+                }
+                cursor = LLVMBuildAdd(
+                    builder_, cursor, segmentLengths[index], "array.segment.cursor");
+            }
+            return true;
+        }
+        for (std::size_t index = 1; index < node->children.size(); ++index)
+        {
+            LLVMValueRef value = lowerExpression(node->children[index].get(), error);
+            if (value == nullptr) return false;
+            const std::uint64_t bytePosition = dataOffset + (index - 1U) * node->immediate;
+            LLVMValueRef address = byteOffset(memory, bytePosition, "array.init.element.addr");
+            LLVMBuildStore(builder_, value, address);
+        }
+        return true;
+    }
+
+LLVMValueRef OopLlvmImplementation::lowerArrayAllocate(const frontend::ProjectOopMirNode* node, std::string& error)
+{
+        if (node->children.empty() || node->immediate == 0 || node->alignment == 0)
+            return failValue(error, "Stage 41 array allocation has invalid MIR layout/count");
+        const bool hasCollectionSegments = !node->collectionSegments.empty();
+        if (!node->booleanValue && !hasCollectionSegments && node->children.size() != 1)
+            return failValue(error, "Stage 41 counted array allocation cannot carry initializer elements");
+        if (hasCollectionSegments && node->collectionSegments.size() != node->children.size())
+            return failValue(error, "T09-F05 collection segment metadata does not match its children");
+        std::vector<LLVMValueRef> segmentValues;
+        std::vector<LLVMValueRef> segmentLengths;
+        LLVMValueRef count = collectArrayAllocationCount(
+            node, segmentValues, segmentLengths, error);
+        if (count == nullptr) return nullptr;
+        const std::uint64_t dataOffset = (8U + node->alignment - 1U) / node->alignment * node->alignment;
+        const std::uint64_t storageMaxCount = (UINT64_MAX - dataOffset) / node->immediate;
+        const std::uint64_t maxCount = std::min<std::uint64_t>(storageMaxCount, 0x7fffffffULL);
+        LLVMValueRef fits = LLVMBuildICmp(
+            builder_, LLVMIntULE, count,
+            LLVMConstInt(LLVMInt64TypeInContext(context_), maxCount, 0), "array.count.fits");
+        if (!emitGuard(fits, LlvmTrapReason::AllocationSizeOverflow, "array.size", error)) return nullptr;
+        LLVMValueRef bytes = LLVMBuildMul(
+            builder_, count, LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0), "array.data.bytes");
+        LLVMValueRef total = LLVMBuildAdd(
+            builder_, bytes, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0), "array.total.bytes");
+        LLVMValueRef args[] = {total};
+        LLVMValueRef memory = buildNoUnwindCall(
+            allocationFunctionType_, allocationFunction_, args, 1, "array.memory");
+        LLVMValueRef isNull = LLVMBuildICmp(
+            builder_, LLVMIntEQ, memory, LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "array.alloc.null");
+        LLVMBasicBlockRef nullBlock = appendBlock("array.alloc.null");
+        LLVMBasicBlockRef initBlock = appendBlock("array.alloc.init");
+        LLVMBasicBlockRef mergeBlock = appendBlock("array.alloc.merge");
+        LLVMBuildCondBr(builder_, isNull, nullBlock, initBlock);
+        LLVMPositionBuilderAtEnd(builder_, nullBlock);
+        LLVMBuildBr(builder_, mergeBlock);
+        LLVMBasicBlockRef nullIncoming = LLVMGetInsertBlock(builder_);
+        LLVMPositionBuilderAtEnd(builder_, initBlock);
+        LLVMValueRef memsetArgs[] = {
+            memory,
+            LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+            total,
+            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArgs, 4, "");
+        LLVMBuildStore(builder_, count, memory);
+        // NSC-LIMIT-017. The first child is the inferred count; the remaining children are
+        // already converted element values. Initialize directly in the successful-allocation
+        // block, in source order, so every expression is evaluated once and a null allocation is
+        // never dereferenced.
+        if (!initializeArrayElements(
+                node, memory, dataOffset, segmentValues, segmentLengths, error)) return nullptr;
+        LLVMBuildBr(builder_, mergeBlock);
+        LLVMBasicBlockRef initIncoming = LLVMGetInsertBlock(builder_);
+        LLVMPositionBuilderAtEnd(builder_, mergeBlock);
+        LLVMValueRef phi = LLVMBuildPhi(builder_, LLVMPointerTypeInContext(context_, 0), "array.result");
+        LLVMValueRef incomingValues[] = {LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), memory};
+        LLVMBasicBlockRef incomingBlocks[] = {nullIncoming, initIncoming};
+        LLVMAddIncoming(phi, incomingValues, incomingBlocks, 2);
+        return phi;
+    }
+
+bool OopLlvmImplementation::collectRangeArrayDimensions(
+        const frontend::ProjectOopMirNode* node,
+        std::vector<LLVMValueRef>& dimensions,
+        std::string& error)
+{
+        const std::size_t rank = node->nativeArrayRank;
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        dimensions.reserve(rank);
+        for (std::size_t dimension = 0; dimension < rank; ++dimension)
+        {
+            LLVMValueRef extent = normalizeNativeIndex(node->children[dimension].get(), error);
+            if (extent == nullptr) return false;
+            if (isSignedInteger(node->children[dimension]->typeKey))
+            {
+                LLVMValueRef nonNegative = LLVMBuildICmp(
+                    builder_, LLVMIntSGE, extent, LLVMConstInt(i64, 0, 0),
+                    "range.dimension.nonnegative");
+                if (!emitGuard(nonNegative, LlvmTrapReason::AllocationSizeOverflow,
+                        "range.dimension", error)) return false;
+            }
+            dimensions.push_back(extent);
+        }
+        return true;
+    }
+
+LLVMValueRef OopLlvmImplementation::computeRangeArrayElementCount(
+        const frontend::ProjectOopMirNode* node,
+        const std::vector<LLVMValueRef>& dimensions,
+        std::uint64_t dataOffset,
+        std::string& error)
+{
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        const std::uint64_t storageMaxCount = (UINT64_MAX - dataOffset) / node->immediate;
+        const std::uint64_t maxCount = std::min<std::uint64_t>(storageMaxCount, 0x7fffffffULL);
+        LLVMValueRef totalCount = LLVMConstInt(i64, 1, 0);
+        for (LLVMValueRef extent : dimensions)
+        {
+            LLVMValueRef isZero = LLVMBuildICmp(
+                builder_, LLVMIntEQ, extent, LLVMConstInt(i64, 0, 0), "range.dimension.zero");
+            LLVMValueRef safeExtent = LLVMBuildSelect(
+                builder_, isZero, LLVMConstInt(i64, 1, 0), extent, "range.dimension.safe");
+            LLVMValueRef allowed = LLVMBuildUDiv(
+                builder_, LLVMConstInt(i64, maxCount, 0), safeExtent, "range.product.allowed");
+            LLVMValueRef fits = LLVMBuildICmp(
+                builder_, LLVMIntULE, totalCount, allowed, "range.product.fits");
+            if (!emitGuard(fits, LlvmTrapReason::AllocationSizeOverflow, "range.product", error))
+                return nullptr;
+            totalCount = LLVMBuildMul(builder_, totalCount, extent, "range.product");
+        }
+        return totalCount;
+    }
+
+void OopLlvmImplementation::initializeRangeArrayHeader(
+        LLVMValueRef memory,
+        LLVMValueRef totalBytes,
+        LLVMValueRef totalCount,
+        const std::vector<LLVMValueRef>& dimensions)
+{
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        const std::size_t rank = dimensions.size();
+        LLVMValueRef memsetArguments[] = {
+            memory, LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0), totalBytes,
+            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArguments, 4, "");
+        LLVMBuildStore(builder_, totalCount, memory);
+        std::vector<LLVMValueRef> strides(rank);
+        LLVMValueRef stride = LLVMConstInt(i64, 1, 0);
+        for (std::size_t reverse = rank; reverse-- > 0;)
+        {
+            strides[reverse] = stride;
+            stride = LLVMBuildMul(builder_, stride, dimensions[reverse], "range.stride.next");
+        }
+        for (std::size_t dimension = 0; dimension < rank; ++dimension)
+        {
+            LLVMBuildStore(builder_, dimensions[dimension],
+                byteOffset(memory, 8U * (1U + dimension), "range.dimension.addr"));
+            LLVMBuildStore(builder_, strides[dimension],
+                byteOffset(memory, 8U * (1U + rank + dimension), "range.stride.addr"));
+        }
+    }
+
+LLVMValueRef OopLlvmImplementation::lowerRangeArrayAllocate(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error)
+{
+        const std::size_t rank = node->nativeArrayRank;
+        if (rank < 2 || node->children.size() != rank || node->immediate == 0 ||
+            node->alignment == 0)
+            return failValue(error, "NativeSharp 3.0 rectangular allocation has invalid rank/layout");
+        std::vector<LLVMValueRef> dimensions;
+        if (!collectRangeArrayDimensions(node, dimensions, error)) return nullptr;
+        const std::uint64_t rawHeader = 8U * (1U + 2U * rank);
+        const std::uint64_t dataOffset =
+            (rawHeader + node->alignment - 1U) / node->alignment * node->alignment;
+        LLVMValueRef totalCount = computeRangeArrayElementCount(
+            node, dimensions, dataOffset, error);
+        if (totalCount == nullptr) return nullptr;
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMValueRef bytes = LLVMBuildMul(
+            builder_, totalCount, LLVMConstInt(i64, node->immediate, 0), "range.data.bytes");
+        LLVMValueRef totalBytes = LLVMBuildAdd(
+            builder_, bytes, LLVMConstInt(i64, dataOffset, 0), "range.total.bytes");
+        LLVMValueRef arguments[] = {totalBytes};
+        LLVMValueRef memory = buildNoUnwindCall(
+            allocationFunctionType_, allocationFunction_, arguments, 1, "range.memory");
+        LLVMValueRef isNull = LLVMBuildICmp(
+            builder_, LLVMIntEQ, memory, LLVMConstNull(LLVMPointerTypeInContext(context_, 0)),
+            "range.alloc.null");
+        LLVMBasicBlockRef nullBlock = appendBlock("range.alloc.null");
+        LLVMBasicBlockRef initBlock = appendBlock("range.alloc.init");
+        LLVMBasicBlockRef mergeBlock = appendBlock("range.alloc.merge");
+        LLVMBuildCondBr(builder_, isNull, nullBlock, initBlock);
+        LLVMPositionBuilderAtEnd(builder_, nullBlock);
+        LLVMBuildBr(builder_, mergeBlock);
+        LLVMBasicBlockRef nullIncoming = LLVMGetInsertBlock(builder_);
+
+        LLVMPositionBuilderAtEnd(builder_, initBlock);
+        initializeRangeArrayHeader(memory, totalBytes, totalCount, dimensions);
+        LLVMBuildBr(builder_, mergeBlock);
+        LLVMBasicBlockRef initIncoming = LLVMGetInsertBlock(builder_);
+        LLVMPositionBuilderAtEnd(builder_, mergeBlock);
+        LLVMValueRef result = LLVMBuildPhi(
+            builder_, LLVMPointerTypeInContext(context_, 0), "range.result");
+        LLVMValueRef incomingValues[] = {
+            LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), memory};
+        LLVMBasicBlockRef incomingBlocks[] = {nullIncoming, initIncoming};
+        LLVMAddIncoming(result, incomingValues, incomingBlocks, 2);
+        return result;
+    }
+
+LLVMValueRef OopLlvmImplementation::lowerRangeArrayElementAddress(
+        const frontend::ProjectOopMirNode* node,
+        std::string& error)
+{
+        const std::size_t rank = node->nativeArrayRank;
+        if (rank < 2 || node->children.size() != rank + 1)
+            return failValue(error, "NativeSharp 3.0 rectangular index lost its rank");
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMValueRef object = lowerExpression(node->children.front().get(), error);
+        if (object == nullptr) return nullptr;
+        object = checkedReceiver(object, error);
+        if (object == nullptr) return nullptr;
+        LLVMValueRef linear = LLVMConstInt(i64, 0, 0);
+        for (std::size_t dimension = 0; dimension < rank; ++dimension)
+        {
+            const frontend::ProjectOopMirNode* indexNode = node->children[dimension + 1].get();
+            LLVMValueRef index = normalizeNativeIndex(indexNode, error);
+            if (index == nullptr) return nullptr;
+            LLVMValueRef extent = LLVMBuildLoad2(builder_, i64,
+                byteOffset(object, 8U * (1U + dimension), "range.index.dimension.addr"),
+                "range.index.dimension");
+            if (dimension < 64U &&
+                (node->integerValue & (std::uint64_t{1} << dimension)) != 0U)
+            {
+                index = LLVMBuildSub(builder_, extent, index, "range.index.fromend");
+            }
+            LLVMValueRef valid = LLVMBuildICmp(
+                builder_, LLVMIntULT, index, extent, "range.index.inrange");
+            if (isSignedInteger(indexNode->typeKey))
+            {
+                LLVMValueRef nonNegative = LLVMBuildICmp(
+                    builder_, LLVMIntSGE, index, LLVMConstInt(i64, 0, 0),
+                    "range.index.nonnegative");
+                valid = LLVMBuildAnd(builder_, valid, nonNegative, "range.index.valid");
+            }
+            if (!emitGuard(valid, LlvmTrapReason::BoundsViolation, "range.index", error))
+                return nullptr;
+            LLVMValueRef stride = LLVMBuildLoad2(builder_, i64,
+                byteOffset(object, 8U * (1U + rank + dimension), "range.index.stride.addr"),
+                "range.index.stride");
+            linear = LLVMBuildAdd(builder_, linear,
+                LLVMBuildMul(builder_, index, stride, "range.index.scaled"),
+                "range.index.linear");
+        }
+        const std::uint64_t rawHeader = 8U * (1U + 2U * rank);
+        const std::uint64_t dataOffset =
+            (rawHeader + node->alignment - 1U) / node->alignment * node->alignment;
+        LLVMValueRef bytePosition = LLVMBuildAdd(builder_,
+            LLVMBuildMul(builder_, linear, LLVMConstInt(i64, node->immediate, 0),
+                "range.index.byte"),
+            LLVMConstInt(i64, dataOffset, 0), "range.index.offset");
+        LLVMValueRef indices[] = {bytePosition};
+        return LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), object, indices, 1,
+            "range.element.addr");
+    }
+
+}

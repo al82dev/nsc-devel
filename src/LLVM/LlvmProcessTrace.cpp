@@ -65,6 +65,152 @@ std::wstring widenAscii(std::string_view text)
 {
     return std::wstring(text.begin(), text.end());
 }
+
+bool createStandardErrorCapture(
+    LlvmTraceChildResult& result,
+    std::filesystem::path& capturePath,
+    HANDLE& capturedError)
+{
+    wchar_t temporaryDirectory[MAX_PATH + 1]{};
+    const DWORD directoryLength = ::GetTempPathW(MAX_PATH, temporaryDirectory);
+    if (directoryLength == 0 || directoryLength > MAX_PATH)
+    {
+        result.launchError = windowsFailure("GetTempPathW");
+        return false;
+    }
+
+    wchar_t temporaryFile[MAX_PATH + 1]{};
+    if (::GetTempFileNameW(temporaryDirectory, L"nst", 0, temporaryFile) == 0)
+    {
+        result.launchError = windowsFailure("GetTempFileNameW");
+        return false;
+    }
+    capturePath = temporaryFile;
+
+    SECURITY_ATTRIBUTES security{};
+    security.nLength = sizeof(security);
+    security.bInheritHandle = TRUE;
+    capturedError = ::CreateFileW(
+        temporaryFile, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, &security,
+        CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, nullptr);
+    if (capturedError != INVALID_HANDLE_VALUE) return true;
+
+    result.launchError = windowsFailure("CreateFileW(stderr capture)");
+    std::error_code ignored;
+    std::filesystem::remove(capturePath, ignored);
+    return false;
+}
+
+bool createTraceChildProcess(
+    const std::wstring& executable,
+    std::string_view childArgument,
+    const std::filesystem::path& capturePath,
+    HANDLE capturedError,
+    PROCESS_INFORMATION& process,
+    LlvmTraceChildResult& result)
+{
+    const HANDLE childInput = duplicateStandardHandle(STD_INPUT_HANDLE, GENERIC_READ);
+    const HANDLE childOutput = duplicateStandardHandle(STD_OUTPUT_HANDLE, GENERIC_WRITE);
+    if (childInput == INVALID_HANDLE_VALUE || childOutput == INVALID_HANDLE_VALUE)
+    {
+        result.launchError = windowsFailure("duplicate standard handles");
+        if (childInput != INVALID_HANDLE_VALUE) ::CloseHandle(childInput);
+        if (childOutput != INVALID_HANDLE_VALUE) ::CloseHandle(childOutput);
+        ::CloseHandle(capturedError);
+        std::error_code ignored;
+        std::filesystem::remove(capturePath, ignored);
+        return false;
+    }
+
+    std::wstring commandLine(::GetCommandLineW());
+    commandLine += L' ';
+    commandLine += widenAscii(childArgument);
+    std::vector<wchar_t> mutableCommand(commandLine.begin(), commandLine.end());
+    mutableCommand.push_back(L'\0');
+
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = childInput;
+    startup.hStdOutput = childOutput;
+    startup.hStdError = capturedError;
+    const BOOL created = ::CreateProcessW(
+        executable.c_str(), mutableCommand.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr,
+        &startup, &process);
+    const DWORD creationError = created ? ERROR_SUCCESS : ::GetLastError();
+    ::CloseHandle(childInput);
+    ::CloseHandle(childOutput);
+    ::CloseHandle(capturedError);
+    if (created) return true;
+
+    ::SetLastError(creationError);
+    result.launchError = windowsFailure("CreateProcessW");
+    std::error_code ignored;
+    std::filesystem::remove(capturePath, ignored);
+    return false;
+}
+
+bool waitForTraceChild(
+    PROCESS_INFORMATION& process,
+    const std::filesystem::path& capturePath,
+    LlvmTraceChildResult& result,
+    DWORD& exitCode)
+{
+    const DWORD waitResult = ::WaitForSingleObject(process.hProcess, INFINITE);
+    if (waitResult != WAIT_OBJECT_0)
+    {
+        result.exitCode = 1;
+        result.launchError = windowsFailure("WaitForSingleObject");
+        ::CloseHandle(process.hThread);
+        ::CloseHandle(process.hProcess);
+        std::error_code ignored;
+        std::filesystem::remove(capturePath, ignored);
+        // El hijo YA fue creado. Devolver true impide que el llamador repita una compilacion que
+        // pudo haber escrito su producto antes de que fallara la espera.
+        return false;
+    }
+    if (::GetExitCodeProcess(process.hProcess, &exitCode))
+    {
+        ::CloseHandle(process.hThread);
+        ::CloseHandle(process.hProcess);
+        return true;
+    }
+
+    result.exitCode = 1;
+    result.launchError = windowsFailure("GetExitCodeProcess");
+    ::CloseHandle(process.hThread);
+    ::CloseHandle(process.hProcess);
+    std::error_code ignored;
+    std::filesystem::remove(capturePath, ignored);
+    return false;
+}
+
+void readCapturedStandardError(
+    const std::filesystem::path& capturePath,
+    DWORD exitCode,
+    LlvmTraceChildResult& result)
+{
+    // Modo texto a proposito: el hijo escribio CRLF y el padre volvera a escribir el diagnostico
+    // por su propio stream de texto. Leer en binario conservaria el CR y produciria `\r\r\n` al
+    // reenviarlo.
+    std::ifstream captured(capturePath);
+    if (!captured)
+    {
+        result.exitCode = exitCode;
+        result.launchError = "could not read the child standard-error capture";
+        std::error_code ignored;
+        std::filesystem::remove(capturePath, ignored);
+        return;
+    }
+    std::ostringstream contents;
+    contents << captured.rdbuf();
+    result.standardError = contents.str();
+    result.exitCode = exitCode;
+    captured.close();
+
+    std::error_code ignored;
+    std::filesystem::remove(capturePath, ignored);
+}
 #endif
 }
 
@@ -104,127 +250,15 @@ bool runCurrentExecutableWithCapturedStandardError(
         return false;
     }
 
-    wchar_t temporaryDirectory[MAX_PATH + 1]{};
-    const DWORD directoryLength = ::GetTempPathW(MAX_PATH, temporaryDirectory);
-    if (directoryLength == 0 || directoryLength > MAX_PATH)
-    {
-        result.launchError = windowsFailure("GetTempPathW");
-        return false;
-    }
-
-    wchar_t temporaryFile[MAX_PATH + 1]{};
-    if (::GetTempFileNameW(temporaryDirectory, L"nst", 0, temporaryFile) == 0)
-    {
-        result.launchError = windowsFailure("GetTempFileNameW");
-        return false;
-    }
-    const std::filesystem::path capturePath(temporaryFile);
-
-    SECURITY_ATTRIBUTES security{};
-    security.nLength = sizeof(security);
-    security.bInheritHandle = TRUE;
-    const HANDLE capturedError = ::CreateFileW(
-        temporaryFile, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, &security,
-        CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, nullptr);
-    if (capturedError == INVALID_HANDLE_VALUE)
-    {
-        result.launchError = windowsFailure("CreateFileW(stderr capture)");
-        std::error_code ignored;
-        std::filesystem::remove(capturePath, ignored);
-        return false;
-    }
-
-    const HANDLE childInput = duplicateStandardHandle(STD_INPUT_HANDLE, GENERIC_READ);
-    const HANDLE childOutput = duplicateStandardHandle(STD_OUTPUT_HANDLE, GENERIC_WRITE);
-    if (childInput == INVALID_HANDLE_VALUE || childOutput == INVALID_HANDLE_VALUE)
-    {
-        result.launchError = windowsFailure("duplicate standard handles");
-        if (childInput != INVALID_HANDLE_VALUE) ::CloseHandle(childInput);
-        if (childOutput != INVALID_HANDLE_VALUE) ::CloseHandle(childOutput);
-        ::CloseHandle(capturedError);
-        std::error_code ignored;
-        std::filesystem::remove(capturePath, ignored);
-        return false;
-    }
-
-    std::wstring commandLine(::GetCommandLineW());
-    commandLine += L' ';
-    commandLine += widenAscii(childArgument);
-    std::vector<wchar_t> mutableCommand(commandLine.begin(), commandLine.end());
-    mutableCommand.push_back(L'\0');
-
-    STARTUPINFOW startup{};
-    startup.cb = sizeof(startup);
-    startup.dwFlags = STARTF_USESTDHANDLES;
-    startup.hStdInput = childInput;
-    startup.hStdOutput = childOutput;
-    startup.hStdError = capturedError;
+    std::filesystem::path capturePath;
+    HANDLE capturedError = INVALID_HANDLE_VALUE;
+    if (!createStandardErrorCapture(result, capturePath, capturedError)) return false;
     PROCESS_INFORMATION process{};
-
-    const BOOL created = ::CreateProcessW(
-        executable.c_str(), mutableCommand.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr,
-        &startup, &process);
-    const DWORD creationError = created ? ERROR_SUCCESS : ::GetLastError();
-    ::CloseHandle(childInput);
-    ::CloseHandle(childOutput);
-    ::CloseHandle(capturedError);
-
-    if (!created)
-    {
-        ::SetLastError(creationError);
-        result.launchError = windowsFailure("CreateProcessW");
-        std::error_code ignored;
-        std::filesystem::remove(capturePath, ignored);
-        return false;
-    }
-
-    const DWORD waitResult = ::WaitForSingleObject(process.hProcess, INFINITE);
-    if (waitResult != WAIT_OBJECT_0)
-    {
-        result.exitCode = 1;
-        result.launchError = windowsFailure("WaitForSingleObject");
-        ::CloseHandle(process.hThread);
-        ::CloseHandle(process.hProcess);
-        std::error_code ignored;
-        std::filesystem::remove(capturePath, ignored);
-        // El hijo YA fue creado. Devolver true impide que el llamador repita una compilacion que
-        // pudo haber escrito su producto antes de que fallara la espera.
-        return true;
-    }
+    if (!createTraceChildProcess(
+            executable, childArgument, capturePath, capturedError, process, result)) return false;
     DWORD exitCode = 0;
-    if (!::GetExitCodeProcess(process.hProcess, &exitCode))
-    {
-        result.exitCode = 1;
-        result.launchError = windowsFailure("GetExitCodeProcess");
-        ::CloseHandle(process.hThread);
-        ::CloseHandle(process.hProcess);
-        std::error_code ignored;
-        std::filesystem::remove(capturePath, ignored);
-        return true;
-    }
-    ::CloseHandle(process.hThread);
-    ::CloseHandle(process.hProcess);
-
-    // Modo texto a proposito: el hijo escribio CRLF y el padre volvera a escribir el diagnostico
-    // por su propio stream de texto. Leer en binario conservaria el CR y produciria `\r\r\n` al
-    // reenviarlo.
-    std::ifstream captured(capturePath);
-    if (!captured)
-    {
-        result.exitCode = exitCode;
-        result.launchError = "could not read the child standard-error capture";
-        std::error_code ignored;
-        std::filesystem::remove(capturePath, ignored);
-        return true;
-    }
-    std::ostringstream contents;
-    contents << captured.rdbuf();
-    result.standardError = contents.str();
-    result.exitCode = exitCode;
-    captured.close();
-
-    std::error_code ignored;
-    std::filesystem::remove(capturePath, ignored);
+    if (!waitForTraceChild(process, capturePath, result, exitCode)) return true;
+    readCapturedStandardError(capturePath, exitCode, result);
     return true;
 #else
     (void)childArgument;

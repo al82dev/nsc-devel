@@ -1,11 +1,15 @@
 #pragma once
 
+#include "nativesharp/LLVM/CacheMissReason.h"
+#include "nativesharp/LLVM/CachePruneTelemetry.h"
+#include "nativesharp/LLVM/CompilationArtifactCacheScope.h"
 #include "nativesharp/LLVM/DebugInformationKind.h"
 #include "nativesharp/LLVM/LinkTimeOptimizationMode.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 
-#include <filesystem>
+#include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -13,32 +17,10 @@ namespace nativesharp::llvm_backend
 {
 std::string codeGenerationPolicyIdentity(LinkTimeOptimizationMode linkTimeOptimization);
 
-// NSC305-P02. Stable reason for a per-code-unit artifact-cache lookup. Every miss must be able
-// to explain its cause; the driver aggregates these reasons in the build report.
-enum class CacheMissReason
-{
-    Hit,                   // Object restored and verified successfully.
-    Disabled,              // Artifact cache is not enabled for this compilation.
-    KeyMismatch,           // Cache key is not a canonical SHA-256.
-    Cold,                  // No object is present for this key (first build or changed key).
-    IncompletePublication, // Object present but its metadata was not fully published.
-    Corruption,            // Metadata key or object digest mismatch; entry quarantined.
-};
-
 const char* cacheMissReasonName(CacheMissReason reason) noexcept;
 
 std::filesystem::path defaultProjectArtifactCacheRoot(
     const std::filesystem::path& projectFile);
-
-struct CachePruneTelemetry final
-{
-    bool performed = false;
-    std::uint64_t elapsedMicros = 0;
-    std::size_t inspectedEntries = 0;
-    std::uintmax_t inspectedBytes = 0;
-    std::size_t evictedEntries = 0;
-    std::uintmax_t evictedBytes = 0;
-};
 
 class CompilationArtifactCache final
 {
@@ -101,19 +83,6 @@ private:
     std::filesystem::path root_;
     std::string codegenIdentity_;
     mutable CachePruneTelemetry lastPruneTelemetry_;
-};
-
-class CompilationArtifactCacheScope final
-{
-public:
-    explicit CompilationArtifactCacheScope(const CompilationArtifactCache& cache) noexcept;
-    ~CompilationArtifactCacheScope();
-
-    CompilationArtifactCacheScope(const CompilationArtifactCacheScope&) = delete;
-    CompilationArtifactCacheScope& operator=(const CompilationArtifactCacheScope&) = delete;
-
-private:
-    const CompilationArtifactCache* previous_ = nullptr;
 };
 
 const CompilationArtifactCache* activeCompilationArtifactCache() noexcept;

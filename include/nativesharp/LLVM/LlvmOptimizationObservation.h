@@ -105,6 +105,13 @@ struct LlvmOptimizationObservation final
     std::string report() const;
 };
 
+}
+
+#include "nativesharp/LLVM/LlvmProcessTraceLog.h"
+
+namespace nativesharp::llvm_backend
+{
+
 // LEE EL REGISTRO DE PASES Y ANOTA LO QUE VIO. Vive fuera del optimizador para que se pueda probar
 // con un registro escrito a mano: provocar una falta de convergencia real es caro y fragil, y una
 // deteccion que nadie ha visto dispararse no es una deteccion.
@@ -112,20 +119,6 @@ struct LlvmOptimizationObservation final
 // No interpreta: cuenta lo que aparece y guarda lo ultimo. El formato de LLVM es
 // «Running pass: <Pase> on <Unidad>».
 void observeLlvmPassLog(std::string_view log, LlvmOptimizationObservation& observation);
-
-// Separacion de la salida de error de un hijo observado. `diagnostics` contiene exclusivamente lo
-// que se escribio FUERA de las ventanas de LLVM; `passLog` contiene las ventanas sin la sonda.
-// De esta manera el supervisor puede ocultar miles de lineas de instrumentacion en una corrida
-// sana sin tragarse un diagnostico del compilador.
-struct LlvmProcessTraceLog final
-{
-    bool framingObserved = false;
-    bool framingComplete = false;
-    bool llvmStandardErrorCaptured = false;
-    std::size_t capturedBytes = 0;
-    std::string passLog;
-    std::string diagnostics;
-};
 
 LlvmProcessTraceLog splitLlvmProcessTrace(std::string_view standardError);
 
@@ -155,41 +148,13 @@ inline constexpr double kLlvmOptimizationTimeBudgetSeconds = 120.0;
 // LLVMRunPasses call or changes the generated program.
 inline constexpr std::uint64_t kDefaultLlvmO2BudgetMilliseconds = 120000;
 
-class LlvmOptimizationBudgetTracker final
+}
+
+#include "nativesharp/LLVM/LlvmOptimizationBudgetTracker.h"
+#include "nativesharp/LLVM/LlvmOptimizationBudgetScope.h"
+
+namespace nativesharp::llvm_backend
 {
-public:
-    explicit LlvmOptimizationBudgetTracker(
-        std::uint64_t budgetMilliseconds = kDefaultLlvmO2BudgetMilliseconds) noexcept;
-
-    void setBudgetMilliseconds(std::uint64_t value) noexcept;
-    void observe(LlvmOptimizationLevel level, std::chrono::nanoseconds elapsed) noexcept;
-
-    std::uint64_t budgetMilliseconds() const noexcept;
-    std::chrono::nanoseconds elapsed() const noexcept;
-    std::size_t invocations() const noexcept;
-    bool exceeded() const noexcept;
-    std::string report() const;
-
-private:
-    std::uint64_t budgetMilliseconds_;
-    std::chrono::nanoseconds elapsed_{};
-    std::size_t invocations_ = 0;
-};
-
-// Installs a tracker only for the current compiler thread and restores the previous tracker on
-// scope exit. Future worker threads must install their own scope explicitly.
-class LlvmOptimizationBudgetScope final
-{
-public:
-    explicit LlvmOptimizationBudgetScope(LlvmOptimizationBudgetTracker& tracker) noexcept;
-    ~LlvmOptimizationBudgetScope();
-
-    LlvmOptimizationBudgetScope(const LlvmOptimizationBudgetScope&) = delete;
-    LlvmOptimizationBudgetScope& operator=(const LlvmOptimizationBudgetScope&) = delete;
-
-private:
-    LlvmOptimizationBudgetTracker* previous_;
-};
 
 void observeActiveLlvmOptimizationBudget(
     LlvmOptimizationLevel level, std::chrono::nanoseconds elapsed) noexcept;

@@ -10,6 +10,50 @@
 
 namespace nativesharp::llvm_backend
 {
+namespace
+{
+template <typename AddName, typename AddMember>
+void scanFunctionReferences(
+    const frontend::ProjectOopMirNode* root,
+    const frontend::ProjectOopMirModel& mirModel,
+    AddName&& addName,
+    AddMember&& addMember,
+    bool includeDisposeContract)
+{
+    std::vector<const frontend::ProjectOopMirNode*> nodes;
+    if (root != nullptr) nodes.push_back(root);
+    while (!nodes.empty())
+    {
+        const frontend::ProjectOopMirNode* node = nodes.back();
+        nodes.pop_back();
+        if (node == nullptr) continue;
+        addName(node->calleeName);
+        addName(node->secondaryCalleeName);
+        addName(node->resultSuccessTestCalleeName);
+        addName(node->resultSuccessExtractorCalleeName);
+        addName(node->resultErrorExtractorCalleeName);
+        addName(node->resultErrorFactoryCalleeName);
+        addName(node->resultErrorConversionCalleeName);
+        if (node->kind == frontend::ProjectOopMirNodeKind::PollAddress)
+            addName(node->stringValue);
+        if (node->kind == frontend::ProjectOopMirNodeKind::Panic)
+            addName(mirModel.panicHandlerMangledName());
+        addMember(node->memberOrdinal);
+        addMember(node->secondaryMemberOrdinal);
+        addMember(node->resultSuccessTestMemberOrdinal);
+        addMember(node->resultSuccessExtractorMemberOrdinal);
+        addMember(node->resultErrorExtractorMemberOrdinal);
+        addMember(node->resultErrorFactoryMemberOrdinal);
+        addMember(node->resultErrorConversionMemberOrdinal);
+        if (includeDisposeContract) addMember(node->disposeContractMemberOrdinal);
+        addMember(node->disposeImplementationMemberOrdinal);
+        addMember(node->allocatorDeallocateMemberOrdinal);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            if (child->get() != nullptr) nodes.push_back(child->get());
+    }
+}
+}
+
 std::vector<std::uint8_t> projectOopReachableDefinitionMask(
     const frontend::ProjectOopMirModel& mirModel)
 {
@@ -63,36 +107,7 @@ std::vector<std::uint8_t> projectOopReachableDefinitionMask(
         };
         const auto scanNode = [&](const frontend::ProjectOopMirNode* root)
         {
-            std::vector<const frontend::ProjectOopMirNode*> nodes;
-            if (root != nullptr) nodes.push_back(root);
-            while (!nodes.empty())
-            {
-                const frontend::ProjectOopMirNode* node = nodes.back();
-                nodes.pop_back();
-                if (node == nullptr) continue;
-                addCallee(node->calleeName);
-                addCallee(node->secondaryCalleeName);
-                addCallee(node->resultSuccessTestCalleeName);
-                addCallee(node->resultSuccessExtractorCalleeName);
-                addCallee(node->resultErrorExtractorCalleeName);
-                addCallee(node->resultErrorFactoryCalleeName);
-                addCallee(node->resultErrorConversionCalleeName);
-                if (node->kind == frontend::ProjectOopMirNodeKind::PollAddress)
-                    addCallee(node->stringValue);
-                if (node->kind == frontend::ProjectOopMirNodeKind::Panic)
-                    addCallee(mirModel.panicHandlerMangledName());
-                addMember(node->memberOrdinal);
-                addMember(node->secondaryMemberOrdinal);
-                addMember(node->resultSuccessTestMemberOrdinal);
-                addMember(node->resultSuccessExtractorMemberOrdinal);
-                addMember(node->resultErrorExtractorMemberOrdinal);
-                addMember(node->resultErrorFactoryMemberOrdinal);
-                addMember(node->resultErrorConversionMemberOrdinal);
-                addMember(node->disposeImplementationMemberOrdinal);
-                addMember(node->allocatorDeallocateMemberOrdinal);
-                for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
-                    if (child->get() != nullptr) nodes.push_back(child->get());
-            }
+            scanFunctionReferences(root, mirModel, addCallee, addMember, false);
         };
         scanNode(function.body.get());
         for (const frontend::ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
@@ -215,37 +230,7 @@ std::vector<std::size_t> projectOopCoordinatorFunctionDeclarations(
     };
     const auto scanNode = [&](const frontend::ProjectOopMirNode* root)
     {
-        std::vector<const frontend::ProjectOopMirNode*> work;
-        if (root != nullptr) work.push_back(root);
-        while (!work.empty())
-        {
-            const frontend::ProjectOopMirNode* node = work.back();
-            work.pop_back();
-            if (node == nullptr) continue;
-            addName(node->calleeName);
-            addName(node->secondaryCalleeName);
-            addName(node->resultSuccessTestCalleeName);
-            addName(node->resultSuccessExtractorCalleeName);
-            addName(node->resultErrorExtractorCalleeName);
-            addName(node->resultErrorFactoryCalleeName);
-            addName(node->resultErrorConversionCalleeName);
-            if (node->kind == frontend::ProjectOopMirNodeKind::PollAddress)
-                addName(node->stringValue);
-            if (node->kind == frontend::ProjectOopMirNodeKind::Panic)
-                addName(mirModel.panicHandlerMangledName());
-            addMember(node->memberOrdinal);
-            addMember(node->secondaryMemberOrdinal);
-            addMember(node->resultSuccessTestMemberOrdinal);
-            addMember(node->resultSuccessExtractorMemberOrdinal);
-            addMember(node->resultErrorExtractorMemberOrdinal);
-            addMember(node->resultErrorFactoryMemberOrdinal);
-            addMember(node->resultErrorConversionMemberOrdinal);
-            addMember(node->disposeContractMemberOrdinal);
-            addMember(node->disposeImplementationMemberOrdinal);
-            addMember(node->allocatorDeallocateMemberOrdinal);
-            for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
-                if (child->get() != nullptr) work.push_back(child->get());
-        }
+        scanFunctionReferences(root, mirModel, addName, addMember, true);
     };
     const std::span<const frontend::ProjectOopMirStaticField> fields = mirModel.staticFields();
     std::unordered_map<std::size_t, const frontend::ProjectOopMirStaticField*> fieldByMember;

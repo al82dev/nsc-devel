@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/LLVM/AutomaticInliningConfiguration.h"
+#include "nativesharp/LLVM/AutomaticInliningCostModel.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 
@@ -16,25 +18,6 @@ class LlvmTargetMachine;
 // pass so a transformation failure can still name its last completed pass.
 bool llvmVerifyEachPassRequired(
     LlvmOptimizationLevel level, bool detailedPassDiagnostics) noexcept;
-
-enum class AutomaticInliningCostModel
-{
-    Disabled,
-    Conservative,
-    Balanced,
-    Aggressive
-};
-
-struct AutomaticInliningConfiguration final
-{
-    AutomaticInliningCostModel costModel;
-    std::string_view pipeline;
-
-    constexpr bool enabled() const noexcept
-    {
-        return costModel != AutomaticInliningCostModel::Disabled;
-    }
-};
 
 AutomaticInliningConfiguration llvmAutomaticInliningConfiguration(
     LlvmOptimizationLevel level) noexcept;
@@ -86,6 +69,18 @@ private:
         LlvmOptimizationObservation* observation,
         bool prepareModule,
         bool mandatoryInliningRequired,
+        std::string& error) const;
+
+    bool prepareOptimizationModule(
+        LlvmModule& module,
+        const LlvmTargetMachine& targetMachine,
+        bool prepareModule,
+        LlvmOptimizationObservation* observation,
+        std::string& error) const;
+
+    bool verifyOptimizedModule(
+        LlvmModule& module,
+        LlvmOptimizationObservation* observation,
         std::string& error) const;
 };
 }

@@ -1,6 +1,7 @@
 #include "nativesharp/LLVM/LlvmOptimizer.h"
 
 #include "LlvmCApi.h"
+#include "Internal/StandardErrorCapture.h"
 
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmProcessTrace.h"
@@ -129,64 +130,7 @@ bool hasSehFuncletFunctions(llvm_api::LLVMModuleRef module)
     return false;
 }
 
-// NSC-LIMIT-005 -- CAPTURAR LA SALIDA DE ERROR DEL PROCESO MIENTRAS CORRE `LLVMRunPasses`.
-//
-// POR QUE ASI Y NO DE OTRA FORMA. `LLVMPassBuilderOptionsSetDebugLogging` hace que LLVM escriba
-// que pase ejecuta y sobre que, pero lo escribe por `llvm::dbgs()`, que es la salida de error del
-// PROCESO. La API C no acepta un sink. De modo que o se desvia el descriptor 2 durante la llamada,
-// o se entra en la API C++ -- y eso ultimo es una decision de arquitectura, no un detalle de
-// implementacion.
-//
-// ESTA CLASE ES SOLO PARA POSIX. En Windows el producto enlaza LLVM-C.dll, que lleva su propio CRT:
-// `_dup2` en nsc cambia el descriptor de nsc, no el de la DLL. Alli la captura se establece al
-// CREAR el proceso hijo; ver LlvmProcessTrace.cpp y src/nsc/main.cpp.
 #if !defined(_WIN32)
-class StandardErrorCapture final
-{
-public:
-    explicit StandardErrorCapture(std::string path) : path_(std::move(path))
-    {
-        saved_ = ::dup(2);
-        if (saved_ == -1) return;
-        const int file = ::open(path_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
-        if (file == -1) { ::close(saved_); saved_ = -1; return; }
-        active_ = ::dup2(file, 2) != -1;
-        ::close(file);
-    }
-
-    StandardErrorCapture(const StandardErrorCapture&) = delete;
-    StandardErrorCapture& operator=(const StandardErrorCapture&) = delete;
-
-    ~StandardErrorCapture() { restore(); }
-
-    bool active() const noexcept { return active_; }
-
-    void restore()
-    {
-        if (saved_ == -1) return;
-        ::dup2(saved_, 2);
-        ::close(saved_);
-        saved_ = -1;
-        active_ = false;
-    }
-
-    std::string text() const
-    {
-        std::ifstream file(path_, std::ios::binary);
-        if (!file) return {};
-        std::ostringstream buffer;
-        buffer << file.rdbuf();
-        return buffer.str();
-    }
-
-    void remove() const { std::remove(path_.c_str()); }
-
-private:
-    std::string path_;
-    int saved_ = -1;
-    bool active_ = false;
-};
-
 // EL IDENTIFICADOR DEL PROCESO, para que el nombre del fichero de captura sea unico ENTRE
 // PROCESOS y no solo dentro de uno. El contador atomico de abajo separa dos capturas del mismo
 // nsc.exe; sin el pid, dos nsc.exe simultaneos --que es exactamente lo que hace `ctest -j 16`--
@@ -215,6 +159,180 @@ std::string captureFilePath()
 std::string moduleString(const char* text)
 {
     return text != nullptr ? std::string(text) : std::string();
+}
+
+#if defined(_WIN32)
+void beginLlvmProcessTrace(bool emitProcessTrace)
+{
+    if (!emitProcessTrace) return;
+    std::fwrite(kLlvmProcessTraceBegin.data(), 1, kLlvmProcessTraceBegin.size(), stderr);
+    std::fputc('\n', stderr);
+    std::fflush(stderr);
+}
+
+void finishLlvmProcessTrace(llvm_api::LLVMModuleRef module, bool emitProcessTrace)
+{
+    if (!emitProcessTrace) return;
+    // La sonda tiene que escribirla LLVM, no nsc. Un tipo identificado evita confundirla con
+    // cualquier `i32` legitimo que aparezca en el registro de pases.
+    llvm_api::LLVMDumpType(llvm_api::LLVMStructCreateNamed(
+        llvm_api::LLVMGetModuleContext(module), std::string(kLlvmStandardErrorProbe).c_str()));
+    std::fwrite(kLlvmProcessTraceEnd.data(), 1, kLlvmProcessTraceEnd.size(), stderr);
+    std::fputc('\n', stderr);
+    std::fflush(stderr);
+}
+#endif
+
+llvm_api::LLVMErrorRef runOptimizationPassPipeline(
+    llvm_api::LLVMModuleRef module,
+    llvm_api::LLVMTargetMachineRef targetMachine,
+    llvm_api::LLVMPassBuilderOptionsRef options,
+    std::string_view pipeline,
+    bool preparedO0FastPath,
+    bool emitProcessTrace,
+    LlvmOptimizationObservation* observation)
+{
+#if defined(_WIN32)
+    (void)observation;
+    if (preparedO0FastPath) return nullptr;
+    llvm_api::LLVMErrorRef error = llvm_api::LLVMRunPasses(
+        module, std::string(pipeline).c_str(), targetMachine, options);
+    finishLlvmProcessTrace(module, emitProcessTrace);
+    return error;
+#else
+    (void)emitProcessTrace;
+    if (preparedO0FastPath) return nullptr;
+    if (observation == nullptr)
+        return llvm_api::LLVMRunPasses(
+            module, std::string(pipeline).c_str(), targetMachine, options);
+    // El fichero vive lo que dura la llamada y se borra siempre. No es un artifact: es el
+    // unico sitio por el que LLVM sabe hablar. Nada de `std::tmpnam`, que MSVC marca como
+    // deprecado y que ademas no dice donde escribe.
+    const std::string capturePath = captureFilePath();
+    if (capturePath.empty())
+        return llvm_api::LLVMRunPasses(
+            module, std::string(pipeline).c_str(), targetMachine, options);
+    StandardErrorCapture capture(capturePath);
+    // COMPROBAR LA CAPTURA CON UNA MARCA PROPIA, antes de que LLVM diga nada.
+    //
+    // Sin esto, `observedPassCount == 0` no distingue «LLVM no escribio» de «no se
+    // escucho», y son dos problemas opuestos: el primero no tiene arreglo desde aqui y el
+    // segundo si. La marca se escribe por `stderr` --el mismo descriptor 2 que se acaba de
+    // desviar-- y se vacia a mano, porque un buffer sin vaciar daria un falso negativo.
+    if (capture.active())
+    {
+        std::fputs(std::string(kLlvmCaptureProbe).c_str(), stderr);
+        std::fflush(stderr);
+    }
+    llvm_api::LLVMErrorRef error = llvm_api::LLVMRunPasses(
+        module, std::string(pipeline).c_str(), targetMachine, options);
+    // Y AHORA QUE ESCRIBA LLVM, todavia dentro de la ventana. Se usa un nombre imposible
+    // de confundir con el IR normal; buscar `i32` daba falsos positivos.
+    if (capture.active())
+    {
+        llvm_api::LLVMDumpType(llvm_api::LLVMStructCreateNamed(
+            llvm_api::LLVMGetModuleContext(module), std::string(kLlvmStandardErrorProbe).c_str()));
+        std::fflush(stderr);
+    }
+    // Se restaura ANTES de leer: leer con el descriptor todavia desviado dejaria cualquier
+    // mensaje de la propia lectura dentro del fichero que se esta leyendo.
+    capture.restore();
+    std::string captured = capture.text();
+    const std::size_t probe = captured.find(kLlvmCaptureProbe);
+    observation->captureVerified = probe != std::string::npos;
+    if (observation->captureVerified) captured.erase(probe, kLlvmCaptureProbe.size());
+    const std::size_t emitted = captured.find(kLlvmStandardErrorProbe);
+    observation->llvmStandardErrorCaptured = emitted != std::string::npos;
+    if (observation->llvmStandardErrorCaptured)
+        captured.erase(emitted, kLlvmStandardErrorProbe.size());
+    observation->capturedBytes = captured.size();
+    observeLlvmPassLog(captured, *observation);
+    capture.remove();
+    return error;
+#endif
+}
+
+llvm_api::LLVMPassBuilderOptionsRef createOptimizationPassOptions(
+    LlvmOptimizationLevel level,
+    bool detailedPassDiagnostics,
+    bool preparedO0FastPath,
+    LlvmOptimizationObservation* observation,
+    llvm_api::LLVMModuleRef module,
+    std::string_view pipeline,
+    bool& emitProcessTrace,
+    std::string& pipelineText,
+    std::string& error)
+{
+    llvm_api::LLVMPassBuilderOptionsRef options = llvm_api::LLVMCreatePassBuilderOptions();
+    if (options == nullptr)
+    {
+        error = "LLVMCreatePassBuilderOptions failed";
+        return nullptr;
+    }
+    // O0 already verifies the complete module immediately before and after the pipeline. Asking
+    // LLVM to verify after every individual O0 pass repeats the same whole-module walk without
+    // improving the release boundary: any invalid result is still rejected before emission. The
+    // optimized pipelines retain verify-each when detailed pass diagnostics were explicitly
+    // requested, because then naming the failing pass is valuable evidence.
+    llvm_api::LLVMPassBuilderOptionsSetVerifyEach(
+        options, llvmVerifyEachPassRequired(level, detailedPassDiagnostics) ? 1 : 0);
+    // En Windows sólo se enciende dentro del hijo cuya stderr fue fijada por CreateProcess. Hacerlo
+    // en el proceso padre produciria un registro que nadie puede capturar: LLVM-C.dll lleva su
+    // propio CRT. En POSIX se conserva la captura temporal dentro del proceso.
+#if defined(_WIN32)
+    emitProcessTrace = observation != nullptr && detailedPassDiagnostics && !preparedO0FastPath;
+    const bool enableDebugLogging = emitProcessTrace;
+#else
+    emitProcessTrace = false;
+    const bool enableDebugLogging = observation != nullptr && detailedPassDiagnostics;
+#endif
+    if (enableDebugLogging) llvm_api::LLVMPassBuilderOptionsSetDebugLogging(options, 1);
+    pipelineText = preparedO0FastPath ? "nsc-o0-seh-mem2reg" : std::string(pipeline);
+    if (observation != nullptr)
+    {
+        observation->pipeline = pipelineText;
+        // El triple y el data layout se leen AQUI, despues de configureModuleForTarget y justo
+        // antes de optimizar: son los que la API C tiene delante cuando decide.
+        observation->moduleTriple = moduleString(llvm_api::LLVMGetTarget(module));
+        observation->moduleDataLayout = moduleString(llvm_api::LLVMGetDataLayoutStr(module));
+        observation->processTraceActive = emitProcessTrace;
+    }
+    return options;
+}
+
+void finishOptimizationTiming(
+    std::chrono::steady_clock::time_point started,
+    LlvmOptimizationLevel level,
+    LlvmOptimizationObservation* observation)
+{
+    const auto elapsed = std::chrono::steady_clock::now() - started;
+    if (observation != nullptr)
+    {
+        observation->seconds = std::chrono::duration<double>(elapsed).count();
+        observation->timeBudgetExceeded =
+            observation->seconds > kLlvmOptimizationTimeBudgetSeconds;
+    }
+    observeActiveLlvmOptimizationBudget(
+        level, std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed));
+}
+
+bool consumeOptimizationError(
+    llvm_api::LLVMErrorRef llvmError,
+    LlvmOptimizationObservation* observation,
+    std::string& error)
+{
+    if (llvmError == nullptr) return true;
+    char* message = llvm_api::LLVMGetErrorMessage(llvmError);
+    if (message != nullptr)
+    {
+        error.assign(message);
+        llvm_api::LLVMDisposeErrorMessage(message);
+    }
+    else error = "LLVMRunPasses failed without a diagnostic";
+    // El cierre del Gate 1 pide que un fallo del optimizador identifique LLVM, el pipeline, la
+    // funcion/unidad y el ultimo pass observado. Sin observacion se dice lo que se sabe.
+    if (observation != nullptr) error += " [" + observation->report() + "]";
+    return false;
 }
 }
 
@@ -281,29 +399,8 @@ bool LlvmOptimizer::optimizeImpl(
         return false;
     }
 
-    std::string verificationError;
-    if (prepareModule)
-    {
-        const bool verifiedBefore = module.verify(verificationError);
-        if (observation != nullptr) observation->verifiedBefore = verifiedBefore;
-        if (!verifiedBefore)
-        {
-            error = "refusing to optimize an invalid LLVM module: " + verificationError;
-            if (observation != nullptr) error += " [" + observation->report() + "]";
-            return false;
-        }
-
-        std::string configurationError;
-        if (!targetMachine.configureModuleForTarget(module, configurationError))
-        {
-            error = configurationError;
-            return false;
-        }
-    }
-    else if (observation != nullptr)
-    {
-        observation->verifiedBefore = true;
-    }
+    if (!prepareOptimizationModule(
+            module, targetMachine, prepareModule, observation, error)) return false;
 
     llvm_api::LLVMModuleRef moduleRef = static_cast<llvm_api::LLVMModuleRef>(module.module_);
     llvm_api::LLVMTargetMachineRef targetMachineRef =
@@ -327,67 +424,16 @@ bool LlvmOptimizer::optimizeImpl(
         return true;
     }
 
-    llvm_api::LLVMPassBuilderOptionsRef options = llvm_api::LLVMCreatePassBuilderOptions();
-    if (options == nullptr)
-    {
-        error = "LLVMCreatePassBuilderOptions failed";
-        return false;
-    }
-    // O0 already verifies the complete module immediately before and after the pipeline. Asking
-    // LLVM to verify after every individual O0 pass repeats the same whole-module walk without
-    // improving the release boundary: any invalid result is still rejected before emission. The
-    // optimized pipelines retain verify-each when detailed pass diagnostics were explicitly
-    // requested, because then naming the failing pass is valuable evidence.
     const bool detailedPassDiagnostics = llvmProcessTraceActive();
-    llvm_api::LLVMPassBuilderOptionsSetVerifyEach(
-        options, llvmVerifyEachPassRequired(level, detailedPassDiagnostics) ? 1 : 0);
-    // En Windows sólo se enciende dentro del hijo cuya stderr fue fijada por CreateProcess. Hacerlo
-    // en el proceso padre produciria un registro que nadie puede capturar: LLVM-C.dll lleva su
-    // propio CRT. En POSIX se conserva la captura temporal dentro del proceso.
-#if defined(_WIN32)
-    const bool emitProcessTrace = observation != nullptr && detailedPassDiagnostics &&
-        !preparedO0FastPath;
-    const bool enableDebugLogging = emitProcessTrace;
-#else
-    const bool emitProcessTrace = false;
-    const bool enableDebugLogging = observation != nullptr && detailedPassDiagnostics;
-#endif
-    if (enableDebugLogging)
-    {
-        llvm_api::LLVMPassBuilderOptionsSetDebugLogging(options, 1);
-    }
-
-    const std::string pipelineText = preparedO0FastPath
-        ? "nsc-o0-seh-mem2reg"
-        : std::string(pipeline);
-    if (observation != nullptr)
-    {
-        observation->pipeline = pipelineText;
-        // El triple y el data layout se leen AQUI, despues de configureModuleForTarget y justo
-        // antes de optimizar: son los que la API C tiene delante cuando decide.
-        observation->moduleTriple = moduleString(llvm_api::LLVMGetTarget(moduleRef));
-        observation->moduleDataLayout = moduleString(llvm_api::LLVMGetDataLayoutStr(moduleRef));
-        observation->processTraceActive = emitProcessTrace;
-    }
+    bool emitProcessTrace = false;
+    std::string pipelineText;
+    llvm_api::LLVMPassBuilderOptionsRef options = createOptimizationPassOptions(
+        level, detailedPassDiagnostics, preparedO0FastPath, observation, moduleRef,
+        pipeline, emitProcessTrace, pipelineText, error);
+    if (options == nullptr) return false;
 
 #if defined(_WIN32)
-    if (emitProcessTrace)
-    {
-        std::fwrite(kLlvmProcessTraceBegin.data(), 1, kLlvmProcessTraceBegin.size(), stderr);
-        std::fputc('\n', stderr);
-        std::fflush(stderr);
-    }
-    const auto finishProcessTrace = [&]() {
-        if (!emitProcessTrace) return;
-        // La sonda tiene que escribirla LLVM, no nsc. Un tipo identificado evita confundirla con
-        // cualquier `i32` legitimo que aparezca en el registro de pases.
-        llvm_api::LLVMDumpType(llvm_api::LLVMStructCreateNamed(
-            llvm_api::LLVMGetModuleContext(moduleRef),
-            std::string(kLlvmStandardErrorProbe).c_str()));
-        std::fwrite(kLlvmProcessTraceEnd.data(), 1, kLlvmProcessTraceEnd.size(), stderr);
-        std::fputc('\n', stderr);
-        std::fflush(stderr);
-    };
+    beginLlvmProcessTrace(emitProcessTrace);
 #endif
 
     const auto started = std::chrono::steady_clock::now();
@@ -402,129 +448,62 @@ bool LlvmOptimizer::optimizeImpl(
         if (!legalizeSehFuncletFunctionsForO0(moduleRef, targetMachineRef, options, error))
         {
 #if defined(_WIN32)
-            finishProcessTrace();
+            finishLlvmProcessTrace(moduleRef, emitProcessTrace);
 #endif
             llvm_api::LLVMDisposePassBuilderOptions(options);
             return false;
         }
     }
-    llvm_api::LLVMErrorRef llvmError = nullptr;
-#if defined(_WIN32)
-    if (!preparedO0FastPath)
-    {
-        llvmError = llvm_api::LLVMRunPasses(
-            moduleRef, pipelineText.c_str(), targetMachineRef, options);
-        finishProcessTrace();
-    }
-#else
-    if (!preparedO0FastPath && observation != nullptr)
-    {
-        // El fichero vive lo que dura la llamada y se borra siempre. No es un artifact: es el
-        // unico sitio por el que LLVM sabe hablar. Nada de `std::tmpnam`, que MSVC marca como
-        // deprecado y que ademas no dice donde escribe.
-        const std::string capturePath = captureFilePath();
-        if (capturePath.empty())
-        {
-            llvmError = llvm_api::LLVMRunPasses(
-                moduleRef, pipelineText.c_str(), targetMachineRef, options);
-        }
-        else
-        {
-            StandardErrorCapture capture(capturePath);
-            // COMPROBAR LA CAPTURA CON UNA MARCA PROPIA, antes de que LLVM diga nada.
-            //
-            // Sin esto, `observedPassCount == 0` no distingue «LLVM no escribio» de «no se
-            // escucho», y son dos problemas opuestos: el primero no tiene arreglo desde aqui y el
-            // segundo si. La marca se escribe por `stderr` --el mismo descriptor 2 que se acaba de
-            // desviar-- y se vacia a mano, porque un buffer sin vaciar daria un falso negativo.
-            if (capture.active())
-            {
-                std::fputs(std::string(kLlvmCaptureProbe).c_str(), stderr);
-                std::fflush(stderr);
-            }
-            llvmError = llvm_api::LLVMRunPasses(
-                moduleRef, pipelineText.c_str(), targetMachineRef, options);
-            // Y AHORA QUE ESCRIBA LLVM, todavia dentro de la ventana. Se usa un nombre imposible
-            // de confundir con el IR normal; buscar `i32` daba falsos positivos.
-            if (capture.active())
-            {
-                llvm_api::LLVMDumpType(llvm_api::LLVMStructCreateNamed(
-                    llvm_api::LLVMGetModuleContext(moduleRef),
-                    std::string(kLlvmStandardErrorProbe).c_str()));
-                std::fflush(stderr);
-            }
-            // Se restaura ANTES de leer: leer con el descriptor todavia desviado dejaria cualquier
-            // mensaje de la propia lectura dentro del fichero que se esta leyendo.
-            capture.restore();
-            std::string captured = capture.text();
-            const std::size_t probe = captured.find(kLlvmCaptureProbe);
-            observation->captureVerified = probe != std::string::npos;
-            if (observation->captureVerified)
-            {
-                captured.erase(probe, kLlvmCaptureProbe.size());
-            }
-            const std::size_t emitted = captured.find(kLlvmStandardErrorProbe);
-            observation->llvmStandardErrorCaptured = emitted != std::string::npos;
-            if (observation->llvmStandardErrorCaptured)
-            {
-                captured.erase(emitted, kLlvmStandardErrorProbe.size());
-            }
-            observation->capturedBytes = captured.size();
-            observeLlvmPassLog(captured, *observation);
-            capture.remove();
-        }
-    }
-    else if (!preparedO0FastPath)
-    {
-        llvmError = llvm_api::LLVMRunPasses(
-            moduleRef, pipelineText.c_str(), targetMachineRef, options);
-    }
-#endif
-    if (observation != nullptr)
-    {
-        const auto elapsed = std::chrono::steady_clock::now() - started;
-        observation->seconds = std::chrono::duration<double>(elapsed).count();
-        observation->timeBudgetExceeded =
-            observation->seconds > kLlvmOptimizationTimeBudgetSeconds;
-        observeActiveLlvmOptimizationBudget(
-            level, std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed));
-    }
-    else
-    {
-        observeActiveLlvmOptimizationBudget(level,
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - started));
-    }
+    llvm_api::LLVMErrorRef llvmError = runOptimizationPassPipeline(
+        moduleRef, targetMachineRef, options, pipelineText,
+        preparedO0FastPath, emitProcessTrace, observation);
+    finishOptimizationTiming(started, level, observation);
     llvm_api::LLVMDisposePassBuilderOptions(options);
+    if (!consumeOptimizationError(llvmError, observation, error)) return false;
+    return verifyOptimizedModule(module, observation, error);
+}
 
-    if (llvmError != nullptr)
+bool LlvmOptimizer::prepareOptimizationModule(
+    LlvmModule& module,
+    const LlvmTargetMachine& targetMachine,
+    bool prepareModule,
+    LlvmOptimizationObservation* observation,
+    std::string& error) const
+{
+    if (!prepareModule)
     {
-        char* message = llvm_api::LLVMGetErrorMessage(llvmError);
-        if (message != nullptr)
-        {
-            error.assign(message);
-            llvm_api::LLVMDisposeErrorMessage(message);
-        }
-        else
-        {
-            error = "LLVMRunPasses failed without a diagnostic";
-        }
-        // El cierre del Gate 1 pide que un fallo del optimizador identifique LLVM, el pipeline, la
-        // funcion/unidad y el ultimo pass observado. Sin observacion se dice lo que se sabe.
+        if (observation != nullptr) observation->verifiedBefore = true;
+        return true;
+    }
+    std::string verificationError;
+    const bool verifiedBefore = module.verify(verificationError);
+    if (observation != nullptr) observation->verifiedBefore = verifiedBefore;
+    if (!verifiedBefore)
+    {
+        error = "refusing to optimize an invalid LLVM module: " + verificationError;
         if (observation != nullptr) error += " [" + observation->report() + "]";
         return false;
     }
+    std::string configurationError;
+    if (!targetMachine.configureModuleForTarget(module, configurationError))
+    {
+        error = configurationError;
+        return false;
+    }
+    return true;
+}
 
-    verificationError.clear();
+bool LlvmOptimizer::verifyOptimizedModule(
+    LlvmModule& module,
+    LlvmOptimizationObservation* observation,
+    std::string& error) const
+{
+    std::string verificationError;
     const bool verifiedAfter = module.verify(verificationError);
     if (observation != nullptr) observation->verifiedAfter = verifiedAfter;
-    if (!verifiedAfter)
-    {
-        error = "LLVM optimization produced an invalid module: " + verificationError;
-        if (observation != nullptr) error += " [" + observation->report() + "]";
-        return false;
-    }
-
-    return true;
+    if (verifiedAfter) return true;
+    error = "LLVM optimization produced an invalid module: " + verificationError;
+    if (observation != nullptr) error += " [" + observation->report() + "]";
+    return false;
 }
 }

@@ -1,5 +1,11 @@
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 
+#include "Internal/CacheMetadata.h"
+#include "Internal/ArtifactCacheFilesystemPath.h"
+#include "Internal/CacheEntryLock.h"
+#include "Internal/CachePruneEntry.h"
+#include "Internal/CachePruneMeasurement.h"
+
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/LLVM/DebugInformationKind.h"
 #include "nativesharp/LLVM/FloatingPointMode.h"
@@ -33,54 +39,6 @@ namespace
 {
 thread_local const CompilationArtifactCache* activeCache = nullptr;
 std::atomic<unsigned long long> temporaryOrdinal = 0;
-
-#if defined(_WIN32)
-std::filesystem::path extendedWindowsPath(const std::filesystem::path& input)
-{
-    std::error_code filesystemError;
-    std::filesystem::path absolute = std::filesystem::absolute(input, filesystemError);
-    if (filesystemError) absolute = input;
-    const std::wstring value = absolute.native();
-    if (value.starts_with(L"\\\\?\\")) return absolute;
-    if (value.starts_with(L"\\\\"))
-        return std::filesystem::path(L"\\\\?\\UNC\\" + value.substr(2));
-    return std::filesystem::path(L"\\\\?\\" + value);
-}
-#endif
-
-std::filesystem::path cacheFilesystemPath(const std::filesystem::path& input)
-{
-#if defined(_WIN32)
-    return extendedWindowsPath(input);
-#else
-    return input;
-#endif
-}
-
-class CachePruneMeasurement final
-{
-public:
-    explicit CachePruneMeasurement(CachePruneTelemetry& telemetry)
-        : telemetry_(telemetry), started_(std::chrono::steady_clock::now())
-    {
-        telemetry_ = CachePruneTelemetry{};
-        telemetry_.performed = true;
-    }
-
-    ~CachePruneMeasurement()
-    {
-        telemetry_.elapsedMicros = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - started_).count());
-    }
-
-    CachePruneMeasurement(const CachePruneMeasurement&) = delete;
-    CachePruneMeasurement& operator=(const CachePruneMeasurement&) = delete;
-
-private:
-    CachePruneTelemetry& telemetry_;
-    std::chrono::steady_clock::time_point started_;
-};
 
 std::filesystem::path temporarySibling(const std::filesystem::path& destination)
 {
@@ -123,62 +81,6 @@ bool replaceFileAtomically(
     return false;
 #endif
 }
-
-class CacheEntryLock final
-{
-public:
-    CacheEntryLock() = default;
-    CacheEntryLock(const CacheEntryLock&) = delete;
-    CacheEntryLock& operator=(const CacheEntryLock&) = delete;
-
-    ~CacheEntryLock()
-    {
-#if defined(_WIN32)
-        if (handle_ != INVALID_HANDLE_VALUE) ::CloseHandle(handle_);
-        std::error_code ignored;
-        if (!path_.empty()) std::filesystem::remove(path_, ignored);
-#endif
-    }
-
-    bool acquire(const std::filesystem::path& path, std::string& error)
-    {
-#if defined(_WIN32)
-        path_ = path;
-        constexpr unsigned attempts = 3000;
-        for (unsigned attempt = 0; attempt < attempts; ++attempt)
-        {
-            handle_ = ::CreateFileW(extendedWindowsPath(path).c_str(),
-                GENERIC_READ | GENERIC_WRITE, 0,
-                nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, nullptr);
-            if (handle_ != INVALID_HANDLE_VALUE) return true;
-            const unsigned long failure = ::GetLastError();
-            if (failure != ERROR_SHARING_VIOLATION && failure != ERROR_LOCK_VIOLATION)
-            {
-                error = "cannot lock artifact-cache entry '" + path.string() +
-                    "' (Win32 error " + std::to_string(failure) + ")";
-                return false;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        error = "timed out waiting for artifact-cache entry '" + path.string() + "'";
-        return false;
-#else
-        lock_ = std::unique_lock(globalMutex_);
-        (void)path;
-        (void)error;
-        return true;
-#endif
-    }
-
-private:
-#if defined(_WIN32)
-    HANDLE handle_ = INVALID_HANDLE_VALUE;
-    std::filesystem::path path_;
-#else
-    inline static std::mutex globalMutex_;
-    std::unique_lock<std::mutex> lock_;
-#endif
-};
 
 bool validKey(std::string_view key) noexcept
 {
@@ -282,13 +184,6 @@ void quarantineInvalidCodePartitionPlan(
         filesystemError);
 }
 
-struct CacheMetadata final
-{
-    std::string key;
-    std::string digest;
-    std::uintmax_t size = 0;
-};
-
 bool readMetadata(const std::filesystem::path& path, CacheMetadata& metadata)
 {
     std::ifstream stream(cacheFilesystemPath(path), std::ios::binary);
@@ -310,6 +205,23 @@ bool readMetadata(const std::filesystem::path& path, CacheMetadata& metadata)
     const auto [end, parseError] = std::from_chars(
         sizeText.data(), sizeText.data() + sizeText.size(), metadata.size);
     return parseError == std::errc{} && end == sizeText.data() + sizeText.size();
+}
+
+bool cacheEntryFilesAvailable(
+    const std::filesystem::path& cachedObject,
+    const std::filesystem::path& cachedMetadata,
+    CacheMissReason* reason)
+{
+    std::error_code filesystemError;
+    if (!std::filesystem::is_regular_file(
+            cacheFilesystemPath(cachedObject), filesystemError) || filesystemError)
+        return false;
+    filesystemError.clear();
+    if (std::filesystem::is_regular_file(
+            cacheFilesystemPath(cachedMetadata), filesystemError) && !filesystemError)
+        return true;
+    if (reason != nullptr) *reason = CacheMissReason::IncompletePublication;
+    return false;
 }
 
 bool writeMetadataAtomically(
@@ -392,15 +304,6 @@ bool writeCodePartitionMetadataAtomically(
     }
     return replaceFileAtomically(temporary, destination, error);
 }
-
-struct CachePruneEntry final
-{
-    std::string key;
-    std::filesystem::path payload;
-    std::filesystem::path metadata;
-    std::filesystem::file_time_type publication;
-    std::uintmax_t size = 0;
-};
 
 bool collectPrunableEntries(
     const std::filesystem::path& directory,
@@ -572,30 +475,11 @@ bool CompilationArtifactCache::restoreObject(
     const std::filesystem::path cachedObject = objectPath(root_, key);
     const std::filesystem::path cachedMetadata = metadataPath(root_, key);
     std::error_code filesystemError;
-    if (!std::filesystem::is_regular_file(
-            cacheFilesystemPath(cachedObject), filesystemError) || filesystemError)
-        return true;
-    filesystemError.clear();
-    if (!std::filesystem::is_regular_file(
-            cacheFilesystemPath(cachedMetadata), filesystemError) || filesystemError)
-    {
-        if (reason != nullptr) *reason = CacheMissReason::IncompletePublication;
-        return true;
-    }
+    if (!cacheEntryFilesAvailable(cachedObject, cachedMetadata, reason)) return true;
 
     CacheEntryLock entryLock;
     if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
-    filesystemError.clear();
-    if (!std::filesystem::is_regular_file(
-            cacheFilesystemPath(cachedObject), filesystemError) || filesystemError)
-        return true;
-    filesystemError.clear();
-    if (!std::filesystem::is_regular_file(
-            cacheFilesystemPath(cachedMetadata), filesystemError) || filesystemError)
-    {
-        if (reason != nullptr) *reason = CacheMissReason::IncompletePublication;
-        return true;
-    }
+    if (!cacheEntryFilesAvailable(cachedObject, cachedMetadata, reason)) return true;
 
     CacheMetadata metadata;
     if (!readMetadata(cachedMetadata, metadata) || metadata.key != key)
