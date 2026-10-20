@@ -226,13 +226,16 @@ def compiler_build_cleanup_targets(config: BuilderConfig) -> tuple[Path, ...]:
         effective_build_dir(config, "Debug").resolve(),
         effective_build_dir(config, "Release").resolve(),
         Path(config.install_prefix).resolve(),
-        Path(config.nslink_executable).resolve(),
         config.llvm_root_path().resolve(),
     )
+    configured_nslink = Path(config.nslink_executable).resolve()
     source = SOURCE_ROOT.resolve()
     for target in targets:
         if target == source or target in source.parents:
             raise ValueError(f"compiler cleanup target contains the source tree: {target}")
+        owned_nslink = (target / "bin" / "nslink.exe").resolve()
+        if configured_nslink != owned_nslink and _paths_overlap(target, configured_nslink):
+            raise ValueError(f"compiler cleanup target overlaps a protected path: {target}")
         if any(_paths_overlap(target, reserved) for reserved in protected):
             raise ValueError(f"compiler cleanup target overlaps a protected path: {target}")
         _ensure_plain_path(target, "compiler cleanup target")
@@ -250,7 +253,12 @@ def compiler_cleanup_invalidated_fields(
 ) -> tuple[str, ...]:
     """Identify transient compiler artifact selections invalidated by cleanup."""
     invalidated: list[str] = []
-    for field_name in ("nsc_executable", "comparison_nsc", "build_id_header"):
+    for field_name in (
+        "nsc_executable",
+        "nslink_executable",
+        "comparison_nsc",
+        "build_id_header",
+    ):
         value = getattr(config, field_name, "")
         if not value:
             continue
@@ -646,12 +654,18 @@ def compiler_configure_commands(
     modes: Sequence[str],
     linkage: str,
     host_optimization: str,
+    use_sibling_nslink: bool = False,
 ) -> list[tuple[str, list[str], Path]]:
-    """Configure NSC itself with the canonical Clang/LLVM/LLD Windows toolchain."""
+    """Configure NSC with either the selected or freshly built sibling NSLink."""
     tools = discover_compiler_build_tools(str(config.llvm_root_path()))
     commands: list[tuple[str, list[str], Path]] = []
     for mode in modes:
         build = compiler_build_dir(config, mode)
+        nslink = (
+            compiler_sibling_output(config, mode, "nslink")
+            if use_sibling_nslink
+            else Path(config.nslink_executable).resolve()
+        )
         command = [
             tools["cmake"],
             "-S",
@@ -675,7 +689,7 @@ def compiler_configure_commands(
             "-DNSC_WARNINGS_AS_ERRORS=ON",
             f"-DNSC_HOST_LINKAGE={linkage.upper()}",
             f"-DNSC_HOST_OPTIMIZATION={host_optimization}",
-            f"-DNSC_NSLINK_EXECUTABLE={Path(config.nslink_executable).resolve().as_posix()}",
+            f"-DNSC_NSLINK_EXECUTABLE={nslink.as_posix()}",
             "-DNSC_BUILD_ID_OVERRIDE=",
         ]
         commands.append((f"Configurar NSC {mode}", command, SOURCE_ROOT))

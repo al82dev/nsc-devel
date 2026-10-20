@@ -145,6 +145,28 @@ class CompilerCleanupTests(unittest.TestCase):
             self.assertNotIn("nslink_executable", invalidated)
             self.assertNotIn("install_prefix", invalidated)
 
+    def test_cleanup_accepts_and_invalidates_builder_owned_nslink(self) -> None:
+        with tempfile.TemporaryDirectory(dir=MODULAR_ROOT) as directory:
+            root = Path(directory)
+            config = configuration(root)
+            release = Path(config.compiler_build_root)
+            debug = release.parent / f"{release.name}-debug"
+            create_generated_tree(release)
+            create_generated_tree(debug)
+            owned_nslink = release / "bin" / "nslink.exe"
+            owned_nslink.parent.mkdir(parents=True)
+            owned_nslink.write_bytes(b"nslink")
+            config.nslink_executable = str(owned_nslink)
+
+            targets = compiler_build_cleanup_targets(config)
+            invalidated = compiler_cleanup_invalidated_fields(config, targets)
+            result = clean_compiler_build_trees(config)
+
+            self.assertIn("nslink_executable", invalidated)
+            self.assertFalse(result.failures)
+            self.assertFalse(release.exists())
+            self.assertFalse(debug.exists())
+
     def test_partial_errors_are_enumerated(self) -> None:
         with tempfile.TemporaryDirectory(dir=MODULAR_ROOT) as directory:
             root = Path(directory)
