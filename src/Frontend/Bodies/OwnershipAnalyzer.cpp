@@ -216,237 +216,18 @@ std::optional<std::string> ProjectMethodBodyModel::storagePlaceKey(
     const std::size_t callableOrdinal = scopeOrdinal < scopes_.size()
         ? scopes_[scopeOrdinal].methodMemberOrdinal
         : std::numeric_limits<std::size_t>::max();
-
-    const auto integerConstant = [&](const ast::AstNode* syntax) -> std::optional<std::int64_t>
-    {
-        if (syntax == nullptr) return std::nullopt;
-        if (syntax->kind() == ast::AstNodeKind::IdentifierExpression)
-        {
-            const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, syntax->text());
-            if (name.has_value() && name->kind == ScopeNameKind::Local &&
-                name->semanticOrdinal < locals_.size() &&
-                locals_[name->semanticOrdinal].constantIntegerValue.has_value())
-            {
-                return locals_[name->semanticOrdinal].constantIntegerValue;
-            }
-        }
-        const MethodExpressionTypeBinding* binding =
-            expressionTypeBinding(syntax, callableOrdinal);
-        if (binding != nullptr && binding->integerConstant.has_value())
-        {
-            const ProjectIntegerConstant& value = *binding->integerConstant;
-            if (value.isNegative)
-            {
-                if (value.value > (std::uint64_t{1} << 63U)) return std::nullopt;
-                if (value.value == (std::uint64_t{1} << 63U))
-                    return std::numeric_limits<std::int64_t>::min();
-                return -static_cast<std::int64_t>(value.value);
-            }
-            if (value.value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
-                return std::nullopt;
-            return static_cast<std::int64_t>(value.value);
-        }
-        return std::nullopt;
-    };
-    const auto recordedTypeKey = [&](const ast::AstNode* syntax) -> std::string_view
-    {
-        const MethodExpressionTypeBinding* binding =
-            expressionTypeBinding(syntax, callableOrdinal);
-        return binding != nullptr ? std::string_view(binding->typeKey) : std::string_view{};
-    };
-
-    // F04: a reference-returning call borrows the place named by its lifetime contract. Keep the
-    // old conservative unknown-place fallback when several eligible arguments name different
-    // places; a single string key must never pretend that a conditional return has one origin.
-    if (expression->kind() == ast::AstNodeKind::CallExpression ||
-        expression->kind() == ast::AstNodeKind::IndexExpression)
-    {
-        const MethodCallBinding* binding = callBinding(expression, callableOrdinal);
-        if (binding != nullptr &&
-            (binding->resolution != MethodCallResolutionKind::Resolved ||
-             !binding->selectedMemberOrdinal.has_value()))
-        {
-            binding = nullptr;
-        }
-        if (binding != nullptr && memberModel_ != nullptr &&
-            *binding->selectedMemberOrdinal < memberModel_->members().size())
-        {
-            const ClassMemberSymbol& callee =
-                memberModel_->members()[*binding->selectedMemberOrdinal];
-            if (callee.isReferenceReturn)
-            {
-                if (callee.returnLifetimeName == "this")
-                {
-                    const std::optional<std::string> receiver =
-                        storagePlaceKey(binding->receiverSyntax, scopeOrdinal, precise);
-                    if (!receiver.has_value() && precise != nullptr) *precise = false;
-                    return receiver;
-                }
-                if (callee.returnLifetimeName == "static")
-                {
-                    if (precise != nullptr) *precise = false;
-                    return std::nullopt;
-                }
-
-                std::optional<std::string> result;
-                bool resultPrecise = true;
-                for (std::size_t index = 0; index < expression->children().size(); ++index)
-                {
-                    const std::size_t parameterIndex =
-                        index < binding->selectedArgumentParameterOrdinals.size()
-                        ? binding->selectedArgumentParameterOrdinals[index] : index;
-                    if (parameterIndex >= callee.parameters.size() ||
-                        !declaredLifetimeOutlives(
-                            callee,
-                            callee.parameters[parameterIndex].lifetimeName,
-                            callee.returnLifetimeName))
-                        continue;
-
-                    bool argumentPrecise = true;
-                    const std::optional<std::string> argument = storagePlaceKey(
-                        expression->children()[index], scopeOrdinal, &argumentPrecise);
-                    if (!argument.has_value() || !argumentPrecise ||
-                        (result.has_value() && *result != *argument))
-                    {
-                        if (precise != nullptr) *precise = false;
-                        return std::nullopt;
-                    }
-                    result = *argument;
-                    resultPrecise = resultPrecise && argumentPrecise;
-                }
-                if (result.has_value())
-                {
-                    if (precise != nullptr) *precise = resultPrecise;
-                    return result;
-                }
-                if (precise != nullptr) *precise = false;
-                return std::nullopt;
-            }
-        }
-    }
-
+    bool handled = false;
+    std::optional<std::string> result = storagePlaceKeyForReferenceCall(
+        expression, scopeOrdinal, precise, handled);
+    if (handled) return result;
     switch (expression->kind())
     {
         case ast::AstNodeKind::IdentifierExpression:
-        {
-            const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
-            if (!name.has_value()) return std::nullopt;
-            if (name->kind == ScopeNameKind::Local)
-            {
-                if (name->semanticOrdinal >= locals_.size()) return std::nullopt;
-                const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
-                if (local.isReference)
-                {
-                    if (local.referencePlaceKey.empty())
-                    {
-                        if (precise != nullptr) *precise = false;
-                        return std::nullopt;
-                    }
-                    return local.referencePlaceKey;
-                }
-                return "L" + std::to_string(name->semanticOrdinal);
-            }
-            return "P" + std::to_string(name->semanticOrdinal);
-        }
+            return storageIdentifierPlaceKey(expression, scopeOrdinal, precise);
         case ast::AstNodeKind::MemberExpression:
-        {
-            bool receiverPrecise = true;
-            std::optional<std::string> key = storagePlaceKey(
-                expression->first(), scopeOrdinal, &receiverPrecise);
-            if (!key.has_value())
-            {
-                if (precise != nullptr) *precise = false;
-                return std::nullopt;
-            }
-            const std::string_view receiverTypeKey = recordedTypeKey(expression->first());
-            bool overlappingLayout = aggregateIsUnion(receiverTypeKey);
-            if (!overlappingLayout && memberModel_ != nullptr)
-            {
-                const std::optional<std::size_t> typeOrdinal =
-                    namedTypeOrdinalForTypeKey(receiverTypeKey);
-                if (typeOrdinal.has_value())
-                {
-                    overlappingLayout = std::ranges::any_of(
-                        memberModel_->members(), [&](const ClassMemberSymbol& member)
-                        {
-                            return member.declaringTypeOrdinal == *typeOrdinal &&
-                                member.kind == ClassMemberKind::Field && !member.isStatic &&
-                                member.explicitFieldOffset.has_value();
-                        });
-                }
-            }
-            *key += overlappingLayout ? "/F:*" : "/F:" + expression->text();
-            if (precise != nullptr) *precise = receiverPrecise && !overlappingLayout;
-            return key;
-        }
+            return storageMemberPlaceKey(expression, scopeOrdinal, callableOrdinal, precise);
         case ast::AstNodeKind::IndexExpression:
-        {
-            bool basePrecise = true;
-            std::optional<std::string> key = storagePlaceKey(
-                expression->first(), scopeOrdinal, &basePrecise);
-            if (!key.has_value())
-            {
-                if (precise != nullptr) *precise = false;
-                return std::nullopt;
-            }
-            bool indicesPrecise = true;
-            const std::string_view baseTypeKey = recordedTypeKey(expression->first());
-            const bool structurallySplittable =
-                ProjectTypeConversion::isNativeArray(baseTypeKey) ||
-                ProjectTypeConversion::isPointer(baseTypeKey) ||
-                ProjectMemberModel::fixedArrayElementTypeKey(baseTypeKey).has_value() ||
-                ProjectMemberModel::flexibleArrayElementTypeKey(baseTypeKey).has_value();
-            const auto appendIndex = [&](const ast::AstNode* index)
-            {
-                // An arbitrary user indexer may map every written index to the same storage.
-                // Only builtin/raw/fixed array projections have a structural disjointness
-                // guarantee; all protocol/indexer cases deliberately collapse to a wildcard.
-                if (!structurallySplittable)
-                {
-                    *key += "/I:*";
-                    indicesPrecise = false;
-                    return;
-                }
-                if (index != nullptr && index->kind() == ast::AstNodeKind::RangeExpression)
-                {
-                    const std::optional<std::int64_t> start = index->first() != nullptr
-                        ? integerConstant(index->first()) : std::optional<std::int64_t>{};
-                    const std::optional<std::int64_t> end = index->second() != nullptr
-                        ? integerConstant(index->second()) : std::optional<std::int64_t>{};
-                    const bool exact = (index->first() == nullptr || start.has_value()) &&
-                        (index->second() == nullptr || end.has_value());
-                    if (!exact)
-                    {
-                        *key += "/S:*";
-                        indicesPrecise = false;
-                        return;
-                    }
-                    *key += "/S:";
-                    *key += start.has_value() ? std::to_string(*start) : "_";
-                    *key += ':';
-                    *key += end.has_value() ? std::to_string(*end) : "_";
-                    return;
-                }
-                const std::optional<std::int64_t> value = integerConstant(index);
-                if (!value.has_value())
-                {
-                    *key += "/I:*";
-                    indicesPrecise = false;
-                    return;
-                }
-                *key += "/I:" + std::to_string(*value);
-            };
-            if (!expression->children().empty())
-            {
-                for (const ast::AstNode* index : expression->children()) appendIndex(index);
-            }
-            else
-            {
-                appendIndex(expression->second());
-            }
-            if (precise != nullptr) *precise = basePrecise && indicesPrecise;
-            return key;
-        }
+            return storageIndexPlaceKey(expression, scopeOrdinal, callableOrdinal, precise);
         default:
             break;
     }
@@ -458,6 +239,248 @@ std::optional<std::string> ProjectMethodBodyModel::storagePlaceKey(
     return std::nullopt;
 }
 
+std::optional<std::int64_t> ProjectMethodBodyModel::storageIntegerConstant(
+    const ast::AstNode* syntax,
+    std::size_t scopeOrdinal,
+    std::size_t callableOrdinal) const
+{
+    if (syntax == nullptr) return std::nullopt;
+    if (syntax->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, syntax->text());
+        if (name.has_value() && name->kind == ScopeNameKind::Local &&
+            name->semanticOrdinal < locals_.size() &&
+            locals_[name->semanticOrdinal].constantIntegerValue.has_value())
+            return locals_[name->semanticOrdinal].constantIntegerValue;
+    }
+    const MethodExpressionTypeBinding* binding = expressionTypeBinding(syntax, callableOrdinal);
+    if (binding == nullptr || !binding->integerConstant.has_value()) return std::nullopt;
+    const ProjectIntegerConstant& value = *binding->integerConstant;
+    if (value.isNegative)
+    {
+        if (value.value > (std::uint64_t{1} << 63U)) return std::nullopt;
+        if (value.value == (std::uint64_t{1} << 63U))
+            return std::numeric_limits<std::int64_t>::min();
+        return -static_cast<std::int64_t>(value.value);
+    }
+    if (value.value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+        return std::nullopt;
+    return static_cast<std::int64_t>(value.value);
+}
+
+std::string_view ProjectMethodBodyModel::recordedExpressionTypeKey(
+    const ast::AstNode* syntax,
+    std::size_t callableOrdinal) const
+{
+    const MethodExpressionTypeBinding* binding = expressionTypeBinding(syntax, callableOrdinal);
+    return binding != nullptr ? std::string_view(binding->typeKey) : std::string_view{};
+}
+
+std::optional<std::string> ProjectMethodBodyModel::storagePlaceKeyForReferenceCall(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal,
+    bool* precise,
+    bool& handled) const
+{
+    // F04: a reference-returning call borrows the place named by its lifetime contract. Keep the
+    // old conservative unknown-place fallback when several eligible arguments name different
+    // places; a single string key must never pretend that a conditional return has one origin.
+    handled = false;
+    if (expression->kind() != ast::AstNodeKind::CallExpression &&
+        expression->kind() != ast::AstNodeKind::IndexExpression) return std::nullopt;
+    const std::size_t callableOrdinal = scopeOrdinal < scopes_.size()
+        ? scopes_[scopeOrdinal].methodMemberOrdinal
+        : std::numeric_limits<std::size_t>::max();
+    const MethodCallBinding* binding = callBinding(expression, callableOrdinal);
+    if (binding == nullptr || binding->resolution != MethodCallResolutionKind::Resolved ||
+        !binding->selectedMemberOrdinal.has_value() || memberModel_ == nullptr ||
+        *binding->selectedMemberOrdinal >= memberModel_->members().size()) return std::nullopt;
+    const ClassMemberSymbol& callee = memberModel_->members()[*binding->selectedMemberOrdinal];
+    if (!callee.isReferenceReturn) return std::nullopt;
+    handled = true;
+    if (callee.returnLifetimeName == "this")
+    {
+        std::optional<std::string> receiver =
+            storagePlaceKey(binding->receiverSyntax, scopeOrdinal, precise);
+        if (!receiver.has_value() && precise != nullptr) *precise = false;
+        return receiver;
+    }
+    if (callee.returnLifetimeName == "static")
+    {
+        if (precise != nullptr) *precise = false;
+        return std::nullopt;
+    }
+    std::optional<std::string> result;
+    bool resultPrecise = true;
+    for (std::size_t index = 0; index < expression->children().size(); ++index)
+    {
+        const std::size_t parameterIndex = index < binding->selectedArgumentParameterOrdinals.size()
+            ? binding->selectedArgumentParameterOrdinals[index] : index;
+        if (parameterIndex >= callee.parameters.size() ||
+            !declaredLifetimeOutlives(
+                callee,
+                callee.parameters[parameterIndex].lifetimeName,
+                callee.returnLifetimeName)) continue;
+        bool argumentPrecise = true;
+        const std::optional<std::string> argument = storagePlaceKey(
+            expression->children()[index], scopeOrdinal, &argumentPrecise);
+        if (!argument.has_value() || !argumentPrecise ||
+            (result.has_value() && *result != *argument))
+        {
+            if (precise != nullptr) *precise = false;
+            return std::nullopt;
+        }
+        result = *argument;
+        resultPrecise = resultPrecise && argumentPrecise;
+    }
+    if (precise != nullptr) *precise = result.has_value() && resultPrecise;
+    return result;
+}
+
+std::optional<std::string> ProjectMethodBodyModel::storageIdentifierPlaceKey(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal,
+    bool* precise) const
+{
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
+    if (!name.has_value()) return std::nullopt;
+    if (name->kind != ScopeNameKind::Local)
+        return "P" + std::to_string(name->semanticOrdinal);
+    if (name->semanticOrdinal >= locals_.size()) return std::nullopt;
+    const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
+    if (!local.isReference) return "L" + std::to_string(name->semanticOrdinal);
+    if (!local.referencePlaceKey.empty()) return local.referencePlaceKey;
+    if (precise != nullptr) *precise = false;
+    return std::nullopt;
+}
+
+std::optional<std::string> ProjectMethodBodyModel::storageMemberPlaceKey(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal,
+    std::size_t callableOrdinal,
+    bool* precise) const
+{
+    bool receiverPrecise = true;
+    std::optional<std::string> key = storagePlaceKey(
+        expression->first(), scopeOrdinal, &receiverPrecise);
+    if (!key.has_value())
+    {
+        if (precise != nullptr) *precise = false;
+        return std::nullopt;
+    }
+    const std::string_view receiverTypeKey =
+        recordedExpressionTypeKey(expression->first(), callableOrdinal);
+    bool overlappingLayout = aggregateIsUnion(receiverTypeKey);
+    if (!overlappingLayout && memberModel_ != nullptr)
+    {
+        const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(receiverTypeKey);
+        if (typeOrdinal.has_value())
+        {
+            overlappingLayout = std::ranges::any_of(
+                memberModel_->members(), [&](const ClassMemberSymbol& member)
+                {
+                    return member.declaringTypeOrdinal == *typeOrdinal &&
+                        member.kind == ClassMemberKind::Field && !member.isStatic &&
+                        member.explicitFieldOffset.has_value();
+                });
+        }
+    }
+    *key += overlappingLayout ? "/F:*" : "/F:" + expression->text();
+    if (precise != nullptr) *precise = receiverPrecise && !overlappingLayout;
+    return key;
+}
+
+void ProjectMethodBodyModel::appendStorageIndexSegment(
+    std::string& key,
+    const ast::AstNode* index,
+    std::size_t scopeOrdinal,
+    std::size_t callableOrdinal,
+    bool structurallySplittable,
+    bool& indicesPrecise) const
+{
+    // An arbitrary user indexer may map every written index to the same storage.
+    // Only builtin/raw/fixed array projections have a structural disjointness
+    // guarantee; all protocol/indexer cases deliberately collapse to a wildcard.
+    if (!structurallySplittable)
+    {
+        key += "/I:*";
+        indicesPrecise = false;
+        return;
+    }
+    if (index != nullptr && index->kind() == ast::AstNodeKind::RangeExpression)
+    {
+        const std::optional<std::int64_t> start = index->first() != nullptr
+            ? storageIntegerConstant(index->first(), scopeOrdinal, callableOrdinal)
+            : std::optional<std::int64_t>{};
+        const std::optional<std::int64_t> end = index->second() != nullptr
+            ? storageIntegerConstant(index->second(), scopeOrdinal, callableOrdinal)
+            : std::optional<std::int64_t>{};
+        const bool exact = (index->first() == nullptr || start.has_value()) &&
+            (index->second() == nullptr || end.has_value());
+        if (!exact)
+        {
+            key += "/S:*";
+            indicesPrecise = false;
+            return;
+        }
+        key += "/S:";
+        key += start.has_value() ? std::to_string(*start) : "_";
+        key += ':';
+        key += end.has_value() ? std::to_string(*end) : "_";
+        return;
+    }
+    const std::optional<std::int64_t> value =
+        storageIntegerConstant(index, scopeOrdinal, callableOrdinal);
+    if (!value.has_value())
+    {
+        key += "/I:*";
+        indicesPrecise = false;
+        return;
+    }
+    key += "/I:" + std::to_string(*value);
+}
+
+std::optional<std::string> ProjectMethodBodyModel::storageIndexPlaceKey(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal,
+    std::size_t callableOrdinal,
+    bool* precise) const
+{
+    bool basePrecise = true;
+    std::optional<std::string> key = storagePlaceKey(
+        expression->first(), scopeOrdinal, &basePrecise);
+    if (!key.has_value())
+    {
+        if (precise != nullptr) *precise = false;
+        return std::nullopt;
+    }
+    bool indicesPrecise = true;
+    const std::string_view baseTypeKey =
+        recordedExpressionTypeKey(expression->first(), callableOrdinal);
+    const bool structurallySplittable = ProjectTypeConversion::isNativeArray(baseTypeKey) ||
+        ProjectTypeConversion::isPointer(baseTypeKey) ||
+        ProjectMemberModel::fixedArrayElementTypeKey(baseTypeKey).has_value() ||
+        ProjectMemberModel::flexibleArrayElementTypeKey(baseTypeKey).has_value();
+    if (!expression->children().empty())
+    {
+        for (const ast::AstNode* index : expression->children())
+            appendStorageIndexSegment(
+                *key, index, scopeOrdinal, callableOrdinal, structurallySplittable, indicesPrecise);
+    }
+    else
+    {
+        appendStorageIndexSegment(
+            *key,
+            expression->second(),
+            scopeOrdinal,
+            callableOrdinal,
+            structurallySplittable,
+            indicesPrecise);
+    }
+    if (precise != nullptr) *precise = basePrecise && indicesPrecise;
+    return key;
+}
+
 bool ProjectMethodBodyModel::placeContains(
     std::string_view ancestor, std::string_view descendant) noexcept
 {
@@ -466,85 +489,93 @@ bool ProjectMethodBodyModel::placeContains(
          descendant[ancestor.size()] == '/');
 }
 
+namespace
+{
+std::string_view nextStoragePlaceSegment(std::string_view& value) noexcept
+{
+    const std::size_t separator = value.find('/');
+    const std::string_view segment = value.substr(0, separator);
+    value = separator == std::string_view::npos
+        ? std::string_view{} : value.substr(separator + 1U);
+    return segment;
+}
+
+std::optional<std::int64_t> parseStoragePlaceNumber(std::string_view text) noexcept
+{
+    std::int64_t value = 0;
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) return std::nullopt;
+    return value;
+}
+
+bool parseStoragePlaceSlice(
+    std::string_view segment,
+    std::optional<std::int64_t>& start,
+    std::optional<std::int64_t>& end) noexcept
+{
+    if (!segment.starts_with("S:") || segment == "S:*") return false;
+    segment.remove_prefix(2U);
+    const std::size_t separator = segment.find(':');
+    if (separator == std::string_view::npos) return false;
+    const std::string_view startText = segment.substr(0, separator);
+    const std::string_view endText = segment.substr(separator + 1U);
+    if (startText != "_")
+    {
+        start = parseStoragePlaceNumber(startText);
+        if (!start.has_value()) return false;
+    }
+    if (endText != "_")
+    {
+        end = parseStoragePlaceNumber(endText);
+        if (!end.has_value()) return false;
+    }
+    return true;
+}
+
+bool storageIndexOverlapsSlice(
+    std::string_view indexSegment,
+    std::string_view sliceSegment) noexcept
+{
+    if (!indexSegment.starts_with("I:")) return true;
+    const std::optional<std::int64_t> index = parseStoragePlaceNumber(indexSegment.substr(2U));
+    std::optional<std::int64_t> start;
+    std::optional<std::int64_t> end;
+    if (!index.has_value() || !parseStoragePlaceSlice(sliceSegment, start, end)) return true;
+    return (!start.has_value() || *index >= *start) &&
+        (!end.has_value() || *index < *end);
+}
+}
+
 bool ProjectMethodBodyModel::placesOverlap(
     std::string_view left, std::string_view right) noexcept
 {
-    const auto nextSegment = [](std::string_view& value) noexcept
-    {
-        const std::size_t separator = value.find('/');
-        const std::string_view segment = value.substr(0, separator);
-        value = separator == std::string_view::npos
-            ? std::string_view{} : value.substr(separator + 1U);
-        return segment;
-    };
-    const auto parseNumber = [](std::string_view text) noexcept -> std::optional<std::int64_t>
-    {
-        std::int64_t value = 0;
-        const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
-        if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) return std::nullopt;
-        return value;
-    };
-    const auto parseSlice = [&](std::string_view segment,
-                                std::optional<std::int64_t>& start,
-                                std::optional<std::int64_t>& end) noexcept -> bool
-    {
-        if (!segment.starts_with("S:") || segment == "S:*") return false;
-        segment.remove_prefix(2U);
-        const std::size_t separator = segment.find(':');
-        if (separator == std::string_view::npos) return false;
-        const std::string_view startText = segment.substr(0, separator);
-        const std::string_view endText = segment.substr(separator + 1U);
-        if (startText != "_")
-        {
-            start = parseNumber(startText);
-            if (!start.has_value()) return false;
-        }
-        if (endText != "_")
-        {
-            end = parseNumber(endText);
-            if (!end.has_value()) return false;
-        }
-        return true;
-    };
-
-    const std::string_view leftRoot = nextSegment(left);
-    const std::string_view rightRoot = nextSegment(right);
+    const std::string_view leftRoot = nextStoragePlaceSegment(left);
+    const std::string_view rightRoot = nextStoragePlaceSegment(right);
     // Unknown reference-return/dereference provenance is one global conservative region.  It may
     // alias any named place, so it never establishes disjointness.
     if (leftRoot == "U" || rightRoot == "U") return true;
     if (leftRoot != rightRoot) return false;
     while (!left.empty() && !right.empty())
     {
-        const std::string_view leftSegment = nextSegment(left);
-        const std::string_view rightSegment = nextSegment(right);
+        const std::string_view leftSegment = nextStoragePlaceSegment(left);
+        const std::string_view rightSegment = nextStoragePlaceSegment(right);
         if (leftSegment == rightSegment) continue;
         if (leftSegment.ends_with(":*") || rightSegment.ends_with(":*")) return true;
         if (leftSegment.starts_with("F:") && rightSegment.starts_with("F:")) return false;
         if (leftSegment.starts_with("I:") && rightSegment.starts_with("I:")) return false;
 
-        const auto indexAgainstSlice = [&](std::string_view indexSegment,
-                                           std::string_view sliceSegment) noexcept
-        {
-            if (!indexSegment.starts_with("I:")) return true;
-            const std::optional<std::int64_t> index = parseNumber(indexSegment.substr(2U));
-            std::optional<std::int64_t> start;
-            std::optional<std::int64_t> end;
-            if (!index.has_value() || !parseSlice(sliceSegment, start, end)) return true;
-            return (!start.has_value() || *index >= *start) &&
-                (!end.has_value() || *index < *end);
-        };
         if (leftSegment.starts_with("I:") && rightSegment.starts_with("S:"))
-            return indexAgainstSlice(leftSegment, rightSegment);
+            return storageIndexOverlapsSlice(leftSegment, rightSegment);
         if (leftSegment.starts_with("S:") && rightSegment.starts_with("I:"))
-            return indexAgainstSlice(rightSegment, leftSegment);
+            return storageIndexOverlapsSlice(rightSegment, leftSegment);
         if (leftSegment.starts_with("S:") && rightSegment.starts_with("S:"))
         {
             std::optional<std::int64_t> leftStart;
             std::optional<std::int64_t> leftEnd;
             std::optional<std::int64_t> rightStart;
             std::optional<std::int64_t> rightEnd;
-            if (!parseSlice(leftSegment, leftStart, leftEnd) ||
-                !parseSlice(rightSegment, rightStart, rightEnd)) return true;
+            if (!parseStoragePlaceSlice(leftSegment, leftStart, leftEnd) ||
+                !parseStoragePlaceSlice(rightSegment, rightStart, rightEnd)) return true;
             if (leftEnd.has_value() && rightStart.has_value() && *leftEnd <= *rightStart)
                 return false;
             if (rightEnd.has_value() && leftStart.has_value() && *rightEnd <= *leftStart)

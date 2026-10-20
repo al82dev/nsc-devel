@@ -1,10 +1,10 @@
 # NSC — IMPLEMENTACIÓN
 
-Progreso absoluto: **642/1227**
+Progreso absoluto: **749/1227**
 
-Completados: **642**
+Completados: **749**
 
-Pendientes: **585**
+Pendientes: **478**
 
 Fuente canónica: `NSC-GUIA-DE-IMPLEMENTACION.md` y sus anexos A, B, C, D y F, medidos el 2026-10-19.
 
@@ -14,7 +14,7 @@ casillas se agrupen por integración.
 Quedan fuera del denominador: cambios a NSC Builder, cambios de CLI/sintaxis/ABI/NSMETA/contratos 3.0.4,
 eliminación de recursión y las tareas de rendimiento que requieren autorización funcional independiente.
 
-## Refactor mecánico y reorganización sin cambios funcionales — 642/1225
+## Refactor mecánico y reorganización sin cambios funcionales — 749/1225
 
 Política de integración: **10 commits técnicos**, uno por límite de subsistema. Un commit se crea únicamente
 cuando su conjunto está completo, revisado y cuenta con la evidencia focal aplicable. Ninguna optimización entra
@@ -2165,382 +2165,389 @@ Nota de cierre REF-03: por instrucción explícita del propietario, los colabora
 NSC-IMPL-1216 y NSC-IMPL-1217 se materializaron como unidades de traducción por familia de métodos de la clase
 existente, sin introducir clases conceptuales nuevas, mover campos ni alterar firmas, algoritmos o flujo.
 
-### Commit REF-04 — Análisis de cuerpos de métodos — 0/107
+### Commit REF-04 — Análisis de cuerpos de métodos — 107/107
 
 Aísla las familias de análisis de cuerpos conservando firmas, estado, orden y resultados diagnósticos.
 
-- [ ] NSC-IMPL-0052 — Extraer el struct NamedArgumentMap desde src/Frontend/Bodies/CallAnalyzer.cpp:49-58 (10) hacia
+- [x] NSC-IMPL-0052 — Extraer el struct NamedArgumentMap desde src/Frontend/Bodies/CallAnalyzer.cpp:49-58 (10) hacia
   src/Frontend/Bodies/Internal/NamedArgumentMap.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0073 — Extraer el enum Stage37ConstantKind desde src/Frontend/ProjectMethodBodyModel.cpp:346-352 (7)
+- [x] NSC-IMPL-0073 — Extraer el enum Stage37ConstantKind desde src/Frontend/ProjectMethodBodyModel.cpp:346-352 (7)
   hacia src/Frontend/Internal/Stage37ConstantKind.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0074 — Extraer el struct Stage37ConstantValue desde src/Frontend/ProjectMethodBodyModel.cpp:354-379 (26)
+- [x] NSC-IMPL-0074 — Extraer el struct Stage37ConstantValue desde src/Frontend/ProjectMethodBodyModel.cpp:354-379 (26)
   hacia src/Frontend/Internal/Stage37ConstantValue.h, y mover sus cuerpos a
   src/Frontend/Internal/Stage37ConstantValue.cpp; conservar texto, comentarios, firmas, orden y conducta. Restricción de
   pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0135 — Mover fuera de línea función libre traceMutex de src/Frontend/Bodies/MethodBodyInternals.h:18 (5
+- [x] NSC-IMPL-0135 — Mover fuera de línea función libre traceMutex de src/Frontend/Bodies/MethodBodyInternals.h:18 (5
   líneas) a un único .cpp, dejando la declaración intacta y conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0136 — Mover fuera de línea función libre resetMethodBodyTrace de
+- [x] NSC-IMPL-0136 — Mover fuera de línea función libre resetMethodBodyTrace de
   src/Frontend/Bodies/MethodBodyInternals.h:24 (9 líneas) a un único .cpp, dejando la declaración intacta y conservando
   exactamente el cuerpo.
-- [ ] NSC-IMPL-0137 — Mover fuera de línea función libre writeMethodBodyTrace de
+- [x] NSC-IMPL-0137 — Mover fuera de línea función libre writeMethodBodyTrace de
   src/Frontend/Bodies/MethodBodyInternals.h:34 (11 líneas) a un único .cpp, dejando la declaración intacta y conservando
   exactamente el cuerpo.
-- [ ] NSC-IMPL-0138 — Mover fuera de línea función libre pointerContract de src/Frontend/Bodies/MethodBodyInternals.h:46
+- [x] NSC-IMPL-0138 — Mover fuera de línea función libre pointerContract de src/Frontend/Bodies/MethodBodyInternals.h:46
   (14 líneas) a un único .cpp, dejando la declaración intacta y conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0179 — Mover fuera de línea método ExpressionAnalysisRequest::optionMask de
+- [x] NSC-IMPL-0179 — Mover fuera de línea método ExpressionAnalysisRequest::optionMask de
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1745 (8 líneas) a un único .cpp, dejando la declaración intacta
   y conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0180 — Mover fuera de línea método ExpressionAnalysisCacheKeyHash::operator de
+- [x] NSC-IMPL-0180 — Mover fuera de línea método ExpressionAnalysisCacheKeyHash::operator de
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1765 (9 líneas) a un único .cpp, dejando la declaración intacta
   y conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0181 — Mover fuera de línea método ConstantMemberResolver::ConstantMemberResolver de
+- [x] NSC-IMPL-0181 — Mover fuera de línea método ConstantMemberResolver::ConstantMemberResolver de
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1992 (7 líneas) a un único .cpp, dejando la declaración intacta
   y conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0351 — Extraer el enum MethodScopeKind desde include/nativesharp/Frontend/ProjectMethodBodyModel.h:55-66
+- [x] NSC-IMPL-0351 — Extraer el enum MethodScopeKind desde include/nativesharp/Frontend/ProjectMethodBodyModel.h:55-66
   hacia include/nativesharp/Frontend/MethodScopeKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0352 — Extraer el struct MethodScope desde include/nativesharp/Frontend/ProjectMethodBodyModel.h:68-75
+- [x] NSC-IMPL-0352 — Extraer el struct MethodScope desde include/nativesharp/Frontend/ProjectMethodBodyModel.h:68-75
   hacia include/nativesharp/Frontend/MethodScope.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0353 — Extraer el struct MethodLocalSymbol desde
+- [x] NSC-IMPL-0353 — Extraer el struct MethodLocalSymbol desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:77-185 hacia include/nativesharp/Frontend/MethodLocalSymbol.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0354 — Extraer el enum MethodNameBindingKind desde
+- [x] NSC-IMPL-0354 — Extraer el enum MethodNameBindingKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:187-209 hacia
   include/nativesharp/Frontend/MethodNameBindingKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0355 — Extraer el struct MethodNameBinding desde
+- [x] NSC-IMPL-0355 — Extraer el struct MethodNameBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:211-226 hacia include/nativesharp/Frontend/MethodNameBinding.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0356 — Extraer el enum MethodShadowingKind desde
+- [x] NSC-IMPL-0356 — Extraer el enum MethodShadowingKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:228-234 hacia
   include/nativesharp/Frontend/MethodShadowingKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0357 — Extraer el struct MethodShadowingEvent desde
+- [x] NSC-IMPL-0357 — Extraer el struct MethodShadowingEvent desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:236-243 hacia
   include/nativesharp/Frontend/MethodShadowingEvent.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0358 — Extraer el enum OwnershipArgumentFit desde
+- [x] NSC-IMPL-0358 — Extraer el enum OwnershipArgumentFit desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:258-269 hacia
   include/nativesharp/Frontend/OwnershipArgumentFit.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0359 — Extraer el struct MethodAggregateInitializerEntryBinding desde
+- [x] NSC-IMPL-0359 — Extraer el struct MethodAggregateInitializerEntryBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:295-308 hacia
   include/nativesharp/Frontend/MethodAggregateInitializerEntryBinding.h; conservar texto, comentarios, orden de
   declaración y cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0360 — Extraer el struct MethodAggregateInitializerBinding desde
+- [x] NSC-IMPL-0360 — Extraer el struct MethodAggregateInitializerBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:310-316 hacia
   include/nativesharp/Frontend/MethodAggregateInitializerBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0361 — Extraer el struct MethodDeconstructionBinding desde
+- [x] NSC-IMPL-0361 — Extraer el struct MethodDeconstructionBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:322-329 hacia
   include/nativesharp/Frontend/MethodDeconstructionBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0362 — Extraer el struct MethodMatchExpressionBinding desde
+- [x] NSC-IMPL-0362 — Extraer el struct MethodMatchExpressionBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:331-345 hacia
   include/nativesharp/Frontend/MethodMatchExpressionBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0363 — Extraer el struct MethodLoopExpressionBinding desde
+- [x] NSC-IMPL-0363 — Extraer el struct MethodLoopExpressionBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:350-357 hacia
   include/nativesharp/Frontend/MethodLoopExpressionBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0364 — Extraer el struct MethodLoopBreakBinding desde
+- [x] NSC-IMPL-0364 — Extraer el struct MethodLoopBreakBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:359-365 hacia
   include/nativesharp/Frontend/MethodLoopBreakBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0365 — Extraer el enum MethodRuntimeTypeOperationKind desde
+- [x] NSC-IMPL-0365 — Extraer el enum MethodRuntimeTypeOperationKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:367-372 hacia
   include/nativesharp/Frontend/MethodRuntimeTypeOperationKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0366 — Extraer el struct MethodRuntimeTypeBinding desde
+- [x] NSC-IMPL-0366 — Extraer el struct MethodRuntimeTypeBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:374-384 hacia
   include/nativesharp/Frontend/MethodRuntimeTypeBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0367 — Extraer el enum MethodExceptionOperationKind desde
+- [x] NSC-IMPL-0367 — Extraer el enum MethodExceptionOperationKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:387-392 hacia
   include/nativesharp/Frontend/MethodExceptionOperationKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0368 — Extraer el struct MethodExceptionBinding desde
+- [x] NSC-IMPL-0368 — Extraer el struct MethodExceptionBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:394-410 hacia
   include/nativesharp/Frontend/MethodExceptionBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0369 — Extraer el enum MethodCleanupRegionKind desde
+- [x] NSC-IMPL-0369 — Extraer el enum MethodCleanupRegionKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:412-420 hacia
   include/nativesharp/Frontend/MethodCleanupRegionKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0370 — Extraer el struct MethodCleanupRegion desde
+- [x] NSC-IMPL-0370 — Extraer el struct MethodCleanupRegion desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:422-435 hacia
   include/nativesharp/Frontend/MethodCleanupRegion.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0371 — Extraer el struct MethodMoveBinding desde
+- [x] NSC-IMPL-0371 — Extraer el struct MethodMoveBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:439-479 hacia include/nativesharp/Frontend/MethodMoveBinding.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0372 — Extraer el enum MethodOwnershipTransferKind desde
+- [x] NSC-IMPL-0372 — Extraer el enum MethodOwnershipTransferKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:481-489 hacia
   include/nativesharp/Frontend/MethodOwnershipTransferKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0373 — Extraer el struct MethodOwnershipTransferBinding desde
+- [x] NSC-IMPL-0373 — Extraer el struct MethodOwnershipTransferBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:491-502 hacia
   include/nativesharp/Frontend/MethodOwnershipTransferBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0374 — Extraer el enum MethodBorrowKind desde
+- [x] NSC-IMPL-0374 — Extraer el enum MethodBorrowKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:504-518 hacia include/nativesharp/Frontend/MethodBorrowKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0375 — Extraer el struct MethodBorrowBinding desde
+- [x] NSC-IMPL-0375 — Extraer el struct MethodBorrowBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:520-531 hacia
   include/nativesharp/Frontend/MethodBorrowBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0376 — Extraer el enum MethodLocalBorrowSourceKind desde
+- [x] NSC-IMPL-0376 — Extraer el enum MethodLocalBorrowSourceKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:533-539 hacia
   include/nativesharp/Frontend/MethodLocalBorrowSourceKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0377 — Extraer el enum MethodBorrowState desde
+- [x] NSC-IMPL-0377 — Extraer el enum MethodBorrowState desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:541-546 hacia include/nativesharp/Frontend/MethodBorrowState.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0378 — Extraer el struct MethodLocalBorrowBinding desde
+- [x] NSC-IMPL-0378 — Extraer el struct MethodLocalBorrowBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:548-566 hacia
   include/nativesharp/Frontend/MethodLocalBorrowBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0379 — Extraer el struct MethodBorrowedParameterReassignmentBinding desde
+- [x] NSC-IMPL-0379 — Extraer el struct MethodBorrowedParameterReassignmentBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:568-575 hacia
   include/nativesharp/Frontend/MethodBorrowedParameterReassignmentBinding.h; conservar texto, comentarios, orden de
   declaración y cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0380 — Extraer el struct MethodUsingBinding desde
+- [x] NSC-IMPL-0380 — Extraer el struct MethodUsingBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:577-589 hacia include/nativesharp/Frontend/MethodUsingBinding.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0381 — Extraer el struct MethodSwitchSectionBinding desde
+- [x] NSC-IMPL-0381 — Extraer el struct MethodSwitchSectionBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:594-599 hacia
   include/nativesharp/Frontend/MethodSwitchSectionBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0382 — Extraer el struct MethodSwitchBinding desde
+- [x] NSC-IMPL-0382 — Extraer el struct MethodSwitchBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:601-608 hacia
   include/nativesharp/Frontend/MethodSwitchBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0383 — Extraer el enum MethodStructuredExitKind desde
+- [x] NSC-IMPL-0383 — Extraer el enum MethodStructuredExitKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:610-615 hacia
   include/nativesharp/Frontend/MethodStructuredExitKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0384 — Extraer el struct MethodStructuredExitBinding desde
+- [x] NSC-IMPL-0384 — Extraer el struct MethodStructuredExitBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:617-625 hacia
   include/nativesharp/Frontend/MethodStructuredExitBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0385 — Extraer el enum MethodCleanupContinuationKind desde
+- [x] NSC-IMPL-0385 — Extraer el enum MethodCleanupContinuationKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:627-634 hacia
   include/nativesharp/Frontend/MethodCleanupContinuationKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0386 — Extraer el struct MethodCleanupContinuation desde
+- [x] NSC-IMPL-0386 — Extraer el struct MethodCleanupContinuation desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:636-645 hacia
   include/nativesharp/Frontend/MethodCleanupContinuation.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0387 — Extraer el enum MethodCoreOperationKind desde
+- [x] NSC-IMPL-0387 — Extraer el enum MethodCoreOperationKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:647-1173 hacia
   include/nativesharp/Frontend/MethodCoreOperationKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0388 — Extraer el struct MethodCoreBinding desde
+- [x] NSC-IMPL-0388 — Extraer el struct MethodCoreBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1175-1234 hacia
   include/nativesharp/Frontend/MethodCoreBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0389 — Extraer el struct MethodVariableArrayIndexBinding desde
+- [x] NSC-IMPL-0389 — Extraer el struct MethodVariableArrayIndexBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1236-1240 hacia
   include/nativesharp/Frontend/MethodVariableArrayIndexBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0390 — Extraer el enum MethodLambdaCaptureKind desde
+- [x] NSC-IMPL-0390 — Extraer el enum MethodLambdaCaptureKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1244-1249 hacia
   include/nativesharp/Frontend/MethodLambdaCaptureKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0391 — Extraer el enum MethodLambdaCaptureSourceKind desde
+- [x] NSC-IMPL-0391 — Extraer el enum MethodLambdaCaptureSourceKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1251-1259 hacia
   include/nativesharp/Frontend/MethodLambdaCaptureSourceKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0392 — Extraer el struct MethodLambdaCapture desde
+- [x] NSC-IMPL-0392 — Extraer el struct MethodLambdaCapture desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1261-1277 hacia
   include/nativesharp/Frontend/MethodLambdaCapture.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0393 — Extraer el struct MethodLambdaValueBinding desde
+- [x] NSC-IMPL-0393 — Extraer el struct MethodLambdaValueBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1279-1289 hacia
   include/nativesharp/Frontend/MethodLambdaValueBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0394 — Extraer el struct MethodLambdaBinding desde
+- [x] NSC-IMPL-0394 — Extraer el struct MethodLambdaBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1291-1313 hacia
   include/nativesharp/Frontend/MethodLambdaBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0395 — Extraer el enum MethodDelegateOperationKind desde
+- [x] NSC-IMPL-0395 — Extraer el enum MethodDelegateOperationKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1315-1319 hacia
   include/nativesharp/Frontend/MethodDelegateOperationKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0396 — Extraer el struct MethodDelegateBinding desde
+- [x] NSC-IMPL-0396 — Extraer el struct MethodDelegateBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1321-1356 hacia
   include/nativesharp/Frontend/MethodDelegateBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0397 — Extraer el enum MethodEventOperationKind desde
+- [x] NSC-IMPL-0397 — Extraer el enum MethodEventOperationKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1358-1363 hacia
   include/nativesharp/Frontend/MethodEventOperationKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0398 — Extraer el struct MethodEventBinding desde
+- [x] NSC-IMPL-0398 — Extraer el struct MethodEventBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1365-1384 hacia
   include/nativesharp/Frontend/MethodEventBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0399 — Extraer el struct MethodOptionalCarrierBinding desde
+- [x] NSC-IMPL-0399 — Extraer el struct MethodOptionalCarrierBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1388-1397 hacia
   include/nativesharp/Frontend/MethodOptionalCarrierBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0400 — Extraer el struct MethodResultPropagationBinding desde
+- [x] NSC-IMPL-0400 — Extraer el struct MethodResultPropagationBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1402-1423 hacia
   include/nativesharp/Frontend/MethodResultPropagationBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0401 — Extraer el struct MethodRangeSliceBinding desde
+- [x] NSC-IMPL-0401 — Extraer el struct MethodRangeSliceBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1430-1452 hacia
   include/nativesharp/Frontend/MethodRangeSliceBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0402 — Extraer el enum MethodCallResolutionKind desde
+- [x] NSC-IMPL-0402 — Extraer el enum MethodCallResolutionKind desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1454-1459 hacia
   include/nativesharp/Frontend/MethodCallResolutionKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0403 — Extraer el struct MethodCallCandidate desde
+- [x] NSC-IMPL-0403 — Extraer el struct MethodCallCandidate desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1461-1483 hacia
   include/nativesharp/Frontend/MethodCallCandidate.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0404 — Extraer el struct MethodCallBinding desde
+- [x] NSC-IMPL-0404 — Extraer el struct MethodCallBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1485-1517 hacia
   include/nativesharp/Frontend/MethodCallBinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0405 — Extraer el struct NamespaceFunctionCallBinding desde
+- [x] NSC-IMPL-0405 — Extraer el struct NamespaceFunctionCallBinding desde
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1519-1542 hacia
   include/nativesharp/Frontend/NamespaceFunctionCallBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0406 — Conservar el class ProjectMethodBodyModel como tipo principal de
+- [x] NSC-IMPL-0406 — Conservar el class ProjectMethodBodyModel como tipo principal de
   include/nativesharp/Frontend/ProjectMethodBodyModel.h:1544-2729 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0853 — Descomponer ProjectMethodBodyModel::analyzeExpressionCore en
+- [x] NSC-IMPL-0853 — Descomponer ProjectMethodBodyModel::analyzeExpressionCore en
   src/Frontend/ProjectMethodBodyModel.cpp:1619 (3062 líneas ejecutables; 4311 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0855 — Descomponer ProjectMethodBodyModel::analyzeCall en src/Frontend/Bodies/CallAnalyzer.cpp:731 (2560
+- [x] NSC-IMPL-0855 — Descomponer ProjectMethodBodyModel::analyzeCall en src/Frontend/Bodies/CallAnalyzer.cpp:731 (2560
   líneas ejecutables; 3728 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control
   de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0857 — Descomponer ProjectMethodBodyModel::analyzeAssignment en
+- [x] NSC-IMPL-0857 — Descomponer ProjectMethodBodyModel::analyzeAssignment en
   src/Frontend/Bodies/AssignmentAnalyzer.cpp:58 (1341 líneas ejecutables; 1991 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0860 — Descomponer ProjectMethodBodyModel::analyzeBlock en src/Frontend/Bodies/StatementAnalyzer.cpp:120
+- [x] NSC-IMPL-0860 — Descomponer ProjectMethodBodyModel::analyzeBlock en src/Frontend/Bodies/StatementAnalyzer.cpp:120
   (1005 líneas ejecutables; 1438 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0862 — Descomponer ProjectMethodBodyModel::analyzeMember en
+- [x] NSC-IMPL-0862 — Descomponer ProjectMethodBodyModel::analyzeMember en
   src/Frontend/Bodies/MemberAccessAnalyzer.cpp:62 (842 líneas ejecutables; 1101 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0864 — Descomponer ProjectMethodBodyModel::analyzeVariable en
+- [x] NSC-IMPL-0864 — Descomponer ProjectMethodBodyModel::analyzeVariable en
   src/Frontend/Bodies/StatementAnalyzer.cpp:3221 (760 líneas ejecutables; 1109 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0868 — Descomponer ProjectMethodBodyModel::analyzeReturn en
+- [x] NSC-IMPL-0868 — Descomponer ProjectMethodBodyModel::analyzeReturn en
   src/Frontend/Bodies/StatementAnalyzer.cpp:4780 (569 líneas ejecutables; 792 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0870 — Descomponer ProjectMethodBodyModel::analyzeStatement en
+- [x] NSC-IMPL-0870 — Descomponer ProjectMethodBodyModel::analyzeStatement en
   src/Frontend/Bodies/StatementAnalyzer.cpp:1559 (528 líneas ejecutables; 750 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0871 — Descomponer ProjectMethodBodyModel::analyzeIdentifier en
+- [x] NSC-IMPL-0871 — Descomponer ProjectMethodBodyModel::analyzeIdentifier en
   src/Frontend/ProjectMethodBodyModel.cpp:5931 (521 líneas ejecutables; 693 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0876 — Descomponer ProjectMethodBodyModel::analyzeBinary en src/Frontend/ProjectMethodBodyModel.cpp:7019
+- [x] NSC-IMPL-0876 — Descomponer ProjectMethodBodyModel::analyzeBinary en src/Frontend/ProjectMethodBodyModel.cpp:7019
   (468 líneas ejecutables; 719 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0877 — Descomponer ProjectMethodBodyModel::build en src/Frontend/Bodies/MethodBodyBuildCoordinator.cpp:28
+- [x] NSC-IMPL-0877 — Descomponer ProjectMethodBodyModel::build en src/Frontend/Bodies/MethodBodyBuildCoordinator.cpp:28
   (409 líneas ejecutables; 584 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0879 — Descomponer ProjectMethodBodyModel::analyzeMatchExpression en
+- [x] NSC-IMPL-0879 — Descomponer ProjectMethodBodyModel::analyzeMatchExpression en
   src/Frontend/Bodies/PatternAnalyzer.cpp:157 (368 líneas ejecutables; 520 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0880 — Descomponer ProjectMethodBodyModel::bindAggregateInitializer en
+- [x] NSC-IMPL-0880 — Descomponer ProjectMethodBodyModel::bindAggregateInitializer en
   src/Frontend/Bodies/ConstructionAnalyzer.cpp:364 (361 líneas ejecutables; 482 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0882 — Descomponer ProjectMethodBodyModelDumper::dump en src/Frontend/ProjectMethodBodyModelDumper.cpp:23
+- [x] NSC-IMPL-0882 — Descomponer ProjectMethodBodyModelDumper::dump en src/Frontend/ProjectMethodBodyModelDumper.cpp:23
   (347 líneas ejecutables; 508 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0883 — Descomponer ProjectMethodBodyModel::collectLambdaCaptures en
+- [x] NSC-IMPL-0883 — Descomponer ProjectMethodBodyModel::collectLambdaCaptures en
   src/Frontend/ProjectMethodBodyModel.cpp:8342 (345 líneas ejecutables; 449 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0884 — Descomponer ProjectMethodBodyModel::analyzeNamespaceFunctionCall en
+- [x] NSC-IMPL-0884 — Descomponer ProjectMethodBodyModel::analyzeNamespaceFunctionCall en
   src/Frontend/Bodies/CallAnalyzer.cpp:297 (340 líneas ejecutables; 433 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0888 — Descomponer ProjectMethodBodyModel::bindLambdaToDelegate en
+- [x] NSC-IMPL-0888 — Descomponer ProjectMethodBodyModel::bindLambdaToDelegate en
   src/Frontend/ProjectMethodBodyModel.cpp:8792 (309 líneas ejecutables; 418 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0896 — Descomponer ProjectMethodBodyModel::isCompileTimeConstantExpression en
+- [x] NSC-IMPL-0896 — Descomponer ProjectMethodBodyModel::isCompileTimeConstantExpression en
   src/Frontend/ProjectMethodBodyModel.cpp:7819 (279 líneas ejecutables; 396 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0938 — Descomponer ProjectMethodBodyModel::analyzeUnary en src/Frontend/ProjectMethodBodyModel.cpp:6670
+- [x] NSC-IMPL-0938 — Descomponer ProjectMethodBodyModel::analyzeUnary en src/Frontend/ProjectMethodBodyModel.cpp:6670
   (180 líneas ejecutables; 300 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0939 — Descomponer methodCoreOperationKindName en src/Frontend/ProjectMethodBodyModel.cpp:10443 (179
+- [x] NSC-IMPL-0939 — Descomponer methodCoreOperationKindName en src/Frontend/ProjectMethodBodyModel.cpp:10443 (179
   líneas ejecutables; 184 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0941 — Descomponer ProjectMethodBodyModel::analyzeLoopExpression en
+- [x] NSC-IMPL-0941 — Descomponer ProjectMethodBodyModel::analyzeLoopExpression en
   src/Frontend/ProjectMethodBodyModel.cpp:1389 (172 líneas ejecutables; 228 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0942 — Descomponer ProjectMethodBodyModel::resolveSyntheticCall en
+- [x] NSC-IMPL-0942 — Descomponer ProjectMethodBodyModel::resolveSyntheticCall en
   src/Frontend/Bodies/CallAnalyzer.cpp:4460 (172 líneas ejecutables; 241 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0946 — Descomponer ProjectMethodBodyModel::storagePlaceKey en
+- [x] NSC-IMPL-0946 — Descomponer ProjectMethodBodyModel::storagePlaceKey en
   src/Frontend/Bodies/OwnershipAnalyzer.cpp:209 (165 líneas ejecutables; 251 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0955 — Descomponer ProjectMethodBodyModel::joinOwnershipFlow en
+- [x] NSC-IMPL-0955 — Descomponer ProjectMethodBodyModel::joinOwnershipFlow en
   src/Frontend/Bodies/BodyScopeAndFlow.cpp:301 (156 líneas ejecutables; 202 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0959 — Descomponer ProjectMethodBodyModel::finalizeEscapeSummaries en
+- [x] NSC-IMPL-0959 — Descomponer ProjectMethodBodyModel::finalizeEscapeSummaries en
   src/Frontend/Bodies/EscapeAnalyzer.cpp:96 (147 líneas ejecutables; 200 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0961 — Descomponer ProjectMethodBodyModel::analyzeFor en src/Frontend/Bodies/StatementAnalyzer.cpp:4331
+- [x] NSC-IMPL-0961 — Descomponer ProjectMethodBodyModel::analyzeFor en src/Frontend/Bodies/StatementAnalyzer.cpp:4331
   (145 líneas ejecutables; 211 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0970 — Descomponer ProjectMethodBodyModel::bindMethodGroupToDelegate en
+- [x] NSC-IMPL-0970 — Descomponer ProjectMethodBodyModel::bindMethodGroupToDelegate en
   src/Frontend/ProjectMethodBodyModel.cpp:9211 (138 líneas ejecutables; 186 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0974 — Descomponer ProjectMethodBodyModel::analyzeTry en src/Frontend/Bodies/StatementAnalyzer.cpp:2932
+- [x] NSC-IMPL-0974 — Descomponer ProjectMethodBodyModel::analyzeTry en src/Frontend/Bodies/StatementAnalyzer.cpp:2932
   (137 líneas ejecutables; 200 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1014 — Descomponer ProjectMethodBodyModel::beginUsing en src/Frontend/Bodies/StatementAnalyzer.cpp:2511
+- [x] NSC-IMPL-1014 — Descomponer ProjectMethodBodyModel::beginUsing en src/Frontend/Bodies/StatementAnalyzer.cpp:2511
   (106 líneas ejecutables; 150 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1015 — Descomponer ProjectMethodBodyModel::beginSwitch en src/Frontend/Bodies/StatementAnalyzer.cpp:5719
+- [x] NSC-IMPL-1015 — Descomponer ProjectMethodBodyModel::beginSwitch en src/Frontend/Bodies/StatementAnalyzer.cpp:5719
   (106 líneas ejecutables; 166 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1033 — Descomponer ProjectMethodBodyModel::analyzeLoopExit en
+- [x] NSC-IMPL-1033 — Descomponer ProjectMethodBodyModel::analyzeLoopExit en
   src/Frontend/Bodies/StatementAnalyzer.cpp:5936 (99 líneas ejecutables; 148 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1036 — Descomponer ProjectMethodBodyModel::prepareNextCatch en
+- [x] NSC-IMPL-1036 — Descomponer ProjectMethodBodyModel::prepareNextCatch en
   src/Frontend/Bodies/StatementAnalyzer.cpp:2741 (97 líneas ejecutables; 136 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1048 — Descomponer ProjectMethodBodyModel::resolveResultCarrier en
+- [x] NSC-IMPL-1048 — Descomponer ProjectMethodBodyModel::resolveResultCarrier en
   src/Frontend/ProjectMethodBodyModel.cpp:9654 (91 líneas ejecutables; 113 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1054 — Descomponer mapArgumentsToParameters en src/Frontend/Bodies/CallAnalyzer.cpp:60 (89 líneas
+- [x] NSC-IMPL-1054 — Descomponer mapArgumentsToParameters en src/Frontend/Bodies/CallAnalyzer.cpp:60 (89 líneas
   ejecutables; 143 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1055 — Descomponer ProjectMethodBodyModel::bindDeconstructionSource en
+- [x] NSC-IMPL-1055 — Descomponer ProjectMethodBodyModel::bindDeconstructionSource en
   src/Frontend/Bodies/PatternAnalyzer.cpp:41 (88 líneas ejecutables; 115 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1114 — Descomponer ProjectMethodBodyModel::beginForeach en src/Frontend/Bodies/StatementAnalyzer.cpp:4576
+- [x] NSC-IMPL-1114 — Descomponer ProjectMethodBodyModel::beginForeach en src/Frontend/Bodies/StatementAnalyzer.cpp:4576
   (76 líneas ejecutables; 151 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1121 — Descomponer ProjectMemberModel::scanMethodBody en src/Frontend/ProjectMemberModel.cpp:3723 (75
+- [x] NSC-IMPL-1121 — Descomponer ProjectMemberModel::scanMethodBody en src/Frontend/ProjectMemberModel.cpp:3723 (75
   líneas ejecutables; 115 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1137 — Descomponer ProjectMethodBodyModel::aggregateSupportsSynthesizedMember en
+- [x] NSC-IMPL-1137 — Descomponer ProjectMethodBodyModel::aggregateSupportsSynthesizedMember en
   src/Frontend/Bodies/ConstructionAnalyzer.cpp:151 (72 líneas ejecutables; 110 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1161 — Descomponer ProjectMethodBodyModel::restoreOwnershipFlow en
+- [x] NSC-IMPL-1161 — Descomponer ProjectMethodBodyModel::restoreOwnershipFlow en
   src/Frontend/Bodies/BodyScopeAndFlow.cpp:187 (67 líneas ejecutables; 93 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1163 — Descomponer ProjectMethodBodyModel::placesOverlap en src/Frontend/Bodies/OwnershipAnalyzer.cpp:469
+- [x] NSC-IMPL-1163 — Descomponer ProjectMethodBodyModel::placesOverlap en src/Frontend/Bodies/OwnershipAnalyzer.cpp:469
   (66 líneas ejecutables; 90 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control
   de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1206 — Convertir ProjectMethodBodyModel en fachada con colaboradores por familia, forwarders de una línea
+- [x] NSC-IMPL-1206 — Convertir ProjectMethodBodyModel en fachada con colaboradores por familia, forwarders de una línea
   y todos sus campos en el dueño.
+
+Nota de cierre REF-04: por instrucción explícita del propietario, NSC-IMPL-1206 se materializó como unidades de
+traducción por familia de métodos de `ProjectMethodBodyModel`, sin introducir clases conceptuales nuevas ni mover
+campos. La auditoría estática cubrió 828 métodos del modelo, 952 definiciones calificadas, 142 archivos, preservación
+de 2,828 comentarios, diagnósticos ruta por ruta, un tipo por header y cero tipos definidos en `.cpp`; todas las
+funciones quedaron en ≤60 líneas ejecutables y las líneas nuevas en ≤120 columnas. No se ejecutaron compilación,
+pruebas, suites ni baseline por instrucción del propietario.
 
 ### Commit REF-05 — HIR, MIR, CFG y dominancia — 0/97
 

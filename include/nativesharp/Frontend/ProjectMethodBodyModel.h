@@ -14,6 +14,61 @@
 #include "nativesharp/Frontend/ProjectCallableAnalysisResult.h"
 #include "nativesharp/Frontend/ProjectCallableAnalysisStatistics.h"
 #include "nativesharp/Frontend/MethodExpressionTypeBinding.h"
+#include "nativesharp/Frontend/MethodScopeKind.h"
+#include "nativesharp/Frontend/MethodScope.h"
+#include "nativesharp/Frontend/MethodLocalSymbol.h"
+#include "nativesharp/Frontend/MethodNameBindingKind.h"
+#include "nativesharp/Frontend/MethodNameBinding.h"
+#include "nativesharp/Frontend/MethodShadowingKind.h"
+#include "nativesharp/Frontend/MethodShadowingEvent.h"
+#include "nativesharp/Frontend/OwnershipArgumentFit.h"
+#include "nativesharp/Frontend/MethodAggregateInitializerEntryBinding.h"
+#include "nativesharp/Frontend/MethodAggregateInitializerBinding.h"
+#include "nativesharp/Frontend/MethodDeconstructionBinding.h"
+#include "nativesharp/Frontend/MethodMatchExpressionBinding.h"
+#include "nativesharp/Frontend/MethodLoopExpressionBinding.h"
+#include "nativesharp/Frontend/MethodLoopBreakBinding.h"
+#include "nativesharp/Frontend/MethodRuntimeTypeOperationKind.h"
+#include "nativesharp/Frontend/MethodRuntimeTypeBinding.h"
+#include "nativesharp/Frontend/MethodExceptionOperationKind.h"
+#include "nativesharp/Frontend/MethodExceptionBinding.h"
+#include "nativesharp/Frontend/MethodCleanupRegionKind.h"
+#include "nativesharp/Frontend/MethodCleanupRegion.h"
+#include "nativesharp/Frontend/MethodMoveBinding.h"
+#include "nativesharp/Frontend/MethodOwnershipTransferKind.h"
+#include "nativesharp/Frontend/MethodOwnershipTransferBinding.h"
+#include "nativesharp/Frontend/MethodBorrowKind.h"
+#include "nativesharp/Frontend/MethodBorrowBinding.h"
+#include "nativesharp/Frontend/MethodLocalBorrowSourceKind.h"
+#include "nativesharp/Frontend/MethodBorrowState.h"
+#include "nativesharp/Frontend/MethodLocalBorrowBinding.h"
+#include "nativesharp/Frontend/MethodBorrowedParameterReassignmentBinding.h"
+#include "nativesharp/Frontend/MethodUsingBinding.h"
+#include "nativesharp/Frontend/MethodSwitchSectionBinding.h"
+#include "nativesharp/Frontend/MethodSwitchBinding.h"
+#include "nativesharp/Frontend/MethodStructuredExitKind.h"
+#include "nativesharp/Frontend/MethodStructuredExitBinding.h"
+#include "nativesharp/Frontend/MethodCleanupContinuationKind.h"
+#include "nativesharp/Frontend/MethodCleanupContinuation.h"
+#include "nativesharp/Frontend/MethodCoreOperationKind.h"
+#include "nativesharp/Frontend/MethodCoreBinding.h"
+#include "nativesharp/Frontend/MethodVariableArrayIndexBinding.h"
+#include "nativesharp/Frontend/MethodLambdaCaptureKind.h"
+#include "nativesharp/Frontend/MethodLambdaCaptureSourceKind.h"
+#include "nativesharp/Frontend/MethodLambdaCapture.h"
+#include "nativesharp/Frontend/MethodLambdaValueBinding.h"
+#include "nativesharp/Frontend/MethodLambdaBinding.h"
+#include "nativesharp/Frontend/MethodDelegateOperationKind.h"
+#include "nativesharp/Frontend/MethodDelegateBinding.h"
+#include "nativesharp/Frontend/MethodEventOperationKind.h"
+#include "nativesharp/Frontend/MethodEventBinding.h"
+#include "nativesharp/Frontend/MethodOptionalCarrierBinding.h"
+#include "nativesharp/Frontend/MethodResultPropagationBinding.h"
+#include "nativesharp/Frontend/MethodRangeSliceBinding.h"
+#include "nativesharp/Frontend/MethodCallResolutionKind.h"
+#include "nativesharp/Frontend/MethodCallCandidate.h"
+#include "nativesharp/Frontend/MethodCallBinding.h"
+#include "nativesharp/Frontend/NamespaceFunctionCallBinding.h"
 #include "nativesharp/Frontend/MethodEscapeOrigin.h"
 #include "nativesharp/Frontend/OwnershipFlowSnapshot.h"
 #include "nativesharp/Frontend/ProjectConstructionSite.h"
@@ -22,6 +77,7 @@
 #include "nativesharp/Frontend/ProjectMethodBodyBuildOptions.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/CallableSemantics.h"
+#include "nativesharp/Language/MatchArmCoverage.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
 
 #include <cstddef>
@@ -34,6 +90,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <variant>
 #include <vector>
 #include <array>
 
@@ -44,6 +101,9 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+struct PatternWork;
+class ProjectConversionClassifier;
+
 struct ProjectOopHirModelTestAccess;
 
 class ProjectGenericConstraintModel;
@@ -52,195 +112,15 @@ class ProjectReferenceEscapeEvaluator;
 class ProjectCallableResultMerger;
 class ProjectCallableWaveReducer;
 
-enum class MethodScopeKind
-{
-    Method,
-    Constructor,
-    Destructor,
-    FieldInitializer,
-    Block,
-    For,
-    Foreach,
-    Catch,
-    Using
-};
 
-struct MethodScope final
-{
-    MethodScopeKind kind = MethodScopeKind::Method;
-    std::size_t methodMemberOrdinal = 0;
-    std::optional<std::size_t> parentScopeOrdinal;
-    std::size_t depth = 0;
-    std::vector<std::size_t> localOrdinals;
-};
 
-struct MethodLocalSymbol final
-{
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::size_t declarationOrdinal = 0;
-    FileId fileId;
-    SourceRange range;
-    const ast::AstNode* syntax = nullptr;
-    std::string name;
-    std::string typeKey;
-    // NativeSharp 3.0.4 T01-F06. Static locals retain lexical name lookup but their storage and
-    // lifetime belong to the defining module rather than to an invocation frame.
-    bool isStatic = false;
-    // NativeSharp 2.0 item 269: `T[length] local;` is stack storage whose extent is
-    // evaluated when the declaration executes.  Downstream expression typing uses the
-    // pointer-shaped `typeKey`, while these two fields preserve the array declaration's
-    // element type and count expression so HIR can synthesize the existing stack-allocation
-    // operation without changing fields, parameters, or return types.
-    bool isVariableLengthArray = false;
-    std::string variableLengthArrayElementTypeKey;
-    const ast::AstNode* variableLengthArrayCountSyntax = nullptr;
-    // Source-order dimensions for multidimensional VLAs plus the compiler-generated locals
-    // that snapshot each extent exactly once at the declaration.
-    std::vector<const ast::AstNode*> variableLengthArrayExtentSyntaxes;
-    std::vector<std::string> variableLengthArrayExtentTypeKeys;
-    std::vector<std::size_t> variableLengthArrayExtentLocalOrdinals;
-    // Set on the VLA itself and on local pointer aliases derived from it. This provenance is
-    // consumed by return, assignment, and lambda-capture checks so frame storage cannot escape.
-    std::optional<std::size_t> variableLengthArrayRootLocalOrdinal;
-    // NativeSharp 2.0 item 312. typeKey is the logical element type; the physical local slot
-    // stores an address to another exact-type, mutable location.
-    bool isReference = false;
-    // Pattern `ref` and `ref mut` share the physical alias representation, but only the latter
-    // grants write capability. Preserve that distinction after the parser-owned lowering so HIR,
-    // MIR, diagnostics and cache identity never have to infer it from source text.
-    bool referenceMutable = false;
-    // Item 315. A ref local keeps the escape origin of the address it aliases. This closes
-    // transitive escapes (`ref alias = ref local; return ref alias`) without guessing again at
-    // the return site and also propagates through reference-returning calls.
-    MethodEscapeOrigin referenceEscapeOrigin;
-    std::optional<std::size_t> referenceLifetimeScopeOrdinal;
-    // NativeSharp 3.0 T06-F03. Mutable reference locals are exclusive borrows of a canonical
-    // storage place.  The key is rooted in a local/parameter (L#/P#) and contains field/index
-    // projections.  "U" represents an origin that cannot be proven and therefore overlaps
-    // every other live mutable borrow; empty is reserved for non-reference locals.
-    std::string referencePlaceKey;
-    // A reborrow does not create a second independent alias.  It temporarily suspends this
-    // source reference while the child reference is live, and preserves the original place.
-    std::optional<std::size_t> referenceReborrowSourceLocalOrdinal;
-    bool isConst = false;
-    // T42: volatile local storage uses the same observable-load/store contract as volatile
-    // fields. It is not atomic and supplies no inter-thread ordering.
-    bool isVolatile = false;
-    bool onePastEndPointer = false;
-    bool pointerPointeeReadonly = false;
-    bool pointerNullable = true;
-    bool pointerHasProvenance = true;
-    std::size_t pointerKnownAlignment = 1;
-    unsigned pointerAddressSpace = 0;
-    // El VALOR de un local `const` de tipo entero, plegado al declararlo.
-    //
-    // POR QUE SE GUARDA AQUI y no se recalcula al usarlo: la expresion que lo inicializa esta en
-    // el sitio de la declaracion y en ningun otro. Cuando alguien escribe `x / cero`, lo unico
-    // que tiene a mano es el nombre.
-    //
-    // Y POR QUE NO VIAJA EN `ExpressionResult::integerConstant`, que seria lo obvio: ese campo lo
-    // consume `commonNumericType` para decidir el tipo comun de una operacion, asi que darle un
-    // valor a cada `const` local cambiaria la PROMOCION de expresiones que hoy compilan. Esto se
-    // usa para una pregunta concreta --¿el divisor es cero?-- y no para tipar nada.
-    std::optional<std::int64_t> constantIntegerValue;
-    bool isRaii = false;
-    // NS304-T13-F03: `scope T x = new T(...)` — the object's physical storage lives in the current
-    // frame (stack), never heap; the destructor runs once at lexical-scope exit and never calls the
-    // heap deallocator. Escape (return/capture/field/static) is rejected by Sema.
-    bool isScope = false;
-    // This local stores a value type that did not opt into Copy. It shares the existing
-    // path-sensitive moved-from sets with RAII owners, but it does not acquire a cleanup region
-    // merely for being move-only.
-    bool isMoveOnly = false;
-    // T08-F03. Present for locals initialized from an explicit-capture closure. The delegate
-    // carrier stays ABI-compatible; this semantic capability controls invocation rules.
-    std::optional<language::CallableTrait> callableTrait;
-    // T06-F02. A value local with an owned field or a (possibly nested) custom destructor owns
-    // cleanup despite not being a reference-shaped `raii` local.
-    bool requiresValueDrop = false;
-    // NativeSharp 3.0 T06-F06. A `pin raii` owner keeps its ownership slot and object identity
-    // fixed until lexical cleanup. It may be borrowed and destroyed in place, but never moved or
-    // replaced after initialization.
-    bool isPinned = false;
-    sema::OwnershipKind ownership = sema::OwnershipKind::None;
-    // Item 320. A placement result owns object destruction while borrowing supplied bytes.
-    sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
-    sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
-    std::optional<std::size_t> localBorrowBindingOrdinal;
-    std::optional<std::size_t> lambdaOrdinal;
-    std::optional<std::size_t> lambdaParameterOrdinal;
-    // SHR-013 "vistas y tiempo de vida". Solo para un local de tipo vista: el NOMBRE del local
-    // de este mismo metodo del que la vista toma prestado, si lo hay. Vacio quiere decir que la
-    // vista se enraiza en algo que sobrevive a la llamada -- un parametro, un campo, un literal,
-    // o el resultado de una llamada que no menciono ningun local.
-    //
-    // Se calcula al declarar y se vuelve a calcular en cada asignacion, porque `v = otra;`
-    // cambia de que presta `v`. Es un ANALISIS SINTACTICO deliberadamente conservador: mira que
-    // nombres aparecen en la expresion, no a donde apunta el puntero en ejecucion. Un analisis
-    // exacto necesitaria parametros de tiempo de vida en las firmas, que es otro problema y no
-    // el de este bloque; este contesta la pregunta que el bloque plantea -- devolver una vista
-    // de un local -- y se equivoca siempre del lado de rechazar, nunca del de aceptar.
-    std::string viewRootLocalName;
-};
 
-enum class MethodNameBindingKind
-{
-    Parameter,
-    Local,
-    ImplicitField,
-    ImplicitMethodGroup,
-    ThisReference,
-    BaseReference,
-    ExplicitThisField,
-    ExplicitThisMethodGroup,
-    ExplicitObjectField,
-    ExplicitObjectMethodGroup,
-    ExplicitBaseField,
-    ExplicitBaseMethodGroup,
-    StaticField,
-    NamespaceState,
-    StaticMethodGroup,
-    ImplicitEvent,
-    ExplicitThisEvent,
-    ExplicitObjectEvent,
-    StaticEvent,
-    TypeReference
-};
 
-struct MethodNameBinding final
-{
-    MethodNameBindingKind kind = MethodNameBindingKind::Local;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string name;
-    std::string typeKey;
-    std::optional<std::size_t> localOrdinal;
-    std::optional<std::size_t> parameterOrdinal;
-    std::vector<std::size_t> candidateMemberOrdinals;
-    const ast::AstNode* receiverSyntax = nullptr;
-    std::string receiverTypeKey;
-    std::optional<std::size_t> receiverTypeOrdinal;
-    bool baseReceiver = false;
-};
 
-enum class MethodShadowingKind
-{
-    ParameterShadowsMember,
-    LocalShadowsMember,
-    LocalShadowsParameter,
-    LocalShadowsLocal
-};
 
-struct MethodShadowingEvent final
-{
-    MethodShadowingKind kind = MethodShadowingKind::LocalShadowsLocal;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string name;
-    SourceRange range;
-};
+
+
+
 
 // NSC-LIMIT-010. Por que ESTE veredicto es un tipo y no un `bool`.
 //
@@ -255,18 +135,7 @@ struct MethodShadowingEvent final
 // calificador», y con un booleano cada llamador tendria que volver a deducir cual de los tres fue
 // -- o sea, una segunda copia de la misma regla, que es exactamente el defecto que se esta
 // cerrando.
-enum class OwnershipArgumentFit
-{
-    Ok,
-    // El parametro es `owned` y el argumento no transfiere: falta `move(...)`, o el valor es
-    // prestado y por tanto no es suyo para darlo.
-    OwnedRequiresTransfer,
-    // El parametro es `borrowed` y el argumento no es una fuente prestable comprobada.
-    BorrowedRequiresCheckedSource,
-    // El parametro no lleva calificador y el argumento trae un contrato: transferirlo lo
-    // perderia en silencio.
-    UnqualifiedRejectsOwnership
-};
+
 
 // La regla, en un solo sitio y sin dependencias del modelo.
 //
@@ -292,1254 +161,124 @@ std::string ownershipArgumentFitMessage(
     std::string_view parameterName,
     std::string_view parameterTypeKey);
 
-struct MethodAggregateInitializerEntryBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    bool spread = false;
-    // T02-F06: a nontrivial aggregate may fill its unwritten fields from
-    // `..move(source)`. The source stays alive in a partially moved state; these ordinals name
-    // the root whose transferred fields must be emptied and rejected on subsequent reads.
-    bool moveSpread = false;
-    std::optional<std::size_t> moveSourceLocalOrdinal;
-    std::optional<std::size_t> moveSourceParameterOrdinal;
-    // A value entry has exactly one target. A spread owns every still-unwritten target and is
-    // evaluated exactly once at its textual position.
-    std::vector<std::size_t> targetElementOrdinals;
-};
 
-struct MethodAggregateInitializerBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::string targetTypeKey;
-    bool generalized = false;
-    std::vector<MethodAggregateInitializerEntryBinding> entries;
-};
+
+
 
 // NativeSharp 3.0 T02-F03. A deconstruction always consumes one tuple carrier. For a native
 // tuple the carrier is the source expression itself; for a nominal source it is the result of the
 // statically selected, parameterless instance Deconstruct() method recorded here. Keeping this
 // decision in sema prevents HIR from repeating member lookup or changing overload/access rules.
-struct MethodDeconstructionBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    const ast::AstNode* sourceSyntax = nullptr;
-    std::string sourceTypeKey;
-    std::string tupleTypeKey;
-    std::optional<std::size_t> selectedMemberOrdinal;
-};
 
-struct MethodMatchExpressionBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::string governingTypeKey;
-    std::string resultTypeKey;
-    bool referenceResult = false;
-    // True when at least one arm binds through ref/ref mut. The governing expression must then
-    // retain its original address instead of being copied into the match snapshot.
-    bool governingReference = false;
-    // Present only when every arm is an unguarded whole-case variant pattern. The backend may
-    // then load the compiler-owned tag once and emit an LLVM switch instead of repeated IsCase.
-    std::optional<std::size_t> switchTagMemberOrdinal;
-    std::vector<std::vector<std::int64_t>> armTags;
-    std::vector<ProjectImplicitConversion> armConversions;
-};
+
+
 
 // T07-F05. One semantic contract for the value-producing loop and one for each break that exits
 // it. Keeping the conversion on the break syntax means HIR never repeats type unification and a
 // labelled break can target an outer loop without relying on the lowering stack's top frame.
-struct MethodLoopExpressionBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string label;
-    std::string resultTypeKey;
-};
-
-struct MethodLoopBreakBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    const ast::AstNode* targetLoopSyntax = nullptr;
-    std::string resultTypeKey;
-    ProjectImplicitConversion conversion;
-};
-
-enum class MethodRuntimeTypeOperationKind
-{
-    TypeTest,
-    SafeCast,
-    CheckedCast
-};
-
-struct MethodRuntimeTypeBinding final
-{
-    MethodRuntimeTypeOperationKind kind = MethodRuntimeTypeOperationKind::TypeTest;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string sourceTypeKey;
-    std::string targetTypeKey;
-    std::size_t targetTypeOrdinal = 0;
-    bool targetIsInterface = false;
-};
-
-
-enum class MethodExceptionOperationKind
-{
-    Catch,
-    Throw,
-    Rethrow
-};
-
-struct MethodExceptionBinding final
-{
-    MethodExceptionOperationKind kind = MethodExceptionOperationKind::Throw;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string exceptionTypeKey;
-    std::optional<std::size_t> exceptionTypeOrdinal;
-    bool catchAll = false;
-    bool hasFilter = false;
-    bool filterAlwaysTrue = false;
-    // NativeSharp 3.0 T07-F03. Declared errors from the protected region that can reach this
-    // source-ordered type/wildcard pattern. `exhaustive` means this clause completes coverage of
-    // every declared error still possible at the try boundary.
-    std::vector<std::string> matchedErrorTypeKeys;
-    bool exhaustive = false;
-};
-
-enum class MethodCleanupRegionKind
-{
-    Finally,
-    UsingDispose,
-    RaiiDestroy,
-    OwnedParameterDestroy,
-    ValueLocalDrop,
-    ValueParameterDrop
-};
-
-struct MethodCleanupRegion final
-{
-    MethodCleanupRegionKind kind = MethodCleanupRegionKind::Finally;
-    const ast::AstNode* syntax = nullptr;
-    const ast::AstNode* cleanupSyntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t ownerScopeOrdinal = 0;
-    std::optional<std::size_t> parentCleanupRegionOrdinal;
-    std::optional<std::size_t> resourceLocalOrdinal;
-    std::optional<std::size_t> resourceParameterOrdinal;
-    std::optional<std::size_t> disposeContractMemberOrdinal;
-    std::optional<std::size_t> disposeImplementationMemberOrdinal;
-    std::size_t depth = 0;
-};
 
 
 
-struct MethodMoveBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::optional<std::size_t> sourceLocalOrdinal;
-    std::optional<std::size_t> sourceParameterOrdinal;
-    // A partial move keeps the containing owner alive while emptying one of its fields or
-    // elements.  Retain that root owner separately from the moved slot so semantic validation
-    // can enforce borrow exclusivity and dumps can make the decision observable.
-    std::optional<std::size_t> partialSourceOwnerLocalOrdinal;
-    std::optional<std::size_t> partialSourceOwnerParameterOrdinal;
-    // Canonical source-level projection from the named root, e.g. {"Header", "Token"} for
-    // `move(packet.Header.Token)`. Empty for whole-value moves and runtime-indexed elements.
-    std::vector<std::string> partialFieldPath;
-    std::string typeKey;
-    // Stage 52: move(...) also accepts a native-array element (e.g. "move(items[i])"),
-    // needed by generic collections (Queue<T>.Dequeue(), Stack<T>.Pop(), ...) to extract an
-    // owned element out of backing storage. When true, sourceLocalOrdinal/sourceParameterOrdinal
-    // are both unset -- HIR lowering re-derives the array/index sub-expressions directly from
-    // `syntax->first()` (the IndexExpression being moved).
-    //
-    // `clearSourceStorage` records whether the SOURCE actually needs load+empty-store treatment.
-    // Reference slots use null and move-only value aggregates use their zero/empty state; Copy
-    // scalars degrade to a harmless plain read.
-    bool sourceIsArrayElement = false;
-    // Bloque 1: move(...) also accepts a direct `owned` field access -- `move(holder.slot)`, or
-    // `move(slot)` through the implicit this. Same contract as the array-element case: both
-    // source ordinals stay unset, HIR lowers the field access as an address and pairs the load
-    // with a null-store into the vacated slot, so the container's own discharge (its destruction
-    // entry, or a later overwrite's release) sees an empty slot instead of double-freeing the
-    // value that was just moved out.
-    bool sourceIsOwnedField = false;
-    // NS304-T07-F04: `move(it.Current)` transfers a move-only item out of the iterator's item slot
-    // exactly once. The HIR lowers it as a load of item@16 + a clear-store (no double drop).
-    bool sourceIsIteratorCurrent = false;
-    // The source storage must be cleared after the load whenever its bits carry a drop
-    // obligation. Reference slots use null as their optimized drop flag; move-only value
-    // aggregates are zeroed so every nested owning slot becomes empty as well.
-    bool clearSourceStorage = false;
-};
 
-enum class MethodOwnershipTransferKind
-{
-    MoveLocalToOwnedParameter,
-    MoveParameterToOwnedParameter,
-    OwnedReturnToOwnedParameter,
-    MoveLocalToOwnedReturn,
-    MoveParameterToOwnedReturn,
-    OwnedReturnForward
-};
 
-struct MethodOwnershipTransferBinding final
-{
-    MethodOwnershipTransferKind kind = MethodOwnershipTransferKind::MoveLocalToOwnedParameter;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::optional<std::size_t> sourceLocalOrdinal;
-    std::optional<std::size_t> sourceParameterOrdinal;
-    std::optional<std::size_t> targetMemberOrdinal;
-    std::optional<std::size_t> targetParameterOrdinal;
-    std::string typeKey;
-};
 
-enum class MethodBorrowKind
-{
-    OwnerLocalToBorrowedParameter,
-    OwnedParameterToBorrowedParameter,
-    BorrowedParameterToBorrowedParameter,
-    BorrowedLocalToBorrowedParameter,
-    BorrowedReturnToBorrowedParameter,
-    // NSC-LIMIT-021. A fresh owned result may be lent for one full expression. Unlike a
-    // BorrowedReturn, this value still needs an owner: HIR materializes a hidden RAII slot and
-    // destroys it after the containing call, including the exceptional path.
-    FreshOwnedTemporaryToBorrowedParameter,
-    BorrowedParameterToBorrowedReturn,
-    BorrowedLocalToBorrowedReturn,
-    BorrowedReturnForward
-};
 
-struct MethodBorrowBinding final
-{
-    MethodBorrowKind kind = MethodBorrowKind::OwnerLocalToBorrowedParameter;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::optional<std::size_t> sourceLocalOrdinal;
-    std::optional<std::size_t> sourceParameterOrdinal;
-    std::optional<std::size_t> targetMemberOrdinal;
-    std::optional<std::size_t> targetParameterOrdinal;
-    std::string typeKey;
-};
 
-enum class MethodLocalBorrowSourceKind
-{
-    OwnerLocal,
-    OwnedParameter,
-    BorrowedParameter,
-    BorrowedLocal
-};
 
-enum class MethodBorrowState
-{
-    Valid,
-    Invalidated,
-    MaybeInvalid
-};
 
-struct MethodLocalBorrowBinding final
-{
-    MethodLocalBorrowSourceKind sourceKind = MethodLocalBorrowSourceKind::OwnerLocal;
-    MethodBorrowState state = MethodBorrowState::Valid;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t localOrdinal = 0;
-    std::size_t creationScopeOrdinal = 0;
-    std::size_t maximumValidScopeOrdinal = 0;
-    std::optional<std::size_t> sourceLocalOrdinal;
-    std::optional<std::size_t> sourceParameterOrdinal;
-    std::optional<std::size_t> sourceOwnerLocalOrdinal;
-    std::optional<std::size_t> sourceOwnerParameterOrdinal;
-    // T41: a borrowed local may be reassigned along different control-flow paths.  Keep every
-    // possible owner root; replacing the old root would make a later move/return check unsound.
-    std::vector<std::size_t> possibleSourceOwnerLocalOrdinals;
-    std::vector<std::size_t> possibleSourceOwnerParameterOrdinals;
-    std::string typeKey;
-};
 
-struct MethodBorrowedParameterReassignmentBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t parameterOrdinal = 0;
-    std::vector<std::size_t> possibleSourceOwnerLocalOrdinals;
-    std::vector<std::size_t> possibleSourceOwnerParameterOrdinals;
-};
 
-struct MethodUsingBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::size_t resourceLocalOrdinal = 0;
-    std::string resourceTypeKey;
-    std::size_t resourceTypeOrdinal = 0;
-    std::size_t disposableTypeOrdinal = 0;
-    std::size_t disposeContractMemberOrdinal = 0;
-    std::optional<std::size_t> disposeImplementationMemberOrdinal;
-    bool interfaceDispatch = false;
-};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // `switch` / `case`. The body model is where a case label stops being an expression: it is folded
 // to an integer, checked against the governing type, and checked for duplicates. Everything
 // downstream reads these numbers, so no later pass has to know how to evaluate a constant.
-struct MethodSwitchSectionBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::vector<std::int64_t> labelValues;
-    bool hasDefault = false;
-};
-
-struct MethodSwitchBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string governingTypeKey;
-    std::vector<MethodSwitchSectionBinding> sections;
-};
-
-enum class MethodStructuredExitKind
-{
-    Return,
-    Break,
-    Continue
-};
-
-struct MethodStructuredExitBinding final
-{
-    MethodStructuredExitKind kind = MethodStructuredExitKind::Return;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t sourceScopeOrdinal = 0;
-    std::optional<std::size_t> targetScopeOrdinal;
-    std::vector<std::size_t> cleanupRegionOrdinals;
-};
-
-enum class MethodCleanupContinuationKind
-{
-    Normal,
-    Return,
-    Break,
-    Continue,
-    Exception
-};
-
-struct MethodCleanupContinuation final
-{
-    MethodCleanupContinuationKind kind = MethodCleanupContinuationKind::Normal;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t sourceScopeOrdinal = 0;
-    std::size_t cleanupRegionOrdinal = 0;
-    std::optional<std::size_t> nextCleanupRegionOrdinal;
-    std::optional<std::size_t> targetScopeOrdinal;
-};
-
-enum class MethodCoreOperationKind
-{
-    ArrayAllocation,
-    RangeArrayAllocation,
-    ArrayLength,
-    // NativeSharp 3.0 T31. Inline fixed arrays do not carry a runtime header. Their Length is
-    // part of the canonical type key and therefore folds to a compile-time integer constant.
-    FixedArrayLength,
-    ArrayElement,
-    RangeArrayElement,
-    // NS304-T10-F05: `receiver?[index]` sobre array nativo — mismo element-load que ArrayElement
-    // pero con null-check del receptor (resultado nullable).
-    NullConditionalArrayElement,
-    // C2.1 "fixed arrays": indexing something whose storage is INLINE and unmanaged -- a fixed
-    // array field/local (`float[4]`) or a raw pointer (`int*`). One operation kind covers both
-    // because the address arithmetic is identical (base + index * elementSize) and neither has a
-    // length header to bounds-check against. This is the raw tier, exactly like `*p` and `&x`: no
-    // bounds check, no null check, C semantics, by design -- it is the shape C structs and C APIs
-    // are written in. `ArrayElement` above stays what it always was: the MANAGED, heap-allocated,
-    // length-prefixed, bounds-checked native array.
-    RawElement,
-    StringLiteral,
-    // NS304-T10-F01: `u8"..."` — a typed UTF-8 literal that lowers to ReadOnlySpan<byte> (static
-    // bytes + count), allocation-free.
-    Utf8StringLiteral,
-    // NS304-T10-F03: an interpolated string targeting a handler type lowers to
-    // AppendLiteral(parts) + AppendFormatted(holes) + Finish(), with no temporary concatenation.
-    InterpolationHandler,
-    StringLength,
-    StringElement,
-    StringConcat,
-    StringEquals,
-    StringSubstring,
-    // SHR-010 "StringView". La DIRECCION del caracter i-esimo de una cadena, no su valor.
-    //
-    // Por que hace falta una operacion nucleo y no basta `&texto[i]`: el operador `&` de este
-    // lenguaje exige un local, un parametro o un campo direccionable, y el elemento de una
-    // cadena no es ninguna de las tres -- una cadena nativa es longitud + bytes detras de una
-    // referencia, y sus elementos son de solo lectura a proposito (el HIR rechaza
-    // `texto[i] = c` con "Stage 41 strings are immutable"). Abrir `&` para cadenas habria dado
-    // un puntero ESCRIBIBLE a algo declarado inmutable; una operacion con nombre no.
-    //
-    // Y es lo que convierte "sin copiar" en una MEDICION en vez de una afirmacion: con esto una
-    // fixture puede comprobar que el puntero de la vista cae DENTRO del buffer de la cadena
-    // original, que es la unica prueba de que no hubo copia.
-    StringCharacterPointer,
-    StringFromCharArray,
-    // NS304-T03-F03 "list patterns sobre colecciones". Rest-capture `.. var x` sobre un
-    // receptor SIN `Slice(int,int)` publico: el compilador sintetiza una vista prestada sin
-    // copia ni heap. `StringViewFromString` produce `StringView` (no generico); los demas
-    // producen `Span<T>`/`ReadOnlySpan<T>` (cerrado). El receptor + start + length viajan como
-    // operandos del nodo; el LLVM emite `{ data, count }` reutilizando la GEP de
-    // StringCharacterPointer / RawElement y la longitud ya disponible.
-    StringViewFromString,
-    SpanFromArray,
-    ReadOnlySpanFromArray,
-    SpanFromFixedArray,
-    ReadOnlySpanFromFixedArray,
-    // SHR-022. Las cuatro son LA MISMA operacion con dos bits distintos: a que descriptor se
-    // escribe (salida estandar o error estandar) y si se anade el salto de linea. Se enumeran por
-    // separado porque el reconocimiento es por NOMBRE DE METODO, y una sola entrada obligaria a
-    // llevar el nombre hasta el HIR para volver a decidir alli.
-    //
-    // Aguas abajo vuelven a ser una: un unico nodo HIR/MIR y una unica funcion de runtime, con la
-    // variante en una mascara de dos bits. Cuatro caminos completos habrian sido cuatro copias de
-    // la misma llamada a WriteFile.
-    ConsoleWriteLine,
-    ConsoleWrite,
-    ConsoleErrorWriteLine,
-    ConsoleErrorWrite,
-    ConsoleReadLine,
-    // C8 "type root": the two primitives NativeSharp.Core.Object's virtual methods need and that
-    // cannot be written in NativeSharp -- read a type's name out of its runtime descriptor, and
-    // turn a reference into an integer. See lib/NativeSharp.Core/Object.ns.
-    ObjectTypeName,
-    ObjectReferenceHash,
-    // CC1 fase 4A -- `sizeof(T)` y `sizeof(expression)`. La operacion NO lleva el tamano: lleva en
-    // `elementTypeKey` el TIPO QUE SE ESTA MIDIENDO, y `resultTypeKey` es siempre "builtin:nuint".
-    //
-    // El tamano se resuelve en ProjectOopHirModel, no aqui, y no por gusto: el orden de
-    // construccion del pipeline es modelo de cuerpos de metodo PRIMERO y ProjectObjectLayoutModel
-    // DESPUES -- ProjectMethodBodyModel::build ni siquiera recibe el modelo de layout. Calcular el
-    // tamano aqui exigiria reordenar el pipeline o duplicar las reglas de tamano en el modelo
-    // semantico, que es exactamente la duplicacion que el milestone CC1 existe para quitar. El HIR
-    // si tiene el modelo de layout y le pregunta a valueLayoutForTypeKey, el mismo servicio
-    // canonico que ya comparten el stride de un arreglo y el offset de un campo.
-    SizeofConstant,
-    // `alignof(T)` and `alignof(expression)` use the same late layout query as sizeof, but select
-    // the canonical layout's alignment. `elementTypeKey` is the measured closed type.
-    AlignofConstant,
-    // `offsetof(T, field)` stores T in elementTypeKey and the selected instance field in
-    // implicitFieldMemberOrdinal. The byte offset is resolved later by ProjectObjectLayoutModel.
-    OffsetofConstant,
-    // CC1 fase 4B -- `stackalloc T[n]`. `elementTypeKey` es T; `resultTypeKey` es "T*". Igual que
-    // SizeofConstant, el binding NO lleva el tamano: el modelo semantico corre antes que
-    // ProjectObjectLayoutModel. El tamano y la alineacion los resuelve el MIR con elementLayout.
-    StackAllocation,
-    // CC1 fase 4C -- `new T` escalar (no clase, no arreglo). Misma forma: `elementTypeKey` es T,
-    // `resultTypeKey` es "T*", el tamano lo resuelve el MIR.
-    RawAllocation,
-    // CC1 fase 4D -- `p + i`, `i + p`, `p - i` y `p - q`. `elementTypeKey` es el tipo APUNTADO, que
-    // es lo que da el paso; `resultTypeKey` es "T*" para las tres primeras y "builtin:nint" para la
-    // diferencia. La operacion concreta se deduce en el HIR del token del nodo de sintaxis, que ya
-    // esta ahi -- no hace falta un discriminante propio en el binding.
-    PointerArithmetic,
-    // C8 "type root", struct half: the three root members a STRUCT gets, synthesized by the
-    // compiler and resolved statically -- no vtable, no boxing, not one byte of layout change.
-    // A struct that declares its own member of the same name wins; these only fill the gap.
-    StructToString,
-    StructEquals,
-    StructHashCode,
-    // NativeSharp 3.0 T02-F04. A record Clone is a plain value copy: no allocation, runtime
-    // identity, or hidden layout state.
-    StructClone,
-    // ID 129. `ToString()` sobre un ENUM devuelve el NOMBRE del enumerador, no su numero.
-    //
-    // POR QUE ES DEL COMPILADOR Y NO DE String.ns, que es lo que este ID lleva anotado desde el
-    // doc 92 §7: los nombres de los enumeradores NO SOBREVIVEN A LA COMPILACION. Un enum es un
-    // entero con nombres en el codigo fuente y nada mas en el binario, asi que ninguna cantidad
-    // de codigo en la biblioteca puede recuperarlos. Los datos existen aqui --`isEnumConstant` y
-    // `enumConstantValue` en ProjectMemberModel.h-- y en ningun otro sitio.
-    //
-    // MISMO SITIO Y MISMA FORMA QUE StructToString, que es su precedente exacto: se sintetiza
-    // cuando la busqueda ordinaria de miembros ya ha fallado, asi que un enum no puede tener un
-    // ToString propio que esto pisara.
-    //
-    // LA DIFERENCIA CON StructToString, y es la que decide la implementacion: la respuesta del
-    // struct es una CONSTANTE DE COMPILACION --el nombre de su tipo estatico-- y la del enum
-    // depende del VALOR, que en general solo se conoce ejecutando. Por eso no baja a un literal
-    // sino a una cadena de condicionales sobre los enumeradores. El detalle, en el sitio donde se
-    // baja (ProjectOopHirModel.cpp).
-    EnumToString,
-    // Stage 53.1 "Time" -- NativeSharp.Core.Diagnostics.NativeClock's three zero-argument raw
-    // Win32 wrappers. See NativeClock.ns for why these three and not a higher-level API
-    // directly: everything else in Stage 53.1 (Stopwatch/TimeSpan/DateTime) is ordinary
-    // NativeSharp built on top of just these three core operations, matching the same
-    // discipline Stage 51 established for String (a small core, a large surface built on it).
-    ClockQueryCounter,
-    ClockQueryFrequency,
-    ClockQuerySystemFileTime,
-    // Stage 53.2 "Environment" -- NativeSharp.Core.Environment's three raw Win32 wrappers.
-    // TickCount64/ProcessorCount are zero-argument, exactly the same shape as the NativeClock
-    // trio above (only the result type differs: long for TickCount64, int for ProcessorCount).
-    // Exit takes one builtin:int argument and returns void, the same one-argument/void shape as
-    // ConsoleWriteLine. GetEnvironmentVariable/SetEnvironmentVariable (dynamic string return)
-    // are deliberately NOT part of this round -- see Environment.ns for why.
-    EnvironmentTickCount64,
-    EnvironmentProcessorCount,
-    EnvironmentExit,
-    // Stage 53.2b "Environment (variables)" -- the piece deliberately deferred out of Stage
-    // 53.2's first round (see Environment.ns): GetEnvironmentVariable takes one builtin:string
-    // and returns builtin:string, SetEnvironmentVariable takes two builtin:string and returns
-    // void. Both reuse the exact same operand-lowering machinery as StringConcat/StringEquals
-    // (see ProjectOopHirModel.cpp) -- from the frontend's point of view these are just string
-    // intrinsics with a different runtime hook, not a new kind of call shape.
-    EnvironmentGetVariable,
-    EnvironmentSetVariable,
-    // Stage 53.3 "Filesystem/Paths" -- NativeSharp.Core.IO.File.Exists/Delete and
-    // NativeSharp.Core.IO.Directory.Exists/CreateDirectory. All four take exactly one
-    // builtin:string argument (a path); Exists returns builtin:bool, Delete/CreateDirectory
-    // return builtin:void. Like GetEnvironmentVariable/SetEnvironmentVariable above, these are
-    // string intrinsics as far as the HIR shared block is concerned -- one string operand in,
-    // a runtime hook call out -- so they reuse that exact mechanism (see ProjectOopHirModel.cpp)
-    // rather than introducing a new call shape. NativeSharp.Core.IO.Path is deliberately NOT
-    // part of this list: it is pure NativeSharp built on already-existing String methods
-    // (Substring/Concat/EndsWith/LastIndexOf), zero new core operations needed for it.
-    FileExists,
-    FileDelete,
-    DirectoryExists,
-    DirectoryCreate,
-    // Stage 53.3b "Filesystem/Paths (contenido de archivo)" -- the piece 53.3's first round
-    // deliberately deferred (see File.ns): reading/writing a file's actual byte content, not
-    // just asking whether it exists. ReadAllText takes one builtin:string (a path) and returns
-    // builtin:string -- same one-operand shape as FileExists/GetEnvironmentVariable above.
-    // WriteAllText/AppendAllText take two builtin:string (path, content) and return
-    // builtin:void -- same two-operand shape as EnvironmentSetVariable. All three still slot
-    // into the shared string-intrinsic HIR block; see ProjectOopHirModel.cpp.
-    FileReadAllText,
-    FileWriteAllText,
-    FileAppendAllText,
-    // Stage 53.4 "Filesystem/Paths (cierre)" -- las dos piezas "casi gratis" identificadas al
-    // cerrar 53.3b. DirectoryDelete: un builtin:string (path), builtin:void -- calco exacto de
-    // FileDelete de arriba, mismo one-operand/void shape, solo cambia el hook de runtime
-    // (RemoveDirectoryA en vez de DeleteFileA). PathGetFullPath: un builtin:string (path),
-    // builtin:string -- mismo one-operand/string-out shape que EnvironmentGetVariable/
-    // FileReadAllText (dos llamadas Win32: pedir tamaño, despues llenar el buffer). A diferencia
-    // de FileExists/FileDelete/DirectoryExists/DirectoryCreate/FileReadAllText/WriteAllText/
-    // AppendAllText (todos NativeSharp.Core.IO.File o NativeSharp.Core.IO.Directory),
-    // PathGetFullPath es la PRIMERA operacion nucleo de NativeSharp.Core.IO.Path -- ver Path.ns
-    // para por que el resto de esa clase se mantiene NativeSharp puro.
-    DirectoryDelete,
-    PathGetFullPath,
-    // Stage 53.5 "Command-line arguments". GetCommandLineArgCount: zero arguments,
-    // builtin:int -- same zero-argument shape as EnvironmentTickCount64/ProcessorCount above.
-    // GetCommandLineArgs: one builtin:string[] argument (a caller-provided buffer -- the SAME
-    // "hueco de owned string[]" workaround NativeSharp.Core.String.Split already established,
-    // see String.ns), builtin:int (how many elements were actually written) -- a genuinely new
-    // operand SHAPE for a core operation (an array, not a string), but it slots into the exact
-    // same shared operand-lowering block as every other core operation since that block never
-    // actually required its operand to be builtin:string, only lowered whatever expression was
-    // there (see ProjectOopHirModel.cpp).
-    EnvironmentGetCommandLineArgCount,
-    EnvironmentGetCommandLineArgs,
-    // Stage 53.6 "Enumeracion de directorios" -- el ultimo item pendiente de Stage 53. Ver el
-    // comentario de cabecera de Directory.ns para el diseno completo (arreglo de dos pasadas,
-    // NO un enumerador via foreach). GetFileCount/GetDirectoryCount: un builtin:string (path),
-    // builtin:int -- una combinacion de forma nueva (un operando string, resultado int en vez de
-    // string/void como PathGetFullPath/DirectoryDelete), pero el operando-count sigue siendo 1,
-    // asi que reutiliza el mismo bucket "expected=1U" compartido, solo con su propio
-    // resultTypeKey explicito. GetFiles/GetDirectories: dos operandos (builtin:string el path,
-    // builtin:string[] el buffer -- la MISMA "buffer provisto por el caller" que
-    // EnvironmentGetCommandLineArgs establecio), builtin:int -- el bucket "expected=2U" ya
-    // existe (EnvironmentSetVariable/FileWriteAllText/FileAppendAllText), y al igual que con
-    // EnvironmentGetCommandLineArgs, ese bloque nunca exigio que TODOS los operandos fueran
-    // builtin:string, asi que un segundo operando builtin:string[] entra sin cambiar el
-    // mecanismo compartido.
-    DirectoryGetFileCount,
-    DirectoryGetFiles,
-    DirectoryGetDirectoryCount,
-    DirectoryGetDirectories,
-    // Stage 54.1 "Threads" -- NativeSharp.Core.Threading.Thread's tres helpers PRIVADOS Y
-    // ESTATICOS (no publicos: el codigo NativeSharp normal llama al constructor/Join()/Detach()
-    // de Thread, que a su vez llaman a estos tres). Ver Thread.ns para el diseno completo (clase
-    // RAII, campo nint handle_, destructor que hace auto-Join()). ThreadCreate: un operando de
-    // tipo delegate (ThreadStart) entra, builtin:nint sale -- una forma de operando GENUINAMENTE
-    // NUEVA (ningun core operation anterior tomo un delegate como argumento), pero el bloque HIR
-    // compartido nunca exigio un tipo de operando particular, asi que entra en el bucket
-    // "expected=1U" existente sin cambios. ThreadJoin/ThreadDetach: un builtin:nint (el HANDLE
-    // guardado por el llamador) entra, builtin:void sale -- mismo one-operand/void shape que
-    // DirectoryDelete, solo que el operando es nint en vez de string.
-    ThreadCreate,
-    ThreadJoin,
-    ThreadDetach,
-    // Stage 54.2 "Atomics" -- NativeSharp.Core.Threading.AtomicInt32/AtomicInt64, cinco
-    // operaciones (Increment/Decrement/Add/Exchange/CompareExchange) cada una en dos anchos
-    // (Int32/Int64) -- diez core operations en total. NOTA: el diseno ORIGINAL de esta ronda era
-    // una clase estatica "Interlocked" con un parametro `int*`/`long*` calcado de
-    // System.Threading.Interlocked de C# (`Interlocked.Increment(&contador)`) -- se descarto
-    // DURANTE la implementacion al confirmar que la tuberia OOP moderna de este compilador
-    // (todas las stages desde 41) no baja los operadores `&`/`*` en absoluto (ver
-    // ProjectOopHirModel.cpp's UnaryExpression case). El diseno FINAL, el que estos diez valores
-    // de enum representan, son metodos de INSTANCIA (`contador.Increment()`) sobre
-    // AtomicInt32/AtomicInt64, operando implicitamente sobre el campo privado `value_` del
-    // receptor -- ver el comentario de MethodCoreBinding::implicitFieldMemberOrdinal mas abajo
-    // para el mecanismo completo (un nodo ProjectOopHirNodeKind::FieldAddress sintetico), y
-    // 58_stage54_2_atomics.md (raiz del repo) para la discusion de diseno completa de ambos
-    // pivots de esta ronda. Formas de operando EXPLICITO (sin contar la ubicacion implicita, que
-    // nunca es un operando sintactico de la llamada): Increment/Decrement toman CERO operandos
-    // explicitos; Add/Exchange toman UNO (el valor); CompareExchange toma DOS (valor +
-    // comparand) -- ver el bloque HIR dedicado en ProjectOopHirModel.cpp (deliberadamente
-    // SEPARADO del bucket compartido "String core operation" que Thread/File/Directory/etc.
-    // usan, porque estas diez necesitan armar el nodo FieldAddress a partir del receptor, algo
-    // que ese bucket compartido no hace). Semantica de retorno calcada de
-    // System.Threading.Interlocked real: Increment/Decrement/Add devuelven el valor NUEVO
-    // (post-operacion); Exchange/CompareExchange devuelven el valor ORIGINAL (pre-operacion) --
-    // ver Atomics.ns y WindowsRuntimeBuilder.cpp para el detalle completo (instrucciones
-    // atomicas reales de LLVM, no llamadas a kernel32.dll -- el SEGUNDO pivot de esta ronda).
-    AtomicLoadInt32,
-    AtomicStoreInt32,
-    InterlockedIncrementInt32,
-    InterlockedDecrementInt32,
-    InterlockedAddInt32,
-    InterlockedExchangeInt32,
-    InterlockedCompareExchangeInt32,
-    AtomicLoadInt64,
-    AtomicStoreInt64,
-    InterlockedIncrementInt64,
-    InterlockedDecrementInt64,
-    InterlockedAddInt64,
-    InterlockedExchangeInt64,
-    InterlockedCompareExchangeInt64,
-    AtomicLoadPointer,
-    AtomicStorePointer,
-    InterlockedExchangePointer,
-    InterlockedCompareExchangePointer,
-    // Item 307: explicit process-wide and compiler-only memory fences. Their MemoryOrder is
-    // consumed at compile time and carried as core-operation metadata.
-    AtomicThreadFence,
-    AtomicCompilerFence,
-    // Entrega 228: primera familia SIMD deliberadamente pequena. Estas operaciones reconocen
-    // exclusivamente NativeSharp.Core.Numerics.Float32x4 y conservan el struct publico como
-    // contrato ABI; solamente la operacion aritmetica se convierte en un vector LLVM de 128 bits.
-    SimdFloat32x4Add,
-    SimdFloat32x4Subtract,
-    SimdFloat32x4Multiply,
-    // Item 347: signed integer vectors keep ordinary struct carriers at public boundaries and
-    // use native 128-bit LLVM integer vectors for arithmetic inside the compiler.
-    SimdInt128Add,
-    SimdInt128Subtract,
-    SimdInt128Multiply,
-    // Item 348: AVX-width floating vectors, represented by stable 32-byte carriers.
-    SimdFloat256Add,
-    SimdFloat256Subtract,
-    SimdFloat256Multiply,
-    // Item 349: signed 256-bit integer vectors.
-    SimdInt256Add,
-    SimdInt256Subtract,
-    SimdInt256Multiply,
-    // Item 350: alignment is part of these memory operations' source contract.
-    SimdLoadAligned128,
-    SimdStoreAligned128,
-    // Item 351: explicit unaligned memory operations never overstate pointer alignment.
-    SimdLoadUnaligned128,
-    SimdStoreUnaligned128,
-    // Item 354: public 16-bit carrier converted through LLVM's native half type.
-    HalfFromFloat,
-    HalfToFloat,
-    SimdSwizzleWzyx,
-    SimdShuffleLowHigh,
-    SimdSqrt,
-    SimdReciprocalSqrt,
-    SimdFusedMultiplyAdd,
-    BitPopulationCount,
-    BitLeadingZeroCount,
-    BitTrailingZeroCount,
-    BitRotateLeft,
-    BitRotateRight,
-    BitByteSwap,
-    CpuPrefetchRead,
-    CpuPause,
-    CpuReadTimestamp,
-    // Stage 54.3 "Mutex" -- NativeSharp.Core.Threading.Mutex's cuatro helpers PRIVADOS Y
-    // ESTATICOS, EXACTO mismo patron estructural que los tres helpers de Thread arriba (Stage
-    // 54.1): un HANDLE de Win32 guardado como builtin:nint, creado por MutexCreate y consumido
-    // por Lock/Unlock/Close via llamadas POSTERIORES y separadas. A diferencia de las diez
-    // operaciones de AtomicInt32/AtomicInt64 (Stage 54.2, arriba), Mutex NO necesito ningun
-    // mecanismo de FieldAddress sintetico -- reusa el mismo patron "handle nint de ida y vuelta"
-    // que Thread ya establecio, cero riesgo arquitectonico nuevo. MutexCreate: CERO operandos
-    // explicitos entra, builtin:nint sale -- la PRIMERA core operation de todo el proyecto con
-    // cero operandos y sin receptor (ver el bucket "expected=0U" nuevo en
-    // ProjectOopHirModel.cpp). MutexLock/MutexUnlock/MutexClose: un builtin:nint (el HANDLE que
-    // el llamador ya tiene guardado) entra, builtin:void sale -- mismo shape que
-    // ThreadJoin/ThreadDetach, bucket "expected=1U" compartido.
-    MutexCreate,
-    // Item 370: the NativeSharp string is copied to an ANSI, null-terminated Win32 object name.
-    MutexCreateNamed,
-    MutexLock,
-    MutexUnlock,
-    MutexClose,
-    // Stage 54.4 "Condition Variables" -- NativeSharp.Core.Threading.Monitor. Five INSTANCE
-    // methods (same "implicit receiver field" spirit as AtomicInt32/AtomicInt64 above), wrapping
-    // Win32's lightweight SRWLOCK + CONDITION_VARIABLE pair (NOT a kernel object -- both are
-    // plain 8-byte-on-x64 opaque values living INSIDE the object, never a HANDLE) instead of a
-    // second kernel mutex: Monitor needed a lock to pair with a wait/pulse condition variable,
-    // and Win32's condition variable API only sleeps against either a CRITICAL_SECTION or an
-    // SRWLOCK -- never a kernel mutex HANDLE -- so Stage 54.3's Mutex could not be reused here.
-    // SRWLOCK/CONDITION_VARIABLE are both officially DOCUMENTED to be safely initialized by their
-    // all-zero bit pattern (SRWLOCK_INIT/CONDITION_VARIABLE_INIT are literally `{0}` -- the same
-    // convention MSVC's own std::mutex/std::condition_variable rely on), and Stage 34's object
-    // allocator already zero-fills every new object's storage before its constructor runs (see
-    // ProjectObjectLayoutModel::zeroInitializesStorage) -- so Monitor's two backing fields need NO
-    // explicit "Init" core operation at all, unlike CreateMutexA/CreateThread/CreateSemaphoreA/
-    // CreateEventA, which all need a real syscall. Enter/Exit: one implicit field (the private
-    // `lock_` field) -- AcquireSRWLockExclusive/ReleaseSRWLockExclusive, EXACT same one-
-    // FieldAddress-child shape as InterlockedIncrementInt32 above, only the runtime hook differs.
-    // Pulse/PulseAll: one implicit field (the private `cv_` field) -- WakeConditionVariable/
-    // WakeAllConditionVariable, same shape again. Wait is the ONLY genuinely new shape in this
-    // round: it needs the addresses of BOTH backing fields on the SAME receiver in a single call
-    // (SleepConditionVariableSRW(PCONDITION_VARIABLE, PSRWLOCK, DWORD, ULONG)) plus one EXPLICIT
-    // builtin:int argument (a real millisecond timeout -- the first Win32 wait this compiler
-    // exposes with a caller-chosen timeout at all; every earlier wait, Thread.Join/Mutex.Lock, is
-    // hardcoded INFINITE) -- see MethodCoreBinding::secondaryImplicitFieldMemberOrdinal below for
-    // why a second ordinal was added instead of re-lowering the receiver expression a second time
-    // (which would evaluate a non-trivial receiver expression TWICE, a real correctness bug this
-    // round deliberately avoids). Returns builtin:bool: Win32's BOOL result (TRUE if woken,
-    // FALSE only on failure -- timeout expiring is the practical failure case here) forwarded
-    // directly, no extra logic needed. Per Win32's own contract (and POSIX/C++'s
-    // std::condition_variable, identical here), Wait() MUST be called only while the calling
-    // thread already holds the lock via Enter() -- calling it unlocked is undefined behavior at
-    // the Win32 level, documented as a usage contract in Monitor.ns, not something this compiler
-    // can check. A `true` return does not by itself mean the awaited condition became true (Win32
-    // condition variables can wake SPURIOUSLY, exactly like POSIX/C++'s) -- see Monitor.ns and
-    // 60_stage54_4_monitor.md for the mandatory "recheck the condition in a loop" usage pattern.
-    MonitorEnter,
-    MonitorExit,
-    MonitorWait,
-    MonitorPulse,
-    MonitorPulseAll,
-    // Stage 54.5 "Otras primitivas de sincronizacion" -- NativeSharp.Core.Threading.Semaphore y
-    // NativeSharp.Core.Threading.Event. Ambas EXACTO mismo patron estructural que Mutex (Stage
-    // 54.3): helpers PRIVADOS Y ESTATICOS, un HANDLE de KERNEL de Win32 guardado como builtin:nint
-    // de ida y vuelta entre llamadas separadas -- cero mecanismo de FieldAddress nuevo hizo falta
-    // para ninguna de las dos (a diferencia de Monitor arriba). SemaphoreCreate: DOS operandos
-    // explicitos (initialCount, maximumCount, ambos builtin:int) sin receptor -- el bucket
-    // compartido "expected=2U" que ya existe para EnvironmentSetVariable/WriteAllText/etc. cubre
-    // esta forma sin cambios (Semaphore es la PRIMERA operacion nucleo sin receptor que reusa ese
-    // bucket para dos builtin:int en vez de builtin:string, pero el bucket nunca exigio un tipo de
-    // operando particular). SemaphoreWait/EventWait: builtin:nint (el HANDLE) + builtin:int (el
-    // timeout en milisegundos) entra, builtin:bool sale (true = adquirido, false = timeout
-    // expirado de verdad -- la MISMA novedad de "timeout real" que Monitor.Wait arriba introduce a
-    // este compilador, comparten el mismo runtime hook de bajo nivel
-    // __nativesharp_wait_for_handle_timeout, ver WindowsRuntimeBuilder.cpp). SemaphoreRelease:
-    // builtin:nint entra, builtin:void sale (libera SIEMPRE un unico nivel -- ver Semaphore.ns
-    // para por que un Release(int count) con conteo variable queda fuera de esta ronda).
-    // SemaphoreClose: builtin:nint entra, builtin:void sale. EventCreate: DOS operandos explicitos
-    // (manualReset, initialState, ambos builtin:bool) sin receptor -- mismo bucket "expected=2U"
-    // que SemaphoreCreate, solo cambia el tipo de operando (bool en vez de int, tampoco exigido
-    // por el bucket). EventSet/EventReset: builtin:nint entra, builtin:void sale -- mismo shape de
-    // un operando que MutexLock/MutexUnlock. EventClose: builtin:nint entra, builtin:void sale.
-    SemaphoreCreate,
-    SemaphoreCreateNamed,
-    SemaphoreWait,
-    SemaphoreRelease,
-    SemaphoreClose,
-    EventCreate,
-    EventCreateNamed,
-    EventSet,
-    EventReset,
-    EventWait,
-    EventClose,
-    // Stage 55.1 "Process" -- NativeSharp.Core.Diagnostics.Process's raw wrappers around the
-    // current process only (no CreateProcess/child-process spawning -- see roadmap doc, out of
-    // scope for this stage). Every one of the five reuses the exact zero-explicit-argument shape
-    // NativeClock (53.1) established: static method, no parameters, builtin:long result --
-    // the process HANDLE (GetCurrentProcess()) is obtained INSIDE the runtime wrapper, never
-    // exposed to NativeSharp, so from the frontend's point of view these look identical to
-    // QueryCounterRaw. SetPriorityClassRaw is the one exception: one builtin:int argument, no
-    // result -- same one-argument/void shape Environment.Exit (53.2) established.
-    ProcessGetCurrentProcessIdRaw,
-    ProcessGetWorkingSetSizeRaw,
-    ProcessGetKernelTimeRaw,
-    ProcessGetUserTimeRaw,
-    ProcessGetPriorityClassRaw,
-    ProcessSetPriorityClassRaw,
-    // Stage 55.2 "Hardware / System Info" -- NativeSharp.Core.Diagnostics.SystemInfo. All six are
-    // the same zero-argument/builtin:long shape as Process above -- GetSystemInfo and
-    // GlobalMemoryStatusEx both fill an in-memory Win32 struct inside the runtime wrapper and this
-    // just surfaces one field of it each, no struct type is ever visible to NativeSharp itself.
-    // Deliberately does NOT duplicate Environment.ProcessorCount (53.2, already wraps
-    // GetActiveProcessorCount) -- this stage covers what that one does not: page size, processor
-    // architecture, allocation granularity, and physical memory totals.
-    SystemInfoGetPageSizeRaw,
-    SystemInfoGetProcessorArchitectureRaw,
-    SystemInfoGetAllocationGranularityRaw,
-    SystemInfoGetTotalPhysicalMemoryBytesRaw,
-    SystemInfoGetAvailablePhysicalMemoryBytesRaw,
-    SystemInfoGetMemoryLoadPercentRaw,
-    // Stage 55.3 "Diagnostics" -- NativeSharp.Core.Diagnostics.Debug. IsDebuggerPresentRaw and
-    // CaptureStackFrameCountRaw share the same zero-argument/builtin:long shape as Process/
-    // SystemInfo above (IsDebuggerPresent's BOOL is surfaced as 0/1, the .ns layer turns it into a
-    // real bool -- see Debug.ns). OutputStringRaw is the one exception: one builtin:string
-    // argument, no result -- the exact one-argument/void shape File.Delete (53.3) established,
-    // reusing the same buildNullTerminatedCopy marshaling Environment.SetEnvironmentVariable
-    // (53.2b) introduced.
-    DebugIsDebuggerPresentRaw,
-    DebugCaptureStackFrameCountRaw,
-    DebugOutputStringRaw,
-    // Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29) -- four small additions
-    // requested before starting Stage 56 Win32 Windowing. All four reuse the existing generic
-    // "no receiver, operands straight from the call's AST argument list" HIR bucket (see
-    // ProjectOopHirModel.cpp's UnaryExpression/String-core-operation block) -- SleepRaw joins the
-    // expected=1U list, CopyRaw joins the expected=3U list (alongside StringSubstring), MoveRaw/
-    // DirectoryMoveRaw fall through to the default expected=2U bucket. Zero new HIR shape needed.
-    ThreadSleepRaw,
-    FileCopyRaw,
-    FileMoveRaw,
-    DirectoryMoveRaw,
-    // Bloque 4, fase A -- SHR-030. `File.GetSize(string path)` devuelve `builtin:long`: un
-    // builtin:string entra, un entero de 64 bits sale.
-    //
-    // POR QUE 64 BITS Y NO int. Un `.obj` de LLVM pasa de los 2 GiB con facilidad en un proyecto
-    // grande, y `GetFileSizeEx` --que ya esta importado, lo usa FileReadAllText-- devuelve
-    // precisamente un LARGE_INTEGER de 64 bits. Truncar aqui a i32 seria inventar un limite que
-    // ni Windows ni el formato tienen. FileReadAllText SI trunca, y su propio comentario lo dice:
-    // ahi es aceptable porque el resultado es una cadena que se va a manipular en memoria; aqui
-    // el resultado ES el tamano y devolverlo mal no tiene arreglo aguas arriba.
-    //
-    // Devuelve -1 cuando el archivo no existe o no se puede abrir. No es un codigo de error
-    // inventado: es el mismo convenio que el resto de esta familia --File.Exists devuelve false,
-    // ReadAllText devuelve la cadena vacia-- y ademas -1 no colisiona con ningun tamano posible,
-    // que es lo que un 0 si haria con un archivo vacio.
-    FileGetSize,
-    // Bloque 4, fase A -- SHR-028/029 y el directorio de trabajo.
-    //
-    // FileReadAllBytes: un builtin:string entra, un builtin:byte[] sale. La forma es IDENTICA a
-    // FileReadAllText --un puntero entra, un puntero recien asignado sale-- y no por casualidad:
-    // un `byte[]` y un `string` tienen el MISMO layout en memoria, { i64 longitud; datos }. El
-    // hook del runtime es literalmente el mismo codigo con otro nombre.
-    //
-    // FileReadBytes: dos operandos --la ruta y el arreglo del llamador-- y un builtin:int fuera
-    // (cuantos bytes se leyeron de verdad). Es el patron "buffer provisto por el llamador" que
-    // Directory.GetFiles ya establecio, y es el que usara el driver: leer un .obj de 100 KB para
-    // luego copiarlo a otro buffer es justo lo que el Bloque 3 existe para evitar.
-    //
-    // FileWriteAllBytes: tres operandos --ruta, arreglo, cuantos bytes escribir-- y builtin:bool
-    // fuera. El contador es explicito y no la longitud del arreglo a proposito: quien construye
-    // un buffer casi siempre lo tiene mas grande que lo que ha llenado, y obligarle a recortarlo
-    // seria una copia entera por escritura.
-    //
-    // EnvironmentCurrentDirectory: cero operandos, builtin:string fuera. Cierra la ultima de las
-    // siete operaciones de filesystem que el doc 81 midio (`current_path`).
-    FileReadAllBytes,
-    FileReadBytes,
-    FileWriteAllBytes,
-    EnvironmentCurrentDirectory,
-    // Bloque 4, fase C -- SHR-032. `Process.Run(exe, linea, salida)` devuelve builtin:int.
-    //
-    // ES EL BLOQUEO DURO DEL AUTO-HOSPEDADO: sin crear procesos hijos, un `nsc` escrito en
-    // NativeSharp no puede lanzar el enlazador. `Process.ns` existia desde Stage 55.1 pero su
-    // cabecera decia que crear procesos estaba "deliberadamente fuera de alcance".
-    //
-    // Tres builtin:string entran, un builtin:int sale -- el codigo de salida del hijo, o -1 si no
-    // se pudo lanzar. Es la primera operacion nucleo de tres cadenas.
-    ProcessRun,
-    // NativeSharp 3.0 T07-F06. Compiler-owned assertion intrinsics are contextual unqualified
-    // calls. Assert and Assume consume one bool; Unreachable and Panic are divergent and consume
-    // no values. Assume is accepted only inside an explicit unsafe block.
-    Assert,
-    Unreachable,
-    Assume,
-    Panic,
-    // NS304-T06-F08: the opaque generator iterator's structural protocol. MoveNext takes the
-    // iterator and returns builtin:bool (calls moveNextFn); Current is a property reading the
-    // item (field 2); GetEnumerator returns the iterator itself (for foreach).
-    IteratorMoveNext,
-    IteratorCurrent,
-    IteratorGetEnumerator,
-    IteratorDrop,
-    IteratorMoveNextAsync,
-    IteratorCancel,
-    // NS304-T09-F05: a collection expression targeting a builder (CreateBuilder/Add/ToCollection).
-    CollectionBuilder,
-    // NS304-T10-F05: a null-conditional index over a USER indexer (`obj?[i]`). The receiver is
-    // null-checked and get_Item runs only on the non-null path (lowered via lowerResolvedCall with
-    // nullConditional=true).
-    NullConditionalUserIndex
-};
-
-struct MethodCoreBinding final
-{
-    MethodCoreOperationKind kind = MethodCoreOperationKind::ArrayAllocation;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string resultTypeKey;
-    std::string elementTypeKey;
-    bool assignable = false;
-    // Stage 54.2 "Atomics" -- set only for AtomicInt32/AtomicInt64's Increment/Decrement/Add/
-    // Exchange/CompareExchange core operations. These are INSTANCE methods with an IMPLICIT
-    // "location" operand -- the address of the receiver's own private `value_` field -- rather
-    // than an explicit argument the caller writes out. NativeSharp's OOP LLVM lowering pipeline
-    // has no support for the `&`/`*` raw-pointer operators (see ProjectOopHirModel.cpp's
-    // UnaryExpression case: "Stage 34 OOP lowering keeps raw pointer address/dereference in the
-    // procedural backend boundary" -- a deliberate, hard boundary, discovered during this
-    // stage's implementation, that rules out a direct C#-Interlocked-style `int*` parameter
-    // approach entirely for any code going through the modern OOP pipeline every stage since 41
-    // uses). Resolved once, during method-body recognition (ProjectMethodBodyModel.cpp), by
-    // searching the declaring type's own members for its Field named "value_" -- HIR lowering
-    // (ProjectOopHirModel.cpp) then builds a synthetic ProjectOopHirNodeKind::FieldAddress node
-    // using this ordinal, with the call's receiver as its one child, reusing the EXACT SAME
-    // field-address machinery (memberOrdinal -> ProjectObjectLayoutModel byte offset -> GEP)
-    // every ordinary NativeSharp field access already relies on -- no new LLVM-lowering
-    // mechanism was needed once this was understood.
-    std::optional<std::size_t> implicitFieldMemberOrdinal;
-    // Stage 54.4 "Condition Variables" -- set ONLY for Monitor::Wait. Every other core operation
-    // that needs an implicit field address (AtomicInt32/64 above, and Monitor's own Enter/Exit/
-    // Pulse/PulseAll) needs exactly ONE -- implicitFieldMemberOrdinal above is enough. Wait is the
-    // sole exception: SleepConditionVariableSRW needs the addresses of TWO different fields on the
-    // SAME receiver in a single call (the private `cv_` field, in implicitFieldMemberOrdinal
-    // above, AND the private `lock_` field, here) -- resolved once here, during method-body
-    // recognition, by the exact same by-name field search Stage 54.2 already established.
-    // Deliberately NOT modeled as two separate FieldAddress HIR nodes each re-lowering the
-    // receiver expression from its own AST syntax (the way Enter/Exit/Pulse/PulseAll each lower
-    // their own single implicit field): a receiver expression is not guaranteed to be free of
-    // side effects or even deterministic (nothing stops `GetMonitor().Wait(...)` from being valid
-    // NativeSharp), so lowering it twice could evaluate two DIFFERENT objects and take the cv_
-    // address of one and the lock_ address of the other -- a real, silent correctness bug this
-    // round deliberately designs around. See ProjectOopHirModel.cpp's CoreMonitorWait case (the
-    // receiver is lowered exactly ONCE, into a plain object-reference HIR node, with both field
-    // ordinals carried as node metadata instead of pre-synthesized FieldAddress children) and
-    // ProjectOopMirModel.h's ProjectOopMirNode::secondaryImmediate (the resolved BYTE OFFSET for
-    // this ordinal, computed once during HIR->MIR conversion, mirroring how `immediate` already
-    // holds the primary field's byte offset for an ordinary FieldAddress node).
-    std::optional<std::size_t> secondaryImplicitFieldMemberOrdinal;
-    // Tanda 5, items 304-306 -- present only for ordered AtomicInt32/AtomicInt64 operations.
-    // overloads. The value is the stable NativeSharp MemoryOrder ABI value (0..4), deliberately
-    // not an LLVMAtomicOrdering ordinal. HIR lowering consumes the source argument at compile
-    // time and carries this value as node metadata, so an ordering can never become a runtime
-    // integer passed accidentally to LLVM.
-    std::optional<std::uint8_t> atomicMemoryOrder = std::nullopt;
-    // Item 306 only: CompareExchange has an independent failure order. It remains absent on
-    // every legacy overload and on all single-order atomic operations.
-    std::optional<std::uint8_t> atomicFailureMemoryOrder = std::nullopt;
-    // NS304-T09-F05: the CollectionBuilder core operation carries the CreateBuilder / Add /
-    // ToCollection member ordinals so the HIR can emit the builder call sequence.
-    std::array<std::size_t, 3> builderMemberOrdinals{};
-
-};
-
-struct MethodVariableArrayIndexBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::vector<std::size_t> extentLocalOrdinals;
-};
 
 
 
-enum class MethodLambdaCaptureKind
-{
-    Local,
-    Parameter,
-    ThisReference
-};
 
-enum class MethodLambdaCaptureSourceKind
-{
-    OriginalLocal,
-    OriginalParameter,
-    OriginalThis,
-    ParentLocal,
-    ParentParameter,
-    ParentCapture
-};
 
-struct MethodLambdaCapture final
-{
-    MethodLambdaCaptureKind kind = MethodLambdaCaptureKind::Local;
-    std::string name;
-    std::string typeKey;
-    std::optional<std::size_t> localOrdinal;
-    std::optional<std::size_t> parameterOrdinal;
-    MethodLambdaCaptureSourceKind sourceKind = MethodLambdaCaptureSourceKind::OriginalLocal;
-    std::optional<std::size_t> sourceOrdinal;
-    // T08-F03. Reference modes share the source cell. Copy/move modes materialize an
-    // independent cell when the closure value is created.
-    language::CaptureMode mode = language::CaptureMode::Reference;
-    // True only for a move capture which transfers a real destruction obligation into the
-    // closure environment (RAII pointer/array/string or a value with drop glue).
-    bool ownsCapturedValue = false;
-    bool clearMovedSource = false;
-};
 
-struct MethodLambdaValueBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::size_t lambdaOrdinal = 0;
-    bool lambdaParameter = false;
-    // E11: ref/out/in lambda parameters use the delegate's physical pointer parameter but expose
-    // its pointee in the body, exactly like an ordinary method parameter.
-    bool lambdaParameterByReference = false;
-    std::size_t valueOrdinal = 0;
-    std::string typeKey;
-};
 
-struct MethodLambdaBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::size_t lambdaOrdinal = 0;
-    std::optional<std::size_t> parentLambdaOrdinal;
-    std::size_t ownerMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string delegateTypeKey;
-    std::size_t delegateTypeOrdinal = 0;
-    std::string returnTypeKey;
-    std::string errorTypeKey;
-    std::vector<std::string> parameterNames;
-    std::vector<std::string> parameterTypeKeys;
-    std::vector<std::string> parameterValueTypeKeys;
-    std::vector<bool> parameterByReference;
-    std::vector<MethodLambdaCapture> captures;
-    language::CallableTrait callableTrait = language::CallableTrait::Fn;
-    language::ClosureLayout closureLayout;
-    bool explicitCaptureList = false;
-    bool blockBody = false;
-    bool anonymousNominal = false;
-    std::string generatedName;
-};
 
-enum class MethodDelegateOperationKind
-{
-    Create,
-    Invoke
-};
 
-struct MethodDelegateBinding final
-{
-    MethodDelegateOperationKind kind = MethodDelegateOperationKind::Create;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string delegateTypeKey;
-    std::size_t delegateTypeOrdinal = 0;
-    std::optional<std::size_t> selectedMemberOrdinal;
-    const ast::AstNode* receiverSyntax = nullptr;
-    std::string receiverTypeKey;
-    std::optional<std::size_t> receiverTypeOrdinal;
-    bool staticTarget = false;
-    // T08-F05. A method value keeps its category through HIR: a virtual/interface target is
-    // resolved from the bound receiver when the native delegate cell is created.  A base-qualified
-    // method value remains a direct target, matching ordinary base-call semantics.
-    bool virtualDispatch = false;
-    bool interfaceDispatch = false;
-    bool ownsReceiver = false;
-    std::optional<std::size_t> receiverSourceLocalOrdinal;
-    std::optional<std::size_t> receiverSourceParameterOrdinal;
-    // T08-F02. Non-empty only when invoking a zero-size anonymous non-capturing lambda. In that
-    // case there is no delegate cell/function-pointer child to evaluate: HIR/MIR call this
-    // generated static callable directly.
-    std::string directLambdaName;
-    // T08-F04. A capturing generic lambda can have several monomorphized entry points while
-    // retaining one lexical environment. The callee expression supplies the delegate cell whose
-    // receiver is passed to directLambdaName; its stored code pointer is intentionally ignored.
-    bool directLambdaUsesEnvironment = false;
-    std::string resultTypeKey;
-    std::vector<ProjectImplicitConversion> argumentConversions;
-    // NS304-T04-F04: valores default (sintaxis) de parametros omitidos en la invocacion, en orden
-    // de parametro. El HIR los baja como argumentos reales.
-    std::vector<const ast::AstNode*> selectedDefaultArguments;
-    std::vector<std::string> selectedDefaultArgumentTypeKeys;
-};
 
-enum class MethodEventOperationKind
-{
-    Add,
-    Remove,
-    Invoke
-};
 
-struct MethodEventBinding final
-{
-    MethodEventOperationKind kind = MethodEventOperationKind::Add;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::size_t eventMemberOrdinal = 0;
-    std::size_t backingMemberOrdinal = 0;
-    std::string delegateTypeKey;
-    std::size_t delegateTypeOrdinal = 0;
-    const ast::AstNode* receiverSyntax = nullptr;
-    std::string receiverTypeKey;
-    std::optional<std::size_t> receiverTypeOrdinal;
-    bool staticEvent = false;
-    std::string resultTypeKey;
-    std::vector<ProjectImplicitConversion> argumentConversions;
-    // NS304-T09-F08: si el event declara accessors custom, el ordinal del metodo add_/remove_ a
-    // invocar (en lugar de la storage sintetizada).
-    std::optional<std::size_t> customAccessorMemberOrdinal;
-};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // E017 carrier bridge. `??` recognizes only the public NativeSharp.Core.Optional<T> protocol;
 // lowering calls these methods and never reaches into the carrier's private fields or offsets.
-struct MethodOptionalCarrierBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string carrierTypeKey;
-    std::string valueTypeKey;
-    std::size_t hasValueMemberOrdinal = 0;
-    std::size_t uncheckedValueMemberOrdinal = 0;
-};
+
 
 // NativeSharp 3.0 T07-F01. Postfix `?` is bound against the compiler-owned
 // two-case variant protocol instead of a type name. Keeping the complete
 // protocol here lets every later layer consume one semantic decision.
-struct MethodResultPropagationBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    const ast::AstNode* operandSyntax = nullptr;
-    std::string sourceCarrierTypeKey;
-    std::string successTypeKey;
-    std::string sourceErrorTypeKey;
-    std::string returnCarrierTypeKey;
-    std::string returnErrorTypeKey;
-    std::size_t sourceSuccessTag = 0;
-    std::size_t sourceErrorTag = 0;
-    std::size_t returnErrorTag = 0;
-    std::size_t sourceSuccessTestMemberOrdinal = 0;
-    std::size_t sourceSuccessExtractorMemberOrdinal = 0;
-    std::size_t sourceErrorExtractorMemberOrdinal = 0;
-    std::size_t returnErrorFactoryMemberOrdinal = 0;
-    // NS304-T13-F08: the Ok factory of the SOURCE carrier (used to wrap an owned value on success).
-    std::size_t sourceSuccessFactoryMemberOrdinal = 0;
-    std::optional<std::size_t> errorConversionMemberOrdinal;
-};
+
 
 // NativeSharp 3.0 T01-F04. A range index is structural sugar over two public instance
 // methods on the receiver: `int Length()` and `Slice(int start, int length)`.  The binding
 // keeps both selected methods together because lowering must evaluate the receiver exactly once
 // and reuse that physical value for both calls.  Endpoints remain source syntax so their normal
 // evaluation order and conversions survive into HIR.
-struct MethodRangeSliceBinding final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::size_t methodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    const ast::AstNode* receiverSyntax = nullptr;
-    std::string receiverTypeKey;
-    std::optional<std::size_t> receiverTypeOrdinal;
-    std::size_t lengthMemberOrdinal = 0;
-    std::size_t sliceMemberOrdinal = 0;
-    std::string resultTypeKey;
-    const ast::AstNode* startSyntax = nullptr;
-    const ast::AstNode* endSyntax = nullptr;
-    ProjectImplicitConversion startConversion;
-    ProjectImplicitConversion endConversion;
-    bool hasStart = false;
-    bool startFromEnd = false;
-    bool hasEnd = false;
-    bool endFromEnd = false;
-    // The endpoints are one of 0..0, 0..Length or Length..Length. These are valid for every
-    // protocol-conforming non-negative Length and need no runtime range guard, even at O0.
-    bool boundsStaticallyProven = false;
-};
 
-enum class MethodCallResolutionKind
-{
-    Resolved,
-    NoViableCandidate,
-    Ambiguous
-};
 
-struct MethodCallCandidate final
-{
-    std::size_t memberOrdinal = 0;
-    bool viable = false;
-    std::vector<ProjectImplicitConversion> conversions;
-    // One entry per explicit argument, in source evaluation order.  The value is the selected
-    // callable's parameter ordinal.
-    std::vector<std::size_t> argumentParameterOrdinals;
-    std::vector<std::size_t> defaultedParameterOrdinals;
-    // NativeSharp 3.0 T01-F02. One bit per explicit source argument. A true bit means the
-    // argument is an element of the final params ReadOnlySpan<T>, not a prebuilt span.
-    std::vector<bool> parameterPackElements;
-    std::optional<std::size_t> parameterPackOrdinal;
-    // Source argument ordinals whose fresh owned string is borrowed only for the duration of
-    // this call. Used by namespace/free functions as well as member calls.
-    std::vector<std::size_t> fullExpressionBorrowArgumentOrdinals;
-    bool usesExpandedParameterPack = false;
-    bool synthesizesEmptyParameterPack = false;
-    std::size_t defaultedParameterCount = 0;
-    bool isVariadicCandidate = false;
-    std::optional<std::size_t> invalidVariadicArgumentOrdinal;
-    std::optional<std::size_t> invalidMoveOnlyArgumentOrdinal;
-};
 
-struct MethodCallBinding final
-{
-    MethodCallResolutionKind resolution = MethodCallResolutionKind::NoViableCandidate;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t callerMethodMemberOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string methodName;
-    bool explicitThis = false;
-    bool implicitThis = false;
-    bool baseReceiver = false;
-    bool staticCall = false;
-    bool interfaceCall = false;
-    bool forwardedReceiver = false;
-    const ast::AstNode* receiverSyntax = nullptr;
-    std::string receiverTypeKey;
-    std::optional<std::size_t> receiverTypeOrdinal;
-    std::vector<std::size_t> candidateMemberOrdinals;
-    std::vector<MethodCallCandidate> evaluatedCandidates;
-    std::vector<std::size_t> viableCandidateMemberOrdinals;
-    std::optional<std::size_t> selectedMemberOrdinal;
-    std::vector<ProjectImplicitConversion> selectedConversions;
-    std::vector<std::size_t> selectedArgumentParameterOrdinals;
-    std::vector<bool> selectedParameterPackElements;
-    std::optional<std::size_t> selectedParameterPackOrdinal;
-    bool selectedUsesExpandedParameterPack = false;
-    bool selectedSynthesizesEmptyParameterPack = false;
-    std::vector<const ast::AstNode*> selectedDefaultArguments;
-    std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
-    // Source expressions in the same order as selectedArgumentParameterOrdinals. Retained so
-    // T06-F07 can propagate escape contracts after the complete call graph has been analyzed.
-    std::vector<const ast::AstNode*> selectedArgumentSyntaxes;
-    std::string resultTypeKey;
-};
 
-struct NamespaceFunctionCallBinding final
-{
-    MethodCallResolutionKind resolution = MethodCallResolutionKind::NoViableCandidate;
-    const ast::AstNode* syntax = nullptr;
-    std::size_t callerCallableOrdinal = 0;
-    std::size_t scopeOrdinal = 0;
-    std::string writtenName;
-    bool forwardedReceiver = false;
-    const ast::AstNode* receiverSyntax = nullptr;
-    std::vector<std::size_t> candidateFunctionOrdinals;
-    std::vector<MethodCallCandidate> evaluatedCandidates;
-    std::vector<std::size_t> viableCandidateFunctionOrdinals;
-    std::optional<std::size_t> selectedFunctionOrdinal;
-    std::vector<ProjectImplicitConversion> selectedConversions;
-    std::vector<std::size_t> selectedArgumentParameterOrdinals;
-    std::vector<bool> selectedParameterPackElements;
-    std::optional<std::size_t> selectedParameterPackOrdinal;
-    bool selectedUsesExpandedParameterPack = false;
-    bool selectedSynthesizesEmptyParameterPack = false;
-    std::vector<const ast::AstNode*> selectedDefaultArguments;
-    std::vector<std::size_t> selectedDefaultArgumentParameterOrdinals;
-    std::vector<const ast::AstNode*> selectedArgumentSyntaxes;
-    std::string resultTypeKey;
-};
+
+
+
+
+
 
 class ProjectMethodBodyModel final
 {
@@ -1638,202 +377,19 @@ public:
     const ClassMemberSymbol* callableSymbol(std::size_t ordinal) const noexcept;
 
 private:
-    enum class ScopeNameKind
-    {
-        Parameter,
-        Local
-    };
-
-    struct ScopeName final
-    {
-        ScopeNameKind kind = ScopeNameKind::Local;
-        std::string name;
-        std::size_t semanticOrdinal = 0;
-        SourceRange range;
-    };
-
-    struct ConditionFlowStates final
-    {
-        OwnershipFlowSnapshot whenTrue;
-        OwnershipFlowSnapshot whenFalse;
-    };
-
-    struct ExpressionResult final
-    {
-        std::string typeKey = "<error>";
-        bool valid = false;
-        bool methodGroup = false;
-        // T08-F05. Set only by move(receiver.Method). The method group remains target-typed, but
-        // its delegate cell becomes the unique owner of the receiver and must clear a named source.
-        bool methodGroupMovesReceiver = false;
-        bool boundMethodBorrowsReceiver = false;
-        bool assignable = false;
-        // True only for storage-backed expressions (locals, parameters, fields, raw elements,
-        // and dereferences). Properties may be assignable through a setter but are not memory
-        // locations and therefore cannot satisfy an inline-assembly `m` constraint.
-        bool addressable = false;
-        // True when the value is a struct location reached through `in`, a readonly field, or
-        // the implicit receiver of a readonly struct member. Reads remain legal; writes and calls
-        // to mutating instance members do not.
-        bool readonlyReceiver = false;
-        // Source qualifier for raw pointers. Kept outside typeKey because LLVM pointers are
-        // opaque and the qualifier has no ABI/layout effect; semantic assignment/dereference
-        // still observes it.
-        bool pointerPointeeReadonly = false;
-        bool pointerNullable = true;
-        bool pointerHasProvenance = true;
-        std::size_t pointerKnownAlignment = 1;
-        unsigned pointerAddressSpace = 0;
-        bool onePastEndAddress = false;
-        bool onePastEndPointer = false;
-        std::vector<std::size_t> methodCandidates;
-        std::optional<ProjectIntegerConstant> integerConstant;
-        std::optional<language::CallableTrait> callableTrait;
-        sema::OwnershipKind ownership = sema::OwnershipKind::None;
-        bool ownershipTransfer = false;
-        // NSC-LIMIT-010. ESTA EXPRESION ACABA DE CREAR UN OWNER que no pertenece a nadie todavia:
-        // `new T(...)`. No es lo mismo que una transferencia -- no hay fuente con nombre de la que
-        // salga, y por eso `move` no se puede ni escribir sobre ella.
-        //
-        // Es una tercera situacion y no un caso de las otras dos, y hace falta porque un parametro
-        // `owned` exigia «ownership == Owned && ownershipTransfer», lo que dejaba fuera
-        // `new Caja(new Carga(7))` -- no habia de donde mover.
-        //
-        // SOLO RELAJA, NUNCA ENDURECE. Este comentario llego a afirmar que un parametro SIN
-        // calificador rechazaba un owner recien creado; era falso y ademas seria un cambio de
-        // lenguaje, no una comprobacion: `Insert(new Student(...))` sobre un parametro sin
-        // calificador es la forma mas ordinaria que hay --cinco ejemplos del libro la usan-- y
-        // `Student s = new Student(...); Insert(s);` hace lo mismo con el mismo objeto. Un
-        // parametro sin calificador no rastrea la vida del valor, y eso vale igual para uno
-        // recien creado que para uno que ya existia. Ver classifyOwnershipArgument.
-        bool ownershipFreshOwner = false;
-        std::optional<std::size_t> ownershipSourceLocalOrdinal;
-        std::optional<std::size_t> ownershipSourceParameterOrdinal;
-        bool ownsStorageDestination = false;
-        sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
-        sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
-        std::optional<std::size_t> borrowedLocalOrdinal;
-        const ast::AstNode* receiverSyntax = nullptr;
-        std::string receiverTypeKey;
-        std::optional<std::size_t> receiverTypeOrdinal;
-        bool baseReceiver = false;
-        bool extensionMethodGroup = false;
-        std::optional<std::size_t> eventMemberOrdinal;
-        std::optional<std::size_t> assignmentMemberOrdinal;
-        // C4 "language references": the `ref`/`out`/`in` keyword written at THIS argument
-        // position, if any. Value for every ordinary argument. It is checked against the
-        // parameter's own pass kind after overload resolution, so the call site and the signature
-        // must agree -- which is the point of requiring the keyword at all: a reader of the call
-        // can see that the argument may change without going to read the signature.
-        ParameterPassKind argumentPassKind = ParameterPassKind::Value;
-        bool flowProvenNonNull = false;
-        bool flowIntegerExcludesZero = false;
-        std::optional<std::int64_t> flowIntegerMinimum;
-        std::optional<std::int64_t> flowIntegerMaximum;
-        std::optional<std::size_t> flowActiveVariantCase;
-        bool flowRuntimeCheckElided = false;
-    };
-
-    struct ExpressionAnalysisRequest final
-    {
-        const ast::AstNode* syntax = nullptr;
-        bool allowMethodGroup = false;
-        bool allowEvent = false;
-        bool allowMove = false;
-        bool allowConstructorPropertyWrite = false;
-
-        std::uint8_t optionMask() const noexcept
-        {
-            return static_cast<std::uint8_t>(
-                (allowMethodGroup ? 1U : 0U) |
-                (allowEvent ? 2U : 0U) |
-                (allowMove ? 4U : 0U) |
-                (allowConstructorPropertyWrite ? 8U : 0U));
-        }
-    };
-
-    struct ExpressionAnalysisCacheKey final
-    {
-        const ast::AstNode* syntax = nullptr;
-        std::uint8_t optionMask = 0;
-
-        bool operator==(const ExpressionAnalysisCacheKey&) const noexcept = default;
-    };
-
-    struct ExpressionAnalysisCacheKeyHash final
-    {
-        std::size_t operator()(const ExpressionAnalysisCacheKey& key) const noexcept
-        {
-            const std::size_t syntaxHash = std::hash<const ast::AstNode*>{}(key.syntax);
-            return syntaxHash ^ (
-                static_cast<std::size_t>(key.optionMask) +
-                std::size_t{0x9e3779b9U} +
-                (syntaxHash << 6U) +
-                (syntaxHash >> 2U));
-        }
-    };
-
-    struct ExpressionAnalysisCacheEntry final
-    {
-        ExpressionAnalysisRequest request;
-        ExpressionResult result;
-    };
-
-    struct ExpressionAnalysisFrame final
-    {
-        ExpressionAnalysisRequest request;
-        bool expanded = false;
-    };
-
-    struct IterativeExpressionAnalysis final
-    {
-        std::vector<ExpressionAnalysisCacheEntry> results;
-        std::unordered_map<
-            ExpressionAnalysisCacheKey,
-            std::size_t,
-            ExpressionAnalysisCacheKeyHash> resultIndex;
-    };
-
-    struct LoopContext final
-    {
-        std::size_t targetScopeOrdinal = 0;
-        std::size_t breakCleanupDepth = 0;
-        std::size_t continueCleanupDepth = 0;
-        std::vector<OwnershipFlowSnapshot> breakStates;
-        std::vector<OwnershipFlowSnapshot> continueStates;
-        // A switch pushes a context too, because `break` inside a switch leaves the SWITCH. But it
-        // is not a `continue` target: `continue` inside a switch inside a loop continues the loop,
-        // so analyzeLoopExit walks past every frame with this flag when it looks for one. Without
-        // the flag a `continue` in a `switch` in a `while` would either be rejected or, worse,
-        // bound to a jump target that does not exist.
-        bool isSwitch = false;
-        const ast::AstNode* syntax = nullptr;
-        std::string label;
-        bool isExpression = false;
-        struct BreakValue final
-        {
-            const ast::AstNode* syntax = nullptr;
-            ExpressionResult value;
-        };
-        std::vector<BreakValue> breakValues;
-    };
-
-    struct FinallyContext final
-    {
-        std::size_t cleanupRegionOrdinal = 0;
-        std::size_t loopDepthAtEntry = 0;
-    };
-
-    // T06-F05. The parser lowers defer to try/finally, but the source capture boundary remains
-    // normative: a deferred body may only reach outer locals/parameters named in its explicit
-    // capture list. Generated aliases live immediately outside the marked body scope.
-    struct DeferCaptureContext final
-    {
-        std::size_t boundaryScopeOrdinal = 0;
-        std::unordered_set<std::string> allowedNames;
-        bool capturesThis = false;
-    };
-
+#include "nativesharp/Frontend/Internal/MethodBody/ScopeNameKind.h"
+#include "nativesharp/Frontend/Internal/MethodBody/ScopeName.h"
+#include "nativesharp/Frontend/Internal/MethodBody/ConditionFlowStates.h"
+#include "nativesharp/Frontend/Internal/MethodBody/ExpressionResult.h"
+#include "nativesharp/Frontend/Internal/MethodBody/ExpressionAnalysisRequest.h"
+#include "nativesharp/Frontend/Internal/MethodBody/ExpressionAnalysisCacheKey.h"
+#include "nativesharp/Frontend/Internal/MethodBody/ExpressionAnalysisCacheKeyHash.h"
+#include "nativesharp/Frontend/Internal/MethodBody/ExpressionAnalysisCacheEntry.h"
+#include "nativesharp/Frontend/Internal/MethodBody/ExpressionAnalysisFrame.h"
+#include "nativesharp/Frontend/Internal/MethodBody/IterativeExpressionAnalysis.h"
+#include "nativesharp/Frontend/Internal/MethodBody/LoopContext.h"
+#include "nativesharp/Frontend/Internal/MethodBody/FinallyContext.h"
+#include "nativesharp/Frontend/Internal/MethodBody/DeferCaptureContext.h"
     std::size_t createScope(
         MethodScopeKind kind,
         std::size_t methodMemberOrdinal,
@@ -1841,9 +397,52 @@ private:
     bool scopeContains(std::size_t ancestorScopeOrdinal, std::size_t scopeOrdinal) const noexcept;
     OwnershipFlowSnapshot captureOwnershipFlow() const;
     void restoreOwnershipFlow(const OwnershipFlowSnapshot& state);
+    void restoreLocalOwnershipFlags(const OwnershipFlowSnapshot& state);
+    void restoreParameterOwnershipFlags(const OwnershipFlowSnapshot& state);
+    void restoreAssignedLocals(const OwnershipFlowSnapshot& state);
+    void restoreOwnershipStorageFacts(
+        const OwnershipFlowSnapshot& state,
+        std::span<const std::pair<std::size_t, std::size_t>> activeAfterSnapshot);
     OwnershipFlowSnapshot joinOwnershipFlow(
         const OwnershipFlowSnapshot& left,
         const OwnershipFlowSnapshot& right) const;
+    static void mergeRequiredOwnershipExits(
+        OwnershipFlowSnapshot& result,
+        const OwnershipFlowSnapshot& left,
+        const OwnershipFlowSnapshot& right);
+    static std::uint8_t joinedLocalFlagsAt(
+        const OwnershipFlowSnapshot& snapshot,
+        std::size_t ordinal) noexcept;
+    static std::uint8_t joinOwnershipTriStateBits(
+        std::uint8_t leftFlags,
+        std::uint8_t rightFlags,
+        std::uint8_t definiteBit,
+        std::uint8_t maybeBit) noexcept;
+    static void joinLocalOwnershipFlags(
+        OwnershipFlowSnapshot& result,
+        const OwnershipFlowSnapshot& left,
+        const OwnershipFlowSnapshot& right);
+    static void joinParameterOwnershipFlags(
+        OwnershipFlowSnapshot& result,
+        const OwnershipFlowSnapshot& left,
+        const OwnershipFlowSnapshot& right);
+    static void joinPartialOwnershipState(
+        const OwnershipFlowSnapshot& left,
+        const OwnershipFlowSnapshot& right,
+        OwnershipFlowSnapshot& result);
+    static void joinRequiredOwnershipFields(
+        const OwnershipFlowSnapshot& left,
+        const OwnershipFlowSnapshot& right,
+        OwnershipFlowSnapshot& result);
+    static void joinOwnershipStorageFact(
+        OwnershipFlowSnapshot& result,
+        const OwnershipFlowSnapshot& left,
+        const OwnershipFlowSnapshot& right,
+        std::size_t storageKey);
+    static void joinOwnershipStorageFacts(
+        OwnershipFlowSnapshot& result,
+        const OwnershipFlowSnapshot& left,
+        const OwnershipFlowSnapshot& right);
 
     // CC1-200 "operacion comun de branch snapshot/join".
     //
@@ -1877,6 +476,39 @@ private:
         const ast::AstNode* expression,
         std::size_t scopeOrdinal,
         bool* precise = nullptr) const;
+    std::optional<std::int64_t> storageIntegerConstant(
+        const ast::AstNode* syntax,
+        std::size_t scopeOrdinal,
+        std::size_t callableOrdinal) const;
+    std::string_view recordedExpressionTypeKey(
+        const ast::AstNode* syntax,
+        std::size_t callableOrdinal) const;
+    std::optional<std::string> storagePlaceKeyForReferenceCall(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal,
+        bool* precise,
+        bool& handled) const;
+    std::optional<std::string> storageIdentifierPlaceKey(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal,
+        bool* precise) const;
+    std::optional<std::string> storageMemberPlaceKey(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal,
+        std::size_t callableOrdinal,
+        bool* precise) const;
+    void appendStorageIndexSegment(
+        std::string& key,
+        const ast::AstNode* index,
+        std::size_t scopeOrdinal,
+        std::size_t callableOrdinal,
+        bool structurallySplittable,
+        bool& indicesPrecise) const;
+    std::optional<std::string> storageIndexPlaceKey(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal,
+        std::size_t callableOrdinal,
+        bool* precise) const;
     static bool placeContains(std::string_view ancestor, std::string_view descendant) noexcept;
     static bool placesOverlap(std::string_view left, std::string_view right) noexcept;
     std::optional<std::size_t> referenceRootLocalOrdinal(
@@ -1916,29 +548,610 @@ private:
         std::size_t scopeOrdinal,
         bool createNestedScope,
         diagnostics::DiagnosticEngine& diagnostics);
+    struct BlockFrame;
+    enum class IfStage;
+    struct IfFrame;
+    enum class LoopStage;
+    struct LoopFrame;
+    enum class ForStage;
+    struct ForFrame;
+    enum class ForeachStage;
+    struct ForeachFrame;
+    enum class UsingStage;
+    struct UsingFrame;
+    enum class SwitchStage;
+    struct SwitchFrame;
+    enum class TryStage;
+    struct TryFrame;
+    using StatementFrame = std::variant<
+        BlockFrame,
+        IfFrame,
+        LoopFrame,
+        ForFrame,
+        ForeachFrame,
+        UsingFrame,
+        SwitchFrame,
+        TryFrame>;
+    void pushBlockFrame(
+        std::vector<StatementFrame>& frames,
+        const ast::AstNode* nestedBlock,
+        std::size_t parentScope,
+        bool createScopeForBlock,
+        std::size_t methodMemberOrdinal,
+        std::optional<OwnershipFlowSnapshot> restoreAfterExit = std::nullopt);
+    void processIfFrame(
+        std::vector<StatementFrame>& frames,
+        IfFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void beginLoopFrame(
+        std::vector<StatementFrame>& frames,
+        LoopFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void finishLoopFrame(
+        std::vector<StatementFrame>& frames,
+        LoopFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void processLoopFrame(
+        std::vector<StatementFrame>& frames,
+        LoopFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void beginForFrame(
+        std::vector<StatementFrame>& frames,
+        ForFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void finishForFrame(
+        std::vector<StatementFrame>& frames,
+        ForFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void processForFrame(
+        std::vector<StatementFrame>& frames,
+        ForFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void processForeachFrame(
+        std::vector<StatementFrame>& frames,
+        ForeachFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void processUsingFrame(
+        std::vector<StatementFrame>& frames,
+        UsingFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void processSwitchFrame(
+        std::vector<StatementFrame>& frames,
+        SwitchFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void processTryFrame(
+        std::vector<StatementFrame>& frames,
+        TryFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void processBlockStatement(
+        std::vector<StatementFrame>& frames,
+        BlockFrame& frame,
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void validateBlockScopedBorrowExit(
+        const ast::AstNode* block,
+        std::size_t activeScope,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::vector<language::MatchArmCoverage> parseBlockMatchCoverage(
+        const ast::AstNode* block) const;
+    std::vector<std::string> blockMatchCoverageDomain(
+        const ast::AstNode* block,
+        std::size_t activeScope) const;
+    static bool matchCoverageHasListLength(
+        const std::vector<language::MatchArmCoverage>& arms) noexcept;
+    static bool matchCoverageHasUnguardedWildcard(
+        const std::vector<language::MatchArmCoverage>& arms) noexcept;
+    void reportOpenBlockMatchCoverage(
+        const ast::AstNode* block,
+        const std::vector<language::MatchArmCoverage>& arms,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void reportClosedBlockMatchCoverage(
+        const ast::AstNode* block,
+        const std::vector<language::MatchArmCoverage>& arms,
+        const std::vector<std::string>& domain,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void analyzeBlockMatchCoverage(
+        const ast::AstNode* block,
+        std::size_t activeScope,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void finishBlockFrame(
+        std::vector<StatementFrame>& frames,
+        BlockFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void processBlockFrame(
+        std::vector<StatementFrame>& frames,
+        BlockFrame& frame,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     void analyzeStatement(
         const ast::AstNode* statement,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeStructuredStatement(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeTerminalStatement(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeStandaloneStatement(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeDeconstructionDeclarationStatement(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool handleDeconstructionPatternShape(
+        const PatternWork& work,
+        std::vector<PatternWork>& patternWork,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void declareDeconstructionPatternBinding(
+        PatternWork& work,
+        std::unordered_set<std::string>& declaredHere,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeIfStatement(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeWhileStatement(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeWhileCondition(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool isDoWhile);
+    OwnershipFlowSnapshot analyzeWhileBody(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        LoopContext& loopContext);
+    OwnershipFlowSnapshot analyzeDoWhileCondition(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const OwnershipFlowSnapshot& backEdgeState);
+    void validateWhileLocalBackEdge(
+        const ast::AstNode* statement,
+        const OwnershipFlowSnapshot& loopEntry,
+        const OwnershipFlowSnapshot& backEdgeState,
+        std::size_t localCountAtBodyEntry,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateWhileParameterBackEdge(
+        const ast::AstNode* statement,
+        const OwnershipFlowSnapshot& loopEntry,
+        const OwnershipFlowSnapshot& backEdgeState,
+        const ClassMemberSymbol* loopMethod,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateWhilePartialMoveBackEdge(
+        const ast::AstNode* statement,
+        const OwnershipFlowSnapshot& loopEntry,
+        const OwnershipFlowSnapshot& backEdgeState,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    OwnershipFlowSnapshot completeWhileFlow(
+        bool isDoWhile,
+        bool conditionAlwaysTrue,
+        const OwnershipFlowSnapshot& loopEntry,
+        const OwnershipFlowSnapshot& backEdgeState,
+        const OwnershipFlowSnapshot& afterCondition,
+        const LoopContext& loopContext) const;
+    void analyzeReturnStatement(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeStaticAssertStatement(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeInlineAssemblyStatement(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeInlineAssemblyOperand(
+        const ast::AstNode* operand,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeYieldStatement(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeSuspendStatement(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
     void analyzeVariable(
         const ast::AstNode* variable,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool inferVariableType(
+        std::optional<ExpressionResult>& precomputedVarInitializer,
+        std::string& varInferredTypeKey,
+        const ast::AstNode* variable,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool isVarInferred);
+    bool analyzeVariableLengthArray(
+        bool& isVariableLengthArray,
+        std::string& elementTypeKey,
+        const ast::AstNode*& countSyntax,
+        std::vector<const ast::AstNode*>& extentSyntaxes,
+        std::vector<std::string>& extentTypeKeys,
+        const ast::AstNode* variable,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool isVarInferred);
+    bool inspectVariableLengthArrayModifiers(
+        std::size_t& fixedArrayModifierCount,
+        bool& hasRuntimeExtent,
+        const ast::AstNode* variable,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool resolveVariableLengthArrayShape(
+        std::string& elementTypeKey,
+        std::vector<const ast::AstNode*>& extentSyntaxes,
+        const ast::AstNode* variable,
+        std::size_t fixedArrayModifierCount,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateVariableLengthArrayElements(
+        std::vector<std::string>& extentTypeKeys,
+        const std::string& elementTypeKey,
+        const std::vector<const ast::AstNode*>& extentSyntaxes,
+        const ast::AstNode* variable,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool classifyVariableReferenceLocal(
+        bool& isPinnedReferenceLocal,
+        bool& isReadonlyReference,
+        bool& isPinnedLocal,
+        const ast::AstNode* variable) const;
+    bool analyzeVariablePreamble(
+        std::optional<ExpressionResult>& precomputedVarInitializer,
+        std::string& varInferredTypeKey,
+        bool& isVariableLengthArray,
+        std::string& variableLengthArrayElementTypeKey,
+        const ast::AstNode*& variableLengthArrayCountSyntax,
+        std::vector<const ast::AstNode*>& variableLengthArrayExtentSyntaxes,
+        std::vector<std::string>& variableLengthArrayExtentTypeKeys,
+        const ast::AstNode* variable,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool isVarInferred);
+    void validateVariableStorage(
+        const ast::AstNode* variable,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool isStaticLocal,
+        bool isReferenceLocal,
+        bool isVariableLengthArray) const;
+    bool variableRequiresRaii(
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        bool isForeachEnumerator,
+        bool isDeferValueCapture,
+        bool ownedQualifierOwnsStorage,
+        bool managedDelegate) const;
+    void validateVariableQualifiers(
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        diagnostics::DiagnosticEngine& diagnostics,
+        sema::OwnershipKind declaredOwnership,
+        bool isReferenceLocal,
+        bool isReadonlyReference,
+        bool isForeachEnumerator,
+        bool isRaii,
+        bool isBorrowed,
+        bool isVolatile,
+        bool managedDelegate,
+        bool raiiOwnsNativeArrayBuffer,
+        const char* ownerSpelling) const;
+    void validateVariableStorageQualifiers(
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        diagnostics::DiagnosticEngine& diagnostics,
+        sema::OwnershipKind declaredOwnership,
+        bool isReferenceLocal,
+        bool isReadonlyReference,
+        bool isRaii,
+        bool isBorrowed,
+        bool isVolatile) const;
+    void validateVariableLifetimeQualifiers(
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool isForeachEnumerator,
+        bool isRaii,
+        bool isBorrowed,
+        bool managedDelegate,
+        bool raiiOwnsNativeArrayBuffer,
+        const char* ownerSpelling) const;
+    ExpressionResult evaluateVariableInitializer(
+        std::optional<ExpressionResult>& precomputedVarInitializer,
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool isVarInferred,
+        bool isRaii,
+        bool isMoveOnly);
+    void validateVariableOwnershipInitializer(
+        const ExpressionResult& initializer,
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool isMoveOnly,
+        bool isRaii,
+        bool isBorrowed,
+        bool isForeachEnumerator,
+        bool managedDelegate,
+        bool raiiOwnsNativeArrayBuffer) const;
+    void analyzeReferenceVariableInitializer(
+        MethodEscapeOrigin& pendingReferenceEscapeOrigin,
+        std::string& pendingReferencePlaceKey,
+        std::optional<std::size_t>& pendingReferenceReborrowSourceLocalOrdinal,
+        const ExpressionResult& initializer,
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool isReadonlyReference,
+        bool isPinnedReferenceLocal) const;
+    void validateVariableInitializerConversion(
+        const ExpressionResult& initializer,
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const language::PointerContract& declaredPointerContract,
+        bool declaredPointerPointeeReadonly,
+        bool isVarInferred) const;
+    void configureBorrowedVariableSource(
+        MethodLocalBorrowBinding& borrow,
+        const ScopeName& source,
+        const ast::AstNode* variable,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void analyzeBorrowedVariableInitializer(
+        std::optional<MethodLocalBorrowBinding>& pendingLocalBorrow,
+        const ExpressionResult& initializer,
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool isRaii,
+        bool raiiBorrowedElementArray) const;
+    void analyzeVariableInitializer(
+        std::optional<ExpressionResult>& precomputedVarInitializer,
+        std::optional<MethodLocalBorrowBinding>& pendingLocalBorrow,
+        MethodEscapeOrigin& pendingReferenceEscapeOrigin,
+        std::string& pendingReferencePlaceKey,
+        std::optional<std::size_t>& pendingReferenceReborrowSourceLocalOrdinal,
+        sema::OwnershipKind& pendingObjectLifetimeOwnership,
+        sema::OwnershipKind& pendingStorageOwnership,
+        std::optional<language::CallableTrait>& pendingCallableTrait,
+        bool& pendingOnePastEndPointer,
+        bool& pendingPointerPointeeReadonly,
+        bool& pendingPointerNullable,
+        bool& pendingPointerHasProvenance,
+        std::size_t& pendingPointerKnownAlignment,
+        unsigned& pendingPointerAddressSpace,
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const language::PointerContract& declaredPointerContract,
+        bool declaredPointerPointeeReadonly,
+        bool isVarInferred,
+        bool isReferenceLocal,
+        bool isReadonlyReference,
+        bool isPinnedReferenceLocal,
+        bool isMoveOnly,
+        bool isRaii,
+        bool isBorrowed,
+        bool isForeachEnumerator,
+        bool managedDelegate,
+        bool raiiOwnsNativeArrayBuffer,
+        bool raiiBorrowedElementArray);
+    bool rejectDuplicateVariable(
+        const ast::AstNode* variable,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void initializeVariableLocal(
+        MethodLocalSymbol& local,
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        const MethodEscapeOrigin& pendingReferenceEscapeOrigin,
+        std::string pendingReferencePlaceKey,
+        std::optional<std::size_t> pendingReferenceReborrowSourceLocalOrdinal,
+        sema::OwnershipKind pendingObjectLifetimeOwnership,
+        sema::OwnershipKind pendingStorageOwnership,
+        std::optional<language::CallableTrait> pendingCallableTrait,
+        const std::vector<const ast::AstNode*>& variableLengthArrayExtentSyntaxes,
+        const std::vector<std::string>& variableLengthArrayExtentTypeKeys,
+        std::string_view variableLengthArrayElementTypeKey,
+        const ast::AstNode* variableLengthArrayCountSyntax,
+        bool pendingOnePastEndPointer,
+        bool pendingPointerPointeeReadonly,
+        bool pendingPointerNullable,
+        bool pendingPointerHasProvenance,
+        std::size_t pendingPointerKnownAlignment,
+        unsigned pendingPointerAddressSpace,
+        bool isStaticLocal,
+        bool isReferenceLocal,
+        bool isReadonlyReference,
+        bool isVariableLengthArray,
+        bool isVolatile,
+        bool isRaii,
+        bool isScope,
+        bool isMoveOnly,
+        bool isPinnedLocal,
+        bool isBorrowed,
+        bool hasPendingLocalBorrow);
+    void configureVariableLocalConstant(
+        MethodLocalSymbol& local,
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        std::size_t methodMemberOrdinal) const;
+    void configureVariableLocalView(
+        MethodLocalSymbol& local,
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal) const;
+    void recordVariableShadowing(
+        const ast::AstNode* variable,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    std::size_t registerVariableLocal(
+        MethodLocalSymbol local,
+        const ast::AstNode* variable,
+        std::size_t scopeOrdinal,
+        bool isVariableLengthArray);
+    void createVariableLengthArrayExtentLocals(
+        const ast::AstNode* variable,
+        const std::vector<const ast::AstNode*>& extentSyntaxes,
+        const std::vector<std::string>& extentTypeKeys,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::size_t localOrdinal);
+    void updateVariableAssignmentState(
+        const ast::AstNode* variable,
+        std::size_t localOrdinal,
+        bool isVariableLengthArray);
+    void updateVariableActiveUnionMember(
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        std::size_t scopeOrdinal,
+        std::size_t localOrdinal);
+    void finalizeVariableLocal(
+        std::optional<MethodLocalBorrowBinding>& pendingLocalBorrow,
+        const ast::AstNode* variable,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::size_t localOrdinal,
+        bool isStaticLocal,
+        bool isRaii,
+        bool isScope,
+        bool isMoveOnly);
+    void finishVariableAnalysis(
+        std::optional<ExpressionResult>& precomputedVarInitializer,
+        const std::vector<const ast::AstNode*>& variableLengthArrayExtentSyntaxes,
+        const std::vector<std::string>& variableLengthArrayExtentTypeKeys,
+        const std::string& variableLengthArrayElementTypeKey,
+        const ast::AstNode* variableLengthArrayCountSyntax,
+        const ast::AstNode* variable,
+        const std::string& typeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        sema::OwnershipKind declaredOwnership,
+        bool isVarInferred,
+        bool isStaticLocal,
+        bool isReferenceLocal,
+        bool isReadonlyReference,
+        bool isPinnedReferenceLocal,
+        bool isPinnedLocal,
+        bool isMoveOnly,
+        bool isRaii,
+        bool isScope,
+        bool isBorrowed,
+        bool isForeachEnumerator,
+        bool managedDelegate,
+        bool isVariableLengthArray,
+        bool isVolatile,
+        const char* ownerSpelling);
+    void analyzeForInitializer(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t forScope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeForCondition(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t forScope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    OwnershipFlowSnapshot analyzeForUpdate(
+        const ast::AstNode* statement,
+        OwnershipFlowSnapshot backEdgeState,
+        std::size_t methodMemberOrdinal,
+        std::size_t forScope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void validateForBackEdgeLocals(
+        const ast::AstNode* statement,
+        const OwnershipFlowSnapshot& loopEntry,
+        const OwnershipFlowSnapshot& backEdgeState,
+        std::size_t localCountAtBodyEntry,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateForBackEdgeParameters(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol* loopMethod,
+        const OwnershipFlowSnapshot& loopEntry,
+        const OwnershipFlowSnapshot& backEdgeState,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateForBackEdgePartialMoves(
+        const ast::AstNode* statement,
+        const OwnershipFlowSnapshot& loopEntry,
+        const OwnershipFlowSnapshot& backEdgeState,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void analyzeFor(
         const ast::AstNode* statement,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
-    struct ForeachAnalysisState final
-    {
-        const ast::AstNode* statement = nullptr;
-        const ast::AstNode* chosenCandidate = nullptr;
-        std::size_t foreachScope = 0;
-        std::size_t cleanupDepth = 0;
-        bool iterationBorrowActive = false;
-    };
+#include "nativesharp/Frontend/Internal/MethodBody/ForeachAnalysisState.h"
+    void configureForeachSourceOwnership(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t foreachScope);
+    ast::AstNode* chooseForeachCandidate(
+        const ast::AstNode* statement,
+        std::string_view sourceTypeKey,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool beginForeachIterationBorrow(
+        const ast::AstNode* statement,
+        const ast::AstNode* chosenCandidate,
+        std::size_t foreachScope);
     std::optional<ForeachAnalysisState> beginForeach(
         const ast::AstNode* statement,
         std::size_t methodMemberOrdinal,
@@ -1952,21 +1165,37 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
-    struct SwitchAnalysisState final
-    {
-        const ast::AstNode* statement = nullptr;
-        std::size_t scopeOrdinal = 0;
-        MethodSwitchBinding binding;
-        OwnershipFlowSnapshot switchEntry;
-        std::vector<OwnershipFlowSnapshot> sectionExitStates;
-        std::size_t nextChild = 0;
-        bool hasDefault = false;
-    };
+#include "nativesharp/Frontend/Internal/MethodBody/SwitchAnalysisState.h"
     std::optional<SwitchAnalysisState> beginSwitch(
         const ast::AstNode* statement,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeSwitchSectionLabels(
+        const ast::AstNode* section,
+        const ExpressionResult& governing,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::vector<std::int64_t>& seenValues,
+        const ast::AstNode*& defaultLabel,
+        MethodSwitchSectionBinding& sectionBinding,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateSwitchLabelConversion(
+        const ast::AstNode* label,
+        const ExpressionResult& governing,
+        const ExpressionResult& value,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::optional<std::int64_t> foldSwitchLabel(
+        const ast::AstNode* label,
+        const ExpressionResult& governing,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool recordSwitchLabel(
+        const ast::AstNode* label,
+        std::int64_t canonical,
+        std::vector<std::int64_t>& seenValues,
+        MethodSwitchSectionBinding& sectionBinding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void finishSwitch(SwitchAnalysisState&& state);
     void analyzeSwitch(
         const ast::AstNode* statement,
@@ -1985,35 +1214,7 @@ private:
         std::optional<std::size_t> declaringTypeOrdinal,
         std::size_t callableOrdinal) const;
 
-    // Adaptador que le da al evaluador compartido la resolucion de miembros y de tipos de ESTE
-    // modelo, sin que el evaluador tenga que conocer el modelo entero.
-    class ConstantMemberResolver final : public ProjectConstantMemberResolver
-    {
-    public:
-        ConstantMemberResolver(
-            const ProjectMethodBodyModel& model,
-            std::size_t callableOrdinal) noexcept
-            : model_(model), callableOrdinal_(callableOrdinal)
-        {
-        }
-
-        std::optional<std::size_t> resolveConstantMember(
-            const ast::AstNode* syntax,
-            std::optional<std::size_t> declaringTypeOrdinal) const override;
-        bool describeConstantMember(
-            std::size_t memberOrdinal,
-            bool& isEnumConstant,
-            std::int64_t& enumConstantValue,
-            std::string& enumUnderlyingTypeKey,
-            const ast::AstNode*& initializer,
-            std::string& declaredTypeKey,
-            std::optional<std::size_t>& declaringTypeOrdinal) const override;
-        std::string resolveTypeKey(const ast::TypeSyntax* typeSyntax) const override;
-
-    private:
-        const ProjectMethodBodyModel& model_;
-        std::size_t callableOrdinal_ = 0;
-    };
+#include "nativesharp/Frontend/Internal/MethodBody/ConstantMemberResolver.h"
 
     const MethodNameBinding* recordedNameBinding(
         const ast::AstNode* syntax,
@@ -2026,37 +1227,181 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    std::string effectiveReturnTypeKey(const ClassMemberSymbol& method) const;
+    bool analyzeLambdaReturn(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool rejectFinallyReturn(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeSimpleReturnRestrictions(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        std::string_view declaredReturnTypeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool returnLifetimeOutlives(
+        const ClassMemberSymbol& method,
+        std::string_view longer,
+        std::string_view shorter) const;
+    bool validateReferenceReturnLifetime(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        const MethodEscapeOrigin& escape,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool analyzeReferenceReturn(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool rejectVariableArrayReturn(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool reportDirectOwnerReturnWithoutMove(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    ExpressionResult analyzeReturnValue(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool rejectRefFieldReturn(
+        const ast::AstNode* statement,
+        const ExpressionResult& value,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool rejectBoundMethodReturn(
+        const ast::AstNode* statement,
+        const ExpressionResult& value,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    static language::FunctionType returnFunctionType(const ClassMemberSymbol& callable);
+    bool validateMustTailReturn(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        const ProjectImplicitConversion& conversion,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validatePointerReturn(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        const ExpressionResult& value,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void noteReturnEscape(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        const ExpressionResult& value,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    bool validateViewReturn(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateScopeReturn(
+        const ast::AstNode* statement,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateBorrowedReturnValue(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        const ExpressionResult& value,
+        bool returnTypeOwnable,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool configureBorrowedReturnFromLocal(
+        MethodBorrowBinding& borrow,
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        const ExpressionResult& value,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool configureBorrowedReturnSource(
+        MethodBorrowBinding& borrow,
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        const ExpressionResult& value,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool analyzeBorrowedReturn(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        const ExpressionResult& value,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        bool returnTypeOwnable,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool rejectBorrowedUnqualifiedReturn(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        const ExpressionResult& value,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void analyzeOwnedReturn(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        const ExpressionResult& value,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        bool directOwnerReturnWithoutMove,
+        bool returnTypeOwnable,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<std::size_t> loopExitTargetIndex(
+        const ast::AstNode* statement,
+        MethodStructuredExitKind kind,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateLoopExitAgainstFinally(
+        const ast::AstNode* statement,
+        MethodStructuredExitKind kind,
+        std::size_t targetLoopIndex,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool recordLoopBreak(
+        const ast::AstNode* statement,
+        std::size_t targetLoopIndex,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     bool analyzeLoopExit(
         const ast::AstNode* statement,
         MethodStructuredExitKind kind,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
-    struct TryAnalysisState final
-    {
-        const ast::AstNode* statement = nullptr;
-        std::size_t scopeOrdinal = 0;
-        std::optional<std::size_t> cleanupRegionOrdinal;
-        OwnershipFlowSnapshot tryEntryState;
-        OwnershipFlowSnapshot tryExitState;
-        OwnershipFlowSnapshot catchEntryState;
-        OwnershipFlowSnapshot joinedExitState;
-        OwnershipFlowSnapshot postTryState;
-        std::size_t throwStateBegin = 0;
-        std::size_t nextCatchChild = 0;
-        std::optional<std::size_t> exceptionRoot;
-        bool sawCatchAll = false;
-        std::vector<std::size_t> previousTypedCatchOrdinals;
-        std::size_t currentCatchScope = 0;
-        bool catchContextActive = false;
-        bool finallyContextActive = false;
-    };
+#include "nativesharp/Frontend/Internal/MethodBody/TryAnalysisState.h"
     std::optional<TryAnalysisState> beginTry(
         const ast::AstNode* statement,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
     void completeTryBody(TryAnalysisState& state);
+    MethodExceptionBinding initializeCatchBinding(
+        const ast::AstNode* catchClause,
+        std::size_t methodMemberOrdinal,
+        std::size_t catchScope) const;
+    void validateCatchType(
+        TryAnalysisState& state,
+        const ast::AstNode* catchClause,
+        MethodExceptionBinding& binding,
+        std::size_t methodMemberOrdinal,
+        std::size_t catchScope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeCatchFilter(
+        const ast::AstNode* catchClause,
+        const MethodExceptionBinding& binding,
+        std::size_t methodMemberOrdinal,
+        std::size_t catchScope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void activateCatchContext(
+        TryAnalysisState& state,
+        const ast::AstNode* catchClause,
+        MethodExceptionBinding binding,
+        std::size_t catchScope);
     bool prepareNextCatch(
         TryAnalysisState& state,
         const ast::AstNode*& body,
@@ -2070,17 +1415,38 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
-    struct UsingAnalysisState final
-    {
-        const ast::AstNode* body = nullptr;
-        std::size_t usingScope = 0;
-        bool cleanupRegionActive = false;
-    };
+#include "nativesharp/Frontend/Internal/MethodBody/UsingAnalysisState.h"
     std::optional<UsingAnalysisState> beginUsing(
         const ast::AstNode* statement,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    void validateUsingInitializer(
+        const ast::AstNode* statement,
+        std::string_view resourceTypeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t usingScope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool resolveUsingDispose(
+        const ast::AstNode* statement,
+        std::string_view resourceTypeKey,
+        std::optional<std::size_t>& disposableOrdinal,
+        std::optional<std::size_t>& disposeContract,
+        std::optional<std::size_t>& resourceTypeOrdinal,
+        std::optional<std::size_t>& implementation,
+        bool& interfaceDispatch,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void recordUsingCleanup(
+        const ast::AstNode* statement,
+        std::string_view resourceTypeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t usingScope,
+        std::size_t localOrdinal,
+        std::size_t resourceTypeOrdinal,
+        std::size_t disposableOrdinal,
+        std::size_t disposeContract,
+        std::optional<std::size_t> implementation,
+        bool interfaceDispatch);
     void finishUsing(const UsingAnalysisState& state);
     void analyzeUsing(
         const ast::AstNode* statement,
@@ -2139,6 +1505,675 @@ private:
         bool allowEvent = false,
         bool allowMove = false,
         bool allowConstructorPropertyWrite = false);
+    ExpressionResult analyzeExpressionKindLoopExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindMatchExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindMatchValueExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindMatchArmExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindAwaitExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindIdentifierExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindThisExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindBaseExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindIntegerLiteralExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindFloatingLiteralExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindCharacterLiteralExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindOverflowPolicyExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindNameOfExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindStringLiteralExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindInterpolatedStringExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindBooleanLiteralExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindNullLiteralExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindLambdaExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindMoveExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    bool acceptMovedMethodLocal(
+        ExpressionResult& movedMethod,
+        const ast::AstNode* expression,
+        const ScopeName& source,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool acceptMovedMethodParameter(
+        ExpressionResult& movedMethod,
+        const ast::AstNode* expression,
+        const ScopeName& source,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeMovedMethodValue(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool moveAllowed);
+    std::optional<ScopeName> partialMoveRoot(
+        const ast::AstNode* storage,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal) const;
+    bool rejectInvalidPartialMove(
+        const std::optional<ScopeName>& root,
+        const ast::AstNode* placeExpression,
+        const ast::AstNode* moveExpression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool analyzeMovedArrayElement(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool moveAllowed);
+    bool validateMovedArrayElementSource(
+        const ExpressionResult& element,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void recordMovedArrayElement(
+        ExpressionResult& result,
+        const ExpressionResult& element,
+        const ast::AstNode* expression,
+        const std::optional<ScopeName>& partialRoot,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    bool validateOwnedFieldMovePlace(
+        std::vector<std::string>& fieldPath,
+        const ast::AstNode* expression,
+        const std::optional<ScopeName>& partialRoot,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool tryOwnedFieldMoveSource(
+        ExpressionResult& result,
+        const ExpressionResult& fieldSource,
+        const ast::AstNode* expression,
+        const std::optional<ScopeName>& partialRoot,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeMovedIteratorCurrent(
+        ExpressionResult& result,
+        const ExpressionResult& member,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeMovedMember(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool moveAllowed);
+    bool validateLocalMoveState(
+        const MethodLocalSymbol& local,
+        const ast::AstNode* expression,
+        std::size_t sourceOrdinal,
+        std::size_t scopeOrdinal,
+        bool sourceRequiresMove,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool completeLocalMove(
+        ExpressionResult& result,
+        const MethodLocalSymbol& local,
+        const ast::AstNode* expression,
+        std::size_t sourceOrdinal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        bool sourceRequiresMove,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeNamedLocalMove(
+        ExpressionResult& result,
+        bool& copyShapedMove,
+        const ast::AstNode* expression,
+        const ScopeName& source,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        bool compilerVariantResultTransfer,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateParameterMoveState(
+        const MethodParameterSymbol& parameter,
+        const ast::AstNode* expression,
+        std::size_t sourceOrdinal,
+        std::size_t scopeOrdinal,
+        bool sourceRequiresMove,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool completeParameterMove(
+        ExpressionResult& result,
+        const MethodParameterSymbol& parameter,
+        const ast::AstNode* expression,
+        std::size_t sourceOrdinal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        bool sourceRequiresMove,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeNamedParameterMove(
+        ExpressionResult& result,
+        bool& copyShapedMove,
+        const ast::AstNode* expression,
+        const ScopeName& source,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        bool compilerVariantResultTransfer,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool moveExpressionAllowed(const ast::AstNode* expression, bool allowMove) const;
+    void completeMoveResult(ExpressionResult& result, bool copyShapedMove) const;
+    ExpressionResult analyzeExpressionKindNullConditionalMemberExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindMemberExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindPointerMemberExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindCallExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    bool validateResultPropagationContext(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::string& returnTypeKey);
+    ExpressionResult analyzeExpressionKindResultPropagationExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindUnaryExpressionOrPostfixExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindBinaryExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindNullCoalescingExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindTupleExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindWithExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindConditionalExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindAssignmentExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindTypeTestExpressionOrSafeCastExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindCastExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindFromEndExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindRangeExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindIndexExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    void analyzeIndexOperands(
+        ExpressionResult& base,
+        std::vector<ExpressionResult>& indices,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeNativeArrayIndex(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& base,
+        const std::vector<ExpressionResult>& indices,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeNativeStringIndex(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& base,
+        const std::vector<ExpressionResult>& indices,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::vector<std::size_t> rangeProtocolCandidates(
+        std::size_t receiverType,
+        std::size_t accessingTypeOrdinal,
+        std::string_view name) const;
+    ExpressionResult analyzedRangeEndpoint(
+        const ast::AstNode* syntax,
+        std::size_t methodMemberOrdinal) const;
+    bool resolveRangeProtocol(
+        ExpressionResult& sliceResult,
+        MethodCallBinding& lengthCall,
+        MethodCallBinding& sliceCall,
+        const ast::AstNode* expression,
+        const ExpressionResult& base,
+        std::size_t receiverType,
+        std::size_t accessingTypeOrdinal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateRangeProtocolMembers(
+        const ast::AstNode* rangeSyntax,
+        const MethodCallBinding& lengthCall,
+        const MethodCallBinding& sliceCall,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateRangeEndpoints(
+        ProjectImplicitConversion& startConversion,
+        ProjectImplicitConversion& endConversion,
+        ExpressionResult& startResult,
+        ExpressionResult& endResult,
+        const ast::AstNode* rangeSyntax,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void recordRangeSliceBinding(
+        const ast::AstNode* expression,
+        const ExpressionResult& base,
+        const ExpressionResult& sliceResult,
+        std::size_t receiverType,
+        const MethodCallBinding& lengthCall,
+        const MethodCallBinding& sliceCall,
+        const ExpressionResult& startResult,
+        const ExpressionResult& endResult,
+        const ProjectImplicitConversion& startConversion,
+        const ProjectImplicitConversion& endConversion,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    bool analyzeRangeIndexer(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& base,
+        std::size_t receiverType,
+        std::size_t accessingTypeOrdinal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeUserIndexer(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& base,
+        const std::vector<ExpressionResult>& indices,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateFixedArrayIndices(
+        std::string& indexedType,
+        bool& fixedOnePastAddress,
+        const ast::AstNode* expression,
+        const ExpressionResult& base,
+        const std::vector<ExpressionResult>& indices,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    const MethodLocalSymbol* variableArrayLocal(
+        const ast::AstNode* expression,
+        const ExpressionResult& base,
+        std::size_t scopeOrdinal) const;
+    bool analyzeVariableArrayIndex(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const std::vector<ExpressionResult>& indices,
+        const MethodLocalSymbol* variableArrayLocal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeRawIndex(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& base,
+        const std::vector<ExpressionResult>& indices,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult
+    analyzeExpressionKindSizeofTypeExpressionOrSizeofExpressionOrAlignofTypeExpressionOrAlignofExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindOffsetofExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindDefaultValueExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindObjectCreationExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindPlacementConstructionExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindNewExpressionOrStackallocExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindDeleteExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    bool validateDestroyTarget(
+        const ast::AstNode* expression,
+        const ExpressionResult& operand,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    ExpressionResult analyzeExpressionKindDestroyExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindNullConditionalIndexExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeExpressionKindCollectionExpression(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowMove,
+        bool allowConstructorPropertyWrite);
+
     ExpressionResult analyzeExpressionCore(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
@@ -2148,6 +2183,317 @@ private:
         bool allowEvent,
         bool allowMove,
         bool allowConstructorPropertyWrite);
+    bool analyzeExpressionCoreFlowKinds(
+        ExpressionResult& result,
+        const ExpressionAnalysisRequest& request,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeExpressionCorePrimaryKinds(
+        ExpressionResult& result,
+        const ExpressionAnalysisRequest& request,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeExpressionCoreLiteralKinds(
+        ExpressionResult& result,
+        const ExpressionAnalysisRequest& request,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeExpressionCoreAccessKinds(
+        ExpressionResult& result,
+        const ExpressionAnalysisRequest& request,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeExpressionCoreOperatorKinds(
+        ExpressionResult& result,
+        const ExpressionAnalysisRequest& request,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeExpressionCoreTypeKinds(
+        ExpressionResult& result,
+        const ExpressionAnalysisRequest& request,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeExpressionCoreConstructionKinds(
+        ExpressionResult& result,
+        const ExpressionAnalysisRequest& request,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<std::size_t> interpolationHandlerMember(
+        std::size_t typeOrdinal,
+        std::string_view name) const;
+    bool bindInterpolationHandler(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::string_view handlerTarget,
+        std::size_t typeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool resolveResultPropagationErrorConversion(
+        const MethodResultPropagationBinding& source,
+        const MethodResultPropagationBinding& destination,
+        const ast::AstNode* expression,
+        std::optional<std::size_t>& errorConversion,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void recordResultPropagationBinding(
+        MethodResultPropagationBinding source,
+        const MethodResultPropagationBinding& destination,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::string_view returnTypeKey,
+        std::optional<std::size_t> errorConversion,
+        ExpressionResult& result);
+    const ClassMemberSymbol* withUpdateField(
+        std::size_t sourceTypeOrdinal,
+        std::string_view fieldName) const;
+    void bindWithUpdate(
+        MethodAggregateInitializerBinding& binding,
+        std::vector<bool>& assigned,
+        bool& valid,
+        const ast::AstNode* expression,
+        const ast::AstNode* update,
+        const ExpressionResult& source,
+        std::span<const std::string> elements,
+        std::span<const std::string> names,
+        std::optional<std::size_t> sourceTypeOrdinal,
+        const ClassMemberSymbol* caller,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::vector<ExpressionResult> analyzeNullConditionalIndices(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeNullConditionalNativeArray(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& base,
+        std::span<const ExpressionResult> indices,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeNullConditionalUserIndex(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& base,
+        const std::vector<ExpressionResult>& indices,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::span<ast::TypeSyntax* const> nameOfGenericArguments(
+        const ast::AstNode* expression) const noexcept;
+    bool resolveNameOfTypeCandidate(
+        const ast::AstNode* expression,
+        const ast::AstNode* target,
+        std::span<ast::TypeSyntax* const> genericArguments,
+        bool& typeCandidateFound,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::optional<std::size_t> nameOfOwnerTypeOrdinal(
+        const ast::AstNode* target,
+        std::size_t methodMemberOrdinal) const;
+    bool resolveNameOfConcreteGenericMethod(
+        const ast::AstNode* expression,
+        std::size_t ownerTypeOrdinal,
+        std::size_t accessingTypeOrdinal,
+        std::size_t genericArgumentCount,
+        bool& genericMethodNameFound) const;
+    bool resolveNameOfTemplateGenericMethod(
+        const ast::AstNode* expression,
+        std::size_t ownerTypeOrdinal,
+        const ClassMemberSymbol* caller,
+        std::size_t genericArgumentCount,
+        bool& genericMethodNameFound) const;
+    bool resolveNameOfValueSymbol(
+        const ast::AstNode* expression,
+        const ast::AstNode* target,
+        std::span<ast::TypeSyntax* const> genericArguments,
+        bool genericMethodNameFound,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeConditionalBranches(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        ExpressionResult& whenTrue,
+        ExpressionResult& whenFalse);
+    static void adoptConditionalBranch(
+        ExpressionResult& result,
+        const ExpressionResult& branch);
+    static void mergeConditionalOwnership(
+        ExpressionResult& result,
+        const ExpressionResult& whenTrue,
+        const ExpressionResult& whenFalse);
+    static void adoptConditionalNullableBranch(
+        ExpressionResult& result,
+        const ExpressionResult& nonNull);
+    bool resolveConditionalDivergence(
+        ExpressionResult& result,
+        const ExpressionResult& whenTrue,
+        const ExpressionResult& whenFalse) const;
+    bool resolveConditionalMatchingType(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& whenTrue,
+        const ExpressionResult& whenFalse,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void resolveConditionalSpecialType(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& whenTrue,
+        const ExpressionResult& whenFalse,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void configureAllocatorConstruction(
+        ProjectConstructionSite& site,
+        const ast::AstNode* expression,
+        const ExpressionResult& storage) const;
+    bool analyzeConstructionArguments(
+        ProjectConstructionSite& site,
+        const ast::AstNode* expression,
+        std::size_t constructorArgumentCount,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::string configureAllocatorResultProfile(
+        ProjectConstructionSite& site,
+        const ast::AstNode* expression);
+    void completePlacementConstructionResult(
+        ExpressionResult& result,
+        const NamedTypeDeclaration* target,
+        std::string_view targetType,
+        std::string_view requiredStorageType,
+        std::string_view resultCarrierTypeKey,
+        bool trailingConstruction,
+        bool resultFailureProfile,
+        bool allocatorConstruction,
+        bool constructible,
+        bool storageValid,
+        bool argumentsValid) const;
+    std::optional<std::size_t> collectionBuilderMember(
+        std::size_t typeOrdinal,
+        std::string_view name,
+        bool wantStatic) const;
+    bool bindCollectionBuilder(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::string_view explicitTarget,
+        std::size_t typeOrdinal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeCollectionSpreadSegments(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::string_view explicitTarget,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool collectCollectionSpreadSegments(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::vector<const ast::AstNode*>& syntaxes,
+        std::vector<bool>& spreads,
+        std::vector<ExpressionResult>& values,
+        std::vector<std::string>& elementTypes,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateCollectionSpreadSegments(
+        const ast::AstNode* expression,
+        std::span<const ast::AstNode* const> syntaxes,
+        const std::vector<bool>& spreads,
+        std::span<const ExpressionResult> values,
+        std::span<const std::string> elementTypes,
+        std::string_view element,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void completeCollectionArrayResult(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::string_view element,
+        bool elementsValid,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void analyzeCollectionElements(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::string_view explicitTarget,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateNamedCast(
+        ExpressionResult& result,
+        const ExpressionResult& operand,
+        const ast::AstNode* expression,
+        std::string_view namedCast,
+        bool targetPointeeReadonly,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool applyUserDefinedCast(
+        ExpressionResult& result,
+        const ExpressionResult& operand,
+        const ast::AstNode* expression,
+        const ProjectConversionClassifier& classifier,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateFunctionPointerCast(
+        ExpressionResult& result,
+        const ExpressionResult& operand,
+        const ast::AstNode* expression,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateReferenceCast(
+        ExpressionResult& result,
+        const ExpressionResult& operand,
+        const ast::AstNode* expression,
+        const ProjectConversionClassifier& classifier,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeRangeArrayAllocation(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::string_view element,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeNativeArrayAllocation(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::string_view element,
+        const ExpressionResult& count,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateRawAllocationElement(
+        const ast::AstNode* expression,
+        std::string_view element,
+        bool isStackalloc,
+        bool isRawNew,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateStackalloc(
+        const ast::AstNode* expression,
+        const ExpressionResult& count,
+        bool allocationValid,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void recordRawAllocation(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::string_view element,
+        bool allocationValid,
+        bool isStackalloc,
+        bool isRawNew,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
     ExpressionResult analyzeExpressionIteratively(
         const ExpressionAnalysisRequest& request,
         std::size_t methodMemberOrdinal,
@@ -2161,6 +2507,133 @@ private:
         const ExpressionAnalysisRequest& request) const noexcept;
     ExpressionResult analyzeIdentifier(
         const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup,
+        bool allowEvent,
+        bool allowConstructorPropertyWrite);
+    void applyIdentifierFlowFacts(ExpressionResult& result, std::size_t storageKey) const;
+    ExpressionResult analyzeLocalIdentifier(
+        const ast::AstNode* expression,
+        const ScopeName& scopeName,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeParameterIdentifier(
+        const ast::AstNode* expression,
+        const ScopeName& scopeName,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateLocalIdentifierRead(
+        const ast::AstNode* expression,
+        const ScopeName& scopeName,
+        const MethodLocalSymbol& local,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool applyBorrowedLocalIdentifierOwnership(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ScopeName& scopeName,
+        const MethodLocalSymbol& local,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool applyLocalIdentifierOwnership(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ScopeName& scopeName,
+        const MethodLocalSymbol& local,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void completeLocalIdentifier(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ScopeName& scopeName,
+        const MethodLocalSymbol& local,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    bool validateParameterIdentifierRead(
+        const ast::AstNode* expression,
+        const ScopeName& scopeName,
+        const MethodParameterSymbol& parameter,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void initializeParameterIdentifierResult(
+        ExpressionResult& result,
+        const ScopeName& scopeName,
+        const MethodParameterSymbol& parameter);
+    bool applyBorrowedParameterReassignment(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ScopeName& scopeName,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void completeParameterIdentifier(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ScopeName& scopeName,
+        const MethodParameterSymbol& parameter,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void collectIdentifierMemberCandidates(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t accessingTypeOrdinal,
+        bool staticContext,
+        std::vector<std::size_t>& fields,
+        std::vector<std::size_t>& events,
+        std::vector<std::size_t>& methods,
+        bool& inaccessibleFound,
+        bool& uncapturedReceiverFound) const;
+    ExpressionResult analyzeImplicitEventIdentifier(
+        const ast::AstNode* expression,
+        const std::vector<std::size_t>& events,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::size_t accessingTypeOrdinal,
+        const std::string& thisTypeKey,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowEvent);
+    ExpressionResult analyzeImplicitFieldIdentifier(
+        const ast::AstNode* expression,
+        const std::vector<std::size_t>& fields,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::size_t accessingTypeOrdinal,
+        const std::string& thisTypeKey);
+    void collectPropertyAccessorCandidates(
+        std::string_view accessorName,
+        bool getter,
+        std::size_t methodMemberOrdinal,
+        std::size_t accessingTypeOrdinal,
+        bool staticContext,
+        std::vector<std::size_t>& output) const;
+    ExpressionResult analyzePropertyIdentifier(
+        const ast::AstNode* expression,
+        const std::vector<std::size_t>& propertyGetters,
+        const std::vector<std::size_t>& propertySetters,
+        const ClassMemberSymbol& caller,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::size_t accessingTypeOrdinal,
+        const std::string& thisTypeKey,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowConstructorPropertyWrite);
+    ExpressionResult analyzeMethodGroupIdentifier(
+        const ast::AstNode* expression,
+        const std::vector<std::size_t>& methods,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::size_t accessingTypeOrdinal,
+        const std::string& thisTypeKey,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
+    std::optional<ExpressionResult> analyzeNamespaceIdentifierFallback(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
+    ExpressionResult analyzeMemberOrNamespaceIdentifier(
+        const ast::AstNode* expression,
+        const ClassMemberSymbol& caller,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics,
@@ -2181,21 +2654,888 @@ private:
         bool allowMethodGroup,
         bool allowEvent,
         bool allowConstructorPropertyWrite);
+    bool analyzeQualifiedNamespaceMember(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
+    bool memberValueShadowsType(
+        const ast::AstNode* receiverSyntax,
+        std::size_t methodMemberOrdinal) const;
+    bool resolveWrittenMemberType(
+        std::optional<std::size_t>& typeOrdinal,
+        std::string& writtenTypeName,
+        const ast::AstNode* receiverSyntax,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void configureTypeMemberReceiver(
+        ExpressionResult& receiver,
+        const ast::AstNode* expression,
+        std::size_t typeOrdinal,
+        std::string_view writtenTypeName,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    bool analyzeBaseMemberReceiver(
+        ExpressionResult& receiver,
+        const ast::AstNode* expression,
+        std::size_t accessingTypeOrdinal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool resolveMemberReceiver(
+        ExpressionResult& receiver,
+        bool& typeReceiver,
+        const ast::AstNode* expression,
+        std::size_t accessingTypeOrdinal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeBuiltinMember(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        bool typeReceiver,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        bool allowMethodGroup);
+    bool analyzeBuiltinLengthMember(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        bool typeReceiver,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    bool analyzeNativeStringFacadeMember(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        bool typeReceiver,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
+    bool bindExtensionMember(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        bool typeReceiver,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
+    void collectExtensionMemberCandidates(
+        std::vector<std::size_t>& methods,
+        const ExpressionResult& receiver,
+        bool typeReceiver,
+        const NamespaceFunctionReferenceBinding& extension);
+    void finishMemberLookup(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        bool typeReceiver,
+        bool inaccessibleFound,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
+    void classifyMemberReceiverKinds(
+        bool& receiverIsStruct,
+        bool& receiverIsEnumValue,
+        const ExpressionResult& receiver,
+        bool typeReceiver,
+        std::size_t receiverType) const;
+    bool validateMemberReceiverType(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        bool typeReceiver,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
+    void collectAccessibleMemberCandidates(
+        std::vector<std::size_t>& fields,
+        std::vector<std::size_t>& events,
+        std::vector<std::size_t>& methods,
+        bool& inaccessibleFound,
+        const ExpressionResult& receiver,
+        bool typeReceiver,
+        std::size_t receiverType,
+        std::size_t accessingTypeOrdinal,
+        std::string_view memberName) const;
+    bool rejectIncompleteMemberReceiver(
+        const ast::AstNode* expression,
+        const std::vector<std::size_t>& fields,
+        bool typeReceiver,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool analyzeEventMember(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        const ast::AstNode* expression,
+        const std::vector<std::size_t>& events,
+        bool typeReceiver,
+        std::size_t receiverType,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowEvent);
+    bool validateFieldMemberMoveState(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        bool isProjectionReceiver,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool analyzeFieldMember(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        const ast::AstNode* expression,
+        const std::vector<std::size_t>& fields,
+        bool typeReceiver,
+        bool isProjectionReceiver,
+        std::size_t receiverType,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzePropertyMember(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        const ast::AstNode* expression,
+        const ClassMemberSymbol& caller,
+        bool typeReceiver,
+        std::size_t receiverType,
+        std::size_t accessingTypeOrdinal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowConstructorPropertyWrite);
+    bool analyzeListPatternLengthMember(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        const ast::AstNode* expression,
+        const std::vector<std::size_t>& methods,
+        bool typeReceiver,
+        std::size_t receiverType,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeMethodGroupMember(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        const ast::AstNode* expression,
+        const std::vector<std::size_t>& methods,
+        bool typeReceiver,
+        std::size_t receiverType,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
+    bool analyzeSynthesizedRootMember(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        const ast::AstNode* expression,
+        bool typeReceiver,
+        bool receiverIsStruct,
+        bool receiverIsEnumValue,
+        bool inaccessibleFound,
+        std::size_t receiverType,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        bool allowMethodGroup);
     ExpressionResult analyzeCall(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeAssertionIntrinsicCall(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateAssertionIntrinsicArguments(
+        const ast::AstNode* expression,
+        std::string_view assertionIntrinsic,
+        bool hasCondition,
+        bool isPanic,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeNamespaceCallHead(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeListPatternRestCall(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzePreCallKinds(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeNativeStringPatternRestCall(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeArrayPatternRestCall(
+        const ast::AstNode* expression,
+        const ExpressionResult& restReceiver,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeEnumRootCall(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeIteratorFacadeCall(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        const MethodCallBinding& call,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeStructRootCall(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        const MethodCallBinding& call,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    static std::optional<MethodCoreOperationKind> structRootOperation(
+        std::string_view memberName,
+        const std::string& structTypeKey,
+        std::string& resultTypeKey,
+        std::size_t& expectedArity);
+    bool validateStructRootOperation(
+        const ast::AstNode* expression,
+        MethodCoreOperationKind structKind,
+        const std::string& memberName,
+        const std::string& structTypeKey,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::optional<std::size_t> callNamedStorageKey(
+        const ast::AstNode* syntax,
+        std::size_t scopeOrdinal) const;
+    static std::optional<std::size_t> callMarkerCase(std::string_view marker);
+    void seedCallLambdaTargets(
+        std::vector<std::string>& lambdaTargetTypes,
+        const ast::AstNode* expression,
+        const std::vector<std::string>& parameterTypes) const;
+    void analyzeCallArguments(
+        std::vector<ExpressionResult>& arguments,
+        bool& allArgumentsValid,
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        const MethodCallBinding& call,
+        std::span<const std::string> lambdaTargetTypes,
+        bool coreStringForwarding,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    const ast::AstNode* resolvedCallArgumentSyntax(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::size_t ordinal,
+        bool coreStringForwarding) const;
+    bool callIsFullExpressionBorrow(
+        const ClassMemberSymbol& candidate,
+        std::size_t argumentOrdinal,
+        const ExpressionResult& argument) const;
+    static bool callIsStringLiteralBorrow(
+        const ClassMemberSymbol& candidate,
+        std::size_t parameterOrdinal,
+        const ExpressionResult& argument) noexcept;
+    std::optional<ExpressionResult> analyzeGenericLambdaSpecializedCall(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::vector<ExpressionResult>& arguments,
+        bool allArgumentsValid,
+        MethodCallBinding& call,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeEventInvocationCall(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::vector<ExpressionResult>& arguments,
+        bool allArgumentsValid,
+        MethodCallBinding& call,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool bindEventInvocationArguments(
+        const ast::AstNode* expression,
+        std::span<const ExpressionResult> arguments,
+        std::span<const std::string> parameterTypes,
+        MethodEventBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::optional<ExpressionResult> analyzeDelegateInvocationCall(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::vector<ExpressionResult>& arguments,
+        bool allArgumentsValid,
+        MethodCallBinding& call,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool collectDelegateDefaultArguments(
+        std::vector<const ast::AstNode*>& defaultedSyntaxes,
+        std::vector<std::string>& defaultedTypeKeys,
+        const ast::AstNode* expression,
+        std::size_t argumentCount,
+        std::span<const std::string> parameterTypes,
+        std::size_t delegateOrdinal,
+        bool variadic,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool bindDelegateInvocationArguments(
+        const ast::AstNode* expression,
+        std::span<const ExpressionResult> arguments,
+        std::span<const std::string> parameterTypes,
+        MethodDelegateBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateCallableTraitInvocation(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeSpecialCallKinds(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::vector<ExpressionResult>& arguments,
+        bool allArgumentsValid,
+        MethodCallBinding& call,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool isMemoryOrderTypeKey(std::string_view typeKey) const;
+    bool selectCallCandidate(
+        std::size_t& selectedIndex,
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> arguments,
+        std::span<const ExpressionResult> resolvedArguments,
+        bool coreStringForwarding,
+        MethodCallBinding& call,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void evaluateCallCandidates(
+        bool& hasMatchingArity,
+        std::vector<const ast::AstNode*>& constraintRejectedSyntaxes,
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> resolvedArguments,
+        bool coreStringForwarding,
+        MethodCallBinding& call);
+    bool prepareCallCandidateMapping(
+        MethodCallCandidate& candidateBinding,
+        const ClassMemberSymbol& candidate,
+        const ast::AstNode* expression,
+        std::span<const ExpressionResult> resolvedArguments,
+        bool coreStringForwarding) const;
+    void evaluateCallCandidateArguments(
+        MethodCallCandidate& candidateBinding,
+        const ClassMemberSymbol& candidate,
+        std::span<const ExpressionResult> resolvedArguments) const;
+    void evaluateCallCandidateArgument(
+        MethodCallCandidate& candidateBinding,
+        const ClassMemberSymbol& candidate,
+        const ExpressionResult& argument,
+        std::size_t argumentOrdinal) const;
+    void finishCallCandidateEvaluation(
+        std::vector<const ast::AstNode*>& constraintRejectedSyntaxes,
+        MethodCallCandidate& candidateBinding,
+        const ClassMemberSymbol& candidate,
+        std::size_t candidateOrdinal,
+        MethodCallBinding& call) const;
+    bool collectViableCallCandidates(
+        std::vector<std::size_t>& viableEvaluationOrdinals,
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> arguments,
+        std::span<const ExpressionResult> resolvedArguments,
+        bool coreStringForwarding,
+        bool hasMatchingArity,
+        std::span<const ast::AstNode* const> constraintRejectedSyntaxes,
+        MethodCallBinding& call,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool reportTerminalCallCandidateDiagnostic(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        bool coreStringForwarding,
+        std::span<const ast::AstNode* const> constraintRejectedSyntaxes,
+        MethodCallBinding& call,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool reportCallOwnershipDiagnostic(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> resolvedArguments,
+        bool coreStringForwarding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool reportCandidateOwnershipDiagnostic(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        const ClassMemberSymbol& candidate,
+        std::span<const ExpressionResult> resolvedArguments,
+        bool coreStringForwarding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool reportArgumentOwnershipDiagnostic(
+        const ast::AstNode* expression,
+        const ast::AstNode* argumentSyntax,
+        const MethodParameterSymbol& parameter,
+        const ExpressionResult& argument,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool reportCallPassKindDiagnostic(
+        const ast::AstNode* expression,
+        std::span<const ExpressionResult> arguments,
+        const MethodCallBinding& call,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool chooseNonDominatedCallCandidate(
+        std::size_t& selectedIndex,
+        const ast::AstNode* expression,
+        std::span<const std::size_t> viableEvaluationOrdinals,
+        MethodCallBinding& call,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::optional<ExpressionResult> prepareCallCallee(
+        const ast::AstNode* expression,
+        MethodCallBinding& call,
+        ExpressionResult& callee,
+        bool& nullConditionalCall,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void configureCallLambdaTargets(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        MethodCallBinding& call,
+        bool& coreStringForwarding,
+        std::vector<std::string>& lambdaTargetTypes);
+    void configureMethodGroupLambdaTargets(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        bool coreStringForwarding,
+        std::vector<std::string>& lambdaTargetTypes);
+    std::vector<ExpressionResult> prepareResolvedCallArguments(
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> arguments,
+        bool coreStringForwarding) const;
+    ExpressionResult completeSelectedCall(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> arguments,
+        std::vector<ExpressionResult>& resolvedArguments,
+        bool coreStringForwarding,
+        bool nullConditionalCall,
+        std::size_t selectedIndex,
+        MethodCallBinding& call,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateSelectedCallReceiver(
+        std::optional<std::size_t>& provenVariantCase,
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        const MethodCallCandidate& selected,
+        MethodCallBinding& call,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateActiveIterationCallReceiver(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        const ClassMemberSymbol& selectedMember,
+        MethodCallBinding& call,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void updateSelectedVariantFlow(
+        std::optional<std::size_t>& provenVariantCase,
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t scopeOrdinal);
+    void invalidateCallArgumentFlow(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> resolvedArguments,
+        const MethodCallCandidate& selected,
+        bool coreStringForwarding,
+        std::size_t scopeOrdinal);
+    void updateScopedChildBorrowsForCall(
+        const ast::AstNode* expression,
+        const MethodCallCandidate& selected,
+        const MethodCallBinding& call,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void registerScopedChildBorrows(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    bool selectedCallUsesThreadExecutor(const MethodCallCandidate& selected) const;
+    void validateThreadExecutorCaptures(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool callTypeIsSend(const std::string& typeKey) const;
+    bool callTypeIsSync(const std::string& typeKey) const;
+    void configureSelectedCallBinding(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        const MethodCallCandidate& selected,
+        bool coreStringForwarding,
+        MethodCallBinding& call) const;
+    void recordSelectedOutArguments(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> resolvedArguments,
+        const MethodCallCandidate& selected,
+        const ClassMemberSymbol& selectedMember,
+        bool coreStringForwarding,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recordSelectedOwnershipTransfers(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> resolvedArguments,
+        const MethodCallCandidate& selected,
+        const ClassMemberSymbol& selectedMember,
+        bool coreStringForwarding,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recordSelectedBorrows(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> resolvedArguments,
+        const MethodCallCandidate& selected,
+        const ClassMemberSymbol& selectedMember,
+        bool coreStringForwarding,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void finalizeSelectedCallResult(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const MethodCallBinding& call,
+        bool nullConditionalCall,
+        std::optional<std::size_t> provenVariantCase,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool callResultIsNullable(std::string_view typeKey) const;
+    void applySelectedCoreOperations(
+        const ast::AstNode* expression,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        MethodCallBinding& call,
+        ExpressionResult& result,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void recognizeCoreStringOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreFloat128Operations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreInt128Operations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreScalarOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreHalfOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreVector256Operations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreConsoleRuntimeOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreClockEnvironmentOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreClockOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreFilePathOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreFileDirectoryOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    static std::optional<MethodCoreOperationKind> basicFileDirectoryOperation(
+        const ClassMemberSymbol& selectedMember,
+        bool isFile);
+    static std::optional<MethodCoreOperationKind> fileContentOperation(
+        const ClassMemberSymbol& selectedMember,
+        bool isFile);
+    static std::optional<MethodCoreOperationKind> directoryEnumerationOperation(
+        const ClassMemberSymbol& selectedMember,
+        bool isFile);
+    void recognizeCoreThreadOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreAtomicOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        ExpressionResult& result,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void recognizeCoreAtomicValueOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        ExpressionResult& result,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void classifyOrderedAtomicCall(
+        bool& orderedLoad,
+        bool& orderedStore,
+        bool& orderedRmw,
+        bool& orderedCompareExchange,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t parameterOffset,
+        const std::string& valueTypeKey) const;
+    static std::optional<MethodCoreOperationKind> atomicOperationKind(
+        const ClassMemberSymbol& selectedMember,
+        std::size_t parameterOffset,
+        const std::string& valueTypeKey,
+        bool isInt32,
+        bool isPointer,
+        bool orderedLoad,
+        bool orderedStore,
+        bool orderedRmw,
+        bool orderedCompareExchange);
+    void validateAtomicCompareExchangeOrders(
+        std::optional<MethodCoreOperationKind>& atomicKind,
+        std::optional<std::uint8_t>& atomicMemoryOrder,
+        std::optional<std::uint8_t>& atomicFailureMemoryOrder,
+        const ast::AstNode* expression,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t parameterOffset,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateAtomicMemoryOrder(
+        std::optional<MethodCoreOperationKind>& atomicKind,
+        std::optional<std::uint8_t>& atomicMemoryOrder,
+        const ast::AstNode* expression,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        bool orderedLoad,
+        bool orderedStore,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void bindAtomicOperation(
+        MethodCoreOperationKind atomicKind,
+        std::optional<std::uint8_t> atomicMemoryOrder,
+        std::optional<std::uint8_t> atomicFailureMemoryOrder,
+        const ast::AstNode* expression,
+        const ClassMemberSymbol& selectedMember,
+        const std::string& valueTypeKey,
+        bool atomicWrapper,
+        bool publicInterlocked,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreMutexMonitorOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreMutexOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreSemaphoreEventOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreSemaphoreOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreDiagnosticsOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void recognizeCoreProcessOperations(
+        const ast::AstNode* expression,
+        const NamedTypeDeclaration& declaringType,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
     ExpressionResult analyzeMatchExpression(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    void decodeMatchCoverage(
+        const ast::AstNode* expression,
+        std::vector<language::MatchArmCoverage>& coverageArms) const;
+    void decodeMatchCoverageArm(
+        std::string_view armText,
+        std::vector<language::MatchArmCoverage>& coverageArms) const;
+    void collectMatchDomain(
+        std::string_view typeKey,
+        std::vector<std::string>& domain,
+        std::optional<std::size_t>& switchTagMemberOrdinal,
+        std::unordered_map<std::string, std::int64_t>& variantCaseTags) const;
+    void collectMatchDomainNames(
+        std::size_t typeOrdinal,
+        const ast::AstNode* declaration,
+        std::vector<std::string>& domain) const;
+    void collectMatchDomainTags(
+        std::size_t typeOrdinal,
+        std::span<const std::string> domain,
+        std::optional<std::size_t>& switchTagMemberOrdinal,
+        std::unordered_map<std::string, std::int64_t>& variantCaseTags) const;
+    void validateMatchCoverage(
+        const ast::AstNode* expression,
+        std::span<const std::string> domain,
+        std::span<const language::MatchArmCoverage> coverageArms,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateOpenMatchCoverage(
+        const ast::AstNode* expression,
+        std::span<const language::MatchArmCoverage> coverageArms,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateClosedMatchCoverage(
+        const ast::AstNode* expression,
+        std::span<const std::string> domain,
+        std::span<const language::MatchArmCoverage> coverageArms,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool analyzeMatchArmHeader(
+        const ast::AstNode* arm,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        OwnershipFlowSnapshot& remaining,
+        std::size_t& armScope,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeMatchExpressionArm(
+        const ast::AstNode* arm,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        OwnershipFlowSnapshot& remaining,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeMatchExpressionArms(
+        const ast::AstNode* expression,
+        const ExpressionResult& governing,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::vector<ExpressionResult>& values,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void restoreMatchExitFlow(
+        const OwnershipFlowSnapshot& entry,
+        std::span<const OwnershipFlowSnapshot> exits);
+    bool validateMatchReferenceResults(
+        const ast::AstNode* expression,
+        bool& referenceResult,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool resolveMatchResultType(
+        const ast::AstNode* expression,
+        std::span<const ExpressionResult> values,
+        bool referenceResult,
+        std::string& commonType,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool matchExpressionContainsRestView(const ast::AstNode* node) const;
+    void recordMatchExpressionBinding(
+        const ast::AstNode* expression,
+        const ExpressionResult& governing,
+        std::string_view commonType,
+        bool referenceResult,
+        std::span<const language::MatchArmCoverage> coverageArms,
+        std::optional<std::size_t> switchTagMemberOrdinal,
+        const std::unordered_map<std::string, std::int64_t>& variantCaseTags,
+        std::span<const ExpressionResult> values);
+    void applyMatchExpressionOwnership(
+        ExpressionResult& result,
+        std::span<const ExpressionResult> values) const;
     ExpressionResult analyzeLoopExpression(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool validateLoopExpressionSyntax(
+        const ast::AstNode* expression,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateLoopExpressionBackEdgeLocals(
+        const ast::AstNode* expression,
+        const OwnershipFlowSnapshot& loopEntry,
+        const OwnershipFlowSnapshot& backEdge,
+        std::size_t localCountAtBodyEntry,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateLoopExpressionBackEdgeParameters(
+        const ast::AstNode* expression,
+        const ClassMemberSymbol* loopMethod,
+        const OwnershipFlowSnapshot& loopEntry,
+        const OwnershipFlowSnapshot& backEdge,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateLoopExpressionBackEdgePlaces(
+        const ast::AstNode* expression,
+        const OwnershipFlowSnapshot& loopEntry,
+        const OwnershipFlowSnapshot& backEdge,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::optional<std::string> loopExpressionCommonType(
+        const ast::AstNode* expression,
+        const LoopContext& completed,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void recordLoopExpressionBindings(
+        const ast::AstNode* expression,
+        const LoopContext& completed,
+        std::string_view commonType,
+        std::size_t methodMemberOrdinal,
+        std::size_t loopScope);
+    ExpressionResult loopExpressionResult(
+        const LoopContext& completed,
+        std::string commonType) const;
     ExpressionResult analyzeNamespaceFunctionCall(
         const ast::AstNode* expression,
         const NamespaceFunctionReferenceBinding& reference,
@@ -2204,6 +3544,125 @@ private:
         diagnostics::DiagnosticEngine& diagnostics,
         const ExpressionResult* forwardedReceiver = nullptr,
         const ast::AstNode* extraArgumentSyntax = nullptr);
+    void storeNamespaceFunctionCall(
+        const ast::AstNode* expression,
+        const NamespaceFunctionCallBinding& call);
+    std::vector<ast::AstNode*> namespaceFunctionArgumentSyntaxes(
+        const ast::AstNode* expression,
+        const NamespaceFunctionReferenceBinding& reference,
+        const ExpressionResult* forwardedReceiver,
+        const ast::AstNode* extraArgumentSyntax,
+        std::size_t explicitArgumentCount) const;
+    ExpressionResult bindNamespaceFunctionMethodGroupArgument(
+        const ast::AstNode* argument,
+        ExpressionResult analyzed,
+        const NamespaceFunctionReferenceBinding& reference,
+        std::span<ast::AstNode* const> argumentSyntaxes,
+        std::size_t argumentOrdinal,
+        std::size_t callerCallableOrdinal,
+        std::size_t scopeOrdinal,
+        bool hasForwardedReceiver,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::vector<ExpressionResult> analyzeNamespaceFunctionArguments(
+        const ast::AstNode* expression,
+        const NamespaceFunctionReferenceBinding& reference,
+        std::span<ast::AstNode* const> argumentSyntaxes,
+        std::size_t explicitArgumentCount,
+        std::size_t callerCallableOrdinal,
+        std::size_t scopeOrdinal,
+        const ExpressionResult* forwardedReceiver,
+        const ast::AstNode* extraArgumentSyntax,
+        bool& argumentsValid,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void normalizeNamespaceFunctionParameterPack(
+        const ClassMemberSymbol& candidate,
+        std::span<const ExpressionResult> arguments,
+        MethodCallCandidate& evaluated) const;
+    std::optional<ProjectImplicitConversion> evaluateNamespaceVariadicCandidateArgument(
+        std::span<const ExpressionResult> arguments,
+        std::size_t argumentOrdinal,
+        std::size_t parameterOrdinal,
+        const ClassMemberSymbol& candidate,
+        MethodCallCandidate& evaluated) const;
+    void validateNamespaceFunctionCandidateArgumentOwnership(
+        const MethodParameterSymbol& parameter,
+        std::span<const ExpressionResult> arguments,
+        std::size_t argumentOrdinal,
+        bool packElement,
+        MethodCallCandidate& evaluated) const;
+    ProjectImplicitConversion evaluateNamespaceFunctionCandidateArgument(
+        const ClassMemberSymbol& candidate,
+        std::span<const ExpressionResult> arguments,
+        std::size_t argumentOrdinal,
+        bool hasForwardedReceiver,
+        MethodCallCandidate& evaluated) const;
+    MethodCallCandidate evaluateNamespaceFunctionCandidate(
+        std::size_t functionOrdinal,
+        std::span<ast::AstNode* const> argumentSyntaxes,
+        std::span<const ExpressionResult> arguments,
+        bool hasForwardedReceiver,
+        bool& matchingArity) const;
+    void evaluateNamespaceFunctionCandidates(
+        const NamespaceFunctionReferenceBinding& reference,
+        std::span<ast::AstNode* const> argumentSyntaxes,
+        std::span<const ExpressionResult> arguments,
+        bool hasForwardedReceiver,
+        NamespaceFunctionCallBinding& call,
+        bool& matchingArity) const;
+    void reportNoViableNamespaceFunctionCall(
+        const ast::AstNode* expression,
+        const NamespaceFunctionReferenceBinding& reference,
+        std::span<ast::AstNode* const> argumentSyntaxes,
+        const NamespaceFunctionCallBinding& call,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::vector<std::size_t> viableNamespaceFunctionCandidates(
+        const NamespaceFunctionCallBinding& call) const;
+    std::vector<std::size_t> nonDominatedNamespaceFunctionCandidates(
+        const NamespaceFunctionCallBinding& call,
+        std::span<const std::size_t> viable) const;
+    std::optional<std::size_t> selectNamespaceFunctionCandidate(
+        const ast::AstNode* expression,
+        const NamespaceFunctionReferenceBinding& reference,
+        std::span<ast::AstNode* const> argumentSyntaxes,
+        std::size_t explicitArgumentCount,
+        bool matchingArity,
+        NamespaceFunctionCallBinding& call,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateNamespaceFunctionDefinition(
+        const ast::AstNode* expression,
+        std::size_t functionOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void checkNamespaceFunctionArgumentPassKinds(
+        const ast::AstNode* expression,
+        const ClassMemberSymbol& callable,
+        std::size_t functionOrdinal,
+        const std::vector<ExpressionResult>& arguments,
+        const MethodCallCandidate& selected,
+        bool hasForwardedReceiver,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void recordNamespaceFunctionBorrows(
+        const ast::AstNode* expression,
+        std::size_t callerCallableOrdinal,
+        std::size_t scopeOrdinal,
+        std::size_t functionOrdinal,
+        std::span<ast::AstNode* const> argumentSyntaxes,
+        const std::vector<ExpressionResult>& arguments,
+        const MethodCallCandidate& selected);
+    void recordNamespaceFunctionDefaults(
+        const ClassMemberSymbol& callable,
+        const MethodCallCandidate& selected,
+        NamespaceFunctionCallBinding& call) const;
+    ExpressionResult completeNamespaceFunctionCall(
+        const ast::AstNode* expression,
+        std::size_t callerCallableOrdinal,
+        std::size_t scopeOrdinal,
+        std::size_t functionOrdinal,
+        std::span<ast::AstNode* const> argumentSyntaxes,
+        const std::vector<ExpressionResult>& arguments,
+        const MethodCallCandidate& selected,
+        NamespaceFunctionCallBinding& call,
+        bool hasForwardedReceiver,
+        diagnostics::DiagnosticEngine& diagnostics);
     ExpressionResult analyzeNamespaceFunctionGroup(
         const ast::AstNode* expression,
         const NamespaceFunctionReferenceBinding& reference,
@@ -2216,13 +3675,543 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeUnaryOperand(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeOverloadedUnary(
+        const ast::AstNode* expression,
+        const ExpressionResult& operand,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeLogicalNot(
+        const ast::AstNode* expression,
+        const ExpressionResult& operand,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeAddressOf(
+        const ast::AstNode* expression,
+        const ExpressionResult& operand,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeDereference(
+        const ast::AstNode* expression,
+        const ExpressionResult& operand,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeIncrementOrDecrement(
+        const ast::AstNode* expression,
+        const ExpressionResult& operand,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeUnaryNumeric(
+        const ast::AstNode* expression,
+        const ExpressionResult& operand,
+        diagnostics::DiagnosticEngine& diagnostics);
     ExpressionResult analyzeBinary(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeLogicalBinary(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeLogicalBinaryStep(
+        ExpressionResult& accumulated,
+        const ast::AstNode* logical,
+        TokenKind operation,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeStringBinary(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        TokenKind operation,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    bool analyzeOverloadedBinary(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        TokenKind operation,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzePortableSimdBinary(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        TokenKind operation,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool analyzeEnumBinary(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        TokenKind operation,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool analyzeStructComparison(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        TokenKind operation,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<std::size_t> binaryFlowStorageKey(
+        const ast::AstNode* syntax,
+        std::size_t scopeOrdinal) const;
+    static std::optional<std::int64_t> binarySignedConstant(
+        const std::optional<ProjectIntegerConstant>& constant);
+    static void refineBinaryIntegerRange(
+        OwnershipFlowSnapshot& edge,
+        std::size_t key,
+        std::optional<std::int64_t> minimum,
+        std::optional<std::int64_t> maximum,
+        bool excludesZero);
+    void publishBinaryNullFlow(
+        ConditionFlowStates& flow,
+        bool& published,
+        const ast::AstNode* expression,
+        TokenKind operation,
+        std::size_t scopeOrdinal) const;
+    void publishBinaryIntegerFlow(
+        ConditionFlowStates& flow,
+        bool& published,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        TokenKind operation,
+        std::size_t scopeOrdinal) const;
+    bool analyzeBinaryComparison(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        TokenKind operation,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeShiftBinary(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        TokenKind operation,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool analyzePointerArithmetic(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        TokenKind operation,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeArithmeticBinary(
+        ExpressionResult& result,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        TokenKind operation,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     ExpressionResult analyzeAssignment(
         const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void recordReferenceFieldAssignmentOrigin(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void reportScopeAssignmentEscape(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool assignmentConflictsWithIterationBorrow(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void invalidateAssignedStorage(
+        const ast::AstNode* target,
+        std::size_t scopeOrdinal);
+    bool assignmentNullCarrier(std::string_view typeKey) const;
+    ExpressionResult analyzeNullCoalescingAssignment(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void bindAssignmentDeconstructionTarget(
+        bool& valid,
+        const ast::AstNode* expression,
+        const ast::AstNode* target,
+        const std::string& sourceTypeKey,
+        const std::string& path,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeTupleDeconstructionAssignment(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void recordAssignedOutParameter(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    void classifyDirectAssignmentTarget(
+        ExpressionResult& left,
+        std::optional<std::size_t>& raiiTargetLocal,
+        std::optional<std::size_t>& moveOnlyTargetLocal,
+        std::optional<std::size_t>& moveOnlyTargetParameter,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    bool analyzeAssignmentLeft(
+        ExpressionResult& left,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void trackRequiredFieldAssignment(
+        const ExpressionResult& left,
+        std::size_t methodMemberOrdinal);
+    void classifyAssignedUnion(
+        std::optional<std::size_t>& assignedUnionStorage,
+        std::optional<std::size_t>& assignedUnionMember,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal) const;
+    void classifyArrayElementAssignmentTarget(
+        bool& arrayElementMoveTarget,
+        bool& ownedArrayElementOwnsStorage,
+        bool& borrowedArrayElementTarget,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const std::optional<std::size_t>& raiiTargetLocal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void classifyOwnedFieldAssignmentTarget(
+        bool& ownedFieldMoveTarget,
+        bool& genericFieldMoveTarget,
+        bool& ownedFieldOwnsStorage,
+        std::string& ownedFieldName,
+        const ExpressionResult& left,
+        const std::optional<std::size_t>& raiiTargetLocal,
+        bool arrayElementMoveTarget,
+        std::size_t methodMemberOrdinal) const;
+    std::optional<std::size_t> assignmentGetterBindingIndex(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal) const;
+    ExpressionResult analyzeEventAssignment(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateEventAssignment(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    ExpressionResult analyzeEventHandler(
+        const ast::AstNode* expression,
+        const ClassMemberSymbol& event,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void recordEventAssignmentBinding(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ClassMemberSymbol& event,
+        std::size_t backingMemberOrdinal,
+        const ProjectImplicitConversion& conversion,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    bool rejectUnavailableAssignmentOwner(
+        const ast::AstNode* expression,
+        const std::optional<std::size_t>& raiiTargetLocal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    ExpressionResult analyzeAssignmentRight(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const std::optional<std::size_t>& raiiTargetLocal,
+        const std::optional<std::size_t>& moveOnlyTargetLocal,
+        const std::optional<std::size_t>& moveOnlyTargetParameter,
+        bool arrayElementMoveTarget,
+        bool ownedFieldMoveTarget,
+        bool genericFieldMoveTarget,
+        bool ownedSetterMoveTarget,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool rejectMoveOnlyAssignmentCopy(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void classifyNamedAssignmentTarget(
+        std::optional<std::size_t>& assignmentTargetLocal,
+        std::optional<std::size_t>& assignmentTargetParameter,
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal) const;
+    bool validateAssignmentTargetStorage(
+        const ast::AstNode* expression,
+        const ExpressionResult& right,
+        const std::optional<std::size_t>& assignmentTargetLocal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void recordViewAssignmentRoot(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal);
+    static void appendUniqueOrdinal(
+        std::vector<std::size_t>& values,
+        std::size_t value);
+    bool classifyBorrowedAssignmentDestination(
+        bool& borrowedReassignment,
+        MethodLocalBorrowBinding*& targetLocalBorrow,
+        const ClassMemberSymbol*& enclosingMethod,
+        const ast::AstNode* expression,
+        const std::optional<std::size_t>& assignmentTargetLocal,
+        const std::optional<std::size_t>& assignmentTargetParameter,
+        std::size_t methodMemberOrdinal);
+    void collectBorrowedAssignmentOwners(
+        std::vector<std::size_t>& ownerLocals,
+        std::vector<std::size_t>& ownerParameters,
+        const ast::AstNode* expression,
+        const ClassMemberSymbol* enclosingMethod,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal) const;
+    bool validateBorrowedAssignmentOwnerScopes(
+        const std::vector<std::size_t>& ownerLocals,
+        const ast::AstNode* expression,
+        const MethodLocalBorrowBinding* targetLocalBorrow,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void recordBorrowedAssignmentOwners(
+        const std::vector<std::size_t>& ownerLocals,
+        const std::vector<std::size_t>& ownerParameters,
+        const ast::AstNode* expression,
+        MethodLocalBorrowBinding* targetLocalBorrow,
+        const std::optional<std::size_t>& assignmentTargetParameter,
+        std::size_t methodMemberOrdinal);
+    bool analyzeBorrowedReassignment(
+        bool& borrowedReassignment,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        const std::optional<std::size_t>& assignmentTargetLocal,
+        const std::optional<std::size_t>& assignmentTargetParameter,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool rejectBorrowedAssignmentEscape(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        bool borrowedReassignment,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool rejectOwnerCopyAssignment(
+        const ast::AstNode* expression,
+        bool borrowedReassignment,
+        bool borrowedArrayElementTarget,
+        const std::optional<std::size_t>& raiiTargetLocal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateOwningStorageAssignment(
+        const ast::AstNode* expression,
+        const ExpressionResult& right,
+        bool ownedFieldOwnsStorage,
+        bool ownedArrayElementOwnsStorage,
+        const std::string& ownedFieldName,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateRaiiAssignmentTarget(
+        const ast::AstNode* expression,
+        const std::optional<std::size_t>& raiiTargetLocal,
+        bool raiiStringAppend,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateMoveOnlyAssignmentTarget(
+        const ast::AstNode* expression,
+        const std::optional<std::size_t>& moveOnlyTargetLocal,
+        const std::optional<std::size_t>& moveOnlyTargetParameter,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    const MethodCallBinding* assignmentSetterGetter(
+        const std::optional<std::size_t>& getterBindingIndex) const;
+    bool validatePropertySetterAssignment(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool collectPropertySetterCandidates(
+        std::vector<std::size_t>& setters,
+        std::string& setterName,
+        const ast::AstNode* expression,
+        const MethodCallBinding& getterBinding,
+        const ClassMemberSymbol& getter,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void appendRecordedSetterExpression(
+        std::vector<ExpressionResult>& setterArguments,
+        const ast::AstNode* syntax,
+        std::size_t methodMemberOrdinal) const;
+    void collectPropertySetterArguments(
+        std::vector<ExpressionResult>& setterArguments,
+        const ast::AstNode* expression,
+        const ClassMemberSymbol& getter,
+        std::size_t methodMemberOrdinal) const;
+    bool validatePropertySetterReevaluation(
+        const ast::AstNode* expression,
+        const MethodCallBinding& getterBinding,
+        const ClassMemberSymbol& getter,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool preparePropertySetterValue(
+        ExpressionResult& setterValue,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        const MethodCallBinding& getterBinding,
+        const ClassMemberSymbol& getter,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    ExpressionResult analyzePropertySetterAssignment(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        const MethodCallBinding& getterBinding,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<ExpressionResult> analyzeExtensionPropertyAssignment(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult analyzeNullConditionalIndexAssignment(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        bool ownedArrayElementOwnsStorage,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    ExpressionResult analyzeNullConditionalCompoundAssignment(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        bool ownedFieldOwnsStorage,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validatePlainAssignmentConversion(
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const ExpressionResult& right,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void updatePlainAssignmentState(
+        const ast::AstNode* expression,
+        const ExpressionResult& right,
+        const std::optional<std::size_t>& raiiTargetLocal,
+        const std::optional<std::size_t>& assignmentTargetLocal,
+        const std::optional<std::size_t>& moveOnlyTargetLocal,
+        const std::optional<std::size_t>& moveOnlyTargetParameter,
+        const std::optional<std::size_t>& assignedUnionStorage,
+        const std::optional<std::size_t>& assignedUnionMember,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
+    ExpressionResult finishPlainAssignment(
+        const ast::AstNode* expression,
+        ExpressionResult left,
+        const ExpressionResult& right,
+        const std::optional<std::size_t>& raiiTargetLocal,
+        const std::optional<std::size_t>& assignmentTargetLocal,
+        const std::optional<std::size_t>& moveOnlyTargetLocal,
+        const std::optional<std::size_t>& moveOnlyTargetParameter,
+        const std::optional<std::size_t>& assignedUnionStorage,
+        const std::optional<std::size_t>& assignedUnionMember,
+        bool ownsStorageDestination,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult finishPointerCompoundAssignment(
+        const ast::AstNode* expression,
+        ExpressionResult left,
+        const ExpressionResult& right,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult finishNumericCompoundAssignment(
+        const ast::AstNode* expression,
+        ExpressionResult left,
+        const ExpressionResult& right,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool prepareAssignmentTarget(
+        ExpressionResult& left,
+        std::optional<std::size_t>& raiiTargetLocal,
+        std::optional<std::size_t>& moveOnlyTargetLocal,
+        std::optional<std::size_t>& moveOnlyTargetParameter,
+        std::optional<std::size_t>& assignedUnionStorage,
+        std::optional<std::size_t>& assignedUnionMember,
+        bool& arrayElementMoveTarget,
+        bool& ownedArrayElementOwnsStorage,
+        bool& borrowedArrayElementTarget,
+        bool& ownedFieldMoveTarget,
+        bool& genericFieldMoveTarget,
+        bool& ownedFieldOwnsStorage,
+        std::string& ownedFieldName,
+        std::optional<std::size_t>& getterBindingIndex,
+        bool& ownedSetterMoveTarget,
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool prepareAssignmentValue(
+        ExpressionResult& right,
+        std::optional<std::size_t>& assignmentTargetLocal,
+        std::optional<std::size_t>& assignmentTargetParameter,
+        bool& borrowedReassignment,
+        bool& delegateTarget,
+        bool& raiiStringAppend,
+        bool& ownsStorageDestination,
+        const ast::AstNode* expression,
+        const ExpressionResult& left,
+        const std::optional<std::size_t>& raiiTargetLocal,
+        const std::optional<std::size_t>& moveOnlyTargetLocal,
+        const std::optional<std::size_t>& moveOnlyTargetParameter,
+        bool arrayElementMoveTarget,
+        bool ownedArrayElementOwnsStorage,
+        bool borrowedArrayElementTarget,
+        bool ownedFieldMoveTarget,
+        bool genericFieldMoveTarget,
+        bool ownedFieldOwnsStorage,
+        const std::string& ownedFieldName,
+        bool ownedSetterMoveTarget,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult finishAssignment(
+        const ast::AstNode* expression,
+        ExpressionResult left,
+        const ExpressionResult& right,
+        const std::optional<std::size_t>& getterBindingIndex,
+        const std::optional<std::size_t>& raiiTargetLocal,
+        const std::optional<std::size_t>& assignmentTargetLocal,
+        const std::optional<std::size_t>& moveOnlyTargetLocal,
+        const std::optional<std::size_t>& moveOnlyTargetParameter,
+        const std::optional<std::size_t>& assignedUnionStorage,
+        const std::optional<std::size_t>& assignedUnionMember,
+        bool ownedFieldOwnsStorage,
+        bool ownedArrayElementOwnsStorage,
+        bool raiiStringAppend,
+        bool ownsStorageDestination,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
@@ -2241,6 +4230,34 @@ private:
         diagnostics::DiagnosticEngine& diagnostics,
         bool diagnoseFailure = true,
         bool readonlyReceiver = false);
+    bool evaluateSyntheticCandidates(
+        MethodCallBinding& call,
+        const std::vector<ExpressionResult>& arguments);
+    std::vector<std::size_t> viableSyntheticCandidates(
+        const MethodCallBinding& call) const;
+    void diagnoseSyntheticNoViable(
+        const ast::AstNode* syntax,
+        const MethodCallBinding& call,
+        const std::vector<ExpressionResult>& arguments,
+        bool implicitOperatorCall,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::vector<std::size_t> nonDominatedSyntheticCandidates(
+        const MethodCallBinding& call,
+        const std::vector<std::size_t>& viableEvaluationOrdinals) const;
+    bool validateSyntheticReadonlyReceiver(
+        const ast::AstNode* syntax,
+        MethodCallBinding& call,
+        const MethodCallCandidate& selected,
+        bool diagnoseFailure,
+        bool readonlyReceiver,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult finishSyntheticCall(
+        const ast::AstNode* syntax,
+        MethodCallBinding& call,
+        const MethodCallCandidate& selected,
+        const std::vector<ExpressionResult>& arguments,
+        bool diagnoseFailure,
+        diagnostics::DiagnosticEngine& diagnostics);
     std::vector<std::size_t> stage38AccessorCandidates(
         std::size_t receiverTypeOrdinal,
         std::string_view accessorName,
@@ -2335,10 +4352,166 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool resolveLambdaDelegateSignature(
+        const ast::AstNode* syntax,
+        std::string_view delegateTypeKey,
+        bool inferAnonymous,
+        std::string& returnType,
+        std::vector<std::string>& parameterTypes,
+        std::size_t& delegateOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    MethodLambdaBinding createLambdaBinding(
+        const ast::AstNode* syntax,
+        std::string_view delegateTypeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        std::size_t lambdaOrdinal,
+        std::size_t delegateOrdinal,
+        bool inferAnonymous,
+        std::string_view returnType,
+        const std::vector<std::string>& parameterTypes) const;
+    std::vector<const ast::AstNode*> delegateLambdaParameters(
+        std::size_t delegateOrdinal) const;
+    std::string lambdaParameterValueType(
+        std::string_view parameterType,
+        bool byReference) const;
+    bool bindLambdaParameter(
+        const ast::AstNode* syntax,
+        const ast::AstNode* parameterSyntax,
+        const ast::AstNode* delegateParameter,
+        std::string_view parameterType,
+        std::size_t parameterOrdinal,
+        std::size_t methodMemberOrdinal,
+        std::size_t lambdaScope,
+        bool inferAnonymous,
+        std::unordered_set<std::string>& parameterNames,
+        MethodLambdaBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool bindLambdaParameters(
+        const ast::AstNode* syntax,
+        std::span<const ast::AstNode* const> delegateParameters,
+        const std::vector<std::string>& parameterTypes,
+        std::size_t methodMemberOrdinal,
+        std::size_t lambdaScope,
+        bool inferAnonymous,
+        MethodLambdaBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void bindLocalFunctionSelf(
+        const ast::AstNode* syntax,
+        std::span<const std::string> parameterTypes,
+        std::string_view returnType,
+        std::size_t methodMemberOrdinal,
+        std::size_t lambdaScope,
+        const MethodLambdaBinding& binding);
+    bool analyzeLambdaSyntaxBody(
+        const ast::AstNode* syntax,
+        std::size_t methodMemberOrdinal,
+        std::size_t lambdaScope,
+        bool inferAnonymous,
+        std::string& returnType,
+        MethodLambdaBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool analyzeLambdaBodyAndCaptures(
+        const ast::AstNode* syntax,
+        std::size_t methodMemberOrdinal,
+        std::size_t lambdaScope,
+        bool inferAnonymous,
+        std::string& returnType,
+        MethodLambdaBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateStaticLambdaCaptures(
+        const ast::AstNode* syntax,
+        const MethodLambdaBinding& binding,
+        bool bodyValid,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool computeLambdaClosureLayout(
+        const ast::AstNode* syntax,
+        MethodLambdaBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateLambdaEnvironmentRestrictions(
+        const ast::AstNode* syntax,
+        std::string_view delegateTypeKey,
+        std::size_t methodMemberOrdinal,
+        bool inferAnonymous,
+        const MethodLambdaBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::string lambdaResultTypeKey(
+        const ast::AstNode* syntax,
+        std::span<const std::string> parameterTypes,
+        std::string_view returnType,
+        std::size_t methodMemberOrdinal,
+        bool inferAnonymous,
+        bool bodyValid,
+        MethodLambdaBinding& binding) const;
     bool collectLambdaCaptures(
         MethodLambdaBinding& binding,
         std::size_t nameBindingBegin,
         std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::unordered_map<std::string, language::CaptureMode> explicitLambdaCaptureModes(
+        MethodLambdaBinding& binding) const;
+    std::optional<language::CaptureMode> requestedLambdaCaptureMode(
+        const MethodLambdaBinding& binding,
+        const std::unordered_map<std::string, language::CaptureMode>& explicitModes,
+        std::unordered_set<std::string>& reportedImplicitCaptures,
+        std::string_view name,
+        SourceRange range,
+        bool& safe,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::size_t addLambdaCapture(
+        MethodLambdaBinding& target,
+        MethodLambdaCapture capture) const;
+    MethodLambdaCapture routeLambdaCaptureThroughParents(
+        MethodLambdaCapture capture);
+    bool validateLambdaLocalCaptureLifetime(
+        const MethodNameBinding& name,
+        const MethodLocalSymbol& local,
+        language::CaptureMode mode,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateLambdaLocalCapture(
+        const MethodNameBinding& name,
+        const MethodLocalSymbol& local,
+        language::CaptureMode mode,
+        const MethodLambdaBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool captureLambdaLocal(
+        const MethodNameBinding& name,
+        const MethodLocalSymbol& local,
+        language::CaptureMode mode,
+        MethodLambdaBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateLambdaParameterCaptureLifetime(
+        const MethodNameBinding& name,
+        const MethodParameterSymbol& parameter,
+        language::CaptureMode mode,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateLambdaParameterCapture(
+        const MethodNameBinding& name,
+        const MethodParameterSymbol& parameter,
+        language::CaptureMode mode,
+        const MethodLambdaBinding& binding,
+        bool& moveTracked,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool captureLambdaParameter(
+        const MethodNameBinding& name,
+        const MethodParameterSymbol& parameter,
+        language::CaptureMode mode,
+        MethodLambdaBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool captureLambdaThis(
+        const MethodNameBinding& name,
+        language::CaptureMode mode,
+        std::size_t methodMemberOrdinal,
+        MethodLambdaBinding& binding,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool methodNameBindingNeedsThis(const MethodNameBinding& name) const noexcept;
+    void collectLambdaNameCapture(
+        const MethodNameBinding& name,
+        const std::unordered_map<std::string, language::CaptureMode>& explicitModes,
+        std::unordered_set<std::string>& reportedImplicitCaptures,
+        std::size_t methodMemberOrdinal,
+        MethodLambdaBinding& binding,
+        bool& safe,
         diagnostics::DiagnosticEngine& diagnostics);
     std::optional<std::size_t> lambdaCaptureOrdinal(
         const MethodLambdaBinding& binding,
@@ -2352,6 +4525,31 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    std::vector<std::size_t> compatibleDelegateMethods(
+        const ExpressionResult& methodGroup,
+        const std::vector<std::string>& parameterTypes,
+        std::string_view returnType,
+        std::string_view expectedErrorType) const;
+    bool validateDelegateMethodTarget(
+        const ast::AstNode* syntax,
+        const ExpressionResult& methodGroup,
+        std::string_view delegateTypeKey,
+        std::size_t selected,
+        const ClassMemberSymbol& target,
+        bool& interfaceDispatch,
+        bool& virtualDispatch,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    ExpressionResult recordMethodGroupDelegateBinding(
+        const ast::AstNode* syntax,
+        const ExpressionResult& methodGroup,
+        std::string_view delegateTypeKey,
+        std::size_t delegateOrdinal,
+        std::size_t selected,
+        const ClassMemberSymbol& target,
+        bool interfaceDispatch,
+        bool virtualDispatch,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal);
     std::optional<std::size_t> eventBackingMember(std::size_t eventMemberOrdinal) const noexcept;
 
     ProjectImplicitConversion classifyImplicit(
@@ -2382,6 +4580,34 @@ private:
         std::size_t parameterOrdinal,
         language::EscapeClass escapeClass);
     void finalizeEscapeSummaries(diagnostics::DiagnosticEngine& diagnostics);
+    void noteCapturedParameterEscapes();
+    std::size_t initializeEscapeCells(
+        std::vector<std::size_t>& callableCellOffsets,
+        std::vector<std::size_t>& cellCallableOrdinals,
+        std::vector<std::size_t>& cellParameterOrdinals);
+    void addEscapeDependencies(
+        std::size_t callerOrdinal,
+        std::size_t scopeOrdinal,
+        std::size_t calleeOrdinal,
+        std::span<const std::size_t> parameterOrdinals,
+        std::span<const ast::AstNode* const> argumentSyntaxes,
+        std::span<const std::size_t> callableCellOffsets,
+        std::vector<std::vector<std::size_t>>& dependents);
+    void buildEscapeDependencies(
+        std::span<const std::size_t> callableCellOffsets,
+        std::vector<std::vector<std::size_t>>& dependents);
+    void propagateEscapeDependencies(
+        std::span<const std::size_t> cellCallableOrdinals,
+        std::span<const std::size_t> cellParameterOrdinals,
+        const std::vector<std::vector<std::size_t>>& dependents);
+    void validateEscapeCall(
+        std::size_t scopeOrdinal,
+        std::string_view calleeName,
+        std::size_t calleeOrdinal,
+        std::span<const std::size_t> parameterOrdinals,
+        std::span<const ast::AstNode* const> argumentSyntaxes,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void validateEscapeCalls(diagnostics::DiagnosticEngine& diagnostics);
     // C4 "language references": (method member ordinal, parameter ordinal) pairs an `out`
     // parameter was assigned through. See verifyOutParameterAssignments for what is checked with
     // it and for the precise limit of that check.
@@ -2431,6 +4657,21 @@ private:
         std::string_view typeKey,
         std::string_view memberName,
         std::string& reason) const;
+    bool aggregateSupportsSynthesizedMemberVisit(
+        std::string_view currentTypeKey,
+        std::string_view requiredDerive,
+        std::string_view memberName,
+        std::string& reason,
+        std::unordered_set<std::string>& activeTypes,
+        const std::string& path,
+        bool nested) const;
+    bool aggregateTupleSupportsSynthesizedMember(
+        std::span<const std::string> elements,
+        std::string_view requiredDerive,
+        std::string_view memberName,
+        std::string& reason,
+        std::unordered_set<std::string>& activeTypes,
+        const std::string& path) const;
     // SHR-013 "vistas y tiempo de vida". Las tres preguntas de un tipo vista, separadas porque
     // NO son la misma:
     //   * aggregateIsBorrowedView -- el tipo se declaro `borrowed struct`.
@@ -2482,12 +4723,140 @@ private:
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics,
         bool allowMoveSpread = false);
+    void validateAggregateInitializerCompleteness(
+        const ast::AstNode* syntax,
+        std::string_view targetTypeKey,
+        const MethodAggregateInitializerBinding& binding,
+        std::span<const std::size_t> missing,
+        bool nontrivialTarget,
+        bool hasMoveSpread,
+        bool& valid,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::vector<std::optional<std::size_t>> aggregateElementMemberOrdinals(
+        std::string_view targetTypeKey,
+        std::size_t elementCount,
+        std::optional<std::size_t>& targetTypeOrdinal) const;
+    bool aggregateInitializerIsGeneralized(const ast::AstNode* syntax) const;
+    void reserveNamedAggregateTargets(
+        const ast::AstNode* syntax,
+        std::string_view targetTypeKey,
+        std::span<const std::string> names,
+        std::vector<bool>& reservedByName,
+        std::vector<std::optional<std::size_t>>& namedTargets,
+        bool& valid,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool resolveAggregateMoveSpreadRoot(
+        const ast::AstNode* sourceValue,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        MethodAggregateInitializerEntryBinding& entry,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void validateAggregateMoveSpread(
+        const ast::AstNode* element,
+        const ast::AstNode* sourceValue,
+        std::string_view targetTypeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        MethodAggregateInitializerEntryBinding& entry,
+        bool& valid,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void bindAggregateSpreadEntry(
+        const ast::AstNode* element,
+        std::string_view targetTypeKey,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        bool allowMoveSpread,
+        bool nontrivialTarget,
+        MethodAggregateInitializerEntryBinding& entry,
+        bool& hasMoveSpread,
+        bool& valid,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::optional<std::size_t> resolveAggregateEntryTarget(
+        const ast::AstNode* syntax,
+        const ast::AstNode* element,
+        std::span<const std::string> elements,
+        const std::vector<bool>& assigned,
+        const std::vector<bool>& reservedByName,
+        std::optional<std::size_t> namedTarget,
+        std::size_t& nextPositional,
+        std::string_view targetTypeKey,
+        bool generalized,
+        bool& valid,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateAggregateEntryAccessibility(
+        const ast::AstNode* element,
+        std::size_t target,
+        std::span<const std::optional<std::size_t>> elementMemberOrdinals,
+        std::optional<std::size_t> targetTypeOrdinal,
+        std::size_t methodMemberOrdinal,
+        bool& valid,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool bindAggregateValueEntry(
+        const ast::AstNode* element,
+        std::size_t target,
+        std::string_view elementTypeKey,
+        std::string_view targetTypeKey,
+        std::span<const std::string> names,
+        std::span<const std::optional<std::size_t>> elementMemberOrdinals,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        bool& valid,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void markAggregateMoveSpreadFields(
+        const ast::AstNode* syntax,
+        std::span<const std::string> names,
+        std::span<const std::size_t> missing,
+        MethodAggregateInitializerEntryBinding& spread,
+        bool& valid,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void finalizeAggregateSpread(
+        const ast::AstNode* syntax,
+        std::span<const std::string> names,
+        std::vector<bool>& assigned,
+        std::vector<std::size_t>& missing,
+        std::optional<std::size_t> spreadEntry,
+        MethodAggregateInitializerBinding& binding,
+        bool& valid,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::vector<std::size_t> bindAggregateInitializerEntries(
+        const ast::AstNode* syntax,
+        std::string_view targetTypeKey,
+        std::span<const std::string> elements,
+        std::span<const std::string> names,
+        std::span<const std::optional<std::size_t>> elementMemberOrdinals,
+        std::optional<std::size_t> targetTypeOrdinal,
+        const std::vector<bool>& reservedByName,
+        std::span<const std::optional<std::size_t>> namedTargets,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        bool allowMoveSpread,
+        bool nontrivialTarget,
+        bool& hasMoveSpread,
+        MethodAggregateInitializerBinding& binding,
+        bool& valid,
+        diagnostics::DiagnosticEngine& diagnostics);
     std::optional<MethodDeconstructionBinding> bindDeconstructionSource(
         const ast::AstNode* syntax,
         const ast::AstNode* sourceSyntax,
         const ExpressionResult& source,
         std::size_t methodMemberOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool collectDeconstructCandidates(
+        const ast::AstNode* syntax,
+        const ast::AstNode* sourceSyntax,
+        const ExpressionResult& source,
+        std::size_t receiverType,
+        const ClassMemberSymbol& caller,
+        bool& namedCandidate,
+        bool& inaccessibleCandidate,
+        std::vector<std::size_t>& validCandidates,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateSelectedDeconstruct(
+        const ast::AstNode* syntax,
+        const ast::AstNode* sourceSyntax,
+        const ExpressionResult& source,
+        const ClassMemberSymbol& selected,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     // C6 "struct members": class, interface OR struct -- everything that can declare accessor
     // members. See the definition for why this is not referenceTypeOrdinalForTypeKey.
     std::optional<std::size_t> accessorReceiverTypeOrdinalForTypeKey(
@@ -2505,6 +4874,15 @@ private:
         std::string_view typeKey) const;
     std::optional<MethodResultPropagationBinding> resolveResultCarrier(
         std::string_view typeKey) const;
+    bool scanResultCarrierContracts(
+        std::size_t typeOrdinal,
+        std::string_view typeKey,
+        std::array<std::string, 2>& payloadTypeKeys,
+        std::array<std::optional<std::size_t>, 2>& tags,
+        std::array<std::optional<std::size_t>, 2>& factories,
+        std::array<std::optional<std::size_t>, 2>& tests,
+        std::array<std::optional<std::size_t>, 2>& extractors,
+        bool& sawUnexpectedCase) const;
     // True only for a "type:" key that actually names an enum. Structs, classes and delegates
     // share that prefix, so the prefix alone answers nothing. Mirrors the identical predicate the
     // LLVM lowerer keeps for mapping an enum key to i32.
@@ -2548,6 +4926,88 @@ private:
         diagnostics::DiagnosticEngine& diagnostics,
         std::string message) const;
     bool callableCanBeAnalyzed(const ProjectCallableAnalysisContext& context) const;
+    void initializeNamespaceCallableAdapters(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel);
+    void validateDeclaredErrorTypes(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void initializeParameterEscapeSummaries(const ProjectMemberModel& memberModel);
+    bool isDeferredGenericMethod(
+        std::size_t ordinal,
+        const ProjectMemberModel& memberModel,
+        const ProjectNameLookup& nameLookup) const;
+    bool declaringTypeIsPubliclyReachable(
+        std::size_t typeOrdinal,
+        const ProjectNameLookup& nameLookup,
+        std::optional<std::size_t> publicSurfaceProjectOrdinal) const;
+    void seedDemandedGenericMethods(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInterfaceModel& interfaceModel,
+        std::optional<std::size_t> publicSurfaceProjectOrdinal,
+        std::unordered_set<std::size_t>& demandedGenericMethods) const;
+    std::vector<std::size_t> createCallableWorklist(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const std::unordered_set<std::size_t>& demandedGenericMethods) const;
+    bool analyzeCallableWaves(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectGenericModel* genericModel,
+        const ProjectGenericConstraintModel* genericConstraintModel,
+        const ProjectMethodBodyBuildOptions& options,
+        std::unordered_set<std::size_t>& demandedGenericMethods,
+        std::vector<std::size_t>& callableWorklist,
+        diagnostics::DiagnosticEngine& diagnostics);
+    std::vector<std::size_t> collectEligibleCallables(
+        const std::vector<std::size_t>& callableWorklist,
+        std::size_t& workCursor,
+        std::size_t waveOrdinal,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectGenericModel* genericModel,
+        const ProjectGenericConstraintModel* genericConstraintModel);
+    void mergeCallableWave(
+        std::vector<ProjectCallableAnalysisResult> waveResults,
+        std::size_t waveOrdinal,
+        std::size_t analyzedCount,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectMethodBodyBuildOptions& options,
+        std::unordered_set<std::size_t>& demandedGenericMethods,
+        std::vector<std::size_t>& callableWorklist,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeFieldInitializers(
+        const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void analyzeFieldInitializer(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& field,
+        diagnostics::DiagnosticEngine& diagnostics);
+    ExpressionResult bindFieldInitializerExpression(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& field,
+        std::size_t rootScopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool validateFieldInitializerConversion(
+        const ClassMemberSymbol& field,
+        const ExpressionResult& initializer,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateConstantFieldInitializers(
+        const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void validateRequiredInliningCycles(
+        const ProjectMemberModel& memberModel,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void resetCallableScratch(const ClassMemberSymbol& callable);
     void recordRequiredConstructorNormalExit(std::size_t callableOrdinal);
     void finalizeRequiredConstructorAssignments(
@@ -2623,15 +5083,7 @@ private:
     std::vector<MethodLocalBorrowBinding> localBorrowBindings_;
     std::vector<MethodBorrowedParameterReassignmentBinding>
         borrowedParameterReassignmentBindings_;
-    // T09-F04. A ref/ref-mut foreach lends element storage from its source for the whole loop.
-    // Keep that lexical loan active while the synthesized candidate block is analyzed so an
-    // assignment or mutating receiver call cannot invalidate the iterator behind the yielded
-    // reference. The place key is the original source, not the hidden foreach snapshot.
-    struct ActiveIterationBorrow final
-    {
-        std::string sourcePlace;
-        bool mutableElements = false;
-    };
+#include "nativesharp/Frontend/Internal/MethodBody/ActiveIterationBorrow.h"
     std::vector<ActiveIterationBorrow> activeIterationBorrows_;
     std::unordered_set<std::size_t> movedRaiiLocals_;
     std::unordered_set<std::size_t> maybeMovedRaiiLocals_;

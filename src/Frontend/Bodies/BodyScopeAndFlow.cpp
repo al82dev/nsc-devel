@@ -188,6 +188,25 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
 {
     ++ownershipFlowStatistics_.snapshotsRestored;
     ownershipFlowReachable_ = state.reachable;
+    restoreLocalOwnershipFlags(state);
+    restoreParameterOwnershipFlags(state);
+    partiallyMovedPlaces_ = state.partiallyMovedPlaces;
+    maybePartiallyMovedPlaces_ = state.maybePartiallyMovedPlaces;
+    activeRequiredFieldAssignments_ = state.assignedRequiredFields;
+    hasRequiredConstructorExit_ = state.hasRequiredConstructorExit;
+    requiredConstructorExitAssignments_ = state.requiredConstructorExitAssignments;
+    restoreAssignedLocals(state);
+    std::vector<std::pair<std::size_t, std::size_t>> activeAfterSnapshot;
+    for (const auto& [storage, member] : activeUnionMembers_)
+    {
+        if ((storage & 1U) == 0U && storage / 2U >= state.localCount)
+            activeAfterSnapshot.emplace_back(storage, member);
+    }
+    restoreOwnershipStorageFacts(state, activeAfterSnapshot);
+}
+
+void ProjectMethodBodyModel::restoreLocalOwnershipFlags(const OwnershipFlowSnapshot& state)
+{
     movedRaiiLocals_.clear();
     maybeMovedRaiiLocals_.clear();
     invokedFnOnceLocals_.clear();
@@ -206,6 +225,10 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
         if ((flags & kLocalMaybeInvalidBorrow) != 0U)
             maybeInvalidLocalBorrows_.insert(ordinal);
     }
+}
+
+void ProjectMethodBodyModel::restoreParameterOwnershipFlags(const OwnershipFlowSnapshot& state)
+{
     movedOwnedParameters_.clear();
     maybeMovedOwnedParameters_.clear();
     for (std::size_t parameterOrdinal = 0;
@@ -218,11 +241,10 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
         if ((flags & kParameterMaybeMoved) != 0U)
             maybeMovedOwnedParameters_.insert(parameterOrdinal);
     }
-    partiallyMovedPlaces_ = state.partiallyMovedPlaces;
-    maybePartiallyMovedPlaces_ = state.maybePartiallyMovedPlaces;
-    activeRequiredFieldAssignments_ = state.assignedRequiredFields;
-    hasRequiredConstructorExit_ = state.hasRequiredConstructorExit;
-    requiredConstructorExitAssignments_ = state.requiredConstructorExitAssignments;
+}
+
+void ProjectMethodBodyModel::restoreAssignedLocals(const OwnershipFlowSnapshot& state)
+{
     // C7: a snapshot cannot say anything about a local that did not exist when it was taken, and
     // restoring one must not silently un-assign such a local. Catch clauses are the case that
     // forced this: analyzeTry captures its catch-entry state, THEN declares the exception local
@@ -247,12 +269,12 @@ void ProjectMethodBodyModel::restoreOwnershipFlow(const OwnershipFlowSnapshot& s
             assignedLocals_.insert(state.localBaseOrdinal + localIndex);
     }
     assignedLocals_.insert(declaredAfterSnapshot.begin(), declaredAfterSnapshot.end());
-    std::vector<std::pair<std::size_t, std::size_t>> activeAfterSnapshot;
-    for (const auto& [storage, member] : activeUnionMembers_)
-    {
-        if ((storage & 1U) == 0U && storage / 2U >= state.localCount)
-            activeAfterSnapshot.emplace_back(storage, member);
-    }
+}
+
+void ProjectMethodBodyModel::restoreOwnershipStorageFacts(
+    const OwnershipFlowSnapshot& state,
+    std::span<const std::pair<std::size_t, std::size_t>> activeAfterSnapshot)
+{
     activeUnionMembers_.clear();
     nonNullStorages_.clear();
     integerRanges_.clear();
@@ -303,44 +325,16 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
     const OwnershipFlowSnapshot& right) const
 {
     ++ownershipFlowStatistics_.joinsComputed;
-    const auto mergeRequiredExits = [](
-        OwnershipFlowSnapshot& result,
-        const OwnershipFlowSnapshot& leftState,
-        const OwnershipFlowSnapshot& rightState)
-    {
-        result.hasRequiredConstructorExit = leftState.hasRequiredConstructorExit ||
-            rightState.hasRequiredConstructorExit;
-        if (!result.hasRequiredConstructorExit)
-        {
-            result.requiredConstructorExitAssignments.clear();
-            return;
-        }
-        if (!leftState.hasRequiredConstructorExit)
-        {
-            result.requiredConstructorExitAssignments =
-                rightState.requiredConstructorExitAssignments;
-            return;
-        }
-        result.requiredConstructorExitAssignments =
-            leftState.requiredConstructorExitAssignments;
-        if (!rightState.hasRequiredConstructorExit) return;
-        std::erase_if(
-            result.requiredConstructorExitAssignments,
-            [&](std::size_t fieldOrdinal)
-            {
-                return !rightState.requiredConstructorExitAssignments.contains(fieldOrdinal);
-            });
-    };
     if (!left.reachable)
     {
         OwnershipFlowSnapshot result = right;
-        mergeRequiredExits(result, left, right);
+        mergeRequiredOwnershipExits(result, left, right);
         return result;
     }
     if (!right.reachable)
     {
         OwnershipFlowSnapshot result = left;
-        mergeRequiredExits(result, left, right);
+        mergeRequiredOwnershipExits(result, left, right);
         return result;
     }
 
@@ -351,33 +345,78 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
     result.localFlags.resize(result.localCount >= result.localBaseOrdinal
         ? result.localCount - result.localBaseOrdinal
         : 0);
-    const auto localFlagsAt = [](const OwnershipFlowSnapshot& snapshot,
-                                 std::size_t ordinal) noexcept -> std::uint8_t
+    joinLocalOwnershipFlags(result, left, right);
+    joinParameterOwnershipFlags(result, left, right);
+    joinPartialOwnershipState(left, right, result);
+    joinRequiredOwnershipFields(left, right, result);
+    mergeRequiredOwnershipExits(result, left, right);
+    joinOwnershipStorageFacts(result, left, right);
+    return result;
+}
+
+void ProjectMethodBodyModel::mergeRequiredOwnershipExits(
+    OwnershipFlowSnapshot& result,
+    const OwnershipFlowSnapshot& left,
+    const OwnershipFlowSnapshot& right)
+{
+    result.hasRequiredConstructorExit = left.hasRequiredConstructorExit ||
+        right.hasRequiredConstructorExit;
+    if (!result.hasRequiredConstructorExit)
     {
-        const std::optional<std::size_t> index = snapshotLocalIndex(snapshot, ordinal);
-        return index.has_value() ? snapshot.localFlags[*index] : 0U;
-    };
-    const auto joinTriStateBits = [](std::uint8_t leftFlags,
-                                     std::uint8_t rightFlags,
-                                     std::uint8_t definiteBit,
-                                     std::uint8_t maybeBit) noexcept -> std::uint8_t
+        result.requiredConstructorExitAssignments.clear();
+        return;
+    }
+    if (!left.hasRequiredConstructorExit)
     {
-        const bool definite = (leftFlags & definiteBit) != 0U &&
-            (rightFlags & definiteBit) != 0U;
-        const bool possible = ((leftFlags | rightFlags) & (definiteBit | maybeBit)) != 0U;
-        return definite ? definiteBit : possible ? maybeBit : 0U;
-    };
+        result.requiredConstructorExitAssignments = right.requiredConstructorExitAssignments;
+        return;
+    }
+    result.requiredConstructorExitAssignments = left.requiredConstructorExitAssignments;
+    if (!right.hasRequiredConstructorExit) return;
+    std::erase_if(
+        result.requiredConstructorExitAssignments,
+        [&](std::size_t fieldOrdinal)
+        {
+            return !right.requiredConstructorExitAssignments.contains(fieldOrdinal);
+        });
+}
+
+std::uint8_t ProjectMethodBodyModel::joinedLocalFlagsAt(
+    const OwnershipFlowSnapshot& snapshot,
+    std::size_t ordinal) noexcept
+{
+    const std::optional<std::size_t> index = snapshotLocalIndex(snapshot, ordinal);
+    return index.has_value() ? snapshot.localFlags[*index] : 0U;
+}
+
+std::uint8_t ProjectMethodBodyModel::joinOwnershipTriStateBits(
+    std::uint8_t leftFlags,
+    std::uint8_t rightFlags,
+    std::uint8_t definiteBit,
+    std::uint8_t maybeBit) noexcept
+{
+    const bool definite = (leftFlags & definiteBit) != 0U &&
+        (rightFlags & definiteBit) != 0U;
+    const bool possible = ((leftFlags | rightFlags) & (definiteBit | maybeBit)) != 0U;
+    return definite ? definiteBit : possible ? maybeBit : 0U;
+}
+
+void ProjectMethodBodyModel::joinLocalOwnershipFlags(
+    OwnershipFlowSnapshot& result,
+    const OwnershipFlowSnapshot& left,
+    const OwnershipFlowSnapshot& right)
+{
     for (std::size_t localIndex = 0; localIndex < result.localFlags.size(); ++localIndex)
     {
         const std::size_t ordinal = result.localBaseOrdinal + localIndex;
-        const std::uint8_t leftFlags = localFlagsAt(left, ordinal);
-        const std::uint8_t rightFlags = localFlagsAt(right, ordinal);
+        const std::uint8_t leftFlags = joinedLocalFlagsAt(left, ordinal);
+        const std::uint8_t rightFlags = joinedLocalFlagsAt(right, ordinal);
         std::uint8_t flags = 0;
-        flags |= joinTriStateBits(
+        flags |= joinOwnershipTriStateBits(
             leftFlags, rightFlags, kLocalMoved, kLocalMaybeMoved);
-        flags |= joinTriStateBits(
+        flags |= joinOwnershipTriStateBits(
             leftFlags, rightFlags, kLocalInvoked, kLocalMaybeInvoked);
-        flags |= joinTriStateBits(
+        flags |= joinOwnershipTriStateBits(
             leftFlags, rightFlags, kLocalInvalidBorrow, kLocalMaybeInvalidBorrow);
         const bool leftAssigned = (leftFlags & kLocalAssigned) != 0U;
         const bool rightAssigned = (rightFlags & kLocalAssigned) != 0U;
@@ -388,7 +427,13 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
         }
         result.localFlags[localIndex] = flags;
     }
+}
 
+void ProjectMethodBodyModel::joinParameterOwnershipFlags(
+    OwnershipFlowSnapshot& result,
+    const OwnershipFlowSnapshot& left,
+    const OwnershipFlowSnapshot& right)
+{
     result.parameterFlags.resize(std::max(
         left.parameterFlags.size(),
         right.parameterFlags.size()));
@@ -400,105 +445,101 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlow(
             ? left.parameterFlags[parameterOrdinal] : 0U;
         const std::uint8_t rightFlags = parameterOrdinal < right.parameterFlags.size()
             ? right.parameterFlags[parameterOrdinal] : 0U;
-        result.parameterFlags[parameterOrdinal] = joinTriStateBits(
+        result.parameterFlags[parameterOrdinal] = joinOwnershipTriStateBits(
             leftFlags,
             rightFlags,
             kParameterMoved,
             kParameterMaybeMoved);
     }
+}
 
-    const auto joinPartialState = [](
-        const std::unordered_set<std::string>& leftDefinite,
-        const std::unordered_set<std::string>& leftMaybe,
-        const std::unordered_set<std::string>& rightDefinite,
-        const std::unordered_set<std::string>& rightMaybe,
-        std::unordered_set<std::string>& outDefinite,
-        std::unordered_set<std::string>& outMaybe)
-    {
-        for (const std::string& place : leftDefinite)
-            if (rightDefinite.contains(place)) outDefinite.insert(place);
-        std::unordered_set<std::string> possible = leftDefinite;
-        possible.insert(leftMaybe.begin(), leftMaybe.end());
-        possible.insert(rightDefinite.begin(), rightDefinite.end());
-        possible.insert(rightMaybe.begin(), rightMaybe.end());
-        for (const std::string& place : possible)
-            if (!outDefinite.contains(place)) outMaybe.insert(place);
-    };
-    joinPartialState(
-        left.partiallyMovedPlaces,
-        left.maybePartiallyMovedPlaces,
-        right.partiallyMovedPlaces,
-        right.maybePartiallyMovedPlaces,
-        result.partiallyMovedPlaces,
-        result.maybePartiallyMovedPlaces);
+void ProjectMethodBodyModel::joinPartialOwnershipState(
+    const OwnershipFlowSnapshot& left,
+    const OwnershipFlowSnapshot& right,
+    OwnershipFlowSnapshot& result)
+{
+    for (const std::string& place : left.partiallyMovedPlaces)
+        if (right.partiallyMovedPlaces.contains(place))
+            result.partiallyMovedPlaces.insert(place);
+    std::unordered_set<std::string> possible = left.partiallyMovedPlaces;
+    possible.insert(left.maybePartiallyMovedPlaces.begin(), left.maybePartiallyMovedPlaces.end());
+    possible.insert(right.partiallyMovedPlaces.begin(), right.partiallyMovedPlaces.end());
+    possible.insert(right.maybePartiallyMovedPlaces.begin(), right.maybePartiallyMovedPlaces.end());
+    for (const std::string& place : possible)
+        if (!result.partiallyMovedPlaces.contains(place))
+            result.maybePartiallyMovedPlaces.insert(place);
+}
 
+void ProjectMethodBodyModel::joinRequiredOwnershipFields(
+    const OwnershipFlowSnapshot& left,
+    const OwnershipFlowSnapshot& right,
+    OwnershipFlowSnapshot& result)
+{
     for (const std::size_t fieldOrdinal : left.assignedRequiredFields)
-    {
         if (right.assignedRequiredFields.contains(fieldOrdinal))
             result.assignedRequiredFields.insert(fieldOrdinal);
-    }
-    mergeRequiredExits(result, left, right);
+}
 
+void ProjectMethodBodyModel::joinOwnershipStorageFacts(
+    OwnershipFlowSnapshot& result,
+    const OwnershipFlowSnapshot& left,
+    const OwnershipFlowSnapshot& right)
+{
     result.storageFacts.resize(result.parameterFlags.size() + result.localFlags.size());
-    const auto joinStorage = [&](std::size_t storageKey)
-    {
-        const OwnershipFlowStorageFacts* leftFacts = snapshotStorageFacts(left, storageKey);
-        const OwnershipFlowStorageFacts* rightFacts = snapshotStorageFacts(right, storageKey);
-        const std::optional<std::size_t> resultIndex = snapshotStorageIndex(result, storageKey);
-        if (!resultIndex.has_value()) return;
-        OwnershipFlowStorageFacts& joinedFacts = result.storageFacts[*resultIndex];
-
-        const bool isLocal = (storageKey & 1U) == 0U;
-        const std::size_t localOrdinal = storageKey / 2U;
-        const bool localCreatedAfterLeft = isLocal && localOrdinal >= left.localCount;
-        const bool localCreatedAfterRight = isLocal && localOrdinal >= right.localCount;
-        if (leftFacts != nullptr && leftFacts->activeUnionMember.has_value() &&
-            ((rightFacts != nullptr && rightFacts->activeUnionMember ==
-                leftFacts->activeUnionMember) || localCreatedAfterRight))
-        {
-            joinedFacts.activeUnionMember = leftFacts->activeUnionMember;
-        }
-        else if (rightFacts != nullptr && rightFacts->activeUnionMember.has_value() &&
-                 localCreatedAfterLeft)
-        {
-            joinedFacts.activeUnionMember = rightFacts->activeUnionMember;
-        }
-
-        joinedFacts.nonNull = leftFacts != nullptr && rightFacts != nullptr &&
-            leftFacts->nonNull && rightFacts->nonNull;
-        if (leftFacts != nullptr && rightFacts != nullptr &&
-            leftFacts->integerRange.has_value() && rightFacts->integerRange.has_value())
-        {
-            OwnershipFlowIntegerRange range;
-            if (leftFacts->integerRange->minimum.has_value() &&
-                rightFacts->integerRange->minimum.has_value())
-                range.minimum = std::min(
-                    *leftFacts->integerRange->minimum,
-                    *rightFacts->integerRange->minimum);
-            if (leftFacts->integerRange->maximum.has_value() &&
-                rightFacts->integerRange->maximum.has_value())
-                range.maximum = std::max(
-                    *leftFacts->integerRange->maximum,
-                    *rightFacts->integerRange->maximum);
-            range.excludesZero = leftFacts->integerRange->excludesZero &&
-                rightFacts->integerRange->excludesZero;
-            if (range.minimum.has_value() || range.maximum.has_value() || range.excludesZero)
-                joinedFacts.integerRange = range;
-        }
-        if (leftFacts != nullptr && rightFacts != nullptr &&
-            leftFacts->activeVariantCase.has_value() &&
-            leftFacts->activeVariantCase == rightFacts->activeVariantCase)
-        {
-            joinedFacts.activeVariantCase = leftFacts->activeVariantCase;
-        }
-    };
     for (std::size_t parameterOrdinal = 0;
          parameterOrdinal < result.parameterFlags.size();
          ++parameterOrdinal)
-        joinStorage(parameterOrdinal * 2U + 1U);
+        joinOwnershipStorageFact(result, left, right, parameterOrdinal * 2U + 1U);
     for (std::size_t localIndex = 0; localIndex < result.localFlags.size(); ++localIndex)
-        joinStorage((result.localBaseOrdinal + localIndex) * 2U);
-    return result;
+        joinOwnershipStorageFact(
+            result, left, right, (result.localBaseOrdinal + localIndex) * 2U);
+}
+
+void ProjectMethodBodyModel::joinOwnershipStorageFact(
+    OwnershipFlowSnapshot& result,
+    const OwnershipFlowSnapshot& left,
+    const OwnershipFlowSnapshot& right,
+    std::size_t storageKey)
+{
+    const OwnershipFlowStorageFacts* leftFacts = snapshotStorageFacts(left, storageKey);
+    const OwnershipFlowStorageFacts* rightFacts = snapshotStorageFacts(right, storageKey);
+    const std::optional<std::size_t> resultIndex = snapshotStorageIndex(result, storageKey);
+    if (!resultIndex.has_value()) return;
+    OwnershipFlowStorageFacts& joinedFacts = result.storageFacts[*resultIndex];
+    const bool isLocal = (storageKey & 1U) == 0U;
+    const std::size_t localOrdinal = storageKey / 2U;
+    const bool localCreatedAfterLeft = isLocal && localOrdinal >= left.localCount;
+    const bool localCreatedAfterRight = isLocal && localOrdinal >= right.localCount;
+    if (leftFacts != nullptr && leftFacts->activeUnionMember.has_value() &&
+        ((rightFacts != nullptr && rightFacts->activeUnionMember ==
+            leftFacts->activeUnionMember) || localCreatedAfterRight))
+        joinedFacts.activeUnionMember = leftFacts->activeUnionMember;
+    else if (rightFacts != nullptr && rightFacts->activeUnionMember.has_value() &&
+             localCreatedAfterLeft)
+        joinedFacts.activeUnionMember = rightFacts->activeUnionMember;
+    joinedFacts.nonNull = leftFacts != nullptr && rightFacts != nullptr &&
+        leftFacts->nonNull && rightFacts->nonNull;
+    if (leftFacts != nullptr && rightFacts != nullptr &&
+        leftFacts->integerRange.has_value() && rightFacts->integerRange.has_value())
+    {
+        OwnershipFlowIntegerRange range;
+        if (leftFacts->integerRange->minimum.has_value() &&
+            rightFacts->integerRange->minimum.has_value())
+            range.minimum = std::min(
+                *leftFacts->integerRange->minimum, *rightFacts->integerRange->minimum);
+        if (leftFacts->integerRange->maximum.has_value() &&
+            rightFacts->integerRange->maximum.has_value())
+            range.maximum = std::max(
+                *leftFacts->integerRange->maximum, *rightFacts->integerRange->maximum);
+        range.excludesZero = leftFacts->integerRange->excludesZero &&
+            rightFacts->integerRange->excludesZero;
+        if (range.minimum.has_value() || range.maximum.has_value() || range.excludesZero)
+            joinedFacts.integerRange = range;
+    }
+    if (leftFacts != nullptr && rightFacts != nullptr &&
+        leftFacts->activeVariantCase.has_value() &&
+        leftFacts->activeVariantCase == rightFacts->activeVariantCase)
+        joinedFacts.activeVariantCase = leftFacts->activeVariantCase;
 }
 
 OwnershipFlowSnapshot ProjectMethodBodyModel::joinOwnershipFlows(

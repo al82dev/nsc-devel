@@ -96,6 +96,20 @@ void ProjectMethodBodyModel::noteParameterEscape(
 void ProjectMethodBodyModel::finalizeEscapeSummaries(
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    noteCapturedParameterEscapes();
+    std::vector<std::size_t> callableCellOffsets;
+    std::vector<std::size_t> cellCallableOrdinals;
+    std::vector<std::size_t> cellParameterOrdinals;
+    const std::size_t cellCount = initializeEscapeCells(
+        callableCellOffsets, cellCallableOrdinals, cellParameterOrdinals);
+    std::vector<std::vector<std::size_t>> dependents(cellCount);
+    buildEscapeDependencies(callableCellOffsets, dependents);
+    propagateEscapeDependencies(cellCallableOrdinals, cellParameterOrdinals, dependents);
+    validateEscapeCalls(diagnostics);
+}
+
+void ProjectMethodBodyModel::noteCapturedParameterEscapes()
+{
     // A closure value can be returned, stored or passed onward. Until T08 gives captures an
     // explicit non-escaping callable type, a captured parameter is a global/heap escape.
     for (const MethodLambdaBinding& lambda : lambdaBindings_)
@@ -105,16 +119,24 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
             if (capture.kind == MethodLambdaCaptureKind::Parameter &&
                 capture.parameterOrdinal.has_value())
             {
-                noteParameterEscape(lambda.ownerMemberOrdinal, *capture.parameterOrdinal,
+                noteParameterEscape(
+                    lambda.ownerMemberOrdinal,
+                    *capture.parameterOrdinal,
                     language::EscapeClass::Global);
             }
         }
     }
+}
 
+std::size_t ProjectMethodBodyModel::initializeEscapeCells(
+    std::vector<std::size_t>& callableCellOffsets,
+    std::vector<std::size_t>& cellCallableOrdinals,
+    std::vector<std::size_t>& cellParameterOrdinals)
+{
     // Build one cell per (callable, parameter), then reverse edges from a callee cell to the
     // caller cells that depend on it. Argument origins are classified exactly once here. The old
     // fixed-point loop reclassified every argument and rescanned every call after every change.
-    std::vector<std::size_t> callableCellOffsets(parameterEscapeSummaries_.size() + 1U, 0U);
+    callableCellOffsets.assign(parameterEscapeSummaries_.size() + 1U, 0U);
     for (std::size_t callableOrdinal = 0;
          callableOrdinal < parameterEscapeSummaries_.size();
          ++callableOrdinal)
@@ -125,8 +147,8 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
     }
     const std::size_t cellCount = callableCellOffsets.back();
     escapePropagationStatistics_.cells = cellCount;
-    std::vector<std::size_t> cellCallableOrdinals(cellCount, 0U);
-    std::vector<std::size_t> cellParameterOrdinals(cellCount, 0U);
+    cellCallableOrdinals.assign(cellCount, 0U);
+    cellParameterOrdinals.assign(cellCount, 0U);
     for (std::size_t callableOrdinal = 0;
          callableOrdinal < parameterEscapeSummaries_.size();
          ++callableOrdinal)
@@ -140,69 +162,72 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
             cellParameterOrdinals[cell] = parameterOrdinal;
         }
     }
+    return cellCount;
+}
 
-    std::vector<std::vector<std::size_t>> dependents(cellCount);
-    const auto addDependencies = [&](std::size_t callerOrdinal,
-                                     std::size_t scopeOrdinal,
-                                     std::size_t calleeOrdinal,
-                                     std::span<const std::size_t> parameterOrdinals,
-                                     std::span<const ast::AstNode* const> argumentSyntaxes)
+void ProjectMethodBodyModel::addEscapeDependencies(
+    std::size_t callerOrdinal,
+    std::size_t scopeOrdinal,
+    std::size_t calleeOrdinal,
+    std::span<const std::size_t> parameterOrdinals,
+    std::span<const ast::AstNode* const> argumentSyntaxes,
+    std::span<const std::size_t> callableCellOffsets,
+    std::vector<std::vector<std::size_t>>& dependents)
+{
+    if (callerOrdinal >= parameterEscapeSummaries_.size() ||
+        calleeOrdinal >= parameterEscapeSummaries_.size()) return;
+    const ClassMemberSymbol* caller = methodSymbol(callerOrdinal);
+    if (caller == nullptr) return;
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < parameterOrdinals.size() &&
+         argumentOrdinal < argumentSyntaxes.size(); ++argumentOrdinal)
     {
-        if (callerOrdinal >= parameterEscapeSummaries_.size() ||
-            calleeOrdinal >= parameterEscapeSummaries_.size())
-            return;
-        const ClassMemberSymbol* caller = methodSymbol(callerOrdinal);
-        if (caller == nullptr) return;
-        for (std::size_t argumentOrdinal = 0;
-             argumentOrdinal < parameterOrdinals.size() &&
-             argumentOrdinal < argumentSyntaxes.size(); ++argumentOrdinal)
-        {
-            const std::size_t calleeParameter = parameterOrdinals[argumentOrdinal];
-            if (calleeParameter >= parameterEscapeSummaries_[calleeOrdinal].size() ||
-                argumentSyntaxes[argumentOrdinal] == nullptr)
-                continue;
-            const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
-                argumentSyntaxes[argumentOrdinal], scopeOrdinal);
-            ++escapePropagationStatistics_.argumentOriginsClassified;
-            if (!origin.ordinal.has_value() ||
-                (origin.kind != MethodEscapeOriginKind::ExternalStorage &&
-                 origin.kind != MethodEscapeOriginKind::CurrentFrameParameter) ||
-                *origin.ordinal >= caller->parameters.size() ||
-                !parameterMayCarryEscape(caller->parameters[*origin.ordinal]))
-                continue;
+        const std::size_t calleeParameter = parameterOrdinals[argumentOrdinal];
+        if (calleeParameter >= parameterEscapeSummaries_[calleeOrdinal].size() ||
+            argumentSyntaxes[argumentOrdinal] == nullptr) continue;
+        const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
+            argumentSyntaxes[argumentOrdinal], scopeOrdinal);
+        ++escapePropagationStatistics_.argumentOriginsClassified;
+        if (!origin.ordinal.has_value() ||
+            (origin.kind != MethodEscapeOriginKind::ExternalStorage &&
+             origin.kind != MethodEscapeOriginKind::CurrentFrameParameter) ||
+            *origin.ordinal >= caller->parameters.size() ||
+            !parameterMayCarryEscape(caller->parameters[*origin.ordinal])) continue;
+        const std::size_t sourceCell = callableCellOffsets[calleeOrdinal] + calleeParameter;
+        const std::size_t dependentCell = callableCellOffsets[callerOrdinal] + *origin.ordinal;
+        dependents[sourceCell].push_back(dependentCell);
+    }
+}
 
-            const std::size_t sourceCell =
-                callableCellOffsets[calleeOrdinal] + calleeParameter;
-            const std::size_t dependentCell =
-                callableCellOffsets[callerOrdinal] + *origin.ordinal;
-            dependents[sourceCell].push_back(dependentCell);
-        }
-    };
+void ProjectMethodBodyModel::buildEscapeDependencies(
+    std::span<const std::size_t> callableCellOffsets,
+    std::vector<std::vector<std::size_t>>& dependents)
+{
     for (const MethodCallBinding& call : calls_)
     {
         if (call.resolution == MethodCallResolutionKind::Resolved &&
             call.selectedMemberOrdinal.has_value())
-        {
-            addDependencies(
+            addEscapeDependencies(
                 call.callerMethodMemberOrdinal,
                 call.scopeOrdinal,
                 *call.selectedMemberOrdinal,
                 call.selectedArgumentParameterOrdinals,
-                call.selectedArgumentSyntaxes);
-        }
+                call.selectedArgumentSyntaxes,
+                callableCellOffsets,
+                dependents);
     }
     for (const NamespaceFunctionCallBinding& call : namespaceFunctionCalls_)
     {
         if (call.resolution == MethodCallResolutionKind::Resolved &&
             call.selectedFunctionOrdinal.has_value())
-        {
-            addDependencies(
+            addEscapeDependencies(
                 call.callerCallableOrdinal,
                 call.scopeOrdinal,
                 namespaceCallableBase_ + *call.selectedFunctionOrdinal,
                 call.selectedArgumentParameterOrdinals,
-                call.selectedArgumentSyntaxes);
-        }
+                call.selectedArgumentSyntaxes,
+                callableCellOffsets,
+                dependents);
     }
     for (std::vector<std::size_t>& targets : dependents)
     {
@@ -210,12 +235,17 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
         targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
         escapePropagationStatistics_.edges += targets.size();
     }
+}
 
+void ProjectMethodBodyModel::propagateEscapeDependencies(
+    std::span<const std::size_t> cellCallableOrdinals,
+    std::span<const std::size_t> cellParameterOrdinals,
+    const std::vector<std::vector<std::size_t>>& dependents)
+{
     std::vector<std::size_t> worklist;
-    worklist.reserve(cellCount);
-    std::vector<bool> queued(cellCount, true);
-    for (std::size_t cell = 0; cell < cellCount; ++cell)
-        worklist.push_back(cell);
+    worklist.reserve(dependents.size());
+    std::vector<bool> queued(dependents.size(), true);
+    for (std::size_t cell = 0; cell < dependents.size(); ++cell) worklist.push_back(cell);
     std::size_t cursor = 0;
     while (cursor < worklist.size())
     {
@@ -243,54 +273,68 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
             }
         }
     }
+}
 
-    const auto validate = [&](std::size_t scopeOrdinal,
-                              std::string_view calleeName,
-                              std::size_t calleeOrdinal,
-                              std::span<const std::size_t> parameterOrdinals,
-                              std::span<const ast::AstNode* const> argumentSyntaxes)
+void ProjectMethodBodyModel::validateEscapeCall(
+    std::size_t scopeOrdinal,
+    std::string_view calleeName,
+    std::size_t calleeOrdinal,
+    std::span<const std::size_t> parameterOrdinals,
+    std::span<const ast::AstNode* const> argumentSyntaxes,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (calleeOrdinal >= parameterEscapeSummaries_.size()) return;
+    const std::vector<language::EscapeClass>& callee = parameterEscapeSummaries_[calleeOrdinal];
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < parameterOrdinals.size() &&
+         argumentOrdinal < argumentSyntaxes.size(); ++argumentOrdinal)
     {
-        if (calleeOrdinal >= parameterEscapeSummaries_.size()) return;
-        const std::vector<language::EscapeClass>& callee =
-            parameterEscapeSummaries_[calleeOrdinal];
-        for (std::size_t argumentOrdinal = 0;
-             argumentOrdinal < parameterOrdinals.size() &&
-             argumentOrdinal < argumentSyntaxes.size(); ++argumentOrdinal)
-        {
-            const std::size_t targetParameter = parameterOrdinals[argumentOrdinal];
-            if (targetParameter >= callee.size() || argumentSyntaxes[argumentOrdinal] == nullptr)
-                continue;
-            const language::EscapeClass contract = callee[targetParameter];
-            if (contract != language::EscapeClass::Global) continue;
-            const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
-                argumentSyntaxes[argumentOrdinal], scopeOrdinal);
-            if (origin.kind != MethodEscapeOriginKind::CurrentFrameLocal &&
-                origin.kind != MethodEscapeOriginKind::VariableLengthArray)
-                continue;
-            diagnostics.report(
-                diagnostics::DiagnosticId::NS3020InvalidValueCategory,
-                diagnostics::DiagnosticSeverity::Error,
-                argumentSyntaxes[argumentOrdinal]->range(),
-                "argument " + std::to_string(argumentOrdinal + 1U) + " of '" +
-                    std::string(calleeName) + "' refers to current-frame storage, but parameter " +
-                    std::to_string(targetParameter + 1U) +
-                    " is retained by the callee's published escape contract");
-        }
-    };
+        const std::size_t targetParameter = parameterOrdinals[argumentOrdinal];
+        if (targetParameter >= callee.size() || argumentSyntaxes[argumentOrdinal] == nullptr)
+            continue;
+        const language::EscapeClass contract = callee[targetParameter];
+        if (contract != language::EscapeClass::Global) continue;
+        const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
+            argumentSyntaxes[argumentOrdinal], scopeOrdinal);
+        if (origin.kind != MethodEscapeOriginKind::CurrentFrameLocal &&
+            origin.kind != MethodEscapeOriginKind::VariableLengthArray) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+            diagnostics::DiagnosticSeverity::Error,
+            argumentSyntaxes[argumentOrdinal]->range(),
+            "argument " + std::to_string(argumentOrdinal + 1U) + " of '" +
+                std::string(calleeName) + "' refers to current-frame storage, but parameter " +
+                std::to_string(targetParameter + 1U) +
+                " is retained by the callee's published escape contract");
+    }
+}
+
+void ProjectMethodBodyModel::validateEscapeCalls(
+    diagnostics::DiagnosticEngine& diagnostics)
+{
     for (const MethodCallBinding& call : calls_)
     {
         if (call.resolution == MethodCallResolutionKind::Resolved &&
             call.selectedMemberOrdinal.has_value())
-            validate(call.scopeOrdinal, call.methodName, *call.selectedMemberOrdinal,
-                call.selectedArgumentParameterOrdinals, call.selectedArgumentSyntaxes);
+            validateEscapeCall(
+                call.scopeOrdinal,
+                call.methodName,
+                *call.selectedMemberOrdinal,
+                call.selectedArgumentParameterOrdinals,
+                call.selectedArgumentSyntaxes,
+                diagnostics);
     }
     for (const NamespaceFunctionCallBinding& call : namespaceFunctionCalls_)
     {
         if (call.resolution == MethodCallResolutionKind::Resolved &&
             call.selectedFunctionOrdinal.has_value())
-            validate(call.scopeOrdinal, call.writtenName,
+            validateEscapeCall(
+                call.scopeOrdinal,
+                call.writtenName,
                 namespaceCallableBase_ + *call.selectedFunctionOrdinal,
-                call.selectedArgumentParameterOrdinals, call.selectedArgumentSyntaxes);
+                call.selectedArgumentParameterOrdinals,
+                call.selectedArgumentSyntaxes,
+                diagnostics);
     }
 }
 }

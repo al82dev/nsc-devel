@@ -55,7 +55,7 @@ bool isShift(TokenKind kind) noexcept
 }
 }
 
-ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignment(
+void ProjectMethodBodyModel::recordReferenceFieldAssignmentOrigin(
     const ast::AstNode* expression,
     std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal,
@@ -89,6 +89,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             }
         }
     }
+}
+
+void ProjectMethodBodyModel::reportScopeAssignmentEscape(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
     // NS304-T13-F03: a `scope` object cannot be stored in a field/static (it would outlive its frame).
     if (expression->first() != nullptr && expression->second() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::MemberExpression)
@@ -119,6 +126,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             for (const ast::AstNode* child : node->children()) pending.push_back(child);
         }
     }
+}
+
+bool ProjectMethodBodyModel::assignmentConflictsWithIterationBorrow(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
     if (expression->first() != nullptr && !activeIterationBorrows_.empty())
     {
         const std::optional<std::string> targetPlace =
@@ -159,46 +173,57 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                     expression->first()->range(),
                     "cannot mutate foreach source storage while a lending iteration is active; "
                     "use the ref mut element binding for compatible element writes");
-                return {};
+                return true;
             }
         }
     }
-    const auto invalidateAssignedStorage = [&]
+    return false;
+}
+
+void ProjectMethodBodyModel::invalidateAssignedStorage(
+    const ast::AstNode* target,
+    std::size_t scopeOrdinal)
+{
+    const ast::AstNode* root = definiteAssignmentTargetRoot(target);
+    if (root == nullptr || root->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, root->text());
+    if (!name.has_value() ||
+        (name->kind != ScopeNameKind::Local && name->kind != ScopeNameKind::Parameter)) return;
+    const std::size_t storage = name->semanticOrdinal * 2U +
+        (name->kind == ScopeNameKind::Parameter ? 1U : 0U);
+    nonNullStorages_.erase(storage);
+    integerRanges_.erase(storage);
+    activeVariantCases_.erase(storage);
+}
+
+bool ProjectMethodBodyModel::assignmentNullCarrier(std::string_view typeKey) const
+{
+    if (ProjectTypeConversion::isPointer(typeKey) ||
+        ProjectTypeConversion::isNativeArray(typeKey) ||
+        typeKey == "builtin:string" || isAnyDelegateTypeKey(typeKey))
     {
-        const ast::AstNode* root = definiteAssignmentTargetRoot(expression->first());
-        if (root == nullptr || root->kind() != ast::AstNodeKind::IdentifierExpression) return;
-        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, root->text());
-        if (!name.has_value() ||
-            (name->kind != ScopeNameKind::Local && name->kind != ScopeNameKind::Parameter)) return;
-        const std::size_t storage = name->semanticOrdinal * 2U +
-            (name->kind == ScopeNameKind::Parameter ? 1U : 0U);
-        nonNullStorages_.erase(storage);
-        integerRanges_.erase(storage);
-        activeVariantCases_.erase(storage);
-    };
+        return true;
+    }
+    const std::optional<std::size_t> ordinal = referenceTypeOrdinalForTypeKey(typeKey);
+    return ordinal.has_value() && inheritanceModel_ != nullptr &&
+        (inheritanceModel_->isClass(*ordinal) ||
+         (interfaceModel_ != nullptr && interfaceModel_->isInterface(*ordinal)));
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNullCoalescingAssignment(
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
     // T01-F03 `place ??= fallback` is not a numeric compound assignment. Analyze it here before
     // the generic read/modify/write machinery asks compoundAssignmentBaseOperator for a numeric
     // operator. This deliberately accepts only real addressable storage: a property/indexer would
     // require one captured receiver shared by getter and setter, which this HIR cannot represent
     // safely yet, so it receives a source diagnostic instead of being evaluated twice.
-    if (expression->tokenKind() == TokenKind::QuestionQuestionEqual)
-    {
-        ExpressionResult target = analyzeExpression(
-            expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
-            false, false, false, false);
-        const auto nullCarrier = [&](std::string_view typeKey)
-        {
-            if (ProjectTypeConversion::isPointer(typeKey) ||
-                ProjectTypeConversion::isNativeArray(typeKey) ||
-                typeKey == "builtin:string" || isAnyDelegateTypeKey(typeKey))
-            {
-                return true;
-            }
-            const std::optional<std::size_t> ordinal = referenceTypeOrdinalForTypeKey(typeKey);
-            return ordinal.has_value() && inheritanceModel_ != nullptr &&
-                (inheritanceModel_->isClass(*ordinal) ||
-                 (interfaceModel_ != nullptr && interfaceModel_->isInterface(*ordinal)));
-        };
+    ExpressionResult target = analyzeExpression(
+        expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+        false, false, false, false);
         bool valid = target.valid;
         if (valid && (!target.assignable || !target.addressable))
         {
@@ -210,7 +235,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
                 "receiver explicitly before using null-coalescing assignment");
             valid = false;
         }
-        if (valid && !nullCarrier(target.typeKey))
+        if (valid && !assignmentNullCarrier(target.typeKey))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
@@ -248,19 +273,107 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         }
         target.valid = valid;
         target.assignable = false;
-        if (valid) invalidateAssignedStorage();
-        return target;
+        if (valid) invalidateAssignedStorage(expression->first(), scopeOrdinal);
+    return target;
+}
+
+void ProjectMethodBodyModel::bindAssignmentDeconstructionTarget(
+    bool& valid,
+    const ast::AstNode* expression,
+    const ast::AstNode* target,
+    const std::string& sourceTypeKey,
+    const std::string& path,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (target == nullptr)
+    {
+        valid = false;
+        return;
     }
+    if (target->kind() == ast::AstNodeKind::TupleExpression)
+    {
+        const std::optional<std::vector<std::string>> nested =
+            ProjectTypeConversion::tupleElementTypeKeys(sourceTypeKey);
+        if (!nested.has_value())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                target->range(),
+                "nested deconstruction target at " + path +
+                    " requires a tuple source element");
+            valid = false;
+            return;
+        }
+        if (nested->size() != target->children().size())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidArgumentCount,
+                diagnostics::DiagnosticSeverity::Error,
+                target->range(),
+                "nested deconstruction target at " + path + " has " +
+                    std::to_string(target->children().size()) +
+                    " element(s), but its source tuple has " +
+                    std::to_string(nested->size()));
+            valid = false;
+            return;
+        }
+        for (std::size_t index = 0; index < nested->size(); ++index)
+        {
+            bindAssignmentDeconstructionTarget(
+                valid, expression, target->children()[index], (*nested)[index],
+                path + "." + std::to_string(index), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        }
+        return;
+    }
+    if (target->kind() == ast::AstNodeKind::IdentifierExpression && target->text() == "_") return;
+    const ast::AstNode* previousWriteTarget = definiteAssignmentWriteTarget_;
+    markAssignmentTarget(target, scopeOrdinal);
+    const ExpressionResult targetResult = analyzeExpression(
+        target, methodMemberOrdinal, scopeOrdinal, diagnostics, false, true, false, true);
+    definiteAssignmentWriteTarget_ = previousWriteTarget;
+    if (!targetResult.valid || !targetResult.assignable || !targetResult.addressable)
+    {
+        if (targetResult.valid)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                diagnostics::DiagnosticSeverity::Error,
+                target != nullptr ? target->range() : expression->first()->range(),
+                "tuple deconstruction target must be addressable storage or '_'");
+        }
+        valid = false;
+        return;
+    }
+    const ProjectImplicitConversion conversion = classifyImplicit(
+        sourceTypeKey, targetResult.typeKey, std::nullopt);
+    if (!conversion.exists())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            target->range(),
+            "deconstruction element " + path + " of type '" + sourceTypeKey +
+                "' cannot convert to target type '" + targetResult.typeKey + "'");
+        valid = false;
+    }
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeTupleDeconstructionAssignment(
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
 
     // NativeSharp 3.0 T02-F03. Evaluate the complete source first, resolve a native tuple or the
     // nominal Deconstruct() protocol exactly once, then validate every target leaf left-to-right.
     // HIR materializes the resulting tuple before taking any destination address, which makes
     // `(a, b) = (b, a)` alias-safe and fixes the observable write order for nested patterns too.
-    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
-        expression->first()->kind() == ast::AstNodeKind::TupleExpression)
-    {
-        const ExpressionResult source = analyzeExpression(
-            expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+    const ExpressionResult source = analyzeExpression(
+        expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
         const std::optional<MethodDeconstructionBinding> deconstruction = source.valid
             ? bindDeconstructionSource(
                 expression, expression->second(), source, methodMemberOrdinal, diagnostics)
@@ -300,198 +413,114 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
             deconstructionBindings_.push_back(*deconstruction);
         }
 
-        std::function<void(const ast::AstNode*, const std::string&, const std::string&)>
-            bindTarget;
-        bindTarget = [&](const ast::AstNode* target, const std::string& sourceTypeKey,
-                         const std::string& path)
-        {
-            if (target == nullptr)
-            {
-                valid = false;
-                return;
-            }
-            if (target->kind() == ast::AstNodeKind::TupleExpression)
-            {
-                const std::optional<std::vector<std::string>> nested =
-                    ProjectTypeConversion::tupleElementTypeKeys(sourceTypeKey);
-                if (!nested.has_value())
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        target->range(),
-                        "nested deconstruction target at " + path +
-                            " requires a tuple source element");
-                    valid = false;
-                    return;
-                }
-                if (nested->size() != target->children().size())
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidArgumentCount,
-                        diagnostics::DiagnosticSeverity::Error,
-                        target->range(),
-                        "nested deconstruction target at " + path + " has " +
-                            std::to_string(target->children().size()) +
-                            " element(s), but its source tuple has " +
-                            std::to_string(nested->size()));
-                    valid = false;
-                    return;
-                }
-                for (std::size_t index = 0; index < nested->size(); ++index)
-                    bindTarget(
-                        target->children()[index], (*nested)[index],
-                        path + "." + std::to_string(index));
-                return;
-            }
-            if (target->kind() == ast::AstNodeKind::IdentifierExpression &&
-                target->text() == "_") return;
-            const ast::AstNode* previousWriteTarget = definiteAssignmentWriteTarget_;
-            markAssignmentTarget(target, scopeOrdinal);
-            const ExpressionResult targetResult = analyzeExpression(
-                target, methodMemberOrdinal, scopeOrdinal, diagnostics,
-                false, true, false, true);
-            definiteAssignmentWriteTarget_ = previousWriteTarget;
-            if (!targetResult.valid || !targetResult.assignable || !targetResult.addressable)
-            {
-                if (targetResult.valid)
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                        diagnostics::DiagnosticSeverity::Error,
-                        target != nullptr ? target->range() : expression->first()->range(),
-                        "tuple deconstruction target must be addressable storage or '_'");
-                valid = false;
-                return;
-            }
-            const ProjectImplicitConversion conversion = classifyImplicit(
-                sourceTypeKey, targetResult.typeKey, std::nullopt);
-            if (!conversion.exists())
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidConversion,
-                    diagnostics::DiagnosticSeverity::Error,
-                    target->range(),
-                    "deconstruction element " + path + " of type '" + sourceTypeKey +
-                        "' cannot convert to target type '" + targetResult.typeKey + "'");
-                valid = false;
-            }
-        };
         if (sourceElements.has_value() &&
             sourceElements->size() == expression->first()->children().size())
         {
             for (std::size_t index = 0; index < sourceElements->size(); ++index)
-                bindTarget(
-                    expression->first()->children()[index], (*sourceElements)[index],
-                    std::to_string(index));
+            {
+                bindAssignmentDeconstructionTarget(
+                    valid, expression, expression->first()->children()[index],
+                    (*sourceElements)[index], std::to_string(index), methodMemberOrdinal,
+                    scopeOrdinal, diagnostics);
+            }
         }
         ExpressionResult result = source;
         if (deconstruction.has_value()) result.typeKey = deconstruction->tupleTypeKey;
         result.valid = valid;
         result.assignable = false;
         result.addressable = false;
-        return result;
-    }
+    return result;
+}
 
-    std::optional<std::size_t> raiiTargetLocal;
-    std::optional<std::size_t> moveOnlyTargetLocal;
-    std::optional<std::size_t> moveOnlyTargetParameter;
-    ExpressionResult left;
+void ProjectMethodBodyModel::recordAssignedOutParameter(
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal)
+{
     // C4 "language references": record that an `out` parameter was written to. The obligation an
     // `out` parameter carries -- the callee MUST assign it -- is checked once the whole body has
     // been analyzed (see verifyOutParameterAssignments), and this is where the evidence is
     // collected.
+    // Writing THROUGH an out parameter counts as writing it, whichever way the write is
+    // spelled: `rect = other;`, `rect.left = 0;`, `values[0] = 1;`, `*p = v;`. The
+    // GetMessage/GetClientRect shape -- the callee filling a record the caller owns, field by
+    // field -- is the whole reason `out` exists for a struct, so the check walks the
+    // assignment target down to the name it is rooted at.
+    const ast::AstNode* rootTarget = expression->first();
+    while (rootTarget != nullptr && rootTarget->kind() != ast::AstNodeKind::IdentifierExpression)
     {
-        // Writing THROUGH an out parameter counts as writing it, whichever way the write is
-        // spelled: `rect = other;`, `rect.left = 0;`, `values[0] = 1;`, `*p = v;`. The
-        // GetMessage/GetClientRect shape -- the callee filling a record the caller owns, field by
-        // field -- is the whole reason `out` exists for a struct, so the check walks the
-        // assignment target down to the name it is rooted at.
-        const ast::AstNode* rootTarget = expression->first();
-        while (rootTarget != nullptr && rootTarget->kind() != ast::AstNodeKind::IdentifierExpression)
+        switch (rootTarget->kind())
         {
-            switch (rootTarget->kind())
-            {
-                case ast::AstNodeKind::MemberExpression:
-                case ast::AstNodeKind::IndexExpression:
-                case ast::AstNodeKind::UnaryExpression:
-                    rootTarget = rootTarget->first();
-                    continue;
-                default:
-                    rootTarget = nullptr;
-                    continue;
-            }
-        }
-        if (rootTarget != nullptr)
-        {
-            const std::optional<ScopeName> outTarget =
-                lookupScopeName(scopeOrdinal, rootTarget->text());
-            if (outTarget.has_value() && outTarget->kind == ScopeNameKind::Parameter)
-            {
-                assignedOutParameters_.insert({methodMemberOrdinal, outTarget->semanticOrdinal});
-            }
+            case ast::AstNodeKind::MemberExpression:
+            case ast::AstNodeKind::IndexExpression:
+            case ast::AstNodeKind::UnaryExpression:
+                rootTarget = rootTarget->first();
+                continue;
+            default:
+                rootTarget = nullptr;
+                continue;
         }
     }
-    if (expression->first() != nullptr &&
-        expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    if (rootTarget == nullptr) return;
+    const std::optional<ScopeName> outTarget = lookupScopeName(scopeOrdinal, rootTarget->text());
+    if (outTarget.has_value() && outTarget->kind == ScopeNameKind::Parameter)
     {
-        const std::optional<ScopeName> target = lookupScopeName(scopeOrdinal, expression->first()->text());
-        if (target.has_value() && target->kind == ScopeNameKind::Local &&
-            target->semanticOrdinal < locals_.size() &&
-            (locals_[target->semanticOrdinal].isRaii ||
-             locals_[target->semanticOrdinal].isMoveOnly))
-        {
-            const MethodLocalSymbol& local = locals_[target->semanticOrdinal];
-            if (local.isRaii) raiiTargetLocal = target->semanticOrdinal;
-            if (local.isMoveOnly) moveOnlyTargetLocal = target->semanticOrdinal;
-            left.typeKey = local.typeKey;
-            left.valid = true;
-            left.assignable = true;
-            recordNameBinding(MethodNameBinding{
-                MethodNameBindingKind::Local,
-                expression->first(),
-                methodMemberOrdinal,
-                scopeOrdinal,
-                local.name,
-                local.typeKey,
-                target->semanticOrdinal,
-                std::nullopt,
-                {},
-                nullptr,
-                "",
-                std::nullopt,
-                false});
-        }
-        else if (target.has_value() && target->kind == ScopeNameKind::Parameter)
-        {
-            const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
-            if (method != nullptr && target->semanticOrdinal < method->parameters.size())
-            {
-                const MethodParameterSymbol& parameter = method->parameters[target->semanticOrdinal];
-                if (parameter.passKind == ParameterPassKind::Value &&
-                    memberModel_->typeIsMoveOnly(parameter.typeKey))
-                {
-                    moveOnlyTargetParameter = target->semanticOrdinal;
-                    left.typeKey = parameter.typeKey;
-                    left.valid = true;
-                    left.assignable = true;
-                    recordNameBinding(MethodNameBinding{
-                        MethodNameBindingKind::Parameter,
-                        expression->first(),
-                        methodMemberOrdinal,
-                        scopeOrdinal,
-                        parameter.name,
-                        parameter.typeKey,
-                        std::nullopt,
-                        target->semanticOrdinal,
-                        {},
-                        nullptr,
-                        "",
-                        std::nullopt,
-                        false});
-                }
-            }
-        }
+        assignedOutParameters_.insert({methodMemberOrdinal, outTarget->semanticOrdinal});
     }
+}
+
+void ProjectMethodBodyModel::classifyDirectAssignmentTarget(
+    ExpressionResult& left,
+    std::optional<std::size_t>& raiiTargetLocal,
+    std::optional<std::size_t>& moveOnlyTargetLocal,
+    std::optional<std::size_t>& moveOnlyTargetParameter,
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal)
+{
+    if (expression->first() == nullptr ||
+        expression->first()->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const std::optional<ScopeName> target =
+        lookupScopeName(scopeOrdinal, expression->first()->text());
+    if (target.has_value() && target->kind == ScopeNameKind::Local &&
+        target->semanticOrdinal < locals_.size() &&
+        (locals_[target->semanticOrdinal].isRaii || locals_[target->semanticOrdinal].isMoveOnly))
+    {
+        const MethodLocalSymbol& local = locals_[target->semanticOrdinal];
+        if (local.isRaii) raiiTargetLocal = target->semanticOrdinal;
+        if (local.isMoveOnly) moveOnlyTargetLocal = target->semanticOrdinal;
+        left.typeKey = local.typeKey;
+        left.valid = true;
+        left.assignable = true;
+        recordNameBinding(MethodNameBinding{
+            MethodNameBindingKind::Local, expression->first(), methodMemberOrdinal, scopeOrdinal,
+            local.name, local.typeKey, target->semanticOrdinal, std::nullopt, {}, nullptr, "",
+            std::nullopt, false});
+        return;
+    }
+    if (!target.has_value() || target->kind != ScopeNameKind::Parameter) return;
+    const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+    if (method == nullptr || target->semanticOrdinal >= method->parameters.size()) return;
+    const MethodParameterSymbol& parameter = method->parameters[target->semanticOrdinal];
+    if (parameter.passKind != ParameterPassKind::Value ||
+        !memberModel_->typeIsMoveOnly(parameter.typeKey)) return;
+    moveOnlyTargetParameter = target->semanticOrdinal;
+    left.typeKey = parameter.typeKey;
+    left.valid = true;
+    left.assignable = true;
+    recordNameBinding(MethodNameBinding{
+        MethodNameBindingKind::Parameter, expression->first(), methodMemberOrdinal, scopeOrdinal,
+        parameter.name, parameter.typeKey, std::nullopt, target->semanticOrdinal, {}, nullptr, "",
+        std::nullopt, false});
+}
+
+bool ProjectMethodBodyModel::analyzeAssignmentLeft(
+    ExpressionResult& left,
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
     // C7 "definite assignment": a plain `=` assigns its target; a compound one (`x += 1`) reads it
     // first and therefore requires it to be assigned already, so only `=` marks and suppresses.
     // markAssignmentTarget must run BEFORE the left-hand side is analyzed, because analyzing it is
@@ -518,79 +547,1728 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     activeNullConditionalWrite_ = previousNullConditionalWrite;
     definiteAssignmentWriteTarget_ = previousWriteTarget;
     activeUnionWriteTarget_ = previousUnionWriteTarget;
-    if (!left.valid)
-    {
-        return {};
-    }
+    return left.valid;
+}
 
+void ProjectMethodBodyModel::trackRequiredFieldAssignment(
+    const ExpressionResult& left,
+    std::size_t methodMemberOrdinal)
+{
     // NS304-T09-F01: track assignments on the active constructor path. Branch joins intersect
     // this set, and only the final normal-exit intersection is published for verification.
-    if (left.assignable && left.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
-        *left.assignmentMemberOrdinal < memberModel_->members().size())
+    if (!left.assignable || !left.assignmentMemberOrdinal.has_value() || memberModel_ == nullptr ||
+        *left.assignmentMemberOrdinal >= memberModel_->members().size()) return;
+    const ClassMemberSymbol& targetMember =
+        memberModel_->members()[*left.assignmentMemberOrdinal];
+    if (targetMember.kind != ClassMemberKind::Field || !targetMember.isRequired ||
+        targetMember.isStatic) return;
+    const ClassMemberSymbol* callable = methodSymbol(methodMemberOrdinal);
+    if (callable != nullptr && callable->kind == ClassMemberKind::Constructor && !callable->isStatic)
     {
-        const ClassMemberSymbol& targetMember =
-            memberModel_->members()[*left.assignmentMemberOrdinal];
-        if (targetMember.kind == ClassMemberKind::Field && targetMember.isRequired &&
-            !targetMember.isStatic)
+        activeRequiredFieldAssignments_.insert(*left.assignmentMemberOrdinal);
+    }
+}
+
+void ProjectMethodBodyModel::classifyAssignedUnion(
+    std::optional<std::size_t>& assignedUnionStorage,
+    std::optional<std::size_t>& assignedUnionMember,
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal) const
+{
+    if (expression->tokenKind() != TokenKind::Equal || expression->first() == nullptr) return;
+    const ast::AstNode* storageSyntax = expression->first();
+    if (storageSyntax->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        if (left.assignmentMemberOrdinal.has_value())
+            assignedUnionMember = *left.assignmentMemberOrdinal;
+        storageSyntax = storageSyntax->first();
+    }
+    const std::optional<ScopeName> storage = storageSyntax != nullptr &&
+            storageSyntax->kind() == ast::AstNodeKind::IdentifierExpression
+        ? lookupScopeName(scopeOrdinal, storageSyntax->text()) : std::nullopt;
+    if (storage.has_value() &&
+        (storage->kind == ScopeNameKind::Local || storage->kind == ScopeNameKind::Parameter))
+    {
+        const std::size_t storageKey = storage->semanticOrdinal * 2U +
+            (storage->kind == ScopeNameKind::Parameter ? 1U : 0U);
+        std::string storageTypeKey;
+        if (storage->kind == ScopeNameKind::Local && storage->semanticOrdinal < locals_.size())
+            storageTypeKey = locals_[storage->semanticOrdinal].typeKey;
+        else if (storage->kind == ScopeNameKind::Parameter)
         {
-            const ClassMemberSymbol* callable = methodSymbol(methodMemberOrdinal);
-            if (callable != nullptr && callable->kind == ClassMemberKind::Constructor &&
-                !callable->isStatic)
-            {
-                activeRequiredFieldAssignments_.insert(*left.assignmentMemberOrdinal);
-            }
+            const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+            if (method != nullptr && storage->semanticOrdinal < method->parameters.size())
+                storageTypeKey = method->parameters[storage->semanticOrdinal].typeKey;
+        }
+        if (aggregateRequiresActiveMember(storageTypeKey)) assignedUnionStorage = storageKey;
+    }
+    if (!assignedUnionStorage.has_value() || assignedUnionMember.has_value() ||
+        expression->second() == nullptr ||
+        expression->second()->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const std::optional<ScopeName> source =
+        lookupScopeName(scopeOrdinal, expression->second()->text());
+    if (!source.has_value() ||
+        (source->kind != ScopeNameKind::Local && source->kind != ScopeNameKind::Parameter)) return;
+    const std::size_t sourceKey = source->semanticOrdinal * 2U +
+        (source->kind == ScopeNameKind::Parameter ? 1U : 0U);
+    const auto active = activeUnionMembers_.find(sourceKey);
+    if (active != activeUnionMembers_.end()) assignedUnionMember = active->second;
+}
+
+void ProjectMethodBodyModel::classifyArrayElementAssignmentTarget(
+    bool& arrayElementMoveTarget,
+    bool& ownedArrayElementOwnsStorage,
+    bool& borrowedArrayElementTarget,
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const std::optional<std::size_t>& raiiTargetLocal,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (raiiTargetLocal.has_value() || expression->first() == nullptr ||
+        expression->first()->kind() != ast::AstNodeKind::IndexExpression ||
+        !left.valid || !left.assignable) return;
+    ExpressionResult receiver;
+    if (expression->first()->first() != nullptr)
+    {
+        receiver = analyzeExpression(
+            expression->first()->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+    }
+    const std::string& receiverTypeKey = receiver.typeKey;
+    arrayElementMoveTarget = ProjectTypeConversion::isNativeArray(receiverTypeKey) ||
+        ProjectMemberModel::fixedArrayElementTypeKey(receiverTypeKey).has_value() ||
+        ProjectTypeConversion::isPointer(receiverTypeKey);
+    bool receiverOwnsStorage = receiver.ownership == sema::OwnershipKind::Owned;
+    if (!receiverOwnsStorage && receiver.assignmentMemberOrdinal.has_value() &&
+        memberModel_ != nullptr &&
+        *receiver.assignmentMemberOrdinal < memberModel_->members().size())
+    {
+        const ClassMemberSymbol& receiverMember =
+            memberModel_->members()[*receiver.assignmentMemberOrdinal];
+        receiverOwnsStorage = receiverMember.kind == ClassMemberKind::Field &&
+            !receiverMember.isStatic &&
+            receiverMember.declaredOwnership == sema::OwnershipKind::Owned;
+    }
+    const bool elementOwnsSeparateStorage =
+        isReferenceTypeKey(left.typeKey) || left.typeKey == "builtin:string";
+    ownedArrayElementOwnsStorage =
+        arrayElementMoveTarget && receiverOwnsStorage && elementOwnsSeparateStorage;
+    borrowedArrayElementTarget = arrayElementMoveTarget &&
+        receiver.ownership == sema::OwnershipKind::Borrowed;
+}
+
+void ProjectMethodBodyModel::classifyOwnedFieldAssignmentTarget(
+    bool& ownedFieldMoveTarget,
+    bool& genericFieldMoveTarget,
+    bool& ownedFieldOwnsStorage,
+    std::string& ownedFieldName,
+    const ExpressionResult& left,
+    const std::optional<std::size_t>& raiiTargetLocal,
+    bool arrayElementMoveTarget,
+    std::size_t methodMemberOrdinal) const
+{
+    if (raiiTargetLocal.has_value() || arrayElementMoveTarget || !left.valid || !left.assignable ||
+        !left.assignmentMemberOrdinal.has_value() || memberModel_ == nullptr ||
+        *left.assignmentMemberOrdinal >= memberModel_->members().size()) return;
+    const ClassMemberSymbol& targetMember =
+        memberModel_->members()[*left.assignmentMemberOrdinal];
+    ownedFieldMoveTarget = targetMember.kind == ClassMemberKind::Field &&
+        !targetMember.isStatic &&
+        (targetMember.declaredOwnership == sema::OwnershipKind::Owned ||
+         memberModel_->typeIsMoveOnly(targetMember.declaredTypeKey) ||
+         isGenericValueTypeKey(targetMember.declaredTypeKey));
+    genericFieldMoveTarget = targetMember.kind == ClassMemberKind::Field &&
+        !targetMember.isStatic && callableBelongsToGenericTypeSpecialization(methodMemberOrdinal);
+    ownedFieldOwnsStorage = ownedFieldMoveTarget &&
+        (isReferenceTypeKey(targetMember.declaredTypeKey) ||
+         targetMember.declaredTypeKey == "builtin:string");
+    if (ownedFieldMoveTarget) ownedFieldName = targetMember.name;
+}
+
+std::optional<std::size_t> ProjectMethodBodyModel::assignmentGetterBindingIndex(
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal) const
+{
+    const MethodCallBinding* getterCandidate = callBinding(expression->first(), methodMemberOrdinal);
+    if (getterCandidate == nullptr ||
+        getterCandidate->resolution != MethodCallResolutionKind::Resolved ||
+        !getterCandidate->selectedMemberOrdinal.has_value()) return std::nullopt;
+    const std::size_t selected = *getterCandidate->selectedMemberOrdinal;
+    if (memberModel_ == nullptr || selected >= memberModel_->members().size()) return std::nullopt;
+    const ClassMemberSymbol& member = memberModel_->members()[selected];
+    if ((!member.isPropertyAccessor && !member.isIndexerAccessor) || !member.isGetter)
+        return std::nullopt;
+    return static_cast<std::size_t>(getterCandidate - calls_.data());
+}
+
+bool ProjectMethodBodyModel::validateEventAssignment(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (left.readonlyReceiver)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "readonly receiver cannot add or remove an event handler");
+        return false;
+    }
+    if (expression->tokenKind() != TokenKind::PlusEqual &&
+        expression->tokenKind() != TokenKind::MinusEqual)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "Stage 42 events support only += and -= subscription operations");
+        return false;
+    }
+    return memberModel_ != nullptr &&
+        *left.eventMemberOrdinal < memberModel_->members().size();
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeEventHandler(
+    const ast::AstNode* expression,
+    const ClassMemberSymbol& event,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    ExpressionResult right;
+    if (expression->second()->kind() == ast::AstNodeKind::LambdaExpression)
+    {
+        right = bindLambdaToDelegate(
+            expression->second(), event.declaredTypeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    }
+    else
+    {
+        right = analyzeExpression(
+            expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics, true);
+    }
+    if (right.methodGroup)
+    {
+        right = bindMethodGroupToDelegate(
+            expression->second(), right, event.declaredTypeKey,
+            methodMemberOrdinal, scopeOrdinal, diagnostics);
+    }
+    return right;
+}
+
+void ProjectMethodBodyModel::recordEventAssignmentBinding(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const ClassMemberSymbol& event,
+    std::size_t backingMemberOrdinal,
+    const ProjectImplicitConversion& conversion,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal)
+{
+    MethodEventBinding binding;
+    binding.kind = expression->tokenKind() == TokenKind::PlusEqual
+        ? MethodEventOperationKind::Add : MethodEventOperationKind::Remove;
+    binding.syntax = expression;
+    binding.methodMemberOrdinal = methodMemberOrdinal;
+    binding.scopeOrdinal = scopeOrdinal;
+    binding.eventMemberOrdinal = *left.eventMemberOrdinal;
+    binding.backingMemberOrdinal = backingMemberOrdinal;
+    binding.delegateTypeKey = event.declaredTypeKey;
+    binding.delegateTypeOrdinal = delegateTypeOrdinalForTypeKey(event.declaredTypeKey).value_or(0);
+    binding.receiverSyntax = left.receiverSyntax;
+    binding.receiverTypeKey = left.receiverTypeKey;
+    binding.receiverTypeOrdinal = left.receiverTypeOrdinal;
+    binding.staticEvent = event.isStatic;
+    binding.resultTypeKey = "builtin:void";
+    binding.argumentConversions.push_back(conversion);
+    // NS304-T09-F08: un event con accessors custom invoca add_/remove_ en vez de la storage.
+    const std::string accessorName =
+        (binding.kind == MethodEventOperationKind::Add ? "add_" : "remove_") + event.name;
+    for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+    {
+        const ClassMemberSymbol& candidate = memberModel_->members()[ordinal];
+        if (candidate.name == accessorName && candidate.kind == ClassMemberKind::Method)
+        {
+            binding.customAccessorMemberOrdinal = ordinal;
+            break;
         }
     }
+    eventBindings_.push_back(std::move(binding));
+}
 
-    std::optional<std::size_t> assignedUnionStorage;
-    std::optional<std::size_t> assignedUnionMember;
-    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr)
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeEventAssignment(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (!validateEventAssignment(expression, left, diagnostics)) return {};
+    const ClassMemberSymbol& event = memberModel_->members()[*left.eventMemberOrdinal];
+    const std::optional<std::size_t> backing = eventBackingMember(*left.eventMemberOrdinal);
+    if (!backing.has_value())
     {
-        const ast::AstNode* storageSyntax = expression->first();
-        if (storageSyntax->kind() == ast::AstNodeKind::MemberExpression)
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "Stage 42 event is missing its compiler-generated backing storage");
+        return {};
+    }
+    const ExpressionResult right = analyzeEventHandler(
+        expression, event, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    if (!right.valid) return {};
+    if (right.typeKey == "builtin:null")
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->second()->range(),
+            "Stage 42 event subscription/removal requires a non-null delegate value");
+        return {};
+    }
+    const ProjectImplicitConversion conversion = classifyImplicit(
+        right.typeKey, event.declaredTypeKey, right.integerConstant);
+    if (!conversion.exists())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->second()->range(),
+            "event handler type '" + right.typeKey +
+                "' is not compatible with event delegate type '" + event.declaredTypeKey + "'");
+        return {};
+    }
+    recordEventAssignmentBinding(
+        expression, left, event, *backing, conversion, methodMemberOrdinal, scopeOrdinal);
+    ExpressionResult result;
+    result.typeKey = "builtin:void";
+    result.valid = true;
+    return result;
+}
+
+bool ProjectMethodBodyModel::rejectUnavailableAssignmentOwner(
+    const ast::AstNode* expression,
+    const std::optional<std::size_t>& raiiTargetLocal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (raiiTargetLocal.has_value() && locals_[*raiiTargetLocal].isPinned)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->first()->range(),
+            "cannot replace pinned owner '" + locals_[*raiiTargetLocal].name +
+                "'; it must remain at a stable address until lexical destruction");
+        return true;
+    }
+    if (raiiTargetLocal.has_value() &&
+        hasActiveBorrowOfOwnerLocal(*raiiTargetLocal, scopeOrdinal))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->first()->range(),
+            "cannot overwrite owner '" + locals_[*raiiTargetLocal].name +
+                "' while a borrowed local is alive");
+        return true;
+    }
+    return false;
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignmentRight(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const std::optional<std::size_t>& raiiTargetLocal,
+    const std::optional<std::size_t>& moveOnlyTargetLocal,
+    const std::optional<std::size_t>& moveOnlyTargetParameter,
+    bool arrayElementMoveTarget,
+    bool ownedFieldMoveTarget,
+    bool genericFieldMoveTarget,
+    bool ownedSetterMoveTarget,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const bool delegateTarget = isDelegateTypeKey(left.typeKey);
+    // NS304-T09-F07: expone el tipo objetivo al `new()` target-typed del lado derecho.
+    const std::string previousTargetTypeKey = activeTargetTypeKey_;
+    activeTargetTypeKey_ = left.typeKey;
+    ExpressionResult right;
+    if (delegateTarget && expression->second()->kind() == ast::AstNodeKind::LambdaExpression)
+    {
+        right = bindLambdaToDelegate(
+            expression->second(), left.typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    }
+    else
+    {
+        right = analyzeExpression(
+            expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+            delegateTarget, false,
+            raiiTargetLocal.has_value() || moveOnlyTargetLocal.has_value() ||
+                moveOnlyTargetParameter.has_value() || arrayElementMoveTarget ||
+                ownedFieldMoveTarget || genericFieldMoveTarget || ownedSetterMoveTarget);
+    }
+    activeTargetTypeKey_ = previousTargetTypeKey;
+    if (right.methodGroup && delegateTarget)
+    {
+        right = bindMethodGroupToDelegate(
+            expression->second(), right, left.typeKey,
+            methodMemberOrdinal, scopeOrdinal, diagnostics);
+    }
+    return right;
+}
+
+bool ProjectMethodBodyModel::rejectMoveOnlyAssignmentCopy(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const ExpressionResult& right,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (expression->tokenKind() != TokenKind::Equal ||
+        !memberModel_->typeIsMoveOnly(left.typeKey) || !right.addressable ||
+        expression->second()->kind() == ast::AstNodeKind::MoveExpression) return false;
+    diagnostics.report(
+        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->second()->range(),
+        "move-only value of type '" + left.typeKey +
+            "' cannot be copied by assignment; use move(source)");
+    return true;
+}
+
+void ProjectMethodBodyModel::classifyNamedAssignmentTarget(
+    std::optional<std::size_t>& assignmentTargetLocal,
+    std::optional<std::size_t>& assignmentTargetParameter,
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal) const
+{
+    if (expression->first() == nullptr ||
+        expression->first()->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const std::optional<ScopeName> target =
+        lookupScopeName(scopeOrdinal, expression->first()->text());
+    if (target.has_value() && target->kind == ScopeNameKind::Local &&
+        target->semanticOrdinal < locals_.size())
+    {
+        assignmentTargetLocal = target->semanticOrdinal;
+    }
+    else if (target.has_value() && target->kind == ScopeNameKind::Parameter)
+    {
+        assignmentTargetParameter = target->semanticOrdinal;
+    }
+}
+
+bool ProjectMethodBodyModel::validateAssignmentTargetStorage(
+    const ast::AstNode* expression,
+    const ExpressionResult& right,
+    const std::optional<std::size_t>& assignmentTargetLocal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (assignmentTargetLocal.has_value() &&
+        locals_[*assignmentTargetLocal].isVariableLengthArray)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->first()->range(),
+            "a variable-length array is storage, not a reassignable pointer");
+        return false;
+    }
+    if (assignmentTargetLocal.has_value() &&
+        ProjectTypeConversion::isPointer(locals_[*assignmentTargetLocal].typeKey))
+    {
+        const MethodLocalSymbol& target = locals_[*assignmentTargetLocal];
+        if (!language::pointerContractImplicitlyAssignable(
+                pointerContract(
+                    right.pointerNullable, right.pointerPointeeReadonly,
+                    right.pointerHasProvenance, right.pointerKnownAlignment,
+                    right.pointerAddressSpace),
+                pointerContract(
+                    target.pointerNullable, target.pointerPointeeReadonly,
+                    target.pointerHasProvenance, target.pointerKnownAlignment,
+                    target.pointerAddressSpace)))
         {
-            if (left.assignmentMemberOrdinal.has_value())
-                assignedUnionMember = *left.assignmentMemberOrdinal;
-            storageSyntax = storageSyntax->first();
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->second()->range(),
+                "assignment does not satisfy the destination pointer nullability, mutability, "
+                "provenance, alignment, or address-space contract");
+            return false;
         }
-        const std::optional<ScopeName> storage = storageSyntax != nullptr &&
-                storageSyntax->kind() == ast::AstNodeKind::IdentifierExpression
-            ? lookupScopeName(scopeOrdinal, storageSyntax->text())
-            : std::nullopt;
-        if (storage.has_value() &&
-            (storage->kind == ScopeNameKind::Local || storage->kind == ScopeNameKind::Parameter))
+        // Qualifier/provenance joins are MAY properties. Once any reachable assignment can make
+        // a pointer readonly or one-past, later dereference must remain conservative.
+        locals_[*assignmentTargetLocal].onePastEndPointer =
+            locals_[*assignmentTargetLocal].onePastEndPointer || right.onePastEndPointer;
+    }
+    const std::optional<std::size_t> assignedVlaRoot =
+        variableArrayRootLocalOfExpression(expression->second(), scopeOrdinal);
+    if (assignedVlaRoot.has_value() && !assignmentTargetLocal.has_value())
+    {
+        const std::string name = *assignedVlaRoot < locals_.size()
+            ? locals_[*assignedVlaRoot].name : std::string("<variable-length-array>");
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->second()->range(),
+            "pointer into variable-length array '" + name +
+                "' cannot be stored outside a local alias because the stack frame owns it");
+        return false;
+    }
+    if (assignedVlaRoot.has_value())
+        locals_[*assignmentTargetLocal].variableLengthArrayRootLocalOrdinal = assignedVlaRoot;
+    else if (assignmentTargetLocal.has_value() &&
+        locals_[*assignmentTargetLocal].typeKey.ends_with("*"))
+        locals_[*assignmentTargetLocal].variableLengthArrayRootLocalOrdinal.reset();
+    return true;
+}
+
+void ProjectMethodBodyModel::recordViewAssignmentRoot(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal)
+{
+    const ast::AstNode* viewAssignmentRoot = expression->first();
+    while (viewAssignmentRoot != nullptr &&
+        viewAssignmentRoot->kind() == ast::AstNodeKind::IndexExpression)
+    {
+        viewAssignmentRoot = viewAssignmentRoot->first();
+    }
+    if (viewAssignmentRoot == nullptr ||
+        viewAssignmentRoot->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const std::optional<ScopeName> viewTarget =
+        lookupScopeName(scopeOrdinal, viewAssignmentRoot->text());
+    if (!viewTarget.has_value() || viewTarget->kind != ScopeNameKind::Local ||
+        viewTarget->semanticOrdinal >= locals_.size() ||
+        !typeKeyIsViewLike(locals_[viewTarget->semanticOrdinal].typeKey) ||
+        !locals_[viewTarget->semanticOrdinal].viewRootLocalName.empty()) return;
+    const std::optional<std::string> root =
+        viewRootLocalOfExpression(expression->second(), scopeOrdinal);
+    if (root.has_value()) locals_[viewTarget->semanticOrdinal].viewRootLocalName = *root;
+}
+
+void ProjectMethodBodyModel::appendUniqueOrdinal(
+    std::vector<std::size_t>& values,
+    std::size_t value)
+{
+    if (std::find(values.begin(), values.end(), value) == values.end()) values.push_back(value);
+}
+
+bool ProjectMethodBodyModel::classifyBorrowedAssignmentDestination(
+    bool& borrowedReassignment,
+    MethodLocalBorrowBinding*& targetLocalBorrow,
+    const ClassMemberSymbol*& enclosingMethod,
+    const ast::AstNode* expression,
+    const std::optional<std::size_t>& assignmentTargetLocal,
+    const std::optional<std::size_t>& assignmentTargetParameter,
+    std::size_t methodMemberOrdinal)
+{
+    enclosingMethod = methodSymbol(methodMemberOrdinal);
+    if (expression->tokenKind() == TokenKind::Equal && assignmentTargetLocal.has_value() &&
+        *assignmentTargetLocal < locals_.size())
+    {
+        MethodLocalSymbol& targetLocal = locals_[*assignmentTargetLocal];
+        if (!targetLocal.isRaii && targetLocal.ownership == sema::OwnershipKind::Borrowed &&
+            targetLocal.localBorrowBindingOrdinal.has_value() &&
+            *targetLocal.localBorrowBindingOrdinal < localBorrowBindings_.size())
         {
-            const std::size_t storageKey = storage->semanticOrdinal * 2U +
-                (storage->kind == ScopeNameKind::Parameter ? 1U : 0U);
-            std::string storageTypeKey;
-            if (storage->kind == ScopeNameKind::Local && storage->semanticOrdinal < locals_.size())
-                storageTypeKey = locals_[storage->semanticOrdinal].typeKey;
-            else if (storage->kind == ScopeNameKind::Parameter)
+            borrowedReassignment = true;
+            targetLocalBorrow = &localBorrowBindings_[*targetLocal.localBorrowBindingOrdinal];
+        }
+    }
+    const bool borrowedParameterReassignment =
+        expression->tokenKind() == TokenKind::Equal && assignmentTargetParameter.has_value() &&
+        enclosingMethod != nullptr &&
+        *assignmentTargetParameter < enclosingMethod->parameters.size() &&
+        enclosingMethod->parameters[*assignmentTargetParameter].ownership ==
+            sema::OwnershipKind::Borrowed;
+    borrowedReassignment = borrowedReassignment || borrowedParameterReassignment;
+    return borrowedReassignment;
+}
+
+void ProjectMethodBodyModel::collectBorrowedAssignmentOwners(
+    std::vector<std::size_t>& ownerLocals,
+    std::vector<std::size_t>& ownerParameters,
+    const ast::AstNode* expression,
+    const ClassMemberSymbol* enclosingMethod,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal) const
+{
+    if (expression->second() == nullptr ||
+        expression->second()->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const std::optional<ScopeName> source =
+        lookupScopeName(scopeOrdinal, expression->second()->text());
+    if (source.has_value() && source->kind == ScopeNameKind::Local &&
+        source->semanticOrdinal < locals_.size())
+    {
+        const MethodLocalSymbol& sourceLocal = locals_[source->semanticOrdinal];
+        if (sourceLocal.isRaii) appendUniqueOrdinal(ownerLocals, source->semanticOrdinal);
+        else if (sourceLocal.ownership == sema::OwnershipKind::Borrowed &&
+            sourceLocal.localBorrowBindingOrdinal.has_value() &&
+            *sourceLocal.localBorrowBindingOrdinal < localBorrowBindings_.size())
+        {
+            const MethodLocalBorrowBinding& sourceBorrow =
+                localBorrowBindings_[*sourceLocal.localBorrowBindingOrdinal];
+            if (sourceBorrow.sourceOwnerLocalOrdinal.has_value())
+                appendUniqueOrdinal(ownerLocals, *sourceBorrow.sourceOwnerLocalOrdinal);
+            if (sourceBorrow.sourceOwnerParameterOrdinal.has_value())
+                appendUniqueOrdinal(ownerParameters, *sourceBorrow.sourceOwnerParameterOrdinal);
+            for (const std::size_t ordinal : sourceBorrow.possibleSourceOwnerLocalOrdinals)
+                appendUniqueOrdinal(ownerLocals, ordinal);
+            for (const std::size_t ordinal : sourceBorrow.possibleSourceOwnerParameterOrdinals)
+                appendUniqueOrdinal(ownerParameters, ordinal);
+        }
+        return;
+    }
+    if (!source.has_value() || source->kind != ScopeNameKind::Parameter ||
+        enclosingMethod == nullptr || source->semanticOrdinal >= enclosingMethod->parameters.size()) return;
+    const MethodParameterSymbol& sourceParameter = enclosingMethod->parameters[source->semanticOrdinal];
+    if (sourceParameter.ownership != sema::OwnershipKind::Owned &&
+        sourceParameter.ownership != sema::OwnershipKind::Borrowed) return;
+    appendUniqueOrdinal(ownerParameters, source->semanticOrdinal);
+    for (const MethodBorrowedParameterReassignmentBinding& prior :
+         borrowedParameterReassignmentBindings_)
+    {
+        if (prior.methodMemberOrdinal != methodMemberOrdinal ||
+            prior.parameterOrdinal != source->semanticOrdinal) continue;
+        for (const std::size_t ordinal : prior.possibleSourceOwnerLocalOrdinals)
+            appendUniqueOrdinal(ownerLocals, ordinal);
+        for (const std::size_t ordinal : prior.possibleSourceOwnerParameterOrdinals)
+            appendUniqueOrdinal(ownerParameters, ordinal);
+    }
+}
+
+bool ProjectMethodBodyModel::validateBorrowedAssignmentOwnerScopes(
+    const std::vector<std::size_t>& ownerLocals,
+    const ast::AstNode* expression,
+    const MethodLocalBorrowBinding* targetLocalBorrow,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    std::size_t destinationScope = scopeOrdinal;
+    if (targetLocalBorrow != nullptr)
+        destinationScope = targetLocalBorrow->creationScopeOrdinal;
+    else
+        while (destinationScope < scopes_.size() &&
+               scopes_[destinationScope].parentScopeOrdinal.has_value())
+            destinationScope = *scopes_[destinationScope].parentScopeOrdinal;
+    for (const std::size_t ownerLocal : ownerLocals)
+    {
+        if (ownerLocal < locals_.size() &&
+            scopeContains(locals_[ownerLocal].scopeOrdinal, destinationScope)) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->second()->range(),
+            "borrowed reassignment would let the destination outlive local owner '" +
+                (ownerLocal < locals_.size() ? locals_[ownerLocal].name
+                                             : std::string("<local-owner>")) + "'");
+        return false;
+    }
+    return true;
+}
+
+void ProjectMethodBodyModel::recordBorrowedAssignmentOwners(
+    const std::vector<std::size_t>& ownerLocals,
+    const std::vector<std::size_t>& ownerParameters,
+    const ast::AstNode* expression,
+    MethodLocalBorrowBinding* targetLocalBorrow,
+    const std::optional<std::size_t>& assignmentTargetParameter,
+    std::size_t methodMemberOrdinal)
+{
+    if (targetLocalBorrow != nullptr)
+    {
+        for (const std::size_t ordinal : ownerLocals)
+            appendUniqueOrdinal(targetLocalBorrow->possibleSourceOwnerLocalOrdinals, ordinal);
+        for (const std::size_t ordinal : ownerParameters)
+            appendUniqueOrdinal(targetLocalBorrow->possibleSourceOwnerParameterOrdinals, ordinal);
+        return;
+    }
+    MethodBorrowedParameterReassignmentBinding* targetBinding = nullptr;
+    for (MethodBorrowedParameterReassignmentBinding& candidate :
+         borrowedParameterReassignmentBindings_)
+    {
+        if (candidate.methodMemberOrdinal == methodMemberOrdinal &&
+            candidate.parameterOrdinal == *assignmentTargetParameter)
+        {
+            targetBinding = &candidate;
+            break;
+        }
+    }
+    if (targetBinding == nullptr)
+    {
+        MethodBorrowedParameterReassignmentBinding binding;
+        binding.syntax = expression;
+        binding.methodMemberOrdinal = methodMemberOrdinal;
+        binding.parameterOrdinal = *assignmentTargetParameter;
+        borrowedParameterReassignmentBindings_.push_back(std::move(binding));
+        targetBinding = &borrowedParameterReassignmentBindings_.back();
+    }
+    for (const std::size_t ordinal : ownerLocals)
+        appendUniqueOrdinal(targetBinding->possibleSourceOwnerLocalOrdinals, ordinal);
+    for (const std::size_t ordinal : ownerParameters)
+        appendUniqueOrdinal(targetBinding->possibleSourceOwnerParameterOrdinals, ordinal);
+}
+
+bool ProjectMethodBodyModel::analyzeBorrowedReassignment(
+    bool& borrowedReassignment,
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const ExpressionResult& right,
+    const std::optional<std::size_t>& assignmentTargetLocal,
+    const std::optional<std::size_t>& assignmentTargetParameter,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    MethodLocalBorrowBinding* targetLocalBorrow = nullptr;
+    const ClassMemberSymbol* enclosingMethod = nullptr;
+    if (!classifyBorrowedAssignmentDestination(
+            borrowedReassignment, targetLocalBorrow, enclosingMethod, expression,
+            assignmentTargetLocal, assignmentTargetParameter, methodMemberOrdinal)) return true;
+    const ProjectImplicitConversion conversion =
+        classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
+    if (!conversion.exists())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "cannot rebind borrowed destination from '" + right.typeKey + "' to '" +
+                left.typeKey + "'");
+        return false;
+    }
+    std::vector<std::size_t> ownerLocals;
+    std::vector<std::size_t> ownerParameters;
+    collectBorrowedAssignmentOwners(
+        ownerLocals, ownerParameters, expression, enclosingMethod,
+        methodMemberOrdinal, scopeOrdinal);
+    if (ownerLocals.empty() && ownerParameters.empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->second()->range(),
+            "borrowed reassignment requires a named RAII owner, owned/borrowed parameter, "
+            "or borrowed local with tracked provenance");
+        return false;
+    }
+    if (!validateBorrowedAssignmentOwnerScopes(
+            ownerLocals, expression, targetLocalBorrow, scopeOrdinal, diagnostics)) return false;
+    recordBorrowedAssignmentOwners(
+        ownerLocals, ownerParameters, expression, targetLocalBorrow,
+        assignmentTargetParameter, methodMemberOrdinal);
+    return true;
+}
+
+bool ProjectMethodBodyModel::rejectBorrowedAssignmentEscape(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const ExpressionResult& right,
+    bool borrowedReassignment,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const bool assignmentTargetOwnable =
+        isReferenceTypeKey(left.typeKey) || left.typeKey == "builtin:string";
+    if (borrowedReassignment || right.ownership != sema::OwnershipKind::Borrowed ||
+        !assignmentTargetOwnable) return false;
+    if (left.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
+        *left.assignmentMemberOrdinal < memberModel_->members().size())
+    {
+        const ClassMemberSymbol& field = memberModel_->members()[*left.assignmentMemberOrdinal];
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->second()->range(),
+            "borrowed value cannot be stored in field '" + field.name +
+                "' because the field may outlive its source owner");
+        return true;
+    }
+    if (expression->first() == nullptr ||
+        expression->first()->kind() != ast::AstNodeKind::IdentifierExpression) return false;
+    const std::optional<ScopeName> target =
+        lookupScopeName(scopeOrdinal, expression->first()->text());
+    if (!target.has_value()) return false;
+    if (target->kind == ScopeNameKind::Local && target->semanticOrdinal < locals_.size())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->second()->range(),
+            "borrowed value cannot be stored in unqualified local '" +
+                locals_[target->semanticOrdinal].name +
+                "'; declare a borrowed local at initialization so provenance remains checked");
+        return true;
+    }
+    if (target->kind != ScopeNameKind::Parameter) return false;
+    const ClassMemberSymbol* owner = methodSymbol(methodMemberOrdinal);
+    const std::string targetName = owner != nullptr &&
+        target->semanticOrdinal < owner->parameters.size()
+        ? owner->parameters[target->semanticOrdinal].name : expression->first()->text();
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->second()->range(),
+        "borrowed value cannot be assigned to parameter '" + targetName +
+            "' because replacement lifetime provenance is not tracked in Stage 50");
+    return true;
+}
+
+bool ProjectMethodBodyModel::rejectOwnerCopyAssignment(
+    const ast::AstNode* expression,
+    bool borrowedReassignment,
+    bool borrowedArrayElementTarget,
+    const std::optional<std::size_t>& raiiTargetLocal,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (borrowedReassignment || borrowedArrayElementTarget || raiiTargetLocal.has_value() ||
+        expression->second() == nullptr ||
+        expression->second()->kind() != ast::AstNodeKind::IdentifierExpression) return false;
+    const std::optional<ScopeName> sourceName =
+        lookupScopeName(scopeOrdinal, expression->second()->text());
+    if (sourceName.has_value() && sourceName->kind == ScopeNameKind::Local &&
+        sourceName->semanticOrdinal < locals_.size() && locals_[sourceName->semanticOrdinal].isRaii)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->second()->range(),
+            "RAII owner '" + locals_[sourceName->semanticOrdinal].name +
+                "' cannot be copied by assignment; Stage 49 requires ownership transfer to "
+                "another RAII local with move(...)");
+        return true;
+    }
+    if (!sourceName.has_value() || sourceName->kind != ScopeNameKind::Parameter) return false;
+    const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
+    if (enclosing == nullptr || sourceName->semanticOrdinal >= enclosing->parameters.size()) return false;
+    const MethodParameterSymbol& source = enclosing->parameters[sourceName->semanticOrdinal];
+    const bool sourceOwnsStorage =
+        isReferenceTypeKey(source.typeKey) || source.typeKey == "builtin:string";
+    if (source.ownership != sema::OwnershipKind::Owned || !sourceOwnsStorage) return false;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->second()->range(),
+        "cannot copy owned value '" + source.name +
+            "' by assignment; use move(" + source.name + ") to transfer ownership");
+    return true;
+}
+
+bool ProjectMethodBodyModel::validateOwningStorageAssignment(
+    const ast::AstNode* expression,
+    const ExpressionResult& right,
+    bool ownedFieldOwnsStorage,
+    bool ownedArrayElementOwnsStorage,
+    const std::string& ownedFieldName,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!ownedFieldOwnsStorage && !ownedArrayElementOwnsStorage) return true;
+    const bool freshObject = expression->second() != nullptr &&
+        expression->second()->kind() == ast::AstNodeKind::ObjectCreationExpression;
+    const bool nullValue = expression->second() != nullptr &&
+        expression->second()->kind() == ast::AstNodeKind::NullLiteralExpression;
+    const bool ownershipTransferred =
+        right.ownership == sema::OwnershipKind::Owned && right.ownershipTransfer;
+    if (freshObject || nullValue || ownershipTransferred) return true;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->second()->range(),
+        ownedFieldOwnsStorage
+            ? "assignment to owned field '" + ownedFieldName +
+                  "' requires an ownership-transfer expression such as move(owner), new T(...), "
+                  "null, or an owned-returning call"
+            : "assignment to an element of an owned array requires an ownership-transfer "
+                  "expression such as move(owner), new T(...), null, or an owned-returning call");
+    return false;
+}
+
+bool ProjectMethodBodyModel::validateRaiiAssignmentTarget(
+    const ast::AstNode* expression,
+    const std::optional<std::size_t>& raiiTargetLocal,
+    bool raiiStringAppend,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!raiiTargetLocal.has_value()) return true;
+    if (!raiiStringAppend && (expression->tokenKind() != TokenKind::Equal ||
+        expression->second() == nullptr ||
+        expression->second()->kind() != ast::AstNodeKind::MoveExpression))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "RAII locals are move-only; assignment requires target = move(source)");
+        return false;
+    }
+    const MethodMoveBinding* move = nullptr;
+    for (auto iterator = moveBindings_.rbegin(); iterator != moveBindings_.rend(); ++iterator)
+    {
+        if (iterator->syntax != expression->second()) continue;
+        move = &*iterator;
+        break;
+    }
+    if (move == nullptr || move->sourceLocalOrdinal != *raiiTargetLocal) return true;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->range(),
+        "self move-assignment of a RAII local is not allowed");
+    return false;
+}
+
+bool ProjectMethodBodyModel::validateMoveOnlyAssignmentTarget(
+    const ast::AstNode* expression,
+    const std::optional<std::size_t>& moveOnlyTargetLocal,
+    const std::optional<std::size_t>& moveOnlyTargetParameter,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!moveOnlyTargetLocal.has_value() && !moveOnlyTargetParameter.has_value()) return true;
+    if (expression->tokenKind() != TokenKind::Equal)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "move-only values support replacement with '=' but not compound assignment");
+        return false;
+    }
+    const MethodMoveBinding* move = nullptr;
+    for (auto iterator = moveBindings_.rbegin(); iterator != moveBindings_.rend(); ++iterator)
+    {
+        if (iterator->syntax != expression->second()) continue;
+        move = &*iterator;
+        break;
+    }
+    const bool selfMove =
+        (moveOnlyTargetLocal.has_value() && move != nullptr &&
+         move->sourceLocalOrdinal == *moveOnlyTargetLocal) ||
+        (moveOnlyTargetParameter.has_value() && move != nullptr &&
+         move->sourceParameterOrdinal == *moveOnlyTargetParameter);
+    if (!selfMove) return true;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->range(),
+        "self move-assignment of a move-only value is not allowed");
+    return false;
+}
+
+const MethodCallBinding* ProjectMethodBodyModel::assignmentSetterGetter(
+    const std::optional<std::size_t>& getterBindingIndex) const
+{
+    const MethodCallBinding* getterBinding = getterBindingIndex.has_value()
+        ? &calls_[*getterBindingIndex] : nullptr;
+    if (getterBinding == nullptr || memberModel_ == nullptr ||
+        !getterBinding->selectedMemberOrdinal.has_value() ||
+        *getterBinding->selectedMemberOrdinal >= memberModel_->members().size()) return getterBinding;
+    if (memberModel_->members()[*getterBinding->selectedMemberOrdinal].isReferenceReturn)
+    {
+        return nullptr;
+    }
+    return getterBinding;
+}
+
+bool ProjectMethodBodyModel::validatePropertySetterAssignment(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const ExpressionResult& right,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (right.ownership == sema::OwnershipKind::Borrowed)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->second()->range(),
+            "borrowed value cannot be stored through a property/indexer setter because "
+            "retention is not proven");
+        return false;
+    }
+    if (!left.readonlyReceiver) return true;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidAssignmentTarget,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->first()->range(),
+        "readonly receiver cannot invoke a property/indexer setter");
+    return false;
+}
+
+bool ProjectMethodBodyModel::collectPropertySetterCandidates(
+    std::vector<std::size_t>& setters,
+    std::string& setterName,
+    const ast::AstNode* expression,
+    const MethodCallBinding& getterBinding,
+    const ClassMemberSymbol& getter,
+    std::size_t methodMemberOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+    const std::size_t accessingTypeOrdinal = caller != nullptr
+        ? caller->declaringTypeOrdinal : getter.declaringTypeOrdinal;
+    const std::size_t receiverTypeOrdinal =
+        getterBinding.receiverTypeOrdinal.value_or(getter.declaringTypeOrdinal);
+    const std::size_t protectedReceiverType = getterBinding.baseReceiver
+        ? accessingTypeOrdinal : receiverTypeOrdinal;
+    setterName = getter.isPropertyAccessor ? "set_" + getter.associatedName : "set_Item";
+    setters = stage38AccessorCandidates(
+        receiverTypeOrdinal, setterName, getter.isPropertyAccessor, false, getter.isStatic,
+        accessingTypeOrdinal, protectedReceiverType);
+    if (setters.empty())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->first()->range(),
+            "Stage 38 property/indexer has no accessible setter");
+        return false;
+    }
+    for (const std::size_t setterOrdinal : setters)
+    {
+        const ClassMemberSymbol* setterSymbol = methodSymbol(setterOrdinal);
+        if (setterSymbol == nullptr || !setterSymbol->isInit) continue;
+        if (caller == nullptr || caller->kind != ClassMemberKind::Constructor)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->first()->range(),
+                "init accessor can only be assigned during construction (in a constructor)");
+            return false;
+        }
+        break;
+    }
+    return true;
+}
+
+void ProjectMethodBodyModel::appendRecordedSetterExpression(
+    std::vector<ExpressionResult>& setterArguments,
+    const ast::AstNode* syntax,
+    std::size_t methodMemberOrdinal) const
+{
+    ExpressionResult value;
+    const MethodExpressionTypeBinding* binding =
+        expressionTypeBinding(syntax, methodMemberOrdinal);
+    if (binding != nullptr)
+    {
+        value.typeKey = binding->typeKey;
+        value.integerConstant = binding->integerConstant;
+        value.valid = !isErrorType(value.typeKey);
+    }
+    setterArguments.push_back(std::move(value));
+}
+
+void ProjectMethodBodyModel::collectPropertySetterArguments(
+    std::vector<ExpressionResult>& setterArguments,
+    const ast::AstNode* expression,
+    const ClassMemberSymbol& getter,
+    std::size_t methodMemberOrdinal) const
+{
+    if (!getter.isIndexerAccessor ||
+        expression->first()->kind() != ast::AstNodeKind::IndexExpression) return;
+    const ast::AstNode* indexExpression = expression->first();
+    if (!indexExpression->children().empty())
+    {
+        for (const ast::AstNode* index : indexExpression->children())
+            appendRecordedSetterExpression(setterArguments, index, methodMemberOrdinal);
+    }
+    else if (indexExpression->second() != nullptr)
+    {
+        appendRecordedSetterExpression(
+            setterArguments, indexExpression->second(), methodMemberOrdinal);
+    }
+}
+
+bool ProjectMethodBodyModel::validatePropertySetterReevaluation(
+    const ast::AstNode* expression,
+    const MethodCallBinding& getterBinding,
+    const ClassMemberSymbol& getter,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const ast::AstNode* offender = nullptr;
+    bool reevaluable =
+        isAccessorDestinationReevaluable(getterBinding.receiverSyntax, scopeOrdinal, offender);
+    if (reevaluable && getter.isIndexerAccessor &&
+        expression->first()->kind() == ast::AstNodeKind::IndexExpression)
+    {
+        const ast::AstNode* indexExpression = expression->first();
+        if (!indexExpression->children().empty())
+        {
+            for (const ast::AstNode* index : indexExpression->children())
             {
-                const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
-                if (method != nullptr && storage->semanticOrdinal < method->parameters.size())
-                    storageTypeKey = method->parameters[storage->semanticOrdinal].typeKey;
+                reevaluable = reevaluable &&
+                    isAccessorDestinationReevaluable(index, scopeOrdinal, offender);
             }
-            if (aggregateRequiresActiveMember(storageTypeKey))
-                assignedUnionStorage = storageKey;
         }
-        if (assignedUnionStorage.has_value() && !assignedUnionMember.has_value() &&
-            expression->second() != nullptr &&
-            expression->second()->kind() == ast::AstNodeKind::IdentifierExpression)
+        else
         {
-            const std::optional<ScopeName> source =
-                lookupScopeName(scopeOrdinal, expression->second()->text());
-            if (source.has_value() &&
-                (source->kind == ScopeNameKind::Local ||
-                 source->kind == ScopeNameKind::Parameter))
-            {
-                const std::size_t sourceKey = source->semanticOrdinal * 2U +
-                    (source->kind == ScopeNameKind::Parameter ? 1U : 0U);
-                const auto active = activeUnionMembers_.find(sourceKey);
-                if (active != activeUnionMembers_.end())
-                    assignedUnionMember = active->second;
-            }
+            reevaluable = isAccessorDestinationReevaluable(
+                indexExpression->second(), scopeOrdinal, offender);
         }
+    }
+    if (reevaluable) return true;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidAssignmentTarget,
+        diagnostics::DiagnosticSeverity::Error,
+        offender != nullptr ? offender->range() : expression->first()->range(),
+        "compound assignment to a property/indexer evaluates its receiver and index "
+        "arguments once for the getter and once for the setter, so each has to be a "
+        "local, a parameter, `this` or a constant expression; assign this one to a "
+        "local first and use that local");
+    return false;
+}
+
+bool ProjectMethodBodyModel::preparePropertySetterValue(
+    ExpressionResult& setterValue,
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const ExpressionResult& right,
+    const MethodCallBinding& getterBinding,
+    const ClassMemberSymbol& getter,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (expression->tokenKind() == TokenKind::Equal) return true;
+    const TokenKind baseOperator = lexer::compoundAssignmentBaseOperator(expression->tokenKind());
+    if (baseOperator == TokenKind::Invalid)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "unsupported compound assignment operator on a property/indexer");
+        return false;
+    }
+    if (!validatePropertySetterReevaluation(
+            expression, getterBinding, getter, scopeOrdinal, diagnostics)) return false;
+    const bool sameEnumBitwise = isEnumTypeKey(left.typeKey) && left.typeKey == right.typeKey &&
+        (baseOperator == TokenKind::Amp || baseOperator == TokenKind::Pipe ||
+         baseOperator == TokenKind::Caret);
+    const bool shiftAssignment = isShift(baseOperator) &&
+        ProjectTypeConversion::isIntegral(left.typeKey) &&
+        ProjectTypeConversion::isIntegral(right.typeKey) &&
+        left.typeKey != "builtin:bool" && right.typeKey != "builtin:bool";
+    const std::optional<std::string> common = sameEnumBitwise || shiftAssignment
+        ? std::optional<std::string>(left.typeKey)
+        : ProjectTypeConversion::commonNumericType(
+              left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
+    if (!common.has_value())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "compound assignment to a property/indexer requires compatible numeric operands");
+        return false;
+    }
+    const ProjectImplicitConversion narrowing =
+        classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
+    if (!shiftAssignment && !narrowing.exists())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->second()->range(),
+            "compound assignment cannot implicitly convert its right-hand side from '" +
+                right.typeKey + "' to '" + left.typeKey +
+                "'; write the read-modify-write with an explicit cast");
+        return false;
+    }
+    ExpressionResult stored;
+    stored.typeKey = left.typeKey;
+    stored.valid = true;
+    setterValue = std::move(stored);
+    return true;
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzePropertySetterAssignment(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const ExpressionResult& right,
+    const MethodCallBinding& getterBinding,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (!validatePropertySetterAssignment(expression, left, right, diagnostics)) return {};
+    const ClassMemberSymbol& getter =
+        memberModel_->members()[*getterBinding.selectedMemberOrdinal];
+    std::vector<std::size_t> setters;
+    std::string setterName;
+    if (!collectPropertySetterCandidates(
+            setters, setterName, expression, getterBinding, getter,
+            methodMemberOrdinal, diagnostics)) return {};
+    std::vector<ExpressionResult> setterArguments;
+    collectPropertySetterArguments(
+        setterArguments, expression, getter, methodMemberOrdinal);
+    ExpressionResult setterValue = right;
+    if (!preparePropertySetterValue(
+            setterValue, expression, left, right, getterBinding, getter,
+            scopeOrdinal, diagnostics)) return {};
+    setterArguments.push_back(setterValue);
+    ExpressionResult setterResult = resolveSyntheticCall(
+        expression, methodMemberOrdinal, scopeOrdinal, setterName, std::move(setters),
+        setterArguments, getterBinding.receiverSyntax, getterBinding.receiverTypeKey,
+        getterBinding.receiverTypeOrdinal, getterBinding.baseReceiver,
+        getterBinding.interfaceCall, diagnostics);
+    if (!setterResult.valid && setterResult.typeKey != "builtin:void") return {};
+    ExpressionResult assignmentResult = left;
+    assignmentResult.assignable = false;
+    assignmentResult.valid = true;
+    invalidateAssignedStorage(expression->first(), scopeOrdinal);
+    return assignmentResult;
+}
+
+std::optional<ProjectMethodBodyModel::ExpressionResult>
+ProjectMethodBodyModel::analyzeExtensionPropertyAssignment(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (expression->tokenKind() != TokenKind::Equal || namespaceFunctionModel_ == nullptr ||
+        expression->first() == nullptr ||
+        expression->first()->kind() != ast::AstNodeKind::MemberExpression) return std::nullopt;
+    const NamespaceFunctionReferenceBinding* extension =
+        namespaceFunctionModel_->extensionBinding(expression->first());
+    if (extension == nullptr || extension->candidateFunctionOrdinals.empty()) return std::nullopt;
+    const std::size_t getterOrdinal = extension->candidateFunctionOrdinals.front();
+    if (getterOrdinal >= namespaceCallableAdapters().size() ||
+        namespaceCallableAdapters()[getterOrdinal].parameters.size() != 1U) return std::nullopt;
+    std::string extensionNamespace;
+    if (getterOrdinal < namespaceFunctionModel_->functions().size())
+        extensionNamespace = namespaceFunctionModel_->functions()[getterOrdinal].namespaceName;
+    const std::span<const std::size_t> setterOrdinals = namespaceFunctionModel_->findFunctions(
+        extension->projectOrdinal, extensionNamespace, "set_" + extension->writtenName);
+    if (setterOrdinals.empty()) return std::nullopt;
+    NamespaceFunctionReferenceBinding setterReference;
+    setterReference.calleeSyntax = expression->first();
+    setterReference.projectOrdinal = extension->projectOrdinal;
+    setterReference.fileId = extension->fileId;
+    setterReference.lexicalNamespace = extensionNamespace;
+    setterReference.writtenName = "set_" + extension->writtenName;
+    setterReference.qualified = false;
+    setterReference.extension = true;
+    setterReference.receiverSyntax = extension->receiverSyntax;
+    setterReference.candidateFunctionOrdinals.assign(
+        setterOrdinals.begin(), setterOrdinals.end());
+    ExpressionResult receiver = analyzeExpression(
+        expression->first()->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+    receiver.receiverTypeKey = receiver.typeKey;
+    if (!receiver.valid) return std::nullopt;
+    ExpressionResult setterResult = analyzeNamespaceFunctionCall(
+        expression, setterReference, methodMemberOrdinal, scopeOrdinal,
+        diagnostics, &receiver, expression->second());
+    if (!setterResult.valid && setterResult.typeKey != "builtin:void") return ExpressionResult{};
+    ExpressionResult assignmentResult = left;
+    assignmentResult.assignable = false;
+    assignmentResult.valid = true;
+    invalidateAssignedStorage(expression->first(), scopeOrdinal);
+    return assignmentResult;
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNullConditionalIndexAssignment(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const ExpressionResult& right,
+    bool ownedArrayElementOwnsStorage,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const ProjectImplicitConversion conversion =
+        classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
+    if (!conversion.exists())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "cannot implicitly convert assignment RHS from '" + right.typeKey + "' to '" +
+                left.typeKey + "'");
+        return {};
+    }
+    ExpressionResult assignmentResult = right;
+    assignmentResult.ownsStorageDestination = ownedArrayElementOwnsStorage;
+    assignmentResult.assignable = false;
+    assignmentResult.valid = true;
+    return assignmentResult;
+}
+
+ProjectMethodBodyModel::ExpressionResult
+ProjectMethodBodyModel::analyzeNullConditionalCompoundAssignment(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const ExpressionResult& right,
+    bool ownedFieldOwnsStorage,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const TokenKind compoundBase =
+        lexer::compoundAssignmentBaseOperator(expression->tokenKind());
+    if (compoundBase == TokenKind::Invalid)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "unsupported compound assignment operator on a null-conditional target");
+        return {};
+    }
+    if (compoundBase == TokenKind::Plus && left.typeKey == "builtin:string" &&
+        (right.typeKey == "builtin:string" || right.typeKey == "string-literal"))
+    {
+        ExpressionResult assignmentResult = left;
+        assignmentResult.typeKey = "builtin:string";
+        assignmentResult.ownsStorageDestination = ownedFieldOwnsStorage;
+        assignmentResult.assignable = false;
+        assignmentResult.valid = true;
+        return assignmentResult;
+    }
+    const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
+        left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
+    if (!common.has_value())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "null-conditional compound assignment requires compatible numeric operands");
+        return {};
+    }
+    const ProjectImplicitConversion narrowing =
+        classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
+    if (!narrowing.exists())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "null-conditional compound assignment cannot implicitly convert its right-hand "
+            "side from '" + right.typeKey + "' to '" + left.typeKey + "'");
+        return {};
+    }
+    ExpressionResult assignmentResult = left;
+    assignmentResult.ownsStorageDestination = ownedFieldOwnsStorage;
+    assignmentResult.assignable = false;
+    assignmentResult.valid = true;
+    return assignmentResult;
+}
+
+bool ProjectMethodBodyModel::validatePlainAssignmentConversion(
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const ExpressionResult& right,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const ProjectImplicitConversion conversion =
+        classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
+    if (!conversion.exists())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "cannot implicitly convert assignment RHS from '" + right.typeKey + "' to '" +
+                left.typeKey + "'");
+        return false;
+    }
+    if (!ProjectTypeConversion::isPointer(left.typeKey) ||
+        language::pointerContractImplicitlyAssignable(
+            pointerContract(
+                right.pointerNullable, right.pointerPointeeReadonly,
+                right.pointerHasProvenance, right.pointerKnownAlignment,
+                right.pointerAddressSpace),
+            pointerContract(
+                left.pointerNullable, left.pointerPointeeReadonly,
+                left.pointerHasProvenance, left.pointerKnownAlignment,
+                left.pointerAddressSpace))) return true;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidConversion,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->second()->range(),
+        "assignment does not satisfy the destination pointer nullability, mutability, provenance, "
+        "alignment, or address-space contract");
+    return false;
+}
+
+void ProjectMethodBodyModel::updatePlainAssignmentState(
+    const ast::AstNode* expression,
+    const ExpressionResult& right,
+    const std::optional<std::size_t>& raiiTargetLocal,
+    const std::optional<std::size_t>& assignmentTargetLocal,
+    const std::optional<std::size_t>& moveOnlyTargetLocal,
+    const std::optional<std::size_t>& moveOnlyTargetParameter,
+    const std::optional<std::size_t>& assignedUnionStorage,
+    const std::optional<std::size_t>& assignedUnionMember,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal)
+{
+    if (raiiTargetLocal.has_value())
+    {
+        movedRaiiLocals_.erase(*raiiTargetLocal);
+        maybeMovedRaiiLocals_.erase(*raiiTargetLocal);
+    }
+    if (assignmentTargetLocal.has_value())
+    {
+        MethodLocalSymbol& targetLocal = locals_[*assignmentTargetLocal];
+        targetLocal.callableTrait = right.callableTrait;
+        invokedFnOnceLocals_.erase(*assignmentTargetLocal);
+        maybeInvokedFnOnceLocals_.erase(*assignmentTargetLocal);
+    }
+    if (moveOnlyTargetLocal.has_value())
+    {
+        movedRaiiLocals_.erase(*moveOnlyTargetLocal);
+        maybeMovedRaiiLocals_.erase(*moveOnlyTargetLocal);
+    }
+    if (moveOnlyTargetParameter.has_value())
+    {
+        movedOwnedParameters_.erase(*moveOnlyTargetParameter);
+        maybeMovedOwnedParameters_.erase(*moveOnlyTargetParameter);
+    }
+    if (const std::optional<std::string> assignedPlace =
+            partialMovePlaceKey(expression->first(), scopeOrdinal))
+        reinitializePartialPlace(*assignedPlace);
+    if (assignedUnionStorage.has_value())
+    {
+        if (assignedUnionMember.has_value())
+            activeUnionMembers_[*assignedUnionStorage] = *assignedUnionMember;
+        else
+            activeUnionMembers_.erase(*assignedUnionStorage);
+    }
+    const MethodEscapeOrigin sourceEscape =
+        referenceEscapeOriginOfExpression(expression->second(), scopeOrdinal);
+    if (!sourceEscape.ordinal.has_value() ||
+        (sourceEscape.kind != MethodEscapeOriginKind::ExternalStorage &&
+         sourceEscape.kind != MethodEscapeOriginKind::CurrentFrameParameter)) return;
+    const MethodEscapeOrigin destinationEscape =
+        referenceEscapeOriginOfExpression(expression->first(), scopeOrdinal);
+    if (destinationEscape.kind == MethodEscapeOriginKind::ExternalStorage &&
+        !destinationEscape.ordinal.has_value())
+        noteParameterEscape(methodMemberOrdinal, *sourceEscape.ordinal, language::EscapeClass::Global);
+    else if (destinationEscape.kind == MethodEscapeOriginKind::CurrentReceiver ||
+             (destinationEscape.kind == MethodEscapeOriginKind::ExternalStorage &&
+              destinationEscape.ordinal.has_value()))
+        noteParameterEscape(
+            methodMemberOrdinal, *sourceEscape.ordinal, language::EscapeClass::CallerOwned);
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishPlainAssignment(
+    const ast::AstNode* expression,
+    ExpressionResult left,
+    const ExpressionResult& right,
+    const std::optional<std::size_t>& raiiTargetLocal,
+    const std::optional<std::size_t>& assignmentTargetLocal,
+    const std::optional<std::size_t>& moveOnlyTargetLocal,
+    const std::optional<std::size_t>& moveOnlyTargetParameter,
+    const std::optional<std::size_t>& assignedUnionStorage,
+    const std::optional<std::size_t>& assignedUnionMember,
+    bool ownsStorageDestination,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (!validatePlainAssignmentConversion(expression, left, right, diagnostics)) return {};
+    updatePlainAssignmentState(
+        expression, right, raiiTargetLocal, assignmentTargetLocal, moveOnlyTargetLocal,
+        moveOnlyTargetParameter, assignedUnionStorage, assignedUnionMember,
+        methodMemberOrdinal, scopeOrdinal);
+    left.ownsStorageDestination = ownsStorageDestination;
+    left.assignable = false;
+    invalidateAssignedStorage(expression->first(), scopeOrdinal);
+    return left;
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishPointerCompoundAssignment(
+    const ast::AstNode* expression,
+    ExpressionResult left,
+    const ExpressionResult& right,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const bool offsetOperator = expression->tokenKind() == TokenKind::PlusEqual ||
+        expression->tokenKind() == TokenKind::MinusEqual;
+    if (!offsetOperator || left.typeKey == "builtin:void*" ||
+        !ProjectTypeConversion::isIntegral(right.typeKey))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "a non-void pointer supports only '+=' and '-=' with an integral right-hand side");
+        return {};
+    }
+    left.assignable = false;
+    invalidateAssignedStorage(expression->first(), scopeOrdinal);
+    return left;
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCompoundAssignment(
+    const ast::AstNode* expression,
+    ExpressionResult left,
+    const ExpressionResult& right,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const TokenKind compoundBase = lexer::compoundAssignmentBaseOperator(expression->tokenKind());
+    const bool sameEnumBitwise = isEnumTypeKey(left.typeKey) && left.typeKey == right.typeKey &&
+        (compoundBase == TokenKind::Amp || compoundBase == TokenKind::Pipe ||
+         compoundBase == TokenKind::Caret);
+    const bool shiftAssignment = isShift(compoundBase) &&
+        ProjectTypeConversion::isIntegral(left.typeKey) &&
+        ProjectTypeConversion::isIntegral(right.typeKey) &&
+        left.typeKey != "builtin:bool" && right.typeKey != "builtin:bool";
+    const std::optional<std::string> common = sameEnumBitwise || shiftAssignment
+        ? std::optional<std::string>(left.typeKey)
+        : ProjectTypeConversion::commonNumericType(
+              left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
+    if (!common.has_value())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "compound assignment requires compatible numeric operands in Stage 34");
+        return {};
+    }
+    const ProjectImplicitConversion narrowing =
+        classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
+    if (!shiftAssignment && !narrowing.exists())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "compound assignment cannot implicitly convert its right-hand side from '" +
+                right.typeKey + "' to '" + left.typeKey +
+                "'; write the read-modify-write with an explicit cast");
+        return {};
+    }
+    left.assignable = false;
+    invalidateAssignedStorage(expression->first(), scopeOrdinal);
+    return left;
+}
+
+bool ProjectMethodBodyModel::prepareAssignmentTarget(
+    ExpressionResult& left,
+    std::optional<std::size_t>& raiiTargetLocal,
+    std::optional<std::size_t>& moveOnlyTargetLocal,
+    std::optional<std::size_t>& moveOnlyTargetParameter,
+    std::optional<std::size_t>& assignedUnionStorage,
+    std::optional<std::size_t>& assignedUnionMember,
+    bool& arrayElementMoveTarget,
+    bool& ownedArrayElementOwnsStorage,
+    bool& borrowedArrayElementTarget,
+    bool& ownedFieldMoveTarget,
+    bool& genericFieldMoveTarget,
+    bool& ownedFieldOwnsStorage,
+    std::string& ownedFieldName,
+    std::optional<std::size_t>& getterBindingIndex,
+    bool& ownedSetterMoveTarget,
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    recordAssignedOutParameter(expression, methodMemberOrdinal, scopeOrdinal);
+    classifyDirectAssignmentTarget(
+        left, raiiTargetLocal, moveOnlyTargetLocal, moveOnlyTargetParameter,
+        expression, methodMemberOrdinal, scopeOrdinal);
+    if (!analyzeAssignmentLeft(
+            left, expression, methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
+    trackRequiredFieldAssignment(left, methodMemberOrdinal);
+    classifyAssignedUnion(
+        assignedUnionStorage, assignedUnionMember, expression, left,
+        methodMemberOrdinal, scopeOrdinal);
+    classifyArrayElementAssignmentTarget(
+        arrayElementMoveTarget, ownedArrayElementOwnsStorage, borrowedArrayElementTarget,
+        expression, left, raiiTargetLocal, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    classifyOwnedFieldAssignmentTarget(
+        ownedFieldMoveTarget, genericFieldMoveTarget, ownedFieldOwnsStorage, ownedFieldName,
+        left, raiiTargetLocal, arrayElementMoveTarget, methodMemberOrdinal);
+    getterBindingIndex = assignmentGetterBindingIndex(expression, methodMemberOrdinal);
+    if (!raiiTargetLocal.has_value() && !arrayElementMoveTarget && !ownedFieldMoveTarget &&
+        getterBindingIndex.has_value() && memberModel_ != nullptr)
+    {
+        const std::size_t getterOrdinal = *calls_[*getterBindingIndex].selectedMemberOrdinal;
+        ownedSetterMoveTarget = memberModel_->members()[getterOrdinal].ownsAccessorStorage;
+    }
+    return true;
+}
+
+bool ProjectMethodBodyModel::prepareAssignmentValue(
+    ExpressionResult& right,
+    std::optional<std::size_t>& assignmentTargetLocal,
+    std::optional<std::size_t>& assignmentTargetParameter,
+    bool& borrowedReassignment,
+    bool& delegateTarget,
+    bool& raiiStringAppend,
+    bool& ownsStorageDestination,
+    const ast::AstNode* expression,
+    const ExpressionResult& left,
+    const std::optional<std::size_t>& raiiTargetLocal,
+    const std::optional<std::size_t>& moveOnlyTargetLocal,
+    const std::optional<std::size_t>& moveOnlyTargetParameter,
+    bool arrayElementMoveTarget,
+    bool ownedArrayElementOwnsStorage,
+    bool borrowedArrayElementTarget,
+    bool ownedFieldMoveTarget,
+    bool genericFieldMoveTarget,
+    bool ownedFieldOwnsStorage,
+    const std::string& ownedFieldName,
+    bool ownedSetterMoveTarget,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (rejectUnavailableAssignmentOwner(
+            expression, raiiTargetLocal, scopeOrdinal, diagnostics)) return false;
+    delegateTarget = isDelegateTypeKey(left.typeKey);
+    right = analyzeAssignmentRight(
+        expression, left, raiiTargetLocal, moveOnlyTargetLocal, moveOnlyTargetParameter,
+        arrayElementMoveTarget, ownedFieldMoveTarget, genericFieldMoveTarget,
+        ownedSetterMoveTarget, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    if (!right.valid || rejectMoveOnlyAssignmentCopy(expression, left, right, diagnostics)) return false;
+    raiiStringAppend = raiiTargetLocal.has_value() &&
+        expression->tokenKind() == TokenKind::PlusEqual && left.typeKey == "builtin:string" &&
+        (right.typeKey == "builtin:string" || right.typeKey == "string-literal");
+    classifyNamedAssignmentTarget(
+        assignmentTargetLocal, assignmentTargetParameter, expression, scopeOrdinal);
+    if (!validateAssignmentTargetStorage(
+            expression, right, assignmentTargetLocal, scopeOrdinal, diagnostics)) return false;
+    recordViewAssignmentRoot(expression, scopeOrdinal);
+    if (!analyzeBorrowedReassignment(
+            borrowedReassignment, expression, left, right, assignmentTargetLocal,
+            assignmentTargetParameter, methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
+    if (rejectBorrowedAssignmentEscape(
+            expression, left, right, borrowedReassignment,
+            methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
+    if (rejectOwnerCopyAssignment(
+            expression, borrowedReassignment, borrowedArrayElementTarget, raiiTargetLocal,
+            methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
+    ownsStorageDestination = ownedFieldOwnsStorage || ownedArrayElementOwnsStorage;
+    if (!validateOwningStorageAssignment(
+            expression, right, ownedFieldOwnsStorage, ownedArrayElementOwnsStorage,
+            ownedFieldName, diagnostics)) return false;
+    if (delegateTarget && expression->tokenKind() != TokenKind::Equal)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "Stage 42 delegates are single-cast values; use an event for +=/-= multicast subscription");
+        return false;
+    }
+    return validateRaiiAssignmentTarget(
+               expression, raiiTargetLocal, raiiStringAppend, diagnostics) &&
+        validateMoveOnlyAssignmentTarget(
+               expression, moveOnlyTargetLocal, moveOnlyTargetParameter, diagnostics);
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignment(
+    const ast::AstNode* expression,
+    ExpressionResult left,
+    const ExpressionResult& right,
+    const std::optional<std::size_t>& getterBindingIndex,
+    const std::optional<std::size_t>& raiiTargetLocal,
+    const std::optional<std::size_t>& assignmentTargetLocal,
+    const std::optional<std::size_t>& moveOnlyTargetLocal,
+    const std::optional<std::size_t>& moveOnlyTargetParameter,
+    const std::optional<std::size_t>& assignedUnionStorage,
+    const std::optional<std::size_t>& assignedUnionMember,
+    bool ownedFieldOwnsStorage,
+    bool ownedArrayElementOwnsStorage,
+    bool raiiStringAppend,
+    bool ownsStorageDestination,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const MethodCallBinding* getterBinding = assignmentSetterGetter(getterBindingIndex);
+    if (getterBinding != nullptr)
+        return analyzePropertySetterAssignment(
+            expression, left, right, *getterBinding,
+            methodMemberOrdinal, scopeOrdinal, diagnostics);
+    if (const std::optional<ExpressionResult> extensionAssignment =
+            analyzeExtensionPropertyAssignment(
+                expression, left, methodMemberOrdinal, scopeOrdinal, diagnostics))
+        return *extensionAssignment;
+    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
+    {
+        ExpressionResult assignmentResult = right;
+        assignmentResult.ownsStorageDestination = ownedFieldOwnsStorage;
+        assignmentResult.assignable = false;
+        assignmentResult.valid = true;
+        return assignmentResult;
+    }
+    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::NullConditionalIndexExpression)
+        return analyzeNullConditionalIndexAssignment(
+            expression, left, right, ownedArrayElementOwnsStorage, diagnostics);
+    if (expression->tokenKind() != TokenKind::Equal && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
+        return analyzeNullConditionalCompoundAssignment(
+            expression, left, right, ownedFieldOwnsStorage, diagnostics);
+    if (!left.assignable)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->first()->range(),
+            "left side of assignment is not assignable");
+        return {};
+    }
+    if (raiiStringAppend)
+    {
+        left.ownsStorageDestination = true;
+        left.assignable = false;
+        left.ownership = sema::OwnershipKind::Owned;
+        left.ownershipTransfer = true;
+        left.ownershipFreshOwner = true;
+        invalidateAssignedStorage(expression->first(), scopeOrdinal);
+        return left;
+    }
+    if (expression->tokenKind() == TokenKind::Equal)
+        return finishPlainAssignment(
+            expression, left, right, raiiTargetLocal, assignmentTargetLocal,
+            moveOnlyTargetLocal, moveOnlyTargetParameter, assignedUnionStorage,
+            assignedUnionMember, ownsStorageDestination,
+            methodMemberOrdinal, scopeOrdinal, diagnostics);
+    if (ProjectTypeConversion::isPointer(left.typeKey))
+        return finishPointerCompoundAssignment(
+            expression, left, right, scopeOrdinal, diagnostics);
+    return finishNumericCompoundAssignment(
+        expression, left, right, scopeOrdinal, diagnostics);
+}
+
+ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignment(
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    recordReferenceFieldAssignmentOrigin(
+        expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    reportScopeAssignmentEscape(expression, scopeOrdinal, diagnostics);
+    if (assignmentConflictsWithIterationBorrow(expression, scopeOrdinal, diagnostics)) return {};
+    if (expression->tokenKind() == TokenKind::QuestionQuestionEqual)
+    {
+        return analyzeNullCoalescingAssignment(
+            expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    }
+    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::TupleExpression)
+    {
+        return analyzeTupleDeconstructionAssignment(
+            expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
     }
 
     // Stage 52: a plain (non-RAII-local) assignment target may still be a legitimate move(...)
@@ -601,52 +2279,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // named RAII local/parameter on either side. The RHS move(...)'s own array-element-source
     // check (see the MoveExpression case in analyzeExpression) independently verifies the
     // source; this only widens which assignment TARGETS are allowed to receive it.
-    bool arrayElementMoveTarget = false;
-    bool ownedArrayElementOwnsStorage = false;
-    bool borrowedArrayElementTarget = false;
-    if (!raiiTargetLocal.has_value() && expression->first() != nullptr &&
-        expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
-        left.valid && left.assignable)
-    {
-        ExpressionResult receiver;
-        if (expression->first()->first() != nullptr)
-        {
-            receiver = analyzeExpression(
-                expression->first()->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
-        }
-        const std::string& receiverTypeKey = receiver.typeKey;
         // SHR-005: y el ARREGLO FIJO, por la misma razon y con la misma forma. La fuente
         // `move(buf[i])` se admite unas mil lineas mas arriba con esta misma condicion doble; si
         // solo se admitiera de un lado, `dst[i] = move(src[j])` compilaria en una direccion y no
         // en la otra. La admision de destino es simetrica a la de fuente a proposito.
-        arrayElementMoveTarget = ProjectTypeConversion::isNativeArray(receiverTypeKey) ||
-            ProjectMemberModel::fixedArrayElementTypeKey(receiverTypeKey).has_value() ||
-            ProjectTypeConversion::isPointer(receiverTypeKey);
-
         // A native array is raw storage, but an array reached through an `owned`/`raii` binding is
         // also the container's owning element store. Moving into one of its reference-like slots
         // therefore has the same replacement contract as writing an `owned` field: the RHS must
         // transfer ownership and the displaced value must be released before the new value is
         // installed. Value elements remain ordinary value stores.
-        bool receiverOwnsStorage = receiver.ownership == sema::OwnershipKind::Owned;
-        if (!receiverOwnsStorage && receiver.assignmentMemberOrdinal.has_value() &&
-            memberModel_ != nullptr &&
-            *receiver.assignmentMemberOrdinal < memberModel_->members().size())
-        {
-            const ClassMemberSymbol& receiverMember =
-                memberModel_->members()[*receiver.assignmentMemberOrdinal];
-            receiverOwnsStorage = receiverMember.kind == ClassMemberKind::Field &&
-                !receiverMember.isStatic &&
-                receiverMember.declaredOwnership == sema::OwnershipKind::Owned;
-        }
-        const bool elementOwnsSeparateStorage =
-            isReferenceTypeKey(left.typeKey) || left.typeKey == "builtin:string";
-        ownedArrayElementOwnsStorage =
-            arrayElementMoveTarget && receiverOwnsStorage && elementOwnsSeparateStorage;
-        borrowedArrayElementTarget = arrayElementMoveTarget &&
-            receiver.ownership == sema::OwnershipKind::Borrowed;
-    }
-
     // Bloque 1 item 1 (owning field storage): a field declared `owned` is a legitimate move(...)
     // destination. Before this, `owned` FIELDS could be declared and parsed -- the Stage 50 syntax
     // tests assert exactly that -- but nothing could ever be put into one, because no assignment
@@ -657,8 +2298,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // transfer would just move the leak. The generated destruction entry now walks the type's owned
     // fields (see ProjectOopMirDispatchTable::ownedFields), so ownership handed to a field is
     // discharged when the object dies, exactly once.
-    bool ownedFieldMoveTarget = false;
-    bool genericFieldMoveTarget = false;
     // True only when the owned field also OWNS a separate allocation (reference type or native
     // string) -- the storage classes whose stores must be ownership transfers. A generic `owned T`
     // field closed over a value type keeps plain assignment: `owned` is the no-op it has always
@@ -676,29 +2315,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // separada que transferir ni que liberar. Se comprueba contando destrucciones en ejecucion en
     // Stage50_11OwnershipExecutionTests, que es como este proyecto verifica ownership. Lo que
     // quedaba de SHR-005 era el ARREGLO FIJO, y esta arriba, en arrayElementMoveTarget.
-    bool ownedFieldOwnsStorage = false;
-    std::string ownedFieldName;
-    if (!raiiTargetLocal.has_value() && !arrayElementMoveTarget &&
-        left.valid && left.assignable && left.assignmentMemberOrdinal.has_value() &&
-        memberModel_ != nullptr &&
-        *left.assignmentMemberOrdinal < memberModel_->members().size())
-    {
-        const ClassMemberSymbol& targetMember =
-            memberModel_->members()[*left.assignmentMemberOrdinal];
-        ownedFieldMoveTarget = targetMember.kind == ClassMemberKind::Field &&
-            !targetMember.isStatic &&
-            (targetMember.declaredOwnership == sema::OwnershipKind::Owned ||
-             memberModel_->typeIsMoveOnly(targetMember.declaredTypeKey) ||
-             isGenericValueTypeKey(targetMember.declaredTypeKey));
-        genericFieldMoveTarget = targetMember.kind == ClassMemberKind::Field &&
-            !targetMember.isStatic &&
-            callableBelongsToGenericTypeSpecialization(methodMemberOrdinal);
-        ownedFieldOwnsStorage = ownedFieldMoveTarget &&
-            (isReferenceTypeKey(targetMember.declaredTypeKey) ||
-             targetMember.declaredTypeKey == "builtin:string");
-        if (ownedFieldMoveTarget) ownedFieldName = targetMember.name;
-    }
-
     // Bloque 1 item 9 (ownership-aware properties/indexers): find the getter binding NOW, before
     // the right-hand side is analyzed, so `h.Slot = move(a)` and `h[0] = move(a)` can be admitted
     // as ownership transfers.
@@ -713,295 +2329,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // The binding is recorded by the `left` analysis above, so the callable-aware index can find
     // it directly. It is remembered as an INDEX rather than a pointer: analyzing the RHS can
     // append to calls_ and invalidate a pointer, while an existing ordinal remains stable.
-    std::optional<std::size_t> getterBindingIndex;
-    const MethodCallBinding* getterCandidate = callBinding(expression->first(), methodMemberOrdinal);
-    if (getterCandidate != nullptr &&
-        getterCandidate->resolution == MethodCallResolutionKind::Resolved &&
-        getterCandidate->selectedMemberOrdinal.has_value())
-    {
-        const std::size_t selected = *getterCandidate->selectedMemberOrdinal;
-        if (memberModel_ != nullptr && selected < memberModel_->members().size())
-        {
-            const ClassMemberSymbol& member = memberModel_->members()[selected];
-            if ((member.isPropertyAccessor || member.isIndexerAccessor) && member.isGetter)
-            {
-                getterBindingIndex = static_cast<std::size_t>(getterCandidate - calls_.data());
-            }
-        }
-    }
-
     // The getter carries the property's ownership (see ClassMemberSymbol::ownsAccessorStorage):
     // when the property is declared `owned`, its setter's implicit `value` parameter is an owned
     // parameter, so storing into it through the setter is a real ownership transfer and not a
     // silent aliasing copy. This is the fourth and last legitimate move(...) destination, next to
     // a RAII local, a native array element and an `owned` field.
-    bool ownedSetterMoveTarget = false;
-    if (!raiiTargetLocal.has_value() && !arrayElementMoveTarget && !ownedFieldMoveTarget &&
-        getterBindingIndex.has_value() && memberModel_ != nullptr)
-    {
-        const std::size_t getterOrdinal = *calls_[*getterBindingIndex].selectedMemberOrdinal;
-        ownedSetterMoveTarget = memberModel_->members()[getterOrdinal].ownsAccessorStorage;
-    }
-
-    if (left.eventMemberOrdinal.has_value())
-    {
-        if (left.readonlyReceiver)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "readonly receiver cannot add or remove an event handler");
-            return {};
-        }
-        if (expression->tokenKind() != TokenKind::PlusEqual &&
-            expression->tokenKind() != TokenKind::MinusEqual)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "Stage 42 events support only += and -= subscription operations");
-            return {};
-        }
-        if (memberModel_ == nullptr || *left.eventMemberOrdinal >= memberModel_->members().size())
-        {
-            return {};
-        }
-        const ClassMemberSymbol& event = memberModel_->members()[*left.eventMemberOrdinal];
-        const std::optional<std::size_t> backing = eventBackingMember(*left.eventMemberOrdinal);
-        if (!backing.has_value())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "Stage 42 event is missing its compiler-generated backing storage");
-            return {};
-        }
-
-        ExpressionResult right;
-        if (expression->second()->kind() == ast::AstNodeKind::LambdaExpression)
-            right = bindLambdaToDelegate(
-                expression->second(), event.declaredTypeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
-        else
-            right = analyzeExpression(
-                expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics, true);
-        if (right.methodGroup)
-        {
-            right = bindMethodGroupToDelegate(
-                expression->second(), right, event.declaredTypeKey,
-                methodMemberOrdinal, scopeOrdinal, diagnostics);
-        }
-        if (!right.valid)
-        {
-            return {};
-        }
-        if (right.typeKey == "builtin:null")
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidConversion,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->second()->range(),
-                "Stage 42 event subscription/removal requires a non-null delegate value");
-            return {};
-        }
-        const ProjectImplicitConversion conversion = classifyImplicit(
-            right.typeKey, event.declaredTypeKey, right.integerConstant);
-        if (!conversion.exists())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidConversion,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->second()->range(),
-                "event handler type '" + right.typeKey + "' is not compatible with event delegate type '" +
-                    event.declaredTypeKey + "'");
-            return {};
-        }
-
-        MethodEventBinding binding;
-        binding.kind = expression->tokenKind() == TokenKind::PlusEqual
-            ? MethodEventOperationKind::Add : MethodEventOperationKind::Remove;
-        binding.syntax = expression;
-        binding.methodMemberOrdinal = methodMemberOrdinal;
-        binding.scopeOrdinal = scopeOrdinal;
-        binding.eventMemberOrdinal = *left.eventMemberOrdinal;
-        binding.backingMemberOrdinal = *backing;
-        binding.delegateTypeKey = event.declaredTypeKey;
-        binding.delegateTypeOrdinal = delegateTypeOrdinalForTypeKey(event.declaredTypeKey).value_or(0);
-        binding.receiverSyntax = left.receiverSyntax;
-        binding.receiverTypeKey = left.receiverTypeKey;
-        binding.receiverTypeOrdinal = left.receiverTypeOrdinal;
-        binding.staticEvent = event.isStatic;
-        binding.resultTypeKey = "builtin:void";
-        binding.argumentConversions.push_back(conversion);
-        // NS304-T09-F08: un event con accessors custom invoca add_/remove_ en vez de la storage.
-        const std::string accessorName =
-            (binding.kind == MethodEventOperationKind::Add ? "add_" : "remove_") + event.name;
-        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
-        {
-            const ClassMemberSymbol& candidate = memberModel_->members()[ordinal];
-            if (candidate.name == accessorName && candidate.kind == ClassMemberKind::Method)
-            {
-                binding.customAccessorMemberOrdinal = ordinal;
-                break;
-            }
-        }
-        eventBindings_.push_back(std::move(binding));
-
-        ExpressionResult result;
-        result.typeKey = "builtin:void";
-        result.valid = true;
-        return result;
-    }
-
-    if (raiiTargetLocal.has_value() &&
-        locals_[*raiiTargetLocal].isPinned)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidAssignmentTarget,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->first()->range(),
-            "cannot replace pinned owner '" + locals_[*raiiTargetLocal].name +
-                "'; it must remain at a stable address until lexical destruction");
-        return {};
-    }
-
-    if (raiiTargetLocal.has_value() &&
-        hasActiveBorrowOfOwnerLocal(*raiiTargetLocal, scopeOrdinal))
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidOperand,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->first()->range(),
-            "cannot overwrite owner '" + locals_[*raiiTargetLocal].name +
-                "' while a borrowed local is alive");
-        return {};
-    }
-
-    const bool delegateTarget = isDelegateTypeKey(left.typeKey);
-    // NS304-T09-F07: expone el tipo objetivo al `new()` target-typed del lado derecho.
-    const std::string previousTargetTypeKey = activeTargetTypeKey_;
-    activeTargetTypeKey_ = left.typeKey;
-    ExpressionResult right;
-    if (delegateTarget && expression->second()->kind() == ast::AstNodeKind::LambdaExpression)
-        right = bindLambdaToDelegate(
-            expression->second(), left.typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
-    else
-        right = analyzeExpression(
-            expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics,
-            delegateTarget, false,
-            raiiTargetLocal.has_value() || moveOnlyTargetLocal.has_value() ||
-                moveOnlyTargetParameter.has_value() || arrayElementMoveTarget ||
-                ownedFieldMoveTarget || genericFieldMoveTarget || ownedSetterMoveTarget);
-    activeTargetTypeKey_ = previousTargetTypeKey;
-    if (right.methodGroup && delegateTarget)
-    {
-        right = bindMethodGroupToDelegate(
-            expression->second(), right, left.typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics);
-    }
-    if (!right.valid)
-    {
-        return {};
-    }
-    if (expression->tokenKind() == TokenKind::Equal &&
-        memberModel_->typeIsMoveOnly(left.typeKey) && right.addressable &&
-        expression->second()->kind() != ast::AstNodeKind::MoveExpression)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->second()->range(),
-            "move-only value of type '" + left.typeKey +
-                "' cannot be copied by assignment; use move(source)");
-        return {};
-    }
-    const bool raiiStringAppend = raiiTargetLocal.has_value() &&
-        expression->tokenKind() == TokenKind::PlusEqual &&
-        left.typeKey == "builtin:string" &&
-        (right.typeKey == "builtin:string" || right.typeKey == "string-literal");
-
-    std::optional<std::size_t> assignmentTargetLocal;
-    std::optional<std::size_t> assignmentTargetParameter;
-    if (expression->first() != nullptr &&
-        expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
-    {
-        const std::optional<ScopeName> target = lookupScopeName(
-            scopeOrdinal, expression->first()->text());
-        if (target.has_value() && target->kind == ScopeNameKind::Local &&
-            target->semanticOrdinal < locals_.size())
-        {
-            assignmentTargetLocal = target->semanticOrdinal;
-        }
-        else if (target.has_value() && target->kind == ScopeNameKind::Parameter)
-        {
-            assignmentTargetParameter = target->semanticOrdinal;
-        }
-    }
-    if (assignmentTargetLocal.has_value() &&
-        locals_[*assignmentTargetLocal].isVariableLengthArray)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidAssignmentTarget,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->first()->range(),
-            "a variable-length array is storage, not a reassignable pointer");
-        return {};
-    }
-    if (assignmentTargetLocal.has_value() &&
-        ProjectTypeConversion::isPointer(locals_[*assignmentTargetLocal].typeKey))
-    {
-        const MethodLocalSymbol& target = locals_[*assignmentTargetLocal];
-        if (!language::pointerContractImplicitlyAssignable(
-                pointerContract(
-                    right.pointerNullable,
-                    right.pointerPointeeReadonly,
-                    right.pointerHasProvenance,
-                    right.pointerKnownAlignment,
-                    right.pointerAddressSpace),
-                pointerContract(
-                    target.pointerNullable,
-                    target.pointerPointeeReadonly,
-                    target.pointerHasProvenance,
-                    target.pointerKnownAlignment,
-                    target.pointerAddressSpace)))
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidConversion,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->second()->range(),
-                "assignment does not satisfy the destination pointer nullability, mutability, provenance, alignment, or address-space contract");
-            return {};
-        }
-        // Qualifier/provenance joins are MAY properties. Once any reachable assignment can make
-        // a pointer readonly or one-past, later dereference must remain conservative.
-        locals_[*assignmentTargetLocal].onePastEndPointer =
-            locals_[*assignmentTargetLocal].onePastEndPointer || right.onePastEndPointer;
-    }
-    const std::optional<std::size_t> assignedVlaRoot =
-        variableArrayRootLocalOfExpression(expression->second(), scopeOrdinal);
-    if (assignedVlaRoot.has_value())
-    {
-        if (!assignmentTargetLocal.has_value())
-        {
-            const std::string name = *assignedVlaRoot < locals_.size()
-                ? locals_[*assignedVlaRoot].name : std::string("<variable-length-array>");
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->second()->range(),
-                "pointer into variable-length array '" + name +
-                    "' cannot be stored outside a local alias because the stack frame owns it");
-            return {};
-        }
-        locals_[*assignmentTargetLocal].variableLengthArrayRootLocalOrdinal = assignedVlaRoot;
-    }
-    else if (assignmentTargetLocal.has_value() &&
-        locals_[*assignmentTargetLocal].typeKey.ends_with("*"))
-    {
-        locals_[*assignmentTargetLocal].variableLengthArrayRootLocalOrdinal.reset();
-    }
-
     // Stage 52: same value-type bypass as the local-declaration case above -- a borrowed value
     // assigned into a plain local/field/parameter whose CLOSED type never needed ownership
     // tracking (a generic T monomorphized to int, bool, a struct, ...) carries no real lifetime
@@ -1015,274 +2347,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // `StringView[]` local lleno de vistas de otro local y devuelto despues seria la misma fuga
     // con un nivel de indireccion. El enraizamiento se acumula EN EL ARREGLO, que es el valor
     // que puede escapar.
-    const ast::AstNode* viewAssignmentRoot = expression->first();
-    while (viewAssignmentRoot != nullptr &&
-        viewAssignmentRoot->kind() == ast::AstNodeKind::IndexExpression)
-    {
-        viewAssignmentRoot = viewAssignmentRoot->first();
-    }
-    if (viewAssignmentRoot != nullptr &&
-        viewAssignmentRoot->kind() == ast::AstNodeKind::IdentifierExpression)
-    {
-        const std::optional<ScopeName> viewTarget =
-            lookupScopeName(scopeOrdinal, viewAssignmentRoot->text());
-        if (viewTarget.has_value() && viewTarget->kind == ScopeNameKind::Local &&
-            viewTarget->semanticOrdinal < locals_.size() &&
-            typeKeyIsViewLike(locals_[viewTarget->semanticOrdinal].typeKey) &&
-            locals_[viewTarget->semanticOrdinal].viewRootLocalName.empty())
-        {
-            const std::optional<std::string> root =
-                viewRootLocalOfExpression(expression->second(), scopeOrdinal);
-            if (root.has_value())
-            {
-                locals_[viewTarget->semanticOrdinal].viewRootLocalName = *root;
-            }
-        }
-    }
-
     // T41: borrowed names are rebindable alias slots.  Reassignment is safe only when the RHS
     // has explicit, named provenance, and every possible owner root is accumulated instead of
     // replacing the old one.  Accumulation is deliberately conservative across branches: after
     // `if (...) view = a; else view = b;`, moving either owner remains forbidden while `view`
     // lives, and returning the view is rejected if either root is a local/owned parameter.
-    bool borrowedReassignment = false;
-    MethodLocalBorrowBinding* targetLocalBorrow = nullptr;
-    const ClassMemberSymbol* enclosingMethod = methodSymbol(methodMemberOrdinal);
-    if (expression->tokenKind() == TokenKind::Equal && assignmentTargetLocal.has_value() &&
-        *assignmentTargetLocal < locals_.size())
-    {
-        MethodLocalSymbol& targetLocal = locals_[*assignmentTargetLocal];
-        if (!targetLocal.isRaii && targetLocal.ownership == sema::OwnershipKind::Borrowed &&
-            targetLocal.localBorrowBindingOrdinal.has_value() &&
-            *targetLocal.localBorrowBindingOrdinal < localBorrowBindings_.size())
-        {
-            borrowedReassignment = true;
-            targetLocalBorrow =
-                &localBorrowBindings_[*targetLocal.localBorrowBindingOrdinal];
-        }
-    }
-    const bool borrowedParameterReassignment =
-        expression->tokenKind() == TokenKind::Equal && assignmentTargetParameter.has_value() &&
-        enclosingMethod != nullptr &&
-        *assignmentTargetParameter < enclosingMethod->parameters.size() &&
-        enclosingMethod->parameters[*assignmentTargetParameter].ownership ==
-            sema::OwnershipKind::Borrowed;
-    borrowedReassignment = borrowedReassignment || borrowedParameterReassignment;
-
-    if (borrowedReassignment)
-    {
-        const ProjectImplicitConversion conversion = classifyImplicit(
-            right.typeKey, left.typeKey, right.integerConstant);
-        if (!conversion.exists())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidConversion,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "cannot rebind borrowed destination from '" + right.typeKey + "' to '" +
-                    left.typeKey + "'");
-            return {};
-        }
-
-        std::vector<std::size_t> ownerLocals;
-        std::vector<std::size_t> ownerParameters;
-        const auto appendUnique = [](std::vector<std::size_t>& values, std::size_t value)
-        {
-            if (std::find(values.begin(), values.end(), value) == values.end())
-                values.push_back(value);
-        };
-        if (expression->second() != nullptr &&
-            expression->second()->kind() == ast::AstNodeKind::IdentifierExpression)
-        {
-            const std::optional<ScopeName> source = lookupScopeName(
-                scopeOrdinal, expression->second()->text());
-            if (source.has_value() && source->kind == ScopeNameKind::Local &&
-                source->semanticOrdinal < locals_.size())
-            {
-                const MethodLocalSymbol& sourceLocal = locals_[source->semanticOrdinal];
-                if (sourceLocal.isRaii)
-                {
-                    appendUnique(ownerLocals, source->semanticOrdinal);
-                }
-                else if (sourceLocal.ownership == sema::OwnershipKind::Borrowed &&
-                    sourceLocal.localBorrowBindingOrdinal.has_value() &&
-                    *sourceLocal.localBorrowBindingOrdinal < localBorrowBindings_.size())
-                {
-                    const MethodLocalBorrowBinding& sourceBorrow =
-                        localBorrowBindings_[*sourceLocal.localBorrowBindingOrdinal];
-                    if (sourceBorrow.sourceOwnerLocalOrdinal.has_value())
-                        appendUnique(ownerLocals, *sourceBorrow.sourceOwnerLocalOrdinal);
-                    if (sourceBorrow.sourceOwnerParameterOrdinal.has_value())
-                        appendUnique(ownerParameters, *sourceBorrow.sourceOwnerParameterOrdinal);
-                    for (const std::size_t ordinal : sourceBorrow.possibleSourceOwnerLocalOrdinals)
-                        appendUnique(ownerLocals, ordinal);
-                    for (const std::size_t ordinal : sourceBorrow.possibleSourceOwnerParameterOrdinals)
-                        appendUnique(ownerParameters, ordinal);
-                }
-            }
-            else if (source.has_value() && source->kind == ScopeNameKind::Parameter &&
-                enclosingMethod != nullptr &&
-                source->semanticOrdinal < enclosingMethod->parameters.size())
-            {
-                const MethodParameterSymbol& sourceParameter =
-                    enclosingMethod->parameters[source->semanticOrdinal];
-                if (sourceParameter.ownership == sema::OwnershipKind::Owned ||
-                    sourceParameter.ownership == sema::OwnershipKind::Borrowed)
-                {
-                    appendUnique(ownerParameters, source->semanticOrdinal);
-                    for (const MethodBorrowedParameterReassignmentBinding& prior :
-                         borrowedParameterReassignmentBindings_)
-                    {
-                        if (prior.methodMemberOrdinal != methodMemberOrdinal ||
-                            prior.parameterOrdinal != source->semanticOrdinal) continue;
-                        for (const std::size_t ordinal : prior.possibleSourceOwnerLocalOrdinals)
-                            appendUnique(ownerLocals, ordinal);
-                        for (const std::size_t ordinal : prior.possibleSourceOwnerParameterOrdinals)
-                            appendUnique(ownerParameters, ordinal);
-                    }
-                }
-            }
-        }
-        if (ownerLocals.empty() && ownerParameters.empty())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->second()->range(),
-                "borrowed reassignment requires a named RAII owner, owned/borrowed parameter, "
-                "or borrowed local with tracked provenance");
-            return {};
-        }
-
-        std::size_t destinationScope = scopeOrdinal;
-        if (targetLocalBorrow != nullptr)
-            destinationScope = targetLocalBorrow->creationScopeOrdinal;
-        else
-            while (destinationScope < scopes_.size() &&
-                   scopes_[destinationScope].parentScopeOrdinal.has_value())
-                destinationScope = *scopes_[destinationScope].parentScopeOrdinal;
-        for (const std::size_t ownerLocal : ownerLocals)
-        {
-            if (ownerLocal >= locals_.size() ||
-                !scopeContains(locals_[ownerLocal].scopeOrdinal, destinationScope))
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->second()->range(),
-                    "borrowed reassignment would let the destination outlive local owner '" +
-                        (ownerLocal < locals_.size() ? locals_[ownerLocal].name
-                                                    : std::string("<local-owner>")) + "'");
-                return {};
-            }
-        }
-
-        if (targetLocalBorrow != nullptr)
-        {
-            for (const std::size_t ordinal : ownerLocals)
-                appendUnique(targetLocalBorrow->possibleSourceOwnerLocalOrdinals, ordinal);
-            for (const std::size_t ordinal : ownerParameters)
-                appendUnique(targetLocalBorrow->possibleSourceOwnerParameterOrdinals, ordinal);
-        }
-        else
-        {
-            MethodBorrowedParameterReassignmentBinding* targetBinding = nullptr;
-            for (MethodBorrowedParameterReassignmentBinding& candidate :
-                 borrowedParameterReassignmentBindings_)
-            {
-                if (candidate.methodMemberOrdinal == methodMemberOrdinal &&
-                    candidate.parameterOrdinal == *assignmentTargetParameter)
-                {
-                    targetBinding = &candidate;
-                    break;
-                }
-            }
-            if (targetBinding == nullptr)
-            {
-                MethodBorrowedParameterReassignmentBinding binding;
-                binding.syntax = expression;
-                binding.methodMemberOrdinal = methodMemberOrdinal;
-                binding.parameterOrdinal = *assignmentTargetParameter;
-                borrowedParameterReassignmentBindings_.push_back(std::move(binding));
-                targetBinding = &borrowedParameterReassignmentBindings_.back();
-            }
-            for (const std::size_t ordinal : ownerLocals)
-                appendUnique(targetBinding->possibleSourceOwnerLocalOrdinals, ordinal);
-            for (const std::size_t ordinal : ownerParameters)
-                appendUnique(targetBinding->possibleSourceOwnerParameterOrdinals, ordinal);
-        }
-    }
-
-    const bool assignmentTargetOwnable = isReferenceTypeKey(left.typeKey) || left.typeKey == "builtin:string";
-    if (!borrowedReassignment && right.ownership == sema::OwnershipKind::Borrowed &&
-        assignmentTargetOwnable)
-    {
-        if (left.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
-            *left.assignmentMemberOrdinal < memberModel_->members().size())
-        {
-            const ClassMemberSymbol& field = memberModel_->members()[*left.assignmentMemberOrdinal];
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->second()->range(),
-                "borrowed value cannot be stored in field '" + field.name +
-                    "' because the field may outlive its source owner");
-            return {};
-        }
-        if (expression->first() != nullptr &&
-            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
-        {
-            const std::optional<ScopeName> target = lookupScopeName(
-                scopeOrdinal, expression->first()->text());
-            if (target.has_value())
-            {
-                if (target->kind == ScopeNameKind::Local && target->semanticOrdinal < locals_.size())
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        expression->second()->range(),
-                        "borrowed value cannot be stored in unqualified local '" +
-                            locals_[target->semanticOrdinal].name +
-                            "'; declare a borrowed local at initialization so provenance remains checked");
-                    return {};
-                }
-                if (target->kind == ScopeNameKind::Parameter)
-                {
-                    const ClassMemberSymbol* owner = methodSymbol(methodMemberOrdinal);
-                    const std::string targetName = owner != nullptr &&
-                        target->semanticOrdinal < owner->parameters.size()
-                        ? owner->parameters[target->semanticOrdinal].name
-                        : expression->first()->text();
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        expression->second()->range(),
-                        "borrowed value cannot be assigned to parameter '" + targetName +
-                            "' because replacement lifetime provenance is not tracked in Stage 50");
-                    return {};
-                }
-            }
-        }
-    }
-
-    if (!borrowedReassignment && !borrowedArrayElementTarget &&
-        !raiiTargetLocal.has_value() && expression->second() != nullptr &&
-        expression->second()->kind() == ast::AstNodeKind::IdentifierExpression)
-    {
-        const std::optional<ScopeName> sourceName = lookupScopeName(scopeOrdinal, expression->second()->text());
-        if (sourceName.has_value() && sourceName->kind == ScopeNameKind::Local &&
-            sourceName->semanticOrdinal < locals_.size() && locals_[sourceName->semanticOrdinal].isRaii)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->second()->range(),
-                "RAII owner '" + locals_[sourceName->semanticOrdinal].name +
-                    "' cannot be copied by assignment; Stage 49 requires ownership transfer to another RAII local with move(...)");
-            return {};
-        }
-
         // Bloque 1: the same rule with an owned PARAMETER as the source. This was the one hole
         // left in the copy-owner contract, and it was a real double free -- measured, not
         // theorised: `set { backing = value; }` on an `owned` property compiled and destroyed the
@@ -1299,28 +2368,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         // Same value-type narrowing as everywhere else: `owned` over a type that owns no separate
         // allocation is the no-op it has always been, so copying one is not a double free and must
         // not be reported as one.
-        if (sourceName.has_value() && sourceName->kind == ScopeNameKind::Parameter)
-        {
-            const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
-            if (enclosing != nullptr && sourceName->semanticOrdinal < enclosing->parameters.size())
-            {
-                const MethodParameterSymbol& source = enclosing->parameters[sourceName->semanticOrdinal];
-                const bool sourceOwnsStorage =
-                    isReferenceTypeKey(source.typeKey) || source.typeKey == "builtin:string";
-                if (source.ownership == sema::OwnershipKind::Owned && sourceOwnsStorage)
-                {
-                    diagnostics.report(
-                        diagnostics::DiagnosticId::InvalidOperand,
-                        diagnostics::DiagnosticSeverity::Error,
-                        expression->second()->range(),
-                        "cannot copy owned value '" + source.name +
-                            "' by assignment; use move(" + source.name + ") to transfer ownership");
-                    return {};
-                }
-            }
-        }
-    }
-
     // Bloque 1 (audit finding "overwrite sin transferencia explicita"): every write into a field
     // that OWNS storage must be an ownership-transfer expression -- move(...), new T(...), null,
     // or an owned-returning call. This is the exact set the owned-return check accepts and the
@@ -1340,223 +2387,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     // HIR/lowering (see the Assignment case in ProjectOopHirModel): it fires for every one of
     // these forms, not just the move-spelled one -- that asymmetry was a measured leak (0
     // destructions for `= null`, 1 of 2 for `= new`).
-    const bool ownsStorageDestination =
-        ownedFieldOwnsStorage || ownedArrayElementOwnsStorage;
-    if (ownsStorageDestination)
-    {
-        const bool freshObject = expression->second() != nullptr &&
-            expression->second()->kind() == ast::AstNodeKind::ObjectCreationExpression;
-        const bool nullValue = expression->second() != nullptr &&
-            expression->second()->kind() == ast::AstNodeKind::NullLiteralExpression;
-        const bool ownershipTransferred =
-            right.ownership == sema::OwnershipKind::Owned && right.ownershipTransfer;
-        if (!freshObject && !nullValue && !ownershipTransferred)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->second()->range(),
-                ownedFieldOwnsStorage
-                    ? "assignment to owned field '" + ownedFieldName +
-                          "' requires an ownership-transfer expression such as move(owner), new T(...), "
-                          "null, or an owned-returning call"
-                    : "assignment to an element of an owned array requires an ownership-transfer "
-                          "expression such as move(owner), new T(...), null, or an owned-returning call");
-            return {};
-        }
-    }
-
-    if (delegateTarget && expression->tokenKind() != TokenKind::Equal)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidOperand,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->range(),
-            "Stage 42 delegates are single-cast values; use an event for +=/-= multicast subscription");
-        return {};
-    }
-
-    if (raiiTargetLocal.has_value())
-    {
-        if (!raiiStringAppend && (expression->tokenKind() != TokenKind::Equal ||
-            expression->second() == nullptr ||
-            expression->second()->kind() != ast::AstNodeKind::MoveExpression))
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "RAII locals are move-only; assignment requires target = move(source)");
-            return {};
-        }
-        const MethodMoveBinding* move = nullptr;
-        for (auto iterator = moveBindings_.rbegin(); iterator != moveBindings_.rend(); ++iterator)
-        {
-            if (iterator->syntax == expression->second())
-            {
-                move = &*iterator;
-                break;
-            }
-        }
-        if (move != nullptr && move->sourceLocalOrdinal == *raiiTargetLocal)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "self move-assignment of a RAII local is not allowed");
-            return {};
-        }
-    }
-    if (moveOnlyTargetLocal.has_value() || moveOnlyTargetParameter.has_value())
-    {
-        if (expression->tokenKind() != TokenKind::Equal)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "move-only values support replacement with '=' but not compound assignment");
-            return {};
-        }
-        const MethodMoveBinding* move = nullptr;
-        for (auto iterator = moveBindings_.rbegin(); iterator != moveBindings_.rend(); ++iterator)
-        {
-            if (iterator->syntax == expression->second())
-            {
-                move = &*iterator;
-                break;
-            }
-        }
-        if ((moveOnlyTargetLocal.has_value() && move != nullptr &&
-             move->sourceLocalOrdinal == *moveOnlyTargetLocal) ||
-            (moveOnlyTargetParameter.has_value() && move != nullptr &&
-             move->sourceParameterOrdinal == *moveOnlyTargetParameter))
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "self move-assignment of a move-only value is not allowed");
-            return {};
-        }
-    }
-
     // Resolved above, before the right-hand side was analyzed, so that an `owned` property or
     // indexer could admit move(...) on its RHS. Only now is it safe to take a pointer: nothing
     // appends to calls_ between here and the last use below.
-    const MethodCallBinding* getterBinding = getterBindingIndex.has_value()
-        ? &calls_[*getterBindingIndex] : nullptr;
-    if (getterBinding != nullptr && memberModel_ != nullptr &&
-        getterBinding->selectedMemberOrdinal.has_value() &&
-        *getterBinding->selectedMemberOrdinal < memberModel_->members().size() &&
-        memberModel_->members()[*getterBinding->selectedMemberOrdinal].isReferenceReturn)
-    {
         // A ref indexer getter exposes its returned location directly. It is an ordinary
         // addressable assignment target and must not be rewritten into a nonexistent setter.
-        getterBinding = nullptr;
-    }
-
-    if (right.ownership == sema::OwnershipKind::Borrowed && getterBinding != nullptr)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidOperand,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->second()->range(),
-            "borrowed value cannot be stored through a property/indexer setter because retention is not proven");
-        return {};
-    }
-
-    if (getterBinding != nullptr)
-    {
         // A readonly getter can expose a value through an `in` receiver, but that does not make
         // the companion setter callable. Property/indexer assignment is rewritten from the
         // recorded getter before the general `!left.assignable` guard below, so preserve the
         // receiver capability explicitly at this boundary.
-        if (left.readonlyReceiver)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->first()->range(),
-                "readonly receiver cannot invoke a property/indexer setter");
-            return {};
-        }
-        const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
-        const ClassMemberSymbol& getter = memberModel_->members()[*getterBinding->selectedMemberOrdinal];
-        const std::size_t accessingTypeOrdinal = caller != nullptr
-            ? caller->declaringTypeOrdinal : getter.declaringTypeOrdinal;
-        const std::size_t receiverTypeOrdinal = getterBinding->receiverTypeOrdinal.value_or(
-            getter.declaringTypeOrdinal);
-        const std::size_t protectedReceiverType = getterBinding->baseReceiver
-            ? accessingTypeOrdinal : receiverTypeOrdinal;
-        const std::string setterName = getter.isPropertyAccessor
-            ? "set_" + getter.associatedName : "set_Item";
-        std::vector<std::size_t> setters = stage38AccessorCandidates(
-            receiverTypeOrdinal,
-            setterName,
-            getter.isPropertyAccessor,
-            false,
-            getter.isStatic,
-            accessingTypeOrdinal,
-            protectedReceiverType);
-        if (setters.empty())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->first()->range(),
-                "Stage 38 property/indexer has no accessible setter");
-            return {};
-        }
-
         // NS304-T09-F02: un setter `init` solo es asignable durante la construccion. Por ahora el
         // contexto permitido es un constructor de la misma declaracion; el object initializer
         // (`new T { X = 1 }`) queda pendiente del rastreo de contexto de inicializacion.
-        for (const std::size_t setterOrdinal : setters)
-        {
-            const ClassMemberSymbol* setterSymbol = methodSymbol(setterOrdinal);
-            if (setterSymbol == nullptr || !setterSymbol->isInit) continue;
-            const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
-            if (caller == nullptr || caller->kind != ClassMemberKind::Constructor)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->first()->range(),
-                    "init accessor can only be assigned during construction (in a constructor)");
-                return {};
-            }
-            break;
-        }
-
-        std::vector<ExpressionResult> setterArguments;
-        if (getter.isIndexerAccessor && expression->first()->kind() == ast::AstNodeKind::IndexExpression)
-        {
-            const ast::AstNode* indexExpression = expression->first();
-            const auto appendRecordedExpression = [&](const ast::AstNode* syntax)
-            {
-                ExpressionResult value;
-                const MethodExpressionTypeBinding* binding =
-                    expressionTypeBinding(syntax, methodMemberOrdinal);
-                if (binding != nullptr)
-                {
-                    value.typeKey = binding->typeKey;
-                    value.integerConstant = binding->integerConstant;
-                    value.valid = !isErrorType(value.typeKey);
-                }
-                setterArguments.push_back(std::move(value));
-            };
-            if (!indexExpression->children().empty())
-            {
-                for (const ast::AstNode* index : indexExpression->children()) appendRecordedExpression(index);
-            }
-            else if (indexExpression->second() != nullptr)
-            {
-                appendRecordedExpression(indexExpression->second());
-            }
-        }
-
         // ID 82 -- la asignacion COMPUESTA sobre propiedad e indexador. Hasta aqui esto se
         // rechazaba con «compound assignment to a Stage 38 property/indexer is deferred».
         //
@@ -1585,466 +2427,83 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
         // isAccessorDestinationReevaluable esa segunda bajada da el mismo valor por construccion;
         // fuera de ella se rechaza con el rango de fuente del subnodo culpable. Ver la
         // declaracion de esa funcion para el argumento completo.
-        const bool compound = expression->tokenKind() != TokenKind::Equal;
-        ExpressionResult setterValue = right;
-        if (compound)
-        {
-            if (lexer::compoundAssignmentBaseOperator(expression->tokenKind()) == TokenKind::Invalid)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->range(),
-                    "unsupported compound assignment operator on a property/indexer");
-                return {};
-            }
-
-            const ast::AstNode* offender = nullptr;
-            bool reevaluable = isAccessorDestinationReevaluable(
-                getterBinding->receiverSyntax, scopeOrdinal, offender);
-            if (reevaluable && getter.isIndexerAccessor &&
-                expression->first()->kind() == ast::AstNodeKind::IndexExpression)
-            {
-                const ast::AstNode* indexExpression = expression->first();
-                if (!indexExpression->children().empty())
-                {
-                    for (const ast::AstNode* index : indexExpression->children())
-                    {
-                        reevaluable = reevaluable &&
-                            isAccessorDestinationReevaluable(index, scopeOrdinal, offender);
-                    }
-                }
-                else
-                {
-                    reevaluable = isAccessorDestinationReevaluable(
-                        indexExpression->second(), scopeOrdinal, offender);
-                }
-            }
-            if (!reevaluable)
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                    diagnostics::DiagnosticSeverity::Error,
-                    offender != nullptr ? offender->range() : expression->first()->range(),
-                    "compound assignment to a property/indexer evaluates its receiver and index "
-                    "arguments once for the getter and once for the setter, so each has to be a "
-                    "local, a parameter, `this` or a constant expression; assign this one to a "
-                    "local first and use that local");
-                return {};
-            }
-
-            const TokenKind baseOperator =
-                lexer::compoundAssignmentBaseOperator(expression->tokenKind());
-            const bool sameEnumBitwise = isEnumTypeKey(left.typeKey) &&
-                left.typeKey == right.typeKey &&
-                (baseOperator == TokenKind::Amp || baseOperator == TokenKind::Pipe ||
-                 baseOperator == TokenKind::Caret);
-            const bool shiftAssignment = isShift(baseOperator) &&
-                ProjectTypeConversion::isIntegral(left.typeKey) &&
-                ProjectTypeConversion::isIntegral(right.typeKey) &&
-                left.typeKey != "builtin:bool" && right.typeKey != "builtin:bool";
-            const std::optional<std::string> common = sameEnumBitwise || shiftAssignment
-                ? std::optional<std::string>(left.typeKey)
-                : ProjectTypeConversion::commonNumericType(
-                      left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
-            if (!common.has_value())
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidOperand,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->range(),
-                    "compound assignment to a property/indexer requires compatible numeric operands");
-                return {};
-            }
-
-            const ProjectImplicitConversion narrowing = classifyImplicit(
-                right.typeKey, left.typeKey, right.integerConstant);
-            if (!shiftAssignment && !narrowing.exists())
-            {
-                diagnostics.report(
-                    diagnostics::DiagnosticId::InvalidConversion,
-                    diagnostics::DiagnosticSeverity::Error,
-                    expression->second()->range(),
-                    "compound assignment cannot implicitly convert its right-hand side from '" +
-                        right.typeKey + "' to '" + left.typeKey +
-                        "'; write the read-modify-write with an explicit cast");
-                return {};
-            }
-
             // El valor que recibe el setter es del tipo del DESTINO, no del operando derecho.
             // Fresco a proposito: copiar `left` arrastraria assignmentMemberOrdinal y la
             // propiedad de ownership del getter a un valor que ya no es ese almacenamiento.
-            ExpressionResult stored;
-            stored.typeKey = left.typeKey;
-            stored.valid = true;
-            setterValue = std::move(stored);
-        }
-        setterArguments.push_back(setterValue);
-
-        ExpressionResult setterResult = resolveSyntheticCall(
-            expression,
-            methodMemberOrdinal,
-            scopeOrdinal,
-            setterName,
-            std::move(setters),
-            setterArguments,
-            getterBinding->receiverSyntax,
-            getterBinding->receiverTypeKey,
-            getterBinding->receiverTypeOrdinal,
-            getterBinding->baseReceiver,
-            getterBinding->interfaceCall,
-            diagnostics);
-        if (!setterResult.valid && setterResult.typeKey != "builtin:void") return {};
-
-        ExpressionResult assignmentResult = left;
-        assignmentResult.assignable = false;
-        assignmentResult.valid = true;
-        invalidateAssignedStorage();
-        return assignmentResult;
-    }
-
     // NS304-T08-F02 (residual): `receiver.ExtensionProperty = value` lowers to a namespace call
     // `set_ExtensionProperty(receiver, value)`. The getter was auto-invoked while analyzing the
     // left side; the member's extension binding is re-detected here and re-routed to the setter.
-    if (expression->tokenKind() == TokenKind::Equal && namespaceFunctionModel_ != nullptr &&
-        expression->first() != nullptr &&
-        expression->first()->kind() == ast::AstNodeKind::MemberExpression)
-    {
-        const NamespaceFunctionReferenceBinding* extension =
-            namespaceFunctionModel_->extensionBinding(expression->first());
-        if (extension != nullptr && !extension->candidateFunctionOrdinals.empty())
-        {
-            const std::size_t getterOrdinal = extension->candidateFunctionOrdinals.front();
-            if (getterOrdinal < namespaceCallableAdapters().size() &&
-                namespaceCallableAdapters()[getterOrdinal].parameters.size() == 1U)
-            {
                 // The setter lives in the same namespace as the getter, not in the call site's
                 // namespace (which may merely import it via `using`).
-                std::string extensionNamespace;
-                if (getterOrdinal < namespaceFunctionModel_->functions().size())
-                    extensionNamespace =
-                        namespaceFunctionModel_->functions()[getterOrdinal].namespaceName;
-                const std::span<const std::size_t> setterOrdinals =
-                    namespaceFunctionModel_->findFunctions(
-                        extension->projectOrdinal, extensionNamespace,
-                        "set_" + extension->writtenName);
-                if (!setterOrdinals.empty())
-                {
-                    NamespaceFunctionReferenceBinding setterReference;
-                    setterReference.calleeSyntax = expression->first();
-                    setterReference.projectOrdinal = extension->projectOrdinal;
-                    setterReference.fileId = extension->fileId;
-                    setterReference.lexicalNamespace = extensionNamespace;
-                    setterReference.writtenName = "set_" + extension->writtenName;
-                    setterReference.qualified = false;
-                    setterReference.extension = true;
-                    setterReference.receiverSyntax = extension->receiverSyntax;
-                    setterReference.candidateFunctionOrdinals.assign(
-                        setterOrdinals.begin(), setterOrdinals.end());
-
-                    ExpressionResult receiver = analyzeExpression(
-                        expression->first()->first(), methodMemberOrdinal, scopeOrdinal,
-                        diagnostics);
-                    receiver.receiverTypeKey = receiver.typeKey;
-                    if (receiver.valid)
-                    {
-                        ExpressionResult setterResult = analyzeNamespaceFunctionCall(
-                            expression, setterReference, methodMemberOrdinal, scopeOrdinal,
-                            diagnostics, &receiver, expression->second());
-                        if (!setterResult.valid && setterResult.typeKey != "builtin:void")
-                            return {};
-                        ExpressionResult assignmentResult = left;
-                        assignmentResult.assignable = false;
-                        assignmentResult.valid = true;
-                        invalidateAssignedStorage();
-                        return assignmentResult;
-                    }
-                }
-            }
-        }
-    }
-
     // NS304-T10-F05: `obj?.Field = value` evaluates the RHS only on the non-null edge.
-    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
-        expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
-    {
-        ExpressionResult assignmentResult = right;
-        assignmentResult.ownsStorageDestination = ownedFieldOwnsStorage;
-        assignmentResult.assignable = false;
-        assignmentResult.valid = true;
-        return assignmentResult;
-    }
-
     // NS304-T10-F05: `arr?[i] = value` — store condicional al null-check del receptor (array nativo).
-    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
-        expression->first()->kind() == ast::AstNodeKind::NullConditionalIndexExpression)
-    {
-        const ProjectImplicitConversion conversion = classifyImplicit(
-            right.typeKey, left.typeKey, right.integerConstant);
-        if (!conversion.exists())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidConversion,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "cannot implicitly convert assignment RHS from '" + right.typeKey + "' to '" +
-                    left.typeKey + "'");
-            return {};
-        }
-        ExpressionResult assignmentResult = right;
-        assignmentResult.ownsStorageDestination = ownedArrayElementOwnsStorage;
-        assignmentResult.assignable = false;
-        assignmentResult.valid = true;
-        return assignmentResult;
-    }
-
     // NS304-T10-F06: null-conditional compound assignment evaluates its RHS and performs the
     // read-modify-write only on the non-null edge.
-    if (expression->tokenKind() != TokenKind::Equal && expression->first() != nullptr &&
-        expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression)
-    {
-        const TokenKind compoundBase =
-            lexer::compoundAssignmentBaseOperator(expression->tokenKind());
-        if (compoundBase == TokenKind::Invalid)
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidAssignmentTarget,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "unsupported compound assignment operator on a null-conditional target");
-            return {};
-        }
         // NS304-T10-F06: string concat compound — el lowering hace load + concat + store
         // condicional (la propiedad del string viejo se libera en la ruta normal del backend).
-        if (compoundBase == TokenKind::Plus && left.typeKey == "builtin:string" &&
-            (right.typeKey == "builtin:string" || right.typeKey == "string-literal"))
-        {
-            ExpressionResult assignmentResult = left;
-            assignmentResult.typeKey = "builtin:string";
-            assignmentResult.ownsStorageDestination = ownedFieldOwnsStorage;
-            assignmentResult.assignable = false;
-            assignmentResult.valid = true;
-            return assignmentResult;
-        }
-        const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
-            left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
-        if (!common.has_value())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "null-conditional compound assignment requires compatible numeric operands");
-            return {};
-        }
-        const ProjectImplicitConversion narrowing = classifyImplicit(
-            right.typeKey, left.typeKey, right.integerConstant);
-        if (!narrowing.exists())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidConversion,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "null-conditional compound assignment cannot implicitly convert its right-hand "
-                "side from '" + right.typeKey + "' to '" + left.typeKey + "'");
-            return {};
-        }
-        ExpressionResult assignmentResult = left;
-        assignmentResult.ownsStorageDestination = ownedFieldOwnsStorage;
-        assignmentResult.assignable = false;
-        assignmentResult.valid = true;
-        return assignmentResult;
-    }
-
-    if (!left.assignable)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidAssignmentTarget,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->first()->range(),
-            "left side of assignment is not assignable");
-        return {};
-    }
-
-    if (raiiStringAppend)
-    {
         // The concatenation is a fresh owner. Lowering materializes it before releasing the old
         // buffer, then reuses the ordinary owning-store path to replace the same RAII slot.
-        left.ownsStorageDestination = true;
-        left.assignable = false;
-        left.ownership = sema::OwnershipKind::Owned;
-        left.ownershipTransfer = true;
-        left.ownershipFreshOwner = true;
-        invalidateAssignedStorage();
-        return left;
-    }
-
-    if (expression->tokenKind() == TokenKind::Equal)
-    {
-        const ProjectImplicitConversion conversion = classifyImplicit(
-            right.typeKey,
-            left.typeKey,
-            right.integerConstant);
-        if (!conversion.exists())
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidConversion,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "cannot implicitly convert assignment RHS from '" + right.typeKey + "' to '" +
-                    left.typeKey + "'");
-            return {};
-        }
-        if (ProjectTypeConversion::isPointer(left.typeKey) &&
-            !language::pointerContractImplicitlyAssignable(
-                pointerContract(
-                    right.pointerNullable,
-                    right.pointerPointeeReadonly,
-                    right.pointerHasProvenance,
-                    right.pointerKnownAlignment,
-                    right.pointerAddressSpace),
-                pointerContract(
-                    left.pointerNullable,
-                    left.pointerPointeeReadonly,
-                    left.pointerHasProvenance,
-                    left.pointerKnownAlignment,
-                    left.pointerAddressSpace)))
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidConversion,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->second()->range(),
-                "assignment does not satisfy the destination pointer nullability, mutability, provenance, alignment, or address-space contract");
-            return {};
-        }
-        if (raiiTargetLocal.has_value())
-        {
-            movedRaiiLocals_.erase(*raiiTargetLocal);
-            maybeMovedRaiiLocals_.erase(*raiiTargetLocal);
-        }
-        if (assignmentTargetLocal.has_value())
-        {
-            MethodLocalSymbol& targetLocal = locals_[*assignmentTargetLocal];
-            targetLocal.callableTrait = right.callableTrait;
-            invokedFnOnceLocals_.erase(*assignmentTargetLocal);
-            maybeInvokedFnOnceLocals_.erase(*assignmentTargetLocal);
-        }
-        if (moveOnlyTargetLocal.has_value())
-        {
-            movedRaiiLocals_.erase(*moveOnlyTargetLocal);
-            maybeMovedRaiiLocals_.erase(*moveOnlyTargetLocal);
-        }
-        if (moveOnlyTargetParameter.has_value())
-        {
-            movedOwnedParameters_.erase(*moveOnlyTargetParameter);
-            maybeMovedOwnedParameters_.erase(*moveOnlyTargetParameter);
-        }
-        if (const std::optional<std::string> assignedPlace = partialMovePlaceKey(
-                expression->first(), scopeOrdinal))
-        {
-            reinitializePartialPlace(*assignedPlace);
-        }
-        if (assignedUnionStorage.has_value())
-        {
-            if (assignedUnionMember.has_value())
-                activeUnionMembers_[*assignedUnionStorage] = *assignedUnionMember;
-            else
-                activeUnionMembers_.erase(*assignedUnionStorage);
-        }
-        const MethodEscapeOrigin sourceEscape =
-            referenceEscapeOriginOfExpression(expression->second(), scopeOrdinal);
-        if (sourceEscape.ordinal.has_value() &&
-            (sourceEscape.kind == MethodEscapeOriginKind::ExternalStorage ||
-             sourceEscape.kind == MethodEscapeOriginKind::CurrentFrameParameter))
-        {
-            const MethodEscapeOrigin destinationEscape =
-                referenceEscapeOriginOfExpression(expression->first(), scopeOrdinal);
-            if (destinationEscape.kind == MethodEscapeOriginKind::ExternalStorage &&
-                !destinationEscape.ordinal.has_value())
-            {
-                noteParameterEscape(methodMemberOrdinal, *sourceEscape.ordinal,
-                    language::EscapeClass::Global);
-            }
-            else if (destinationEscape.kind == MethodEscapeOriginKind::CurrentReceiver ||
-                     (destinationEscape.kind == MethodEscapeOriginKind::ExternalStorage &&
-                      destinationEscape.ordinal.has_value()))
-            {
-                noteParameterEscape(methodMemberOrdinal, *sourceEscape.ordinal,
-                    language::EscapeClass::CallerOwned);
-            }
-        }
-        left.ownsStorageDestination = ownsStorageDestination;
-        left.assignable = false;
-        invalidateAssignedStorage();
-        return left;
-    }
-
     // ID 81. DESTINO PUNTERO: `p += n` y `p -= n` avanzan y retroceden POR ELEMENTOS, igual que
     // `p + n`. Ningun otro operador compuesto tiene sentido sobre un puntero, y `void*` queda
     // fuera por la misma razon que en `*p` y en `++p`: no hay tamano que avanzar.
-    if (ProjectTypeConversion::isPointer(left.typeKey))
-    {
-        const bool offsetOperator = expression->tokenKind() == TokenKind::PlusEqual ||
-            expression->tokenKind() == TokenKind::MinusEqual;
-        if (!offsetOperator || left.typeKey == "builtin:void*" ||
-            !ProjectTypeConversion::isIntegral(right.typeKey))
-        {
-            diagnostics.report(
-                diagnostics::DiagnosticId::InvalidOperand,
-                diagnostics::DiagnosticSeverity::Error,
-                expression->range(),
-                "a non-void pointer supports only '+=' and '-=' with an integral right-hand side");
-            return {};
-        }
-        left.assignable = false;
-        invalidateAssignedStorage();
-        return left;
-    }
-
-    const TokenKind compoundBase = lexer::compoundAssignmentBaseOperator(expression->tokenKind());
-    const bool sameEnumBitwise = isEnumTypeKey(left.typeKey) && left.typeKey == right.typeKey &&
-        (compoundBase == TokenKind::Amp || compoundBase == TokenKind::Pipe ||
-         compoundBase == TokenKind::Caret);
-    const bool shiftAssignment = isShift(compoundBase) &&
-        ProjectTypeConversion::isIntegral(left.typeKey) &&
-        ProjectTypeConversion::isIntegral(right.typeKey) &&
-        left.typeKey != "builtin:bool" && right.typeKey != "builtin:bool";
-    const std::optional<std::string> common = sameEnumBitwise || shiftAssignment
-        ? std::optional<std::string>(left.typeKey)
-        : ProjectTypeConversion::commonNumericType(
-              left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
-    if (!common.has_value())
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidOperand,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->range(),
-            "compound assignment requires compatible numeric operands in Stage 34");
-        return {};
-    }
-
     // ID 81. Y ADEMAS el operando derecho tiene que caber en el tipo del destino. C# aqui mete un
     // cast implicito de vuelta (`byte b; int n; b += n;` compila y TRUNCA); este lenguaje lo
     // rechaza y pide el cast escrito. Es una DIVERGENCIA DELIBERADA de C#, anotada en el doc 79:
     // el resultado se guarda en el destino, y un estrechamiento que el codigo no escribio es
     // justo la clase de perdida silenciosa que este compilador viene rechazando en todas partes.
     // La conversion constante sigue valiendo, asi que `byte b; b += 1;` compila sin ceremonia.
-    const ProjectImplicitConversion narrowing = classifyImplicit(
-        right.typeKey, left.typeKey, right.integerConstant);
-    if (!shiftAssignment && !narrowing.exists())
+    ExpressionResult left;
+    std::optional<std::size_t> raiiTargetLocal;
+    std::optional<std::size_t> moveOnlyTargetLocal;
+    std::optional<std::size_t> moveOnlyTargetParameter;
+    std::optional<std::size_t> assignedUnionStorage;
+    std::optional<std::size_t> assignedUnionMember;
+    bool arrayElementMoveTarget = false;
+    bool ownedArrayElementOwnsStorage = false;
+    bool borrowedArrayElementTarget = false;
+    bool ownedFieldMoveTarget = false;
+    bool genericFieldMoveTarget = false;
+    bool ownedFieldOwnsStorage = false;
+    std::string ownedFieldName;
+    std::optional<std::size_t> getterBindingIndex;
+    bool ownedSetterMoveTarget = false;
+    if (!prepareAssignmentTarget(
+            left, raiiTargetLocal, moveOnlyTargetLocal, moveOnlyTargetParameter,
+            assignedUnionStorage, assignedUnionMember, arrayElementMoveTarget,
+            ownedArrayElementOwnsStorage, borrowedArrayElementTarget, ownedFieldMoveTarget,
+            genericFieldMoveTarget, ownedFieldOwnsStorage, ownedFieldName, getterBindingIndex,
+            ownedSetterMoveTarget, expression, methodMemberOrdinal, scopeOrdinal, diagnostics))
     {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidConversion,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->range(),
-            "compound assignment cannot implicitly convert its right-hand side from '" +
-                right.typeKey + "' to '" + left.typeKey +
-                "'; write the read-modify-write with an explicit cast");
         return {};
     }
-    left.assignable = false;
-    invalidateAssignedStorage();
-    return left;
+    if (left.eventMemberOrdinal.has_value())
+    {
+        return analyzeEventAssignment(
+            expression, left, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    }
+
+    ExpressionResult right;
+    std::optional<std::size_t> assignmentTargetLocal;
+    std::optional<std::size_t> assignmentTargetParameter;
+    bool borrowedReassignment = false;
+    bool delegateTarget = false;
+    bool raiiStringAppend = false;
+    bool ownsStorageDestination = false;
+    if (!prepareAssignmentValue(
+            right, assignmentTargetLocal, assignmentTargetParameter, borrowedReassignment,
+            delegateTarget, raiiStringAppend, ownsStorageDestination, expression, left,
+            raiiTargetLocal, moveOnlyTargetLocal, moveOnlyTargetParameter, arrayElementMoveTarget,
+            ownedArrayElementOwnsStorage, borrowedArrayElementTarget, ownedFieldMoveTarget,
+            genericFieldMoveTarget, ownedFieldOwnsStorage, ownedFieldName,
+            ownedSetterMoveTarget, methodMemberOrdinal, scopeOrdinal, diagnostics))
+    {
+        return {};
+    }
+    return finishAssignment(
+        expression, left, right, getterBindingIndex, raiiTargetLocal, assignmentTargetLocal,
+        moveOnlyTargetLocal, moveOnlyTargetParameter, assignedUnionStorage, assignedUnionMember,
+        ownedFieldOwnsStorage, ownedArrayElementOwnsStorage, raiiStringAppend,
+        ownsStorageDestination, methodMemberOrdinal, scopeOrdinal, diagnostics);
 }
 
 
@@ -2177,7 +2636,8 @@ std::optional<std::size_t> ProjectMethodBodyModel::resolveTypeIdentifier(
     std::string_view name) const noexcept
 {
     const ClassMemberSymbol* context = methodSymbol(contextMemberOrdinal);
-    if (context == nullptr || nameLookup_ == nullptr || context->declaringTypeOrdinal >= nameLookup_->namedTypes().size())
+    if (context == nullptr || nameLookup_ == nullptr ||
+        context->declaringTypeOrdinal >= nameLookup_->namedTypes().size())
     {
         return std::nullopt;
     }

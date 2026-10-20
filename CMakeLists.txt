@@ -493,6 +493,36 @@ add_library(nsc_frontend STATIC
     src/Frontend/Bodies/OwnershipAnalyzer.cpp
     src/Frontend/Bodies/EscapeAnalyzer.cpp
     src/Frontend/Bodies/StatementAnalyzer.cpp
+    src/Frontend/Bodies/CarrierResolver.cpp
+    src/Frontend/Bodies/ConstantExpressionClassifier.cpp
+    src/Frontend/Bodies/ConversionAndPassKindChecks.cpp
+    src/Frontend/Bodies/DefiniteAssignmentAnalyzer.cpp
+    src/Frontend/Bodies/ExpressionAnalysisSupport.cpp
+    src/Frontend/Bodies/IdentifierAnalyzer.cpp
+    src/Frontend/Bodies/LambdaDelegateBinder.cpp
+    src/Frontend/Bodies/LoopExpressionAnalyzer.cpp
+    src/Frontend/Bodies/MethodBodyBindingRecorder.cpp
+    src/Frontend/Bodies/MethodBodyCallableLifecycle.cpp
+    src/Frontend/Bodies/MethodBodyInternals.cpp
+    src/Frontend/Bodies/MethodBodyKindNames.cpp
+    src/Frontend/Bodies/MethodBodyTypeQueries.cpp
+    src/Frontend/Bodies/OperatorExpressionAnalyzer.cpp
+    src/Frontend/Bodies/OverloadCandidateRanking.cpp
+    src/Frontend/Bodies/TypeKeyPredicates.cpp
+    src/Frontend/Bodies/ExpressionCore/AccessAndCallExpressions.cpp
+    src/Frontend/Bodies/ExpressionCore/CollectionExpressions.cpp
+    src/Frontend/Bodies/ExpressionCore/ConstructionAndLifetimeExpressions.cpp
+    src/Frontend/Bodies/ExpressionCore/ConversionExpressions.cpp
+    src/Frontend/Bodies/ExpressionCore/ExpressionDispatch.cpp
+    src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp
+    src/Frontend/Bodies/ExpressionCore/MoveExpressions.cpp
+    src/Frontend/Bodies/ExpressionCore/OperatorAndConditionalExpressions.cpp
+    src/Frontend/Bodies/ExpressionCore/PrimaryExpressions.cpp
+    src/Frontend/Bodies/Support/IntegralConstantArithmetic.cpp
+    src/Frontend/Bodies/Support/OperatorClassification.cpp
+    src/Frontend/Bodies/Support/OwnershipArgumentClassification.cpp
+    src/Frontend/Bodies/Support/OwnershipFlowSnapshotQueries.cpp
+    src/Frontend/Internal/Stage37ConstantValue.cpp
     src/Frontend/ProjectMethodBodyModel.cpp
     src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
