@@ -290,9 +290,20 @@ add_executable(
     host/modules/ParserPrimaryPrattCounterfactualModule.cpp
     host/modules/ParserProductTestShim.cpp
     host/modules/ParserContinuationProductTestShim.cpp
+    host/modules/ParserContinuationControlFlowProductTestShim.cpp
+    host/modules/ParserContinuationExceptionsProductTestShim.cpp
+    host/modules/ParserContinuationExpressionsProductTestShim.cpp
+    host/modules/ParserContinuationScopesProductTestShim.cpp
+    host/modules/ParserContinuationStatementsProductTestShim.cpp
     host/modules/ParserContextProductTestShim.cpp
     host/modules/ParserDeclarationProductTestShim.cpp
+    host/modules/ParserExpressionIterationMachineProductTestShim.cpp
     host/modules/ParserMemberProductTestShim.cpp
+    host/modules/ParserMatchExpressionPatternAnalyzerProductTestShim.cpp
+    host/modules/ParserPatternAlternativeExpanderProductTestShim.cpp
+    host/modules/ParserPatternIterationProductTestShim.cpp
+    host/modules/ParserPostfixIterationMachineProductTestShim.cpp
+    host/modules/ParserStructuredControlProductTestShim.cpp
     host/modules/ParserTypeProductTestShim.cpp
     host/modules/ParserStatementProductTestShim.cpp
     host/modules/ParserExpressionProductTestShim.cpp
@@ -419,23 +430,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LanguageService/Internal/Implementation.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/KnownGenericTypeScope.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/ConditionDeclarationBinding.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/ExpressionIterationMachine.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/ExpressionParsingSupport.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/MatchExpressionPatternAnalyzer.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/PatternAlternativeExpander.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/PatternIterationParser.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/PostfixIterationMachine.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/StructuredControlParser.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/ParseContinuation/ControlFlow.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/ParseContinuation/Exceptions.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/ParseContinuation/Expressions.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/ParseContinuation/Scopes.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Parser/Internal/ParseContinuation/Statements.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/Semantic/Constants.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/Semantic/Declarations.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/Semantic/Expressions.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/Semantic/Statements.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/Semantic/Types.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/Lexer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/Token.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Lexer/TokenDumper.cpp"
@@ -457,6 +452,11 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SemanticModel.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SymbolDumper.cpp"
     host/modules/SemaProductTestShim.cpp
+    host/modules/SemaSemanticConstantsProductTestShim.cpp
+    host/modules/SemaSemanticDeclarationsProductTestShim.cpp
+    host/modules/SemaSemanticExpressionsProductTestShim.cpp
+    host/modules/SemaSemanticStatementsProductTestShim.cpp
+    host/modules/SemaSemanticTypesProductTestShim.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Sema/SemanticDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/HIR/HirNodeKind.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/HIR/HirNode.cpp"
