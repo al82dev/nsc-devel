@@ -257,6 +257,11 @@ class CanonicalIdentityInputTests(unittest.TestCase):
                 "-DNSC_COMPILER_SUITE_BUILD_ID_HEADER=" + header.resolve().as_posix(),
                 command,
             )
+            self.assertIn(
+                "-DNSC_NSLINK_EXECUTABLE="
+                + Path(config.nslink_executable).resolve().as_posix(),
+                command,
+            )
             self.assertNotIn("-UNSC_COMPILER_SUITE_COMPARISON_NSC_EXECUTABLE", command)
             self.assertNotIn("-UNSC_COMPILER_SUITE_BUILD_ID_HEADER", command)
 

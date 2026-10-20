@@ -596,7 +596,7 @@ def configure_commands(config: BuilderConfig, modes: Sequence[str]) -> list[tupl
             "-DCMAKE_EXE_LINKER_FLAGS=",
             f"-DNSC_COMPILER_SUITE_NSC_EXECUTABLE="
             f"{Path(config.nsc_executable).resolve().as_posix()}",
-            f"-DNSC_NSLINK_EXECUTABLE={compiler_sibling_output(config, mode, 'nslink').as_posix()}",
+            f"-DNSC_NSLINK_EXECUTABLE={Path(config.nslink_executable).resolve().as_posix()}",
             f"-DNSC_COMPILER_SUITE_DEFAULT_WINDOWS_RUNTIME_LIBRARY="
             f"{runtime_library}",
         ]

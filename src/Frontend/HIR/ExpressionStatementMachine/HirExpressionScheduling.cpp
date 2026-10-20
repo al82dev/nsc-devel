@@ -318,6 +318,9 @@ LoopBlockAdvance ProjectOopHirModel::selectScheduledChildSyntax(
             lowered, error, rootCleanupDepth, rootExceptionHandlerDepth);
         secondaryAdvance.has_value())
         return *secondaryAdvance;
+    // ES: Los tipos sin selector especializado descienden por su primer operando, como el monolito.
+    // EN: Kinds without a specialized selector descend through their first operand, as before.
+    current = current->first();
     return LoopBlockAdvance::Complete;
 }
 
