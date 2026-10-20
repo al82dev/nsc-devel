@@ -798,6 +798,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmProcessTrace.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmTargetMachine.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmVersion.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/ProjectOopFunctionReachability.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmAggregatesAndStrings.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmArraysAndStores.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmCalls.cpp"
