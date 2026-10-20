@@ -1,5 +1,7 @@
 #include "nativesharp/Dominance/DominanceBuilder.h"
 
+#include "Internal/TreeFrame.h"
+
 #include "nativesharp/CFG/CfgFunction.h"
 #include "nativesharp/CFG/CfgModule.h"
 #include "nativesharp/CFG/CfgNode.h"
@@ -19,15 +21,7 @@
 
 namespace nativesharp::dominance
 {
-namespace
-{
-struct TreeFrame
-{
-    DominatorTreeNode* node;
-    std::size_t nextChild;
-    bool entered;
-};
-}
+using internal::TreeFrame;
 
 DominanceBuilder::DominanceBuilder(DominanceArena& arena) : arena_(arena) {}
 

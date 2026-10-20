@@ -12,7 +12,7 @@ namespace nativesharp::frontend
 {
 namespace
 {
-void dumpNodeIdentity(std::ostringstream& output, const ProjectOopMirNode& node)
+void dumpNodeFloatingPointMode(std::ostringstream& output, const ProjectOopMirNode& node)
 {
     if (node.syntax != nullptr)
     {
@@ -24,6 +24,10 @@ void dumpNodeIdentity(std::ostringstream& output, const ProjectOopMirNode& node)
             case ast::FloatingPointModeSyntaxKind::Fast: output << " fp=fast"; break;
         }
     }
+}
+
+void dumpNodeOrdinals(std::ostringstream& output, const ProjectOopMirNode& node)
+{
     if (!node.typeKey.empty()) output << " type=" << node.typeKey;
     if (node.memberOrdinal.has_value()) output << " member=#" << *node.memberOrdinal;
     if (node.namespaceFunctionOrdinal.has_value())
@@ -38,6 +42,10 @@ void dumpNodeIdentity(std::ostringstream& output, const ProjectOopMirNode& node)
     if (node.targetScopeOrdinal.has_value()) output << " target-scope=#" << *node.targetScopeOrdinal;
     if (node.exceptionTypeOrdinal.has_value()) output << " exception-type=#" << *node.exceptionTypeOrdinal;
     if (node.catchAll) output << " catch=all";
+}
+
+void dumpNodeCatch(std::ostringstream& output, const ProjectOopMirNode& node)
+{
     if (node.kind == ProjectOopMirNodeKind::CatchRegion)
     {
         output << " pattern=" << (node.catchAll ? "_" : node.elementTypeKey)
@@ -51,6 +59,10 @@ void dumpNodeIdentity(std::ostringstream& output, const ProjectOopMirNode& node)
         }
         output << ']';
     }
+}
+
+void dumpNodeCleanup(std::ostringstream& output, const ProjectOopMirNode& node)
+{
     if (node.disposeContractMemberOrdinal.has_value())
         output << " dispose-contract=#" << *node.disposeContractMemberOrdinal;
     if (node.disposeImplementationMemberOrdinal.has_value())
@@ -70,6 +82,14 @@ void dumpNodeIdentity(std::ostringstream& output, const ProjectOopMirNode& node)
     if (node.borrowKind.has_value()) output << " borrow=" << methodBorrowKindName(*node.borrowKind);
     if (node.localBorrowSourceKind.has_value())
         output << " borrow-source=" << methodLocalBorrowSourceKindName(*node.localBorrowSourceKind);
+}
+
+void dumpNodeIdentity(std::ostringstream& output, const ProjectOopMirNode& node)
+{
+    dumpNodeFloatingPointMode(output, node);
+    dumpNodeOrdinals(output, node);
+    dumpNodeCatch(output, node);
+    dumpNodeCleanup(output, node);
     if (node.parameterOrdinal.has_value()) output << " param=#" << *node.parameterOrdinal;
     if (node.constructionOrdinal.has_value()) output << " construction=#" << *node.constructionOrdinal;
 }
@@ -325,9 +345,12 @@ std::size_t ProjectOopMirModelDumper::nodeTraversalDepthForTesting(
     return maximumDepth;
 }
 
-std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
+namespace
 {
-    std::ostringstream output;
+void dumpModelHeaderAndStructLayouts(
+    std::ostringstream& output,
+    const ProjectOopMirModel& model)
+{
     output << "project.oop.mir functions=" << model.functions().size()
            << " schema=" << kProjectOopMirSchemaMajor << '.' << kProjectOopMirSchemaMinor
            << " panic-profile=" << language::panicProfileName(model.panicProfile())
@@ -348,6 +371,12 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
             output << " drop-glue=" << layout.dropGlueEntryName;
         output << '\n';
     }
+}
+
+void dumpGenericSpecializations(
+    std::ostringstream& output,
+    const ProjectOopMirModel& model)
+{
     output << "generic-specializations=" << model.genericSpecializations().size() << '\n';
     for (const ProjectOopMirGenericSpecialization& specialization : model.genericSpecializations())
     {
@@ -356,121 +385,157 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " static-fields=" << specialization.staticFieldIndices.size()
                << " dispatch-tables=" << specialization.dispatchTableIndices.size() << '\n';
     }
+}
+
+void dumpFunctionSignature(std::ostringstream& output, const ProjectOopMirFunction& function)
+{
+    output << "function #" << function.memberOrdinal;
+    if (function.namespaceFunctionOrdinal.has_value())
+        output << " namespace-function=#" << *function.namespaceFunctionOrdinal;
+    output << ' ' << function.mangledName
+           << (function.isLambda ? " lambda" : "")
+           << " inlining=" << inliningPolicyName(function.inliningPolicy)
+           << " noheap=" << (function.isNoHeap ? "true" : "false")
+           << " effects=" << function.effects.bits()
+           << " abi=(" << (function.isLambda && function.hasClosureEnvironment
+                ? "closure-env:first" : function.isStatic ? "static" : "this:first")
+           << (function.isExportedC ? " export-c=" + function.cAbiName : "");
+    if (function.isVariadic) output << " variadic";
+    if (function.isImportedNative) output << " import-native";
+    if (function.isTransportedInlineBody) output << " transported-inline";
+    for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
+        output << ",p" << index << ':' << function.parameterTypeKeys[index]
+               << '[' << projectOopMirAbiPassingName(function.abi.parameterPassing[index])
+               << "@" << function.abi.parameterPhysicalOrdinals[index] << ']';
+    output << ") -> " << function.returnTypeKey
+           << "[" << projectOopMirAbiPassingName(function.abi.returnPassing);
+    if (function.abi.hiddenReturnParameterOrdinal.has_value())
+        output << "@" << *function.abi.hiddenReturnParameterOrdinal;
+    output << "]"
+           << " throws=" << (function.errorTypeKey.empty()
+                ? "<none>" : function.errorTypeKey)
+           << " ref-return=" << (function.referenceReturn ? "true" : "false")
+           << " return-ownership=" << sema::ownershipKindName(function.returnOwnership)
+           << (function.constructor
+                ? " constructor" : function.destructor ? " destructor" :
+                  function.isLambda ? " lambda-body" : " method");
+    if (function.isLambda)
+    {
+        output << " captures=" << function.captureTypeKeys.size()
+               << " callable-trait=" << methodLambdaCallableTraitName(function.callableTrait)
+               << " closure-layout="
+               << function.closureLayoutSize << ':' << function.closureLayoutAlignment
+               << " closure-allocation="
+               << (function.hasClosureEnvironment ? "managed-heap" : "none");
+    }
+    if (!function.genericSpecializationKey.empty())
+        output << " generic-specialization=" << function.genericSpecializationKey;
+    output << '\n';
+}
+
+void dumpFunctionParameters(std::ostringstream& output, const ProjectOopMirFunction& function)
+{
+    for (std::size_t index = 0; index < function.parameterOwnerships.size(); ++index)
+    {
+        if (index < function.parameterPassKinds.size())
+        {
+            output << "  parameter-pass[" << index << "]="
+                   << parameterPassKindName(function.parameterPassKinds[index]) << '\n';
+        }
+        output << "  parameter-ownership[" << index << "]="
+               << sema::ownershipKindName(function.parameterOwnerships[index]) << '\n';
+    }
+    output << "  cleanup-contract=" << function.cleanupRegions.size() << '\n';
+}
+
+void dumpFunctionCaptures(std::ostringstream& output, const ProjectOopMirFunction& function)
+{
+    for (std::size_t index = 0; index < function.captureTypeKeys.size(); ++index)
+    {
+        output << "  capture[" << index << "] name=";
+        if (index < function.captureNames.size() && !function.captureNames[index].empty())
+            output << function.captureNames[index];
+        else
+            output << "<unnamed>";
+        output << " type=" << function.captureTypeKeys[index]
+               << " source=";
+        if (index < function.captureSourceKinds.size())
+            output << methodLambdaCaptureSourceKindName(function.captureSourceKinds[index]);
+        else
+            output << "<missing>";
+        output << " mode=";
+        if (index < function.captureModes.size())
+            output << methodLambdaCaptureModeName(function.captureModes[index]);
+        else
+            output << "<missing>";
+        output << " storage="
+               << (index < function.captureModes.size() &&
+                   (function.captureModes[index] == language::CaptureMode::Copy ||
+                    function.captureModes[index] == language::CaptureMode::Move)
+                   ? "owned-value-cell" : "shared-reference-cell")
+               << " owns-value="
+               << (index < function.captureOwnsValues.size() && function.captureOwnsValues[index]
+                   ? "true" : "false") << '\n';
+    }
+}
+
+void dumpFunctionCleanupRegions(std::ostringstream& output, const ProjectOopMirFunction& function)
+{
+    for (const ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
+    {
+        output << "    cleanup #" << cleanup.ordinal
+               << " kind=" << projectOopMirCleanupKindName(cleanup.kind)
+               << " type=" << cleanup.typeKey
+               << " ownership=" << sema::ownershipKindName(cleanup.ownership);
+        if (cleanup.localOrdinal.has_value()) output << " local=#" << *cleanup.localOrdinal;
+        if (cleanup.parameterOrdinal.has_value())
+            output << " parameter=#" << *cleanup.parameterOrdinal;
+        if (cleanup.automaticDestruction) output << " automatic-destruction";
+        output << '\n';
+    }
+}
+
+void dumpFunctionExceptionFlow(std::ostringstream& output, const ProjectOopMirFunction& function)
+{
+    output << "  exception-flow personality="
+           << (function.exceptionFlow.requiresPersonality ? "true" : "false")
+           << " protected=" << function.exceptionFlow.protectedRegionOrdinals.size()
+           << " catches=" << function.exceptionFlow.catchRegionCount
+           << " finally=" << function.exceptionFlow.finallyRegionCount
+           << " exits=" << function.exceptionFlow.nonlocalExits.size() << '\n';
+    for (const ProjectOopMirNonlocalExit& exit : function.exceptionFlow.nonlocalExits)
+    {
+        output << "    nonlocal-exit kind=" << projectOopMirNonlocalExitKindName(exit.kind)
+               << " cleanup-path=";
+        if (exit.cleanupRegionOrdinals.empty()) output << "<none>";
+        for (std::size_t index = 0; index < exit.cleanupRegionOrdinals.size(); ++index)
+        {
+            if (index != 0) output << ',';
+            output << '#' << exit.cleanupRegionOrdinals[index];
+        }
+        if (exit.targetScopeOrdinal.has_value())
+            output << " target-scope=#" << *exit.targetScopeOrdinal;
+        if (exit.exceptionTargetRegionOrdinal.has_value())
+            output << " exception-target=#" << *exit.exceptionTargetRegionOrdinal;
+        output << '\n';
+    }
+}
+
+void dumpFunctions(std::ostringstream& output, const ProjectOopMirModel& model)
+{
     for (const ProjectOopMirFunction& function : model.functions())
     {
-        output << "function #" << function.memberOrdinal;
-        if (function.namespaceFunctionOrdinal.has_value())
-            output << " namespace-function=#" << *function.namespaceFunctionOrdinal;
-        output << ' ' << function.mangledName
-               << (function.isLambda ? " lambda" : "")
-               << " inlining=" << inliningPolicyName(function.inliningPolicy)
-               << " noheap=" << (function.isNoHeap ? "true" : "false")
-               << " effects=" << function.effects.bits()
-               << " abi=(" << (function.isLambda && function.hasClosureEnvironment
-                    ? "closure-env:first" : function.isStatic ? "static" : "this:first")
-               << (function.isExportedC ? " export-c=" + function.cAbiName : "");
-        if (function.isVariadic) output << " variadic";
-        if (function.isImportedNative) output << " import-native";
-        if (function.isTransportedInlineBody) output << " transported-inline";
-        for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
-            output << ",p" << index << ':' << function.parameterTypeKeys[index]
-                   << '[' << projectOopMirAbiPassingName(function.abi.parameterPassing[index])
-                   << "@" << function.abi.parameterPhysicalOrdinals[index] << ']';
-        output << ") -> " << function.returnTypeKey
-               << "[" << projectOopMirAbiPassingName(function.abi.returnPassing);
-        if (function.abi.hiddenReturnParameterOrdinal.has_value())
-            output << "@" << *function.abi.hiddenReturnParameterOrdinal;
-        output << "]"
-               << " throws=" << (function.errorTypeKey.empty()
-                    ? "<none>" : function.errorTypeKey)
-               << " ref-return=" << (function.referenceReturn ? "true" : "false")
-               << " return-ownership=" << sema::ownershipKindName(function.returnOwnership)
-               << (function.constructor ? " constructor" : function.destructor ? " destructor" : function.isLambda ? " lambda-body" : " method");
-        if (function.isLambda)
-        {
-            output << " captures=" << function.captureTypeKeys.size()
-                   << " callable-trait=" << methodLambdaCallableTraitName(function.callableTrait)
-                   << " closure-layout="
-                   << function.closureLayoutSize << ':' << function.closureLayoutAlignment
-                   << " closure-allocation="
-                   << (function.hasClosureEnvironment ? "managed-heap" : "none");
-        }
-        if (!function.genericSpecializationKey.empty())
-            output << " generic-specialization=" << function.genericSpecializationKey;
-        output << '\n';
-        for (std::size_t index = 0; index < function.parameterOwnerships.size(); ++index)
-        {
-            if (index < function.parameterPassKinds.size())
-            {
-                output << "  parameter-pass[" << index << "]="
-                       << parameterPassKindName(function.parameterPassKinds[index]) << '\n';
-            }
-            output << "  parameter-ownership[" << index << "]="
-                   << sema::ownershipKindName(function.parameterOwnerships[index]) << '\n';
-        }
-        output << "  cleanup-contract=" << function.cleanupRegions.size() << '\n';
-        for (std::size_t index = 0; index < function.captureTypeKeys.size(); ++index)
-        {
-            output << "  capture[" << index << "] name=";
-            if (index < function.captureNames.size() && !function.captureNames[index].empty())
-                output << function.captureNames[index];
-            else
-                output << "<unnamed>";
-            output << " type=" << function.captureTypeKeys[index]
-                   << " source=";
-            if (index < function.captureSourceKinds.size())
-                output << methodLambdaCaptureSourceKindName(function.captureSourceKinds[index]);
-            else
-                output << "<missing>";
-            output << " mode=";
-            if (index < function.captureModes.size())
-                output << methodLambdaCaptureModeName(function.captureModes[index]);
-            else
-                output << "<missing>";
-            output << " storage="
-                   << (index < function.captureModes.size() &&
-                       (function.captureModes[index] == language::CaptureMode::Copy ||
-                        function.captureModes[index] == language::CaptureMode::Move)
-                       ? "owned-value-cell" : "shared-reference-cell")
-                   << " owns-value="
-                   << (index < function.captureOwnsValues.size() && function.captureOwnsValues[index]
-                       ? "true" : "false") << '\n';
-        }
-        for (const ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
-        {
-            output << "    cleanup #" << cleanup.ordinal
-                   << " kind=" << projectOopMirCleanupKindName(cleanup.kind)
-                   << " type=" << cleanup.typeKey
-                   << " ownership=" << sema::ownershipKindName(cleanup.ownership);
-            if (cleanup.localOrdinal.has_value()) output << " local=#" << *cleanup.localOrdinal;
-            if (cleanup.parameterOrdinal.has_value())
-                output << " parameter=#" << *cleanup.parameterOrdinal;
-            if (cleanup.automaticDestruction) output << " automatic-destruction";
-            output << '\n';
-        }
-        output << "  exception-flow personality="
-               << (function.exceptionFlow.requiresPersonality ? "true" : "false")
-               << " protected=" << function.exceptionFlow.protectedRegionOrdinals.size()
-               << " catches=" << function.exceptionFlow.catchRegionCount
-               << " finally=" << function.exceptionFlow.finallyRegionCount
-               << " exits=" << function.exceptionFlow.nonlocalExits.size() << '\n';
-        for (const ProjectOopMirNonlocalExit& exit : function.exceptionFlow.nonlocalExits)
-        {
-            output << "    nonlocal-exit kind=" << projectOopMirNonlocalExitKindName(exit.kind)
-                   << " cleanup-path=";
-            if (exit.cleanupRegionOrdinals.empty()) output << "<none>";
-            for (std::size_t index = 0; index < exit.cleanupRegionOrdinals.size(); ++index)
-            {
-                if (index != 0) output << ',';
-                output << '#' << exit.cleanupRegionOrdinals[index];
-            }
-            if (exit.targetScopeOrdinal.has_value()) output << " target-scope=#" << *exit.targetScopeOrdinal;
-            if (exit.exceptionTargetRegionOrdinal.has_value())
-                output << " exception-target=#" << *exit.exceptionTargetRegionOrdinal;
-            output << '\n';
-        }
+        dumpFunctionSignature(output, function);
+        dumpFunctionParameters(output, function);
+        dumpFunctionCaptures(output, function);
+        dumpFunctionCleanupRegions(output, function);
+        dumpFunctionExceptionFlow(output, function);
         dumpNode(output, function.body.get(), 1);
     }
+}
+
+void dumpStaticFields(std::ostringstream& output, const ProjectOopMirModel& model)
+{
     output << "static-fields=" << model.staticFields().size() << '\n';
     for (const ProjectOopMirStaticField& field : model.staticFields())
     {
@@ -488,13 +553,21 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " constant=" << (field.hasConstantInitializer ? "true" : "false");
         if (field.hasConstantInitializer)
         {
-            if (field.typeKey == "builtin:bool") output << " value=" << (field.constantBooleanValue ? "true" : "false");
-            else if (field.typeKey == "builtin:float" || field.typeKey == "builtin:double") output << " value=" << field.constantFloatingValue;
-            else if (field.typeKey == "builtin:string") output << " bytes=" << field.constantStringValue.size();
-            else output << " value=" << field.constantIntegerValue;
+            if (field.typeKey == "builtin:bool")
+                output << " value=" << (field.constantBooleanValue ? "true" : "false");
+            else if (field.typeKey == "builtin:float" || field.typeKey == "builtin:double")
+                output << " value=" << field.constantFloatingValue;
+            else if (field.typeKey == "builtin:string")
+                output << " bytes=" << field.constantStringValue.size();
+            else
+                output << " value=" << field.constantIntegerValue;
         }
         output << '\n';
     }
+}
+
+void dumpDispatchTables(std::ostringstream& output, const ProjectOopMirModel& model)
+{
     output << "dispatch-tables=" << model.dispatchTables().size() << '\n';
     for (const ProjectOopMirDispatchTable& table : model.dispatchTables())
     {
@@ -510,7 +583,8 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
         output << '\n';
         for (std::size_t slot = 0; slot < table.slotMemberOrdinals.size(); ++slot)
         {
-            output << "  slot[" << slot << "] member=#" << table.slotMemberOrdinals[slot] << " callee=";
+            output << "  slot[" << slot << "] member=#" << table.slotMemberOrdinals[slot]
+                   << " callee=";
             if (slot < table.slotCalleeNames.size() && !table.slotCalleeNames[slot].empty())
                 output << table.slotCalleeNames[slot];
             else
@@ -532,6 +606,10 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
         }
         output << '\n';
     }
+}
+
+void dumpInterfaceBindings(std::ostringstream& output, const ProjectOopMirModel& model)
+{
     output << "interface-bindings=" << model.interfaceBindings().size() << '\n';
     for (const ProjectOopMirInterfaceBinding& binding : model.interfaceBindings())
     {
@@ -542,6 +620,10 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " method-table=" << binding.methodTableName
                << " slots=" << binding.interfaceMemberOrdinals.size() << '\n';
     }
+}
+
+void dumpFieldInitializers(std::ostringstream& output, const ProjectOopMirModel& model)
+{
     output << "field-initializers=" << model.fieldInitializers().size() << '\n';
     for (const ProjectOopMirFieldInitializer& initializer : model.fieldInitializers())
     {
@@ -551,6 +633,19 @@ std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
                << " const=" << (initializer.isConst ? "true" : "false") << '\n';
         dumpNode(output, initializer.value.get(), 1);
     }
+}
+}
+
+std::string ProjectOopMirModelDumper::dump(const ProjectOopMirModel& model)
+{
+    std::ostringstream output;
+    dumpModelHeaderAndStructLayouts(output, model);
+    dumpGenericSpecializations(output, model);
+    dumpFunctions(output, model);
+    dumpStaticFields(output, model);
+    dumpDispatchTables(output, model);
+    dumpInterfaceBindings(output, model);
+    dumpFieldInitializers(output, model);
     return output.str();
 }
 }

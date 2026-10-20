@@ -18,768 +18,60 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
+
+#include "nativesharp/Frontend/ProjectOopHirNodeKind.h"
+#include "nativesharp/Frontend/ProjectCollectionSegmentKind.h"
+#include "nativesharp/Frontend/ProjectOopHirNode.h"
+#include "nativesharp/Frontend/ProjectOopHirFieldInitializer.h"
+#include "nativesharp/Frontend/ProjectOopHirFunction.h"
+
+namespace nativesharp::language
+{
+struct InterpolationPart;
+}
 
 namespace nativesharp::frontend
 {
 class ProjectGenericConstraintModel;
 class ProjectMetaprogrammingModel;
+struct HirTuplePatternFrame;
 struct ProjectOopHirModelTestAccess;
-
-enum class ProjectOopHirNodeKind
+namespace internal
 {
-    Block,
-    // NS304-T09-F05: a sequenced expression — a Block that yields a value. All but the last child
-    // are statements (LocalDeclaration/ExpressionStatement); the LAST child is the result
-    // expression, lowered by the expression path. Used by the collection builder.
-    BlockExpression,
-    LocalDeclaration,
-    ExpressionStatement,
-    // NativeSharp 2.0 item 298. The complete, already-validated integrated-assembly contract.
-    // stringValue preserves the exact bytes between the braces; children remain in source order
-    // and are InlineAssemblyLine/Input/Output/Clobber nodes. Operand children contain the lowered
-    // NativeSharp value (inputs) or storage address (outputs and memory inputs).
-    InlineAssembly,
-    InlineAssemblyLine,
-    InlineAssemblyInput,
-    InlineAssemblyOutput,
-    InlineAssemblyClobber,
-    If,
-    While,
-    // Same operand order as While -- children[0] is the condition, children[1] the body --
-    // and a distinct kind only because the backend enters the body before the first test.
-    DoWhile,
-    For,
-    // `switch` / `case`. children[0] is the governing expression; children[1..] are the sections,
-    // in source order. Each section is a SwitchSection node whose `switchLabels` holds the ALREADY
-    // FOLDED constant values of its labels and whose `switchHasDefault` marks the default section.
-    // The label expressions themselves are never lowered: the body model resolved them to integers
-    // and checked them for duplicates, so by this point a label is a number, not an expression.
-    Switch,
-    // One section. children[0] is a Block with the section's statements. Reaching the end of that
-    // block leaves the switch -- there is no fall-through to the next section.
-    SwitchSection,
-    Break,
-    Continue,
-    Return,
-    TryRegion,
-    CatchRegion,
-    FinallyRegion,
-    UsingRegion,
-    Throw,
-    Rethrow,
-    CleanupContinuation,
-    OwnedParameterCleanup,
-    MoveValue,
-    MoveArrayElement,
-    // Bloque 1: move(holder.slot) / move(slot) -- extract the owner out of an `owned` field,
-    // nulling the vacated slot. Address-shaped exactly like MoveArrayElement; kept as its own
-    // kind so IR dumps say what the source actually was.
-    MoveOwnedField,
-    // NS304-T07-F04: move(it.Current) transfers a move-only item out of the iterator's item slot,
-    // clearing the vacated slot. Address-shaped: the child is the iterator's address (not the item).
-    MoveIteratorCurrent,
-    // NSC-LIMIT-021. The inner value is a fresh owner lent as a call argument. The node gives it
-    // a hidden slot/cleanup identity; FullExpressionCleanup below closes that lifetime.
-    OwnedTemporaryBorrow,
-    FullExpressionCleanup,
-    // Interop Foundation: `*pointer` as a VALUE -- load of the pointee type through a raw
-    // pointer. (`&lvalue` and `*p` as an assignment target need no node of their own: they are
-    // the operand's address / the pointer's value, respectively.)
-    PointerLoad,
-    // C2.1 "fixed arrays": the ADDRESS of one element of inline, unmanaged storage --
-    // `fixedArrayField[i]` or `rawPointer[i]`. children = [base address, index]; elementTypeKey
-    // is the element type, and the MIR pass attaches its size. A read wraps this in PointerLoad;
-    // a write stores straight through it.
-    RawElementAddress,
-    // C6 "struct members": `new Vec2(1, 2)` on a struct. Distinct from ObjectConstruction, which
-    // allocates: this one initializes storage IN PLACE and yields the value. No heap, no class
-    // descriptor, nothing to free -- which is exactly what makes a struct a struct.
-    ValueConstruction,
-    // Item 318. children[0] is caller-supplied T* storage, followed by argumentCount constructor
-    // arguments and then synthesized field-initializer work. No allocation is performed.
-    PlacementConstruction,
-    // NativeSharp 3.0 T01-F02. Materializes the expanded elements of a final
-    // params ReadOnlySpan<T> into readonly stack storage and yields the ordinary span value.
-    // children are converted T values in source order; an empty list yields {null, 0}.
-    ParameterPack,
-    // C7 "aggregate initializer": `V v = {1, 2};` and `int[4] cells = {1};`. typeKey is the
-    // aggregate; children are AggregateElement nodes, ALREADY FLATTENED to absolute byte offsets,
-    // so nesting (`Matrix m = { {1, 0}, {0, 1} };`) is resolved here rather than in the backend.
-    // Elements the source did not mention are simply absent: the storage is zeroed first, which
-    // is exactly the rule C gives a partial initializer.
-    AggregateInitializer,
-    // NativeSharp 3.0 T01-F05. children[0] is one same-type spread source evaluated once;
-    // children[1..] are AggregateElement descriptors for the still-unwritten target fields.
-    AggregateSpread,
-    // C7: one element of the above. integerValue is its byte offset from the start of the
-    // aggregate, typeKey its type, and its single child the value to store there.
-    AggregateElement,
-    // T02-F03. children[0] is the tuple source; remaining children are element descriptors.
-    // The source is materialized before any destination address is evaluated, making swaps and
-    // aliasing deterministic. A descriptor carries source offset/type and one target address.
-    TupleDeconstruct,
-    TupleDeconstructElement,
-    // C6 "struct members": the ADDRESS of a struct value that has no home -- the result of an
-    // operator, a call, a conversion or a `new`. Reaching a member of one (`(a + b).x`,
-    // `Cross(u, v).z`) needs an address, and a temporary has none until one is made for it.
-    TemporaryAddress,
-    // `&lvalue` as a value: wraps the operand's ADDRESS node, carrying the pointer type
-    // (T*) as this expression's type without mutating the operand.
-    AddressValue,
-    BorrowValue,
-    ThisValue,
-    ParameterValue,
-    LocalValue,
-    FieldValue,
-    // T01-F03 `receiver?.field` for a nullable field carrier. The receiver child is lowered once;
-    // memberOrdinal identifies the ordinary instance field selected by semantic analysis.
-    NullConditionalFieldValue,
-    // NS304-T10-F05: `receiver?.field = value` — store condicional al null-check del receptor.
-    NullConditionalFieldStore,
-    // NS304-T10-F05: `receiver?[index]` — load condicional del elemento de array nativo.
-    NullConditionalArrayLoad,
-    // NS304-T10-F05: `receiver?[index] = value` — store condicional del elemento de array nativo.
-    NullConditionalArrayStore,
-    StaticFieldValue,
-    NamespaceStateValue,
-    ParameterAddress,
-    LocalAddress,
-    FieldAddress,
-    // NS304-T05-F03: address of one synthetic field of an opaque future. `memberOrdinal` is the
-    // field index (0 = state, 1 = frame, 2 = result) and `elementTypeKey` the future type key;
-    // the MIR resolves the byte offset against the future's ProjectOopMirStructLayout. The single
-    // child is the future pointer.
-    FutureFieldAddress,
-    // NS304-T05-F03: `await operand` over a synchronously-completing future. The single child is
-    // the future value; stringValue is the poll function's mangled name; elementTypeKey is the
-    // future type key; typeKey is the awaited inner type. MIR stores the future, calls the poll,
-    // and loads the result field.
-    AwaitFuture,
-    // NS304-T05-F09: a bare `yield;` suspension point. integerValue is the resume state index N
-    // (suspend writes self->state = N and returns; the next poll resumes here). No children.
-    SuspendPoint,
-    // NS304-T05-F09: the address of the async poll function (F$poll) stored into the future's
-    // pollFn field. stringValue is the poll's mangled name; typeKey is builtin:void*.
-    PollAddress,
-    // NS304-T06-F03: `yield return v` of a synchronous generator. integerValue is the yield state
-    // index N; the single child is the item value. Lowered to { self->item = v; self->state = N;
-    // return true; } by the generator MoveNext split.
-    YieldValue,
-    // NS304-T06-F03: `yield break` of a synchronous generator. Lowered to { self->state =
-    // completed; return false; }. No children.
-    YieldBreak,
-    // NS304-T06-F08: `it.Current` — reads the iterator's item (field 2). One child: the iterator
-    // value. `it.MoveNext()` — calls the iterator's moveNextFn (field 3) and returns its bool.
-    // `it.GetEnumerator()` — returns the iterator value unchanged.
-    IteratorCurrent,
-    IteratorMoveNext,
-    IteratorGetEnumerator,
-    // NS304-T06-F07: `it.Drop()` — calls the iterator's dropFn (field 4). One child: the address.
-    IteratorDrop,
-    // NS304-T07-F02: `it.MoveNextAsync()` — returns the future of the next demand. One child: address.
-    IteratorMoveNextAsync,
-    // NS304-T07-F05: `it.Cancel()` — sets the async-iterator's cancellation flag. One child: address.
-    IteratorCancel,
-    // NS304-T07-F02: the async-generator poll's `yield return v`. One child: the item value.
-    AsyncYieldValue,
-    // NS304-T06-F07: `Gen$drop` destroys the frame's live locals. One child: the iterator address.
-    DropFrame,
-    StaticFieldAddress,
-    NamespaceStateAddress,
-    IntegerConstant,
-    FloatingConstant,
-    BooleanConstant,
-    NullConstant,
-    DefaultValue,
-    StringLiteral,
-    // NS304-T10-F01: `u8"..."` — a typed UTF-8 literal (ReadOnlySpan<byte>); stringValue holds the
-    // UTF-8 bytes, elementTypeKey the span type, integerValue the byte count.
-    Utf8StringLiteral,
-    ArrayAllocation,
-    RangeArrayAllocation,
-    // CC1 fase 4B -- `stackalloc T[n]`. Un hijo: el contador. `elementTypeKey` es T. El MIR le
-    // pone el tamano y la alineacion; el backend emite un alloca de arreglo.
-    StackAllocation,
-    // CC1 fase 4C -- `new T` escalar. Un hijo NO tiene: es una reserva de un elemento. El MIR le
-    // pone el tamano; el backend llama al allocador.
-    RawAllocation,
-    // CC1 fase 4D -- `p + i`, `i + p`, `p - i`, `p - q`. Dos hijos, en el orden en que se
-    // escribieron. `operation` lleva el token (`+` o `-`), `elementTypeKey` el tipo apuntado.
-    // Cuando los dos hijos son punteros es una DIFERENCIA y el tipo del nodo es `builtin:nint`;
-    // en cualquier otro caso es un desplazamiento y el tipo es `T*`.
-    PointerArithmetic,
-    ArrayLength,
-    ArrayElementValue,
-    ArrayElementAddress,
-    RangeArrayElementValue,
-    RangeArrayElementAddress,
-    // NativeSharp 3.0 T01-F04. children = [receiver, written-start-or-zero,
-    // written-end-or-zero]. memberOrdinal is Slice(int,int), secondaryMemberOrdinal is
-    // Length(). integerValue is a four-bit endpoint mask: has-start, start-from-end, has-end,
-    // end-from-end; bit 4 records a compile-time bounds proof. The backend reuses one evaluated
-    // receiver for both protocol calls.
-    RangeSlice,
-    StringLength,
-    StringElementValue,
-    // ID 129. `ToString()` de un enum: el NOMBRE del enumerador.
-    //
-    // FORMA: children[0] es el VALOR del enum, children[1] la cadena de reserva (el nombre del
-    // tipo), y a partir de children[2] van PARES (constante entera, literal de cadena), uno por
-    // enumerador, en orden de declaracion.
-    //
-    // POR QUE UN NODO Y NO UNA CADENA DE CONDICIONALES, que es como se hizo primero: aquella
-    // bajaba el RECEPTOR UNA VEZ POR ENUMERADOR, asi que un receptor con efectos --`Dame()`--
-    // los repetia. Se rodeaba exigiendo un receptor re-evaluable y rechazando el resto, que es
-    // una limitacion del compilador disfrazada de regla del lenguaje. Con un nodo, el valor se
-    // baja UNA VEZ y la eleccion es una cadena de `select` sin saltos.
-    EnumName,
-    StringConcat,
-    StringEquals,
-    StringSubstring,
-    StringCharacterPointer,
-    StringFromCharArray,
-    // NS304-T03-F03: list-pattern rest capture over a native string synthesizes a
-    // StringView (receiver + start + length children); LLVM emits { data, count }.
-    StringViewFromString,
-    // NS304-T03-F03: same view synthesis over a native/fixed array -> Span<T>/ReadOnlySpan<T>.
-    // elementTypeKey carries T; LLVM emits { &receiver[start], count }.
-    SpanFromArray,
-    ReadOnlySpanFromArray,
-    SpanFromFixedArray,
-    ReadOnlySpanFromFixedArray,
-    CoreConsoleWriteLine,
-    CoreConsoleReadLine,
-    // C8 -- see MethodCoreOperationKind::ObjectTypeName / ObjectReferenceHash. One operand each
-    // (the object reference); result is builtin:string and builtin:int respectively.
-    CoreObjectTypeName,
-    CoreObjectReferenceHash,
-    // C8 struct half -- see MethodCoreOperationKind::StructEquals / StructHashCode. Children are
-    // the operands (two for Equals, one for GetHashCode, counted by argumentCount) followed by
-    // AggregateElement nodes describing the struct's SCALAR LEAVES: one per primitive field,
-    // nesting and fixed arrays already flattened, padding deliberately absent. Each leaf carries
-    // its byte offset in integerValue and its type in typeKey, and has no child of its own.
-    // (StructToString needs no node of its own: the answer is a compile-time constant, so it
-    // lowers to an ordinary StringLiteral.)
-    AggregateEquals,
-    AggregateHash,
-    // Stage 53.1 "Time" -- see MethodCoreOperationKind::ClockQuery* in ProjectMethodBodyModel.h.
-    CoreClockQueryCounter,
-    CoreClockQueryFrequency,
-    CoreClockQuerySystemFileTime,
-    // Stage 53.2 "Environment" -- see MethodCoreOperationKind::Environment* in
-    // ProjectMethodBodyModel.h.
-    CoreEnvironmentTickCount64,
-    CoreEnvironmentProcessorCount,
-    CoreEnvironmentExit,
-    // Stage 53.2b "Environment (variables)" -- see MethodCoreOperationKind::EnvironmentGet/
-    // SetVariable in ProjectMethodBodyModel.h. Lowered through the same operand-loop machinery
-    // as StringConcat/StringEquals, not a bespoke shape.
-    CoreEnvironmentGetVariable,
-    CoreEnvironmentSetVariable,
-    // Stage 53.3 "Filesystem/Paths" -- see MethodCoreOperationKind::FileExists/FileDelete/
-    // DirectoryExists/DirectoryCreate in ProjectMethodBodyModel.h. Same shared operand-loop
-    // machinery as the Environment (variables) pair above: one string operand in, a runtime
-    // hook call out.
-    CoreFileExists,
-    CoreFileDelete,
-    CoreDirectoryExists,
-    CoreDirectoryCreate,
-    // Stage 53.3b "Filesystem/Paths (contenido de archivo)" -- see
-    // MethodCoreOperationKind::FileReadAllText/FileWriteAllText/FileAppendAllText above.
-    CoreFileReadAllText,
-    CoreFileWriteAllText,
-    CoreFileAppendAllText,
-    // Bloque 4, fase A -- ver MethodCoreOperationKind::FileGetSize. Un operando (la ruta), un
-    // entero de 64 bits fuera: la misma forma de un operando que CoreFileExists, con otro tipo
-    // de salida.
-    CoreFileGetSize,
-    // Bloque 4, fase A -- ver MethodCoreOperationKind::FileReadAllBytes y siguientes.
-    CoreFileReadAllBytes,
-    CoreFileReadBytes,
-    CoreFileWriteAllBytes,
-    CoreEnvironmentCurrentDirectory,
-    // Bloque 4, fase C -- ver MethodCoreOperationKind::ProcessRun.
-    CoreProcessRun,
-    // Stage 53.4 "Filesystem/Paths (cierre)" -- see MethodCoreOperationKind::DirectoryDelete/
-    // PathGetFullPath in ProjectMethodBodyModel.h. Same shared operand-loop machinery again.
-    CoreDirectoryDelete,
-    CorePathGetFullPath,
-    // Stage 53.5 "Command-line arguments" -- see
-    // MethodCoreOperationKind::EnvironmentGetCommandLineArgCount/EnvironmentGetCommandLineArgs
-    // in ProjectMethodBodyModel.h. GetCommandLineArgCount joins the zero-argument bucket
-    // (CoreEnvironmentTickCount64/ProcessorCount); GetCommandLineArgs joins the shared
-    // operand-loop machinery, its one operand being a builtin:string[] instead of a string.
-    CoreEnvironmentGetCommandLineArgCount,
-    CoreEnvironmentGetCommandLineArgs,
-    // Stage 53.6 "Enumeracion de directorios" -- see MethodCoreOperationKind::
-    // DirectoryGetFileCount/GetFiles/GetDirectoryCount/GetDirectories in
-    // ProjectMethodBodyModel.h. GetFileCount/GetDirectoryCount are one-operand (a
-    // builtin:string path, builtin:int result); GetFiles/GetDirectories are two-operand (path +
-    // a builtin:string[] buffer -- the same caller-provided-buffer pattern
-    // CoreEnvironmentGetCommandLineArgs already established). All four join the exact same
-    // shared operand-loop machinery as every other core operation.
-    CoreDirectoryGetFileCount,
-    CoreDirectoryGetFiles,
-    CoreDirectoryGetDirectoryCount,
-    CoreDirectoryGetDirectories,
-    // Stage 54.1 "Threads" -- see MethodCoreOperationKind::ThreadCreate/ThreadJoin/ThreadDetach
-    // in ProjectMethodBodyModel.h. All three are one-operand: ThreadCreate's single operand is a
-    // ThreadStart delegate value (a genuinely new operand TYPE for this shared machinery, but not
-    // a new SHAPE -- still exactly one operand, lowered the same way via lowerExpression);
-    // ThreadJoin/ThreadDetach's single operand is a builtin:nint (the saved HANDLE). All three
-    // join the exact same shared operand-loop machinery as every other core operation.
-    CoreThreadCreate,
-    CoreThreadJoin,
-    CoreThreadDetach,
-    // Stage 54.2 "Atomics" -- see MethodCoreOperationKind::InterlockedIncrementInt32/.../
-    // InterlockedCompareExchangeInt64 in ProjectMethodBodyModel.h. NOT part of the shared
-    // operand-loop bucket above (unlike CoreThreadCreate/Join/Detach) -- these ten have a real
-    // receiver (the AtomicInt32/AtomicInt64 instance) and their first logical operand (the
-    // atomic location) is never written by the caller, only synthesized by the compiler as a
-    // FieldAddress node over the receiver's own `value_` field. See the dedicated block in
-    // ProjectOopHirModel.cpp (right before the ConsoleWriteLine block) for the full mechanism.
-    CoreAtomicLoadInt32,
-    CoreAtomicStoreInt32,
-    CoreInterlockedIncrementInt32,
-    CoreInterlockedDecrementInt32,
-    CoreInterlockedAddInt32,
-    CoreInterlockedExchangeInt32,
-    CoreInterlockedCompareExchangeInt32,
-    CoreAtomicLoadInt64,
-    CoreAtomicStoreInt64,
-    CoreInterlockedIncrementInt64,
-    CoreInterlockedDecrementInt64,
-    CoreInterlockedAddInt64,
-    CoreInterlockedExchangeInt64,
-    CoreInterlockedCompareExchangeInt64,
-    CoreAtomicLoadPointer,
-    CoreAtomicStorePointer,
-    CoreInterlockedExchangePointer,
-    CoreInterlockedCompareExchangePointer,
-    CoreAtomicThreadFence,
-    CoreAtomicCompilerFence,
-    CoreSimdFloat32x4Add,
-    CoreSimdFloat32x4Subtract,
-    CoreSimdFloat32x4Multiply,
-    CoreSimdInt128Add,
-    CoreSimdInt128Subtract,
-    CoreSimdInt128Multiply,
-    CoreSimdFloat256Add,
-    CoreSimdFloat256Subtract,
-    CoreSimdFloat256Multiply,
-    CoreSimdInt256Add,
-    CoreSimdInt256Subtract,
-    CoreSimdInt256Multiply,
-    CoreSimdLoadAligned128,
-    CoreSimdStoreAligned128,
-    CoreSimdLoadUnaligned128,
-    CoreSimdStoreUnaligned128,
-    CoreHalfFromFloat,
-    CoreHalfToFloat,
-    CoreSimdSwizzleWzyx,
-    CoreSimdShuffleLowHigh,
-    CoreSimdSqrt,
-    CoreSimdReciprocalSqrt,
-    CoreSimdFusedMultiplyAdd,
-    CoreBitPopulationCount,
-    CoreBitLeadingZeroCount,
-    CoreBitTrailingZeroCount,
-    CoreBitRotateLeft,
-    CoreBitRotateRight,
-    CoreBitByteSwap,
-    CoreCpuPrefetchRead,
-    CoreCpuPause,
-    CoreCpuReadTimestamp,
-    // Stage 54.3 "Mutex" -- see MethodCoreOperationKind::MutexCreate/MutexLock/MutexUnlock/
-    // MutexClose in ProjectMethodBodyModel.h. Exact same shape as CoreThreadCreate/Join/Detach
-    // above (a builtin:nint HANDLE round-tripped between separate NativeSharp calls), so these
-    // four rejoin the shared operand-loop bucket directly -- MutexCreate is zero-operand (the
-    // first core operation in the project with none at all), MutexLock/Unlock/Close are
-    // one-operand (the saved HANDLE), same as ThreadJoin/ThreadDetach.
-    CoreMutexCreate,
-    CoreMutexCreateNamed,
-    CoreMutexLock,
-    CoreMutexUnlock,
-    CoreMutexClose,
-    // Stage 54.4 "Condition Variables" -- NativeSharp.Core.Threading.Monitor. Enter/Exit/Pulse/
-    // PulseAll rejoin the SAME "one FieldAddress child, one runtime hook" shape
-    // CoreInterlockedIncrementInt32 already established (Stage 54.2) -- see the dedicated Monitor
-    // HIR block in ProjectOopHirModel.cpp for how each resolves its own single implicit field.
-    // CoreMonitorWait is the ONE genuinely new shape: its sole child is the receiver expression
-    // lowered ONCE (never a FieldAddress node), with memberOrdinal/secondaryMemberOrdinal on the
-    // node itself carrying the cv_/lock_ field ordinals for MIR/LLVM to resolve into two real
-    // pointers from that single lowered receiver -- see ProjectOopHirNode::secondaryMemberOrdinal
-    // below for the full rationale.
-    CoreMonitorEnter,
-    CoreMonitorExit,
-    CoreMonitorWait,
-    CoreMonitorPulse,
-    CoreMonitorPulseAll,
-    // Stage 54.5 "Otras primitivas de sincronizacion" -- NativeSharp.Core.Threading.Semaphore y
-    // NativeSharp.Core.Threading.Event. Mismo shape "sin receptor, operandos por la lista de
-    // argumentos AST" que Mutex/Thread arriba -- cero mecanismo de FieldAddress.
-    CoreSemaphoreCreate,
-    CoreSemaphoreCreateNamed,
-    CoreSemaphoreWait,
-    CoreSemaphoreRelease,
-    CoreSemaphoreClose,
-    CoreEventCreate,
-    CoreEventCreateNamed,
-    CoreEventSet,
-    CoreEventReset,
-    CoreEventWait,
-    CoreEventClose,
-    // Stage 55.1/55.2/55.3 -- Process/SystemInfo/Debug. All zero-argument (result carried purely
-    // by `kind` + `typeKey`, no children) except CoreProcessSetPriorityClass and
-    // CoreDebugOutputString, which each take exactly one child (the argument expression) --
-    // same shape CoreEnvironmentExit/CoreFileDelete already established.
-    CoreProcessGetCurrentProcessId,
-    CoreProcessGetWorkingSetSize,
-    CoreProcessGetKernelTime,
-    CoreProcessGetUserTime,
-    CoreProcessGetPriorityClass,
-    CoreProcessSetPriorityClass,
-    CoreSystemInfoGetPageSize,
-    CoreSystemInfoGetProcessorArchitecture,
-    CoreSystemInfoGetAllocationGranularity,
-    CoreSystemInfoGetTotalPhysicalMemoryBytes,
-    CoreSystemInfoGetAvailablePhysicalMemoryBytes,
-    CoreSystemInfoGetMemoryLoadPercent,
-    CoreDebugIsDebuggerPresent,
-    CoreDebugCaptureStackFrameCount,
-    CoreDebugOutputString,
-    // Pre-Stage-56 "utilidades basicas" round (Alberto, 2026-08-29).
-    CoreThreadSleep,
-    CoreFileCopy,
-    CoreFileMove,
-    CoreDirectoryMove,
-    DelegateCreate,
-    LambdaCreate,
-    ClosureCaptureValue,
-    ClosureCaptureAddress,
-    CaptureCellReference,
-    ClosureCaptureCellReference,
-    DelegateInvoke,
-    EventAdd,
-    EventRemove,
-    EventInvoke,
-    Unary,
-    Binary,
-    // `c ? a : b`. children[0] condition, children[1] true branch, children[2] false branch.
-    // Both branches are lazily evaluated, so this lowers to control flow, not a select.
-    Conditional,
-    // NativeSharp 3.0 T01-F03. children[0] is evaluated once. children[1] is evaluated only
-    // when that pointer/reference value is null; the result is the non-null left value or RHS.
-    NullCoalescing,
-    // E017 `Optional<T> ?? fallback`. The carrier is evaluated once; memberOrdinal names
-    // HasValue(), secondaryMemberOrdinal names UncheckedValue(), and the fallback stays lazy.
-    OptionalCoalescing,
-    // T01-F03 `place ??= value`. children[0] is the destination ADDRESS and children[1] the
-    // converted RHS. The backend loads/tests the address once and stores only on the null edge.
-    NullCoalescingAssignment,
-    Assignment,
-    // IDs 79 y 81 -- `x op= e`, `++x`, `x++`, `--x`, `x--`.
-    //
-    // POR QUE UN NODO PROPIO Y NO UN DESAZUCARADO. La forma obvia seria reescribir `x += e` como
-    // `x = x + e` aqui mismo. Es incorrecta: el destino se evaluaria DOS VECES, asi que
-    // `a[f()] += 1` llamaria a `f` dos veces y `*p++ += 1` avanzaria dos veces. C# garantiza que
-    // el destino se evalua una sola vez, y ese es justo el motivo por el que la tarea 62 decia
-    // que esto "requiere semantica de actualizacion de lvalue".
-    //
-    // FORMA. children[0] es la DIRECCION del destino, bajada una unica vez en contexto de
-    // direccion -- exactamente lo mismo que Assignment ya calculaba para su propio destino.
-    // children[1] es el operando derecho, ya convertido al tipo del destino (o un entero de paso
-    // cuando el destino es un puntero). `operation` lleva el operador BASE (`+` para `+=` y para
-    // `++`, `<<` para `<<=`, etc.), nunca el token compuesto: quien emite la aritmetica es el
-    // mismo codigo que emite un `Binary` corriente, y por eso no hay una segunda tabla de reglas
-    // de division con signo, de desplazamiento o de coma flotante.
-    //
-    // `booleanValue` = true significa QUE EL NODO VALE EL VALOR ANTIGUO. Es la unica diferencia
-    // entre `x++` y `++x`, y es una diferencia de un solo bit precisamente porque todo lo demas
-    // -- la direccion, la carga, la operacion, el almacenamiento -- es identico.
-    //
-    // `elementTypeKey`, cuando no esta vacio, dice que el destino es un puntero y cual es el tipo
-    // apuntado. El paso lo resuelve el MIR con el mismo `elementLayout` que ya usan
-    // PointerArithmetic, el stride de un arreglo y `sizeof` -- una sola regla de tamano.
-    CompoundStore,
-    Conversion,
-    RuntimeTypeTest,
-    SafeReferenceCast,
-    CheckedReferenceCast,
-    InstanceCall,
-    StaticCall,
-    ConstructorInitializerCall,
-    ObjectConstruction,
-    Deallocation,
-    // Item 319. One operand; dynamicDestruction selects the class descriptor's object-only
-    // entry. A non-dynamic node is a typed no-op for a destructible-free struct lifetime.
-    ObjectDestruction,
-    // T07-F06 assertion family. Assert/Assume have one bool child and builtin:void type.
-    // Unreachable/Panic have no children, builtin:never, and no normal successor.
-    Assert,
-    Unreachable,
-    Assume,
-    Panic,
-    // T07-F01. children[0] is the Result carrier evaluated exactly once. The node freezes both
-    // variant protocols and the cleanup path for its conditional Error return.
-    ResultPropagation,
-    // T07-F05. children[0] is the loop body. typeKey is the unified break-value type (or never),
-    // stringValue is the optional label, and breaks carry their converted value as child[0].
-    LoopExpression,
-    // T03-F03. children[0] is the governing value evaluated exactly once; remaining children are
-    // ordered MatchArm nodes. A MatchValue inside an arm reads that frozen value. MatchArm keeps
-    // [condition, guard, bindings..., result] and owns cleanupRegionOrdinals for its local scope.
-    MatchExpression,
-    MatchArm,
-    MatchValue,
-    // NS304-T15-F05. `checked(expr)`/`saturating(expr)`. One operand; stringValue is the policy
-    // ("checked"/"saturating"). The backend applies the policy to the decimal operations inside.
-    OverflowPolicy
-};
+struct HirAggregateFrame;
+struct BoundCallFrameState;
+struct AllocatorConstructionFrameState;
+struct AggregateCrossFrameState;
+struct AggregateCrossStructuralFrame;
+struct CoreOperandCallFrameState;
+struct DeconstructionDeclarationFrameState;
+struct EventInvokeFrameState;
+struct InlineAssemblyFrameState;
+struct MonitorCoreCallFrameState;
+struct NamespaceCallFrameState;
+struct OrdinaryCallFrameState;
+struct OrdinaryConstructionFrameState;
+struct RegularFunctionResult;
+struct ReceiverFrameState;
+struct IterativeExpressionFrame;
+struct VariableDeclarationFrameState;
+enum class IterativeExpressionKind : std::uint8_t;
+enum class IterativeInputKind : std::uint8_t;
+enum class LoopBlockAdvance : std::uint8_t;
+}
 
-enum class ProjectCollectionSegmentKind : std::uint8_t
-{
-    Element,
-    Spread
-};
 
-struct ProjectOopHirNode final
-{
-    ~ProjectOopHirNode();
 
-    ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::Block;
-    const ast::AstNode* syntax = nullptr;
-    std::string typeKey;
-    std::string elementTypeKey;
-    std::string stringValue;
-    // Item 381. Late debug lowering needs the source shape that the pointer-shaped internal VLA
-    // representation and placement result would otherwise erase.
-    std::string debugDisplayName;
-    lexer::TokenKind operation = lexer::TokenKind::Invalid;
-    std::optional<std::size_t> memberOrdinal;
-    std::optional<std::size_t> namespaceFunctionOrdinal;
-    std::optional<std::size_t> namespaceStateOrdinal;
-    // Stage 54.4 "Condition Variables" -- set ONLY on a CoreMonitorWait node, alongside
-    // memberOrdinal above (which, for THIS node kind only, holds the `cv_` field's ordinal rather
-    // than an ordinary field access's own ordinal). Holds the `lock_` field's ordinal. Default-
-    // constructed to nullopt for every other node kind -- adding this field required no update to
-    // any existing construction site in this codebase, since ProjectOopHirNode is always built via
-    // makeNode()+field assignment, never positional aggregate initialization (see the fresh
-    // Stage 54.3 lesson about MethodCoreBinding, which WAS positionally aggregate-initialized and
-    // needed all 16 call sites patched for exactly this reason -- this struct has no such risk).
-    std::optional<std::size_t> secondaryMemberOrdinal;
-    std::optional<std::size_t> resultSuccessTestMemberOrdinal;
-    std::optional<std::size_t> resultSuccessExtractorMemberOrdinal;
-    std::optional<std::size_t> resultErrorExtractorMemberOrdinal;
-    std::optional<std::size_t> resultErrorFactoryMemberOrdinal;
-    std::optional<std::size_t> resultErrorConversionMemberOrdinal;
-    std::optional<std::size_t> localOrdinal;
-    std::optional<std::size_t> parameterOrdinal;
-    std::optional<std::size_t> constructionOrdinal;
-    std::optional<std::size_t> targetTypeOrdinal;
-    std::optional<std::size_t> exceptionTypeOrdinal;
-    std::optional<std::size_t> cleanupRegionOrdinal;
-    std::optional<std::size_t> hirRegionOrdinal;
-    std::optional<std::size_t> exceptionTargetRegionOrdinal;
-    std::optional<std::size_t> targetScopeOrdinal;
-    std::optional<std::size_t> disposeContractMemberOrdinal;
-    std::optional<std::size_t> disposeImplementationMemberOrdinal;
-    std::vector<std::size_t> cleanupRegionOrdinals;
-    std::optional<MethodCleanupContinuationKind> cleanupContinuationKind;
-    std::optional<MethodBorrowKind> borrowKind;
-    std::optional<MethodLocalBorrowSourceKind> localBorrowSourceKind;
-    language::CaptureMode captureMode = language::CaptureMode::Reference;
-    std::optional<ProjectImplicitConversion> conversion;
-    // Set only on a SwitchSection node: the folded constant value of every label on that section,
-    // in source order. Empty on a section whose only label is `default`. Signed even when the
-    // governing type is unsigned -- the value is a bit pattern here, and the backend re-widens it
-    // to the governing type when it builds the LLVM case constant.
-    std::vector<std::int64_t> switchLabels;
-    // Set only on a SwitchSection node: this section carries the `default` label.
-    bool switchHasDefault = false;
-    std::uint64_t integerValue = 0;
-    // T01-F05 AggregateElement descriptors under AggregateSpread use this as the source-relative
-    // byte offset while integerValue remains the destination-absolute offset.
-    std::uint64_t secondaryIntegerValue = 0;
-    // NS304-T13-F06: a RawElementAddress over a flexible array carries the byte offset of its
-    // `Length` member in secondaryIntegerValue; this flag separates presence from value so a
-    // Length field at offset 0 stays distinguishable from "no bounds check".
-    bool hasTrailingLengthBounds = false;
-    // NS304-T13-F06: Length's byte offset RELATIVE TO the flexible-array base address (which is
-    // the Data field, not the struct head), so it can be negative.
-    std::int64_t trailingLengthRelativeOffset = 0;
-    // NS304-T13-F07: allocator provenance attached to a placement construction (`new (alloc) T(...)`).
-    // contextOrdinal is the temp local holding the allocator reference; the member ordinal names its
-    // Deallocate; typeOrdinal drives the generated per-allocator deallocate thunk.
-    std::optional<std::size_t> allocatorContextLocalOrdinal;
-    std::optional<std::size_t> allocatorDeallocateMemberOrdinal;
-    std::optional<std::size_t> allocatorTypeOrdinal;
-    std::uint64_t resultSuccessTag = 0;
-    std::uint64_t resultErrorTag = 0;
-    std::uint64_t resultReturnErrorTag = 0;
-    std::string resultSourceCarrierTypeKey;
-    std::string resultSourceErrorTypeKey;
-    std::string resultReturnCarrierTypeKey;
-    std::string resultReturnErrorTypeKey;
-    // Item 329. AggregateElement uses these when a positional initializer targets a bit field.
-    // The byte offset remains in integerValue, just like an ordinary aggregate element.
-    std::optional<std::uint64_t> bitOffset;
-    std::optional<std::uint64_t> bitWidth;
-    std::uint64_t bitStorageSize = 0;
-    std::uint64_t bitStorageAlignment = 1;
-    double floatingValue = 0.0;
-    bool booleanValue = false;
-    // One entry per materialized collection child, preserving literal/spread source order.
-    // Empty means this ArrayAllocation uses the ordinary count/initializer representation.
-    std::vector<ProjectCollectionSegmentKind> collectionSegments;
-    // Item 312. Set on LocalDeclaration when its physical slot stores an alias address rather
-    // than a value of typeKey.
-    bool referenceLocal = false;
-    // Capability of a reference local. The backend representation remains an address slot;
-    // semantic assignment checks have already enforced readonly `ref` before HIR construction.
-    bool referenceMutable = false;
-    // NativeSharp 3.0.4 T01-F06. LocalDeclaration uses module storage and a once guard.
-    bool staticLocal = false;
-    // NativeSharp 3.0 T06-F06. The local's storage/address is statically pinned for its lexical
-    // lifetime. Kept in HIR so coroutine/debug/FFI consumers never infer it from source syntax.
-    bool pinnedStorage = false;
-    // Item 313. A call with this bit produces an address although typeKey names the referent.
-    // Value contexts add PointerLoad; address contexts preserve the call itself.
-    bool referenceResult = false;
-    // MatchExpression only: its governing child is an address used by ref/ref mut bindings.
-    bool governingReference = false;
-    // T01-F03. Set only on an instance getter/method reached through `?.`.  The receiver is the
-    // first child as for every other instance call, but the backend must test it before lowering
-    // the remaining children so argument/default expressions stay lazy on the null edge.
-    bool nullConditionalCall = false;
-    // Property/indexer setters have a void ABI, while the assignment expression yields the
-    // converted value passed to the setter. Late lowering must return that already-evaluated
-    // argument after emitting the call instead of treating the void call as the expression value.
-    bool returnsAssignedValue = false;
-    // NativeSharp 3.0 T08-F06. Set only after the frontend proves ABI identity and an empty
-    // cleanup path for `must_tail return call(...)`.
-    bool mustTailCall = false;
-    // Item 377. Debug information must distinguish an owner from a borrow even though both use
-    // the same physical pointer representation. This is the declaration-level qualifier;
-    // objectLifetimeOwnership/storageOwnership remain the independent placement axes.
-    sema::OwnershipKind ownership = sema::OwnershipKind::None;
-    // Item 378. Distinguishes a scope-bound RAII owner from a manually managed owner in PDB.
-    bool automaticDestruction = false;
-    bool variableLengthArray = false;
-    std::size_t variableLengthArrayRank = 0;
-    std::size_t nativeArrayRank = 0;
-    bool placementConstructed = false;
-    // Item 323. Set on a proven-nonescaping RAII class local and its ObjectConstruction child.
-    // The object lifetime remains owned, but its backing bytes belong to the current stack frame.
-    bool stackPromotedObject = false;
-    // Item 308. Set on field value/address nodes and propagated to the store that consumes an
-    // address. It means LLVM volatile memory access, never atomic synchronization.
-    bool volatileAccess = false;
-    bool baseReceiver = false;
-    bool interfaceDispatch = false;
-    bool targetIsInterface = false;
-    bool dynamicDestruction = false;
-    bool valueTypeNoOpDeletion = false;
-    // Item 320. Independent lifetime domains; placement is owned/borrowed, heap new owned/owned.
-    sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
-    sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
-    bool catchAll = false;
-    bool catchHasFilter = false;
-    bool catchExhaustive = false;
-    std::vector<std::string> catchMatchedErrorTypeKeys;
-    bool interfaceCleanupDispatch = false;
-    std::size_t argumentCount = 0;
-    std::vector<std::string> argumentTypeKeys;
-    // Children remain in source evaluation order.  Calls use this map to place the resulting
-    // values in ABI parameter order only after every source expression has been evaluated.
-    std::vector<std::size_t> argumentParameterOrdinals;
-    std::vector<std::unique_ptr<ProjectOopHirNode>> children;
-};
 
-struct ProjectOopHirFieldInitializer final
-{
-    std::size_t memberOrdinal = 0;
-    std::size_t declaringTypeOrdinal = 0;
-    bool isStatic = false;
-    bool isConst = false;
-    std::unique_ptr<ProjectOopHirNode> value;
-};
 
-struct ProjectOopHirFunction final
-{
-    std::size_t memberOrdinal = 0;
-    std::optional<std::size_t> namespaceFunctionOrdinal;
-    std::size_t declaringTypeOrdinal = 0;
-    bool constructor = false;
-    bool destructor = false;
-    bool isStatic = false;
-    bool referenceReturn = false;
-    bool isNoHeap = false;
-    sema::EffectSet effects;
-    // NS304-T05-F03: poll function synthesized from an async function's body. Shares the async
-    // function's memberOrdinal (like a lambda shares its owner); mangledName carries `$poll`.
-    bool isAsyncPoll = false;
-    InliningPolicy inliningPolicy = InliningPolicy::Automatic;
-    bool isExportedC = false;
-    // Interop Foundation: a function declared in `extern C from "<dll>" { ... }`. It has NO body
-    // anywhere in the project -- mangledName is the C symbol verbatim, the backend emits only a
-    // declaration (with the same Win64 ABI mapping every definition gets), and (importDllName,
-    // mangledName) flows to the linker so the import library materializes.
-    bool isImportedC = false;
-    bool isVariadic = false;
-    // A public NativeSharp method materialized from .nsmeta. Its source declaration participates
-    // in ordinary overload resolution, but its body and symbol live in the referenced library.
-    bool isImportedNative = false;
-    bool isTransportedInlineBody = false;
-    // Producer-owned callable synthesized for a source class that declares no constructor.
-    // It freezes base chaining plus instance field initializers behind the ordinary ctor ABI.
-    bool isSyntheticImplicitConstructor = false;
-    std::string importDllName;
-    // C1.2 "import identity": this import's C symbol name is claimed by more than one library, so
-    // it cannot be resolved statically by name -- mangledName is a unique internal name and the
-    // backend emits a body that binds through LoadLibrary/GetProcAddress at first call.
-    bool importRequiresRuntimeBinding = false;
-    std::string cAbiName;
-    bool isLambda = false;
-    std::optional<std::size_t> lambdaOrdinal;
-    bool hasClosureEnvironment = false;
-    std::vector<std::string> captureTypeKeys;
-    std::vector<std::string> captureNames;
-    // Every current closure slot owns a pointer to a shared heap cell. Preserve provenance so
-    // MIR dumps, cache identities and debugger consumers can distinguish direct and inherited
-    // captures without reconstructing the method-body model.
-    std::vector<MethodLambdaCaptureSourceKind> captureSourceKinds;
-    std::vector<language::CaptureMode> captureModes;
-    std::vector<bool> captureOwnsValues;
-    language::CallableTrait callableTrait = language::CallableTrait::Fn;
-    std::uint64_t closureLayoutSize = 0;
-    std::uint64_t closureLayoutAlignment = 1;
-    std::vector<std::size_t> capturedLocalOrdinals;
-    // NS304-T06-F04: generator parameters captured into the frame (original callable's parameter
-    // type keys, in original order); the constructor allocates the frame and stores them.
-    std::vector<std::string> generatorParameterTypeKeys;
-    bool isGeneratorConstructor = false;
-    std::vector<std::size_t> capturedParameterOrdinals;
-    bool capturesThisCell = false;
-    std::string genericSpecializationKey;
-    std::string mangledName;
-    std::string debugDisplayName;
-    std::string returnTypeKey;
-    // Empty for non-throwing callables. The current Windows x64 profile uses native EH ABI 1;
-    // this key is the statically declared payload bound checked by callers and metadata users.
-    std::string errorTypeKey;
-    // NS304-T05-F08: async frame storage selected by [FrameStorage(...)].
-    language::FrameStorage frameStorage = language::FrameStorage::CallerStack;
-    sema::OwnershipKind returnOwnership = sema::OwnershipKind::None;
-    std::vector<std::string> parameterNames;
-    std::vector<std::string> parameterTypeKeys;
-    std::vector<ParameterPassKind> parameterPassKinds;
-    std::vector<sema::OwnershipKind> parameterOwnerships;
-    std::vector<std::size_t> localOrdinals;
-    std::unique_ptr<ProjectOopHirNode> body;
-};
+
+
+
+
+
 
 class ProjectOopHirModel final
 {
@@ -829,6 +121,121 @@ private:
         const ProjectMetaprogrammingModel* metaprogrammingModel,
         std::optional<std::size_t> memberFilter,
         const ProjectOopHirModel* lookupSource);
+    bool initializeBuildState(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectMethodBodyModel& methodBodyModel,
+        const ProjectConstructionModel& constructionModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ProjectNamespaceFunctionModel* namespaceFunctionModel,
+        std::string& error);
+    void indexBuildBindings(
+        const ProjectMethodBodyModel& methodBodyModel,
+        const ProjectConstructionModel& constructionModel);
+    bool buildRegularFunctionsInParallel(
+        std::size_t workerCount,
+        std::string& error);
+    bool mergeParallelRegularFunctions(
+        std::vector<internal::RegularFunctionResult>& results,
+        std::string& error);
+    bool buildRegularFunctionsSequentially(
+        std::optional<std::size_t> memberFilter,
+        std::string& error);
+    bool buildRegularFunction(
+        std::size_t memberOrdinal,
+        std::string& error);
+    bool regularFunctionShouldBeSkipped(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member) const;
+    bool appendPrecompiledRegularFunction(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member,
+        std::string& error);
+    void appendImportedCRegularFunction(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member);
+    void initializeRegularFunction(
+        ProjectOopHirFunction& function,
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member);
+    bool appendRegularFunctionParameterCleanups(
+        ProjectOopHirFunction& function,
+        const ClassMemberSymbol& member,
+        std::vector<std::unique_ptr<ProjectOopHirNode>>& cleanupNodes,
+        std::string& error);
+    bool prependConstructorWork(
+        ProjectOopHirFunction& function,
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member,
+        std::string& error);
+    bool appendConstructorInitializerCall(
+        std::vector<std::unique_ptr<ProjectOopHirNode>>& prefix,
+        std::size_t memberOrdinal,
+        const ConstructorInitializerBinding* binding,
+        std::string& error);
+    bool appendConstructorFieldInitializerWork(
+        std::vector<std::unique_ptr<ProjectOopHirNode>>& prefix,
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member,
+        const ConstructorInitializerBinding* binding,
+        std::string& error);
+    bool appendConstructorInitializerArguments(
+        ProjectOopHirNode& initializerCall,
+        const ConstructorInitializerBinding& binding,
+        const ClassMemberSymbol& selectedConstructor,
+        std::size_t memberOrdinal,
+        bool& hasOwnedTemporary,
+        std::string& error);
+    bool appendConstructorInitializerDefaults(
+        ProjectOopHirNode& initializerCall,
+        const ConstructorInitializerBinding& binding,
+        const ClassMemberSymbol& selectedConstructor,
+        std::string& error);
+    void promoteEligibleStackClassLocals(
+        ProjectOopHirFunction& function,
+        const std::vector<ProjectOopHirNode*>& localDeclarations);
+    void promoteScopeClassLocals(
+        const std::vector<ProjectOopHirNode*>& localDeclarations);
+    bool validateNoHeapRegularFunction(
+        const ProjectOopHirFunction& function,
+        const ClassMemberSymbol& member,
+        std::string& error) const;
+    bool appendRegularCoroutineFunctions(
+        ProjectOopHirFunction function,
+        std::string& error);
+    bool buildNamespaceFunctions(std::string& error);
+    bool buildNamespaceFunction(
+        std::size_t functionOrdinal,
+        std::string& error);
+    void initializeNamespaceFunction(
+        ProjectOopHirFunction& function,
+        std::size_t functionOrdinal,
+        const NamespaceFunctionSymbol& symbol) const;
+    bool appendNamespaceFunctionParameterCleanups(
+        ProjectOopHirFunction& function,
+        std::size_t callableOrdinal,
+        const NamespaceFunctionSymbol& symbol,
+        std::vector<std::unique_ptr<ProjectOopHirNode>>& cleanupNodes,
+        std::string& error);
+    bool buildLambdaFunctions(std::string& error);
+    bool buildLambdaFunction(
+        const MethodLambdaBinding& lambda,
+        std::string& error);
+    bool lowerExpressionLambdaBody(
+        ProjectOopHirFunction& function,
+        const MethodLambdaBinding& lambda,
+        std::string& error);
+    bool markLambdaClosureCells(std::string& error);
+    bool buildFieldInitializers(std::string& error);
+    bool buildFieldInitializer(
+        std::size_t memberOrdinal,
+        std::string& error);
+    bool buildImplicitConstructors(std::string& error);
+    bool buildImplicitConstructor(
+        std::size_t typeOrdinal,
+        std::string& error);
 
     static bool stackClassLocalUsesAreSafe(
         const ProjectOopHirNode* node,
@@ -954,11 +361,3079 @@ private:
         bool addressContext,
         const ast::AstNode* statementContinuation,
         std::string& error);
+    std::optional<internal::IterativeExpressionKind> iterativeExpressionKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeDelegateAndCallKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeCoreCallKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeSpecialCallKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeConstructionKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeOperatorKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeControlFlowKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeSetterAssignmentKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeExitAndDestructionKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeStorageKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeMemberKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeIndexKind(
+        const ast::AstNode* syntax,
+        bool address);
+    std::optional<internal::IterativeExpressionKind> iterativeUserIndexAndFieldKind(
+        const ast::AstNode* syntax,
+        bool address);
+    static bool validIterativeIndexSyntax(const ast::AstNode* index) noexcept;
+    static bool validRawIterativeIndexSyntax(const ast::AstNode* index) noexcept;
+    static bool isInterpolationHole(
+        const language::InterpolationPart& part) noexcept;
+    static bool isSpreadElement(const ast::AstNode* child) noexcept;
+    bool applyExpressionBoundaryPostconditions(
+        std::unique_ptr<ProjectOopHirNode>& child,
+        const ast::AstNode* childSyntax,
+        std::size_t childMemberOrdinal,
+        std::string& error);
+    void applyRootExpressionPostconditions(
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        const ast::AstNode* statementContinuation,
+        std::string& error);
+    static const ProjectOopHirNode* rootLoweredExpression(
+        const std::unique_ptr<ProjectOopHirNode>& lowered,
+        const ast::AstNode* statementContinuation) noexcept;
+    static bool statementChildPolicyApplied(
+        const ast::AstNode* statementContinuation) noexcept;
+    static bool directlyAllocatesHeap(ProjectOopHirNodeKind kind) noexcept;
+    void rejectDirectNoHeapAllocation(
+        std::unique_ptr<ProjectOopHirNode>& child,
+        const ClassMemberSymbol& activeMember,
+        std::string& error);
+    void rejectNoHeapBoundCall(
+        std::unique_ptr<ProjectOopHirNode>& child,
+        const ast::AstNode* childSyntax,
+        const ClassMemberSymbol& activeMember,
+        std::string& error);
+    static void rejectNoHeapIndirectInvocation(
+        std::unique_ptr<ProjectOopHirNode>& child,
+        const ClassMemberSymbol& activeMember,
+        std::string& error);
+    void rejectNoHeapConstruction(
+        std::unique_ptr<ProjectOopHirNode>& child,
+        const ast::AstNode* childSyntax,
+        const ClassMemberSymbol& activeMember,
+        std::string& error);
+    bool initializeSwitchStatementFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::string& error);
+    void initializeForStatementFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement);
+    bool initializeForeachStatementFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::string& error);
+    bool initializeExitValueStatementFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::string& error);
+    bool initializeBreakValueStatementFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::string& error);
+    bool initializeReturnValueStatementFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::string& error);
+    bool initializeThrowValueStatementFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::string& error);
+    void initializeCoroutineValueStatementFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::size_t statementMemberOrdinal);
+    bool initializeUsingStatementFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::string& error);
+    void initializeTryStatementFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement);
+    static bool isBoundCallKind(
+        internal::IterativeExpressionKind kind) noexcept;
+    std::optional<bool> initializeReceiverFrame(
+        internal::ReceiverFrameState& receiver,
+        const ast::AstNode* receiverSyntax,
+        std::string_view receiverTypeKey,
+        std::string& error);
+    void acceptReceiverChild(
+        internal::ReceiverFrameState& receiver,
+        std::unique_ptr<ProjectOopHirNode> child);
+    bool initializeBoundCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        const MethodCallBinding* binding,
+        std::vector<const ast::AstNode*> arguments,
+        bool nullConditional,
+        std::string& error);
+    bool nextBoundCallChild(
+        const internal::BoundCallFrameState& call,
+        const ast::AstNode*& syntax,
+        bool& addressContext);
+    void acceptBoundCallChild(
+        internal::BoundCallFrameState& call,
+        std::unique_ptr<ProjectOopHirNode> child);
+    bool validateOrdinaryCallMember(
+        const internal::OrdinaryCallFrameState& call,
+        std::string& error) const;
+    bool initializeOrdinaryCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    void redirectOrdinaryInterfaceCall(
+        internal::OrdinaryCallFrameState& call,
+        bool& interfaceDispatch) const;
+    void initializeOrdinaryCallNode(
+        internal::OrdinaryCallFrameState& call,
+        internal::IterativeExpressionFrame& frame,
+        bool interfaceDispatch);
+    bool scheduleOrdinaryCallFrame(
+        internal::OrdinaryCallFrameState& call,
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool nextOrdinaryCallChild(
+        const internal::OrdinaryCallFrameState& call,
+        const ast::AstNode*& syntax,
+        bool& addressContext) const;
+    bool acceptOrdinaryCallChild(
+        internal::OrdinaryCallFrameState& call,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    bool acceptOrdinaryCallReceiverChild(
+        internal::OrdinaryCallFrameState& call,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    bool acceptOrdinaryCallArgumentChild(
+        internal::OrdinaryCallFrameState& call,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> finishOrdinaryCall(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool initializeNamespaceCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    static bool nextNamespaceCallChild(
+        const internal::NamespaceCallFrameState& call,
+        const ast::AstNode*& syntax,
+        bool& addressContext);
+    bool acceptNamespaceCallChild(
+        internal::NamespaceCallFrameState& call,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    bool acceptNamespaceCallReceiverChild(
+        internal::NamespaceCallFrameState& call,
+        std::unique_ptr<ProjectOopHirNode> child);
+    bool acceptNamespaceCallArgumentChild(
+        internal::NamespaceCallFrameState& call,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    bool initializeEventInvokeFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool nextEventInvokeChild(
+        const internal::EventInvokeFrameState& call,
+        const ast::AstNode*& syntax,
+        bool& addressContext);
+    bool acceptEventInvokeChild(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    bool initializeDelegateInvokeFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    static bool nextDelegateInvokeChild(
+        const internal::IterativeExpressionFrame& frame,
+        const ast::AstNode*& syntax);
+    void acceptDelegateInvokeChild(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode> child);
+    bool initializeAssertionCoreFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool initializeIteratorCoreCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool initializeCoreOperandCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool initializeSpanCoreOperandCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::CoreOperandCallFrameState& call,
+        std::string& error);
+    bool initializeStringCoreOperandCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::CoreOperandCallFrameState& call,
+        std::string& error);
+    static bool nextCoreOperandCallChild(
+        const internal::CoreOperandCallFrameState& call,
+        const ast::AstNode*& syntax,
+        bool& addressContext);
+    void acceptCoreOperandCallChild(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode> child);
+    bool initializeAtomicCoreCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    static bool nextAtomicCoreCallChild(
+        const internal::IterativeExpressionFrame& frame,
+        const ast::AstNode*& syntax);
+    bool acceptAtomicCoreCallChild(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    bool initializeMonitorCoreCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    static bool nextMonitorCoreCallChild(
+        const internal::MonitorCoreCallFrameState& call,
+        const ast::AstNode*& syntax);
+    void acceptMonitorCoreCallChild(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode> child);
+    bool initializeConsoleOutputCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool initializeConsoleReadLineCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool initializeEnumToStringCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool initializeStructCloneCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool initializeStructAggregateCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool initializeEnvironmentExitCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool prepareOrdinaryConstructionTail(
+        internal::OrdinaryConstructionFrameState& construction,
+        std::string& error);
+    bool appendOrdinaryConstructionDefaults(
+        internal::OrdinaryConstructionFrameState& construction,
+        std::string& error);
+    bool appendEmptyOrdinaryConstructionPack(
+        internal::OrdinaryConstructionFrameState& construction,
+        std::string& error);
+    void collectImplicitOrdinaryConstructionFields(
+        internal::OrdinaryConstructionFrameState& construction);
+    bool initializeOrdinaryConstructionFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool nextOrdinaryConstructionChild(
+        const internal::OrdinaryConstructionFrameState& construction,
+        const ast::AstNode*& syntax) const;
+    bool acceptOrdinaryConstructionChild(
+        internal::OrdinaryConstructionFrameState& construction,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    bool acceptOrdinaryConstructionArgument(
+        internal::OrdinaryConstructionFrameState& construction,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    bool appendOrdinaryConstructionPackElement(
+        internal::OrdinaryConstructionFrameState& construction,
+        std::unique_ptr<ProjectOopHirNode> child,
+        const ast::AstNode* argumentSyntax,
+        std::size_t parameterIndex,
+        std::string& error);
+    bool acceptOrdinaryConstructionFieldInitializer(
+        internal::OrdinaryConstructionFrameState& construction,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> finishOrdinaryConstructionFrame(
+        internal::IterativeExpressionFrame& frame);
+    bool initializeAllocatorConstructionFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    static bool nextAllocatorConstructionChild(
+        const internal::AllocatorConstructionFrameState& construction,
+        const ast::AstNode*& syntax,
+        bool& addressContext);
+    bool acceptAllocatorConstructionChild(
+        internal::AllocatorConstructionFrameState& construction,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> finishAllocatorConstructionFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool prepareAggregateCrossStructuralFrame(
+        internal::AggregateCrossStructuralFrame& structural,
+        std::string& error);
+    bool prepareTupleAggregateCrossStructuralFrame(
+        internal::AggregateCrossStructuralFrame& structural,
+        const std::vector<std::string>& tupleElements,
+        std::string& error);
+    bool prepareFixedArrayAggregateCrossStructuralFrame(
+        internal::AggregateCrossStructuralFrame& structural,
+        std::string_view elementTypeKey,
+        std::string& error);
+    bool prepareStructAggregateCrossStructuralFrame(
+        internal::AggregateCrossStructuralFrame& structural,
+        std::string& error);
+    bool advanceAggregateCrossFrame(
+        internal::AggregateCrossFrameState& aggregate,
+        std::string& error);
+    bool advanceAggregateCrossEntry(
+        internal::AggregateCrossFrameState& aggregate,
+        internal::AggregateCrossStructuralFrame& structural,
+        bool& continueStructural,
+        std::string& error);
+    bool initializeAggregateCrossFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    static bool nextAggregateCrossChild(
+        const internal::AggregateCrossFrameState& aggregate,
+        const ast::AstNode*& syntax,
+        bool& addressContext);
+    bool acceptAggregateCrossChild(
+        internal::AggregateCrossFrameState& aggregate,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    bool acceptAggregateWithSource(
+        internal::AggregateCrossFrameState& aggregate,
+        const internal::AggregateCrossStructuralFrame& structural,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    bool acceptAggregateSpreadSource(
+        internal::AggregateCrossFrameState& aggregate,
+        const internal::AggregateCrossStructuralFrame& structural,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    void acceptAggregateValue(
+        internal::AggregateCrossFrameState& aggregate,
+        std::unique_ptr<ProjectOopHirNode> child);
+    static std::unique_ptr<ProjectOopHirNode> finishAggregateCrossFrame(
+        internal::IterativeExpressionFrame& frame);
+    std::optional<bool> prepareSetterReceiver(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool initializeVariableDeclarationFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool initializeVariableCleanup(
+        internal::VariableDeclarationFrameState& variable,
+        const ast::AstNode* syntax,
+        std::string& error);
+    bool initializeVariableMode(
+        internal::VariableDeclarationFrameState& variable,
+        const ast::AstNode* syntax,
+        std::string& error);
+    static bool nextVariableDeclarationChild(
+        const internal::IterativeExpressionFrame& frame,
+        const ast::AstNode*& syntax,
+        bool& addressContext);
+    void completeVariableAllocation(
+        internal::IterativeExpressionFrame& frame);
+    bool acceptVariableDeclarationChild(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    bool acceptVariableInitializer(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode> child);
+    void acceptVariableExtent(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode> child);
+    static std::unique_ptr<ProjectOopHirNode> finishVariableDeclarationFrame(
+        internal::IterativeExpressionFrame& frame);
+    bool initializeDeconstructionDeclarationFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool nextDeconstructionDeclarationChild(
+        const internal::IterativeExpressionFrame& frame,
+        const ast::AstNode*& syntax,
+        bool& addressContext);
+    bool acceptDeconstructionDeclarationChild(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> finishDeconstructionDeclarationFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::string& error);
+    bool expandDeconstructionBindingTuple(
+        std::string& error,
+        const ast::AstNode* bindingSyntax,
+        const std::string& typeKey,
+        std::uint64_t byteOffset,
+        std::vector<HirTuplePatternFrame>& children);
+    bool appendDeconstructionBindingLeaf(
+        ProjectOopHirNode& block,
+        ProjectOopHirNode& deconstruct,
+        std::string& error,
+        const ast::AstNode* bindingSyntax,
+        const std::string& typeKey,
+        std::uint64_t byteOffset);
+    void initializeInlineAssemblyFrame(
+        internal::IterativeExpressionFrame& frame);
+    bool advanceInlineAssemblyFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode*& syntax,
+        bool& addressContext,
+        std::string& error);
+    bool acceptInlineAssemblyOperand(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode> child,
+        std::string& error);
+    static std::unique_ptr<ProjectOopHirNode> finishInlineAssemblyFrame(
+        internal::IterativeExpressionFrame& frame);
+    void rollbackMatchCleanups(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    bool resumePendingConditionStatementAfterFailure(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    void activateLocalCleanup(
+        const std::unique_ptr<ProjectOopHirNode>& node);
+    void activateDirectStatementCleanup(
+        const std::unique_ptr<ProjectOopHirNode>& node);
+    static bool isExitValueStatement(
+        const ast::AstNode* statement) noexcept;
+    static bool isCoroutineValueStatement(
+        const ast::AstNode* statement) noexcept;
+    bool beginExitValueStatement(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        const ast::AstNode* statement,
+        std::size_t statementMemberOrdinal);
+    void beginCoroutineValueStatement(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        const ast::AstNode* statement,
+        std::size_t statementMemberOrdinal);
+    bool beginUsingStatement(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        const ast::AstNode* statement,
+        std::size_t statementMemberOrdinal);
+    void beginTryStatement(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        const ast::AstNode* statement,
+        std::size_t statementMemberOrdinal);
+    bool initializeStatementContinuationFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statementContinuation,
+        std::size_t memberOrdinal,
+        bool& addressContext,
+        std::string& error);
+    std::optional<bool> initializeDeclarationContinuationFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statementContinuation);
+    std::optional<bool> initializeControlContinuationFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statementContinuation,
+        std::string& error);
+    std::optional<bool> initializeValueContinuationFrame(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statementContinuation,
+        std::size_t memberOrdinal,
+        bool& addressContext,
+        std::string& error);
+    bool initializeRootLoopWorklist(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        bool& worklistComplete,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    bool initializeRootDeclarationWorklist(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        bool& currentAddressContext,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        bool& worklistComplete,
+        const ast::AstNode* statementContinuation);
+    bool initializeRootVariableWorklist(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        bool& currentAddressContext,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        bool& worklistComplete);
+    bool initializeRootDeconstructionWorklist(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        bool& currentAddressContext,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        bool& worklistComplete,
+        const ast::AstNode* statementContinuation);
+    bool initializeRootInlineAssemblyWorklist(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        bool& currentAddressContext,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        bool& worklistComplete);
+    bool expandDeconstructionAssignmentTargetTuple(
+        std::string& error,
+        const ast::AstNode* targetSyntax,
+        const std::string& sourceTypeKey,
+        std::uint64_t byteOffset,
+        std::vector<HirTuplePatternFrame>& children);
+    static bool collectDeconstructionAssignmentTargetLeaf(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* targetSyntax,
+        const std::string& sourceTypeKey,
+        std::uint64_t byteOffset);
+    void materializeSetterReceiver(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode>& lowered);
+    bool beginMatchArm(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        std::string& error);
+    bool advanceMatchDeclarations(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceMatchVariableDeclaration(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* declaration,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance>
+    advanceMatchDeconstructionDeclaration(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* declaration,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceMatchInlineAssembly(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* declaration,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceMatchConditionalOrLoop(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* declaration,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext);
+    std::optional<internal::LoopBlockAdvance> advanceMatchSwitchOrIteration(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* declaration,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceMatchValueStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* declaration,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    bool beginMatchValue(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    void finishMatch(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode>& lowered);
+    internal::LoopBlockAdvance advanceForStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        std::size_t frameIndex);
+    internal::LoopBlockAdvance advanceForInitializer(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        std::size_t frameIndex);
+    internal::LoopBlockAdvance advanceForCondition(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind);
+    internal::LoopBlockAdvance advanceForIncrement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind);
+    internal::LoopBlockAdvance advanceForBody(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    internal::LoopBlockAdvance advanceSwitchStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t frameIndex);
+    std::optional<internal::LoopBlockAdvance> beginNextSwitchSection(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error);
+    const ast::AstNode* nextSwitchSectionStatement(
+        internal::IterativeExpressionFrame& frame);
+    std::optional<internal::LoopBlockAdvance> advanceSwitchSimpleStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind);
+    std::optional<internal::LoopBlockAdvance> advanceSwitchDeclarationStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceSwitchVariableStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceSwitchDeconstructionStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceSwitchAssemblyStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceSwitchControlStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceSwitchConditionalStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind);
+    std::optional<internal::LoopBlockAdvance> advanceSwitchLoopStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceSwitchIterationStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceSwitchValueStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    internal::LoopBlockAdvance advanceLoopBlockFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t frameIndex);
+    std::optional<internal::LoopBlockAdvance> advanceLoopBlockSimpleStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind);
+    std::optional<internal::LoopBlockAdvance> advanceLoopBlockDeclarationStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceLoopBlockVariableStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceLoopBlockDeconstructionStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceLoopBlockAssemblyStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceLoopBlockControlStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceLoopBlockConditionalStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind);
+    std::optional<internal::LoopBlockAdvance> advanceLoopBlockLoopStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceLoopBlockIterationStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t frameIndex);
+    std::optional<internal::LoopBlockAdvance> advanceLoopBlockValueStatement(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* statement,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    internal::LoopBlockAdvance advanceForeachStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        std::size_t frameIndex);
+    std::optional<internal::LoopBlockAdvance> advanceForeachSimpleSource(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* source,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceForeachBasicSource(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* source,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind);
+    std::optional<internal::LoopBlockAdvance> advanceForeachDeclarationSource(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* source,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceForeachAssemblySource(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* source,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceForeachControlSource(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* source,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        std::size_t& frameIndex);
+    std::optional<internal::LoopBlockAdvance> advanceForeachConditionalSource(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* source,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceForeachSwitchSource(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* source,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> advanceForeachIterationSource(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* source,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        std::size_t& frameIndex);
+    std::optional<internal::LoopBlockAdvance> advanceForeachValueSource(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode* source,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> initializeScheduledPrimaryFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledLoopExpressionFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledAwaitExpressionFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledUserUnaryOperatorFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledUserBinaryOperatorFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledUserConversionFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledNamespaceCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledEventInvokeFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledDelegateInvokeFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> initializeScheduledCoreFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledAssertionCoreFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledIteratorCoreCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledCoreOperandCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledAtomicCoreCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledMonitorCoreCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledConsoleOutputCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledConsoleReadLineCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledEnumToStringCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> initializeScheduledCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledStructCloneCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledStructAggregateCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledEnvironmentExitCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledOrdinaryCallFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledAggregateCrossLoweringFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledOrdinaryConstructionFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledAllocatorConstructionFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledPropertyGetterFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> initializeScheduledAccessFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledExtensionPropertyGetterFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledUserIndexerGetterFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledDelegateCreationReceiverFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledInterpolationHandlerFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledCollectionBuilderFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledArrayConstructionFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledInstanceFieldFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledRangeSliceFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> initializeScheduledValueFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledCoreIndexFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledCoreBinaryFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledRawIndexFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledResultPropagationFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledDestructionFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledStackAllocationFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledMoveProjectionFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledMatchFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> initializeScheduledAssignmentFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledDeconstructionAssignmentFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledEventSubscriptionFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledPropertyIndexerSetterFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledNamespaceExtensionSetterFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledNullConditionalFieldAssignmentFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledNullConditionalArrayAssignmentFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance initializeScheduledDirectAssignmentFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+
+    internal::LoopBlockAdvance initializeScheduledExpressionFrame(
+        internal::IterativeExpressionFrame& frame,
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledLoopAwaitChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledNamespaceEventChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledDelegateConsoleChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledCoreOperandChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledAtomicMonitorChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledOrdinaryCallChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledAggregateChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledOrdinaryConstructionChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledAllocatorChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledReceiverChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledRemainingChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+
+    internal::LoopBlockAdvance selectScheduledChildSyntax(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledPrimaryChildSyntax(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> selectScheduledSecondaryChildSyntax(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    void configureScheduledChildContext(
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind);
+    bool configureScheduledPrimaryChildContext(
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind);
+    bool configureScheduledValueChildContext(
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        bool& currentAddressContext);
+    bool configureScheduledCallChildContext(
+        internal::IterativeExpressionKind currentKind,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        bool& currentAddressContext);
+    void configureScheduledFallbackChildContext(
+        internal::IterativeExpressionKind currentKind,
+        bool& currentAddressContext);
+
+    internal::LoopBlockAdvance selectScheduledExpressionChild(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+
+    internal::LoopBlockAdvance scheduleIterativeExpression(
+        internal::IterativeExpressionKind currentKind,
+        bool& completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+
+    internal::LoopBlockAdvance scheduleCurrentExpression(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance lowerScheduledDirectExpression(
+        bool completedWithoutChild,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode* current,
+        std::size_t currentMemberOrdinal,
+        bool currentAddressContext,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    bool scheduledChildUsesExpressionImpl(
+        const std::vector<internal::IterativeExpressionFrame>& frames) const;
+    void setScheduledLoweringErrorRange(
+        const std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode* current);
+
+    bool runExpressionScheduler(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        bool& worklistComplete,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> completeScheduledTerminalFrames(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledResultPropagationFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledDestructionFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledStackAllocationFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledStorageUnaryFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledMoveProjectionFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+
+    std::optional<internal::LoopBlockAdvance> completeScheduledStatementFrames(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledVariableDeclarationFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledInlineAssemblyStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledStaticAssertStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledIfStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> beginIfControlAlternative(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode* alternative,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> beginIfIterationAlternative(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode* alternative,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> beginIfValueAlternative(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode* alternative,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledLoopStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledSwitchStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledForStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledExitValueStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledCoroutineValueStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledUsingStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledTryStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> beginNextTryCatch(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> beginTryFinally(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledForeachStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledLoopBlockExpressionStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledLoopBlockFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+
+    std::optional<internal::LoopBlockAdvance> completeScheduledSimpleFrames(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledLoopExpressionFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledAwaitExpressionFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledExpressionStatementFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledOverflowPolicyFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledBuiltinUnaryFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledDelegateCreationReceiverFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledConversionFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledMatchFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeInitialMatchFrame(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance finishScheduledMatchArm(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+
+    std::optional<internal::LoopBlockAdvance> completeScheduledAccessFrames(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledCoreMemberFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledCoreIndexFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledRawIndexFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    bool scheduleNextRawIndexChild(
+        internal::IterativeExpressionFrame& frame,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        std::unique_ptr<ProjectOopHirNode>& lowered);
+    void finishVariableRawIndex(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode>& lowered);
+    std::unique_ptr<ProjectOopHirNode> loadRawIndexAddress(
+        const internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode> address);
+    void finishArrayRawIndex(
+        internal::IterativeExpressionFrame& frame,
+        std::unique_ptr<ProjectOopHirNode>& lowered);
+    void applyRawIndexTrailingBounds(
+        ProjectOopHirNode& address,
+        const internal::IterativeExpressionFrame& frame);
+    internal::LoopBlockAdvance completeScheduledNamespaceCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledEventInvokeFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledDelegateInvokeFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+
+    std::optional<internal::LoopBlockAdvance> completeScheduledCoreCallFrames(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledAssertionCoreFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledIteratorCoreCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledCoreOperandCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledAtomicCoreCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledMonitorCoreCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledConsoleOutputCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledConsoleReadLineCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledEnumToStringCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledStructCloneCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledStructAggregateCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledEnvironmentExitCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+
+    std::optional<internal::LoopBlockAdvance> completeScheduledConstructionFrames(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledOrdinaryCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledAggregateCrossLoweringFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledOrdinaryConstructionFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledAllocatorConstructionFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledExtensionPropertyGetterFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledInterpolationHandlerFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledCollectionBuilderFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledArrayConstructionFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+
+    std::optional<internal::LoopBlockAdvance> completeScheduledValueFrames(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledInstanceFieldFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledNullConditionalFieldFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledRangeSliceFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledBuiltinBinaryFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledCoreBinaryFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledNullCoalescingFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledNullCoalescingAssignmentFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledDeconstructionAssignmentFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    bool initializeDeconstructionAssignmentCompletion(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error);
+
+    std::optional<internal::LoopBlockAdvance> completeScheduledAssignmentFrames(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledEventSubscriptionFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledPropertyIndexerSetterFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeCompoundSetterValue(
+        internal::IterativeExpressionFrame& frame,
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error);
+    internal::LoopBlockAdvance completeScheduledNamespaceExtensionSetterFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledNullConditionalFieldAssignmentFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledNullConditionalArrayAssignmentFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledDirectAssignmentFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledStringCompoundAssignmentFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    internal::LoopBlockAdvance completeScheduledCompoundAssignmentFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+
+    internal::LoopBlockAdvance completeExpressionFrames(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        internal::IterativeInputKind& currentInputKind,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance>
+    completeScheduledDeconstructionDeclarationFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error,
+        std::size_t rootCleanupDepth,
+        std::size_t rootExceptionHandlerDepth);
+    std::optional<internal::LoopBlockAdvance> completeScheduledBoundCallFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        std::unique_ptr<ProjectOopHirNode>& lowered,
+        std::string& error);
+    std::optional<internal::LoopBlockAdvance> completeScheduledConditionalFrame(
+        std::vector<internal::IterativeExpressionFrame>& frames,
+        const ast::AstNode*& current,
+        std::size_t& currentMemberOrdinal,
+        bool& currentAddressContext,
+        std::unique_ptr<ProjectOopHirNode>& lowered);
 
     std::unique_ptr<ProjectOopHirNode> lowerExpressionImpl(
         const ast::AstNode* expression,
         std::size_t memberOrdinal,
         bool addressContext,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerLambdaCreationExpressionImplCase(
+        const ast::AstNode* expression,
+        const MethodLambdaBinding* stage43Lambda,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerDelegateCreationExpressionImplCase(
+        const ast::AstNode* expression,
+        const MethodDelegateBinding* stage42Delegate,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerLiteralExpressionImplCase(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const std::string& resultType,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerOverflowPolicyExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerConditionalExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerResolvedCall(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error,
+        const MethodExpressionTypeBinding* typeBinding,
+        const MethodCallBinding* binding,
+        const std::vector<const ast::AstNode*>& argumentSyntaxes,
+        std::unique_ptr<ProjectOopHirNode> preloweredLast = nullptr,
+        bool nullConditional = false);
+    std::unique_ptr<ProjectOopHirNode> lowerEventBacking(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        std::string& error,
+        const MethodEventBinding* binding,
+        bool address);
+    std::unique_ptr<ProjectOopHirNode> lowerThisExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const std::string& resultType,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNullConditionalMemberExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodExpressionTypeBinding* typeBinding,
+        const std::string& resultType,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNameExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerCoreNameExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodCoreBinding& core,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerLambdaNameExpression(
+        const ast::AstNode* expression,
+        bool addressContext);
+    std::unique_ptr<ProjectOopHirNode> lowerParameterNameBinding(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodNameBinding& binding);
+    std::unique_ptr<ProjectOopHirNode> lowerLocalNameBinding(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodNameBinding& binding);
+    std::unique_ptr<ProjectOopHirNode> lowerFieldNameBinding(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodNameBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNamespaceStateNameBinding(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodNameBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerStaticFieldNameBinding(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodNameBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerBoundNameExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodNameBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerInterpolatedStringExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerUnaryExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const std::string& resultType,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNullCoalescingExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const std::string& resultType,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerBinaryExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerIndexExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodExpressionTypeBinding* typeBinding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerRangeSliceIndexExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodRangeSliceBinding* range,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerRangeEndpoint(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        const ast::AstNode* syntax,
+        const ProjectImplicitConversion& conversion,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerArrayOrStringIndexExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodCoreBinding* core,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNullConditionalArrayIndexExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodCoreBinding* core,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNullConditionalUserIndexExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodExpressionTypeBinding* typeBinding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerRawElementIndexExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodCoreBinding* core,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerVariableArrayIndexExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodCoreBinding* core,
+        const MethodVariableArrayIndexBinding* variableArrayIndex,
+        std::unique_ptr<ProjectOopHirNode> base,
+        const std::vector<const ast::AstNode*>& indices,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerOrdinaryRawElementIndexExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodCoreBinding* core,
+        const MethodExpressionTypeBinding* baseType,
+        bool baseIsFixedArray,
+        bool baseIsFlexibleArray,
+        std::unique_ptr<ProjectOopHirNode> base,
+        const std::vector<const ast::AstNode*>& indices,
+        std::string& error);
+    void configureFlexibleArrayBounds(
+        ProjectOopHirNode* address,
+        const ast::AstNode* baseSyntax,
+        bool baseIsFlexibleArray);
+    std::unique_ptr<ProjectOopHirNode> lowerIndexerAccessorExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodExpressionTypeBinding* typeBinding,
+        const MethodCallBinding* indexerCall,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerAssignmentExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodExpressionTypeBinding* typeBinding,
+        const std::string& resultType,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNullCoalescingAssignmentExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+    bool expandAssignmentTargetTuple(
+        std::string& error,
+        const ast::AstNode* targetSyntax,
+        const std::string& sourceTypeKey,
+        std::uint64_t byteOffset,
+        std::vector<HirTuplePatternFrame>& children);
+    bool appendAssignmentTargetLeaf(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        ProjectOopHirNode* node,
+        std::string& error,
+        const ast::AstNode* targetSyntax,
+        const std::string& sourceTypeKey,
+        std::uint64_t byteOffset);
+    std::unique_ptr<ProjectOopHirNode> lowerTupleDeconstructionAssignmentExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerEventAssignmentExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodEventBinding* stage42Event,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerCompoundSetterAssignmentExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodExpressionTypeBinding* typeBinding,
+        const MethodCallBinding* setterCall,
+        const std::vector<const ast::AstNode*>& arguments,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerSetterAssignmentExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodExpressionTypeBinding* typeBinding,
+        const MethodCallBinding* setterCall,
+        const ClassMemberSymbol& setter,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNamespaceSetterAssignmentExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const NamespaceFunctionCallBinding* namespaceSetter,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNullConditionalMemberAssignmentExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        const std::string& resultType,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNullConditionalIndexAssignmentExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        const std::string& resultType,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> createOrdinaryAssignmentNode(
+        const ast::AstNode* expression,
+        const std::string& resultType);
+    std::unique_ptr<ProjectOopHirNode> lowerCompoundAssignmentExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const std::string& resultType,
+        std::unique_ptr<ProjectOopHirNode> node,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerSimpleAssignmentExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        std::unique_ptr<ProjectOopHirNode> node,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerMoveExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerResultPropagationExpressionImplCase(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const std::string& resultType,
         std::string& error);
 
     bool hasValidDelegateCreationTarget(
@@ -972,20 +3447,37 @@ private:
         const ast::AstNode* expression,
         std::unique_ptr<ProjectOopHirNode> left,
         std::unique_ptr<ProjectOopHirNode> right);
+    bool isEnumBinaryTypeKey(std::string_view typeKey) const noexcept;
+    static bool isEnumTypeWithIdentity(
+        std::string_view identity,
+        const NamedTypeDeclaration& type) noexcept;
+    static bool isZeroIntegerLiteral(const ast::AstNode* syntax) noexcept;
+    void convertBinaryEnumZeroOperands(
+        const ast::AstNode* expression,
+        std::unique_ptr<ProjectOopHirNode>& left,
+        std::unique_ptr<ProjectOopHirNode>& right);
+    std::optional<std::string> numericBinaryOperandType(
+        const ast::AstNode* expression,
+        const ProjectOopHirNode& left,
+        const ProjectOopHirNode& right,
+        const std::string& resultType) const;
+    void convertNumericBinaryOperands(
+        const ast::AstNode* expression,
+        const std::string& numericOperandType,
+        std::unique_ptr<ProjectOopHirNode>& left,
+        std::unique_ptr<ProjectOopHirNode>& right);
 
     std::unique_ptr<ProjectOopHirNode> buildConditionalExpression(
         const ast::AstNode* expression,
         std::unique_ptr<ProjectOopHirNode> condition,
         std::unique_ptr<ProjectOopHirNode> whenTrue,
         std::unique_ptr<ProjectOopHirNode> whenFalse);
+    void convertConditionalBranch(
+        std::unique_ptr<ProjectOopHirNode>& branch,
+        const ast::AstNode* syntax,
+        const std::string& resultType);
 
-    struct BoundCallTarget final
-    {
-        std::size_t memberOrdinal = 0;
-        const ast::AstNode* receiverSyntax = nullptr;
-        std::string_view receiverTypeKey;
-        bool interfaceDispatch = false;
-    };
+    struct BoundCallTarget;
 
     // Resolve the receiver that lowerBoundCall will actually consume. Keeping this decision in one
     // helper lets an iterative caller lower that exact receiver before it resumes the call frame.
@@ -1098,6 +3590,122 @@ private:
         std::size_t memberOrdinal,
         bool addressContext,
         std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerAssertionCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerIteratorCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNamespaceFunctionCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const NamespaceFunctionCallBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerEventInvocation(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        const MethodEventBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerDelegateInvocation(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodDelegateBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerViewCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerOperandCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::size_t operandCount,
+        ProjectOopHirNodeKind hirKind,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerAtomicFenceCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> rejectEscapedAtomicCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> rejectEscapedMonitorCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerConsoleCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerEnumToStringCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerStructCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerClockCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerEnvironmentQueryCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerProcessQueryCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerSystemInfoCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerDebugCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerEnvironmentExitCoreCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCoreBinding& binding,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerOrdinaryCall(
+        const ast::AstNode* expression,
+        bool addressContext,
+        const MethodCallBinding& binding,
+        std::string& error);
+    bool appendOrdinaryDefaultArguments(
+        ProjectOopHirNode& node,
+        const ast::AstNode* expression,
+        const MethodCallBinding& binding,
+        const ClassMemberSymbol& selectedMember,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> finishOrdinaryCall(
+        std::unique_ptr<ProjectOopHirNode> node,
+        const ast::AstNode* expression,
+        bool addressContext,
+        const ClassMemberSymbol& selectedMember,
+        bool hasOwnedTemporary,
+        std::string& error);
 
     std::unique_ptr<ProjectOopHirNode> lowerConversionExpression(
         const ast::AstNode* expression,
@@ -1110,6 +3718,15 @@ private:
     std::unique_ptr<ProjectOopHirNode> lowerArrayConstructionExpression(
         const ast::AstNode* expression,
         std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerStackAllocationExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        bool addressContext,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerNewArrayConstructionExpression(
+        const ast::AstNode* expression,
         bool addressContext,
         std::string& error);
     std::unique_ptr<ProjectOopHirNode> finishCollectionBuilderExpression(
@@ -1134,6 +3751,38 @@ private:
         std::unique_ptr<ProjectOopHirNode> receiver,
         std::vector<std::unique_ptr<ProjectOopHirNode>> arguments,
         std::vector<std::size_t> argumentParameterOrdinals,
+        std::string& error);
+    void appendAllocatorPreamble(
+        ProjectOopHirNode& block,
+        const ast::AstNode* expression,
+        const ObjectConstructionBinding& binding,
+        std::size_t computedSize,
+        std::size_t temporaryOrdinal,
+        std::size_t contextOrdinal,
+        std::unique_ptr<ProjectOopHirNode> receiver);
+    std::unique_ptr<ProjectOopHirNode> createAllocatorPlacementConstruction(
+        const ast::AstNode* expression,
+        const ObjectConstructionBinding& binding,
+        std::size_t constructionOrdinal,
+        std::size_t temporaryOrdinal,
+        std::size_t contextOrdinal,
+        std::optional<std::size_t> allocatorTypeOrdinal,
+        std::vector<std::unique_ptr<ProjectOopHirNode>> arguments,
+        std::vector<std::size_t> argumentParameterOrdinals);
+    std::unique_ptr<ProjectOopHirNode> createAllocatorThrowsFailure(
+        const ast::AstNode* expression,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> createAllocatorResultFailure(
+        const ast::AstNode* expression,
+        const ObjectConstructionBinding& binding,
+        std::unique_ptr<ProjectOopHirNode>& construction,
+        std::string& resultType,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> createAllocatorFailureValue(
+        const ast::AstNode* expression,
+        const ObjectConstructionBinding& binding,
+        std::unique_ptr<ProjectOopHirNode>& construction,
+        std::string& resultType,
         std::string& error);
 
     std::unique_ptr<ProjectOopHirNode> lowerAggregateOrLayoutExpression(
@@ -1169,10 +3818,34 @@ private:
         std::string_view futureKey,
         std::string& error,
         bool topLevel = true);
+    std::unique_ptr<ProjectOopHirNode> makeAsyncSelfParameter(
+        const ast::AstNode* syntax,
+        std::size_t selfParameterOrdinal,
+        std::string_view futureKey);
+    std::unique_ptr<ProjectOopHirNode> rewriteAsyncThrow(
+        std::unique_ptr<ProjectOopHirNode> throwing,
+        std::size_t selfParameterOrdinal,
+        std::string_view futureKey);
+    std::unique_ptr<ProjectOopHirNode> rewriteAsyncReturn(
+        std::unique_ptr<ProjectOopHirNode> ret,
+        std::size_t selfParameterOrdinal,
+        std::string_view resultTypeKey,
+        std::string_view futureKey);
+    static std::unique_ptr<ProjectOopHirNode> rewriteAsyncYield(
+        std::unique_ptr<ProjectOopHirNode> yielding);
+    void appendImplicitAsyncReturn(
+        ProjectOopHirNode& body,
+        std::size_t selfParameterOrdinal,
+        std::string_view resultTypeKey,
+        std::string_view futureKey);
     std::vector<std::size_t> collectAwaitedMemberOrdinals(const ast::AstNode* root) const;
     void assignYieldStates(ProjectOopHirNode* root, std::size_t& nextYieldState);
     void rewriteGeneratorThrows(
         ProjectOopHirNode* root,
+        std::string_view errorTypeKey,
+        std::string_view iteratorKey);
+    std::unique_ptr<ProjectOopHirNode> rewriteGeneratorThrow(
+        std::unique_ptr<ProjectOopHirNode> throwing,
         std::string_view errorTypeKey,
         std::string_view iteratorKey);
 
@@ -1182,6 +3855,15 @@ private:
     std::unique_ptr<ProjectOopHirFunction> splitAsyncFunction(
         ProjectOopHirFunction& function,
         std::string& error);
+    std::unique_ptr<ProjectOopHirFunction> createAsyncPollFunction(
+        ProjectOopHirFunction& function,
+        const std::string& futureKey,
+        const std::string& resultTypeKey,
+        std::string& error);
+    void buildAsyncConstructorBody(
+        ProjectOopHirFunction& function,
+        const std::string& futureKey,
+        const ast::AstNode* syntax);
 
     // NS304-T06-F03: splits a generator into a lazy constructor (function.body becomes
     // `return default(iterator:<T>)`) and a MoveNext function (returned; `bool(self)` runs the body
@@ -1191,6 +3873,18 @@ private:
     splitGeneratorFunction(
         ProjectOopHirFunction& function,
         std::string& error);
+    std::unique_ptr<ProjectOopHirFunction> createGeneratorMoveNext(
+        ProjectOopHirFunction& function,
+        const std::string& iteratorKey,
+        const ast::AstNode* syntax);
+    void buildGeneratorConstructorBody(
+        ProjectOopHirFunction& function,
+        const std::string& iteratorKey,
+        const ast::AstNode* syntax);
+    std::unique_ptr<ProjectOopHirFunction> createGeneratorDrop(
+        const ProjectOopHirFunction& function,
+        const std::string& iteratorKey,
+        const ast::AstNode* syntax);
 
     // NS304-T07-F02: splits an async generator into (in order) the MoveNext (future<bool>), its
     // poll (void) and the drop (void). The original function becomes the constructor
@@ -1198,12 +3892,34 @@ private:
     std::vector<std::unique_ptr<ProjectOopHirFunction>> splitAsyncGeneratorFunction(
         ProjectOopHirFunction& function,
         std::string& error);
+    void wrapAsyncGeneratorBody(
+        ProjectOopHirFunction& function,
+        const ast::AstNode* syntax);
+    std::unique_ptr<ProjectOopHirFunction> createAsyncGeneratorPoll(
+        ProjectOopHirFunction& function,
+        const std::string& futureKey,
+        const std::string& errorTypeKey,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirFunction> createAsyncGeneratorMoveNext(
+        const ProjectOopHirFunction& function,
+        const std::string& iteratorKey,
+        const std::string& futureKey,
+        const std::string& errorTypeKey,
+        const ast::AstNode* syntax);
+    std::unique_ptr<ProjectOopHirFunction> createAsyncGeneratorDrop(
+        const ProjectOopHirFunction& function,
+        const std::string& iteratorKey,
+        const ast::AstNode* syntax);
+    void buildAsyncGeneratorConstructorBody(
+        ProjectOopHirFunction& function,
+        const std::string& iteratorKey,
+        const ast::AstNode* syntax);
 
 public:
     // El rango del nodo mas interno que no se pudo bajar, o un rango invalido si el fallo no vino
     // de una expresion. Quien reporta el error lo traduce a fichero:linea:columna con el
     // SourceManager -- este modelo no lo tiene y no le hace falta para recordar el sitio.
-    SourceRange lastErrorRange() const noexcept { return lastErrorRange_; }
+    SourceRange lastErrorRange() const noexcept;
 
 private:
     SourceRange lastErrorRange_{};
@@ -1262,6 +3978,24 @@ private:
         std::size_t memberOrdinal,
         std::string& error);
     std::unique_ptr<ProjectOopHirNode> lowerDestructionExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerDeleteExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerArrayDeleteExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        const MethodExpressionTypeBinding& operandType,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerScalarDeleteExpression(
+        const ast::AstNode* expression,
+        std::size_t memberOrdinal,
+        const MethodExpressionTypeBinding& operandType,
+        std::string& error);
+    std::unique_ptr<ProjectOopHirNode> lowerDestroyExpression(
         const ast::AstNode* expression,
         std::size_t memberOrdinal,
         std::string& error);
@@ -1333,6 +4067,16 @@ private:
         std::size_t memberOrdinal,
         std::vector<std::unique_ptr<ProjectOopHirNode>>& elements,
         std::string& error);
+    bool initializeAggregateFrame(internal::HirAggregateFrame& frame, std::string& error);
+    bool populateTupleAggregateSlots(internal::HirAggregateFrame& frame, std::string& error);
+    bool populateFixedArrayAggregateSlots(
+        internal::HirAggregateFrame& frame,
+        const std::string& elementTypeKey,
+        std::string& error);
+    bool populateStructAggregateSlots(internal::HirAggregateFrame& frame, std::string& error);
+    bool processAggregateFrame(
+        std::vector<internal::HirAggregateFrame>& pending,
+        std::string& error);
     bool isClassReferenceType(std::string_view typeKey) const noexcept;
     bool isReferenceType(std::string_view typeKey) const noexcept;
     // NS304-T08-F04: resolves a member ordinal to a class member or a namespace-callable adapter.
@@ -1379,11 +4123,7 @@ private:
     std::unordered_map<const ast::AstNode*, const MethodStructuredExitBinding*> structuredExitBySyntax_;
     std::unordered_map<const ast::AstNode*, const ObjectConstructionBinding*> constructionBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodLocalSymbol*> localBySyntax_;
-    struct HirExceptionHandlerContext final
-    {
-        std::size_t hirRegionOrdinal = 0;
-        std::size_t retainedCleanupDepth = 0;
-    };
+    struct HirExceptionHandlerContext;
 
     const MethodLambdaBinding* currentLambda_ = nullptr;
     std::vector<std::size_t> activeHirCleanupRegions_;
@@ -1397,3 +4137,6 @@ private:
 
 const char* projectOopHirNodeKindName(ProjectOopHirNodeKind kind) noexcept;
 }
+
+#include "nativesharp/Frontend/ProjectOopHirModelBoundCallTarget.h"
+#include "nativesharp/Frontend/ProjectOopHirModelHirExceptionHandlerContext.h"

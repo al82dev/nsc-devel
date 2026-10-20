@@ -1,5 +1,7 @@
 #include "nativesharp/CFG/CfgTraversal.h"
 
+#include "Internal/DfsFrame.h"
+
 #include "nativesharp/CFG/CfgEdge.h"
 #include "nativesharp/CFG/CfgNode.h"
 
@@ -10,14 +12,7 @@
 
 namespace nativesharp::cfg
 {
-namespace
-{
-struct DfsFrame
-{
-    CfgNode* node;
-    std::size_t nextEdge;
-};
-}
+using internal::DfsFrame;
 
 std::vector<CfgNode*> CfgTraversal::reversePostOrder(CfgNode* entry)
 {

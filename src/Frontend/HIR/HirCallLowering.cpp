@@ -10,7 +10,14 @@ namespace
 {
 using StringCallLowering = HirCoreOperandCallPlan;
 
-std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanImpl(
+std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup02(
+    MethodCoreOperationKind kind);
+std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup03(
+    MethodCoreOperationKind kind);
+std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup04(
+    MethodCoreOperationKind kind);
+
+std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup01(
     MethodCoreOperationKind kind)
 {
     switch (kind)
@@ -87,6 +94,20 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanImpl(
         return StringCallLowering{0U, ProjectOopHirNodeKind::CoreCpuPause};
     case MethodCoreOperationKind::CpuReadTimestamp:
         return StringCallLowering{0U, ProjectOopHirNodeKind::CoreCpuReadTimestamp};
+    default:
+        return hirCoreOperandCallPlanGroup02(kind);
+    }
+
+    // Inalcanzable: el switch de arriba cubre todos los enumeradores. Existe solo para callar el
+    // aviso de "control reaches end of non-void function", que no entiende esa garantia.
+    return std::nullopt;
+}
+
+std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup02(
+    MethodCoreOperationKind kind)
+{
+    switch (kind)
+    {
     // ---------------------------------------------------------------------------------------
     // TRES OPERANDOS.
     // ---------------------------------------------------------------------------------------
@@ -197,6 +218,20 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanImpl(
         return StringCallLowering{1U, ProjectOopHirNodeKind::CoreThreadJoin};
     case MethodCoreOperationKind::ThreadDetach:
         return StringCallLowering{1U, ProjectOopHirNodeKind::CoreThreadDetach};
+    default:
+        return hirCoreOperandCallPlanGroup03(kind);
+    }
+
+    // Inalcanzable: el switch de arriba cubre todos los enumeradores. Existe solo para callar el
+    // aviso de "control reaches end of non-void function", que no entiende esa garantia.
+    return std::nullopt;
+}
+
+std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup03(
+    MethodCoreOperationKind kind)
+{
+    switch (kind)
+    {
     // ---------------------------------------------------------------------------------------
     // SIN OPERANDOS.
     // ---------------------------------------------------------------------------------------
@@ -314,7 +349,109 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanImpl(
     // StringSubstring y FileWriteAllBytes.
     case MethodCoreOperationKind::ProcessRun:
         return StringCallLowering{3U, ProjectOopHirNodeKind::CoreProcessRun};
+    default:
+        return hirCoreOperandCallPlanGroup04(kind);
+    }
 
+    // Inalcanzable: el switch de arriba cubre todos los enumeradores. Existe solo para callar el
+    // aviso de "control reaches end of non-void function", que no entiende esa garantia.
+    return std::nullopt;
+}
+
+std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup04(
+    MethodCoreOperationKind kind)
+{
+    switch (kind)
+    {
+        // The earlier groups own these plans. Re-listing their labels here keeps this final
+        // switch exhaustive without a default, so a new MethodCoreOperationKind still fails
+        // compilation until its lowering route is selected.
+        case MethodCoreOperationKind::BitByteSwap:
+        case MethodCoreOperationKind::BitLeadingZeroCount:
+        case MethodCoreOperationKind::BitPopulationCount:
+        case MethodCoreOperationKind::BitRotateLeft:
+        case MethodCoreOperationKind::BitRotateRight:
+        case MethodCoreOperationKind::BitTrailingZeroCount:
+        case MethodCoreOperationKind::CpuPause:
+        case MethodCoreOperationKind::CpuPrefetchRead:
+        case MethodCoreOperationKind::CpuReadTimestamp:
+        case MethodCoreOperationKind::DebugOutputStringRaw:
+        case MethodCoreOperationKind::DirectoryCreate:
+        case MethodCoreOperationKind::DirectoryDelete:
+        case MethodCoreOperationKind::DirectoryExists:
+        case MethodCoreOperationKind::DirectoryGetDirectories:
+        case MethodCoreOperationKind::DirectoryGetDirectoryCount:
+        case MethodCoreOperationKind::DirectoryGetFileCount:
+        case MethodCoreOperationKind::DirectoryGetFiles:
+        case MethodCoreOperationKind::DirectoryMoveRaw:
+        case MethodCoreOperationKind::EnvironmentGetCommandLineArgs:
+        case MethodCoreOperationKind::EnvironmentGetVariable:
+        case MethodCoreOperationKind::EnvironmentSetVariable:
+        case MethodCoreOperationKind::EventClose:
+        case MethodCoreOperationKind::EventCreate:
+        case MethodCoreOperationKind::EventCreateNamed:
+        case MethodCoreOperationKind::EventReset:
+        case MethodCoreOperationKind::EventSet:
+        case MethodCoreOperationKind::EventWait:
+        case MethodCoreOperationKind::FileAppendAllText:
+        case MethodCoreOperationKind::FileCopyRaw:
+        case MethodCoreOperationKind::FileDelete:
+        case MethodCoreOperationKind::FileExists:
+        case MethodCoreOperationKind::FileGetSize:
+        case MethodCoreOperationKind::FileMoveRaw:
+        case MethodCoreOperationKind::FileReadAllBytes:
+        case MethodCoreOperationKind::FileReadAllText:
+        case MethodCoreOperationKind::FileReadBytes:
+        case MethodCoreOperationKind::FileWriteAllBytes:
+        case MethodCoreOperationKind::FileWriteAllText:
+        case MethodCoreOperationKind::HalfFromFloat:
+        case MethodCoreOperationKind::HalfToFloat:
+        case MethodCoreOperationKind::MutexClose:
+        case MethodCoreOperationKind::MutexCreate:
+        case MethodCoreOperationKind::MutexCreateNamed:
+        case MethodCoreOperationKind::MutexLock:
+        case MethodCoreOperationKind::MutexUnlock:
+        case MethodCoreOperationKind::ObjectReferenceHash:
+        case MethodCoreOperationKind::ObjectTypeName:
+        case MethodCoreOperationKind::PathGetFullPath:
+        case MethodCoreOperationKind::ProcessRun:
+        case MethodCoreOperationKind::ProcessSetPriorityClassRaw:
+        case MethodCoreOperationKind::SemaphoreClose:
+        case MethodCoreOperationKind::SemaphoreCreate:
+        case MethodCoreOperationKind::SemaphoreCreateNamed:
+        case MethodCoreOperationKind::SemaphoreRelease:
+        case MethodCoreOperationKind::SemaphoreWait:
+        case MethodCoreOperationKind::SimdFloat256Add:
+        case MethodCoreOperationKind::SimdFloat256Multiply:
+        case MethodCoreOperationKind::SimdFloat256Subtract:
+        case MethodCoreOperationKind::SimdFloat32x4Add:
+        case MethodCoreOperationKind::SimdFloat32x4Multiply:
+        case MethodCoreOperationKind::SimdFloat32x4Subtract:
+        case MethodCoreOperationKind::SimdFusedMultiplyAdd:
+        case MethodCoreOperationKind::SimdInt128Add:
+        case MethodCoreOperationKind::SimdInt128Multiply:
+        case MethodCoreOperationKind::SimdInt128Subtract:
+        case MethodCoreOperationKind::SimdInt256Add:
+        case MethodCoreOperationKind::SimdInt256Multiply:
+        case MethodCoreOperationKind::SimdInt256Subtract:
+        case MethodCoreOperationKind::SimdLoadAligned128:
+        case MethodCoreOperationKind::SimdLoadUnaligned128:
+        case MethodCoreOperationKind::SimdReciprocalSqrt:
+        case MethodCoreOperationKind::SimdShuffleLowHigh:
+        case MethodCoreOperationKind::SimdSqrt:
+        case MethodCoreOperationKind::SimdStoreAligned128:
+        case MethodCoreOperationKind::SimdStoreUnaligned128:
+        case MethodCoreOperationKind::SimdSwizzleWzyx:
+        case MethodCoreOperationKind::StringCharacterPointer:
+        case MethodCoreOperationKind::StringConcat:
+        case MethodCoreOperationKind::StringEquals:
+        case MethodCoreOperationKind::StringFromCharArray:
+        case MethodCoreOperationKind::StringSubstring:
+        case MethodCoreOperationKind::ThreadCreate:
+        case MethodCoreOperationKind::ThreadDetach:
+        case MethodCoreOperationKind::ThreadJoin:
+        case MethodCoreOperationKind::ThreadSleepRaw:
+            return hirCoreOperandCallPlanGroup01(kind);
     // ---------------------------------------------------------------------------------------
     // NO PASAN POR ESTE BLOQUE, y estan listadas una por una a proposito: sin ellas el switch
     // necesitaria un `default`, y con un `default` el compilador ya no obliga a nadie a decidir
@@ -423,6 +560,7 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanImpl(
         return std::nullopt;
     case MethodCoreOperationKind::NullConditionalUserIndex:
         return std::nullopt;
+
     }
 
     // Inalcanzable: el switch de arriba cubre todos los enumeradores. Existe solo para callar el
@@ -430,6 +568,11 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanImpl(
     return std::nullopt;
 }
 
+std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanImpl(
+    MethodCoreOperationKind kind)
+{
+    return hirCoreOperandCallPlanGroup01(kind);
+}
 
 }
 
@@ -493,6 +636,104 @@ std::optional<HirMonitorCallPlan> hirMonitorCallPlan(MethodCoreOperationKind kin
     if (kind == MethodCoreOperationKind::MonitorPulseAll)
         return HirMonitorCallPlan{ProjectOopHirNodeKind::CoreMonitorPulseAll, false};
     return std::nullopt;
+}
+
+namespace
+{
+bool isAssertionCoreCall(MethodCoreOperationKind kind) noexcept
+{
+    return kind == MethodCoreOperationKind::Assert ||
+        kind == MethodCoreOperationKind::Unreachable ||
+        kind == MethodCoreOperationKind::Assume ||
+        kind == MethodCoreOperationKind::Panic;
+}
+
+bool isIteratorCoreCall(MethodCoreOperationKind kind) noexcept
+{
+    return kind == MethodCoreOperationKind::IteratorMoveNext ||
+        kind == MethodCoreOperationKind::IteratorGetEnumerator ||
+        kind == MethodCoreOperationKind::IteratorDrop ||
+        kind == MethodCoreOperationKind::IteratorMoveNextAsync ||
+        kind == MethodCoreOperationKind::IteratorCancel;
+}
+
+bool isViewCoreCall(MethodCoreOperationKind kind) noexcept
+{
+    return kind == MethodCoreOperationKind::StringViewFromString ||
+        kind == MethodCoreOperationKind::SpanFromArray ||
+        kind == MethodCoreOperationKind::ReadOnlySpanFromArray ||
+        kind == MethodCoreOperationKind::SpanFromFixedArray ||
+        kind == MethodCoreOperationKind::ReadOnlySpanFromFixedArray;
+}
+
+bool isAtomicFenceCoreCall(MethodCoreOperationKind kind) noexcept
+{
+    return kind == MethodCoreOperationKind::AtomicThreadFence ||
+        kind == MethodCoreOperationKind::AtomicCompilerFence;
+}
+
+bool isConsoleCoreCall(MethodCoreOperationKind kind) noexcept
+{
+    return kind == MethodCoreOperationKind::ConsoleWriteLine ||
+        kind == MethodCoreOperationKind::ConsoleWrite ||
+        kind == MethodCoreOperationKind::ConsoleErrorWriteLine ||
+        kind == MethodCoreOperationKind::ConsoleErrorWrite ||
+        kind == MethodCoreOperationKind::ConsoleReadLine;
+}
+
+bool isStructCoreCall(MethodCoreOperationKind kind) noexcept
+{
+    return kind == MethodCoreOperationKind::StructToString ||
+        kind == MethodCoreOperationKind::StructClone ||
+        kind == MethodCoreOperationKind::StructEquals ||
+        kind == MethodCoreOperationKind::StructHashCode;
+}
+
+bool isClockCoreCall(MethodCoreOperationKind kind) noexcept
+{
+    return kind == MethodCoreOperationKind::ClockQueryCounter ||
+        kind == MethodCoreOperationKind::ClockQueryFrequency ||
+        kind == MethodCoreOperationKind::ClockQuerySystemFileTime;
+}
+
+bool isEnvironmentQueryCoreCall(MethodCoreOperationKind kind) noexcept
+{
+    return kind == MethodCoreOperationKind::EnvironmentTickCount64 ||
+        kind == MethodCoreOperationKind::EnvironmentProcessorCount ||
+        // Stage 53.5 "Command-line arguments": GetCommandLineArgCount joins this same
+        // zero-argument bucket -- it takes no operands either, just like TickCount64/
+        // ProcessorCount, and returns builtin:int like ProcessorCount does.
+        kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgCount ||
+        // Bloque 4, fase A: CurrentDirectory tambien es de cero argumentos, pero su
+        // resultado es builtin:string -- el primer tipo de salida no numerico de este
+        // bucket, de ahi el tercer caso en la cadena de abajo.
+        kind == MethodCoreOperationKind::EnvironmentCurrentDirectory;
+}
+
+bool isProcessQueryCoreCall(MethodCoreOperationKind kind) noexcept
+{
+    return kind == MethodCoreOperationKind::ProcessGetCurrentProcessIdRaw ||
+        kind == MethodCoreOperationKind::ProcessGetWorkingSetSizeRaw ||
+        kind == MethodCoreOperationKind::ProcessGetKernelTimeRaw ||
+        kind == MethodCoreOperationKind::ProcessGetUserTimeRaw ||
+        kind == MethodCoreOperationKind::ProcessGetPriorityClassRaw;
+}
+
+bool isSystemInfoCoreCall(MethodCoreOperationKind kind) noexcept
+{
+    return kind == MethodCoreOperationKind::SystemInfoGetPageSizeRaw ||
+        kind == MethodCoreOperationKind::SystemInfoGetProcessorArchitectureRaw ||
+        kind == MethodCoreOperationKind::SystemInfoGetAllocationGranularityRaw ||
+        kind == MethodCoreOperationKind::SystemInfoGetTotalPhysicalMemoryBytesRaw ||
+        kind == MethodCoreOperationKind::SystemInfoGetAvailablePhysicalMemoryBytesRaw ||
+        kind == MethodCoreOperationKind::SystemInfoGetMemoryLoadPercentRaw;
+}
+
+bool isDebugCoreCall(MethodCoreOperationKind kind) noexcept
+{
+    return kind == MethodCoreOperationKind::DebugIsDebuggerPresentRaw ||
+        kind == MethodCoreOperationKind::DebugCaptureStackFrameCountRaw;
+}
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventBackingField(
@@ -992,182 +1233,169 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishDelegateInvoke(
     return node;
 }
 
-std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAssertionCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
+    if (addressContext)
+    {
+        error = std::string(methodCoreOperationKindName(binding.kind)) +
+            "() has no addressable result";
+        return nullptr;
+    }
+
+    const bool hasCondition = binding.kind == MethodCoreOperationKind::Assert ||
+        binding.kind == MethodCoreOperationKind::Assume;
+    const bool isPanic = binding.kind == MethodCoreOperationKind::Panic;
+    const std::size_t expectedArguments = hasCondition ? 1U : 0U;
+    const bool invalidArity = isPanic
+        ? expression->children().size() > 1U
+        : expression->children().size() != expectedArguments;
+    const std::string_view expectedType = hasCondition ? "builtin:void" : "builtin:never";
+    if (invalidArity || binding.resultTypeKey != expectedType)
+    {
+        error = "T07-F06 assertion binding lost its arity/result contract";
+        return nullptr;
+    }
+
+    const ProjectOopHirNodeKind kind = binding.kind == MethodCoreOperationKind::Assert
+        ? ProjectOopHirNodeKind::Assert
+        : binding.kind == MethodCoreOperationKind::Unreachable
+            ? ProjectOopHirNodeKind::Unreachable
+            : binding.kind == MethodCoreOperationKind::Assume
+                ? ProjectOopHirNodeKind::Assume
+                : ProjectOopHirNodeKind::Panic;
+    auto node = makeNode(kind, expression, std::string(expectedType));
+    if (binding.kind == MethodCoreOperationKind::Panic)
+    {
+        node->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
+        for (std::size_t index = activeHirCleanupRegions_.size(); index > 0; --index)
+            node->cleanupRegionOrdinals.push_back(activeHirCleanupRegions_[index - 1]);
+    }
+    if (hasCondition || (isPanic && !expression->children().empty()))
+    {
+        error = "Stage 34 assertion core escaped iterative lowering";
+        return nullptr;
+    }
+    return node;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIteratorCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
+    if (addressContext || !expression->children().empty() ||
+        expression->first() == nullptr || expression->first()->first() == nullptr)
+    {
+        error = std::string(methodCoreOperationKindName(binding.kind)) +
+            "() has an invalid call shape";
+        return nullptr;
+    }
+    error = "Stage 34 iterator core call escaped iterative lowering";
+    return nullptr;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceFunctionCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const NamespaceFunctionCallBinding& binding,
+    std::string& error)
+{
+    if (binding.resolution != MethodCallResolutionKind::Resolved ||
+        !binding.selectedFunctionOrdinal.has_value() ||
+        namespaceFunctionModel_ == nullptr ||
+        *binding.selectedFunctionOrdinal >= namespaceFunctionModel_->functions().size())
+    {
+        error = "namespace function call reached HIR without a resolved target";
+        return nullptr;
+    }
+    const std::size_t functionOrdinal = *binding.selectedFunctionOrdinal;
+    const NamespaceFunctionSymbol& target = namespaceFunctionModel_->functions()[functionOrdinal];
+    if (addressContext && !target.isReferenceReturn)
+    {
+        error = "namespace function call result is not addressable unless it returns ref";
+        return nullptr;
+    }
+    if (binding.forwardedReceiver || !expression->children().empty())
+    {
+        error = "Stage 34 namespace-call expression escaped iterative lowering";
+        return nullptr;
+    }
+    auto node = makeNode(ProjectOopHirNodeKind::StaticCall, expression, binding.resultTypeKey);
+    node->namespaceFunctionOrdinal = functionOrdinal;
+    node->stringValue = target.mangledName;
+    return finishNamespaceCall(
+        expression, addressContext, error, binding, target, std::move(node), false);
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventInvocation(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
     bool addressContext,
+    const MethodEventBinding& binding,
     std::string& error)
 {
-    const auto lowerEventBacking = [&](
-        const MethodEventBinding* binding,
-        bool address) -> std::unique_ptr<ProjectOopHirNode>
+    if (addressContext)
     {
-        return lowerEventBackingField(expression, memberOrdinal, error, binding, address);
-    };
-
-    if (const MethodCoreBinding* intrinsic = coreBinding(expression);
-        intrinsic != nullptr &&
-        (intrinsic->kind == MethodCoreOperationKind::Assert ||
-         intrinsic->kind == MethodCoreOperationKind::Unreachable ||
-         intrinsic->kind == MethodCoreOperationKind::Assume ||
-         intrinsic->kind == MethodCoreOperationKind::Panic))
-    {
-        if (addressContext)
-        {
-            error = std::string(methodCoreOperationKindName(intrinsic->kind)) +
-                "() has no addressable result";
-            return nullptr;
-        }
-
-        const bool hasCondition = intrinsic->kind == MethodCoreOperationKind::Assert ||
-            intrinsic->kind == MethodCoreOperationKind::Assume;
-        const bool isPanic = intrinsic->kind == MethodCoreOperationKind::Panic;
-        const std::size_t expectedArguments = hasCondition ? 1U : 0U;
-        const bool invalidArity = isPanic
-            ? expression->children().size() > 1U
-            : expression->children().size() != expectedArguments;
-        const std::string_view expectedType = hasCondition ? "builtin:void" : "builtin:never";
-        if (invalidArity ||
-            intrinsic->resultTypeKey != expectedType)
-        {
-            error = "T07-F06 assertion binding lost its arity/result contract";
-            return nullptr;
-        }
-
-        const ProjectOopHirNodeKind kind = intrinsic->kind == MethodCoreOperationKind::Assert
-            ? ProjectOopHirNodeKind::Assert
-            : intrinsic->kind == MethodCoreOperationKind::Unreachable
-                ? ProjectOopHirNodeKind::Unreachable
-                : intrinsic->kind == MethodCoreOperationKind::Assume
-                    ? ProjectOopHirNodeKind::Assume
-                    : ProjectOopHirNodeKind::Panic;
-        auto node = makeNode(kind, expression, std::string(expectedType));
-        if (intrinsic->kind == MethodCoreOperationKind::Panic)
-        {
-            node->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
-            for (std::size_t index = activeHirCleanupRegions_.size(); index > 0; --index)
-                node->cleanupRegionOrdinals.push_back(activeHirCleanupRegions_[index - 1]);
-        }
-        if (hasCondition || (isPanic && !expression->children().empty()))
-        {
-            error = "Stage 34 assertion core escaped iterative lowering";
-            return nullptr;
-        }
-        return node;
-    }
-    if (const MethodCoreBinding* iteratorCore = coreBinding(expression);
-        iteratorCore != nullptr &&
-        (iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNext ||
-         iteratorCore->kind == MethodCoreOperationKind::IteratorGetEnumerator ||
-         iteratorCore->kind == MethodCoreOperationKind::IteratorDrop ||
-         iteratorCore->kind == MethodCoreOperationKind::IteratorMoveNextAsync ||
-         iteratorCore->kind == MethodCoreOperationKind::IteratorCancel))
-    {
-        if (addressContext || !expression->children().empty() ||
-            expression->first() == nullptr || expression->first()->first() == nullptr)
-        {
-            error = std::string(methodCoreOperationKindName(iteratorCore->kind)) +
-                "() has an invalid call shape";
-            return nullptr;
-        }
-        error = "Stage 34 iterator core call escaped iterative lowering";
+        error = "Stage 42 event invocation is not addressable";
         return nullptr;
     }
-    const NamespaceFunctionCallBinding* namespaceCall =
-        namespaceFunctionCallBinding(expression);
-    if (namespaceCall != nullptr)
+    const bool iterativeReceiver = !binding.staticEvent &&
+        binding.receiverSyntax != nullptr &&
+        binding.receiverSyntax->kind() != ast::AstNodeKind::BaseExpression;
+    if (iterativeReceiver || !expression->children().empty())
     {
-        if (namespaceCall->resolution != MethodCallResolutionKind::Resolved ||
-            !namespaceCall->selectedFunctionOrdinal.has_value() ||
-            namespaceFunctionModel_ == nullptr ||
-            *namespaceCall->selectedFunctionOrdinal >=
-                namespaceFunctionModel_->functions().size())
-        {
-            error = "namespace function call reached HIR without a resolved target";
-            return nullptr;
-        }
-        const std::size_t functionOrdinal =
-            *namespaceCall->selectedFunctionOrdinal;
-        const NamespaceFunctionSymbol& target =
-            namespaceFunctionModel_->functions()[functionOrdinal];
-        if (addressContext && !target.isReferenceReturn)
-        {
-            error = "namespace function call result is not addressable unless it returns ref";
-            return nullptr;
-        }
-        if (namespaceCall->forwardedReceiver || !expression->children().empty())
-        {
-            error = "Stage 34 namespace-call expression escaped iterative lowering";
-            return nullptr;
-        }
-        auto node = makeNode(
-            ProjectOopHirNodeKind::StaticCall,
-            expression,
-            namespaceCall->resultTypeKey);
-        node->namespaceFunctionOrdinal = functionOrdinal;
-        node->stringValue = target.mangledName;
-        return finishNamespaceCall(
-            expression,
-            addressContext,
-            error,
-            *namespaceCall,
-            target,
-            std::move(node),
-            false);
+        error = "Stage 34 event invocation escaped iterative lowering";
+        return nullptr;
     }
-    const MethodEventBinding* stage42Event = eventBinding(expression);
-    if (stage42Event != nullptr && stage42Event->kind == MethodEventOperationKind::Invoke)
-    {
-        if (addressContext)
-        {
-            error = "Stage 42 event invocation is not addressable";
-            return nullptr;
-        }
-        const bool iterativeReceiver = !stage42Event->staticEvent &&
-            stage42Event->receiverSyntax != nullptr &&
-            stage42Event->receiverSyntax->kind() != ast::AstNodeKind::BaseExpression;
-        if (iterativeReceiver || !expression->children().empty())
-        {
-            error = "Stage 34 event invocation escaped iterative lowering";
-            return nullptr;
-        }
-        auto head = lowerEventBacking(stage42Event, false);
-        if (head == nullptr) return nullptr;
-        auto node = makeNode(ProjectOopHirNodeKind::EventInvoke, expression, stage42Event->resultTypeKey);
-        node->elementTypeKey = stage42Event->delegateTypeKey;
-        node->memberOrdinal = stage42Event->backingMemberOrdinal;
-        node->children.push_back(std::move(head));
-        node->argumentCount = 0U;
-        return node;
-    }
+    auto head = lowerEventBackingField(expression, memberOrdinal, error, &binding, false);
+    if (head == nullptr) return nullptr;
+    auto node = makeNode(ProjectOopHirNodeKind::EventInvoke, expression, binding.resultTypeKey);
+    node->elementTypeKey = binding.delegateTypeKey;
+    node->memberOrdinal = binding.backingMemberOrdinal;
+    node->children.push_back(std::move(head));
+    node->argumentCount = 0U;
+    return node;
+}
 
-    const MethodDelegateBinding* invoke = delegateBinding(expression);
-    if (invoke != nullptr && invoke->kind == MethodDelegateOperationKind::Invoke)
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDelegateInvocation(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodDelegateBinding& binding,
+    std::string& error)
+{
+    if (addressContext)
     {
-        if (addressContext)
-        {
-            error = "Stage 42 delegate invocation is not addressable";
-            return nullptr;
-        }
-        const bool lowersCallee =
-            invoke->directLambdaName.empty() || invoke->directLambdaUsesEnvironment;
-        if (lowersCallee || !expression->children().empty())
-        {
-            error = "Stage 34 delegate invocation escaped iterative lowering";
-            return nullptr;
-        }
-        auto node = makeNode(ProjectOopHirNodeKind::DelegateInvoke, expression, invoke->resultTypeKey);
-        node->elementTypeKey = invoke->delegateTypeKey;
-        node->stringValue = invoke->directLambdaName;
-        node->booleanValue = invoke->directLambdaUsesEnvironment;
-        return finishDelegateInvoke(expression, error, *invoke, std::move(node));
+        error = "Stage 42 delegate invocation is not addressable";
+        return nullptr;
     }
+    const bool lowersCallee = binding.directLambdaName.empty() ||
+        binding.directLambdaUsesEnvironment;
+    if (lowersCallee || !expression->children().empty())
+    {
+        error = "Stage 34 delegate invocation escaped iterative lowering";
+        return nullptr;
+    }
+    auto node = makeNode(ProjectOopHirNodeKind::DelegateInvoke, expression, binding.resultTypeKey);
+    node->elementTypeKey = binding.delegateTypeKey;
+    node->stringValue = binding.directLambdaName;
+    node->booleanValue = binding.directLambdaUsesEnvironment;
+    return finishDelegateInvoke(expression, error, binding, std::move(node));
+}
 
-    const MethodCoreBinding* core = coreBinding(expression);
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerViewCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
     // NS304-T03-F03: list-pattern rest capture over a native string synthesizes a
     // StringView view directly (no Slice method). Receiver + start + length.
-    if (core != nullptr &&
-        core->kind == MethodCoreOperationKind::StringViewFromString)
+    if (binding.kind == MethodCoreOperationKind::StringViewFromString)
     {
         if (addressContext)
         {
@@ -1178,136 +1406,161 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
         return nullptr;
     }
     // NS304-T03-F03: same view synthesis over a native/fixed array -> Span<T>/ReadOnlySpan<T>.
-    if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::SpanFromArray ||
-         core->kind == MethodCoreOperationKind::ReadOnlySpanFromArray ||
-         core->kind == MethodCoreOperationKind::SpanFromFixedArray ||
-         core->kind == MethodCoreOperationKind::ReadOnlySpanFromFixedArray))
+    if (addressContext)
     {
-        if (addressContext)
-        {
-            error = "a Span/ReadOnlySpan rest capture is a value and is not addressable";
-            return nullptr;
-        }
-        error = "Stage 34 Span core call escaped iterative lowering";
+        error = "a Span/ReadOnlySpan rest capture is a value and is not addressable";
         return nullptr;
     }
-    // Las TRES preguntas --entra en este bloque, con cuantos operandos, y en que nodo
-    // HIR se convierte-- salen de la MISMA respuesta: ver hirCoreOperandCallPlan() al
-    // principio de este archivo.
-    const std::optional<HirCoreOperandCallPlan> coreLowering =
-        core != nullptr ? hirCoreOperandCallPlan(core->kind) : std::nullopt;
-    if (coreLowering.has_value())
+    error = "Stage 34 Span core call escaped iterative lowering";
+    return nullptr;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerOperandCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::size_t operandCount,
+    ProjectOopHirNodeKind hirKind,
+    std::string& error)
+{
+    if (addressContext)
     {
-        if (addressContext)
-        {
-            error = "Stage 51 NativeSharp.Core.String result is not addressable";
-            return nullptr;
-        }
-        const MethodCallBinding* stringCall = callBinding(expression);
-        if (stringCall == nullptr || !stringCall->selectedMemberOrdinal.has_value())
-        {
-            error = "Stage 51 string intrinsic requires a resolved Core.String call";
-            return nullptr;
-        }
-        std::vector<const ast::AstNode*> operands;
-        if (stringCall->forwardedReceiver)
-        {
-            if (stringCall->receiverSyntax == nullptr)
-            {
-                error = "Stage 51 forwarded string call has no receiver";
-                return nullptr;
-            }
-            operands.push_back(stringCall->receiverSyntax);
-        }
-        operands.insert(operands.end(), expression->children().begin(), expression->children().end());
-        // Stage 53.3: this used to be a nested ternary (readable enough for 4 kinds, not
-        // for 8) -- rewritten as a plain if-chain now that File/Directory's four
-        // one-operand operations join StringFromCharArray/EnvironmentGetVariable in that
-        // bucket. Same three buckets as before: 3 operands (Substring only), 1 operand
-        // (every "one string in, one thing out" operation), 2 operands (everything else:
-        // Concat/Equals/SetEnvironmentVariable).
-        // La aridad viene de la misma tabla que decidio entrar aqui, asi que no puede
-        // discrepar con ella. El `expected = 2U` por omision de la version anterior
-        // --la trampa que se tragaba cualquier operacion nueva olvidada-- ya no existe.
-        const std::size_t expected = coreLowering->operandCount;
-        if (operands.size() != expected)
-        {
-            error = "Stage 51 string intrinsic received an invalid operand count";
-            return nullptr;
-        }
-        // EL NODO HIR VIENE DE LA MISMA TABLA. Aqui habia una cadena de 49 `else if`
-        // con `StringConcat` como valor inicial, y ese valor inicial era la trampa: una
-        // operacion nueva sin su rama no se quedaba sin nodo, se convertia en una
-        // CONCATENACION DE CADENAS. `File.GetSize(ruta)` se habria bajado como
-        // `concat(ruta, ...)`, sin un solo mensaje. Ahora la tabla que autorizo la
-        // entrada es la que dice el nodo, asi que no hay omision posible.
-        if (coreLowering->operandCount != 0U)
-        {
-            error = "Stage 34 core operand call escaped iterative lowering";
-            return nullptr;
-        }
-        return makeNode(coreLowering->hirKind, expression, core->resultTypeKey);
+        error = "Stage 51 NativeSharp.Core.String result is not addressable";
+        return nullptr;
     }
+    const MethodCallBinding* stringCall = callBinding(expression);
+    if (stringCall == nullptr || !stringCall->selectedMemberOrdinal.has_value())
+    {
+        error = "Stage 51 string intrinsic requires a resolved Core.String call";
+        return nullptr;
+    }
+    std::vector<const ast::AstNode*> operands;
+    if (stringCall->forwardedReceiver)
+    {
+        if (stringCall->receiverSyntax == nullptr)
+        {
+            error = "Stage 51 forwarded string call has no receiver";
+            return nullptr;
+        }
+        operands.push_back(stringCall->receiverSyntax);
+    }
+    operands.insert(operands.end(), expression->children().begin(), expression->children().end());
+    // Stage 53.3: this used to be a nested ternary (readable enough for 4 kinds, not
+    // for 8) -- rewritten as a plain if-chain now that File/Directory's four
+    // one-operand operations join StringFromCharArray/EnvironmentGetVariable in that
+    // bucket. Same three buckets as before: 3 operands (Substring only), 1 operand
+    // (every "one string in, one thing out" operation), 2 operands (everything else:
+    // Concat/Equals/SetEnvironmentVariable).
+    // La aridad viene de la misma tabla que decidio entrar aqui, asi que no puede
+    // discrepar con ella. El `expected = 2U` por omision de la version anterior
+    // --la trampa que se tragaba cualquier operacion nueva olvidada-- ya no existe.
+    const std::size_t expected = operandCount;
+    if (operands.size() != expected)
+    {
+        error = "Stage 51 string intrinsic received an invalid operand count";
+        return nullptr;
+    }
+    // EL NODO HIR VIENE DE LA MISMA TABLA. Aqui habia una cadena de 49 `else if`
+    // con `StringConcat` como valor inicial, y ese valor inicial era la trampa: una
+    // operacion nueva sin su rama no se quedaba sin nodo, se convertia en una
+    // CONCATENACION DE CADENAS. `File.GetSize(ruta)` se habria bajado como
+    // `concat(ruta, ...)`, sin un solo mensaje. Ahora la tabla que autorizo la
+    // entrada es la que dice el nodo, asi que no hay omision posible.
+    if (operandCount != 0U)
+    {
+        error = "Stage 34 core operand call escaped iterative lowering";
+        return nullptr;
+    }
+    return makeNode(hirKind, expression, binding.resultTypeKey);
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAtomicFenceCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
     // Item 307: AtomicFence has one syntactic argument, but that MemoryOrder was folded
     // already and is metadata rather than an executable operand.
-    if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::AtomicThreadFence ||
-         core->kind == MethodCoreOperationKind::AtomicCompilerFence))
+    if (addressContext)
     {
-        if (addressContext)
-        {
-            error = "AtomicFence result is not addressable";
-            return nullptr;
-        }
-        if (!core->atomicMemoryOrder.has_value() || expression->children().size() != 1U)
-        {
-            error = "AtomicFence requires exactly one validated compile-time MemoryOrder";
-            return nullptr;
-        }
-        const ProjectOopHirNodeKind kind =
-            core->kind == MethodCoreOperationKind::AtomicThreadFence
-                ? ProjectOopHirNodeKind::CoreAtomicThreadFence
-                : ProjectOopHirNodeKind::CoreAtomicCompilerFence;
-        auto node = makeNode(kind, expression, core->resultTypeKey);
-        node->integerValue = static_cast<std::uint64_t>(*core->atomicMemoryOrder) + 1U;
-        return node;
+        error = "AtomicFence result is not addressable";
+        return nullptr;
     }
+    if (!binding.atomicMemoryOrder.has_value() || expression->children().size() != 1U)
+    {
+        error = "AtomicFence requires exactly one validated compile-time MemoryOrder";
+        return nullptr;
+    }
+    const ProjectOopHirNodeKind kind =
+        binding.kind == MethodCoreOperationKind::AtomicThreadFence
+            ? ProjectOopHirNodeKind::CoreAtomicThreadFence
+            : ProjectOopHirNodeKind::CoreAtomicCompilerFence;
+    auto node = makeNode(kind, expression, binding.resultTypeKey);
+    node->integerValue = static_cast<std::uint64_t>(*binding.atomicMemoryOrder) + 1U;
+    return node;
+}
 
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rejectEscapedAtomicCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding&,
+    std::string& error)
+{
     // Stage 54.2/Item 311 atomics have one of two source-level locations. The wrapper API
     // (AtomicInt32/AtomicInt64/AtomicPointer) supplies a receiver and HIR synthesizes the
     // address of its private `value_` field. The public Interlocked API supplies an
     // explicit first `ref T` argument, whose parsed address-of expression lowers directly
     // to the location pointer. Both forms deliberately converge here on the same core HIR
     // nodes, so MIR and LLVM have one ordering/ABI implementation.
-    if (core != nullptr && hirAtomicCallPlan(core->kind).has_value())
+    if (addressContext)
     {
-        if (addressContext)
-        {
-            error = "Stage 54.2 Atomic operation result is not addressable";
-            return nullptr;
-        }
-        const MethodCallBinding* call = callBinding(expression);
-        if (call == nullptr)
-        {
-            error = "Stage 54.2 Atomic core operation requires a resolved call";
-            return nullptr;
-        }
-        error = "Stage 34 atomic core call escaped iterative lowering";
+        error = "Stage 54.2 Atomic operation result is not addressable";
         return nullptr;
     }
+    const MethodCallBinding* call = callBinding(expression);
+    if (call == nullptr)
+    {
+        error = "Stage 54.2 Atomic core operation requires a resolved call";
+        return nullptr;
+    }
+    error = "Stage 34 atomic core call escaped iterative lowering";
+    return nullptr;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rejectEscapedMonitorCoreCall(
+    const ast::AstNode*,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
     // H02S14J owns all five Monitor operations in the iterative expression machine. This
     // residual guard proves that no recursive receiver/timeout lowering can silently return.
-    if (core != nullptr && hirMonitorCallPlan(core->kind).has_value())
+    if (addressContext)
     {
-        if (addressContext)
+        error = binding.kind == MethodCoreOperationKind::MonitorWait
+            ? "Stage 54.4 Monitor.Wait result is not addressable"
+            : "Stage 54.4 Monitor operation result is not addressable";
+        return nullptr;
+    }
+    error = "Stage 34 monitor core call escaped iterative lowering";
+    return nullptr;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerConsoleCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
+    if (binding.kind == MethodCoreOperationKind::ConsoleReadLine)
+    {
+        if (addressContext || expression->children().size() != 1)
         {
-            error = core->kind == MethodCoreOperationKind::MonitorWait
-                ? "Stage 54.4 Monitor.Wait result is not addressable"
-                : "Stage 54.4 Monitor operation result is not addressable";
+            error = "NativeSharp.Core.Console.ReadLine requires one out status argument";
             return nullptr;
         }
-        error = "Stage 34 monitor core call escaped iterative lowering";
+        error = "Stage 34 console ReadLine call escaped iterative lowering";
         return nullptr;
     }
     // SHR-022. AQUI ES DONDE LAS CUATRO SALIDAS DE CONSOLA VUELVEN A SER UNA.
@@ -1327,30 +1580,21 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
     // La mascara se fija AQUI, en compilacion, no en ejecucion: el llamador escribio
     // `Console.ErrorWrite(...)`, asi que el valor es constante y llega al runtime como un
     // `i32` literal.
-    if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::ConsoleWriteLine ||
-         core->kind == MethodCoreOperationKind::ConsoleWrite ||
-         core->kind == MethodCoreOperationKind::ConsoleErrorWriteLine ||
-         core->kind == MethodCoreOperationKind::ConsoleErrorWrite))
+    if (addressContext || expression->children().size() != 1)
     {
-        if (addressContext || expression->children().size() != 1)
-        {
-            error = "SHR-022 NativeSharp.Core.Console output requires one value argument";
-            return nullptr;
-        }
-        error = "Stage 34 console output call escaped iterative lowering";
+        error = "SHR-022 NativeSharp.Core.Console output requires one value argument";
         return nullptr;
     }
-    if (core != nullptr && core->kind == MethodCoreOperationKind::ConsoleReadLine)
-    {
-        if (addressContext || expression->children().size() != 1)
-        {
-            error = "NativeSharp.Core.Console.ReadLine requires one out status argument";
-            return nullptr;
-        }
-        error = "Stage 34 console ReadLine call escaped iterative lowering";
-        return nullptr;
-    }
+    error = "Stage 34 console output call escaped iterative lowering";
+    return nullptr;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEnumToStringCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
     // ID 129. `ToString()` sobre un ENUM devuelve el NOMBRE del enumerador.
     //
     // POR QUE UNA CADENA DE CONDICIONALES Y NO UN NODO NUEVO. La respuesta depende del
@@ -1375,56 +1619,60 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
     // constante. `Dame().ToString()` se rechaza con un mensaje que dice que hay que
     // ligarlo a un local -- en vez de llamar a `Dame()` una vez por enumerador, que seria
     // un fallo silencioso y caro.
-    if (core != nullptr && core->kind == MethodCoreOperationKind::EnumToString)
+    if (addressContext)
     {
-        if (addressContext)
-        {
-            error = "ID 129 enum ToString() has no address";
-            return nullptr;
-        }
-        const ast::AstNode* receiverSyntax = expression->first() != nullptr
-            ? expression->first()->first() : nullptr;
-        if (receiverSyntax == nullptr)
-        {
-            error = "ID 129 enum ToString() has no receiver";
-            return nullptr;
-        }
-        if (memberModel_ == nullptr || nameLookup_ == nullptr)
-        {
-            error = "ID 129 enum ToString() needs the member model";
-            return nullptr;
-        }
-
-        // Los enumeradores del tipo, en el orden en que se declararon.
-        std::optional<std::size_t> enumOrdinal;
-        if (core->elementTypeKey.starts_with("type:"))
-        {
-            const std::string_view identity =
-                std::string_view(core->elementTypeKey).substr(5);
-            for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size();
-                 ++ordinal)
-            {
-                if (nameLookup_->namedTypes()[ordinal].identity.key() == identity)
-                {
-                    enumOrdinal = ordinal;
-                    break;
-                }
-            }
-        }
-        if (!enumOrdinal.has_value())
-        {
-            error = "ID 129 enum ToString() cannot find the enum type";
-            return nullptr;
-        }
-
-        error = "Stage 34 enum ToString call escaped iterative lowering";
+        error = "ID 129 enum ToString() has no address";
+        return nullptr;
+    }
+    const ast::AstNode* receiverSyntax = expression->first() != nullptr
+        ? expression->first()->first() : nullptr;
+    if (receiverSyntax == nullptr)
+    {
+        error = "ID 129 enum ToString() has no receiver";
+        return nullptr;
+    }
+    if (memberModel_ == nullptr || nameLookup_ == nullptr)
+    {
+        error = "ID 129 enum ToString() needs the member model";
         return nullptr;
     }
 
+    // Los enumeradores del tipo, en el orden en que se declararon.
+    std::optional<std::size_t> enumOrdinal;
+    if (binding.elementTypeKey.starts_with("type:"))
+    {
+        const std::string_view identity =
+            std::string_view(binding.elementTypeKey).substr(5);
+        for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size();
+             ++ordinal)
+        {
+            if (nameLookup_->namedTypes()[ordinal].identity.key() == identity)
+            {
+                enumOrdinal = ordinal;
+                break;
+            }
+        }
+    }
+    if (!enumOrdinal.has_value())
+    {
+        error = "ID 129 enum ToString() cannot find the enum type";
+        return nullptr;
+    }
+
+    error = "Stage 34 enum ToString call escaped iterative lowering";
+    return nullptr;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStructCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
     // C8 "type root", struct half. ToString on a struct is a COMPILE-TIME constant -- a
     // struct is resolved on its static type, so the answer is known here -- and therefore
     // lowers to an ordinary string literal rather than to a node of its own.
-    if (core != nullptr && core->kind == MethodCoreOperationKind::StructToString)
+    if (binding.kind == MethodCoreOperationKind::StructToString)
     {
         if (addressContext)
         {
@@ -1432,10 +1680,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
             return nullptr;
         }
         auto node = makeNode(ProjectOopHirNodeKind::StringLiteral, expression, "builtin:string");
-        node->stringValue = shortTypeName(core->elementTypeKey);
+        node->stringValue = shortTypeName(binding.elementTypeKey);
         return node;
     }
-    if (core != nullptr && core->kind == MethodCoreOperationKind::StructClone)
+    if (binding.kind == MethodCoreOperationKind::StructClone)
     {
         if (addressContext || !expression->children().empty())
         {
@@ -1452,199 +1700,306 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
         error = "Stage 34 struct Clone call escaped iterative lowering";
         return nullptr;
     }
-    if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::StructEquals ||
-         core->kind == MethodCoreOperationKind::StructHashCode))
+
+    const bool isEquals = binding.kind == MethodCoreOperationKind::StructEquals;
+    if (addressContext || expression->children().size() != (isEquals ? 1U : 0U))
     {
-        const bool isEquals = core->kind == MethodCoreOperationKind::StructEquals;
-        if (addressContext || expression->children().size() != (isEquals ? 1U : 0U))
-        {
-            error = "C8 struct root member received an invalid operand count";
-            return nullptr;
-        }
-        // Operand order: the receiver first, then Equals' argument. argumentCount is what
-        // separates them from the leaf descriptors that follow.
-        const ast::AstNode* receiverSyntax = expression->first() != nullptr
-            ? expression->first()->first() : nullptr;
-        if (receiverSyntax == nullptr)
-        {
-            error = "C8 struct root member has no receiver";
-            return nullptr;
-        }
-        error = "Stage 34 struct aggregate call escaped iterative lowering";
+        error = "C8 struct root member received an invalid operand count";
         return nullptr;
     }
-    if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::ClockQueryCounter ||
-         core->kind == MethodCoreOperationKind::ClockQueryFrequency ||
-         core->kind == MethodCoreOperationKind::ClockQuerySystemFileTime))
+    // Operand order: the receiver first, then Equals' argument. argumentCount is what
+    // separates them from the leaf descriptors that follow.
+    const ast::AstNode* receiverSyntax = expression->first() != nullptr
+        ? expression->first()->first() : nullptr;
+    if (receiverSyntax == nullptr)
     {
-        // Stage 53.1 "Time": all three NativeClock raw wrappers take zero arguments and
-        // return a plain builtin:long -- no operand lowering, no implicit conversion to
-        // wrap, unlike every String core operation above. This is the simplest possible
-        // core-operation shape in the whole compiler.
-        if (addressContext || expression->children().size() != 0)
-        {
-            error = "Stage 53.1 NativeSharp.Core.Diagnostics.NativeClock raw operation takes no arguments";
-            return nullptr;
-        }
-        ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreClockQueryCounter;
-        if (core->kind == MethodCoreOperationKind::ClockQueryFrequency)
-        {
-            kind = ProjectOopHirNodeKind::CoreClockQueryFrequency;
-        }
-        else if (core->kind == MethodCoreOperationKind::ClockQuerySystemFileTime)
-        {
-            kind = ProjectOopHirNodeKind::CoreClockQuerySystemFileTime;
-        }
-        return makeNode(kind, expression, "builtin:long");
+        error = "C8 struct root member has no receiver";
+        return nullptr;
     }
-    if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::EnvironmentTickCount64 ||
-         core->kind == MethodCoreOperationKind::EnvironmentProcessorCount ||
-         // Stage 53.5 "Command-line arguments": GetCommandLineArgCount joins this same
-         // zero-argument bucket -- it takes no operands either, just like TickCount64/
-         // ProcessorCount, and returns builtin:int like ProcessorCount does.
-         core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgCount ||
-         // Bloque 4, fase A: CurrentDirectory tambien es de cero argumentos, pero su
-         // resultado es builtin:string -- el primer tipo de salida no numerico de este
-         // bucket, de ahi el tercer caso en la cadena de abajo.
-         core->kind == MethodCoreOperationKind::EnvironmentCurrentDirectory))
+    error = "Stage 34 struct aggregate call escaped iterative lowering";
+    return nullptr;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerClockCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
+    // Stage 53.1 "Time": all three NativeClock raw wrappers take zero arguments and
+    // return a plain builtin:long -- no operand lowering, no implicit conversion to
+    // wrap, unlike every String core operation above. This is the simplest possible
+    // core-operation shape in the whole compiler.
+    if (addressContext || expression->children().size() != 0)
     {
-        // Stage 53.2 "Environment": same zero-argument shape as the NativeClock trio
-        // just above -- the only difference is the result type, "builtin:long" for
-        // TickCount64 and "builtin:int" for ProcessorCount (GetActiveProcessorCount
-        // returns a 32-bit DWORD in real Win32, so int is the honest NativeSharp type
-        // here, not long). Stage 53.5 added a third result type: still builtin:int, so
-        // this is a plain if-chain now rather than the original two-way ternary.
-        if (addressContext || expression->children().size() != 0)
-        {
-            error = "Stage 53.2 NativeSharp.Core.Environment raw operation takes no arguments";
-            return nullptr;
-        }
-        ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreEnvironmentProcessorCount;
-        std::string resultTypeKey = "builtin:int";
-        if (core->kind == MethodCoreOperationKind::EnvironmentTickCount64)
-        {
-            kind = ProjectOopHirNodeKind::CoreEnvironmentTickCount64;
-            resultTypeKey = "builtin:long";
-        }
-        else if (core->kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgCount)
-        {
-            kind = ProjectOopHirNodeKind::CoreEnvironmentGetCommandLineArgCount;
-        }
-        else if (core->kind == MethodCoreOperationKind::EnvironmentCurrentDirectory)
-        {
-            kind = ProjectOopHirNodeKind::CoreEnvironmentCurrentDirectory;
-            resultTypeKey = "builtin:string";
-        }
-        return makeNode(kind, expression, resultTypeKey);
+        error = "Stage 53.1 NativeSharp.Core.Diagnostics.NativeClock raw operation takes no arguments";
+        return nullptr;
     }
-    if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::ProcessGetCurrentProcessIdRaw ||
-         core->kind == MethodCoreOperationKind::ProcessGetWorkingSetSizeRaw ||
-         core->kind == MethodCoreOperationKind::ProcessGetKernelTimeRaw ||
-         core->kind == MethodCoreOperationKind::ProcessGetUserTimeRaw ||
-         core->kind == MethodCoreOperationKind::ProcessGetPriorityClassRaw))
+    ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreClockQueryCounter;
+    if (binding.kind == MethodCoreOperationKind::ClockQueryFrequency)
     {
-        // Stage 55.1 "Process": same zero-argument shape as the NativeClock trio above --
-        // all five results are builtin:long. The Win32 process HANDLE is obtained inside
-        // the runtime wrapper (GetCurrentProcess()), never passed from here.
-        if (addressContext || expression->children().size() != 0)
-        {
-            error = "Stage 55.1 NativeSharp.Core.Diagnostics.Process raw operation takes no arguments";
-            return nullptr;
-        }
-        ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreProcessGetCurrentProcessId;
-        if (core->kind == MethodCoreOperationKind::ProcessGetWorkingSetSizeRaw)
-        {
-            kind = ProjectOopHirNodeKind::CoreProcessGetWorkingSetSize;
-        }
-        else if (core->kind == MethodCoreOperationKind::ProcessGetKernelTimeRaw)
-        {
-            kind = ProjectOopHirNodeKind::CoreProcessGetKernelTime;
-        }
-        else if (core->kind == MethodCoreOperationKind::ProcessGetUserTimeRaw)
-        {
-            kind = ProjectOopHirNodeKind::CoreProcessGetUserTime;
-        }
-        else if (core->kind == MethodCoreOperationKind::ProcessGetPriorityClassRaw)
-        {
-            kind = ProjectOopHirNodeKind::CoreProcessGetPriorityClass;
-        }
-        return makeNode(kind, expression, "builtin:long");
+        kind = ProjectOopHirNodeKind::CoreClockQueryFrequency;
     }
-    if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::SystemInfoGetPageSizeRaw ||
-         core->kind == MethodCoreOperationKind::SystemInfoGetProcessorArchitectureRaw ||
-         core->kind == MethodCoreOperationKind::SystemInfoGetAllocationGranularityRaw ||
-         core->kind == MethodCoreOperationKind::SystemInfoGetTotalPhysicalMemoryBytesRaw ||
-         core->kind == MethodCoreOperationKind::SystemInfoGetAvailablePhysicalMemoryBytesRaw ||
-         core->kind == MethodCoreOperationKind::SystemInfoGetMemoryLoadPercentRaw))
+    else if (binding.kind == MethodCoreOperationKind::ClockQuerySystemFileTime)
     {
-        // Stage 55.2 "Hardware / System Info": same zero-argument shape, all six results
-        // are builtin:long. Both GetSystemInfo and GlobalMemoryStatusEx fill an in-memory
-        // Win32 struct entirely inside the runtime wrapper -- no struct type is ever
-        // visible up here.
-        if (addressContext || expression->children().size() != 0)
-        {
-            error = "Stage 55.2 NativeSharp.Core.Diagnostics.SystemInfo raw operation takes no arguments";
-            return nullptr;
-        }
-        ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreSystemInfoGetPageSize;
-        if (core->kind == MethodCoreOperationKind::SystemInfoGetProcessorArchitectureRaw)
-        {
-            kind = ProjectOopHirNodeKind::CoreSystemInfoGetProcessorArchitecture;
-        }
-        else if (core->kind == MethodCoreOperationKind::SystemInfoGetAllocationGranularityRaw)
-        {
-            kind = ProjectOopHirNodeKind::CoreSystemInfoGetAllocationGranularity;
-        }
-        else if (core->kind == MethodCoreOperationKind::SystemInfoGetTotalPhysicalMemoryBytesRaw)
-        {
-            kind = ProjectOopHirNodeKind::CoreSystemInfoGetTotalPhysicalMemoryBytes;
-        }
-        else if (core->kind == MethodCoreOperationKind::SystemInfoGetAvailablePhysicalMemoryBytesRaw)
-        {
-            kind = ProjectOopHirNodeKind::CoreSystemInfoGetAvailablePhysicalMemoryBytes;
-        }
-        else if (core->kind == MethodCoreOperationKind::SystemInfoGetMemoryLoadPercentRaw)
-        {
-            kind = ProjectOopHirNodeKind::CoreSystemInfoGetMemoryLoadPercent;
-        }
-        return makeNode(kind, expression, "builtin:long");
+        kind = ProjectOopHirNodeKind::CoreClockQuerySystemFileTime;
     }
-    if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::DebugIsDebuggerPresentRaw ||
-         core->kind == MethodCoreOperationKind::DebugCaptureStackFrameCountRaw))
+    return makeNode(kind, expression, "builtin:long");
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEnvironmentQueryCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
+    // Stage 53.2 "Environment": same zero-argument shape as the NativeClock trio
+    // just above -- the only difference is the result type, "builtin:long" for
+    // TickCount64 and "builtin:int" for ProcessorCount (GetActiveProcessorCount
+    // returns a 32-bit DWORD in real Win32, so int is the honest NativeSharp type
+    // here, not long). Stage 53.5 added a third result type: still builtin:int, so
+    // this is a plain if-chain now rather than the original two-way ternary.
+    if (addressContext || expression->children().size() != 0)
     {
-        // Stage 55.3 "Diagnostics": same zero-argument shape, both results are
-        // builtin:long (IsDebuggerPresentRaw's Win32 0/1 becomes a real bool in Debug.ns).
-        if (addressContext || expression->children().size() != 0)
-        {
-            error = "Stage 55.3 NativeSharp.Core.Diagnostics.Debug raw operation takes no arguments";
-            return nullptr;
-        }
-        ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreDebugIsDebuggerPresent;
-        if (core->kind == MethodCoreOperationKind::DebugCaptureStackFrameCountRaw)
-        {
-            kind = ProjectOopHirNodeKind::CoreDebugCaptureStackFrameCount;
-        }
-        return makeNode(kind, expression, "builtin:long");
+        error = "Stage 53.2 NativeSharp.Core.Environment raw operation takes no arguments";
+        return nullptr;
+    }
+    ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreEnvironmentProcessorCount;
+    std::string resultTypeKey = "builtin:int";
+    if (binding.kind == MethodCoreOperationKind::EnvironmentTickCount64)
+    {
+        kind = ProjectOopHirNodeKind::CoreEnvironmentTickCount64;
+        resultTypeKey = "builtin:long";
+    }
+    else if (binding.kind == MethodCoreOperationKind::EnvironmentGetCommandLineArgCount)
+    {
+        kind = ProjectOopHirNodeKind::CoreEnvironmentGetCommandLineArgCount;
+    }
+    else if (binding.kind == MethodCoreOperationKind::EnvironmentCurrentDirectory)
+    {
+        kind = ProjectOopHirNodeKind::CoreEnvironmentCurrentDirectory;
+        resultTypeKey = "builtin:string";
+    }
+    return makeNode(kind, expression, resultTypeKey);
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerProcessQueryCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
+    // Stage 55.1 "Process": same zero-argument shape as the NativeClock trio above --
+    // all five results are builtin:long. The Win32 process HANDLE is obtained inside
+    // the runtime wrapper (GetCurrentProcess()), never passed from here.
+    if (addressContext || expression->children().size() != 0)
+    {
+        error = "Stage 55.1 NativeSharp.Core.Diagnostics.Process raw operation takes no arguments";
+        return nullptr;
+    }
+    ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreProcessGetCurrentProcessId;
+    if (binding.kind == MethodCoreOperationKind::ProcessGetWorkingSetSizeRaw)
+    {
+        kind = ProjectOopHirNodeKind::CoreProcessGetWorkingSetSize;
+    }
+    else if (binding.kind == MethodCoreOperationKind::ProcessGetKernelTimeRaw)
+    {
+        kind = ProjectOopHirNodeKind::CoreProcessGetKernelTime;
+    }
+    else if (binding.kind == MethodCoreOperationKind::ProcessGetUserTimeRaw)
+    {
+        kind = ProjectOopHirNodeKind::CoreProcessGetUserTime;
+    }
+    else if (binding.kind == MethodCoreOperationKind::ProcessGetPriorityClassRaw)
+    {
+        kind = ProjectOopHirNodeKind::CoreProcessGetPriorityClass;
+    }
+    return makeNode(kind, expression, "builtin:long");
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerSystemInfoCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
+    // Stage 55.2 "Hardware / System Info": same zero-argument shape, all six results
+    // are builtin:long. Both GetSystemInfo and GlobalMemoryStatusEx fill an in-memory
+    // Win32 struct entirely inside the runtime wrapper -- no struct type is ever
+    // visible up here.
+    if (addressContext || expression->children().size() != 0)
+    {
+        error = "Stage 55.2 NativeSharp.Core.Diagnostics.SystemInfo raw operation takes no arguments";
+        return nullptr;
+    }
+    ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreSystemInfoGetPageSize;
+    if (binding.kind == MethodCoreOperationKind::SystemInfoGetProcessorArchitectureRaw)
+    {
+        kind = ProjectOopHirNodeKind::CoreSystemInfoGetProcessorArchitecture;
+    }
+    else if (binding.kind == MethodCoreOperationKind::SystemInfoGetAllocationGranularityRaw)
+    {
+        kind = ProjectOopHirNodeKind::CoreSystemInfoGetAllocationGranularity;
+    }
+    else if (binding.kind == MethodCoreOperationKind::SystemInfoGetTotalPhysicalMemoryBytesRaw)
+    {
+        kind = ProjectOopHirNodeKind::CoreSystemInfoGetTotalPhysicalMemoryBytes;
+    }
+    else if (binding.kind == MethodCoreOperationKind::SystemInfoGetAvailablePhysicalMemoryBytesRaw)
+    {
+        kind = ProjectOopHirNodeKind::CoreSystemInfoGetAvailablePhysicalMemoryBytes;
+    }
+    else if (binding.kind == MethodCoreOperationKind::SystemInfoGetMemoryLoadPercentRaw)
+    {
+        kind = ProjectOopHirNodeKind::CoreSystemInfoGetMemoryLoadPercent;
+    }
+    return makeNode(kind, expression, "builtin:long");
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDebugCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
+    // Stage 55.3 "Diagnostics": same zero-argument shape, both results are
+    // builtin:long (IsDebuggerPresentRaw's Win32 0/1 becomes a real bool in Debug.ns).
+    if (addressContext || expression->children().size() != 0)
+    {
+        error = "Stage 55.3 NativeSharp.Core.Diagnostics.Debug raw operation takes no arguments";
+        return nullptr;
+    }
+    ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::CoreDebugIsDebuggerPresent;
+    if (binding.kind == MethodCoreOperationKind::DebugCaptureStackFrameCountRaw)
+    {
+        kind = ProjectOopHirNodeKind::CoreDebugCaptureStackFrameCount;
+    }
+    return makeNode(kind, expression, "builtin:long");
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEnvironmentExitCoreCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCoreBinding&,
+    std::string& error)
+{
+    // Stage 53.2 "Environment": same one-argument/void shape as
+    // Console.WriteLine above, just with a builtin:int argument instead of a
+    // builtin:string one -- no string layout involved, the argument travels as a
+    // plain i32 value all the way down to ExitProcess's own exit-code parameter.
+    if (addressContext || expression->children().size() != 1)
+    {
+        error = "Stage 53.2 NativeSharp.Core.Environment.Exit requires one int argument";
+        return nullptr;
+    }
+    error = "Stage 34 Environment.Exit call escaped iterative lowering";
+    return nullptr;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    bool addressContext,
+    std::string& error)
+{
+    if (const MethodCoreBinding* intrinsic = coreBinding(expression);
+        intrinsic != nullptr && isAssertionCoreCall(intrinsic->kind))
+    {
+        return lowerAssertionCoreCall(expression, addressContext, *intrinsic, error);
+    }
+    if (const MethodCoreBinding* iteratorCore = coreBinding(expression);
+        iteratorCore != nullptr && isIteratorCoreCall(iteratorCore->kind))
+    {
+        return lowerIteratorCoreCall(expression, addressContext, *iteratorCore, error);
+    }
+    const NamespaceFunctionCallBinding* namespaceCall =
+        namespaceFunctionCallBinding(expression);
+    if (namespaceCall != nullptr)
+    {
+        return lowerNamespaceFunctionCall(expression, addressContext, *namespaceCall, error);
+    }
+    const MethodEventBinding* stage42Event = eventBinding(expression);
+    if (stage42Event != nullptr && stage42Event->kind == MethodEventOperationKind::Invoke)
+    {
+        return lowerEventInvocation(
+            expression, memberOrdinal, addressContext, *stage42Event, error);
+    }
+
+    const MethodDelegateBinding* invoke = delegateBinding(expression);
+    if (invoke != nullptr && invoke->kind == MethodDelegateOperationKind::Invoke)
+    {
+        return lowerDelegateInvocation(expression, addressContext, *invoke, error);
+    }
+
+    const MethodCoreBinding* core = coreBinding(expression);
+    if (core != nullptr && isViewCoreCall(core->kind))
+    {
+        return lowerViewCoreCall(expression, addressContext, *core, error);
+    }
+    // Las TRES preguntas --entra en este bloque, con cuantos operandos, y en que nodo
+    // HIR se convierte-- salen de la MISMA respuesta: ver hirCoreOperandCallPlan() al
+    // principio de este archivo.
+    const std::optional<HirCoreOperandCallPlan> coreLowering =
+        core != nullptr ? hirCoreOperandCallPlan(core->kind) : std::nullopt;
+    if (coreLowering.has_value())
+    {
+        return lowerOperandCoreCall(
+            expression,
+            addressContext,
+            *core,
+            coreLowering->operandCount,
+            coreLowering->hirKind,
+            error);
+    }
+    if (core != nullptr && isAtomicFenceCoreCall(core->kind))
+    {
+        return lowerAtomicFenceCoreCall(expression, addressContext, *core, error);
+    }
+
+    if (core != nullptr && hirAtomicCallPlan(core->kind).has_value())
+    {
+        return rejectEscapedAtomicCoreCall(expression, addressContext, *core, error);
+    }
+    if (core != nullptr && hirMonitorCallPlan(core->kind).has_value())
+    {
+        return rejectEscapedMonitorCoreCall(expression, addressContext, *core, error);
+    }
+    if (core != nullptr && isConsoleCoreCall(core->kind))
+    {
+        return lowerConsoleCoreCall(expression, addressContext, *core, error);
+    }
+    if (core != nullptr && core->kind == MethodCoreOperationKind::EnumToString)
+    {
+        return lowerEnumToStringCoreCall(expression, addressContext, *core, error);
+    }
+
+    if (core != nullptr && isStructCoreCall(core->kind))
+    {
+        return lowerStructCoreCall(expression, addressContext, *core, error);
+    }
+    if (core != nullptr && isClockCoreCall(core->kind))
+    {
+        return lowerClockCoreCall(expression, addressContext, *core, error);
+    }
+    if (core != nullptr && isEnvironmentQueryCoreCall(core->kind))
+    {
+        return lowerEnvironmentQueryCoreCall(expression, addressContext, *core, error);
+    }
+    if (core != nullptr && isProcessQueryCoreCall(core->kind))
+    {
+        return lowerProcessQueryCoreCall(expression, addressContext, *core, error);
+    }
+    if (core != nullptr && isSystemInfoCoreCall(core->kind))
+    {
+        return lowerSystemInfoCoreCall(expression, addressContext, *core, error);
+    }
+    if (core != nullptr && isDebugCoreCall(core->kind))
+    {
+        return lowerDebugCoreCall(expression, addressContext, *core, error);
     }
     if (core != nullptr && core->kind == MethodCoreOperationKind::EnvironmentExit)
     {
-        // Stage 53.2 "Environment": same one-argument/void shape as
-        // Console.WriteLine above, just with a builtin:int argument instead of a
-        // builtin:string one -- no string layout involved, the argument travels as a
-        // plain i32 value all the way down to ExitProcess's own exit-code parameter.
-        if (addressContext || expression->children().size() != 1)
-        {
-            error = "Stage 53.2 NativeSharp.Core.Environment.Exit requires one int argument";
-            return nullptr;
-        }
-        error = "Stage 34 Environment.Exit call escaped iterative lowering";
-        return nullptr;
+        return lowerEnvironmentExitCoreCall(expression, addressContext, *core, error);
     }
     const MethodCallBinding* binding = callBinding(expression);
     if (binding == nullptr || !binding->selectedMemberOrdinal.has_value())
@@ -1652,134 +2007,254 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCallExpression(
         error = "Stage 34 requires a resolved Stage 27 method call";
         return nullptr;
     }
-    std::size_t selectedMemberOrdinal = *binding->selectedMemberOrdinal;
-    const ast::AstNode* receiverSyntax = binding->receiverSyntax;
-    std::string_view receiverTypeKey = binding->receiverTypeKey;
-    bool interfaceDispatch = binding->interfaceCall;
-    if (interfaceDispatch && !binding->forwardedReceiver && interfaceModel_ != nullptr &&
-        memberModel_ != nullptr && binding->receiverTypeOrdinal.has_value() &&
+    return lowerOrdinaryCall(expression, addressContext, *binding, error);
+}
+
+namespace
+{
+bool ordinaryInterfaceDispatchCandidate(
+    const MethodCallBinding& binding,
+    const ProjectInterfaceModel* interfaceModel,
+    const ProjectMemberModel* memberModel,
+    const ast::AstNode* receiverSyntax,
+    bool interfaceDispatch)
+{
+    return interfaceDispatch && !binding.forwardedReceiver && interfaceModel != nullptr &&
+        memberModel != nullptr && binding.receiverTypeOrdinal.has_value() &&
         receiverSyntax != nullptr &&
         (receiverSyntax->kind() == ast::AstNodeKind::CastExpression ||
          receiverSyntax->kind() == ast::AstNodeKind::SafeCastExpression) &&
         receiverSyntax->first() != nullptr &&
         (receiverSyntax->first()->kind() == ast::AstNodeKind::NewExpression ||
-         receiverSyntax->first()->kind() == ast::AstNodeKind::ObjectCreationExpression))
+         receiverSyntax->first()->kind() == ast::AstNodeKind::ObjectCreationExpression);
+}
+
+void resolveOrdinaryInterfaceDispatch(
+    const MethodCallBinding& binding,
+    const ProjectInterfaceModel* interfaceModel,
+    const MethodExpressionTypeBinding* concreteType,
+    std::size_t& selectedMemberOrdinal,
+    const ast::AstNode*& receiverSyntax,
+    std::string_view& receiverTypeKey,
+    bool& interfaceDispatch)
+{
+    const std::optional<std::size_t> concreteTypeOrdinal = concreteType != nullptr
+        ? interfaceModel->typeOrdinalForTypeKey(concreteType->typeKey)
+        : std::nullopt;
+    const ClassInterfaceTablePlan* plan = concreteTypeOrdinal.has_value()
+        ? interfaceModel->tablePlan(*concreteTypeOrdinal, *binding.receiverTypeOrdinal)
+        : nullptr;
+    if (plan == nullptr) return;
+    const auto contract = std::find(
+        plan->interfaceMethodMemberOrdinals.begin(),
+        plan->interfaceMethodMemberOrdinals.end(),
+        selectedMemberOrdinal);
+    if (contract == plan->interfaceMethodMemberOrdinals.end()) return;
+    const std::size_t slot = static_cast<std::size_t>(
+        contract - plan->interfaceMethodMemberOrdinals.begin());
+    if (slot >= plan->implementationMemberOrdinals.size() ||
+        !plan->implementationMemberOrdinals[slot].has_value())
+        return;
+    selectedMemberOrdinal = *plan->implementationMemberOrdinals[slot];
+    receiverSyntax = receiverSyntax->first();
+    receiverTypeKey = concreteType->typeKey;
+    interfaceDispatch = false;
+}
+
+void configureOrdinaryNullFlow(
+    ProjectOopHirNode& node,
+    bool writtenNullConditional,
+    bool provenNonNull)
+{
+    node.nullConditionalCall = writtenNullConditional && !provenNonNull;
+    if (writtenNullConditional && provenNonNull) node.stringValue = "flow-nonnull";
+}
+
+void configureOrdinaryCallNode(
+    ProjectOopHirNode& node,
+    const MethodCallBinding& binding,
+    std::size_t selectedMemberOrdinal,
+    bool interfaceDispatch,
+    const MethodExpressionTypeBinding* callType)
+{
+    node.booleanValue = callType != nullptr && callType->flowActiveVariantCase.has_value();
+    node.memberOrdinal = selectedMemberOrdinal;
+    node.baseReceiver = binding.baseReceiver;
+    node.interfaceDispatch = interfaceDispatch;
+    if (interfaceDispatch) node.targetTypeOrdinal = binding.receiverTypeOrdinal;
+}
+
+const ClassMemberSymbol* ordinarySelectedMember(
+    const ProjectMemberModel* memberModel,
+    std::size_t selectedMemberOrdinal,
+    std::string& error)
+{
+    if (memberModel != nullptr && selectedMemberOrdinal < memberModel->members().size())
+        return &memberModel->members()[selectedMemberOrdinal];
+    error = "NSC-LIMIT-020 selected call has no callable metadata";
+    return nullptr;
+}
+
+bool resolveEmptyOrdinaryParameterPack(
+    const MethodCallBinding& binding,
+    const ClassMemberSymbol& selectedMember,
+    std::size_t& parameterIndex,
+    const std::string*& elementType,
+    std::string& error)
+{
+    if (!binding.selectedParameterPackOrdinal.has_value() ||
+        *binding.selectedParameterPackOrdinal >= selectedMember.parameters.size())
+    {
+        error = "T01-F02 empty method parameter pack has no parameter";
+        return false;
+    }
+    parameterIndex = *binding.selectedParameterPackOrdinal;
+    elementType = &selectedMember.parameters[parameterIndex].parameterPackElementTypeKey;
+    if (!elementType->empty()) return true;
+    error = "T01-F02 empty method parameter pack lost its element type";
+    return false;
+}
+
+bool resolveOrdinaryDefaultArgument(
+    const MethodCallBinding& binding,
+    const ClassMemberSymbol& selectedMember,
+    std::size_t index,
+    std::size_t& parameterIndex,
+    std::string_view& parameterTypeKey,
+    std::string& error)
+{
+    if (index >= binding.selectedDefaultArgumentParameterOrdinals.size())
+    {
+        error = "selected default argument has no parameter ordinal";
+        return false;
+    }
+    parameterIndex = binding.selectedDefaultArgumentParameterOrdinals[index];
+    if (parameterIndex >= selectedMember.parameters.size())
+    {
+        error = "NSC-LIMIT-020 selected default argument has no matching parameter";
+        return false;
+    }
+    parameterTypeKey = selectedMember.parameters[parameterIndex].typeKey;
+    return true;
+}
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerOrdinaryCall(
+    const ast::AstNode* expression,
+    bool addressContext,
+    const MethodCallBinding& binding,
+    std::string& error)
+{
+    std::size_t selectedMemberOrdinal = *binding.selectedMemberOrdinal;
+    const ast::AstNode* receiverSyntax = binding.receiverSyntax;
+    std::string_view receiverTypeKey = binding.receiverTypeKey;
+    bool interfaceDispatch = binding.interfaceCall;
+    if (ordinaryInterfaceDispatchCandidate(
+            binding, interfaceModel_, memberModel_, receiverSyntax, interfaceDispatch))
     {
         const MethodExpressionTypeBinding* concreteType = expressionType(receiverSyntax->first());
-        const std::optional<std::size_t> concreteTypeOrdinal = concreteType != nullptr
-            ? interfaceModel_->typeOrdinalForTypeKey(concreteType->typeKey)
-            : std::nullopt;
-        const ClassInterfaceTablePlan* plan = concreteTypeOrdinal.has_value()
-            ? interfaceModel_->tablePlan(*concreteTypeOrdinal, *binding->receiverTypeOrdinal)
-            : nullptr;
-        if (plan != nullptr)
-        {
-            const auto contract = std::find(
-                plan->interfaceMethodMemberOrdinals.begin(),
-                plan->interfaceMethodMemberOrdinals.end(),
-                selectedMemberOrdinal);
-            if (contract != plan->interfaceMethodMemberOrdinals.end())
-            {
-                const std::size_t slot = static_cast<std::size_t>(
-                    contract - plan->interfaceMethodMemberOrdinals.begin());
-                if (slot < plan->implementationMemberOrdinals.size() &&
-                    plan->implementationMemberOrdinals[slot].has_value())
-                {
-                    selectedMemberOrdinal = *plan->implementationMemberOrdinals[slot];
-                    receiverSyntax = receiverSyntax->first();
-                    receiverTypeKey = concreteType->typeKey;
-                    interfaceDispatch = false;
-                }
-            }
-        }
+        resolveOrdinaryInterfaceDispatch(
+            binding,
+            interfaceModel_,
+            concreteType,
+            selectedMemberOrdinal,
+            receiverSyntax,
+            receiverTypeKey,
+            interfaceDispatch);
     }
     auto node = makeNode(
-        binding->staticCall ? ProjectOopHirNodeKind::StaticCall : ProjectOopHirNodeKind::InstanceCall,
+        binding.staticCall ? ProjectOopHirNodeKind::StaticCall : ProjectOopHirNodeKind::InstanceCall,
         expression,
-        binding->resultTypeKey);
+        binding.resultTypeKey);
     const bool writtenNullConditional = expression->first() != nullptr &&
         expression->first()->kind() == ast::AstNodeKind::NullConditionalMemberExpression;
     const MethodExpressionTypeBinding* receiverFlow = expressionType(receiverSyntax);
     const bool provenNonNull = receiverFlow != nullptr && receiverFlow->flowProvenNonNull;
-    node->nullConditionalCall = writtenNullConditional && !provenNonNull;
-    if (writtenNullConditional && provenNonNull) node->stringValue = "flow-nonnull";
+    configureOrdinaryNullFlow(*node, writtenNullConditional, provenNonNull);
     const MethodExpressionTypeBinding* callType = expressionType(expression);
-    node->booleanValue = callType != nullptr && callType->flowActiveVariantCase.has_value();
-    node->memberOrdinal = selectedMemberOrdinal;
-    node->baseReceiver = binding->baseReceiver;
-    node->interfaceDispatch = interfaceDispatch;
-    if (interfaceDispatch)
-    {
-        node->targetTypeOrdinal = binding->receiverTypeOrdinal;
-    }
-    const bool explicitReceiver = !binding->staticCall && receiverSyntax != nullptr &&
+    configureOrdinaryCallNode(
+        *node,
+        binding,
+        selectedMemberOrdinal,
+        interfaceDispatch,
+        callType);
+    const bool explicitReceiver = !binding.staticCall && receiverSyntax != nullptr &&
         receiverSyntax->kind() != ast::AstNodeKind::BaseExpression;
-    if (binding->forwardedReceiver || explicitReceiver || !expression->children().empty())
+    if (binding.forwardedReceiver || explicitReceiver || !expression->children().empty())
     {
         error = "Stage 34 ordinary call escaped iterative lowering";
         return nullptr;
     }
-    if (!binding->staticCall)
+    if (!binding.staticCall)
     {
         auto receiver = lowerImplicitReceiver(receiverSyntax, receiverTypeKey, error);
         if (receiver == nullptr) return nullptr;
         node->children.push_back(std::move(receiver));
     }
-    if (memberModel_ == nullptr ||
-        selectedMemberOrdinal >= memberModel_->members().size())
-    {
-        error = "NSC-LIMIT-020 selected call has no callable metadata";
-        return nullptr;
-    }
-    const ClassMemberSymbol& selectedMember =
-        memberModel_->members()[selectedMemberOrdinal];
+    const ClassMemberSymbol* selectedMember = ordinarySelectedMember(
+        memberModel_, selectedMemberOrdinal, error);
+    if (selectedMember == nullptr) return nullptr;
     bool hasOwnedTemporary = false;
-    for (std::size_t index = 0; index < binding->selectedDefaultArguments.size(); ++index)
+    if (!appendOrdinaryDefaultArguments(
+            *node, expression, binding, *selectedMember, error))
+        return nullptr;
+    return finishOrdinaryCall(
+        std::move(node),
+        expression,
+        addressContext,
+        *selectedMember,
+        hasOwnedTemporary,
+        error);
+}
+
+bool ProjectOopHirModel::appendOrdinaryDefaultArguments(
+    ProjectOopHirNode& node,
+    const ast::AstNode* expression,
+    const MethodCallBinding& binding,
+    const ClassMemberSymbol& selectedMember,
+    std::string& error)
+{
+    for (std::size_t index = 0; index < binding.selectedDefaultArguments.size(); ++index)
     {
-        if (index >= binding->selectedDefaultArgumentParameterOrdinals.size())
-        {
-            error = "selected default argument has no parameter ordinal";
-            return nullptr;
-        }
-        const std::size_t parameterIndex =
-            binding->selectedDefaultArgumentParameterOrdinals[index];
-        if (parameterIndex >= selectedMember.parameters.size())
-        {
-            error = "NSC-LIMIT-020 selected default argument has no matching parameter";
-            return nullptr;
-        }
+        std::size_t parameterIndex = 0;
+        std::string_view parameterTypeKey;
+        if (!resolveOrdinaryDefaultArgument(
+                binding, selectedMember, index, parameterIndex, parameterTypeKey, error))
+            return false;
         auto argument = lowerDefaultArgument(
-            binding->selectedDefaultArguments[index],
-            selectedMember.parameters[parameterIndex].typeKey,
+            binding.selectedDefaultArguments[index],
+            parameterTypeKey,
             error);
-        if (argument == nullptr) return nullptr;
-        node->children.push_back(std::move(argument));
-        node->argumentParameterOrdinals.push_back(parameterIndex);
+        if (argument == nullptr) return false;
+        node.children.push_back(std::move(argument));
+        node.argumentParameterOrdinals.push_back(parameterIndex);
     }
-    if (binding->selectedSynthesizesEmptyParameterPack)
+    if (binding.selectedSynthesizesEmptyParameterPack)
     {
-        if (!binding->selectedParameterPackOrdinal.has_value() ||
-            *binding->selectedParameterPackOrdinal >= selectedMember.parameters.size())
-        {
-            error = "T01-F02 empty method parameter pack has no parameter";
-            return nullptr;
-        }
-        const std::size_t parameterIndex = *binding->selectedParameterPackOrdinal;
-        const std::string& elementType =
-            selectedMember.parameters[parameterIndex].parameterPackElementTypeKey;
-        if (elementType.empty())
-        {
-            error = "T01-F02 empty method parameter pack lost its element type";
-            return nullptr;
-        }
+        std::size_t parameterIndex = 0;
+        const std::string* elementType = nullptr;
+        if (!resolveEmptyOrdinaryParameterPack(
+                binding, selectedMember, parameterIndex, elementType, error))
+            return false;
         auto pack = makeNode(
             ProjectOopHirNodeKind::ParameterPack,
             expression,
             selectedMember.parameters[parameterIndex].typeKey);
-        pack->elementTypeKey = elementType;
-        node->children.push_back(std::move(pack));
-        node->argumentParameterOrdinals.push_back(parameterIndex);
+        pack->elementTypeKey = *elementType;
+        node.children.push_back(std::move(pack));
+        node.argumentParameterOrdinals.push_back(parameterIndex);
     }
+    return true;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishOrdinaryCall(
+    std::unique_ptr<ProjectOopHirNode> node,
+    const ast::AstNode* expression,
+    bool addressContext,
+    const ClassMemberSymbol& selectedMember,
+    bool hasOwnedTemporary,
+    std::string& error)
+{
     if (addressContext && !selectedMember.isReferenceReturn)
     {
         error = "call result is not addressable unless the selected method returns ref";

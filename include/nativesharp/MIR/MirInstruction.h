@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/MIR/MirPhiIncoming.h"
+
 #include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/MIR/MirOpcode.h"
 #include "nativesharp/Sema/ConstantValue.h"
@@ -19,12 +21,6 @@ namespace nativesharp::mir
 {
 class MirBlock;
 class MirValue;
-
-struct MirPhiIncoming
-{
-    MirBlock* block = nullptr;
-    MirValue* value = nullptr;
-};
 
 class MirInstruction final
 {

@@ -1,10 +1,10 @@
 # NSC — IMPLEMENTACIÓN
 
-Progreso absoluto: **749/1227**
+Progreso absoluto: **846/1227**
 
-Completados: **749**
+Completados: **846**
 
-Pendientes: **478**
+Pendientes: **381**
 
 Fuente canónica: `NSC-GUIA-DE-IMPLEMENTACION.md` y sus anexos A, B, C, D y F, medidos el 2026-10-19.
 
@@ -14,7 +14,7 @@ casillas se agrupen por integración.
 Quedan fuera del denominador: cambios a NSC Builder, cambios de CLI/sintaxis/ABI/NSMETA/contratos 3.0.4,
 eliminación de recursión y las tareas de rendimiento que requieren autorización funcional independiente.
 
-## Refactor mecánico y reorganización sin cambios funcionales — 749/1225
+## Refactor mecánico y reorganización sin cambios funcionales — 846/1225
 
 Política de integración: **10 commits técnicos**, uno por límite de subsistema. Un commit se crea únicamente
 cuando su conjunto está completo, revisado y cuenta con la evidencia focal aplicable. Ninguna optimización entra
@@ -2549,320 +2549,327 @@ de 2,828 comentarios, diagnósticos ruta por ruta, un tipo por header y cero tip
 funciones quedaron en ≤60 líneas ejecutables y las líneas nuevas en ≤120 columnas. No se ejecutaron compilación,
 pruebas, suites ni baseline por instrucción del propietario.
 
-### Commit REF-05 — HIR, MIR, CFG y dominancia — 0/97
+### Commit REF-05 — HIR, MIR, CFG y dominancia — 97/97
 
 Modulariza las representaciones y máquinas HIR/MIR junto con sus soportes de CFG y dominancia.
 
-- [ ] NSC-IMPL-0010 — Extraer el struct DfsFrame desde src/CFG/CfgTraversal.cpp:15-19 (5) hacia
+- [x] NSC-IMPL-0010 — Extraer el struct DfsFrame desde src/CFG/CfgTraversal.cpp:15-19 (5) hacia
   src/CFG/Internal/DfsFrame.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta. Restricción
   de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0018 — Extraer el struct TreeFrame desde src/Dominance/DominanceBuilder.cpp:24-29 (6) hacia
+- [x] NSC-IMPL-0018 — Extraer el struct TreeFrame desde src/Dominance/DominanceBuilder.cpp:24-29 (6) hacia
   src/Dominance/Internal/TreeFrame.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: shim + vista privada (A-1).
-- [ ] NSC-IMPL-0054 — Extraer el enum StaticAssertConstantKind desde src/Frontend/HIR/HirStatementMachine.cpp:22-27 (6)
+- [x] NSC-IMPL-0054 — Extraer el enum StaticAssertConstantKind desde src/Frontend/HIR/HirStatementMachine.cpp:22-27 (6)
   hacia src/Frontend/HIR/Internal/StaticAssertConstantKind.h, sin .cpp adicional; conservar texto, comentarios, firmas,
   orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0055 — Extraer el struct StaticAssertConstant desde src/Frontend/HIR/HirStatementMachine.cpp:29-36 (8)
+- [x] NSC-IMPL-0055 — Extraer el struct StaticAssertConstant desde src/Frontend/HIR/HirStatementMachine.cpp:29-36 (8)
   hacia src/Frontend/HIR/Internal/StaticAssertConstant.h, sin .cpp adicional; conservar texto, comentarios, firmas,
   orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0056 — Extraer el class MirByteReader desde src/Frontend/MIR/MirBuildCoordinator.cpp:104-166 (63) hacia
+- [x] NSC-IMPL-0056 — Extraer el class MirByteReader desde src/Frontend/MIR/MirBuildCoordinator.cpp:104-166 (63) hacia
   src/Frontend/MIR/Internal/MirByteReader.h, y mover sus cuerpos a src/Frontend/MIR/Internal/MirByteReader.cpp;
   conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0057 — Extraer el class ProjectOopMirModel::MirNodeMachine desde
+- [x] NSC-IMPL-0057 — Extraer el class ProjectOopMirModel::MirNodeMachine desde
   src/Frontend/MIR/MirNodeMachine.cpp:29-149 (121) hacia src/Frontend/MIR/Internal/MirNodeMachine.h, y mover sus cuerpos
   a src/Frontend/MIR/Internal/MirNodeMachine.cpp; conservar texto, comentarios, firmas, orden y conducta. Restricción de
   pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0079 — Extraer el enum LoweringFrameKind desde src/HIR/HirBuilder.cpp:18-31 (14) hacia
+- [x] NSC-IMPL-0079 — Extraer el enum LoweringFrameKind desde src/HIR/HirBuilder.cpp:18-31 (14) hacia
   src/HIR/Internal/LoweringFrameKind.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0080 — Extraer el struct LoweringFrame desde src/HIR/HirBuilder.cpp:33-47 (15) hacia
+- [x] NSC-IMPL-0080 — Extraer el struct LoweringFrame desde src/HIR/HirBuilder.cpp:33-47 (15) hacia
   src/HIR/Internal/LoweringFrame.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0081 — Extraer el class IterativeHirLowering desde src/HIR/HirBuilder.cpp:50-1384 (1335) hacia
+- [x] NSC-IMPL-0081 — Extraer el class IterativeHirLowering desde src/HIR/HirBuilder.cpp:50-1384 (1335) hacia
   src/HIR/Internal/IterativeHirLowering.h, y mover sus cuerpos a src/HIR/Internal/IterativeHirLowering.cpp; conservar
   texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0082 — Extraer el struct VerificationTask desde src/HIR/HirVerifier.cpp:96-112 (17) hacia
+- [x] NSC-IMPL-0082 — Extraer el struct VerificationTask desde src/HIR/HirVerifier.cpp:96-112 (17) hacia
   src/HIR/Internal/VerificationTask.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0098 — Extraer el class IdentityWriter desde src/LLVM/ProjectOopMirCacheIdentity.cpp:17-74 (58) hacia
+- [x] NSC-IMPL-0098 — Extraer el class IdentityWriter desde src/LLVM/ProjectOopMirCacheIdentity.cpp:17-74 (58) hacia
   src/LLVM/Internal/IdentityWriter.h, y mover sus cuerpos a src/LLVM/Internal/IdentityWriter.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0133 — Mover fuera de línea función libre makeNode de src/Frontend/HIR/HirLoweringSupport.h:42 (11
+- [x] NSC-IMPL-0133 — Mover fuera de línea función libre makeNode de src/Frontend/HIR/HirLoweringSupport.h:42 (11
   líneas) a un único .cpp, dejando la declaración intacta y conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0134 — Mover fuera de línea función libre destroyHirTreeIteratively de
+- [x] NSC-IMPL-0134 — Mover fuera de línea función libre destroyHirTreeIteratively de
   src/Frontend/HIR/HirLoweringSupport.h:54 (4 líneas) a un único .cpp, dejando la declaración intacta y conservando
   exactamente el cuerpo.
-- [ ] NSC-IMPL-0182 — Mover fuera de línea método ProjectOopHirModel::lastErrorRange de
+- [x] NSC-IMPL-0182 — Mover fuera de línea método ProjectOopHirModel::lastErrorRange de
   include/nativesharp/Frontend/ProjectOopHirModel.h:1202 (5 líneas) a un único .cpp, dejando la declaración intacta y
   conservando exactamente el cuerpo.
-- [ ] NSC-IMPL-0434 — Extraer el enum ProjectOopHirNodeKind desde
+- [x] NSC-IMPL-0434 — Extraer el enum ProjectOopHirNodeKind desde
   include/nativesharp/Frontend/ProjectOopHirModel.h:30-540 hacia include/nativesharp/Frontend/ProjectOopHirNodeKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0435 — Extraer el enum ProjectCollectionSegmentKind desde
+- [x] NSC-IMPL-0435 — Extraer el enum ProjectCollectionSegmentKind desde
   include/nativesharp/Frontend/ProjectOopHirModel.h:542-546 hacia
   include/nativesharp/Frontend/ProjectCollectionSegmentKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0436 — Extraer el struct ProjectOopHirNode desde
+- [x] NSC-IMPL-0436 — Extraer el struct ProjectOopHirNode desde
   include/nativesharp/Frontend/ProjectOopHirModel.h:548-699 hacia include/nativesharp/Frontend/ProjectOopHirNode.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0437 — Extraer el struct ProjectOopHirFieldInitializer desde
+- [x] NSC-IMPL-0437 — Extraer el struct ProjectOopHirFieldInitializer desde
   include/nativesharp/Frontend/ProjectOopHirModel.h:701-708 hacia
   include/nativesharp/Frontend/ProjectOopHirFieldInitializer.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0438 — Extraer el struct ProjectOopHirFunction desde
+- [x] NSC-IMPL-0438 — Extraer el struct ProjectOopHirFunction desde
   include/nativesharp/Frontend/ProjectOopHirModel.h:710-782 hacia include/nativesharp/Frontend/ProjectOopHirFunction.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0439 — Conservar el class ProjectOopHirModel como tipo principal de
+- [x] NSC-IMPL-0439 — Conservar el class ProjectOopHirModel como tipo principal de
   include/nativesharp/Frontend/ProjectOopHirModel.h:784-1396 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0440 — Extraer el enum ProjectOopMirAbiPassing desde
+- [x] NSC-IMPL-0440 — Extraer el enum ProjectOopMirAbiPassing desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:50-54 hacia include/nativesharp/Frontend/ProjectOopMirAbiPassing.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0441 — Extraer el enum ProjectOopMirNodeKind desde
+- [x] NSC-IMPL-0441 — Extraer el enum ProjectOopMirNodeKind desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:58-434 hacia include/nativesharp/Frontend/ProjectOopMirNodeKind.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0442 — Extraer el struct ProjectOopMirNode desde
+- [x] NSC-IMPL-0442 — Extraer el struct ProjectOopMirNode desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:436-575 hacia include/nativesharp/Frontend/ProjectOopMirNode.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0443 — Extraer el struct ProjectOopMirFieldInitializer desde
+- [x] NSC-IMPL-0443 — Extraer el struct ProjectOopMirFieldInitializer desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:577-584 hacia
   include/nativesharp/Frontend/ProjectOopMirFieldInitializer.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0444 — Extraer el struct ProjectOopMirStructLayout desde
+- [x] NSC-IMPL-0444 — Extraer el struct ProjectOopMirStructLayout desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:587-602 hacia
   include/nativesharp/Frontend/ProjectOopMirStructLayout.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0445 — Extraer el struct ProjectOopMirClassLayout desde
+- [x] NSC-IMPL-0445 — Extraer el struct ProjectOopMirClassLayout desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:608-620 hacia
   include/nativesharp/Frontend/ProjectOopMirClassLayout.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0446 — Extraer el struct ProjectOopMirFunctionAbi desde
+- [x] NSC-IMPL-0446 — Extraer el struct ProjectOopMirFunctionAbi desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:622-629 hacia
   include/nativesharp/Frontend/ProjectOopMirFunctionAbi.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0447 — Extraer el enum ProjectOopMirCleanupKind desde
+- [x] NSC-IMPL-0447 — Extraer el enum ProjectOopMirCleanupKind desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:631-638 hacia
   include/nativesharp/Frontend/ProjectOopMirCleanupKind.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0448 — Extraer el struct ProjectOopMirCleanupRegion desde
+- [x] NSC-IMPL-0448 — Extraer el struct ProjectOopMirCleanupRegion desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:642-652 hacia
   include/nativesharp/Frontend/ProjectOopMirCleanupRegion.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0449 — Extraer el enum ProjectOopMirNonlocalExitKind desde
+- [x] NSC-IMPL-0449 — Extraer el enum ProjectOopMirNonlocalExitKind desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:654-663 hacia
   include/nativesharp/Frontend/ProjectOopMirNonlocalExitKind.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0450 — Extraer el struct ProjectOopMirNonlocalExit desde
+- [x] NSC-IMPL-0450 — Extraer el struct ProjectOopMirNonlocalExit desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:667-675 hacia
   include/nativesharp/Frontend/ProjectOopMirNonlocalExit.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0451 — Extraer el struct ProjectOopMirExceptionFlow desde
+- [x] NSC-IMPL-0451 — Extraer el struct ProjectOopMirExceptionFlow desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:677-684 hacia
   include/nativesharp/Frontend/ProjectOopMirExceptionFlow.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0452 — Extraer el struct ProjectOopMirStaticField desde
+- [x] NSC-IMPL-0452 — Extraer el struct ProjectOopMirStaticField desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:686-714 hacia
   include/nativesharp/Frontend/ProjectOopMirStaticField.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0453 — Extraer el struct ProjectOopMirDispatchTable desde
+- [x] NSC-IMPL-0453 — Extraer el struct ProjectOopMirDispatchTable desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:717-816 hacia
   include/nativesharp/Frontend/ProjectOopMirDispatchTable.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0454 — Extraer el struct ProjectOopMirFunction desde
+- [x] NSC-IMPL-0454 — Extraer el struct ProjectOopMirFunction desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:818-882 hacia include/nativesharp/Frontend/ProjectOopMirFunction.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0455 — Extraer el struct ProjectOopMirGenericSpecialization desde
+- [x] NSC-IMPL-0455 — Extraer el struct ProjectOopMirGenericSpecialization desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:887-893 hacia
   include/nativesharp/Frontend/ProjectOopMirGenericSpecialization.h; conservar texto, comentarios, orden de declaración
   y cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0456 — Extraer el struct ProjectOopMirInterfaceBinding desde
+- [x] NSC-IMPL-0456 — Extraer el struct ProjectOopMirInterfaceBinding desde
   include/nativesharp/Frontend/ProjectOopMirModel.h:898-908 hacia
   include/nativesharp/Frontend/ProjectOopMirInterfaceBinding.h; conservar texto, comentarios, orden de declaración y
   cierre transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0457 — Conservar el class ProjectOopMirModel como tipo principal de
+- [x] NSC-IMPL-0457 — Conservar el class ProjectOopMirModel como tipo principal de
   include/nativesharp/Frontend/ProjectOopMirModel.h:910-1099 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0786 — Extraer el struct MirPhiIncoming desde include/nativesharp/MIR/MirInstruction.h:23-27 hacia
+- [x] NSC-IMPL-0786 — Extraer el struct MirPhiIncoming desde include/nativesharp/MIR/MirInstruction.h:23-27 hacia
   include/nativesharp/MIR/MirPhiIncoming.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0787 — Conservar el class MirInstruction como tipo principal de
+- [x] NSC-IMPL-0787 — Conservar el class MirInstruction como tipo principal de
   include/nativesharp/MIR/MirInstruction.h:29-96 y convertir ese archivo en umbrella de sus tipos extraídos, sin alterar
   el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0788 — Extraer el enum MirVerificationMode desde include/nativesharp/MIR/MirVerifier.h:13-17 hacia
+- [x] NSC-IMPL-0788 — Extraer el enum MirVerificationMode desde include/nativesharp/MIR/MirVerifier.h:13-17 hacia
   include/nativesharp/MIR/MirVerificationMode.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0789 — Conservar el class MirVerifier como tipo principal de include/nativesharp/MIR/MirVerifier.h:25-44
+- [x] NSC-IMPL-0789 — Conservar el class MirVerifier como tipo principal de include/nativesharp/MIR/MirVerifier.h:25-44
   y convertir ese archivo en umbrella de sus tipos extraídos, sin alterar el cierre transitivo. Restricción de pruebas:
   ninguna.
-- [ ] NSC-IMPL-0824 — Extraer el struct HirCoreOperandCallPlan desde src/Frontend/HIR/HirLoweringSupport.h:15-19 hacia
+- [x] NSC-IMPL-0824 — Extraer el struct HirCoreOperandCallPlan desde src/Frontend/HIR/HirLoweringSupport.h:15-19 hacia
   src/Frontend/HIR/HirCoreOperandCallPlan.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0825 — Extraer el struct HirAtomicCallPlan desde src/Frontend/HIR/HirLoweringSupport.h:24-28 hacia
+- [x] NSC-IMPL-0825 — Extraer el struct HirAtomicCallPlan desde src/Frontend/HIR/HirLoweringSupport.h:24-28 hacia
   src/Frontend/HIR/HirAtomicCallPlan.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante
   el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0826 — Extraer el struct HirMonitorCallPlan desde src/Frontend/HIR/HirLoweringSupport.h:33-37 hacia
+- [x] NSC-IMPL-0826 — Extraer el struct HirMonitorCallPlan desde src/Frontend/HIR/HirLoweringSupport.h:33-37 hacia
   src/Frontend/HIR/HirMonitorCallPlan.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante
   el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0827 — Extraer el struct HirTuplePatternFrame desde src/Frontend/HIR/HirLoweringSupport.h:59-64 hacia
+- [x] NSC-IMPL-0827 — Extraer el struct HirTuplePatternFrame desde src/Frontend/HIR/HirLoweringSupport.h:59-64 hacia
   src/Frontend/HIR/HirTuplePatternFrame.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0852 — Descomponer ProjectOopHirModel::lowerExpressionWithStatementFrame en
+- [x] NSC-IMPL-0852 — Descomponer ProjectOopHirModel::lowerExpressionWithStatementFrame en
   src/Frontend/HIR/HirExpressionMachine.cpp:284 (8181 líneas ejecutables; 10721 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0856 — Descomponer ProjectOopHirModel::lowerExpressionImpl en
+- [x] NSC-IMPL-0856 — Descomponer ProjectOopHirModel::lowerExpressionImpl en
   src/Frontend/HIR/HirExpressionMachine.cpp:11161 (1425 líneas ejecutables; 2121 totales) hasta que cada función quede
   en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0863 — Descomponer ProjectOopHirModel::buildImpl en src/Frontend/HIR/HirBuildCoordinator.cpp:607 (838
+- [x] NSC-IMPL-0863 — Descomponer ProjectOopHirModel::buildImpl en src/Frontend/HIR/HirBuildCoordinator.cpp:607 (838
   líneas ejecutables; 1210 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control
   de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0874 — Descomponer ProjectOopHirModel::lowerCallExpression en src/Frontend/HIR/HirCallLowering.cpp:995
+- [x] NSC-IMPL-0874 — Descomponer ProjectOopHirModel::lowerCallExpression en src/Frontend/HIR/HirCallLowering.cpp:995
   (482 líneas ejecutables; 801 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden,
   control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0881 — Descomponer HirVerifier::verifyNode en src/HIR/HirVerifier.cpp:149 (353 líneas ejecutables; 562
+- [x] NSC-IMPL-0881 — Descomponer HirVerifier::verifyNode en src/HIR/HirVerifier.cpp:149 (353 líneas ejecutables; 562
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0885 — Descomponer MirVerifier::verifyInstruction en src/MIR/MirVerifier.cpp:318 (330 líneas ejecutables;
+- [x] NSC-IMPL-0885 — Descomponer MirVerifier::verifyInstruction en src/MIR/MirVerifier.cpp:318 (330 líneas ejecutables;
   442 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0886 — Descomponer lowerExpressionFrame en src/HIR/HirBuilder.cpp:688 (324 líneas ejecutables; 428
+- [x] NSC-IMPL-0886 — Descomponer lowerExpressionFrame en src/HIR/HirBuilder.cpp:688 (324 líneas ejecutables; 428
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0893 — Descomponer ProjectOopMirModel::build en src/Frontend/MIR/MirBuildCoordinator.cpp:1382 (294 líneas
+- [x] NSC-IMPL-0893 — Descomponer ProjectOopMirModel::build en src/Frontend/MIR/MirBuildCoordinator.cpp:1382 (294 líneas
   ejecutables; 441 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0895 — Descomponer projectOopMirNodeKindName en src/Frontend/MIR/MirBuildCoordinator.cpp:1096 (280 líneas
+- [x] NSC-IMPL-0895 — Descomponer projectOopMirNodeKindName en src/Frontend/MIR/MirBuildCoordinator.cpp:1096 (280 líneas
   ejecutables; 285 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0899 — Descomponer projectOopHirNodeKindName en src/Frontend/HIR/HirBuildCoordinator.cpp:307 (275 líneas
+- [x] NSC-IMPL-0899 — Descomponer projectOopHirNodeKindName en src/Frontend/HIR/HirBuildCoordinator.cpp:307 (275 líneas
   ejecutables; 280 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0900 — Descomponer hirCoreOperandCallPlanImpl en src/Frontend/HIR/HirCallLowering.cpp:13 (270 líneas
+- [x] NSC-IMPL-0900 — Descomponer hirCoreOperandCallPlanImpl en src/Frontend/HIR/HirCallLowering.cpp:13 (270 líneas
   ejecutables; 419 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0904 — Descomponer ProjectOopMirModel::importLayouts en src/Frontend/MIR/MirLayoutImporter.cpp:74 (266
+- [x] NSC-IMPL-0904 — Descomponer ProjectOopMirModel::importLayouts en src/Frontend/MIR/MirLayoutImporter.cpp:74 (266
   líneas ejecutables; 337 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0906 — Descomponer evaluateStaticAssertConstant en src/Frontend/HIR/HirStatementMachine.cpp:77 (256
+- [x] NSC-IMPL-0906 — Descomponer evaluateStaticAssertConstant en src/Frontend/HIR/HirStatementMachine.cpp:77 (256
   líneas ejecutables; 311 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0912 — Descomponer run en src/HIR/HirBuilder.cpp:126 (230 líneas ejecutables; 328 totales) hasta que cada
+- [x] NSC-IMPL-0912 — Descomponer run en src/HIR/HirBuilder.cpp:126 (230 líneas ejecutables; 328 totales) hasta que cada
   función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0924 — Descomponer restoreMirFunctionCore en src/Frontend/MIR/MirBuildCoordinator.cpp:748 (202 líneas
+- [x] NSC-IMPL-0924 — Descomponer restoreMirFunctionCore en src/Frontend/MIR/MirBuildCoordinator.cpp:748 (202 líneas
   ejecutables; 254 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0936 — Descomponer ProjectOopMirModelDumper::dump en src/Frontend/ProjectOopMirModelDumper.cpp:328 (187
+- [x] NSC-IMPL-0936 — Descomponer ProjectOopMirModelDumper::dump en src/Frontend/ProjectOopMirModelDumper.cpp:328 (187
   líneas ejecutables; 228 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0940 — Descomponer ProjectOopHirModel::splitAsyncGeneratorFunction en
+- [x] NSC-IMPL-0940 — Descomponer ProjectOopHirModel::splitAsyncGeneratorFunction en
   src/Frontend/HIR/HirAsyncLowering.cpp:532 (174 líneas ejecutables; 205 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0943 — Descomponer lowerStatementFrame en src/HIR/HirBuilder.cpp:455 (170 líneas ejecutables; 232
+- [x] NSC-IMPL-0943 — Descomponer lowerStatementFrame en src/HIR/HirBuilder.cpp:455 (170 líneas ejecutables; 232
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0949 — Descomponer ProjectOopHirModel::finishAllocatorConstructionExpression en
+- [x] NSC-IMPL-0949 — Descomponer ProjectOopHirModel::finishAllocatorConstructionExpression en
   src/Frontend/HIR/HirAggregateLowering.cpp:578 (163 líneas ejecutables; 198 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0953 — Descomponer ProjectOopHirModel::appendAggregateElements en
+- [x] NSC-IMPL-0953 — Descomponer ProjectOopHirModel::appendAggregateElements en
   src/Frontend/HIR/HirAggregateLowering.cpp:40 (157 líneas ejecutables; 217 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0956 — Descomponer DominanceVerifier::verifyFunction en src/Dominance/DominanceVerifier.cpp:209 (154
+- [x] NSC-IMPL-0956 — Descomponer DominanceVerifier::verifyFunction en src/Dominance/DominanceVerifier.cpp:209 (154
   líneas ejecutables; 295 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0967 — Descomponer readMirNodeFields en src/Frontend/MIR/MirBuildCoordinator.cpp:337 (140 líneas
+- [x] NSC-IMPL-0967 — Descomponer readMirNodeFields en src/Frontend/MIR/MirBuildCoordinator.cpp:337 (140 líneas
   ejecutables; 161 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0968 — Descomponer ProjectOopHirModel::rewriteAsyncPollReturns en
+- [x] NSC-IMPL-0968 — Descomponer ProjectOopHirModel::rewriteAsyncPollReturns en
   src/Frontend/HIR/HirAsyncLowering.cpp:101 (139 líneas ejecutables; 206 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0973 — Descomponer lowerAddressFrame en src/HIR/HirBuilder.cpp:1117 (137 líneas ejecutables; 186 totales)
+- [x] NSC-IMPL-0973 — Descomponer lowerAddressFrame en src/HIR/HirBuilder.cpp:1117 (137 líneas ejecutables; 186 totales)
   hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni
   resultados.
-- [ ] NSC-IMPL-0980 — Descomponer dumpNodeLine en src/Frontend/ProjectOopHirModelDumper.cpp:13 (129 líneas ejecutables;
+- [x] NSC-IMPL-0980 — Descomponer dumpNodeLine en src/Frontend/ProjectOopHirModelDumper.cpp:13 (129 líneas ejecutables;
   144 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0990 — Descomponer appendMirNodeFields en src/Frontend/MIR/MirBuildCoordinator.cpp:169 (123 líneas
+- [x] NSC-IMPL-0990 — Descomponer appendMirNodeFields en src/Frontend/MIR/MirBuildCoordinator.cpp:169 (123 líneas
   ejecutables; 140 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0991 — Descomponer MirBuilder::lowerExpression en src/MIR/MirBuilder.cpp:422 (122 líneas ejecutables; 203
+- [x] NSC-IMPL-0991 — Descomponer MirBuilder::lowerExpression en src/MIR/MirBuilder.cpp:422 (122 líneas ejecutables; 203
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1005 — Descomponer serializeMirFunctionCore en src/Frontend/MIR/MirBuildCoordinator.cpp:612 (113 líneas
+- [x] NSC-IMPL-1005 — Descomponer serializeMirFunctionCore en src/Frontend/MIR/MirBuildCoordinator.cpp:612 (113 líneas
   ejecutables; 135 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1011 — Descomponer ProjectOopHirModel::splitGeneratorFunction en
+- [x] NSC-IMPL-1011 — Descomponer ProjectOopHirModel::splitGeneratorFunction en
   src/Frontend/HIR/HirAsyncLowering.cpp:390 (109 líneas ejecutables; 141 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1021 — Descomponer writeNode en src/LLVM/ProjectOopMirCacheIdentity.cpp:76 (104 líneas ejecutables; 109
+- [x] NSC-IMPL-1021 — Descomponer writeNode en src/LLVM/ProjectOopMirCacheIdentity.cpp:76 (104 líneas ejecutables; 109
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1026 — Descomponer ProjectOopHirModel::lowerArrayConstructionExpression en
+- [x] NSC-IMPL-1026 — Descomponer ProjectOopHirModel::lowerArrayConstructionExpression en
   src/Frontend/HIR/HirAggregateLowering.cpp:392 (101 líneas ejecutables; 185 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1084 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup07 en
+- [x] NSC-IMPL-1084 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup07 en
   src/Frontend/MIR/MirNodeMachine.cpp:750 (81 líneas ejecutables; 86 totales) hasta que cada función quede en ≤60 líneas
   ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1085 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup08 en
+- [x] NSC-IMPL-1085 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup08 en
   src/Frontend/MIR/MirNodeMachine.cpp:837 (81 líneas ejecutables; 86 totales) hasta que cada función quede en ≤60 líneas
   ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1086 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup09 en
+- [x] NSC-IMPL-1086 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup09 en
   src/Frontend/MIR/MirNodeMachine.cpp:924 (81 líneas ejecutables; 86 totales) hasta que cada función quede en ≤60 líneas
   ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1096 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup11 en
+- [x] NSC-IMPL-1096 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup11 en
   src/Frontend/MIR/MirNodeMachine.cpp:1115 (79 líneas ejecutables; 84 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1101 — Descomponer writeCommonModel en src/LLVM/ProjectOopMirCacheIdentity.cpp:282 (78 líneas
+- [x] NSC-IMPL-1101 — Descomponer writeCommonModel en src/LLVM/ProjectOopMirCacheIdentity.cpp:282 (78 líneas
   ejecutables; 99 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1108 — Descomponer writeFunction en src/LLVM/ProjectOopMirCacheIdentity.cpp:197 (77 líneas ejecutables;
+- [x] NSC-IMPL-1108 — Descomponer writeFunction en src/LLVM/ProjectOopMirCacheIdentity.cpp:197 (77 líneas ejecutables;
   84 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1113 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup10 en
+- [x] NSC-IMPL-1113 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup10 en
   src/Frontend/MIR/MirNodeMachine.cpp:1011 (76 líneas ejecutables; 103 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1122 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup06 en
+- [x] NSC-IMPL-1122 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup06 en
   src/Frontend/MIR/MirNodeMachine.cpp:660 (75 líneas ejecutables; 89 totales) hasta que cada función quede en ≤60 líneas
   ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1123 — Descomponer ProjectOopHirModel::lowerDestructionExpression en
+- [x] NSC-IMPL-1123 — Descomponer ProjectOopHirModel::lowerDestructionExpression en
   src/Frontend/HIR/HirExceptionAndCleanup.cpp:130 (75 líneas ejecutables; 124 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1140 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup01 en
+- [x] NSC-IMPL-1140 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup01 en
   src/Frontend/MIR/MirNodeMachine.cpp:267 (71 líneas ejecutables; 84 totales) hasta que cada función quede en ≤60 líneas
   ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1148 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup03 en
+- [x] NSC-IMPL-1148 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup03 en
   src/Frontend/MIR/MirNodeMachine.cpp:410 (69 líneas ejecutables; 80 totales) hasta que cada función quede en ≤60 líneas
   ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1160 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup05 en
+- [x] NSC-IMPL-1160 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup05 en
   src/Frontend/MIR/MirNodeMachine.cpp:581 (67 líneas ejecutables; 78 totales) hasta que cada función quede en ≤60 líneas
   ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1162 — Descomponer ProjectOopHirModel::buildBuiltinBinaryExpression en
+- [x] NSC-IMPL-1162 — Descomponer ProjectOopHirModel::buildBuiltinBinaryExpression en
   src/Frontend/HIR/HirExpressionMachine.cpp:11037 (66 líneas ejecutables; 88 totales) hasta que cada función quede en
   ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1171 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup17 en
+- [x] NSC-IMPL-1171 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup17 en
   src/Frontend/MIR/MirNodeMachine.cpp:1593 (64 líneas ejecutables; 86 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1180 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup04 en
+- [x] NSC-IMPL-1180 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup04 en
   src/Frontend/MIR/MirNodeMachine.cpp:491 (63 líneas ejecutables; 89 totales) hasta que cada función quede en ≤60 líneas
   ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1192 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup14 en
+- [x] NSC-IMPL-1192 — Descomponer ProjectOopMirModel::MirNodeMachine::lowerGroup14 en
   src/Frontend/MIR/MirNodeMachine.cpp:1366 (62 líneas ejecutables; 89 totales) hasta que cada función quede en ≤60
   líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1193 — Descomponer ProjectOopHirModel::rewriteGeneratorThrows en src/Frontend/HIR/HirAsyncLowering.cpp:31
+- [x] NSC-IMPL-1193 — Descomponer ProjectOopHirModel::rewriteGeneratorThrows en src/Frontend/HIR/HirAsyncLowering.cpp:31
   (62 líneas ejecutables; 69 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control
   de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1194 — Descomponer ProjectOopHirModel::splitAsyncFunction en src/Frontend/HIR/HirAsyncLowering.cpp:308
+- [x] NSC-IMPL-1194 — Descomponer ProjectOopHirModel::splitAsyncFunction en src/Frontend/HIR/HirAsyncLowering.cpp:308
   (62 líneas ejecutables; 81 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control
   de flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1207 — Convertir ProjectOopHirModel en fachada con colaboradores por archivo, conservando firmas
+- [x] NSC-IMPL-1207 — Convertir ProjectOopHirModel en fachada con colaboradores por archivo, conservando firmas
   privadas, bindings y todos sus campos.
-- [ ] NSC-IMPL-1209 — Convertir ProjectOopMirModel en fachada con colaboradores para coordinación, lowering, layout,
+- [x] NSC-IMPL-1209 — Convertir ProjectOopMirModel en fachada con colaboradores para coordinación, lowering, layout,
   nodos, caché y nombres de kinds.
+
+Nota de cierre REF-05: por instrucción explícita del propietario, NSC-IMPL-1207 y NSC-IMPL-1209 se materializaron
+como unidades de traducción por familia de métodos de las clases existentes, sin introducir clases conceptuales
+nuevas ni mover campos. La auditoría estática cubrió 1,102 funciones, 177 archivos, los 45 campos HIR y 17 campos
+MIR, cinco tipos anidados con identidad calificada preservada, comentarios y diagnósticos; todas las funciones
+quedaron en ≤60 líneas ejecutables y las líneas nuevas en ≤120 columnas. No se ejecutaron compilación, pruebas,
+suites ni baseline por instrucción del propietario.
 
 ### Commit REF-06 — Parser, análisis semántico y servicio de lenguaje — 0/72
 

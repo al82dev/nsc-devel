@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectOopHirModelDumper.h"
 
+#include "HIR/Internal/HirDumpFrame.h"
+
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
@@ -10,6 +12,179 @@ namespace nativesharp::frontend
 {
 namespace
 {
+using internal::HirDumpFrame;
+
+void dumpNodeIdentityFields(std::ostringstream& output, const ProjectOopHirNode& node)
+{
+    if (!node.typeKey.empty()) output << " type=" << node.typeKey;
+    if (node.memberOrdinal.has_value()) output << " member=#" << *node.memberOrdinal;
+    if (node.namespaceFunctionOrdinal.has_value())
+        output << " namespace-function=#" << *node.namespaceFunctionOrdinal;
+    if (node.namespaceStateOrdinal.has_value())
+        output << " namespace-state=#" << *node.namespaceStateOrdinal;
+    if (node.localOrdinal.has_value()) output << " local=#" << *node.localOrdinal;
+    if (node.hirRegionOrdinal.has_value()) output << " hir-region=#" << *node.hirRegionOrdinal;
+    if (node.exceptionTargetRegionOrdinal.has_value())
+        output << " exception-target=#" << *node.exceptionTargetRegionOrdinal;
+    if (node.cleanupRegionOrdinal.has_value()) output << " cleanup=#" << *node.cleanupRegionOrdinal;
+    if (node.targetScopeOrdinal.has_value()) output << " target-scope=#" << *node.targetScopeOrdinal;
+    if (node.exceptionTypeOrdinal.has_value())
+        output << " exception-type=#" << *node.exceptionTypeOrdinal;
+    if (node.catchAll) output << " catch=all";
+}
+
+void dumpNodeCatchFields(std::ostringstream& output, const ProjectOopHirNode& node)
+{
+    if (node.kind == ProjectOopHirNodeKind::CatchRegion)
+    {
+        output << " pattern=" << (node.catchAll ? "_" : node.elementTypeKey)
+               << " filter=" << (node.catchHasFilter ? "true" : "false")
+               << " exhaustive=" << (node.catchExhaustive ? "true" : "false")
+               << " matches=[";
+        for (std::size_t index = 0; index < node.catchMatchedErrorTypeKeys.size(); ++index)
+        {
+            if (index != 0) output << ',';
+            output << node.catchMatchedErrorTypeKeys[index];
+        }
+        output << ']';
+    }
+    if (node.disposeContractMemberOrdinal.has_value())
+        output << " dispose-contract=#" << *node.disposeContractMemberOrdinal;
+    if (node.disposeImplementationMemberOrdinal.has_value())
+        output << " dispose-implementation=#" << *node.disposeImplementationMemberOrdinal;
+    if (node.interfaceCleanupDispatch) output << " cleanup-dispatch=interface";
+}
+
+void dumpNodeCleanupFields(std::ostringstream& output, const ProjectOopHirNode& node)
+{
+    if (!node.cleanupRegionOrdinals.empty())
+    {
+        output << " cleanup-path=";
+        for (std::size_t index = 0; index < node.cleanupRegionOrdinals.size(); ++index)
+        {
+            if (index != 0) output << "->";
+            output << '#' << node.cleanupRegionOrdinals[index];
+        }
+    }
+    if (node.cleanupContinuationKind.has_value())
+        output << " continuation="
+               << methodCleanupContinuationKindName(*node.cleanupContinuationKind);
+    if (node.borrowKind.has_value())
+        output << " borrow=" << methodBorrowKindName(*node.borrowKind);
+    if (node.localBorrowSourceKind.has_value())
+        output << " borrow-source="
+               << methodLocalBorrowSourceKindName(*node.localBorrowSourceKind);
+    if (node.parameterOrdinal.has_value()) output << " param=#" << *node.parameterOrdinal;
+    if (node.constructionOrdinal.has_value())
+        output << " construction=#" << *node.constructionOrdinal;
+}
+
+void dumpNodeValueFields(std::ostringstream& output, const ProjectOopHirNode& node)
+{
+    const bool runtimeTypeNode =
+        node.kind == ProjectOopHirNodeKind::RuntimeTypeTest ||
+        node.kind == ProjectOopHirNodeKind::SafeReferenceCast ||
+        node.kind == ProjectOopHirNodeKind::CheckedReferenceCast;
+    if (runtimeTypeNode && node.targetTypeOrdinal.has_value())
+        output << " target-type=#" << *node.targetTypeOrdinal
+               << " target-kind=" << (node.targetIsInterface ? "interface" : "class");
+    if (node.operation != lexer::TokenKind::Invalid)
+        output << " op=" << lexer::tokenKindName(node.operation);
+    if (node.conversion.has_value())
+        output << " conversion=" << projectConversionKindName(node.conversion->kind);
+    if (node.kind == ProjectOopHirNodeKind::IntegerConstant)
+        output << " value=" << node.integerValue;
+    if (node.kind == ProjectOopHirNodeKind::FloatingConstant)
+        output << " value=" << node.floatingValue;
+    if (node.kind == ProjectOopHirNodeKind::BooleanConstant)
+        output << " value=" << (node.booleanValue ? "true" : "false");
+    if (!node.collectionSegments.empty())
+    {
+        output << " segments=";
+        for (const ProjectCollectionSegmentKind segment : node.collectionSegments)
+            output << (segment == ProjectCollectionSegmentKind::Spread ? 'S' : 'E');
+    }
+}
+
+void dumpNodeFlowFields(std::ostringstream& output, const ProjectOopHirNode& node)
+{
+    if (node.referenceLocal) output << " reference-local=true";
+    if (node.referenceLocal)
+        output << " reference-mutable=" << (node.referenceMutable ? "true" : "false");
+    if (node.staticLocal) output << " storage=module-static";
+    if (node.pinnedStorage) output << " pinned=true";
+    if (node.referenceResult) output << " reference-result=true";
+    if (node.governingReference) output << " governing-reference=true";
+    if (node.kind == ProjectOopHirNodeKind::LoopExpression)
+        output << " label=" << (node.stringValue.empty() ? "<none>" : node.stringValue)
+               << " break-result=" << node.typeKey;
+    if ((node.kind == ProjectOopHirNodeKind::Break ||
+         node.kind == ProjectOopHirNodeKind::Continue) && !node.stringValue.empty())
+        output << " target-label=" << node.stringValue;
+    if (node.kind == ProjectOopHirNodeKind::Break)
+        output << " value=" << (node.children.empty() ? "none" : node.elementTypeKey);
+    if (node.nullConditionalCall) output << " null-conditional=true";
+    if ((node.kind == ProjectOopHirNodeKind::NullConditionalFieldStore ||
+         node.kind == ProjectOopHirNodeKind::NullConditionalArrayStore) && node.booleanValue)
+        output << " owns-storage=true";
+    if (node.mustTailCall) output << " must-tail=true";
+    if (node.kind == ProjectOopHirNodeKind::Binary && node.booleanValue &&
+        (node.operation == lexer::TokenKind::Slash ||
+         node.operation == lexer::TokenKind::Percent))
+        output << " check=elided-flow";
+    if (node.kind == ProjectOopHirNodeKind::FieldValue && node.booleanValue)
+        output << " null-check=elided-flow";
+    if ((node.kind == ProjectOopHirNodeKind::InstanceCall ||
+         node.kind == ProjectOopHirNodeKind::StaticCall) && node.booleanValue)
+        output << " variant-case=proven";
+    if ((node.kind == ProjectOopHirNodeKind::InstanceCall ||
+         node.kind == ProjectOopHirNodeKind::StaticCall) && node.stringValue == "flow-nonnull")
+        output << " null-check=elided-flow";
+    if (node.stackPromotedObject) output << " stack-promoted=true";
+    if (node.volatileAccess) output << " volatile=true";
+    if (!node.elementTypeKey.empty()) output << " element=" << node.elementTypeKey;
+    if ((node.kind == ProjectOopHirNodeKind::ArrayElementValue ||
+         node.kind == ProjectOopHirNodeKind::ArrayElementAddress ||
+         node.kind == ProjectOopHirNodeKind::StringElementValue) && node.booleanValue)
+        output << " index=from-end";
+}
+
+void dumpNodeAggregateFields(std::ostringstream& output, const ProjectOopHirNode& node)
+{
+    if (node.nativeArrayRank > 1) output << " rank=" << node.nativeArrayRank;
+    if (node.kind == ProjectOopHirNodeKind::ParameterPack)
+        output << " elements=" << node.children.size() << " storage=stack";
+    if (node.kind == ProjectOopHirNodeKind::AggregateSpread)
+        output << " targets=" << (node.children.empty() ? 0U : node.children.size() - 1U)
+               << " source-evaluations=1 mode=" << (node.booleanValue ? "move" : "copy");
+    if (node.kind == ProjectOopHirNodeKind::AggregateElement)
+        output << " offset=" << node.integerValue;
+    if (node.kind == ProjectOopHirNodeKind::StringLiteral)
+        output << " bytes=" << node.stringValue.size();
+    if (node.kind == ProjectOopHirNodeKind::InlineAssembly)
+        output << " source-bytes=" << node.stringValue.size();
+    if (node.kind == ProjectOopHirNodeKind::InlineAssemblyLine)
+        output << " text=\"" << node.stringValue << "\" contract=" << node.elementTypeKey;
+    if (node.kind == ProjectOopHirNodeKind::InlineAssemblyInput ||
+        node.kind == ProjectOopHirNodeKind::InlineAssemblyOutput)
+        output << " ordinal=" << node.integerValue << " constraint=" << node.stringValue
+               << " explicit=" << (node.booleanValue ? "true" : "false");
+    if (node.kind == ProjectOopHirNodeKind::InlineAssemblyClobber)
+        output << " ordinal=" << node.integerValue << " name=" << node.stringValue
+               << " category=" << node.elementTypeKey
+               << " preserve=" << (node.booleanValue ? "true" : "false");
+    if (node.kind == ProjectOopHirNodeKind::Deallocation)
+        output << " destruction="
+               << (node.dynamicDestruction ? "dynamic-descriptor" : "direct-free");
+    if (node.kind == ProjectOopHirNodeKind::ObjectDestruction)
+        output << " destruction="
+               << (node.dynamicDestruction ? "dynamic-object-only" : "trivial-object");
+    if (node.objectLifetimeOwnership != sema::OwnershipKind::None ||
+        node.storageOwnership != sema::OwnershipKind::None)
+        output << " object-ownership=" << sema::ownershipKindName(node.objectLifetimeOwnership)
+               << " storage-ownership=" << sema::ownershipKindName(node.storageOwnership);
+}
+
 void dumpNodeLine(std::ostringstream& output, const ProjectOopHirNode* node, int depth)
 {
     if (node == nullptr)
@@ -19,155 +194,22 @@ void dumpNodeLine(std::ostringstream& output, const ProjectOopHirNode* node, int
     }
     output << std::string(static_cast<std::size_t>(depth * 2), ' ')
            << projectOopHirNodeKindName(node->kind);
-    if (!node->typeKey.empty()) output << " type=" << node->typeKey;
-    if (node->memberOrdinal.has_value()) output << " member=#" << *node->memberOrdinal;
-    if (node->namespaceFunctionOrdinal.has_value())
-        output << " namespace-function=#" << *node->namespaceFunctionOrdinal;
-    if (node->namespaceStateOrdinal.has_value())
-        output << " namespace-state=#" << *node->namespaceStateOrdinal;
-    if (node->localOrdinal.has_value()) output << " local=#" << *node->localOrdinal;
-    if (node->hirRegionOrdinal.has_value()) output << " hir-region=#" << *node->hirRegionOrdinal;
-    if (node->exceptionTargetRegionOrdinal.has_value()) output << " exception-target=#" << *node->exceptionTargetRegionOrdinal;
-    if (node->cleanupRegionOrdinal.has_value()) output << " cleanup=#" << *node->cleanupRegionOrdinal;
-    if (node->targetScopeOrdinal.has_value()) output << " target-scope=#" << *node->targetScopeOrdinal;
-    if (node->exceptionTypeOrdinal.has_value()) output << " exception-type=#" << *node->exceptionTypeOrdinal;
-    if (node->catchAll) output << " catch=all";
-    if (node->kind == ProjectOopHirNodeKind::CatchRegion)
-    {
-        output << " pattern=" << (node->catchAll ? "_" : node->elementTypeKey)
-               << " filter=" << (node->catchHasFilter ? "true" : "false")
-               << " exhaustive=" << (node->catchExhaustive ? "true" : "false")
-               << " matches=[";
-        for (std::size_t index = 0; index < node->catchMatchedErrorTypeKeys.size(); ++index)
-        {
-            if (index != 0) output << ',';
-            output << node->catchMatchedErrorTypeKeys[index];
-        }
-        output << ']';
-    }
-    if (node->disposeContractMemberOrdinal.has_value()) output << " dispose-contract=#" << *node->disposeContractMemberOrdinal;
-    if (node->disposeImplementationMemberOrdinal.has_value()) output << " dispose-implementation=#" << *node->disposeImplementationMemberOrdinal;
-    if (node->interfaceCleanupDispatch) output << " cleanup-dispatch=interface";
-    if (!node->cleanupRegionOrdinals.empty())
-    {
-        output << " cleanup-path=";
-        for (std::size_t index = 0; index < node->cleanupRegionOrdinals.size(); ++index)
-        {
-            if (index != 0) output << "->";
-            output << '#' << node->cleanupRegionOrdinals[index];
-        }
-    }
-    if (node->cleanupContinuationKind.has_value())
-        output << " continuation=" << methodCleanupContinuationKindName(*node->cleanupContinuationKind);
-    if (node->borrowKind.has_value())
-        output << " borrow=" << methodBorrowKindName(*node->borrowKind);
-    if (node->localBorrowSourceKind.has_value())
-        output << " borrow-source=" << methodLocalBorrowSourceKindName(*node->localBorrowSourceKind);
-    if (node->parameterOrdinal.has_value()) output << " param=#" << *node->parameterOrdinal;
-    if (node->constructionOrdinal.has_value()) output << " construction=#" << *node->constructionOrdinal;
-    const bool runtimeTypeNode =
-        node->kind == ProjectOopHirNodeKind::RuntimeTypeTest ||
-        node->kind == ProjectOopHirNodeKind::SafeReferenceCast ||
-        node->kind == ProjectOopHirNodeKind::CheckedReferenceCast;
-    if (runtimeTypeNode && node->targetTypeOrdinal.has_value())
-        output << " target-type=#" << *node->targetTypeOrdinal
-               << " target-kind=" << (node->targetIsInterface ? "interface" : "class");
-    if (node->operation != lexer::TokenKind::Invalid) output << " op=" << lexer::tokenKindName(node->operation);
-    if (node->conversion.has_value()) output << " conversion=" << projectConversionKindName(node->conversion->kind);
-    if (node->kind == ProjectOopHirNodeKind::IntegerConstant) output << " value=" << node->integerValue;
-    if (node->kind == ProjectOopHirNodeKind::FloatingConstant) output << " value=" << node->floatingValue;
-    if (node->kind == ProjectOopHirNodeKind::BooleanConstant) output << " value=" << (node->booleanValue ? "true" : "false");
-    if (!node->collectionSegments.empty())
-    {
-        output << " segments=";
-        for (const ProjectCollectionSegmentKind segment : node->collectionSegments)
-            output << (segment == ProjectCollectionSegmentKind::Spread ? 'S' : 'E');
-    }
-    if (node->referenceLocal) output << " reference-local=true";
-    if (node->referenceLocal)
-        output << " reference-mutable=" << (node->referenceMutable ? "true" : "false");
-    if (node->staticLocal) output << " storage=module-static";
-    if (node->pinnedStorage) output << " pinned=true";
-    if (node->referenceResult) output << " reference-result=true";
-    if (node->governingReference) output << " governing-reference=true";
-    if (node->kind == ProjectOopHirNodeKind::LoopExpression)
-        output << " label=" << (node->stringValue.empty() ? "<none>" : node->stringValue)
-               << " break-result=" << node->typeKey;
-    if ((node->kind == ProjectOopHirNodeKind::Break ||
-         node->kind == ProjectOopHirNodeKind::Continue) && !node->stringValue.empty())
-        output << " target-label=" << node->stringValue;
-    if (node->kind == ProjectOopHirNodeKind::Break)
-        output << " value=" << (node->children.empty() ? "none" : node->elementTypeKey);
-    if (node->nullConditionalCall) output << " null-conditional=true";
-    if ((node->kind == ProjectOopHirNodeKind::NullConditionalFieldStore ||
-         node->kind == ProjectOopHirNodeKind::NullConditionalArrayStore) && node->booleanValue)
-        output << " owns-storage=true";
-    if (node->mustTailCall) output << " must-tail=true";
-    if (node->kind == ProjectOopHirNodeKind::Binary && node->booleanValue &&
-        (node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent))
-        output << " check=elided-flow";
-    if (node->kind == ProjectOopHirNodeKind::FieldValue && node->booleanValue)
-        output << " null-check=elided-flow";
-    if ((node->kind == ProjectOopHirNodeKind::InstanceCall ||
-         node->kind == ProjectOopHirNodeKind::StaticCall) &&
-        node->booleanValue)
-        output << " variant-case=proven";
-    if ((node->kind == ProjectOopHirNodeKind::InstanceCall ||
-         node->kind == ProjectOopHirNodeKind::StaticCall) &&
-        node->stringValue == "flow-nonnull")
-        output << " null-check=elided-flow";
-    if (node->stackPromotedObject) output << " stack-promoted=true";
-    if (node->volatileAccess) output << " volatile=true";
-    if (!node->elementTypeKey.empty()) output << " element=" << node->elementTypeKey;
-    if ((node->kind == ProjectOopHirNodeKind::ArrayElementValue ||
-         node->kind == ProjectOopHirNodeKind::ArrayElementAddress ||
-         node->kind == ProjectOopHirNodeKind::StringElementValue) && node->booleanValue)
-        output << " index=from-end";
-    if (node->nativeArrayRank > 1) output << " rank=" << node->nativeArrayRank;
-    if (node->kind == ProjectOopHirNodeKind::ParameterPack)
-        output << " elements=" << node->children.size() << " storage=stack";
-    if (node->kind == ProjectOopHirNodeKind::AggregateSpread)
-        output << " targets=" << (node->children.empty() ? 0U : node->children.size() - 1U)
-               << " source-evaluations=1 mode=" << (node->booleanValue ? "move" : "copy");
-    if (node->kind == ProjectOopHirNodeKind::AggregateElement)
-        output << " offset=" << node->integerValue;
-    if (node->kind == ProjectOopHirNodeKind::StringLiteral) output << " bytes=" << node->stringValue.size();
-    if (node->kind == ProjectOopHirNodeKind::InlineAssembly)
-        output << " source-bytes=" << node->stringValue.size();
-    if (node->kind == ProjectOopHirNodeKind::InlineAssemblyLine)
-        output << " text=\"" << node->stringValue << "\" contract=" << node->elementTypeKey;
-    if (node->kind == ProjectOopHirNodeKind::InlineAssemblyInput ||
-        node->kind == ProjectOopHirNodeKind::InlineAssemblyOutput)
-        output << " ordinal=" << node->integerValue << " constraint=" << node->stringValue
-               << " explicit=" << (node->booleanValue ? "true" : "false");
-    if (node->kind == ProjectOopHirNodeKind::InlineAssemblyClobber)
-        output << " ordinal=" << node->integerValue << " name=" << node->stringValue
-               << " category=" << node->elementTypeKey
-               << " preserve=" << (node->booleanValue ? "true" : "false");
-    if (node->kind == ProjectOopHirNodeKind::Deallocation)
-        output << " destruction=" << (node->dynamicDestruction ? "dynamic-descriptor" : "direct-free");
-    if (node->kind == ProjectOopHirNodeKind::ObjectDestruction)
-        output << " destruction=" << (node->dynamicDestruction ? "dynamic-object-only" : "trivial-object");
-    if (node->objectLifetimeOwnership != sema::OwnershipKind::None ||
-        node->storageOwnership != sema::OwnershipKind::None)
-        output << " object-ownership=" << sema::ownershipKindName(node->objectLifetimeOwnership)
-               << " storage-ownership=" << sema::ownershipKindName(node->storageOwnership);
+    dumpNodeIdentityFields(output, *node);
+    dumpNodeCatchFields(output, *node);
+    dumpNodeCleanupFields(output, *node);
+    dumpNodeValueFields(output, *node);
+    dumpNodeFlowFields(output, *node);
+    dumpNodeAggregateFields(output, *node);
     output << '\n';
 }
 
 void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int depth)
 {
-    struct Frame final
-    {
-        const ProjectOopHirNode* node = nullptr;
-        int depth = 0;
-    };
-
-    std::vector<Frame> stack;
-    stack.push_back(Frame{node, depth});
+    std::vector<HirDumpFrame> stack;
+    stack.push_back(HirDumpFrame{node, depth});
     while (!stack.empty())
     {
-        const Frame frame = stack.back();
+        const HirDumpFrame frame = stack.back();
         stack.pop_back();
         dumpNodeLine(output, frame.node, frame.depth);
         if (frame.node == nullptr) continue;
@@ -176,7 +218,7 @@ void dumpNode(std::ostringstream& output, const ProjectOopHirNode* node, int dep
              child != frame.node->children.rend();
              ++child)
         {
-            stack.push_back(Frame{child->get(), frame.depth + 1});
+            stack.push_back(HirDumpFrame{child->get(), frame.depth + 1});
         }
     }
 }

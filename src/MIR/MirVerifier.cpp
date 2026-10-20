@@ -315,98 +315,78 @@ bool MirVerifier::verifyBlock(const MirBlock* block, const MirFunction* function
     return sawTerminator ? true : fail("every MIR block must end in exactly one terminator");
 }
 
-bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const MirFunction* function)
+bool MirVerifier::verifyUndefInstruction(
+    const MirInstruction* instruction,
+    const MirFunction* function)
 {
-    for (const MirValue* operand : instruction->operands())
-    {
-        if (!verifyValue(operand) || !knownValues_.contains(operand))
-        {
-            return fail("MIR instruction references an unknown or untyped virtual value");
-        }
-    }
-    if (instruction->result() != nullptr && !verifyValue(instruction->result()))
-    {
-        return fail("MIR instruction result has no semantic type");
-    }
-    if (instruction->opcode() != MirOpcode::Phi && !instruction->phiIncoming().empty())
-    {
-        return fail("only SSA PHI instructions may contain PHI incoming pairs");
-    }
+    if (mode_ != MirVerificationMode::Ssa)
+        return fail("pre-SSA MIR cannot contain SSA-only undef instructions");
+    if (instruction->result() == nullptr || !instruction->operands().empty() ||
+        !instruction->phiIncoming().empty())
+        return fail("SSA undef requires exactly a typed result and no operands");
+    if (instruction->symbol() != nullptr &&
+        (!verifyStorageSymbol(instruction->symbol(), function) ||
+         instruction->symbol()->type() != instruction->result()->type()))
+        return fail("symbol-associated SSA undef must match in-scope storage type");
+    return true;
+}
 
+bool MirVerifier::verifyPhiInstruction(
+    const MirInstruction* instruction,
+    const MirFunction* function)
+{
+    if (mode_ != MirVerificationMode::Ssa)
+        return fail("pre-SSA MIR cannot contain SSA-only phi instructions");
+    if (instruction->result() == nullptr || !instruction->operands().empty() ||
+        instruction->phiIncoming().empty())
+        return fail("SSA phi requires typed result and one or more incoming pairs");
+    if (instruction->symbol() != nullptr &&
+        (!verifyStorageSymbol(instruction->symbol(), function) ||
+         instruction->symbol()->type() != instruction->result()->type()))
+        return fail("symbol-associated SSA phi must match in-scope storage type");
+    for (const MirPhiIncoming& incoming : instruction->phiIncoming())
+    {
+        if (incoming.block == nullptr || incoming.value == nullptr ||
+            !verifyTarget(incoming.block, function) || !knownValues_.contains(incoming.value) ||
+            incoming.value->type() != instruction->result()->type())
+            return fail("SSA phi incoming pair must reference in-function block and same-typed value");
+    }
+    return true;
+}
+
+bool MirVerifier::verifyParameterInstruction(
+    const MirInstruction* instruction,
+    const MirFunction* function)
+{
+    if (instruction->result() == nullptr || instruction->symbol() == nullptr ||
+        instruction->symbol()->kind() != sema::SymbolKind::Parameter ||
+        !verifyStorageSymbol(instruction->symbol(), function) ||
+        instruction->result()->type() != instruction->symbol()->type() ||
+        !instruction->hasImmediate() || !instruction->operands().empty() ||
+        instruction->immediate() >= function->parameters().size())
+        return fail("param requires typed result, parameter symbol and valid positional index");
+    return function->parameters()[instruction->immediate()] == instruction->result()
+        ? true
+        : fail("param result must be the function parameter value at its positional index");
+}
+
+bool MirVerifier::verifySimpleStorageInstruction(
+    const MirInstruction* instruction,
+    const MirFunction* function)
+{
     switch (instruction->opcode())
     {
-        case MirOpcode::Undef:
-            if (mode_ != MirVerificationMode::Ssa)
-            {
-                return fail("pre-SSA MIR cannot contain SSA-only undef instructions");
-            }
-            if (instruction->result() == nullptr || !instruction->operands().empty() ||
-                !instruction->phiIncoming().empty())
-            {
-                return fail("SSA undef requires exactly a typed result and no operands");
-            }
-            if (instruction->symbol() != nullptr &&
-                (!verifyStorageSymbol(instruction->symbol(), function) ||
-                 instruction->symbol()->type() != instruction->result()->type()))
-            {
-                return fail("symbol-associated SSA undef must match in-scope storage type");
-            }
-            return true;
-
-        case MirOpcode::Phi:
-            if (mode_ != MirVerificationMode::Ssa)
-            {
-                return fail("pre-SSA MIR cannot contain SSA-only phi instructions");
-            }
-            if (instruction->result() == nullptr || !instruction->operands().empty() ||
-                instruction->phiIncoming().empty())
-            {
-                return fail("SSA phi requires typed result and one or more incoming pairs");
-            }
-            if (instruction->symbol() != nullptr &&
-                (!verifyStorageSymbol(instruction->symbol(), function) ||
-                 instruction->symbol()->type() != instruction->result()->type()))
-            {
-                return fail("symbol-associated SSA phi must match in-scope storage type");
-            }
-            for (const MirPhiIncoming& incoming : instruction->phiIncoming())
-            {
-                if (incoming.block == nullptr || incoming.value == nullptr ||
-                    !verifyTarget(incoming.block, function) || !knownValues_.contains(incoming.value) ||
-                    incoming.value->type() != instruction->result()->type())
-                {
-                    return fail("SSA phi incoming pair must reference in-function block and same-typed value");
-                }
-            }
-            return true;
-
-        case MirOpcode::Parameter:
-            if (instruction->result() == nullptr || instruction->symbol() == nullptr ||
-                instruction->symbol()->kind() != sema::SymbolKind::Parameter ||
-                !verifyStorageSymbol(instruction->symbol(), function) ||
-                instruction->result()->type() != instruction->symbol()->type() ||
-                !instruction->hasImmediate() || !instruction->operands().empty() ||
-                instruction->immediate() >= function->parameters().size())
-            {
-                return fail("param requires typed result, parameter symbol and valid positional index");
-            }
-            return function->parameters()[instruction->immediate()] == instruction->result()
-                ? true
-                : fail("param result must be the function parameter value at its positional index");
-
         case MirOpcode::Constant:
             return instruction->result() != nullptr && instruction->hasConstant() &&
                     instruction->operands().empty() &&
                     constantMatchesType(instruction->constant(), instruction->result()->type())
                 ? true
                 : fail("const requires result and constant payload compatible with its type");
-
         case MirOpcode::Copy:
             return instruction->result() != nullptr && instruction->operands().size() == 1 &&
                     instruction->result()->type() == instruction->operands()[0]->type()
                 ? true
                 : fail("copy requires one operand with the same result type");
-
         case MirOpcode::LoadSymbol:
             return instruction->result() != nullptr && instruction->symbol() != nullptr &&
                     verifyStorageSymbol(instruction->symbol(), function) &&
@@ -414,7 +394,6 @@ bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const Mir
                     instruction->operands().empty()
                 ? true
                 : fail("load.symbol requires in-scope MIR storage symbol and matching result type");
-
         case MirOpcode::StoreSymbol:
             return instruction->result() == nullptr && instruction->symbol() != nullptr &&
                     verifyStorageSymbol(instruction->symbol(), function) &&
@@ -422,7 +401,6 @@ bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const Mir
                     instruction->operands()[0]->type() == instruction->symbol()->type()
                 ? true
                 : fail("store.symbol requires one value exactly matching in-scope storage type");
-
         case MirOpcode::AddressOfSymbol:
             return instruction->result() != nullptr && instruction->symbol() != nullptr &&
                     verifyStorageSymbol(instruction->symbol(), function) &&
@@ -431,56 +409,69 @@ bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const Mir
                     instruction->operands().empty()
                 ? true
                 : fail("address.symbol requires in-scope pointer-to-storage result");
+        default:
+            return false;
+    }
+}
 
+bool MirVerifier::verifyMemoryInstruction(const MirInstruction* instruction)
+{
+    switch (instruction->opcode())
+    {
         case MirOpcode::Load:
             return instruction->result() != nullptr && instruction->operands().size() == 1 &&
                     instruction->operands()[0]->type()->kind() == sema::TypeKind::Pointer &&
                     instruction->operands()[0]->type()->elementType() == instruction->result()->type()
                 ? true
                 : fail("load requires pointer-to-result operand");
-
         case MirOpcode::Store:
             return instruction->result() == nullptr && instruction->operands().size() == 2 &&
                     instruction->operands()[0]->type()->kind() == sema::TypeKind::Pointer &&
                     instruction->operands()[0]->type()->elementType() == instruction->operands()[1]->type()
                 ? true
                 : fail("store requires pointer-to-T and T operands");
-
         case MirOpcode::Convert:
             if (instruction->result() == nullptr || instruction->operands().size() != 1 ||
                 !instruction->hasConversion())
-            {
                 return fail("convert requires result, source value and conversion kind");
-            }
             if (instruction->conversionKind() == sema::ConversionKind::Identity ||
                 instruction->conversionKind() == sema::ConversionKind::ToVoid ||
                 instruction->result()->type()->kind() == sema::TypeKind::Void)
-            {
                 return fail("convert cannot encode identity or to-void conversion");
-            }
             return true;
+        default:
+            return false;
+    }
+}
 
+bool MirVerifier::verifyUnaryInstruction(const MirInstruction* instruction)
+{
+    switch (instruction->opcode())
+    {
         case MirOpcode::Negate:
             return instruction->result() != nullptr && instruction->operands().size() == 1 &&
                     isNumeric(instruction->result()->type()) &&
                     instruction->result()->type() == instruction->operands()[0]->type()
-                ? true
-                : fail("neg requires one numeric operand matching its result type");
-
+                ? true : fail("neg requires one numeric operand matching its result type");
         case MirOpcode::BitNot:
             return instruction->result() != nullptr && instruction->operands().size() == 1 &&
                     isInteger(instruction->result()->type()) &&
                     instruction->result()->type() == instruction->operands()[0]->type()
-                ? true
-                : fail("bit.not requires one integer operand matching its result type");
-
+                ? true : fail("bit.not requires one integer operand matching its result type");
         case MirOpcode::LogicalNot:
             return instruction->result() != nullptr && instruction->operands().size() == 1 &&
                     instruction->result()->type()->kind() == sema::TypeKind::Bool &&
                     instruction->operands()[0]->type()->kind() == sema::TypeKind::Bool
-                ? true
-                : fail("logical.not requires bool operand and bool result");
+                ? true : fail("logical.not requires bool operand and bool result");
+        default:
+            return false;
+    }
+}
 
+bool MirVerifier::verifyArithmeticInstruction(const MirInstruction* instruction)
+{
+    switch (instruction->opcode())
+    {
         case MirOpcode::Add:
         case MirOpcode::Subtract:
         case MirOpcode::Multiply:
@@ -489,11 +480,8 @@ bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const Mir
                 instruction->operands().size() != 2 || !isNumeric(instruction->result()->type()) ||
                 instruction->operands()[0]->type() != instruction->result()->type() ||
                 instruction->operands()[1]->type() != instruction->result()->type())
-            {
                 return fail("numeric MIR arithmetic requires two operands matching the result type");
-            }
             return true;
-
         case MirOpcode::Remainder:
         case MirOpcode::BitAnd:
         case MirOpcode::BitOr:
@@ -502,126 +490,112 @@ bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const Mir
                 !isInteger(instruction->result()->type()) ||
                 instruction->operands()[0]->type() != instruction->result()->type() ||
                 instruction->operands()[1]->type() != instruction->result()->type())
-            {
                 return fail("integer MIR operation requires two operands matching the result type");
-            }
             return true;
-
         case MirOpcode::ShiftLeft:
         case MirOpcode::ShiftRight:
             if (instruction->result() == nullptr || instruction->operands().size() != 2 ||
                 !isInteger(instruction->result()->type()) ||
                 instruction->operands()[0]->type() != instruction->result()->type() ||
                 !isInteger(instruction->operands()[1]->type()))
-            {
                 return fail("shift requires integer left/result type and integer count operand");
-            }
             return true;
+        default:
+            return false;
+    }
+}
 
-        case MirOpcode::CompareEqual:
-        case MirOpcode::CompareNotEqual:
-        case MirOpcode::CompareLess:
-        case MirOpcode::CompareLessEqual:
-        case MirOpcode::CompareGreater:
-        case MirOpcode::CompareGreaterEqual:
-        {
-            if (!isComparison(instruction->opcode()) || instruction->result() == nullptr ||
-                instruction->result()->type()->kind() != sema::TypeKind::Bool ||
-                instruction->operands().size() != 2 ||
-                instruction->operands()[0]->type() != instruction->operands()[1]->type())
-            {
-                return fail("comparison requires two same-typed operands and bool result");
-            }
+bool MirVerifier::verifyComparisonInstruction(const MirInstruction* instruction)
+{
+    if (!isComparison(instruction->opcode()) || instruction->result() == nullptr ||
+        instruction->result()->type()->kind() != sema::TypeKind::Bool ||
+        instruction->operands().size() != 2 ||
+        instruction->operands()[0]->type() != instruction->operands()[1]->type())
+        return fail("comparison requires two same-typed operands and bool result");
+    const sema::Type* operandType = instruction->operands()[0]->type();
+    if (instruction->opcode() == MirOpcode::CompareEqual ||
+        instruction->opcode() == MirOpcode::CompareNotEqual)
+    {
+        return isNumeric(operandType) || operandType->kind() == sema::TypeKind::Bool ||
+                operandType->kind() == sema::TypeKind::Enum ||
+                operandType->kind() == sema::TypeKind::Pointer
+            ? true
+            : fail("equality comparison requires numeric, bool, enum or pointer operands");
+    }
+    return isNumeric(operandType) ? true : fail("relational comparison requires numeric operands");
+}
 
-            const sema::Type* operandType = instruction->operands()[0]->type();
-            if (instruction->opcode() == MirOpcode::CompareEqual ||
-                instruction->opcode() == MirOpcode::CompareNotEqual)
-            {
-                return isNumeric(operandType) || operandType->kind() == sema::TypeKind::Bool ||
-                        operandType->kind() == sema::TypeKind::Enum ||
-                        operandType->kind() == sema::TypeKind::Pointer
-                    ? true
-                    : fail("equality comparison requires numeric, bool, enum or pointer operands");
-            }
-            return isNumeric(operandType)
-                ? true
-                : fail("relational comparison requires numeric operands");
-        }
+bool MirVerifier::verifyPointerInstruction(const MirInstruction* instruction)
+{
+    if (instruction->opcode() == MirOpcode::PointerDifference)
+    {
+        return instruction->result() != nullptr &&
+                instruction->result()->type()->kind() == sema::TypeKind::NInt &&
+                instruction->operands().size() == 2 &&
+                instruction->operands()[0]->type()->kind() == sema::TypeKind::Pointer &&
+                instruction->operands()[0]->type()->elementType() != nullptr &&
+                instruction->operands()[0]->type()->elementType()->kind() != sema::TypeKind::Void &&
+                instruction->operands()[0]->type()->elementType()->isComplete() &&
+                instruction->operands()[0]->type() == instruction->operands()[1]->type()
+            ? true
+            : fail("pointer difference requires matching complete non-void pointers and nint result");
+    }
+    if (instruction->result() == nullptr ||
+        instruction->result()->type()->kind() != sema::TypeKind::Pointer ||
+        instruction->result()->type()->elementType() == nullptr ||
+        instruction->result()->type()->elementType()->kind() == sema::TypeKind::Void ||
+        !instruction->result()->type()->elementType()->isComplete() ||
+        instruction->operands().empty() ||
+        instruction->operands()[0]->type() != instruction->result()->type())
+        return fail("pointer arithmetic requires matching pointer to complete non-void element type");
+    if (instruction->hasImmediate())
+    {
+        return instruction->operands().size() == 1
+            ? true
+            : fail("immediate pointer step cannot also have an index operand");
+    }
+    return instruction->operands().size() == 2 && isInteger(instruction->operands()[1]->type())
+        ? true
+        : fail("pointer arithmetic requires integer index operand");
+}
 
-        case MirOpcode::PointerAdd:
-        case MirOpcode::PointerSubtract:
-            if (instruction->result() == nullptr || instruction->result()->type()->kind() != sema::TypeKind::Pointer ||
-                instruction->result()->type()->elementType() == nullptr ||
-                instruction->result()->type()->elementType()->kind() == sema::TypeKind::Void ||
-                !instruction->result()->type()->elementType()->isComplete() || instruction->operands().empty() ||
-                instruction->operands()[0]->type() != instruction->result()->type())
-            {
-                return fail("pointer arithmetic requires matching pointer to complete non-void element type");
-            }
-            if (instruction->hasImmediate())
-            {
-                return instruction->operands().size() == 1
-                    ? true
-                    : fail("immediate pointer step cannot also have an index operand");
-            }
-            return instruction->operands().size() == 2 && isInteger(instruction->operands()[1]->type())
-                ? true
-                : fail("pointer arithmetic requires integer index operand");
+bool MirVerifier::verifyCallInstruction(const MirInstruction* instruction)
+{
+    if (instruction->symbol() == nullptr ||
+        instruction->symbol()->kind() != sema::SymbolKind::Function ||
+        instruction->symbol()->type()->kind() != sema::TypeKind::Function ||
+        !moduleSymbols_.contains(instruction->symbol()))
+        return fail("call requires resolved function symbol");
+    const std::vector<sema::Type*>& parameters = instruction->symbol()->type()->parameterTypes();
+    if (parameters.size() != instruction->operands().size())
+        return fail("call argument count does not match function type");
+    for (std::size_t index = 0; index < parameters.size(); ++index)
+    {
+        if (instruction->operands()[index]->type() != parameters[index])
+            return fail("call argument type does not match function parameter type");
+    }
+    sema::Type* returnType = instruction->symbol()->type()->returnType();
+    if (returnType->kind() == sema::TypeKind::Void)
+        return instruction->result() == nullptr ? true : fail("void call cannot produce MIR result");
+    return instruction->result() != nullptr && instruction->result()->type() == returnType
+        ? true
+        : fail("non-void call result must match function return type");
+}
 
-        case MirOpcode::PointerDifference:
-            return instruction->result() != nullptr && instruction->result()->type()->kind() == sema::TypeKind::NInt &&
-                    instruction->operands().size() == 2 &&
-                    instruction->operands()[0]->type()->kind() == sema::TypeKind::Pointer &&
-                    instruction->operands()[0]->type()->elementType() != nullptr &&
-                    instruction->operands()[0]->type()->elementType()->kind() != sema::TypeKind::Void &&
-                    instruction->operands()[0]->type()->elementType()->isComplete() &&
-                    instruction->operands()[0]->type() == instruction->operands()[1]->type()
-                ? true
-                : fail("pointer difference requires matching complete non-void pointers and nint result");
-
-        case MirOpcode::Call:
-        {
-            if (instruction->symbol() == nullptr || instruction->symbol()->kind() != sema::SymbolKind::Function ||
-                instruction->symbol()->type()->kind() != sema::TypeKind::Function ||
-                !moduleSymbols_.contains(instruction->symbol()))
-            {
-                return fail("call requires resolved function symbol");
-            }
-            const std::vector<sema::Type*>& parameters = instruction->symbol()->type()->parameterTypes();
-            if (parameters.size() != instruction->operands().size())
-            {
-                return fail("call argument count does not match function type");
-            }
-            for (std::size_t index = 0; index < parameters.size(); ++index)
-            {
-                if (instruction->operands()[index]->type() != parameters[index])
-                {
-                    return fail("call argument type does not match function parameter type");
-                }
-            }
-            sema::Type* returnType = instruction->symbol()->type()->returnType();
-            if (returnType->kind() == sema::TypeKind::Void)
-            {
-                return instruction->result() == nullptr
-                    ? true
-                    : fail("void call cannot produce MIR result");
-            }
-            return instruction->result() != nullptr && instruction->result()->type() == returnType
-                ? true
-                : fail("non-void call result must match function return type");
-        }
-
+bool MirVerifier::verifyAggregateInstruction(const MirInstruction* instruction)
+{
+    switch (instruction->opcode())
+    {
         case MirOpcode::BoundsCheck:
             return instruction->result() == nullptr && instruction->operands().size() == 1 &&
                     isInteger(instruction->operands()[0]->type()) && instruction->hasImmediate() &&
                     instruction->immediate() > 0
-                ? true
-                : fail("bounds.check requires integer index and positive fixed upper bound");
-
+                ? true : fail("bounds.check requires integer index and positive fixed upper bound");
         case MirOpcode::FieldAddress:
             return instruction->result() != nullptr &&
                     instruction->result()->type()->kind() == sema::TypeKind::Pointer &&
-                    instruction->symbol() != nullptr && instruction->symbol()->kind() == sema::SymbolKind::Field &&
+                    instruction->symbol() != nullptr &&
+                    instruction->symbol()->kind() == sema::SymbolKind::Field &&
                     instruction->result()->type()->elementType() == instruction->symbol()->type() &&
                     instruction->symbol()->hasFieldOffset() && instruction->hasOffset() &&
                     instruction->offset() == instruction->symbol()->fieldOffset() &&
@@ -630,43 +604,29 @@ bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const Mir
                     instruction->operands()[0]->type()->elementType()->kind() == sema::TypeKind::Struct
                 ? true
                 : fail("field.address requires pointer-to-struct base, field, offset and pointer result");
-
         case MirOpcode::IndexAddress:
         {
             if (instruction->result() == nullptr ||
                 instruction->result()->type()->kind() != sema::TypeKind::Pointer ||
                 instruction->auxiliaryType() == nullptr || instruction->operands().size() != 2 ||
                 !isInteger(instruction->operands()[1]->type()))
-            {
                 return fail("index.address requires base, integer index, base type and pointer result");
-            }
-
             const sema::Type* baseType = instruction->auxiliaryType();
             const sema::Type* loweredBaseType = instruction->operands()[0]->type();
             if (baseType->kind() == sema::TypeKind::Array)
-            {
                 return loweredBaseType->kind() == sema::TypeKind::Pointer &&
                         loweredBaseType->elementType() == baseType &&
                         instruction->result()->type()->elementType() == baseType->elementType()
-                    ? true
-                    : fail("array index.address base/result relationship is invalid");
-            }
+                    ? true : fail("array index.address base/result relationship is invalid");
             if (baseType->kind() == sema::TypeKind::Pointer)
-            {
                 return loweredBaseType == baseType && instruction->result()->type() == baseType
-                    ? true
-                    : fail("pointer index.address must preserve the pointer type");
-            }
+                    ? true : fail("pointer index.address must preserve the pointer type");
             if (baseType->kind() == sema::TypeKind::StringLiteral)
-            {
                 return loweredBaseType == baseType &&
                         instruction->result()->type()->elementType() == baseType->elementType()
-                    ? true
-                    : fail("string index.address must produce pointer to the string element type");
-            }
+                    ? true : fail("string index.address must produce pointer to the string element type");
             return fail("index.address base type must be fixed array, pointer or string literal");
         }
-
         case MirOpcode::ExtractField:
             return instruction->result() != nullptr && instruction->symbol() != nullptr &&
                     instruction->symbol()->kind() == sema::SymbolKind::Field &&
@@ -675,9 +635,16 @@ bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const Mir
                     instruction->offset() == instruction->symbol()->fieldOffset() &&
                     instruction->operands().size() == 1 &&
                     instruction->operands()[0]->type()->kind() == sema::TypeKind::Struct
-                ? true
-                : fail("extract.field requires struct value, field symbol and offset");
+                ? true : fail("extract.field requires struct value, field symbol and offset");
+        default:
+            return false;
+    }
+}
 
+bool MirVerifier::verifyAllocationInstruction(const MirInstruction* instruction)
+{
+    switch (instruction->opcode())
+    {
         case MirOpcode::Allocate:
             return instruction->result() != nullptr &&
                     instruction->result()->type()->kind() == sema::TypeKind::Pointer &&
@@ -685,9 +652,7 @@ bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const Mir
                     instruction->auxiliaryType() != nullptr &&
                     instruction->auxiliaryType()->kind() != sema::TypeKind::Void &&
                     instruction->auxiliaryType()->isComplete() && instruction->operands().empty()
-                ? true
-                : fail("alloc requires pointer result and allocated element type");
-
+                ? true : fail("alloc requires pointer result and allocated element type");
         case MirOpcode::AllocateArray:
             return instruction->result() != nullptr &&
                     instruction->result()->type()->kind() == sema::TypeKind::Pointer &&
@@ -696,17 +661,13 @@ bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const Mir
                     instruction->auxiliaryType()->kind() != sema::TypeKind::Void &&
                     instruction->auxiliaryType()->isComplete() && instruction->operands().size() == 1 &&
                     isInteger(instruction->operands()[0]->type())
-                ? true
-                : fail("alloc.array requires pointer result, element type and integer count");
-
+                ? true : fail("alloc.array requires pointer result, element type and integer count");
         case MirOpcode::Deallocate:
         case MirOpcode::DeallocateArray:
             return instruction->result() == nullptr && instruction->operands().size() == 1 &&
                     (instruction->operands()[0]->type()->kind() == sema::TypeKind::Pointer ||
                      instruction->operands()[0]->type()->kind() == sema::TypeKind::NullLiteral)
-                ? true
-                : fail("free requires pointer or null operand");
-
+                ? true : fail("free requires pointer or null operand");
         case MirOpcode::StackAllocate:
             return instruction->result() != nullptr &&
                     instruction->result()->type()->kind() == sema::TypeKind::Pointer &&
@@ -715,45 +676,123 @@ bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const Mir
                     instruction->auxiliaryType()->kind() != sema::TypeKind::Void &&
                     instruction->auxiliaryType()->isComplete() && instruction->operands().size() == 1 &&
                     isInteger(instruction->operands()[0]->type())
-                ? true
-                : fail("stack.alloc requires pointer result, element type and integer count");
+                ? true : fail("stack.alloc requires pointer result, element type and integer count");
+        default:
+            return false;
+    }
+}
 
+bool MirVerifier::verifyTerminatorInstruction(
+    const MirInstruction* instruction,
+    const MirFunction* function)
+{
+    switch (instruction->opcode())
+    {
         case MirOpcode::Jump:
             return instruction->result() == nullptr && instruction->operands().empty() &&
                     instruction->firstTarget() != nullptr && instruction->secondTarget() == nullptr &&
                     verifyTarget(instruction->firstTarget(), function)
-                ? true
-                : fail("jump requires exactly one in-function target");
-
+                ? true : fail("jump requires exactly one in-function target");
         case MirOpcode::Branch:
             return instruction->result() == nullptr && instruction->operands().size() == 1 &&
                     instruction->operands()[0]->type()->kind() == sema::TypeKind::Bool &&
                     instruction->firstTarget() != nullptr && instruction->secondTarget() != nullptr &&
                     verifyTarget(instruction->firstTarget(), function) &&
                     verifyTarget(instruction->secondTarget(), function)
-                ? true
-                : fail("branch requires bool condition and two in-function targets");
-
+                ? true : fail("branch requires bool condition and two in-function targets");
         case MirOpcode::Return:
         {
             sema::Type* returnType = function->symbol()->type()->returnType();
             if (returnType->kind() == sema::TypeKind::Void)
-            {
                 return instruction->operands().empty() && instruction->result() == nullptr
-                    ? true
-                    : fail("void MIR return cannot contain value");
-            }
+                    ? true : fail("void MIR return cannot contain value");
             return instruction->result() == nullptr && instruction->operands().size() == 1 &&
                     instruction->operands()[0]->type() == returnType
-                ? true
-                : fail("MIR return value must match function return type");
+                ? true : fail("MIR return value must match function return type");
         }
-
         case MirOpcode::Unreachable:
             return instruction->result() == nullptr && instruction->operands().empty() &&
                     instruction->firstTarget() == nullptr && instruction->secondTarget() == nullptr
-                ? true
-                : fail("unreachable terminator cannot have values or targets");
+                ? true : fail("unreachable terminator cannot have values or targets");
+        default:
+            return false;
+    }
+}
+
+bool MirVerifier::verifyInstruction(const MirInstruction* instruction, const MirFunction* function)
+{
+    for (const MirValue* operand : instruction->operands())
+    {
+        if (!verifyValue(operand) || !knownValues_.contains(operand))
+            return fail("MIR instruction references an unknown or untyped virtual value");
+    }
+    if (instruction->result() != nullptr && !verifyValue(instruction->result()))
+        return fail("MIR instruction result has no semantic type");
+    if (instruction->opcode() != MirOpcode::Phi && !instruction->phiIncoming().empty())
+        return fail("only SSA PHI instructions may contain PHI incoming pairs");
+
+    switch (instruction->opcode())
+    {
+        case MirOpcode::Undef:
+            return verifyUndefInstruction(instruction, function);
+        case MirOpcode::Phi:
+            return verifyPhiInstruction(instruction, function);
+        case MirOpcode::Parameter:
+            return verifyParameterInstruction(instruction, function);
+        case MirOpcode::Constant:
+        case MirOpcode::Copy:
+        case MirOpcode::LoadSymbol:
+        case MirOpcode::StoreSymbol:
+        case MirOpcode::AddressOfSymbol:
+            return verifySimpleStorageInstruction(instruction, function);
+        case MirOpcode::Load:
+        case MirOpcode::Store:
+        case MirOpcode::Convert:
+            return verifyMemoryInstruction(instruction);
+        case MirOpcode::Negate:
+        case MirOpcode::BitNot:
+        case MirOpcode::LogicalNot:
+            return verifyUnaryInstruction(instruction);
+        case MirOpcode::Add:
+        case MirOpcode::Subtract:
+        case MirOpcode::Multiply:
+        case MirOpcode::Divide:
+        case MirOpcode::Remainder:
+        case MirOpcode::BitAnd:
+        case MirOpcode::BitOr:
+        case MirOpcode::BitXor:
+        case MirOpcode::ShiftLeft:
+        case MirOpcode::ShiftRight:
+            return verifyArithmeticInstruction(instruction);
+        case MirOpcode::CompareEqual:
+        case MirOpcode::CompareNotEqual:
+        case MirOpcode::CompareLess:
+        case MirOpcode::CompareLessEqual:
+        case MirOpcode::CompareGreater:
+        case MirOpcode::CompareGreaterEqual:
+            return verifyComparisonInstruction(instruction);
+        case MirOpcode::PointerAdd:
+        case MirOpcode::PointerSubtract:
+        case MirOpcode::PointerDifference:
+            return verifyPointerInstruction(instruction);
+        case MirOpcode::Call:
+            return verifyCallInstruction(instruction);
+        case MirOpcode::BoundsCheck:
+        case MirOpcode::FieldAddress:
+        case MirOpcode::IndexAddress:
+        case MirOpcode::ExtractField:
+            return verifyAggregateInstruction(instruction);
+        case MirOpcode::Allocate:
+        case MirOpcode::AllocateArray:
+        case MirOpcode::Deallocate:
+        case MirOpcode::DeallocateArray:
+        case MirOpcode::StackAllocate:
+            return verifyAllocationInstruction(instruction);
+        case MirOpcode::Jump:
+        case MirOpcode::Branch:
+        case MirOpcode::Return:
+        case MirOpcode::Unreachable:
+            return verifyTerminatorInstruction(instruction, function);
     }
     return fail("unknown MIR opcode");
 }

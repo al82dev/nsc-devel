@@ -101,4 +101,9 @@ bool ProjectOopHirModel::isBuilt() const noexcept
 {
     return built_;
 }
+
+SourceRange ProjectOopHirModel::lastErrorRange() const noexcept
+{
+    return lastErrorRange_;
+}
 }

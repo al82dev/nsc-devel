@@ -1,5 +1,7 @@
 #include "nativesharp/HIR/HirVerifier.h"
 
+#include "Internal/VerificationTask.h"
+
 #include "nativesharp/HIR/HirNode.h"
 #include "nativesharp/Sema/Symbol.h"
 #include "nativesharp/Sema/SymbolKind.h"
@@ -93,23 +95,7 @@ bool isIntegerType(const sema::Type* type)
     }
 }
 
-struct VerificationTask final
-{
-    enum class Kind
-    {
-        Node,
-        VariableInitializerType,
-        IfElseBranch,
-        ReturnType,
-        CallArgument
-    };
-
-    Kind kind = Kind::Node;
-    const HirNode* node = nullptr;
-    sema::Type* functionReturnType = nullptr;
-    int loopDepth = 0;
-    std::size_t childIndex = 0;
-};
+using internal::VerificationTask;
 
 // Appends children in reverse so the explicit LIFO worklist preserves the recursive left-to-right DFS order.
 void appendChildren(
@@ -213,8 +199,78 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
             return false;
         }
 
-        switch (node->kind())
+        if (!verifyNodeKind(node, tasks, functionReturnType, loopDepth))
         {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool HirVerifier::verifyNodeKind(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks,
+    sema::Type* functionReturnType,
+    int loopDepth)
+{
+    switch (node->kind())
+    {
+        case HirNodeKind::CompilationUnit:
+        case HirNodeKind::StructDeclaration:
+        case HirNodeKind::FieldDeclaration:
+        case HirNodeKind::EnumDeclaration:
+        case HirNodeKind::EnumMemberDeclaration:
+            return verifyGlobalDeclarationNode(node, tasks, functionReturnType, loopDepth);
+        case HirNodeKind::GlobalVariableDeclaration:
+        case HirNodeKind::LocalVariableDeclaration:
+        case HirNodeKind::FunctionDeclaration:
+        case HirNodeKind::ParameterDeclaration:
+            return verifyCallableDeclarationNode(node, tasks, functionReturnType, loopDepth);
+        case HirNodeKind::Block:
+        case HirNodeKind::If:
+        case HirNodeKind::While:
+        case HirNodeKind::For:
+            return verifyControlFlowNode(node, tasks, functionReturnType, loopDepth);
+        case HirNodeKind::Break:
+        case HirNodeKind::Continue:
+        case HirNodeKind::Return:
+        case HirNodeKind::ExpressionStatement:
+            return verifyExitOrStatementNode(node, tasks, functionReturnType, loopDepth);
+        case HirNodeKind::Constant:
+        case HirNodeKind::SymbolAddress:
+        case HirNodeKind::Load:
+        case HirNodeKind::Store:
+        case HirNodeKind::Conversion:
+        case HirNodeKind::Unary:
+        case HirNodeKind::Binary:
+        case HirNodeKind::Conditional:
+            return verifyValueNode(node, tasks, functionReturnType, loopDepth);
+        case HirNodeKind::Call:
+        case HirNodeKind::IndexAddress:
+        case HirNodeKind::FieldAddress:
+        case HirNodeKind::DereferenceAddress:
+        case HirNodeKind::ExtractField:
+            return verifyAccessNode(node, tasks, functionReturnType, loopDepth);
+        case HirNodeKind::CompoundAssignment:
+        case HirNodeKind::Increment:
+        case HirNodeKind::Allocation:
+        case HirNodeKind::Deallocation:
+        case HirNodeKind::StackAllocation:
+            return verifyMutationOrAllocationNode(node, tasks, functionReturnType, loopDepth);
+        default:
+            return fail(node, "unhandled HIR node kind in verifier");
+    }
+}
+
+bool HirVerifier::verifyGlobalDeclarationNode(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks,
+    sema::Type* functionReturnType,
+    int loopDepth)
+{
+    switch (node->kind())
+    {
             case HirNodeKind::CompilationUnit:
                 for (const HirNode* child : node->children())
                 {
@@ -224,7 +280,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     }
                 }
                 appendChildren(tasks, node, nullptr, 0);
-                break;
+                return true;
 
             case HirNodeKind::StructDeclaration:
                 if (node->symbol() == nullptr || node->symbol()->kind() != sema::SymbolKind::Struct ||
@@ -240,7 +296,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     }
                 }
                 appendChildren(tasks, node, functionReturnType, loopDepth);
-                break;
+                return true;
 
             case HirNodeKind::FieldDeclaration:
                 if (node->symbol() == nullptr || node->symbol()->kind() != sema::SymbolKind::Field ||
@@ -249,7 +305,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     return fail(node,
                         "field declaration must have resolved field symbol, type, offset and no children");
                 }
-                break;
+                return true;
 
             case HirNodeKind::EnumDeclaration:
                 if (node->symbol() == nullptr || node->symbol()->kind() != sema::SymbolKind::Enum ||
@@ -265,7 +321,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     }
                 }
                 appendChildren(tasks, node, functionReturnType, loopDepth);
-                break;
+                return true;
 
             case HirNodeKind::EnumMemberDeclaration:
                 if (node->symbol() == nullptr || node->symbol()->kind() != sema::SymbolKind::EnumMember ||
@@ -273,71 +329,27 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                 {
                     return fail(node, "enum member must have resolved symbol, enum type, constant and no children");
                 }
-                break;
+                return true;
+        default:
+            return false;
+    }
+}
 
+bool HirVerifier::verifyCallableDeclarationNode(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks,
+    sema::Type* functionReturnType,
+    int loopDepth)
+{
+    switch (node->kind())
+    {
             case HirNodeKind::GlobalVariableDeclaration:
             case HirNodeKind::LocalVariableDeclaration:
-            {
-                const sema::SymbolKind expected = node->kind() == HirNodeKind::GlobalVariableDeclaration
-                    ? sema::SymbolKind::GlobalVariable
-                    : sema::SymbolKind::Variable;
-                if (node->symbol() == nullptr || node->symbol()->kind() != expected ||
-                    node->type() != node->symbol()->type())
-                {
-                    return fail(node, "variable declaration must reference the exact resolved symbol and type");
-                }
-                if (node->first() != nullptr)
-                {
-                    if (!isExpressionKind(node->first()->kind()))
-                    {
-                        return fail(node, "variable initializer must be an expression of the declaration type");
-                    }
-                    tasks.push_back({VerificationTask::Kind::VariableInitializerType, node,
-                        functionReturnType, loopDepth, 0});
-                    tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                }
-                break;
-            }
+                return verifyVariableDeclarationNode(
+                    node, tasks, functionReturnType, loopDepth);
 
             case HirNodeKind::FunctionDeclaration:
-            {
-                if (node->symbol() == nullptr || node->symbol()->kind() != sema::SymbolKind::Function ||
-                    node->type() == nullptr || node->type()->kind() != sema::TypeKind::Function ||
-                    node->type() != node->symbol()->type())
-                {
-                    return fail(node, "function declaration must reference its resolved function symbol and type");
-                }
-                const std::vector<sema::Type*>& parameters = node->type()->parameterTypes();
-                if (parameters.size() != node->children().size())
-                {
-                    return fail(node, "HIR function parameter count does not match its semantic function type");
-                }
-                for (std::size_t index = 0; index < node->children().size(); ++index)
-                {
-                    const HirNode* parameter = node->children()[index];
-                    if (parameter == nullptr || parameter->kind() != HirNodeKind::ParameterDeclaration ||
-                        parameter->type() != parameters[index])
-                    {
-                        return fail(node, "HIR function parameter does not match semantic parameter type");
-                    }
-                    if (node->first() != nullptr &&
-                        (parameter->symbol() == nullptr ||
-                         parameter->symbol()->kind() != sema::SymbolKind::Parameter))
-                    {
-                        return fail(node, "defined HIR function parameters must be bound runtime symbols");
-                    }
-                }
-                if (node->first() != nullptr)
-                {
-                    if (node->first()->kind() != HirNodeKind::Block)
-                    {
-                        return fail(node, "function body must be a valid HIR block");
-                    }
-                    tasks.push_back({VerificationTask::Kind::Node, node->first(),
-                        node->type()->returnType(), 0, 0});
-                }
-                break;
-            }
+                return verifyFunctionDeclarationNode(node, tasks);
 
             case HirNodeKind::ParameterDeclaration:
                 if (node->type() == nullptr)
@@ -354,8 +366,89 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                 {
                     return fail(node, "parameter declaration cannot contain HIR child nodes");
                 }
-                break;
+                return true;
+        default:
+            return false;
+    }
+}
 
+bool HirVerifier::verifyVariableDeclarationNode(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks,
+    sema::Type* functionReturnType,
+    int loopDepth)
+{
+    const sema::SymbolKind expected = node->kind() == HirNodeKind::GlobalVariableDeclaration
+        ? sema::SymbolKind::GlobalVariable
+        : sema::SymbolKind::Variable;
+    if (node->symbol() == nullptr || node->symbol()->kind() != expected ||
+        node->type() != node->symbol()->type())
+    {
+        return fail(node, "variable declaration must reference the exact resolved symbol and type");
+    }
+    if (node->first() != nullptr)
+    {
+        if (!isExpressionKind(node->first()->kind()))
+        {
+            return fail(node, "variable initializer must be an expression of the declaration type");
+        }
+        tasks.push_back({VerificationTask::Kind::VariableInitializerType, node,
+            functionReturnType, loopDepth, 0});
+        tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
+    }
+    return true;
+}
+
+bool HirVerifier::verifyFunctionDeclarationNode(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks)
+{
+    if (node->symbol() == nullptr || node->symbol()->kind() != sema::SymbolKind::Function ||
+        node->type() == nullptr || node->type()->kind() != sema::TypeKind::Function ||
+        node->type() != node->symbol()->type())
+    {
+        return fail(node, "function declaration must reference its resolved function symbol and type");
+    }
+    const std::vector<sema::Type*>& parameters = node->type()->parameterTypes();
+    if (parameters.size() != node->children().size())
+    {
+        return fail(node, "HIR function parameter count does not match its semantic function type");
+    }
+    for (std::size_t index = 0; index < node->children().size(); ++index)
+    {
+        const HirNode* parameter = node->children()[index];
+        if (parameter == nullptr || parameter->kind() != HirNodeKind::ParameterDeclaration ||
+            parameter->type() != parameters[index])
+        {
+            return fail(node, "HIR function parameter does not match semantic parameter type");
+        }
+        if (node->first() != nullptr &&
+            (parameter->symbol() == nullptr ||
+             parameter->symbol()->kind() != sema::SymbolKind::Parameter))
+        {
+            return fail(node, "defined HIR function parameters must be bound runtime symbols");
+        }
+    }
+    if (node->first() != nullptr)
+    {
+        if (node->first()->kind() != HirNodeKind::Block)
+        {
+            return fail(node, "function body must be a valid HIR block");
+        }
+        tasks.push_back({VerificationTask::Kind::Node, node->first(),
+            node->type()->returnType(), 0, 0});
+    }
+    return true;
+}
+
+bool HirVerifier::verifyControlFlowNode(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks,
+    sema::Type* functionReturnType,
+    int loopDepth)
+{
+    switch (node->kind())
+    {
             case HirNodeKind::Block:
                 for (const HirNode* child : node->children())
                 {
@@ -365,7 +458,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     }
                 }
                 appendChildren(tasks, node, functionReturnType, loopDepth);
-                break;
+                return true;
 
             case HirNodeKind::If:
                 if (node->first() == nullptr || !isExpressionKind(node->first()->kind()) ||
@@ -378,7 +471,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     functionReturnType, loopDepth, 0});
                 tasks.push_back({VerificationTask::Kind::Node, node->second(), functionReturnType, loopDepth, 0});
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::While:
                 if (node->first() == nullptr || !isExpressionKind(node->first()->kind()) ||
@@ -390,7 +483,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                 tasks.push_back({VerificationTask::Kind::Node, node->second(),
                     functionReturnType, loopDepth + 1, 0});
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::For:
                 if (node->first() != nullptr && node->first()->kind() != HirNodeKind::Block &&
@@ -432,8 +525,20 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     tasks.push_back({VerificationTask::Kind::Node, node->first(),
                         functionReturnType, loopDepth, 0});
                 }
-                break;
+                return true;
+        default:
+            return false;
+    }
+}
 
+bool HirVerifier::verifyExitOrStatementNode(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks,
+    sema::Type* functionReturnType,
+    int loopDepth)
+{
+    switch (node->kind())
+    {
             case HirNodeKind::Break:
             case HirNodeKind::Continue:
                 if (!hasNoEdges(node))
@@ -444,7 +549,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                 {
                     return fail(node, "break/continue must be nested inside a HIR loop");
                 }
-                break;
+                return true;
 
             case HirNodeKind::Return:
                 if (functionReturnType == nullptr)
@@ -457,7 +562,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     {
                         return fail(node, "void HIR function cannot return a value");
                     }
-                    break;
+                    return true;
                 }
                 if (node->first() == nullptr || !isExpressionKind(node->first()->kind()))
                 {
@@ -466,7 +571,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                 tasks.push_back({VerificationTask::Kind::ReturnType, node,
                     functionReturnType, loopDepth, 0});
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::ExpressionStatement:
                 if (node->first() == nullptr || !isExpressionKind(node->first()->kind()))
@@ -474,14 +579,26 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     return fail(node, "expression statement must contain a valid HIR expression");
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
+        default:
+            return false;
+    }
+}
 
+bool HirVerifier::verifyValueNode(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks,
+    sema::Type* functionReturnType,
+    int loopDepth)
+{
+    switch (node->kind())
+    {
             case HirNodeKind::Constant:
                 if (node->type() == nullptr || !node->hasConstant() || !hasNoEdges(node))
                 {
                     return fail(node, "constant must have semantic type, value and no child nodes");
                 }
-                break;
+                return true;
 
             case HirNodeKind::SymbolAddress:
                 if (node->symbol() == nullptr || !isRuntimeStorageSymbol(node->symbol()->kind()) ||
@@ -490,7 +607,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                 {
                     return fail(node, "symbol address must reference runtime storage with pointer-to-symbol type");
                 }
-                break;
+                return true;
 
             case HirNodeKind::Load:
                 if (node->first() == nullptr || node->type() == nullptr ||
@@ -499,7 +616,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     return fail(node, "load requires pointer-to-result-type address");
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::Store:
                 if (node->first() == nullptr || node->second() == nullptr || node->type() == nullptr ||
@@ -509,7 +626,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->second(), functionReturnType, loopDepth, 0});
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::Conversion:
                 if (node->first() == nullptr || node->type() == nullptr || !node->hasConversion())
@@ -517,7 +634,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     return fail(node, "conversion requires source value, destination type and conversion kind");
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::Unary:
                 if (node->first() == nullptr || node->type() == nullptr || node->operationType() == nullptr ||
@@ -526,7 +643,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     return fail(node, "unary operation is missing resolved semantic information");
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::Binary:
                 if (node->first() == nullptr || node->second() == nullptr || node->type() == nullptr ||
@@ -536,7 +653,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->second(), functionReturnType, loopDepth, 0});
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::Conditional:
                 if (node->first() == nullptr || node->second() == nullptr || node->third() == nullptr ||
@@ -550,66 +667,25 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                 tasks.push_back({VerificationTask::Kind::Node, node->third(), functionReturnType, loopDepth, 0});
                 tasks.push_back({VerificationTask::Kind::Node, node->second(), functionReturnType, loopDepth, 0});
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
+        default:
+            return false;
+    }
+}
 
+bool HirVerifier::verifyAccessNode(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks,
+    sema::Type* functionReturnType,
+    int loopDepth)
+{
+    switch (node->kind())
+    {
             case HirNodeKind::Call:
-            {
-                if (node->symbol() == nullptr || node->symbol()->kind() != sema::SymbolKind::Function ||
-                    node->symbol()->type()->kind() != sema::TypeKind::Function ||
-                    node->type() != node->symbol()->type()->returnType())
-                {
-                    return fail(node, "call must target a resolved function and have its return type");
-                }
-                const std::vector<sema::Type*>& parameters = node->symbol()->type()->parameterTypes();
-                if (parameters.size() != node->children().size())
-                {
-                    return fail(node, "call argument count does not match resolved function type");
-                }
-                if (!node->children().empty())
-                {
-                    tasks.push_back({VerificationTask::Kind::CallArgument, node,
-                        functionReturnType, loopDepth, 0});
-                }
-                break;
-            }
+                return verifyCallNode(node, tasks, functionReturnType, loopDepth);
 
             case HirNodeKind::IndexAddress:
-            {
-                if (node->first() == nullptr || node->second() == nullptr ||
-                    !isExpressionKind(node->first()->kind()) || !isExpressionKind(node->second()->kind()) ||
-                    node->type() == nullptr || node->type()->kind() != sema::TypeKind::Pointer ||
-                    node->operationType() == nullptr || node->second()->type() == nullptr ||
-                    !isIntegerType(node->second()->type()))
-                {
-                    return fail(node, "index address requires base, integer index, base type and pointer result");
-                }
-
-                const sema::Type* baseType = node->operationType();
-                bool relationIsValid = false;
-                if (baseType->kind() == sema::TypeKind::Array)
-                {
-                    relationIsValid = verifyPointerTo(node->first(), baseType) &&
-                        node->type()->elementType() == baseType->elementType();
-                }
-                else if (baseType->kind() == sema::TypeKind::Pointer)
-                {
-                    relationIsValid = node->first()->type() == baseType && node->type() == baseType;
-                }
-                else if (baseType->kind() == sema::TypeKind::StringLiteral)
-                {
-                    relationIsValid = node->first()->type() == baseType &&
-                        node->type()->elementType() == baseType->elementType();
-                }
-
-                if (!relationIsValid)
-                {
-                    return fail(node,
-                        "index address base/result types do not match resolved array or pointer type");
-                }
-                tasks.push_back({VerificationTask::Kind::Node, node->second(), functionReturnType, loopDepth, 0});
-                tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
-            }
+                return verifyIndexAddressNode(node, tasks, functionReturnType, loopDepth);
 
             case HirNodeKind::FieldAddress:
                 if (node->first() == nullptr || node->symbol() == nullptr ||
@@ -619,7 +695,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     return fail(node, "field address requires resolved field, offset and pointer-to-field type");
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::DereferenceAddress:
                 if (node->first() == nullptr || node->type() == nullptr ||
@@ -628,7 +704,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     return fail(node, "dereference address must preserve the evaluated pointer type");
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::ExtractField:
                 if (node->first() == nullptr || !isExpressionKind(node->first()->kind()) ||
@@ -639,8 +715,87 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     return fail(node, "field extraction requires struct value, resolved field and offset");
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
+        default:
+            return false;
+    }
+}
 
+bool HirVerifier::verifyCallNode(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks,
+    sema::Type* functionReturnType,
+    int loopDepth)
+{
+    if (node->symbol() == nullptr || node->symbol()->kind() != sema::SymbolKind::Function ||
+        node->symbol()->type()->kind() != sema::TypeKind::Function ||
+        node->type() != node->symbol()->type()->returnType())
+    {
+        return fail(node, "call must target a resolved function and have its return type");
+    }
+    const std::vector<sema::Type*>& parameters = node->symbol()->type()->parameterTypes();
+    if (parameters.size() != node->children().size())
+    {
+        return fail(node, "call argument count does not match resolved function type");
+    }
+    if (!node->children().empty())
+    {
+        tasks.push_back({VerificationTask::Kind::CallArgument, node,
+            functionReturnType, loopDepth, 0});
+    }
+    return true;
+}
+
+bool HirVerifier::verifyIndexAddressNode(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks,
+    sema::Type* functionReturnType,
+    int loopDepth)
+{
+    if (node->first() == nullptr || node->second() == nullptr ||
+        !isExpressionKind(node->first()->kind()) || !isExpressionKind(node->second()->kind()) ||
+        node->type() == nullptr || node->type()->kind() != sema::TypeKind::Pointer ||
+        node->operationType() == nullptr || node->second()->type() == nullptr ||
+        !isIntegerType(node->second()->type()))
+    {
+        return fail(node, "index address requires base, integer index, base type and pointer result");
+    }
+
+    const sema::Type* baseType = node->operationType();
+    bool relationIsValid = false;
+    if (baseType->kind() == sema::TypeKind::Array)
+    {
+        relationIsValid = verifyPointerTo(node->first(), baseType) &&
+            node->type()->elementType() == baseType->elementType();
+    }
+    else if (baseType->kind() == sema::TypeKind::Pointer)
+    {
+        relationIsValid = node->first()->type() == baseType && node->type() == baseType;
+    }
+    else if (baseType->kind() == sema::TypeKind::StringLiteral)
+    {
+        relationIsValid = node->first()->type() == baseType &&
+            node->type()->elementType() == baseType->elementType();
+    }
+
+    if (!relationIsValid)
+    {
+        return fail(node,
+            "index address base/result types do not match resolved array or pointer type");
+    }
+    tasks.push_back({VerificationTask::Kind::Node, node->second(), functionReturnType, loopDepth, 0});
+    tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
+    return true;
+}
+
+bool HirVerifier::verifyMutationOrAllocationNode(
+    const HirNode* node,
+    std::vector<VerificationTask>& tasks,
+    sema::Type* functionReturnType,
+    int loopDepth)
+{
+    switch (node->kind())
+    {
             case HirNodeKind::CompoundAssignment:
                 if (node->first() == nullptr || node->second() == nullptr || node->type() == nullptr ||
                     node->operationType() == nullptr || node->operation() == lexer::TokenKind::Invalid ||
@@ -651,7 +806,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->second(), functionReturnType, loopDepth, 0});
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::Increment:
                 if (node->first() == nullptr || node->type() == nullptr || node->operationType() == nullptr ||
@@ -662,7 +817,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     return fail(node, "increment/decrement requires ++/-- and pointer-to-value storage address");
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::Allocation:
                 if (node->type() == nullptr || node->type()->kind() != sema::TypeKind::Pointer ||
@@ -678,7 +833,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     tasks.push_back({VerificationTask::Kind::Node, node->first(),
                         functionReturnType, loopDepth, 0});
                 }
-                break;
+                return true;
 
             case HirNodeKind::Deallocation:
                 if (node->type() == nullptr || node->type()->kind() != sema::TypeKind::Void ||
@@ -689,7 +844,7 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     return fail(node, "deallocation requires void result and pointer or null operand");
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
+                return true;
 
             case HirNodeKind::StackAllocation:
                 if (node->type() == nullptr || node->type()->kind() != sema::TypeKind::Pointer ||
@@ -699,14 +854,10 @@ bool HirVerifier::verifyNode(const HirNode* node, sema::Type* functionReturnType
                     return fail(node, "stack allocation must identify element type and count expression");
                 }
                 tasks.push_back({VerificationTask::Kind::Node, node->first(), functionReturnType, loopDepth, 0});
-                break;
-
-            default:
-                return fail(node, "unhandled HIR node kind in verifier");
-        }
+                return true;
+        default:
+            return false;
     }
-
-    return true;
 }
 
 bool HirVerifier::verifyPointerTo(const HirNode* address, const sema::Type* pointee)

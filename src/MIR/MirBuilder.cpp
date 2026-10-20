@@ -419,6 +419,114 @@ bool MirBuilder::lowerFor(const hir::HirNode* node)
     return true;
 }
 
+MirValue* MirBuilder::lowerStorageExpression(const hir::HirNode* node)
+{
+    if (node->kind() == hir::HirNodeKind::Store)
+    {
+        AddressRef address = lowerAddress(node->first());
+        if (!error_.empty()) return nullptr;
+        MirValue* value = lowerExpression(node->second());
+        if (value == nullptr || !storeAddress(address, value, node->range())) return nullptr;
+        return value;
+    }
+    MirValue* value = lowerExpression(node->first());
+    if (value == nullptr) return nullptr;
+    if (node->kind() == hir::HirNodeKind::Conversion)
+        return emitConvert(value, node->type(), node->conversionKind(), node->range());
+    const MirOpcode opcode = mapUnaryOpcode(node);
+    if (!error_.empty()) return nullptr;
+    if (opcode == MirOpcode::Copy) return value;
+    return emitUnary(opcode, value, node->type(), node->range());
+}
+
+MirValue* MirBuilder::lowerBinaryExpression(const hir::HirNode* node)
+{
+    if (node->operation() == lexer::TokenKind::AmpAmp ||
+        node->operation() == lexer::TokenKind::PipePipe)
+        return lowerShortCircuit(node);
+    MirValue* left = lowerExpression(node->first());
+    MirValue* right = left != nullptr ? lowerExpression(node->second()) : nullptr;
+    if (left == nullptr || right == nullptr) return nullptr;
+    const MirOpcode opcode = mapBinaryOpcode(node);
+    if (!error_.empty()) return nullptr;
+    if (opcode == MirOpcode::PointerAdd && !isPointer(left->type()) && isPointer(right->type()))
+        return emitBinary(opcode, right, left, node->type(), node->range());
+    return emitBinary(opcode, left, right, node->type(), node->range());
+}
+
+MirValue* MirBuilder::lowerCallExpression(const hir::HirNode* node)
+{
+    std::vector<MirValue*> arguments;
+    arguments.reserve(node->children().size());
+    for (const hir::HirNode* argument : node->children())
+    {
+        MirValue* value = lowerExpression(argument);
+        if (value == nullptr) return nullptr;
+        arguments.push_back(value);
+    }
+    MirInstruction* call = emit(MirOpcode::Call, node->range());
+    call->setSymbol(node->symbol());
+    for (MirValue* argument : arguments) call->addOperand(argument);
+    if (isVoid(node->type())) return nullptr;
+    MirValue* result = arena_.makeValue(node->type());
+    call->setResult(result);
+    return result;
+}
+
+MirValue* MirBuilder::lowerExtractFieldExpression(const hir::HirNode* node)
+{
+    MirValue* base = lowerExpression(node->first());
+    if (base == nullptr) return nullptr;
+    MirInstruction* instruction = emit(MirOpcode::ExtractField, node->range());
+    MirValue* result = arena_.makeValue(node->type());
+    instruction->setResult(result);
+    instruction->setSymbol(node->symbol());
+    instruction->setOffset(node->offset());
+    instruction->addOperand(base);
+    return result;
+}
+
+MirValue* MirBuilder::lowerAllocationExpression(const hir::HirNode* node)
+{
+    MirValue* count = nullptr;
+    if (node->first() != nullptr)
+    {
+        count = lowerExpression(node->first());
+        if (count == nullptr) return nullptr;
+    }
+    MirInstruction* instruction = emit(
+        node->arrayForm() ? MirOpcode::AllocateArray : MirOpcode::Allocate,
+        node->range());
+    instruction->setAuxiliaryType(node->operationType());
+    if (count != nullptr) instruction->addOperand(count);
+    MirValue* result = arena_.makeValue(node->type());
+    instruction->setResult(result);
+    return result;
+}
+
+MirValue* MirBuilder::lowerDeallocationExpression(const hir::HirNode* node)
+{
+    MirValue* pointer = lowerExpression(node->first());
+    if (pointer == nullptr) return nullptr;
+    MirInstruction* instruction = emit(
+        node->arrayForm() ? MirOpcode::DeallocateArray : MirOpcode::Deallocate,
+        node->range());
+    instruction->addOperand(pointer);
+    return nullptr;
+}
+
+MirValue* MirBuilder::lowerStackAllocationExpression(const hir::HirNode* node)
+{
+    MirValue* count = lowerExpression(node->first());
+    if (count == nullptr) return nullptr;
+    MirInstruction* instruction = emit(MirOpcode::StackAllocate, node->range());
+    MirValue* result = arena_.makeValue(node->type());
+    instruction->setResult(result);
+    instruction->setAuxiliaryType(node->operationType());
+    instruction->addOperand(count);
+    return result;
+}
+
 MirValue* MirBuilder::lowerExpression(const hir::HirNode* node)
 {
     if (node == nullptr)
@@ -431,192 +539,36 @@ MirValue* MirBuilder::lowerExpression(const hir::HirNode* node)
     {
         case hir::HirNodeKind::Constant:
             return emitConstant(node->type(), node->constant(), node->range());
-
         case hir::HirNodeKind::SymbolAddress:
             return materializeAddress(lowerAddress(node), node->range());
-
         case hir::HirNodeKind::Load:
             return loadAddress(lowerAddress(node->first()), node->range());
-
         case hir::HirNodeKind::Store:
-        {
-            AddressRef address = lowerAddress(node->first());
-            if (!error_.empty())
-            {
-                return nullptr;
-            }
-            MirValue* value = lowerExpression(node->second());
-            if (value == nullptr || !storeAddress(address, value, node->range()))
-            {
-                return nullptr;
-            }
-            return value;
-        }
-
         case hir::HirNodeKind::Conversion:
-        {
-            MirValue* value = lowerExpression(node->first());
-            if (value == nullptr)
-            {
-                return nullptr;
-            }
-            return emitConvert(value, node->type(), node->conversionKind(), node->range());
-        }
-
         case hir::HirNodeKind::Unary:
-        {
-            MirValue* operand = lowerExpression(node->first());
-            if (operand == nullptr)
-            {
-                return nullptr;
-            }
-            const MirOpcode opcode = mapUnaryOpcode(node);
-            if (!error_.empty())
-            {
-                return nullptr;
-            }
-            if (opcode == MirOpcode::Copy)
-            {
-                return operand;
-            }
-            return emitUnary(opcode, operand, node->type(), node->range());
-        }
-
+            return lowerStorageExpression(node);
         case hir::HirNodeKind::Binary:
-            if (node->operation() == lexer::TokenKind::AmpAmp || node->operation() == lexer::TokenKind::PipePipe)
-            {
-                return lowerShortCircuit(node);
-            }
-            else
-            {
-                MirValue* left = lowerExpression(node->first());
-                MirValue* right = left != nullptr ? lowerExpression(node->second()) : nullptr;
-                if (left == nullptr || right == nullptr)
-                {
-                    return nullptr;
-                }
-                const MirOpcode opcode = mapBinaryOpcode(node);
-                if (!error_.empty())
-                {
-                    return nullptr;
-                }
-                if (opcode == MirOpcode::PointerAdd && !isPointer(left->type()) && isPointer(right->type()))
-                {
-                    return emitBinary(opcode, right, left, node->type(), node->range());
-                }
-                return emitBinary(opcode, left, right, node->type(), node->range());
-            }
-
+            return lowerBinaryExpression(node);
         case hir::HirNodeKind::Conditional:
             return lowerConditional(node);
-
         case hir::HirNodeKind::Call:
-        {
-            std::vector<MirValue*> arguments;
-            arguments.reserve(node->children().size());
-            for (const hir::HirNode* argument : node->children())
-            {
-                MirValue* value = lowerExpression(argument);
-                if (value == nullptr)
-                {
-                    return nullptr;
-                }
-                arguments.push_back(value);
-            }
-            MirInstruction* call = emit(MirOpcode::Call, node->range());
-            call->setSymbol(node->symbol());
-            for (MirValue* argument : arguments)
-            {
-                call->addOperand(argument);
-            }
-            if (isVoid(node->type()))
-            {
-                return nullptr;
-            }
-            MirValue* result = arena_.makeValue(node->type());
-            call->setResult(result);
-            return result;
-        }
-
+            return lowerCallExpression(node);
         case hir::HirNodeKind::IndexAddress:
         case hir::HirNodeKind::FieldAddress:
         case hir::HirNodeKind::DereferenceAddress:
             return materializeAddress(lowerAddress(node), node->range());
-
         case hir::HirNodeKind::ExtractField:
-        {
-            MirValue* base = lowerExpression(node->first());
-            if (base == nullptr)
-            {
-                return nullptr;
-            }
-            MirInstruction* instruction = emit(MirOpcode::ExtractField, node->range());
-            MirValue* result = arena_.makeValue(node->type());
-            instruction->setResult(result);
-            instruction->setSymbol(node->symbol());
-            instruction->setOffset(node->offset());
-            instruction->addOperand(base);
-            return result;
-        }
-
+            return lowerExtractFieldExpression(node);
         case hir::HirNodeKind::CompoundAssignment:
             return lowerCompoundAssignment(node);
         case hir::HirNodeKind::Increment:
             return lowerIncrement(node);
-
         case hir::HirNodeKind::Allocation:
-        {
-            MirValue* count = nullptr;
-            if (node->first() != nullptr)
-            {
-                count = lowerExpression(node->first());
-                if (count == nullptr)
-                {
-                    return nullptr;
-                }
-            }
-            MirInstruction* instruction = emit(
-                node->arrayForm() ? MirOpcode::AllocateArray : MirOpcode::Allocate,
-                node->range());
-            instruction->setAuxiliaryType(node->operationType());
-            if (count != nullptr)
-            {
-                instruction->addOperand(count);
-            }
-            MirValue* result = arena_.makeValue(node->type());
-            instruction->setResult(result);
-            return result;
-        }
-
+            return lowerAllocationExpression(node);
         case hir::HirNodeKind::Deallocation:
-        {
-            MirValue* pointer = lowerExpression(node->first());
-            if (pointer == nullptr)
-            {
-                return nullptr;
-            }
-            MirInstruction* instruction = emit(
-                node->arrayForm() ? MirOpcode::DeallocateArray : MirOpcode::Deallocate,
-                node->range());
-            instruction->addOperand(pointer);
-            return nullptr;
-        }
-
+            return lowerDeallocationExpression(node);
         case hir::HirNodeKind::StackAllocation:
-        {
-            MirValue* count = lowerExpression(node->first());
-            if (count == nullptr)
-            {
-                return nullptr;
-            }
-            MirInstruction* instruction = emit(MirOpcode::StackAllocate, node->range());
-            MirValue* result = arena_.makeValue(node->type());
-            instruction->setResult(result);
-            instruction->setAuxiliaryType(node->operationType());
-            instruction->addOperand(count);
-            return result;
-        }
-
+            return lowerStackAllocationExpression(node);
         default:
             fail("unsupported HIR expression reached MIR builder");
             return nullptr;

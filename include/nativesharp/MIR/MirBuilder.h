@@ -59,6 +59,13 @@ private:
     bool lowerFor(const hir::HirNode* node);
 
     MirValue* lowerExpression(const hir::HirNode* node);
+    MirValue* lowerStorageExpression(const hir::HirNode* node);
+    MirValue* lowerBinaryExpression(const hir::HirNode* node);
+    MirValue* lowerCallExpression(const hir::HirNode* node);
+    MirValue* lowerExtractFieldExpression(const hir::HirNode* node);
+    MirValue* lowerAllocationExpression(const hir::HirNode* node);
+    MirValue* lowerDeallocationExpression(const hir::HirNode* node);
+    MirValue* lowerStackAllocationExpression(const hir::HirNode* node);
     MirValue* lowerShortCircuit(const hir::HirNode* node);
     MirValue* lowerConditional(const hir::HirNode* node);
     MirValue* lowerCompoundAssignment(const hir::HirNode* node);

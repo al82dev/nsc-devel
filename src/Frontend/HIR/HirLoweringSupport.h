@@ -1,5 +1,10 @@
 #pragma once
 
+#include "HirAtomicCallPlan.h"
+#include "HirCoreOperandCallPlan.h"
+#include "HirMonitorCallPlan.h"
+#include "HirTuplePatternFrame.h"
+
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 
 #include <cstddef>
@@ -12,56 +17,21 @@
 
 namespace nativesharp::frontend
 {
-struct HirCoreOperandCallPlan final
-{
-    std::size_t operandCount;
-    ProjectOopHirNodeKind hirKind;
-};
-
 std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlan(
     MethodCoreOperationKind kind);
-
-struct HirAtomicCallPlan final
-{
-    std::size_t valueArgumentCount;
-    ProjectOopHirNodeKind hirKind;
-};
 
 std::optional<HirAtomicCallPlan> hirAtomicCallPlan(
     MethodCoreOperationKind kind);
 
-struct HirMonitorCallPlan final
-{
-    ProjectOopHirNodeKind hirKind;
-    bool waits;
-};
-
 std::optional<HirMonitorCallPlan> hirMonitorCallPlan(
     MethodCoreOperationKind kind);
 
-inline std::unique_ptr<ProjectOopHirNode> makeNode(
+std::unique_ptr<ProjectOopHirNode> makeNode(
     ProjectOopHirNodeKind kind,
     const ast::AstNode* syntax,
-    std::string typeKey = {})
-{
-    auto node = std::make_unique<ProjectOopHirNode>();
-    node->kind = kind;
-    node->syntax = syntax;
-    node->typeKey = std::move(typeKey);
-    return node;
-}
+    std::string typeKey = {});
 
-inline void destroyHirTreeIteratively(std::unique_ptr<ProjectOopHirNode>& root)
-{
-    root.reset();
-}
-
-struct HirTuplePatternFrame final
-{
-    const ast::AstNode* syntax = nullptr;
-    std::string typeKey;
-    std::uint64_t byteOffset = 0;
-};
+void destroyHirTreeIteratively(std::unique_ptr<ProjectOopHirNode>& root);
 
 template<typename ExpandTuple, typename VisitLeaf>
 bool visitHirTuplePatternLeaves(

@@ -1,4 +1,5 @@
 #include "HirLoweringSupport.h"
+#include "Internal/HirAggregateFrame.h"
 
 #include <optional>
 #include <string>
@@ -7,6 +8,8 @@
 
 namespace nativesharp::frontend
 {
+using internal::HirAggregateFrame;
+using internal::HirAggregateSlot;
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDeconstructionSource(
     const ast::AstNode* bindingSyntax,
     const ast::AstNode* sourceSyntax,
@@ -37,6 +40,198 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDeconstructionSource
 // (see ProjectMethodBodyModel::bindAggregateInitializer); this only has to say WHERE each value
 // goes. Nesting is resolved here, against the same StructValueLayout the C header generator emits
 // offsets from, so an initializer and a C host cannot disagree about which bytes a field occupies.
+bool ProjectOopHirModel::populateTupleAggregateSlots(
+    HirAggregateFrame& frame,
+    std::string& error)
+{
+    const auto tupleElements = ProjectTypeConversion::tupleElementTypeKeys(frame.targetTypeKey);
+    if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+    {
+        error = "tuple initializer requires the object layout model";
+        return false;
+    }
+    const auto layout = objectLayoutModel_->tupleLayoutForTypeKey(*nameLookup_, frame.targetTypeKey);
+    if (!layout.has_value() || layout->offsets.size() != tupleElements->size())
+    {
+        error = "tuple initializer has no structural layout for '" + frame.targetTypeKey + "'";
+        return false;
+    }
+    for (std::size_t index = 0; index < tupleElements->size(); ++index)
+    {
+        const auto elementLayout = objectLayoutModel_->valueLayoutForTypeKey(
+            *nameLookup_, (*tupleElements)[index]);
+        if (!elementLayout.has_value())
+        {
+            error = "tuple initializer cannot size element " + std::to_string(index);
+            return false;
+        }
+        frame.slots.push_back(HirAggregateSlot{
+            (*tupleElements)[index],
+            static_cast<std::uint64_t>(layout->offsets[index]),
+            std::nullopt,
+            std::nullopt,
+            0,
+            elementLayout->second,
+            false});
+    }
+    return true;
+}
+
+bool ProjectOopHirModel::populateFixedArrayAggregateSlots(
+    HirAggregateFrame& frame,
+    const std::string& elementTypeKey,
+    std::string& error)
+{
+    const auto count = ProjectMemberModel::fixedArrayCount(frame.targetTypeKey);
+    if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+    {
+        error = "C7 aggregate initializer requires the object layout model";
+        return false;
+    }
+    const auto layout =
+        objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, elementTypeKey);
+    if (!count.has_value() || !layout.has_value() || layout->first == 0)
+    {
+        error = "C7 aggregate initializer cannot size the element type of '" +
+            frame.targetTypeKey + "'";
+        return false;
+    }
+    for (std::uint64_t index = 0; index < *count; ++index)
+        frame.slots.push_back(HirAggregateSlot{
+            elementTypeKey,
+            index * layout->first,
+            std::nullopt,
+            std::nullopt,
+            0,
+            layout->second,
+            false});
+    return true;
+}
+
+bool ProjectOopHirModel::populateStructAggregateSlots(
+    HirAggregateFrame& frame,
+    std::string& error)
+{
+    if (objectLayoutModel_ == nullptr || inheritanceModel_ == nullptr)
+    {
+        error = "C7 aggregate initializer requires the object layout model";
+        return false;
+    }
+    const auto typeOrdinal = inheritanceModel_->typeOrdinalForTypeKey(frame.targetTypeKey);
+    const StructValueLayout* layout = typeOrdinal.has_value()
+        ? objectLayoutModel_->structLayoutForType(*typeOrdinal) : nullptr;
+    if (layout == nullptr)
+    {
+        error = "C7 aggregate initializer has no value layout for '" + frame.targetTypeKey + "'";
+        return false;
+    }
+    for (const ObjectFieldLayout& field : layout->fields)
+    {
+        const ClassMemberSymbol* member = memberModel_ != nullptr &&
+                field.memberOrdinal < memberModel_->members().size()
+            ? &memberModel_->members()[field.memberOrdinal] : nullptr;
+        if (member != nullptr && member->isUnnamedBitField) continue;
+        frame.slots.push_back(HirAggregateSlot{
+            field.typeKey,
+            field.offset,
+            field.bitOffset,
+            field.bitWidth,
+            field.bitWidth.has_value() ? field.size : 0,
+            field.alignment,
+            member != nullptr && member->isVolatile});
+        if (layout->isUnion) break;
+    }
+    return true;
+}
+
+bool ProjectOopHirModel::initializeAggregateFrame(
+    HirAggregateFrame& frame,
+    std::string& error)
+{
+    const auto tupleElements = ProjectTypeConversion::tupleElementTypeKeys(frame.targetTypeKey);
+    const auto elementTypeKey =
+        ProjectMemberModel::fixedArrayElementTypeKey(frame.targetTypeKey);
+    const bool slotsReady = tupleElements.has_value()
+        ? populateTupleAggregateSlots(frame, error)
+        : elementTypeKey.has_value()
+            ? populateFixedArrayAggregateSlots(frame, *elementTypeKey, error)
+            : populateStructAggregateSlots(frame, error);
+    if (!slotsReady) return false;
+    frame.binding = methodBodyModel_ != nullptr
+        ? methodBodyModel_->aggregateInitializerBinding(frame.syntax) : nullptr;
+    if (frame.binding == nullptr ||
+        frame.binding->entries.size() != frame.syntax->children().size())
+    {
+        error = "T01-F05 aggregate initializer has no semantic element mapping";
+        return false;
+    }
+    if (frame.syntax->kind() == ast::AstNodeKind::WithExpression)
+    {
+        if (frame.syntax->first() == nullptr)
+        {
+            error = "T01-F07 with expression has no source value";
+            return false;
+        }
+        error = "Stage 34 aggregate with source escaped iterative lowering";
+        return false;
+    }
+    frame.initialized = true;
+    return true;
+}
+
+bool ProjectOopHirModel::processAggregateFrame(
+    std::vector<HirAggregateFrame>& pending,
+    std::string& error)
+{
+    HirAggregateFrame& frame = pending.back();
+    if (frame.entryIndex >= frame.binding->entries.size())
+    {
+        pending.pop_back();
+        return true;
+    }
+    const MethodAggregateInitializerEntryBinding& entry =
+        frame.binding->entries[frame.entryIndex++];
+    const ast::AstNode* element = entry.syntax;
+    if (entry.spread)
+    {
+        if (element == nullptr ||
+            element->kind() != ast::AstNodeKind::SpreadElementExpression ||
+            element->first() == nullptr)
+        {
+            error = "T01-F05 aggregate spread has no source expression";
+            return false;
+        }
+        const ast::AstNode* sourceSyntax = element->first();
+        if (entry.moveSpread && sourceSyntax != nullptr &&
+            sourceSyntax->kind() == ast::AstNodeKind::MoveExpression)
+            sourceSyntax = sourceSyntax->first();
+        (void)sourceSyntax;
+        error = "Stage 34 aggregate spread source escaped iterative lowering";
+        return false;
+    }
+    if (entry.targetElementOrdinals.size() != 1U ||
+        entry.targetElementOrdinals.front() >= frame.slots.size())
+    {
+        error = "T01-F05 aggregate value has no unique target element";
+        return false;
+    }
+    const HirAggregateSlot& target = frame.slots[entry.targetElementOrdinals.front()];
+    const std::string& slotTypeKey = target.typeKey;
+    const std::uint64_t slotOffset = frame.baseOffset + target.offset;
+    if (element->kind() == ast::AstNodeKind::AggregateInitializerExpression)
+    {
+        HirAggregateFrame child;
+        child.syntax = element;
+        child.targetTypeKey = slotTypeKey;
+        child.baseOffset = slotOffset;
+        pending.push_back(std::move(child));
+        return true;
+    }
+    (void)slotOffset;
+    error = "Stage 34 aggregate value escaped iterative lowering";
+    return false;
+}
+
 bool ProjectOopHirModel::appendAggregateElements(
     const ast::AstNode* syntax,
     const std::string& targetTypeKey,
@@ -49,208 +244,17 @@ bool ProjectOopHirModel::appendAggregateElements(
     (void)elements;
 
     // Per-element type and offset, for the two aggregate shapes the language has.
-    struct AggregateSlot final
-    {
-        std::string typeKey;
-        std::uint64_t offset = 0;
-        std::optional<std::uint64_t> bitOffset;
-        std::optional<std::uint64_t> bitWidth;
-        std::uint64_t storageSize = 0;
-        std::uint64_t storageAlignment = 1;
-        bool volatileAccess = false;
-    };
-    struct AggregateFrame final
-    {
-        const ast::AstNode* syntax = nullptr;
-        std::string targetTypeKey;
-        std::uint64_t baseOffset = 0;
-        std::vector<AggregateSlot> slots;
-        const MethodAggregateInitializerBinding* binding = nullptr;
-        std::size_t entryIndex = 0;
-        bool initialized = false;
-    };
-
-    AggregateFrame root;
+    HirAggregateFrame root;
     root.syntax = syntax;
     root.targetTypeKey = targetTypeKey;
     root.baseOffset = baseOffset;
-    std::vector<AggregateFrame> pending;
+    std::vector<HirAggregateFrame> pending;
     pending.push_back(std::move(root));
     while (!pending.empty())
     {
-        AggregateFrame& frame = pending.back();
-        if (!frame.initialized)
-        {
-            if (const auto tupleElements =
-                    ProjectTypeConversion::tupleElementTypeKeys(frame.targetTypeKey);
-                tupleElements.has_value())
-            {
-                if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
-                {
-                    error = "tuple initializer requires the object layout model";
-                    return false;
-                }
-                const auto layout = objectLayoutModel_->tupleLayoutForTypeKey(
-                    *nameLookup_, frame.targetTypeKey);
-                if (!layout.has_value() || layout->offsets.size() != tupleElements->size())
-                {
-                    error = "tuple initializer has no structural layout for '" +
-                        frame.targetTypeKey + "'";
-                    return false;
-                }
-                for (std::size_t index = 0; index < tupleElements->size(); ++index)
-                {
-                    const auto elementLayout = objectLayoutModel_->valueLayoutForTypeKey(
-                        *nameLookup_, (*tupleElements)[index]);
-                    if (!elementLayout.has_value())
-                    {
-                        error = "tuple initializer cannot size element " +
-                            std::to_string(index);
-                        return false;
-                    }
-                    frame.slots.push_back(AggregateSlot{
-                        (*tupleElements)[index],
-                        static_cast<std::uint64_t>(layout->offsets[index]),
-                        std::nullopt,
-                        std::nullopt,
-                        0,
-                        elementLayout->second,
-                        false});
-                }
-            }
-            else if (const auto elementTypeKey =
-                    ProjectMemberModel::fixedArrayElementTypeKey(frame.targetTypeKey);
-                elementTypeKey.has_value())
-            {
-                const auto count = ProjectMemberModel::fixedArrayCount(frame.targetTypeKey);
-                if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
-                {
-                    error = "C7 aggregate initializer requires the object layout model";
-                    return false;
-                }
-                const auto layout = objectLayoutModel_->valueLayoutForTypeKey(
-                    *nameLookup_, *elementTypeKey);
-                if (!count.has_value() || !layout.has_value() || layout->first == 0)
-                {
-                    error = "C7 aggregate initializer cannot size the element type of '" +
-                        frame.targetTypeKey + "'";
-                    return false;
-                }
-                for (std::uint64_t index = 0; index < *count; ++index)
-                {
-                    frame.slots.push_back(AggregateSlot{
-                        *elementTypeKey,
-                        index * layout->first,
-                        std::nullopt,
-                        std::nullopt,
-                        0,
-                        layout->second,
-                        false});
-                }
-            }
-            else
-            {
-                if (objectLayoutModel_ == nullptr || inheritanceModel_ == nullptr)
-                {
-                    error = "C7 aggregate initializer requires the object layout model";
-                    return false;
-                }
-                const auto typeOrdinal =
-                    inheritanceModel_->typeOrdinalForTypeKey(frame.targetTypeKey);
-                const StructValueLayout* layout = typeOrdinal.has_value()
-                    ? objectLayoutModel_->structLayoutForType(*typeOrdinal) : nullptr;
-                if (layout == nullptr)
-                {
-                    error = "C7 aggregate initializer has no value layout for '" +
-                        frame.targetTypeKey + "'";
-                    return false;
-                }
-                for (const ObjectFieldLayout& field : layout->fields)
-                {
-                    const ClassMemberSymbol* member = memberModel_ != nullptr &&
-                            field.memberOrdinal < memberModel_->members().size()
-                        ? &memberModel_->members()[field.memberOrdinal] : nullptr;
-                    if (member != nullptr && member->isUnnamedBitField) continue;
-                    frame.slots.push_back(AggregateSlot{
-                        field.typeKey,
-                        field.offset,
-                        field.bitOffset,
-                        field.bitWidth,
-                        field.bitWidth.has_value() ? field.size : 0,
-                        field.alignment,
-                        member != nullptr && member->isVolatile});
-                    if (layout->isUnion) break;
-                }
-            }
-
-            frame.binding = methodBodyModel_ != nullptr
-                ? methodBodyModel_->aggregateInitializerBinding(frame.syntax) : nullptr;
-            if (frame.binding == nullptr ||
-                frame.binding->entries.size() != frame.syntax->children().size())
-            {
-                error = "T01-F05 aggregate initializer has no semantic element mapping";
-                return false;
-            }
-            if (frame.syntax->kind() == ast::AstNodeKind::WithExpression)
-            {
-                if (frame.syntax->first() == nullptr)
-                {
-                    error = "T01-F07 with expression has no source value";
-                    return false;
-                }
-                error = "Stage 34 aggregate with source escaped iterative lowering";
-                return false;
-            }
-            frame.initialized = true;
-        }
-
-        if (frame.entryIndex >= frame.binding->entries.size())
-        {
-            pending.pop_back();
-            continue;
-        }
-        const MethodAggregateInitializerEntryBinding& entry =
-            frame.binding->entries[frame.entryIndex++];
-        const ast::AstNode* element = entry.syntax;
-        if (entry.spread)
-        {
-            if (element == nullptr || element->kind() != ast::AstNodeKind::SpreadElementExpression ||
-                element->first() == nullptr)
-            {
-                error = "T01-F05 aggregate spread has no source expression";
-                return false;
-            }
-            const ast::AstNode* sourceSyntax = element->first();
-            if (entry.moveSpread && sourceSyntax != nullptr &&
-                sourceSyntax->kind() == ast::AstNodeKind::MoveExpression)
-            {
-                sourceSyntax = sourceSyntax->first();
-            }
-            (void)sourceSyntax;
-            error = "Stage 34 aggregate spread source escaped iterative lowering";
-            return false;
-        }
-        if (entry.targetElementOrdinals.size() != 1U ||
-            entry.targetElementOrdinals.front() >= frame.slots.size())
-        {
-            error = "T01-F05 aggregate value has no unique target element";
-            return false;
-        }
-        const AggregateSlot& target = frame.slots[entry.targetElementOrdinals.front()];
-        const std::string& slotTypeKey = target.typeKey;
-        const std::uint64_t slotOffset = frame.baseOffset + target.offset;
-        if (element->kind() == ast::AstNodeKind::AggregateInitializerExpression)
-        {
-            AggregateFrame child;
-            child.syntax = element;
-            child.targetTypeKey = slotTypeKey;
-            child.baseOffset = slotOffset;
-            pending.push_back(std::move(child));
-            continue;
-        }
-        (void)slotOffset;
-        error = "Stage 34 aggregate value escaped iterative lowering";
-        return false;
+        HirAggregateFrame& frame = pending.back();
+        if (!frame.initialized && !initializeAggregateFrame(frame, error)) return false;
+        if (!processAggregateFrame(pending, error)) return false;
     }
     return true;
 }
@@ -389,6 +393,185 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishCollectionBuilderEx
     return block;
 }
 
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStackAllocationExpression(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    bool addressContext,
+    std::string& error)
+{
+    const MethodCoreBinding* core = coreBinding(expression);
+    if (core == nullptr || core->kind != MethodCoreOperationKind::StackAllocation)
+    {
+        error = "CC1 stackalloc reached OOP lowering without its resolved element type";
+        return nullptr;
+    }
+    if (addressContext)
+    {
+        error = "CC1 stackalloc yields a pointer value, not addressable storage";
+        return nullptr;
+    }
+    auto count = lowerExpression(expression->first(), memberOrdinal, false, error);
+    if (count == nullptr) return nullptr;
+
+    // =================================================================================
+    // ID 123 (3/3). QUE LA RESERVA QUEPA.
+    //
+    // Esta comprobacion vive AQUI y no en el modelo semantico porque necesita el TAMANO
+    // DEL ELEMENTO, y aquel corre antes que ProjectObjectLayoutModel -- lo dice el
+    // comentario de SizeofConstant en ProjectMethodBodyModel.h. El tamano se lo pregunta
+    // al MISMO servicio del que salen `sizeof`, el stride de un arreglo y el offset de un
+    // campo: ni una tabla de tamanos nueva.
+    //
+    // SOLO CUANDO EL CONTADOR ES CONSTANTE. Con un contador en tiempo de ejecucion no hay
+    // nada que decidir en compilacion, y este lenguaje no promete comprobar la pila.
+    //
+    // NO SE MULTIPLICA NUNCA, y esa es la parte que importa. La forma obvia
+    //
+    //     if (elements * elementSize > kLimit)
+    //
+    // desborda en 64 bits justo en los casos que quiere atrapar: `stackalloc int[1<<62]`
+    // da un producto que envuelve a 0 y pasa la comprobacion. Dividiendo el limite entre
+    // el tamano, la comparacion es exacta para todo `elements` de 64 bits y el
+    // desbordamiento del producto deja de existir por construccion, en vez de vigilarse
+    // aparte. Por eso las dos ultimas comprobaciones del ID 123 son UNA sola.
+    //
+    // EL LIMITE, y de donde sale. Nada en el arbol le pasa `/STACK` a `lld-link`
+    // (comprobado: cero apariciones en src/Linker/), asi que el PE se queda con la
+    // reserva por omision del enlazador, que en Windows x64 es 1 MiB. Una sola reserva de
+    // 1 MiB no puede caber ahi -- el marco de la funcion tambien ocupa -- asi que el
+    // limite rechaza SOLO lo que falla seguro y no opina sobre lo que quiza quepa. Si
+    // algun dia el enlazador recibe un `/STACK` mayor, este numero se mueve con el.
+    constexpr std::uint64_t kMaximumStackallocBytes = std::uint64_t{1} << 20;
+
+    if (count->kind == ProjectOopHirNodeKind::IntegerConstant)
+    {
+        if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
+        {
+            error = "CC1 stackalloc requires the object layout model to size it";
+            return nullptr;
+        }
+        const std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
+            objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, core->elementTypeKey);
+        if (!elementLayout.has_value())
+        {
+            error = "stackalloc cannot size '" + core->elementTypeKey +
+                "': it has no value layout";
+            return nullptr;
+        }
+        const std::uint64_t elementSize = elementLayout->first;
+        const std::uint64_t elements = count->integerValue;
+        if (elementSize != 0 && elements > kMaximumStackallocBytes / elementSize)
+        {
+            error = "stackalloc of " + std::to_string(elements) + " x " +
+                std::to_string(elementSize) + " bytes does not fit on the stack; the "
+                "default reserve is " + std::to_string(kMaximumStackallocBytes) +
+                " bytes -- allocate it on the heap instead";
+            return nullptr;
+        }
+    }
+
+    auto node = makeNode(ProjectOopHirNodeKind::StackAllocation, expression, core->resultTypeKey);
+    node->elementTypeKey = core->elementTypeKey;
+    node->children.push_back(std::move(count));
+    return node;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNewArrayConstructionExpression(
+    const ast::AstNode* expression,
+    bool addressContext,
+    std::string& error)
+{
+    const MethodCoreBinding* core = coreBinding(expression);
+    // CC1 fase 4C -- `new T` escalar. Hasta esta ronda el mensaje de abajo decia que el
+    // raw new "remains outside this pipeline", y era cierto: el modelo semantico lo
+    // aceptaba y lo tipaba `T*`, y aqui moria. Ahora trae binding y se baja.
+    if (core != nullptr && core->kind == MethodCoreOperationKind::RawAllocation)
+    {
+        if (addressContext)
+        {
+            error = "CC1 raw allocation yields a pointer value, not addressable storage";
+            return nullptr;
+        }
+        auto node = makeNode(ProjectOopHirNodeKind::RawAllocation, expression, core->resultTypeKey);
+        node->elementTypeKey = core->elementTypeKey;
+        return node;
+    }
+    if (core != nullptr && core->kind == MethodCoreOperationKind::CollectionBuilder)
+    {
+        if (addressContext)
+        {
+            error = "collection builder result is a value, not addressable storage";
+            return nullptr;
+        }
+        const std::size_t tempOrdinal = nextSyntheticLocalOrdinal_++;
+        if (!expression->children().empty())
+        {
+            error = "Stage 34 collection builder escaped iterative lowering";
+            return nullptr;
+        }
+        return finishCollectionBuilderExpression(
+            expression, *core, tempOrdinal, {});
+    }
+    if (core == nullptr ||
+        (core->kind != MethodCoreOperationKind::ArrayAllocation &&
+         core->kind != MethodCoreOperationKind::RangeArrayAllocation))
+    {
+        error = "Stage 41 OOP HIR only owns dynamic new T[count]; raw new remains outside this pipeline";
+        return nullptr;
+    }
+    if (addressContext)
+    {
+        error = "Stage 41 array allocation result is a reference value, not addressable storage";
+        return nullptr;
+    }
+    if (core->kind == MethodCoreOperationKind::RangeArrayAllocation)
+    {
+        error = expression->first() == nullptr && expression->children().empty()
+            ? "null expression reached Stage 34 OOP HIR"
+            : "Stage 34 range array construction escaped iterative lowering";
+        return nullptr;
+    }
+    // NS304-T09-F05: preserve every materialized segment in source order. A parallel
+    // kind vector makes spread position explicit through HIR and MIR.
+    bool spreadSeen = false;
+    for (const ast::AstNode* child : expression->children())
+    {
+        if (child != nullptr && child->kind() == ast::AstNodeKind::SpreadElementExpression)
+        {
+            spreadSeen = true;
+            break;
+        }
+    }
+    if (spreadSeen)
+    {
+        error = "Stage 34 segmented array construction escaped iterative lowering";
+        return nullptr;
+    }
+    const bool inferredInitializer =
+        expression->auxiliaryText() == "inferred-array-initializer";
+    if (inferredInitializer)
+    {
+        if (!expression->children().empty())
+        {
+            error = "Stage 34 inferred array construction escaped iterative lowering";
+            return nullptr;
+        }
+        auto count = makeNode(
+            ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
+        count->integerValue = expression->children().size();
+        auto node = makeNode(
+            ProjectOopHirNodeKind::ArrayAllocation, expression, core->resultTypeKey);
+        node->elementTypeKey = core->elementTypeKey;
+        node->booleanValue = true;
+        node->children.push_back(std::move(count));
+        return node;
+    }
+    error = expression->first() == nullptr
+        ? "Stage 34 OOP HIR requires an expression"
+        : "Stage 34 array construction escaped iterative lowering";
+    return nullptr;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayConstructionExpression(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
@@ -398,181 +581,186 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayConstructionExp
     switch (expression->kind())
     {
         case ast::AstNodeKind::StackallocExpression:
-        {
-            const MethodCoreBinding* core = coreBinding(expression);
-            if (core == nullptr || core->kind != MethodCoreOperationKind::StackAllocation)
-            {
-                error = "CC1 stackalloc reached OOP lowering without its resolved element type";
-                return nullptr;
-            }
-            if (addressContext)
-            {
-                error = "CC1 stackalloc yields a pointer value, not addressable storage";
-                return nullptr;
-            }
-            auto count = lowerExpression(expression->first(), memberOrdinal, false, error);
-            if (count == nullptr) return nullptr;
-
-            // =================================================================================
-            // ID 123 (3/3). QUE LA RESERVA QUEPA.
-            //
-            // Esta comprobacion vive AQUI y no en el modelo semantico porque necesita el TAMANO
-            // DEL ELEMENTO, y aquel corre antes que ProjectObjectLayoutModel -- lo dice el
-            // comentario de SizeofConstant en ProjectMethodBodyModel.h. El tamano se lo pregunta
-            // al MISMO servicio del que salen `sizeof`, el stride de un arreglo y el offset de un
-            // campo: ni una tabla de tamanos nueva.
-            //
-            // SOLO CUANDO EL CONTADOR ES CONSTANTE. Con un contador en tiempo de ejecucion no hay
-            // nada que decidir en compilacion, y este lenguaje no promete comprobar la pila.
-            //
-            // NO SE MULTIPLICA NUNCA, y esa es la parte que importa. La forma obvia
-            //
-            //     if (elements * elementSize > kLimit)
-            //
-            // desborda en 64 bits justo en los casos que quiere atrapar: `stackalloc int[1<<62]`
-            // da un producto que envuelve a 0 y pasa la comprobacion. Dividiendo el limite entre
-            // el tamano, la comparacion es exacta para todo `elements` de 64 bits y el
-            // desbordamiento del producto deja de existir por construccion, en vez de vigilarse
-            // aparte. Por eso las dos ultimas comprobaciones del ID 123 son UNA sola.
-            //
-            // EL LIMITE, y de donde sale. Nada en el arbol le pasa `/STACK` a `lld-link`
-            // (comprobado: cero apariciones en src/Linker/), asi que el PE se queda con la
-            // reserva por omision del enlazador, que en Windows x64 es 1 MiB. Una sola reserva de
-            // 1 MiB no puede caber ahi -- el marco de la funcion tambien ocupa -- asi que el
-            // limite rechaza SOLO lo que falla seguro y no opina sobre lo que quiza quepa. Si
-            // algun dia el enlazador recibe un `/STACK` mayor, este numero se mueve con el.
-            constexpr std::uint64_t kMaximumStackallocBytes = std::uint64_t{1} << 20;
-
-            if (count->kind == ProjectOopHirNodeKind::IntegerConstant)
-            {
-                if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
-                {
-                    error = "CC1 stackalloc requires the object layout model to size it";
-                    return nullptr;
-                }
-                const std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
-                    objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, core->elementTypeKey);
-                if (!elementLayout.has_value())
-                {
-                    error = "stackalloc cannot size '" + core->elementTypeKey +
-                        "': it has no value layout";
-                    return nullptr;
-                }
-                const std::uint64_t elementSize = elementLayout->first;
-                const std::uint64_t elements = count->integerValue;
-                if (elementSize != 0 && elements > kMaximumStackallocBytes / elementSize)
-                {
-                    error = "stackalloc of " + std::to_string(elements) + " x " +
-                        std::to_string(elementSize) + " bytes does not fit on the stack; the "
-                        "default reserve is " + std::to_string(kMaximumStackallocBytes) +
-                        " bytes -- allocate it on the heap instead";
-                    return nullptr;
-                }
-            }
-
-            auto node = makeNode(ProjectOopHirNodeKind::StackAllocation, expression, core->resultTypeKey);
-            node->elementTypeKey = core->elementTypeKey;
-            node->children.push_back(std::move(count));
-            return node;
-        }
-
+            return lowerStackAllocationExpression(
+                expression, memberOrdinal, addressContext, error);
         case ast::AstNodeKind::NewExpression:
         case ast::AstNodeKind::CollectionExpression:
-        {
-            const MethodCoreBinding* core = coreBinding(expression);
-            // CC1 fase 4C -- `new T` escalar. Hasta esta ronda el mensaje de abajo decia que el
-            // raw new "remains outside this pipeline", y era cierto: el modelo semantico lo
-            // aceptaba y lo tipaba `T*`, y aqui moria. Ahora trae binding y se baja.
-            if (core != nullptr && core->kind == MethodCoreOperationKind::RawAllocation)
-            {
-                if (addressContext)
-                {
-                    error = "CC1 raw allocation yields a pointer value, not addressable storage";
-                    return nullptr;
-                }
-                auto node = makeNode(ProjectOopHirNodeKind::RawAllocation, expression, core->resultTypeKey);
-                node->elementTypeKey = core->elementTypeKey;
-                return node;
-            }
-            if (core != nullptr && core->kind == MethodCoreOperationKind::CollectionBuilder)
-            {
-                if (addressContext)
-                {
-                    error = "collection builder result is a value, not addressable storage";
-                    return nullptr;
-                }
-                const std::size_t tempOrdinal = nextSyntheticLocalOrdinal_++;
-                if (!expression->children().empty())
-                {
-                    error = "Stage 34 collection builder escaped iterative lowering";
-                    return nullptr;
-                }
-                return finishCollectionBuilderExpression(
-                    expression, *core, tempOrdinal, {});
-            }
-            if (core == nullptr ||
-                (core->kind != MethodCoreOperationKind::ArrayAllocation &&
-                 core->kind != MethodCoreOperationKind::RangeArrayAllocation))
-            {
-                error = "Stage 41 OOP HIR only owns dynamic new T[count]; raw new remains outside this pipeline";
-                return nullptr;
-            }
-            if (addressContext)
-            {
-                error = "Stage 41 array allocation result is a reference value, not addressable storage";
-                return nullptr;
-            }
-            if (core->kind == MethodCoreOperationKind::RangeArrayAllocation)
-            {
-                error = expression->first() == nullptr && expression->children().empty()
-                    ? "null expression reached Stage 34 OOP HIR"
-                    : "Stage 34 range array construction escaped iterative lowering";
-                return nullptr;
-            }
-            // NS304-T09-F05: preserve every materialized segment in source order. A parallel
-            // kind vector makes spread position explicit through HIR and MIR.
-            bool spreadSeen = false;
-            for (const ast::AstNode* child : expression->children())
-            {
-                if (child != nullptr && child->kind() == ast::AstNodeKind::SpreadElementExpression)
-                {
-                    spreadSeen = true;
-                    break;
-                }
-            }
-            if (spreadSeen)
-            {
-                error = "Stage 34 segmented array construction escaped iterative lowering";
-                return nullptr;
-            }
-            const bool inferredInitializer =
-                expression->auxiliaryText() == "inferred-array-initializer";
-            if (inferredInitializer)
-            {
-                if (!expression->children().empty())
-                {
-                    error = "Stage 34 inferred array construction escaped iterative lowering";
-                    return nullptr;
-                }
-                auto count = makeNode(
-                    ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
-                count->integerValue = expression->children().size();
-                auto node = makeNode(
-                    ProjectOopHirNodeKind::ArrayAllocation, expression, core->resultTypeKey);
-                node->elementTypeKey = core->elementTypeKey;
-                node->booleanValue = true;
-                node->children.push_back(std::move(count));
-                return node;
-            }
-            error = expression->first() == nullptr
-                ? "Stage 34 OOP HIR requires an expression"
-                : "Stage 34 array construction escaped iterative lowering";
-            return nullptr;
-        }
+            return lowerNewArrayConstructionExpression(expression, addressContext, error);
         default:
             error = "non-array construction reached HIR array lowering";
             return nullptr;
     }
+}
+
+void ProjectOopHirModel::appendAllocatorPreamble(
+    ProjectOopHirNode& block,
+    const ast::AstNode* expression,
+    const ObjectConstructionBinding& binding,
+    std::size_t computedSize,
+    std::size_t temporaryOrdinal,
+    std::size_t contextOrdinal,
+    std::unique_ptr<ProjectOopHirNode> receiver)
+{
+    const std::string allocatorReceiverTypeKey = receiver->typeKey;
+    auto contextDecl = makeNode(
+        ProjectOopHirNodeKind::LocalDeclaration, expression, allocatorReceiverTypeKey);
+    contextDecl->localOrdinal = contextOrdinal;
+    contextDecl->stringValue = "allocator.context";
+    contextDecl->children.push_back(std::move(receiver));
+    block.children.push_back(std::move(contextDecl));
+
+    auto contextValue = makeNode(
+        ProjectOopHirNodeKind::LocalValue, expression, allocatorReceiverTypeKey);
+    contextValue->localOrdinal = contextOrdinal;
+    auto allocate = makeNode(ProjectOopHirNodeKind::InstanceCall, expression, "builtin:byte*");
+    allocate->memberOrdinal = *binding.allocatorAllocateMemberOrdinal;
+    allocate->children.push_back(std::move(contextValue));
+    auto sizeArg = makeNode(
+        ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
+    sizeArg->integerValue = computedSize;
+    allocate->children.push_back(std::move(sizeArg));
+    auto allocationDecl = makeNode(
+        ProjectOopHirNodeKind::LocalDeclaration, expression, "builtin:byte*");
+    allocationDecl->localOrdinal = temporaryOrdinal;
+    allocationDecl->stringValue = "allocator.bytes";
+    allocationDecl->children.push_back(std::move(allocate));
+    block.children.push_back(std::move(allocationDecl));
+}
+
+std::unique_ptr<ProjectOopHirNode>
+ProjectOopHirModel::createAllocatorPlacementConstruction(
+    const ast::AstNode* expression,
+    const ObjectConstructionBinding& binding,
+    std::size_t constructionOrdinal,
+    std::size_t temporaryOrdinal,
+    std::size_t contextOrdinal,
+    std::optional<std::size_t> allocatorTypeOrdinal,
+    std::vector<std::unique_ptr<ProjectOopHirNode>> arguments,
+    std::vector<std::size_t> argumentParameterOrdinals)
+{
+    const bool trailingConstruction = expression->auxiliaryText() == "trailing";
+    auto construction = makeNode(
+        ProjectOopHirNodeKind::PlacementConstruction,
+        expression,
+        (binding.targetIsStruct && !trailingConstruction)
+            ? binding.targetTypeKey + "*"
+            : binding.targetTypeKey);
+    construction->constructionOrdinal = constructionOrdinal;
+    construction->objectLifetimeOwnership = sema::OwnershipKind::Owned;
+    construction->storageOwnership = sema::OwnershipKind::Owned;
+    construction->targetTypeOrdinal = binding.targetTypeOrdinal;
+    construction->memberOrdinal = binding.selectedConstructorMemberOrdinal.has_value()
+        ? binding.selectedConstructorMemberOrdinal
+        : binding.implicitDefaultBaseConstructorMemberOrdinal;
+    construction->allocatorContextLocalOrdinal = contextOrdinal;
+    construction->allocatorDeallocateMemberOrdinal = binding.allocatorDeallocateMemberOrdinal;
+    construction->allocatorTypeOrdinal = allocatorTypeOrdinal;
+    auto storage = makeNode(ProjectOopHirNodeKind::LocalValue, expression, "builtin:byte*");
+    storage->localOrdinal = temporaryOrdinal;
+    construction->children.push_back(std::move(storage));
+    for (auto& argument : arguments) construction->children.push_back(std::move(argument));
+    construction->argumentParameterOrdinals = std::move(argumentParameterOrdinals);
+    construction->argumentCount = construction->argumentParameterOrdinals.size();
+    return construction;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::createAllocatorThrowsFailure(
+    const ast::AstNode* expression,
+    std::string& error)
+{
+    constexpr std::string_view exceptionTypeKey =
+        "type:NativeSharpCore::NativeSharp.Core.AllocationFailureException";
+    const std::optional<std::size_t> exceptionType = inheritanceModel_ != nullptr
+        ? inheritanceModel_->typeOrdinalForTypeKey(std::string(exceptionTypeKey))
+        : std::nullopt;
+    if (!exceptionType.has_value() || memberModel_ == nullptr)
+    {
+        error = "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException";
+        return nullptr;
+    }
+    std::optional<std::size_t> createMethod;
+    for (const std::size_t memberOrdinal : memberModel_->findMembers(*exceptionType, "Create"))
+    {
+        if (memberOrdinal >= memberModel_->members().size()) continue;
+        if (!memberModel_->members()[memberOrdinal].isStatic) continue;
+        createMethod = memberOrdinal;
+        break;
+    }
+    if (!createMethod.has_value())
+    {
+        error = "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException.Create()";
+        return nullptr;
+    }
+    auto createCall = makeNode(
+        ProjectOopHirNodeKind::StaticCall, expression, std::string(exceptionTypeKey));
+    createCall->memberOrdinal = *createMethod;
+    auto whenFalse = makeNode(ProjectOopHirNodeKind::Throw, expression, "builtin:never");
+    whenFalse->exceptionTypeOrdinal = *exceptionType;
+    whenFalse->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
+    const std::size_t retainedDepth = activeHirExceptionHandlers_.empty()
+        ? 0U : activeHirExceptionHandlers_.back().retainedCleanupDepth;
+    for (std::size_t index = activeHirCleanupRegions_.size(); index > retainedDepth; --index)
+        whenFalse->cleanupRegionOrdinals.push_back(activeHirCleanupRegions_[index - 1U]);
+    if (!activeHirExceptionHandlers_.empty())
+        whenFalse->exceptionTargetRegionOrdinal =
+            activeHirExceptionHandlers_.back().hirRegionOrdinal;
+    whenFalse->children.push_back(std::move(createCall));
+    return whenFalse;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::createAllocatorResultFailure(
+    const ast::AstNode* expression,
+    const ObjectConstructionBinding& binding,
+    std::unique_ptr<ProjectOopHirNode>& construction,
+    std::string& resultType,
+    std::string& error)
+{
+    if (!binding.allocatorResultOkFactoryMemberOrdinal.has_value() ||
+        !binding.allocatorResultErrorFactoryMemberOrdinal.has_value() ||
+        binding.allocatorResultCarrierTypeKey.empty())
+    {
+        error = "NS304-T13-F08 failure:result cannot resolve Result<T,E> Ok/Error factories";
+        return nullptr;
+    }
+    resultType = binding.allocatorResultCarrierTypeKey;
+    auto errorArg = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
+    errorArg->integerValue = 0U;
+    auto errorCall = makeNode(
+        ProjectOopHirNodeKind::StaticCall, expression, binding.allocatorResultCarrierTypeKey);
+    errorCall->memberOrdinal = *binding.allocatorResultErrorFactoryMemberOrdinal;
+    errorCall->children.push_back(std::move(errorArg));
+    auto okCall = makeNode(
+        ProjectOopHirNodeKind::StaticCall, expression, binding.allocatorResultCarrierTypeKey);
+    okCall->memberOrdinal = *binding.allocatorResultOkFactoryMemberOrdinal;
+    okCall->children.push_back(std::move(construction));
+    construction = std::move(okCall);
+    return errorCall;
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::createAllocatorFailureValue(
+    const ast::AstNode* expression,
+    const ObjectConstructionBinding& binding,
+    std::unique_ptr<ProjectOopHirNode>& construction,
+    std::string& resultType,
+    std::string& error)
+{
+    if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Null)
+        return makeNode(ProjectOopHirNodeKind::NullConstant, expression, resultType);
+    if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Panic)
+    {
+        auto whenFalse = makeNode(ProjectOopHirNodeKind::Panic, expression, "builtin:never");
+        whenFalse->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
+        for (std::size_t index = activeHirCleanupRegions_.size(); index > 0; --index)
+            whenFalse->cleanupRegionOrdinals.push_back(activeHirCleanupRegions_[index - 1U]);
+        return whenFalse;
+    }
+    if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Throws)
+        return createAllocatorThrowsFailure(expression, error);
+    if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Result)
+        return createAllocatorResultFailure(
+            expression, binding, construction, resultType, error);
+    error = "NS304-T13-F08 allocator failure profile is not implemented yet";
+    return nullptr;
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishAllocatorConstructionExpression(
@@ -594,60 +782,23 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishAllocatorConstructi
         binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Result
             ? binding.allocatorResultCarrierTypeKey
             : binding.targetTypeKey);
-
-    const std::string allocatorReceiverTypeKey = receiver->typeKey;
-    auto contextDecl = makeNode(
-        ProjectOopHirNodeKind::LocalDeclaration, expression, allocatorReceiverTypeKey);
-    contextDecl->localOrdinal = contextOrdinal;
-    contextDecl->stringValue = "allocator.context";
-    contextDecl->children.push_back(std::move(receiver));
-    block->children.push_back(std::move(contextDecl));
-
-    auto contextValue = makeNode(
-        ProjectOopHirNodeKind::LocalValue, expression, allocatorReceiverTypeKey);
-    contextValue->localOrdinal = contextOrdinal;
-    auto allocate = makeNode(
-        ProjectOopHirNodeKind::InstanceCall, expression, "builtin:byte*");
-    allocate->memberOrdinal = *binding.allocatorAllocateMemberOrdinal;
-    allocate->children.push_back(std::move(contextValue));
-    auto sizeArg = makeNode(
-        ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
-    sizeArg->integerValue = computedSize;
-    allocate->children.push_back(std::move(sizeArg));
-    auto allocationDecl = makeNode(
-        ProjectOopHirNodeKind::LocalDeclaration, expression, "builtin:byte*");
-    allocationDecl->localOrdinal = temporaryOrdinal;
-    allocationDecl->stringValue = "allocator.bytes";
-    allocationDecl->children.push_back(std::move(allocate));
-    block->children.push_back(std::move(allocationDecl));
-
-    const bool trailingConstruction = expression->auxiliaryText() == "trailing";
-    auto construction = makeNode(
-        ProjectOopHirNodeKind::PlacementConstruction,
+    appendAllocatorPreamble(
+        *block,
         expression,
-        (binding.targetIsStruct && !trailingConstruction)
-            ? binding.targetTypeKey + "*"
-            : binding.targetTypeKey);
-    construction->constructionOrdinal = constructionOrdinal;
-    construction->objectLifetimeOwnership = sema::OwnershipKind::Owned;
-    construction->storageOwnership = sema::OwnershipKind::Owned;
-    construction->targetTypeOrdinal = binding.targetTypeOrdinal;
-    construction->memberOrdinal = binding.selectedConstructorMemberOrdinal.has_value()
-        ? binding.selectedConstructorMemberOrdinal
-        : binding.implicitDefaultBaseConstructorMemberOrdinal;
-    construction->allocatorContextLocalOrdinal = contextOrdinal;
-    construction->allocatorDeallocateMemberOrdinal =
-        binding.allocatorDeallocateMemberOrdinal;
-    construction->allocatorTypeOrdinal = allocatorTypeOrdinal;
-    auto storage = makeNode(
-        ProjectOopHirNodeKind::LocalValue, expression, "builtin:byte*");
-    storage->localOrdinal = temporaryOrdinal;
-    construction->children.push_back(std::move(storage));
-    for (auto& argument : arguments)
-        construction->children.push_back(std::move(argument));
-    construction->argumentParameterOrdinals = std::move(argumentParameterOrdinals);
-    construction->argumentCount = construction->argumentParameterOrdinals.size();
-
+        binding,
+        computedSize,
+        temporaryOrdinal,
+        contextOrdinal,
+        std::move(receiver));
+    auto construction = createAllocatorPlacementConstruction(
+        expression,
+        binding,
+        constructionOrdinal,
+        temporaryOrdinal,
+        contextOrdinal,
+        allocatorTypeOrdinal,
+        std::move(arguments),
+        std::move(argumentParameterOrdinals));
     if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::None)
     {
         block->children.push_back(std::move(construction));
@@ -660,113 +811,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishAllocatorConstructi
     bytesValue->localOrdinal = temporaryOrdinal;
     auto nullBytes = makeNode(
         ProjectOopHirNodeKind::NullConstant, expression, "builtin:byte*");
-    auto compare = makeNode(
-        ProjectOopHirNodeKind::Binary, expression, "builtin:bool");
+    auto compare = makeNode(ProjectOopHirNodeKind::Binary, expression, "builtin:bool");
     compare->operation = lexer::TokenKind::BangEqual;
     compare->children.push_back(std::move(bytesValue));
     compare->children.push_back(std::move(nullBytes));
+    auto whenFalse = createAllocatorFailureValue(
+        expression, binding, construction, resultType, error);
+    if (whenFalse == nullptr) return nullptr;
 
-    std::unique_ptr<ProjectOopHirNode> whenFalse;
-    if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Null)
-    {
-        whenFalse = makeNode(
-            ProjectOopHirNodeKind::NullConstant, expression, resultType);
-    }
-    else if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Panic)
-    {
-        whenFalse = makeNode(
-            ProjectOopHirNodeKind::Panic, expression, "builtin:never");
-        whenFalse->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
-        for (std::size_t index = activeHirCleanupRegions_.size(); index > 0; --index)
-            whenFalse->cleanupRegionOrdinals.push_back(
-                activeHirCleanupRegions_[index - 1U]);
-    }
-    else if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Throws)
-    {
-        constexpr std::string_view exceptionTypeKey =
-            "type:NativeSharpCore::NativeSharp.Core.AllocationFailureException";
-        const std::optional<std::size_t> exceptionType =
-            inheritanceModel_ != nullptr
-                ? inheritanceModel_->typeOrdinalForTypeKey(std::string(exceptionTypeKey))
-                : std::nullopt;
-        if (!exceptionType.has_value() || memberModel_ == nullptr)
-        {
-            error = "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException";
-            return nullptr;
-        }
-        std::optional<std::size_t> createMethod;
-        for (const std::size_t memberOrdinal :
-             memberModel_->findMembers(*exceptionType, "Create"))
-        {
-            if (memberOrdinal >= memberModel_->members().size()) continue;
-            if (!memberModel_->members()[memberOrdinal].isStatic) continue;
-            createMethod = memberOrdinal;
-            break;
-        }
-        if (!createMethod.has_value())
-        {
-            error = "NS304-T13-F08 failure:throws cannot resolve AllocationFailureException.Create()";
-            return nullptr;
-        }
-        auto createCall = makeNode(
-            ProjectOopHirNodeKind::StaticCall, expression, std::string(exceptionTypeKey));
-        createCall->memberOrdinal = *createMethod;
-
-        whenFalse = makeNode(
-            ProjectOopHirNodeKind::Throw, expression, "builtin:never");
-        whenFalse->exceptionTypeOrdinal = *exceptionType;
-        whenFalse->cleanupContinuationKind = MethodCleanupContinuationKind::Exception;
-        const std::size_t retainedDepth = activeHirExceptionHandlers_.empty()
-            ? 0U : activeHirExceptionHandlers_.back().retainedCleanupDepth;
-        for (std::size_t index = activeHirCleanupRegions_.size();
-             index > retainedDepth; --index)
-        {
-            whenFalse->cleanupRegionOrdinals.push_back(
-                activeHirCleanupRegions_[index - 1U]);
-        }
-        if (!activeHirExceptionHandlers_.empty())
-            whenFalse->exceptionTargetRegionOrdinal =
-                activeHirExceptionHandlers_.back().hirRegionOrdinal;
-        whenFalse->children.push_back(std::move(createCall));
-    }
-    else if (binding.allocatorFailureProfile == ProjectAllocatorFailureProfile::Result)
-    {
-        if (!binding.allocatorResultOkFactoryMemberOrdinal.has_value() ||
-            !binding.allocatorResultErrorFactoryMemberOrdinal.has_value() ||
-            binding.allocatorResultCarrierTypeKey.empty())
-        {
-            error = "NS304-T13-F08 failure:result cannot resolve Result<T,E> Ok/Error factories";
-            return nullptr;
-        }
-        resultType = binding.allocatorResultCarrierTypeKey;
-
-        auto errorArg = makeNode(
-            ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
-        errorArg->integerValue = 0U;
-        auto errorCall = makeNode(
-            ProjectOopHirNodeKind::StaticCall,
-            expression,
-            binding.allocatorResultCarrierTypeKey);
-        errorCall->memberOrdinal = *binding.allocatorResultErrorFactoryMemberOrdinal;
-        errorCall->children.push_back(std::move(errorArg));
-        whenFalse = std::move(errorCall);
-
-        auto okCall = makeNode(
-            ProjectOopHirNodeKind::StaticCall,
-            expression,
-            binding.allocatorResultCarrierTypeKey);
-        okCall->memberOrdinal = *binding.allocatorResultOkFactoryMemberOrdinal;
-        okCall->children.push_back(std::move(construction));
-        construction = std::move(okCall);
-    }
-    else
-    {
-        error = "NS304-T13-F08 allocator failure profile is not implemented yet";
-        return nullptr;
-    }
-
-    auto conditional = makeNode(
-        ProjectOopHirNodeKind::Conditional, expression, resultType);
+    auto conditional = makeNode(ProjectOopHirNodeKind::Conditional, expression, resultType);
     conditional->children.push_back(std::move(compare));
     conditional->children.push_back(std::move(construction));
     conditional->children.push_back(std::move(whenFalse));

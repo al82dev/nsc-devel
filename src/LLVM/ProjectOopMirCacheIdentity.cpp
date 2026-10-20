@@ -1,77 +1,133 @@
 #include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
 
+#include "Internal/IdentityWriter.h"
+
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Source/SourceManager.h"
 
 #include <algorithm>
 #include <bit>
-#include <charconv>
-#include <type_traits>
 #include <unordered_set>
 
 namespace nativesharp::llvm_backend
 {
 namespace
 {
-class IdentityWriter final
+void writeNodeIdentity(IdentityWriter& output, const frontend::ProjectOopMirNode& node)
 {
-public:
-    IdentityWriter() { output_.reserve(4096); }
+    output.scalar(node.kind);
+    output.text(node.typeKey);
+    output.text(node.elementTypeKey);
+    output.text(node.stringValue);
+    output.text(node.debugDisplayName);
+    output.scalar(node.operation);
+}
 
-    template <typename Value>
-    void scalar(Value value)
-    {
-        if constexpr (std::is_enum_v<Value>)
-            appendInteger(static_cast<std::underlying_type_t<Value>>(value));
-        else if constexpr (std::is_same_v<std::remove_cv_t<Value>, bool>)
-            output_.push_back(value ? '1' : '0');
-        else
-            appendInteger(value);
-        output_.push_back(';');
-    }
+void writeNodeOrdinals(IdentityWriter& output, const frontend::ProjectOopMirNode& node)
+{
+    output.optional(node.memberOrdinal);
+    output.optional(node.namespaceFunctionOrdinal);
+    output.optional(node.secondaryMemberOrdinal);
+    output.optional(node.resultSuccessTestMemberOrdinal);
+    output.optional(node.resultSuccessExtractorMemberOrdinal);
+    output.optional(node.resultErrorExtractorMemberOrdinal);
+    output.optional(node.resultErrorFactoryMemberOrdinal);
+    output.optional(node.resultErrorConversionMemberOrdinal);
+    output.optional(node.localOrdinal);
+    output.optional(node.parameterOrdinal);
+    output.optional(node.constructionOrdinal);
+    output.optional(node.targetTypeOrdinal);
+    output.optional(node.exceptionTypeOrdinal);
+    output.optional(node.cleanupRegionOrdinal);
+    output.optional(node.mirRegionOrdinal);
+    output.optional(node.exceptionTargetRegionOrdinal);
+    output.optional(node.targetScopeOrdinal);
+    output.optional(node.disposeContractMemberOrdinal);
+    output.optional(node.disposeImplementationMemberOrdinal);
+    output.scalars(node.cleanupRegionOrdinals);
+    output.optional(node.cleanupContinuationKind);
+    output.optional(node.borrowKind);
+    output.optional(node.localBorrowSourceKind);
+}
 
-    void text(std::string_view value)
-    {
-        appendInteger(value.size());
-        output_.push_back(':');
-        output_.append(value);
-        output_.push_back(';');
-    }
+void writeNodeValues(IdentityWriter& output, const frontend::ProjectOopMirNode& node)
+{
+    output.scalar(node.captureMode);
+    output.optional(node.virtualSlot);
+    output.optional(node.interfaceSlot);
+    output.optional(node.conversionKind);
+    output.scalars(node.switchLabels);
+    output.scalar(node.switchHasDefault);
+    output.scalar(node.immediate);
+    output.scalar(node.secondaryImmediate);
+    output.scalar(node.resultSuccessTag);
+    output.scalar(node.resultErrorTag);
+    output.scalar(node.resultReturnErrorTag);
+    output.text(node.resultSourceCarrierTypeKey);
+    output.text(node.resultSourceErrorTypeKey);
+    output.text(node.resultReturnCarrierTypeKey);
+    output.text(node.resultReturnErrorTypeKey);
+    output.scalar(node.alignment);
+    output.optional(node.bitOffset);
+    output.optional(node.bitWidth);
+    output.scalar(node.bitStorageSize);
+    output.scalar(node.integerValue);
+    output.scalar(std::bit_cast<std::uint64_t>(node.floatingValue));
+    output.scalar(node.booleanValue);
+    output.scalar(node.returnsAssignedValue);
+    output.scalars(node.collectionSegments);
+}
 
-    template <typename Value>
-    void optional(const std::optional<Value>& value)
-    {
-        scalar(value.has_value());
-        if (value.has_value()) scalar(*value);
-    }
+void writeNodeFlags(IdentityWriter& output, const frontend::ProjectOopMirNode& node)
+{
+    output.scalar(node.referenceLocal);
+    output.scalar(node.referenceMutable);
+    output.scalar(node.staticLocal);
+    output.scalar(node.pinnedStorage);
+    output.scalar(node.referenceResult);
+    output.scalar(node.governingReference);
+    output.scalar(node.mustTailCall);
+    output.scalar(node.ownership);
+    output.scalar(node.automaticDestruction);
+    output.scalar(node.variableLengthArray);
+    output.scalar(node.variableLengthArrayRank);
+    output.scalar(node.nativeArrayRank);
+    output.scalar(node.placementConstructed);
+    output.scalar(node.stackPromotedObject);
+    output.scalar(node.volatileAccess);
+    output.scalar(node.allocationFailureReturnsNull);
+    output.scalar(node.zeroInitialize);
+    output.scalar(node.baseReceiver);
+    output.scalar(node.targetIsInterface);
+    output.scalar(node.dynamicDestruction);
+    output.scalar(node.valueTypeNoOpDeletion);
+    output.scalar(node.objectLifetimeOwnership);
+    output.scalar(node.storageOwnership);
+    output.scalar(node.catchAll);
+    output.scalar(node.catchHasFilter);
+    output.scalar(node.catchExhaustive);
+    output.texts(node.catchMatchedErrorTypeKeys);
+    output.scalar(node.interfaceCleanupDispatch);
+    output.scalar(node.inlineAssemblyHasSideEffects);
+    output.scalar(node.inlineAssemblyClobbersMemory);
+    output.scalar(node.inlineAssemblyClobbersFlags);
+    output.scalar(node.argumentCount);
+}
 
-    template <typename Value>
-    void scalars(const std::vector<Value>& values)
-    {
-        scalar(values.size());
-        for (const Value& value : values) scalar(value);
-    }
-
-    void texts(const std::vector<std::string>& values)
-    {
-        scalar(values.size());
-        for (const std::string& value : values) text(value);
-    }
-
-    std::string take() { return std::move(output_); }
-
-private:
-    template <typename Value>
-    void appendInteger(Value value)
-    {
-        char buffer[32];
-        const auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
-        output_.append(buffer, result.ptr);
-    }
-
-    std::string output_;
-};
+void writeNodeCall(IdentityWriter& output, const frontend::ProjectOopMirNode& node)
+{
+    output.scalars(node.argumentParameterOrdinals);
+    output.text(node.calleeName);
+    output.text(node.secondaryCalleeName);
+    output.text(node.resultSuccessTestCalleeName);
+    output.text(node.resultSuccessExtractorCalleeName);
+    output.text(node.resultErrorExtractorCalleeName);
+    output.text(node.resultErrorFactoryCalleeName);
+    output.text(node.resultErrorConversionCalleeName);
+    output.texts(node.argumentTypeKeys);
+    output.scalar(node.children.size());
+}
 
 void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
 {
@@ -83,101 +139,11 @@ void writeNode(IdentityWriter& output, const frontend::ProjectOopMirNode* node)
         work.pop_back();
         output.scalar(node != nullptr);
         if (node == nullptr) continue;
-        output.scalar(node->kind);
-        output.text(node->typeKey);
-        output.text(node->elementTypeKey);
-        output.text(node->stringValue);
-        output.text(node->debugDisplayName);
-        output.scalar(node->operation);
-        output.optional(node->memberOrdinal);
-        output.optional(node->namespaceFunctionOrdinal);
-        output.optional(node->secondaryMemberOrdinal);
-        output.optional(node->resultSuccessTestMemberOrdinal);
-        output.optional(node->resultSuccessExtractorMemberOrdinal);
-        output.optional(node->resultErrorExtractorMemberOrdinal);
-        output.optional(node->resultErrorFactoryMemberOrdinal);
-        output.optional(node->resultErrorConversionMemberOrdinal);
-        output.optional(node->localOrdinal);
-        output.optional(node->parameterOrdinal);
-        output.optional(node->constructionOrdinal);
-        output.optional(node->targetTypeOrdinal);
-        output.optional(node->exceptionTypeOrdinal);
-        output.optional(node->cleanupRegionOrdinal);
-        output.optional(node->mirRegionOrdinal);
-        output.optional(node->exceptionTargetRegionOrdinal);
-        output.optional(node->targetScopeOrdinal);
-        output.optional(node->disposeContractMemberOrdinal);
-        output.optional(node->disposeImplementationMemberOrdinal);
-        output.scalars(node->cleanupRegionOrdinals);
-        output.optional(node->cleanupContinuationKind);
-        output.optional(node->borrowKind);
-        output.optional(node->localBorrowSourceKind);
-        output.scalar(node->captureMode);
-        output.optional(node->virtualSlot);
-        output.optional(node->interfaceSlot);
-        output.optional(node->conversionKind);
-        output.scalars(node->switchLabels);
-        output.scalar(node->switchHasDefault);
-        output.scalar(node->immediate);
-        output.scalar(node->secondaryImmediate);
-        output.scalar(node->resultSuccessTag);
-        output.scalar(node->resultErrorTag);
-        output.scalar(node->resultReturnErrorTag);
-        output.text(node->resultSourceCarrierTypeKey);
-        output.text(node->resultSourceErrorTypeKey);
-        output.text(node->resultReturnCarrierTypeKey);
-        output.text(node->resultReturnErrorTypeKey);
-        output.scalar(node->alignment);
-        output.optional(node->bitOffset);
-        output.optional(node->bitWidth);
-        output.scalar(node->bitStorageSize);
-        output.scalar(node->integerValue);
-        output.scalar(std::bit_cast<std::uint64_t>(node->floatingValue));
-        output.scalar(node->booleanValue);
-        output.scalar(node->returnsAssignedValue);
-        output.scalars(node->collectionSegments);
-        output.scalar(node->referenceLocal);
-        output.scalar(node->referenceMutable);
-        output.scalar(node->staticLocal);
-        output.scalar(node->pinnedStorage);
-        output.scalar(node->referenceResult);
-        output.scalar(node->governingReference);
-        output.scalar(node->mustTailCall);
-        output.scalar(node->ownership);
-        output.scalar(node->automaticDestruction);
-        output.scalar(node->variableLengthArray);
-        output.scalar(node->variableLengthArrayRank);
-        output.scalar(node->nativeArrayRank);
-        output.scalar(node->placementConstructed);
-        output.scalar(node->stackPromotedObject);
-        output.scalar(node->volatileAccess);
-        output.scalar(node->allocationFailureReturnsNull);
-        output.scalar(node->zeroInitialize);
-        output.scalar(node->baseReceiver);
-        output.scalar(node->targetIsInterface);
-        output.scalar(node->dynamicDestruction);
-        output.scalar(node->valueTypeNoOpDeletion);
-        output.scalar(node->objectLifetimeOwnership);
-        output.scalar(node->storageOwnership);
-        output.scalar(node->catchAll);
-        output.scalar(node->catchHasFilter);
-        output.scalar(node->catchExhaustive);
-        output.texts(node->catchMatchedErrorTypeKeys);
-        output.scalar(node->interfaceCleanupDispatch);
-        output.scalar(node->inlineAssemblyHasSideEffects);
-        output.scalar(node->inlineAssemblyClobbersMemory);
-        output.scalar(node->inlineAssemblyClobbersFlags);
-        output.scalar(node->argumentCount);
-        output.scalars(node->argumentParameterOrdinals);
-        output.text(node->calleeName);
-        output.text(node->secondaryCalleeName);
-        output.text(node->resultSuccessTestCalleeName);
-        output.text(node->resultSuccessExtractorCalleeName);
-        output.text(node->resultErrorExtractorCalleeName);
-        output.text(node->resultErrorFactoryCalleeName);
-        output.text(node->resultErrorConversionCalleeName);
-        output.texts(node->argumentTypeKeys);
-        output.scalar(node->children.size());
+        writeNodeIdentity(output, *node);
+        writeNodeOrdinals(output, *node);
+        writeNodeValues(output, *node);
+        writeNodeFlags(output, *node);
+        writeNodeCall(output, *node);
         for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
             work.push_back(child->get());
     }
@@ -194,10 +160,9 @@ void writeFieldLayout(IdentityWriter& output, const frontend::ObjectFieldLayout&
     output.optional(field.bitWidth);
 }
 
-void writeFunction(
+void writeFunctionIdentity(
     IdentityWriter& output,
-    const frontend::ProjectOopMirFunction& function,
-    bool definition)
+    const frontend::ProjectOopMirFunction& function)
 {
     output.scalar(function.memberOrdinal);
     output.optional(function.namespaceFunctionOrdinal);
@@ -218,6 +183,12 @@ void writeFunction(
     output.text(function.importDllName);
     output.scalar(function.importRequiresRuntimeBinding);
     output.text(function.cAbiName);
+}
+
+void writeFunctionClosure(
+    IdentityWriter& output,
+    const frontend::ProjectOopMirFunction& function)
+{
     output.scalar(function.isLambda);
     output.optional(function.lambdaOrdinal);
     output.scalar(function.hasClosureEnvironment);
@@ -235,6 +206,12 @@ void writeFunction(
     output.text(function.genericSpecializationKey);
     output.text(function.mangledName);
     output.text(function.debugDisplayName);
+}
+
+void writeFunctionSignature(
+    IdentityWriter& output,
+    const frontend::ProjectOopMirFunction& function)
+{
     output.text(function.returnTypeKey);
     output.text(function.errorTypeKey);
     output.scalar(function.returnOwnership);
@@ -247,9 +224,12 @@ void writeFunction(
     output.scalars(function.abi.parameterPassing);
     output.scalars(function.abi.parameterPhysicalOrdinals);
     output.scalar(function.abi.physicalParameterCount);
-    output.scalar(definition);
-    if (!definition) return;
-    output.scalars(function.localOrdinals);
+}
+
+void writeFunctionCleanupRegions(
+    IdentityWriter& output,
+    const frontend::ProjectOopMirFunction& function)
+{
     output.scalar(function.cleanupRegions.size());
     for (const frontend::ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
     {
@@ -262,6 +242,12 @@ void writeFunction(
         output.scalar(cleanup.automaticDestruction);
         writeNode(output, cleanup.action);
     }
+}
+
+void writeFunctionExceptionFlow(
+    IdentityWriter& output,
+    const frontend::ProjectOopMirFunction& function)
+{
     output.scalar(function.exceptionFlow.requiresPersonality);
     output.scalars(function.exceptionFlow.protectedRegionOrdinals);
     output.scalar(function.exceptionFlow.catchRegionCount);
@@ -276,13 +262,26 @@ void writeFunction(
         output.optional(exit.cleanupContinuationKind);
         writeNode(output, exit.node);
     }
+}
+
+void writeFunction(
+    IdentityWriter& output,
+    const frontend::ProjectOopMirFunction& function,
+    bool definition)
+{
+    writeFunctionIdentity(output, function);
+    writeFunctionClosure(output, function);
+    writeFunctionSignature(output, function);
+    output.scalar(definition);
+    if (!definition) return;
+    output.scalars(function.localOrdinals);
+    writeFunctionCleanupRegions(output, function);
+    writeFunctionExceptionFlow(output, function);
     writeNode(output, function.body.get());
 }
 
-void writeCommonModel(IdentityWriter& output, const frontend::ProjectOopMirModel& model)
+void writeStructLayouts(IdentityWriter& output, const frontend::ProjectOopMirModel& model)
 {
-    output.scalar(frontend::kProjectOopMirSchemaMajor);
-    output.scalar(frontend::kProjectOopMirSchemaMinor);
     output.scalar(model.structLayouts().size());
     for (const auto& layout : model.structLayouts())
     {
@@ -295,6 +294,10 @@ void writeCommonModel(IdentityWriter& output, const frontend::ProjectOopMirModel
         output.scalar(layout.fields.size());
         for (const auto& field : layout.fields) writeFieldLayout(output, field);
     }
+}
+
+void writeClassLayouts(IdentityWriter& output, const frontend::ProjectOopMirModel& model)
+{
     output.scalar(model.classLayouts().size());
     for (const auto& layout : model.classLayouts())
     {
@@ -305,6 +308,10 @@ void writeCommonModel(IdentityWriter& output, const frontend::ProjectOopMirModel
         output.scalar(layout.fields.size());
         for (const auto& field : layout.fields) writeFieldLayout(output, field);
     }
+}
+
+void writeStaticFields(IdentityWriter& output, const frontend::ProjectOopMirModel& model)
+{
     output.scalar(model.staticFields().size());
     for (const auto& field : model.staticFields())
     {
@@ -320,6 +327,10 @@ void writeCommonModel(IdentityWriter& output, const frontend::ProjectOopMirModel
         output.optional(field.namespaceStateOrdinal);
         output.text(field.debugDisplayName);
     }
+}
+
+void writeDispatchTables(IdentityWriter& output, const frontend::ProjectOopMirModel& model)
+{
     output.scalar(model.dispatchTables().size());
     for (const auto& table : model.dispatchTables())
     {
@@ -355,6 +366,10 @@ void writeCommonModel(IdentityWriter& output, const frontend::ProjectOopMirModel
             output.texts(interfaceTable.calleeNames);
         }
     }
+}
+
+void writeInterfaceBindings(IdentityWriter& output, const frontend::ProjectOopMirModel& model)
+{
     output.scalar(model.interfaceBindings().size());
     for (const auto& binding : model.interfaceBindings())
     {
@@ -363,6 +378,10 @@ void writeCommonModel(IdentityWriter& output, const frontend::ProjectOopMirModel
         output.text(binding.methodTableName); output.scalars(binding.interfaceMemberOrdinals);
         output.scalars(binding.implementationMemberOrdinals); output.texts(binding.calleeNames);
     }
+}
+
+void writeGenericSpecializations(IdentityWriter& output, const frontend::ProjectOopMirModel& model)
+{
     output.scalar(model.genericSpecializations().size());
     for (const auto& specialization : model.genericSpecializations())
     {
@@ -370,6 +389,10 @@ void writeCommonModel(IdentityWriter& output, const frontend::ProjectOopMirModel
         output.scalars(specialization.staticFieldIndices);
         output.scalars(specialization.dispatchTableIndices);
     }
+}
+
+void writeFieldInitializers(IdentityWriter& output, const frontend::ProjectOopMirModel& model)
+{
     output.scalar(model.fieldInitializers().size());
     for (const auto& initializer : model.fieldInitializers())
     {
@@ -377,6 +400,19 @@ void writeCommonModel(IdentityWriter& output, const frontend::ProjectOopMirModel
         output.scalar(initializer.isStatic); output.scalar(initializer.isConst);
         writeNode(output, initializer.value.get());
     }
+}
+
+void writeCommonModel(IdentityWriter& output, const frontend::ProjectOopMirModel& model)
+{
+    output.scalar(frontend::kProjectOopMirSchemaMajor);
+    output.scalar(frontend::kProjectOopMirSchemaMinor);
+    writeStructLayouts(output, model);
+    writeClassLayouts(output, model);
+    writeStaticFields(output, model);
+    writeDispatchTables(output, model);
+    writeInterfaceBindings(output, model);
+    writeGenericSpecializations(output, model);
+    writeFieldInitializers(output, model);
 }
 
 std::string identityDigest(std::string_view identity)

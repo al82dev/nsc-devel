@@ -546,6 +546,44 @@ add_library(nsc_frontend STATIC
     src/Frontend/HIR/HirFunctionLowerer.cpp
     src/Frontend/HIR/HirModelFacade.cpp
     src/Frontend/HIR/HirStatementMachine.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirAggregateCrossFrameLowering.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirAssignmentFrameLowering.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirCallFrameLowering.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirChildSyntaxSelection.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirCompletionAccessFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirCompletionAssignmentFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirCompletionConstructionFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirCompletionCoreCallFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirCompletionSimpleFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirCompletionStatementFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirCompletionTerminalFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirCompletionValueFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirConstructionFrameLowering.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirCoreCallFrameLowering.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirDeclarationFrameLowering.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirExpressionClassifier.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirExpressionScheduler.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirExpressionScheduling.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirInitializationAccessFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirInitializationAssignmentFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirInitializationCallFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirInitializationCoreFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirInitializationPrimaryFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirInitializationValueFrames.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirLoopBlockFrameLowering.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirLoopFrameLowering.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirMatchFrameLowering.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirNameExpressionLowering.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirStatementContinuationLowering.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirStatementFrameInitialization.cpp
+    src/Frontend/HIR/ExpressionStatementMachine/HirSwitchFrameLowering.cpp
+    src/Frontend/HIR/HirLoweringSupport.cpp
+    src/Frontend/MIR/Internal/MirByteReader.cpp
+    src/Frontend/MIR/Internal/MirNodeMachine.cpp
+    src/Frontend/MIR/MirCache.cpp
+    src/Frontend/MIR/MirNodeKindNames.cpp
+    src/HIR/Internal/IterativeHirLowering.cpp
+    src/LLVM/Internal/IdentityWriter.cpp
     src/Frontend/HIR/HirBindingIndex.cpp
     src/Frontend/ProjectOopHirModelDumper.cpp
     src/Frontend/MIR/MirBuildCoordinator.cpp
