@@ -1,4 +1,5 @@
 #include "nativesharp/Driver/CompilationTelemetry.h"
+#include "Internal/CompilationTimeTracePhase.h"
 
 #include "nativesharp/Driver/CompilerConsole.h"
 
@@ -52,6 +53,89 @@ bool parseUnsigned(std::string_view text, long long& value) noexcept
         return false;
     value = parsed;
     return true;
+}
+
+void parseTimeTracePhase(
+    std::string_view line,
+    std::vector<CompilationTimeTracePhase>& phases)
+{
+    constexpr std::string_view phasePrefix = "timing phase=";
+    constexpr std::string_view memoryMarker = " peak_working_set_bytes=";
+    const std::size_t durationSeparator = line.find(" us=");
+    const std::size_t memorySeparator = line.find(memoryMarker);
+    if (durationSeparator == std::string_view::npos ||
+        durationSeparator <= phasePrefix.size())
+        return;
+    long long microseconds = 0;
+    const std::size_t durationEnd = memorySeparator == std::string_view::npos
+        ? line.size()
+        : memorySeparator;
+    long long phasePeakWorkingSetBytes = 0;
+    if (parseUnsigned(line.substr(
+            durationSeparator + 4U,
+            durationEnd - (durationSeparator + 4U)), microseconds) &&
+        (memorySeparator == std::string_view::npos ||
+         parseUnsigned(line.substr(memorySeparator + memoryMarker.size()),
+             phasePeakWorkingSetBytes)))
+        phases.push_back({
+            std::string(line.substr(
+                phasePrefix.size(), durationSeparator - phasePrefix.size())),
+            microseconds,
+            phasePeakWorkingSetBytes});
+}
+
+void parseTimeTraceTotal(
+    std::string_view line,
+    long long& totalMilliseconds,
+    long long& peakWorkingSetBytes)
+{
+    constexpr std::string_view totalPrefix = "timing total_ms=";
+    constexpr std::string_view memoryMarker = " peak_working_set_bytes=";
+    const std::size_t memorySeparator = line.find(memoryMarker);
+    const std::size_t totalEnd = memorySeparator == std::string_view::npos
+        ? line.size()
+        : memorySeparator;
+    parseUnsigned(
+        line.substr(totalPrefix.size(), totalEnd - totalPrefix.size()),
+        totalMilliseconds);
+    if (memorySeparator != std::string_view::npos)
+        parseUnsigned(line.substr(memorySeparator + memoryMarker.size()),
+            peakWorkingSetBytes);
+}
+
+void parseTimeTraceProjectReads(
+    std::string_view line,
+    long long& projectDescriptorFileReads,
+    long long& projectDescriptorCacheHits)
+{
+    constexpr std::string_view projectReadsPrefix =
+        "timing project_descriptor_file_reads=";
+    constexpr std::string_view cacheMarker = " project_descriptor_cache_hits=";
+    const std::size_t cacheSeparator = line.find(cacheMarker);
+    const std::size_t readsEnd = cacheSeparator == std::string_view::npos
+        ? line.size()
+        : cacheSeparator;
+    parseUnsigned(
+        line.substr(projectReadsPrefix.size(), readsEnd - projectReadsPrefix.size()),
+        projectDescriptorFileReads);
+    if (cacheSeparator != std::string_view::npos)
+        parseUnsigned(line.substr(cacheSeparator + cacheMarker.size()),
+            projectDescriptorCacheHits);
+}
+
+void appendTimeTracePhases(
+    std::ostringstream& output,
+    const std::vector<CompilationTimeTracePhase>& phases)
+{
+    for (std::size_t index = 0; index < phases.size(); ++index)
+    {
+        if (index != 0) output << ',';
+        output << "\n    {\"name\": \"" << jsonEscape(phases[index].name)
+               << "\", \"duration_us\": " << phases[index].durationMicroseconds
+               << ", \"peak_working_set_bytes\": "
+               << phases[index].peakWorkingSetBytes << '}';
+    }
+    if (!phases.empty()) output << '\n';
 }
 }
 
@@ -138,13 +222,7 @@ std::string renderCompilationEvent(
 
 std::string renderCompilationTimeTraceJson(std::string_view timingOutput, int exitCode)
 {
-    struct Phase final
-    {
-        std::string name;
-        long long durationMicroseconds = 0;
-        long long peakWorkingSetBytes = 0;
-    };
-    std::vector<Phase> phases;
+    std::vector<CompilationTimeTracePhase> phases;
     long long totalMilliseconds = 0;
     long long peakWorkingSetBytes = 0;
     long long projectDescriptorFileReads = 0;
@@ -161,57 +239,14 @@ std::string renderCompilationTimeTraceJson(std::string_view timingOutput, int ex
         constexpr std::string_view projectReadsPrefix =
             "timing project_descriptor_file_reads=";
         if (line.starts_with(phasePrefix))
-        {
-            constexpr std::string_view memoryMarker = " peak_working_set_bytes=";
-            const std::size_t durationSeparator = line.find(" us=");
-            const std::size_t memorySeparator = line.find(memoryMarker);
-            if (durationSeparator != std::string_view::npos &&
-                durationSeparator > phasePrefix.size())
-            {
-                long long microseconds = 0;
-                const std::size_t durationEnd = memorySeparator == std::string_view::npos
-                    ? line.size()
-                    : memorySeparator;
-                long long phasePeakWorkingSetBytes = 0;
-                if (parseUnsigned(line.substr(durationSeparator + 4U,
-                        durationEnd - (durationSeparator + 4U)), microseconds) &&
-                    (memorySeparator == std::string_view::npos ||
-                        parseUnsigned(line.substr(memorySeparator + memoryMarker.size()),
-                            phasePeakWorkingSetBytes)))
-                    phases.push_back({
-                        std::string(line.substr(
-                            phasePrefix.size(), durationSeparator - phasePrefix.size())),
-                        microseconds,
-                        phasePeakWorkingSetBytes});
-            }
-        }
+            parseTimeTracePhase(line, phases);
         else if (line.starts_with(totalPrefix))
-        {
-            constexpr std::string_view memoryMarker = " peak_working_set_bytes=";
-            const std::size_t memorySeparator = line.find(memoryMarker);
-            const std::size_t totalEnd = memorySeparator == std::string_view::npos
-                ? line.size()
-                : memorySeparator;
-            parseUnsigned(line.substr(totalPrefix.size(), totalEnd - totalPrefix.size()),
-                totalMilliseconds);
-            if (memorySeparator != std::string_view::npos)
-                parseUnsigned(line.substr(memorySeparator + memoryMarker.size()),
-                    peakWorkingSetBytes);
-        }
+            parseTimeTraceTotal(line, totalMilliseconds, peakWorkingSetBytes);
         else if (line.starts_with(projectReadsPrefix))
-        {
-            constexpr std::string_view cacheMarker = " project_descriptor_cache_hits=";
-            const std::size_t cacheSeparator = line.find(cacheMarker);
-            const std::size_t readsEnd = cacheSeparator == std::string_view::npos
-                ? line.size()
-                : cacheSeparator;
-            parseUnsigned(
-                line.substr(projectReadsPrefix.size(), readsEnd - projectReadsPrefix.size()),
-                projectDescriptorFileReads);
-            if (cacheSeparator != std::string_view::npos)
-                parseUnsigned(line.substr(cacheSeparator + cacheMarker.size()),
-                    projectDescriptorCacheHits);
-        }
+            parseTimeTraceProjectReads(
+                line,
+                projectDescriptorFileReads,
+                projectDescriptorCacheHits);
         if (end == std::string_view::npos) break;
         position = end + 1U;
     }
@@ -227,15 +262,7 @@ std::string renderCompilationTimeTraceJson(std::string_view timingOutput, int ex
            << "  \"project_descriptor_cache_hits\": "
            << projectDescriptorCacheHits << ",\n"
            << "  \"phases\": [";
-    for (std::size_t index = 0; index < phases.size(); ++index)
-    {
-        if (index != 0) output << ',';
-        output << "\n    {\"name\": \"" << jsonEscape(phases[index].name)
-               << "\", \"duration_us\": " << phases[index].durationMicroseconds
-               << ", \"peak_working_set_bytes\": "
-               << phases[index].peakWorkingSetBytes << '}';
-    }
-    if (!phases.empty()) output << '\n';
+    appendTimeTracePhases(output, phases);
     output << "  ]\n}\n";
     return output.str();
 }

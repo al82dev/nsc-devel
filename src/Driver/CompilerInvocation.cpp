@@ -1,4 +1,5 @@
 #include "CompilerInvocation.h"
+#include "Internal/InvocationCapabilities.h"
 
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Driver/CompilerConsole.h"
@@ -164,13 +165,6 @@ void applyProfileDefaults(CompilerInvocation& invocation)
             llvm_backend::FloatingPointRoundingMode::NearestEven;
     }
 }
-
-struct InvocationCapabilities final
-{
-    bool executable = false;
-    bool debug = false;
-    bool artifactCache = false;
-};
 
 InvocationCapabilities classifyInvocation(
     std::span<const std::string_view> arguments) noexcept

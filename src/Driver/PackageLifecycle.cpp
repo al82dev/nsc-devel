@@ -1,4 +1,7 @@
 #include "nativesharp/Driver/PackageLifecycle.h"
+#include "Internal/PackageLifecycleManifestEntry.h"
+#include "Internal/PlanEntry.h"
+#include "Internal/RemovalTarget.h"
 
 #include "nativesharp/Basic/Sha256.h"
 
@@ -17,19 +20,6 @@ namespace
 {
 constexpr std::size_t kMaximumEntries = 10'000;
 constexpr std::size_t kMaximumLineLength = 16'384;
-
-struct ManifestEntry final
-{
-    std::string digest;
-    std::uintmax_t size = 0;
-    std::string path;
-};
-
-struct PlanEntry final
-{
-    std::string action;
-    std::string path;
-};
 
 void removeCarriageReturn(std::string &line)
 {
@@ -164,6 +154,93 @@ bool isBuildIdentityPath(std::string_view path)
     return path == "bin/nsc.exe" || path == "bin/nsc.pdb";
 }
 
+bool writeLifecycleTemporary(
+    const std::filesystem::path& temporary,
+    std::string_view text,
+    std::string& error)
+{
+    std::error_code filesystemError;
+    std::filesystem::remove(temporary, filesystemError);
+    filesystemError.clear();
+    std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+    if (!stream)
+    {
+        error = "cannot open package lifecycle temporary file '" + temporary.string() + "'";
+        return false;
+    }
+    stream.write(text.data(), static_cast<std::streamsize>(text.size()));
+    stream.close();
+    if (stream) return true;
+    std::filesystem::remove(temporary, filesystemError);
+    error = "cannot write package lifecycle temporary file '" + temporary.string() + "'";
+    return false;
+}
+
+bool preserveLifecycleDestination(
+    const std::filesystem::path& destination,
+    const std::filesystem::path& temporary,
+    const std::filesystem::path& backup,
+    bool& hadDestination,
+    std::string& error)
+{
+    std::error_code filesystemError;
+    hadDestination = std::filesystem::exists(destination, filesystemError);
+    if (filesystemError)
+    {
+        const std::string inspectMessage = filesystemError.message();
+        std::filesystem::remove(temporary, filesystemError);
+        error = "cannot inspect package lifecycle destination '" + destination.string() +
+            "': " + inspectMessage;
+        return false;
+    }
+    if (!hadDestination) return true;
+    std::filesystem::remove(backup, filesystemError);
+    filesystemError.clear();
+    std::filesystem::rename(destination, backup, filesystemError);
+    if (!filesystemError) return true;
+    const std::string preserveMessage = filesystemError.message();
+    std::filesystem::remove(temporary, filesystemError);
+    error = "cannot preserve previous package lifecycle file '" + destination.string() +
+        "': " + preserveMessage;
+    return false;
+}
+
+bool commitLifecycleDestination(
+    const std::filesystem::path& destination,
+    const std::filesystem::path& temporary,
+    const std::filesystem::path& backup,
+    bool hadDestination,
+    std::string& error)
+{
+    std::error_code filesystemError;
+    std::filesystem::rename(temporary, destination, filesystemError);
+    if (filesystemError)
+    {
+        const std::string commitMessage = filesystemError.message();
+        std::filesystem::remove(temporary, filesystemError);
+        if (hadDestination)
+        {
+            filesystemError.clear();
+            std::filesystem::rename(backup, destination, filesystemError);
+            if (filesystemError)
+            {
+                error = "cannot commit package lifecycle file '" + destination.string() +
+                    "' and cannot restore its previous contents: " + filesystemError.message();
+                return false;
+            }
+        }
+        error = "cannot commit package lifecycle file '" + destination.string() +
+            "': " + commitMessage;
+        return false;
+    }
+    if (!hadDestination) return true;
+    std::filesystem::remove(backup, filesystemError);
+    if (!filesystemError) return true;
+    error = "package lifecycle file was committed but its backup cannot be removed: " +
+        filesystemError.message();
+    return false;
+}
+
 bool writeTextAtomically(const std::filesystem::path &destination, std::string_view text, std::string &error)
 {
     if (destination.empty())
@@ -184,79 +261,13 @@ bool writeTextAtomically(const std::filesystem::path &destination, std::string_v
     }
     const std::filesystem::path temporary = destination.string() + ".tmp";
     const std::filesystem::path backup = destination.string() + ".previous";
-    std::filesystem::remove(temporary, filesystemError);
-    filesystemError.clear();
-    std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-    if (!stream)
-    {
-        error = "cannot open package lifecycle temporary file '" + temporary.string() + "'";
+    if (!writeLifecycleTemporary(temporary, text, error)) return false;
+    bool hadDestination = false;
+    if (!preserveLifecycleDestination(
+            destination, temporary, backup, hadDestination, error))
         return false;
-    }
-    stream.write(text.data(), static_cast<std::streamsize>(text.size()));
-    stream.close();
-    if (!stream)
-    {
-        std::filesystem::remove(temporary, filesystemError);
-        error = "cannot write package lifecycle temporary file '" + temporary.string() + "'";
-        return false;
-    }
-
-    const bool hadDestination = std::filesystem::exists(destination, filesystemError);
-    if (filesystemError)
-    {
-        const std::string inspectMessage = filesystemError.message();
-        std::filesystem::remove(temporary, filesystemError);
-        error = "cannot inspect package lifecycle destination '" + destination.string() + "': " + inspectMessage;
-        return false;
-    }
-    if (hadDestination)
-    {
-        std::filesystem::remove(backup, filesystemError);
-        filesystemError.clear();
-        std::filesystem::rename(destination, backup, filesystemError);
-        if (filesystemError)
-        {
-            const std::string preserveMessage = filesystemError.message();
-            std::filesystem::remove(temporary, filesystemError);
-            error =
-                "cannot preserve previous package lifecycle file '" + destination.string() + "': " + preserveMessage;
-            return false;
-        }
-    }
-    filesystemError.clear();
-    std::filesystem::rename(temporary, destination, filesystemError);
-    if (filesystemError)
-    {
-        const std::string commitMessage = filesystemError.message();
-        std::filesystem::remove(temporary, filesystemError);
-        if (hadDestination)
-        {
-            filesystemError.clear();
-            std::filesystem::rename(backup, destination, filesystemError);
-            if (filesystemError)
-            {
-                error = "cannot commit package lifecycle file '" + destination.string() +
-                        "' and cannot restore its previous "
-                        "contents: " +
-                        filesystemError.message();
-                return false;
-            }
-        }
-        error = "cannot commit package lifecycle file '" + destination.string() + "': " + commitMessage;
-        return false;
-    }
-    if (hadDestination)
-    {
-        std::filesystem::remove(backup, filesystemError);
-        if (filesystemError)
-        {
-            error = "package lifecycle file was committed but its backup cannot be "
-                    "removed: " +
-                    filesystemError.message();
-            return false;
-        }
-    }
-    return true;
+    return commitLifecycleDestination(
+        destination, temporary, backup, hadDestination, error);
 }
 
 std::map<std::string, ManifestEntry> byPath(const std::vector<ManifestEntry> &entries)
@@ -351,19 +362,12 @@ bool writePlan(const std::filesystem::path &currentManifest,
     return writeTextAtomically(destination, text, error);
 }
 
-bool readPlan(const std::filesystem::path &source,
-    std::string &currentDigest,
-    std::string &nextDigest,
-    std::vector<PlanEntry> &entries,
-    std::string &error)
+bool readPlanIdentities(
+    std::ifstream& stream,
+    std::string& currentDigest,
+    std::string& nextDigest,
+    std::string& error)
 {
-    entries.clear();
-    std::ifstream stream(source, std::ios::binary);
-    if (!stream)
-    {
-        error = "cannot open installation update plan '" + source.string() + "'";
-        return false;
-    }
     std::string line;
     if (!std::getline(stream, line))
     {
@@ -383,7 +387,8 @@ bool readPlan(const std::filesystem::path &source,
     }
     removeCarriageReturn(line);
     constexpr std::string_view currentPrefix = "current_manifest_sha256=";
-    if (!line.starts_with(currentPrefix) || !isLowerDigest(std::string_view(line).substr(currentPrefix.size())))
+    if (!line.starts_with(currentPrefix) ||
+        !isLowerDigest(std::string_view(line).substr(currentPrefix.size())))
     {
         error = "installation update plan has invalid current manifest identity";
         return false;
@@ -408,7 +413,15 @@ bool readPlan(const std::filesystem::path &source,
         return false;
     }
     nextDigest = std::string(nextValue);
+    return true;
+}
 
+bool readPlanEntries(
+    std::ifstream& stream,
+    std::vector<PlanEntry>& entries,
+    std::string& error)
+{
+    std::string line;
     std::string previousPath;
     while (std::getline(stream, line))
     {
@@ -421,9 +434,10 @@ bool readPlan(const std::filesystem::path &source,
             return false;
         }
         PlanEntry entry{line.substr(0, separator), line.substr(separator + 1U)};
-        if ((entry.action != "add" && entry.action != "keep" && entry.action != "remove" &&
-                entry.action != "replace") ||
-            !isCanonicalManagedPath(entry.path) || (!previousPath.empty() && entry.path <= previousPath))
+        if ((entry.action != "add" && entry.action != "keep" &&
+             entry.action != "remove" && entry.action != "replace") ||
+            !isCanonicalManagedPath(entry.path) ||
+            (!previousPath.empty() && entry.path <= previousPath))
         {
             error = "invalid installation update plan entry for '" + entry.path + "'";
             return false;
@@ -436,12 +450,28 @@ bool readPlan(const std::filesystem::path &source,
             return false;
         }
     }
-    if (stream.bad() || entries.empty())
+    if (!stream.bad() && !entries.empty()) return true;
+    error = stream.bad()
+        ? "cannot read installation update plan"
+        : "installation update plan has no entries";
+    return false;
+}
+
+bool readPlan(const std::filesystem::path &source,
+    std::string &currentDigest,
+    std::string &nextDigest,
+    std::vector<PlanEntry> &entries,
+    std::string &error)
+{
+    entries.clear();
+    std::ifstream stream(source, std::ios::binary);
+    if (!stream)
     {
-        error = stream.bad() ? "cannot read installation update plan" : "installation update plan has no entries";
+        error = "cannot open installation update plan '" + source.string() + "'";
         return false;
     }
-    return true;
+    if (!readPlanIdentities(stream, currentDigest, nextDigest, error)) return false;
+    return readPlanEntries(stream, entries, error);
 }
 
 bool containsLinkComponent(const std::filesystem::path &prefix, std::string_view relative, std::string &error)
@@ -465,6 +495,221 @@ bool containsLinkComponent(const std::filesystem::path &prefix, std::string_view
         }
     }
     return false;
+}
+
+bool validateRemovalPrefix(
+    const std::filesystem::path& prefix,
+    std::string& error)
+{
+    if (prefix.empty())
+    {
+        error = "installation removal prefix is empty";
+        return false;
+    }
+    std::error_code prefixError;
+    const std::filesystem::file_status prefixStatus =
+        std::filesystem::symlink_status(prefix, prefixError);
+    if (prefixError || !std::filesystem::is_directory(prefixStatus))
+    {
+        error = "installation removal prefix is not an accessible directory '" +
+            prefix.string() + "'";
+        return false;
+    }
+    if (!std::filesystem::is_symlink(prefixStatus)) return true;
+    error = "installation removal refuses symbolic-link prefix '" + prefix.string() + "'";
+    return false;
+}
+
+bool loadRemovalPlanState(
+    const std::filesystem::path& currentManifest,
+    const std::filesystem::path& nextManifest,
+    const std::filesystem::path& plan,
+    std::vector<ManifestEntry>& currentEntries,
+    std::vector<ManifestEntry>& nextEntries,
+    std::vector<PlanEntry>& planEntries,
+    std::string& expectedNextDigest,
+    std::string& error)
+{
+    if (!readManifest(currentManifest, currentEntries, error)) return false;
+    std::string expectedDigest;
+    if (!readPlan(plan, expectedDigest, expectedNextDigest, planEntries, error)) return false;
+    std::string actualDigest;
+    if (!fileDigest(currentManifest, actualDigest, error)) return false;
+    if (actualDigest != expectedDigest)
+    {
+        error = "installation update plan was created for manifest " + expectedDigest +
+            ", not " + actualDigest;
+        return false;
+    }
+    if (expectedNextDigest == "none")
+    {
+        if (nextManifest.empty()) return true;
+        error = "retirement plan must not name a next installation manifest";
+        return false;
+    }
+    if (nextManifest.empty())
+    {
+        error = "update plan requires its bound next installation manifest";
+        return false;
+    }
+    if (!readManifest(nextManifest, nextEntries, error)) return false;
+    std::string actualNextDigest;
+    if (!fileDigest(nextManifest, actualNextDigest, error)) return false;
+    if (actualNextDigest == expectedNextDigest) return true;
+    error = "installation update plan was created for next manifest " +
+        expectedNextDigest + ", not " + actualNextDigest;
+    return false;
+}
+
+bool validateCanonicalRemovalPlan(
+    const std::map<std::string, ManifestEntry>& current,
+    const std::map<std::string, ManifestEntry>& next,
+    const std::vector<PlanEntry>& planEntries,
+    std::string& error)
+{
+    const std::vector<PlanEntry> canonicalPlan = expectedPlanEntries(current, next);
+    if (canonicalPlan.size() != planEntries.size())
+    {
+        error = "installation update plan actions do not match its bound manifests";
+        return false;
+    }
+    for (std::size_t index = 0; index < canonicalPlan.size(); ++index)
+    {
+        if (canonicalPlan[index].action == planEntries[index].action &&
+            canonicalPlan[index].path == planEntries[index].path)
+            continue;
+        error = "installation update plan action for '" + canonicalPlan[index].path +
+            "' does not match its bound manifests";
+        return false;
+    }
+    return true;
+}
+
+bool collectRemovalTargets(
+    const std::filesystem::path& prefix,
+    const std::map<std::string, ManifestEntry>& current,
+    const std::vector<PlanEntry>& planEntries,
+    std::vector<RemovalTarget>& removals,
+    std::string& error)
+{
+    for (const PlanEntry& entry : planEntries)
+    {
+        if (entry.action != "remove") continue;
+        if (!current.contains(entry.path))
+        {
+            error = "installation update plan attempts to remove unowned path '" +
+                entry.path + "'";
+            return false;
+        }
+        if (containsLinkComponent(prefix, entry.path, error)) return false;
+        const std::filesystem::path target = prefix / entry.path;
+        std::error_code filesystemError;
+        const bool exists = std::filesystem::exists(target, filesystemError);
+        if (filesystemError)
+        {
+            error = "cannot inspect installation removal target '" + target.string() +
+                "': " + filesystemError.message();
+            return false;
+        }
+        if (!exists) continue;
+        if (!std::filesystem::is_regular_file(target, filesystemError) || filesystemError)
+        {
+            error = "installation removal target is not a regular file '" + target.string() + "'";
+            return false;
+        }
+        std::string actualFileDigest;
+        std::uintmax_t actualFileSize = 0;
+        if (!fileIdentity(target, actualFileDigest, actualFileSize, error)) return false;
+        const ManifestEntry& owned = current.at(entry.path);
+        if (actualFileDigest != owned.digest || actualFileSize != owned.size)
+        {
+            error = "installation removal refuses modified package-owned file '" +
+                target.string() + "'";
+            return false;
+        }
+        removals.push_back({target});
+    }
+    return true;
+}
+
+bool appendRetirementManifest(
+    const std::filesystem::path& prefix,
+    const std::filesystem::path& currentManifest,
+    std::string_view expectedNextDigest,
+    std::vector<RemovalTarget>& removals,
+    std::string& error)
+{
+    // NSINSTALL cannot hash itself without becoming recursive. For a full retirement, the exact
+    // manifest passed as authority is nevertheless package state and must disappear when it lives
+    // under the target prefix. An external evidence copy remains untouched.
+    if (expectedNextDigest != "none") return true;
+    const std::filesystem::path relativeManifest =
+        currentManifest.lexically_normal().lexically_relative(prefix.lexically_normal());
+    const std::string relativeManifestText = relativeManifest.generic_string();
+    if (relativeManifest.empty() || !isCanonicalManagedPath(relativeManifestText)) return true;
+    if (containsLinkComponent(prefix, relativeManifestText, error)) return false;
+    std::error_code manifestStatusError;
+    const bool manifestExists = std::filesystem::exists(currentManifest, manifestStatusError);
+    if (manifestStatusError ||
+        (manifestExists &&
+         !std::filesystem::is_regular_file(currentManifest, manifestStatusError)))
+    {
+        error = "installation manifest retirement target is not a regular file '" +
+            currentManifest.string() + "'";
+        return false;
+    }
+    if (manifestExists) removals.push_back({currentManifest});
+    return true;
+}
+
+bool removeInstallationTargets(
+    const std::vector<RemovalTarget>& removals,
+    std::string& error)
+{
+    for (const RemovalTarget& removal : removals)
+    {
+        std::error_code filesystemError;
+        if (!std::filesystem::remove(removal.path, filesystemError) || filesystemError)
+        {
+            error = "cannot remove installed file '" + removal.path.string() +
+                "': " + filesystemError.message();
+            return false;
+        }
+    }
+    return true;
+}
+
+bool pruneInstallationDirectories(
+    const std::filesystem::path& prefix,
+    const std::vector<RemovalTarget>& removals,
+    std::string& error)
+{
+    // Remove only empty package subdirectories. The shared prefix plus its bin/lib/share roots are
+    // deliberate boundaries and always survive.
+    std::set<std::filesystem::path, std::greater<>> candidateDirectories;
+    for (const RemovalTarget& removal : removals)
+    {
+        std::filesystem::path directory = removal.path.parent_path();
+        while (!directory.empty() && directory != prefix && directory != prefix / "bin" &&
+               directory != prefix / "lib" && directory != prefix / "share")
+        {
+            candidateDirectories.insert(directory);
+            directory = directory.parent_path();
+        }
+    }
+    for (const std::filesystem::path& directory : candidateDirectories)
+    {
+        std::error_code directoryError;
+        std::filesystem::remove(directory, directoryError);
+        if (directoryError && directoryError != std::errc::directory_not_empty &&
+            directoryError != std::errc::no_such_file_or_directory)
+        {
+            error = "cannot prune empty package directory '" + directory.string() +
+                "': " + directoryError.message();
+            return false;
+        }
+    }
+    return true;
 }
 } // namespace
 
@@ -549,215 +794,28 @@ bool applyInstallationRemovalPlan(const std::filesystem::path &prefix,
     std::string &error)
 {
     error.clear();
-    if (prefix.empty())
-    {
-        error = "installation removal prefix is empty";
-        return false;
-    }
-    std::error_code prefixError;
-    const std::filesystem::file_status prefixStatus = std::filesystem::symlink_status(prefix, prefixError);
-    if (prefixError || !std::filesystem::is_directory(prefixStatus))
-    {
-        error = "installation removal prefix is not an accessible directory '" + prefix.string() + "'";
-        return false;
-    }
-    if (std::filesystem::is_symlink(prefixStatus))
-    {
-        error = "installation removal refuses symbolic-link prefix '" + prefix.string() + "'";
-        return false;
-    }
+    if (!validateRemovalPrefix(prefix, error)) return false;
+
     std::vector<ManifestEntry> currentEntries;
-    if (!readManifest(currentManifest, currentEntries, error))
-    {
-        return false;
-    }
-    std::string expectedDigest;
-    std::string expectedNextDigest;
-    std::vector<PlanEntry> planEntries;
-    if (!readPlan(plan, expectedDigest, expectedNextDigest, planEntries, error))
-    {
-        return false;
-    }
-    std::string actualDigest;
-    if (!fileDigest(currentManifest, actualDigest, error))
-    {
-        return false;
-    }
-    if (actualDigest != expectedDigest)
-    {
-        error = "installation update plan was created for manifest " + expectedDigest + ", not " + actualDigest;
-        return false;
-    }
-    const auto current = byPath(currentEntries);
-
     std::vector<ManifestEntry> nextEntries;
-    if (expectedNextDigest == "none")
-    {
-        if (!nextManifest.empty())
-        {
-            error = "retirement plan must not name a next installation manifest";
-            return false;
-        }
-    }
-    else
-    {
-        if (nextManifest.empty())
-        {
-            error = "update plan requires its bound next installation manifest";
-            return false;
-        }
-        if (!readManifest(nextManifest, nextEntries, error))
-        {
-            return false;
-        }
-        std::string actualNextDigest;
-        if (!fileDigest(nextManifest, actualNextDigest, error))
-        {
-            return false;
-        }
-        if (actualNextDigest != expectedNextDigest)
-        {
-            error = "installation update plan was created for next manifest " + expectedNextDigest + ", not " +
-                    actualNextDigest;
-            return false;
-        }
-    }
-
-    const auto next = byPath(nextEntries);
-    const std::vector<PlanEntry> canonicalPlan = expectedPlanEntries(current, next);
-    if (canonicalPlan.size() != planEntries.size())
-    {
-        error = "installation update plan actions do not match its bound manifests";
+    std::vector<PlanEntry> planEntries;
+    std::string expectedNextDigest;
+    if (!loadRemovalPlanState(
+            currentManifest, nextManifest, plan, currentEntries, nextEntries,
+            planEntries, expectedNextDigest, error))
         return false;
-    }
-    for (std::size_t index = 0; index < canonicalPlan.size(); ++index)
-    {
-        if (canonicalPlan[index].action != planEntries[index].action ||
-            canonicalPlan[index].path != planEntries[index].path)
-        {
-            error = "installation update plan action for '" + canonicalPlan[index].path +
-                    "' does not match its bound manifests";
-            return false;
-        }
-    }
 
-    struct RemovalTarget final
-    {
-        std::filesystem::path path;
-    };
+    const auto current = byPath(currentEntries);
+    const auto next = byPath(nextEntries);
+    if (!validateCanonicalRemovalPlan(current, next, planEntries, error)) return false;
+
     std::vector<RemovalTarget> removals;
-    for (const PlanEntry &entry : planEntries)
-    {
-        if (entry.action != "remove")
-        {
-            continue;
-        }
-        if (!current.contains(entry.path))
-        {
-            error = "installation update plan attempts to remove unowned path '" + entry.path + "'";
-            return false;
-        }
-        if (containsLinkComponent(prefix, entry.path, error))
-        {
-            return false;
-        }
-        const std::filesystem::path target = prefix / entry.path;
-        std::error_code filesystemError;
-        const bool exists = std::filesystem::exists(target, filesystemError);
-        if (filesystemError)
-        {
-            error =
-                "cannot inspect installation removal target '" + target.string() + "': " + filesystemError.message();
-            return false;
-        }
-        if (!exists)
-        {
-            continue;
-        }
-        if (!std::filesystem::is_regular_file(target, filesystemError) || filesystemError)
-        {
-            error = "installation removal target is not a regular file '" + target.string() + "'";
-            return false;
-        }
-        std::string actualFileDigest;
-        std::uintmax_t actualFileSize = 0;
-        if (!fileIdentity(target, actualFileDigest, actualFileSize, error))
-        {
-            return false;
-        }
-        const ManifestEntry &owned = current.at(entry.path);
-        if (actualFileDigest != owned.digest || actualFileSize != owned.size)
-        {
-            error = "installation removal refuses modified package-owned file '" + target.string() + "'";
-            return false;
-        }
-        removals.push_back({target});
-    }
-
-    // NSINSTALL cannot hash itself without becoming recursive. For a full retirement, the exact
-    // manifest passed as authority is nevertheless package state and must disappear when it lives
-    // under the target prefix. An external evidence copy remains untouched.
-    if (expectedNextDigest == "none")
-    {
-        const std::filesystem::path relativeManifest =
-            currentManifest.lexically_normal().lexically_relative(prefix.lexically_normal());
-        const std::string relativeManifestText = relativeManifest.generic_string();
-        if (!relativeManifest.empty() && isCanonicalManagedPath(relativeManifestText))
-        {
-            if (containsLinkComponent(prefix, relativeManifestText, error))
-            {
-                return false;
-            }
-            std::error_code manifestStatusError;
-            const bool manifestExists = std::filesystem::exists(currentManifest, manifestStatusError);
-            if (manifestStatusError ||
-                (manifestExists && !std::filesystem::is_regular_file(currentManifest, manifestStatusError)))
-            {
-                error =
-                    "installation manifest retirement target is not a regular file '" + currentManifest.string() + "'";
-                return false;
-            }
-            if (manifestExists)
-            {
-                removals.push_back({currentManifest});
-            }
-        }
-    }
-
-    for (const RemovalTarget &removal : removals)
-    {
-        std::error_code filesystemError;
-        if (!std::filesystem::remove(removal.path, filesystemError) || filesystemError)
-        {
-            error = "cannot remove installed file '" + removal.path.string() + "': " + filesystemError.message();
-            return false;
-        }
-    }
-
-    // Remove only empty package subdirectories. The shared prefix plus its bin/lib/share roots are
-    // deliberate boundaries and always survive.
-    std::set<std::filesystem::path, std::greater<>> candidateDirectories;
-    for (const RemovalTarget &removal : removals)
-    {
-        std::filesystem::path directory = removal.path.parent_path();
-        while (!directory.empty() && directory != prefix && directory != prefix / "bin" &&
-               directory != prefix / "lib" && directory != prefix / "share")
-        {
-            candidateDirectories.insert(directory);
-            directory = directory.parent_path();
-        }
-    }
-    for (const std::filesystem::path &directory : candidateDirectories)
-    {
-        std::error_code directoryError;
-        std::filesystem::remove(directory, directoryError);
-        if (directoryError && directoryError != std::errc::directory_not_empty &&
-            directoryError != std::errc::no_such_file_or_directory)
-        {
-            error = "cannot prune empty package directory '" + directory.string() + "': " + directoryError.message();
-            return false;
-        }
-    }
-    return true;
+    if (!collectRemovalTargets(prefix, current, planEntries, removals, error)) return false;
+    if (!appendRetirementManifest(
+            prefix, currentManifest, expectedNextDigest, removals, error))
+        return false;
+    if (!removeInstallationTargets(removals, error)) return false;
+    return pruneInstallationDirectories(prefix, removals, error);
 }
+
 } // namespace nativesharp::driver

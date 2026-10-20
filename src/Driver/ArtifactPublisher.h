@@ -1,6 +1,10 @@
 #pragma once
 
 #include "nativesharp/Basic/ArtifactTransaction.h"
+#include "DynamicLibraryPublication.h"
+#include "ExecutablePublication.h"
+#include "ObjectPublication.h"
+#include "StaticLibraryPublication.h"
 
 #include <filesystem>
 #include <span>
@@ -8,46 +12,6 @@
 
 namespace nativesharp::driver
 {
-struct ObjectPublication final
-{
-    std::filesystem::path destination;
-    std::filesystem::path stage;
-};
-
-struct ExecutablePublication final
-{
-    std::filesystem::path destination;
-    std::filesystem::path stage;
-    std::filesystem::path pdbDestination;
-    std::filesystem::path pdbStage;
-    std::filesystem::path stateDestination;
-    std::filesystem::path stateStage;
-};
-
-struct StaticLibraryPublication final
-{
-    std::filesystem::path destination;
-    std::filesystem::path stage;
-    std::filesystem::path headerDestination;
-    std::filesystem::path headerStage;
-    std::filesystem::path metadataDestination;
-    std::filesystem::path metadataStage;
-};
-
-struct DynamicLibraryPublication final
-{
-    std::filesystem::path destination;
-    std::filesystem::path stage;
-    std::filesystem::path importLibraryDestination;
-    std::filesystem::path importLibraryStage;
-    std::filesystem::path headerDestination;
-    std::filesystem::path headerStage;
-    std::filesystem::path metadataDestination;
-    std::filesystem::path metadataStage;
-    std::filesystem::path pdbDestination;
-    std::filesystem::path pdbStage;
-};
-
 /// Owns one transactional publication set while product generation writes into isolated stages.
 class ArtifactPublisher final
 {

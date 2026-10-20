@@ -1,4 +1,7 @@
 #include "CompilerInvocation.h"
+#include "Internal/MillisecondsParseResult.h"
+#include "Internal/OptionContext.h"
+#include "Internal/OptionResult.h"
 
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Driver/CompilationJobPolicy.h"
@@ -13,22 +16,6 @@ namespace nativesharp::driver
 {
 namespace
 {
-struct OptionResult final
-{
-    bool matched = false;
-    ExitCode code = ExitCode::Success;
-};
-
-struct OptionContext final
-{
-    std::span<const std::string_view> arguments;
-    std::size_t& index;
-    std::string_view argument;
-    std::string_view folded;
-    CompilerInvocation& invocation;
-    std::ostream& error;
-};
-
 using OptionHandler = OptionResult (*)(OptionContext&);
 
 OptionResult noMatch() noexcept { return {}; }
@@ -52,13 +39,6 @@ bool parseBoundedDecimal(
     value = parsed;
     return true;
 }
-
-enum class MillisecondsParseResult : std::uint8_t
-{
-    Valid,
-    Malformed,
-    OutOfRange
-};
 
 MillisecondsParseResult parseMilliseconds(
     std::string_view value, std::uint64_t& milliseconds) noexcept

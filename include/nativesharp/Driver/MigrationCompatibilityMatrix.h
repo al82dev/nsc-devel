@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Driver/MigrationCompatibilityEntry.h"
 #include "nativesharp/Interop/LibraryApiDiff.h"
 
 #include <string>
@@ -7,16 +8,6 @@
 
 namespace nativesharp::driver
 {
-struct MigrationCompatibilityEntry final
-{
-    std::string domain;
-    std::string identity;
-    std::string detail;
-    std::string sourceClassification;
-    std::string abiClassification;
-    bool requiresConsumerRebuild = false;
-};
-
 struct MigrationCompatibilityMatrix final
 {
     std::string oldSourceFingerprint;

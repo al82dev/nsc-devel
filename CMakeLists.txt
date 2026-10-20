@@ -895,24 +895,48 @@ add_library(nsc_driver STATIC
     src/Driver/CompilerConsole.cpp
     src/Driver/CompilerInvocation.cpp
     src/Driver/CompilerOptionParser.cpp
+    src/Driver/CompilerSession.cpp
     src/Driver/CompatibilityPolicy.cpp
     src/Driver/DiagnosticBundle.cpp
     src/Driver/DeprecationPolicy.cpp
     src/Driver/FinalBaselineContract.cpp
     src/Driver/ExecutableMigrationGuide.cpp
     src/Driver/Driver.cpp
+    src/Driver/DriverArtifactGeneration.cpp
+    src/Driver/DriverExecution.cpp
+    src/Driver/DriverHelp.cpp
+    src/Driver/DriverLegacyFrontend.cpp
+    src/Driver/DriverLibraryCommands.cpp
+    src/Driver/DriverProjectActions.cpp
     src/Driver/InstallationManifest.cpp
     src/Driver/InstallationVerifier.cpp
+    src/Driver/Internal/CommandOutput.cpp
+    src/Driver/Internal/DriverExecutionScope.cpp
+    src/Driver/Internal/DriverPhaseTimer.cpp
+    src/Driver/Internal/EnvironmentOverride.cpp
+    src/Driver/Internal/Json.cpp
+    src/Driver/Internal/JsonParser.cpp
+    src/Driver/Internal/ProgressJsonForwardingBuffer.cpp
+    src/Driver/Internal/ProjectCommandSupport.cpp
+    src/Driver/Internal/TemporaryFile.cpp
+    src/Driver/LibraryReferenceValidation.cpp
     src/Driver/MigrationBaseline.cpp
     src/Driver/MigrationAnalyzer.cpp
     src/Driver/MigrationCompatibilityMatrix.cpp
     src/Driver/MigrationGuide.cpp
     src/Driver/NumericContract.cpp
     src/Driver/PackageLifecycle.cpp
+    src/Driver/PrecompiledModuleConfiguration.cpp
+    src/Driver/PrecompiledSurface/ContractMaterialization.cpp
+    src/Driver/PrecompiledSurface/MetadataSourceMapping.cpp
+    src/Driver/PrecompiledSurface/PrecompiledSourceGeneration.cpp
+    src/Driver/PrecompiledSurface/PrecompiledSurfaceAdapters.cpp
     src/Driver/ProjectCommands.cpp
+    src/Driver/PublicSurfaceBuilder.cpp
     src/Driver/PublicSurfaceEmitter.cpp
     src/Driver/PromotionAct.cpp
     src/Driver/ReleaseCandidateFreeze.cpp
+    src/Driver/RuntimeClosurePackaging.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
     src/Interop/LibraryCapabilityAudit.cpp

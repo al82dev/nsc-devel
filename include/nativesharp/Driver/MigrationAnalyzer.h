@@ -1,5 +1,8 @@
 #pragma once
 
+#include "nativesharp/Driver/MigrationAnalysis.h"
+#include "nativesharp/Driver/MigrationFinding.h"
+#include "nativesharp/Driver/MigrationTextEdit.h"
 #include "nativesharp/Language/CompatibilitySemantics.h"
 
 #include <cstdint>
@@ -11,33 +14,6 @@
 
 namespace nativesharp::driver
 {
-struct MigrationTextEdit final
-{
-    std::uint32_t offset = 0;
-    std::uint32_t length = 0;
-    std::string replacement;
-    std::string equivalenceProof;
-};
-
-struct MigrationFinding final
-{
-    language::MigrationIssue issue = language::MigrationIssue::NewlyContextualWord;
-    std::uint32_t offset = 0;
-    std::uint32_t length = 0;
-    std::uint32_t line = 1;
-    std::uint32_t column = 1;
-    std::string message;
-    std::string alternative;
-    std::optional<MigrationTextEdit> safeFix;
-};
-
-struct MigrationAnalysis final
-{
-    std::filesystem::path sourcePath;
-    std::vector<MigrationFinding> findings;
-    bool generatedSource = false;
-};
-
 MigrationAnalysis analyzeMigrationSource(
     std::filesystem::path sourcePath,
     std::string_view source);

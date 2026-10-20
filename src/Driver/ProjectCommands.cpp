@@ -1,4 +1,23 @@
 #include "nativesharp/Driver/ProjectCommands.h"
+#include "Internal/Artifact.h"
+#include "Internal/BuildOptions.h"
+#include "Internal/BuildPreferences.h"
+#include "Internal/BuildResult.h"
+#include "Internal/CommandOutput.h"
+#include "Internal/CommonArguments.h"
+#include "Internal/DependencyProvenance.h"
+#include "Internal/EnvironmentOverride.h"
+#include "Internal/ExplainTopic.h"
+#include "Internal/Json.h"
+#include "Internal/JsonParser.h"
+#include "Internal/PackageRequest.h"
+#include "Internal/ProgressJsonForwardingBuffer.h"
+#include "Internal/ProjectCommandSupport.h"
+#include "Internal/RestoredPackage.h"
+#include "Internal/RestoreOptions.h"
+#include "Internal/RestorePlan.h"
+#include "Internal/Sidecar.h"
+#include "Internal/TemporaryFile.h"
 
 #include "nativesharp/Driver/CompilerConsole.h"
 
@@ -38,299 +57,6 @@ namespace
 namespace fs = std::filesystem;
 
 constexpr std::uintmax_t kMaximumJsonBytes = 4U * 1024U * 1024U;
-constexpr std::string_view kProgressJsonPrefix =
-    "{\"schema\":\"nativesharp-progress-event\"";
-
-class ProgressJsonForwardingBuffer final : public std::streambuf
-{
-public:
-    ProgressJsonForwardingBuffer(std::ostream& forwarded, std::string& retained)
-        : forwarded_(forwarded), retained_(retained) {}
-
-    void finish()
-    {
-        if (!line_.empty()) retainLine();
-    }
-
-protected:
-    int_type overflow(int_type character) override
-    {
-        if (traits_type::eq_int_type(character, traits_type::eof()))
-            return traits_type::not_eof(character);
-        const char value = traits_type::to_char_type(character);
-        append(&value, 1U);
-        return traits_type::not_eof(character);
-    }
-
-    std::streamsize xsputn(const char* characters, std::streamsize count) override
-    {
-        if (count <= 0) return 0;
-        append(characters, static_cast<std::size_t>(count));
-        return count;
-    }
-
-    int sync() override
-    {
-        return 0;
-    }
-
-private:
-    void append(const char* characters, std::size_t count)
-    {
-        for (std::size_t index = 0; index < count; ++index)
-        {
-            line_.push_back(characters[index]);
-            if (characters[index] == '\n') flushLine();
-        }
-    }
-
-    void flushLine()
-    {
-        if (line_.starts_with(kProgressJsonPrefix))
-        {
-            forwarded_ << line_;
-            forwarded_.flush();
-            line_.clear();
-            return;
-        }
-        retainLine();
-    }
-
-    void retainLine()
-    {
-        retained_ += line_;
-        line_.clear();
-    }
-
-    std::ostream& forwarded_;
-    std::string& retained_;
-    std::string line_;
-};
-
-std::string jsonEscape(std::string_view value)
-{
-    std::string result;
-    result.reserve(value.size());
-    constexpr char digits[] = "0123456789abcdef";
-    for (const unsigned char character : value)
-    {
-        switch (character)
-        {
-        case '\\': result += "\\\\"; break;
-        case '"': result += "\\\""; break;
-        case '\b': result += "\\b"; break;
-        case '\f': result += "\\f"; break;
-        case '\n': result += "\\n"; break;
-        case '\r': result += "\\r"; break;
-        case '\t': result += "\\t"; break;
-        default:
-            if (character < 0x20U)
-            {
-                result += "\\u00";
-                result.push_back(digits[(character >> 4U) & 0x0fU]);
-                result.push_back(digits[character & 0x0fU]);
-            }
-            else result.push_back(static_cast<char>(character));
-            break;
-        }
-    }
-    return result;
-}
-
-std::string pathText(const fs::path& path)
-{
-    return path.generic_string();
-}
-
-std::optional<std::string> environmentValue(const char* name)
-{
-#if defined(_WIN32)
-    char* value = nullptr;
-    std::size_t size = 0;
-    if (_dupenv_s(&value, &size, name) != 0 || value == nullptr) return std::nullopt;
-    std::string result(value);
-    std::free(value);
-    return result;
-#else
-    if (const char* value = std::getenv(name)) return std::string(value);
-    return std::nullopt;
-#endif
-}
-
-struct Json final
-{
-    using Object = std::map<std::string, Json>;
-    using Array = std::vector<Json>;
-    std::variant<std::nullptr_t, bool, double, std::string, Object, Array> value = nullptr;
-
-    const Object* object() const { return std::get_if<Object>(&value); }
-    const Array* array() const { return std::get_if<Array>(&value); }
-    const std::string* string() const { return std::get_if<std::string>(&value); }
-    const bool* boolean() const { return std::get_if<bool>(&value); }
-};
-
-class JsonParser final
-{
-public:
-    explicit JsonParser(std::string_view text) : text_(text) {}
-
-    bool parse(Json& value, std::string& error)
-    {
-        skip();
-        if (!parseValue(value, error)) return false;
-        skip();
-        if (position_ != text_.size()) return fail(error, "unexpected trailing JSON content");
-        return true;
-    }
-
-private:
-    bool fail(std::string& error, std::string_view message) const
-    {
-        error = std::string(message) + " at byte " + std::to_string(position_);
-        return false;
-    }
-
-    void skip()
-    {
-        while (position_ < text_.size() && std::isspace(static_cast<unsigned char>(text_[position_])))
-            ++position_;
-    }
-
-    bool parseValue(Json& value, std::string& error)
-    {
-        if (position_ >= text_.size()) return fail(error, "expected JSON value");
-        const char current = text_[position_];
-        if (current == '{') return parseObject(value, error);
-        if (current == '[') return parseArray(value, error);
-        if (current == '"')
-        {
-            std::string parsed;
-            if (!parseString(parsed, error)) return false;
-            value.value = std::move(parsed);
-            return true;
-        }
-        if (text_.substr(position_, 4) == "true") { position_ += 4; value.value = true; return true; }
-        if (text_.substr(position_, 5) == "false") { position_ += 5; value.value = false; return true; }
-        if (text_.substr(position_, 4) == "null") { position_ += 4; value.value = nullptr; return true; }
-        if (current == '-' || std::isdigit(static_cast<unsigned char>(current)))
-        {
-            const std::size_t start = position_++;
-            while (position_ < text_.size() &&
-                   (std::isdigit(static_cast<unsigned char>(text_[position_])) ||
-                    text_[position_] == '.' || text_[position_] == 'e' || text_[position_] == 'E' ||
-                    text_[position_] == '+' || text_[position_] == '-')) ++position_;
-            try { value.value = std::stod(std::string(text_.substr(start, position_ - start))); }
-            catch (...) { return fail(error, "invalid JSON number"); }
-            return true;
-        }
-        return fail(error, "invalid JSON value");
-    }
-
-    bool parseString(std::string& value, std::string& error)
-    {
-        if (text_[position_++] != '"') return fail(error, "expected string");
-        while (position_ < text_.size())
-        {
-            const unsigned char current = static_cast<unsigned char>(text_[position_++]);
-            if (current == '"') return true;
-            if (current < 0x20U) return fail(error, "control character in string");
-            if (current != '\\') { value.push_back(static_cast<char>(current)); continue; }
-            if (position_ >= text_.size()) return fail(error, "incomplete string escape");
-            const char escaped = text_[position_++];
-            switch (escaped)
-            {
-            case '"': value.push_back('"'); break;
-            case '\\': value.push_back('\\'); break;
-            case '/': value.push_back('/'); break;
-            case 'b': value.push_back('\b'); break;
-            case 'f': value.push_back('\f'); break;
-            case 'n': value.push_back('\n'); break;
-            case 'r': value.push_back('\r'); break;
-            case 't': value.push_back('\t'); break;
-            case 'u':
-            {
-                if (position_ + 4U > text_.size()) return fail(error, "incomplete unicode escape");
-                unsigned codePoint = 0;
-                for (unsigned index = 0; index < 4U; ++index)
-                {
-                    const char digit = text_[position_++];
-                    codePoint <<= 4U;
-                    if (digit >= '0' && digit <= '9') codePoint += static_cast<unsigned>(digit - '0');
-                    else if (digit >= 'a' && digit <= 'f') codePoint += 10U + static_cast<unsigned>(digit - 'a');
-                    else if (digit >= 'A' && digit <= 'F') codePoint += 10U + static_cast<unsigned>(digit - 'A');
-                    else return fail(error, "invalid unicode escape");
-                }
-                if (codePoint <= 0x7fU) value.push_back(static_cast<char>(codePoint));
-                else if (codePoint <= 0x7ffU)
-                {
-                    value.push_back(static_cast<char>(0xc0U | (codePoint >> 6U)));
-                    value.push_back(static_cast<char>(0x80U | (codePoint & 0x3fU)));
-                }
-                else
-                {
-                    value.push_back(static_cast<char>(0xe0U | (codePoint >> 12U)));
-                    value.push_back(static_cast<char>(0x80U | ((codePoint >> 6U) & 0x3fU)));
-                    value.push_back(static_cast<char>(0x80U | (codePoint & 0x3fU)));
-                }
-                break;
-            }
-            default: return fail(error, "invalid string escape");
-            }
-        }
-        return fail(error, "unterminated string");
-    }
-
-    bool parseObject(Json& value, std::string& error)
-    {
-        ++position_;
-        Json::Object object;
-        skip();
-        if (position_ < text_.size() && text_[position_] == '}')
-        { ++position_; value.value = std::move(object); return true; }
-        for (;;)
-        {
-            skip();
-            if (position_ >= text_.size() || text_[position_] != '"') return fail(error, "expected object key");
-            std::string key;
-            if (!parseString(key, error)) return false;
-            skip();
-            if (position_ >= text_.size() || text_[position_++] != ':') return fail(error, "expected ':'");
-            skip();
-            Json member;
-            if (!parseValue(member, error)) return false;
-            if (!object.emplace(std::move(key), std::move(member)).second)
-                return fail(error, "duplicate object key");
-            skip();
-            if (position_ >= text_.size()) return fail(error, "unterminated object");
-            if (text_[position_] == '}') { ++position_; value.value = std::move(object); return true; }
-            if (text_[position_++] != ',') return fail(error, "expected ','");
-        }
-    }
-
-    bool parseArray(Json& value, std::string& error)
-    {
-        ++position_;
-        Json::Array array;
-        skip();
-        if (position_ < text_.size() && text_[position_] == ']')
-        { ++position_; value.value = std::move(array); return true; }
-        for (;;)
-        {
-            skip();
-            Json element;
-            if (!parseValue(element, error)) return false;
-            array.push_back(std::move(element));
-            skip();
-            if (position_ >= text_.size()) return fail(error, "unterminated array");
-            if (text_[position_] == ']') { ++position_; value.value = std::move(array); return true; }
-            if (text_[position_++] != ',') return fail(error, "expected ','");
-        }
-    }
-
-    std::string_view text_;
-    std::size_t position_ = 0;
-};
-
 const Json* member(const Json& object, std::string_view name)
 {
     const Json::Object* values = object.object();
@@ -364,7 +90,11 @@ bool readText(const fs::path& path, std::string& text, std::string& error)
     std::error_code fileError;
     const std::uintmax_t size = fs::file_size(path, fileError);
     if (fileError) { error = "cannot read '" + path.string() + "': " + fileError.message(); return false; }
-    if (size > kMaximumJsonBytes) { error = "file is larger than the 4 MiB safety limit: '" + path.string() + "'"; return false; }
+    if (size > kMaximumJsonBytes)
+    {
+        error = "file is larger than the 4 MiB safety limit: '" + path.string() + "'";
+        return false;
+    }
     std::ifstream stream(path, std::ios::binary);
     if (!stream) { error = "cannot open '" + path.string() + "'"; return false; }
     text.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
@@ -388,25 +118,6 @@ bool atomicWrite(const fs::path& path, std::string_view contents, std::string& e
 {
     return basic::writeTextTransactionally(path, contents, error);
 }
-
-struct PackageRequest final { std::string id; std::string version; std::string source; };
-struct BuildPreferences final
-{
-    std::string configuration = "Debug";
-    std::string optimization = "O0";
-    std::string debugInformation = "full";
-    std::string linker = "NSLink";
-    std::string target = "x86_64-pc-windows-msvc";
-    bool restoreBeforeBuild = true;
-};
-struct Sidecar final
-{
-    std::string project;
-    std::string rootNamespace;
-    BuildPreferences build;
-    std::vector<PackageRequest> packages;
-    bool createInitialSource = false;
-};
 
 fs::path sidecarPath(const fs::path& project)
 {
@@ -453,9 +164,14 @@ bool loadSidecar(const fs::path& project, Sidecar& sidecar, std::string& error, 
             if (value.object() == nullptr) { error = "each package request must be an object"; return false; }
             PackageRequest package{stringMember(value, "package_id"), stringMember(value, "version", "*"),
                                    stringMember(value, "source")};
-            if (package.id.empty() || package.version.empty()) { error = "package id and version cannot be empty"; return false; }
+            if (package.id.empty() || package.version.empty())
+            {
+                error = "package id and version cannot be empty";
+                return false;
+            }
             std::string key = package.id;
-            std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            std::transform(key.begin(), key.end(), key.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             if (!seen.insert(key).second) { error = "duplicate package request: '" + package.id + "'"; return false; }
             sidecar.packages.push_back(std::move(package));
         }
@@ -492,7 +208,8 @@ std::string renderSidecar(const Sidecar& sidecar)
 
 bool validIdentifier(std::string_view value)
 {
-    if (value.empty() || !(std::isalpha(static_cast<unsigned char>(value.front())) || value.front() == '_')) return false;
+    if (value.empty() || !(std::isalpha(static_cast<unsigned char>(value.front())) || value.front() == '_'))
+        return false;
     return std::all_of(value.begin() + 1, value.end(), [](unsigned char character) {
         return std::isalnum(character) || character == '_';
     });
@@ -520,53 +237,16 @@ bool inferProject(std::optional<fs::path> requested, fs::path& project, std::str
         return true;
     }
     std::vector<fs::path> found;
-    for (fs::directory_iterator iterator(fs::current_path(), fileError), end; iterator != end && !fileError; iterator.increment(fileError))
-        if (iterator->is_regular_file(fileError) && iterator->path().extension() == ".nsproj") found.push_back(iterator->path());
+    for (fs::directory_iterator iterator(fs::current_path(), fileError), end; iterator != end && !fileError;
+         iterator.increment(fileError))
+        if (iterator->is_regular_file(fileError) && iterator->path().extension() == ".nsproj")
+            found.push_back(iterator->path());
     if (fileError) { error = "cannot enumerate the current directory: " + fileError.message(); return false; }
     if (found.empty()) { error = "no .nsproj was found in the current directory"; return false; }
     if (found.size() != 1U) { error = "more than one .nsproj exists; specify the project explicitly"; return false; }
     project = fs::absolute(found.front(), fileError).lexically_normal();
     return !fileError;
 }
-
-struct CommandOutput final
-{
-    bool json = false;
-    std::string command;
-    fs::path project;
-
-    ExitCode success(std::ostream& output, std::string_view message,
-                     std::string_view extra = {}) const
-    {
-        if (json)
-        {
-            output << "{\"schemaVersion\":1,\"command\":\"" << jsonEscape(command)
-                   << "\",\"success\":true";
-            if (!project.empty()) output << ",\"project\":\"" << jsonEscape(pathText(project)) << '"';
-            if (!extra.empty()) output << ',' << extra;
-            output << ",\"message\":\"" << jsonEscape(message) << "\"}\n";
-        }
-        else output << localizeCompilerMessage(message) << '\n';
-        return ExitCode::Success;
-    }
-
-    ExitCode failure(std::ostream& error, std::string_view message,
-                     ExitCode code = ExitCode::CommandLineError) const
-    {
-        if (json)
-            error << "{\"schemaVersion\":1,\"command\":\"" << jsonEscape(command)
-                  << "\",\"success\":false,\"exitCode\":" << static_cast<int>(code)
-                  << ",\"message\":\"" << jsonEscape(message) << "\"}\n";
-        else error << "nsc: error: " << localizeCompilerMessage(message) << '\n';
-        return code;
-    }
-};
-
-struct CommonArguments final
-{
-    bool json = false;
-    std::vector<std::string_view> values;
-};
 
 CommonArguments stripOutputFormat(std::span<const std::string_view> arguments)
 {
@@ -583,7 +263,8 @@ ExitCode runNew(std::span<const std::string_view> raw, std::ostream& output, std
 {
     CommonArguments parsed = stripOutputFormat(raw);
     CommandOutput result{parsed.json, "new", {}};
-    if (parsed.values.size() < 2U) return result.failure(error, "usage: nsc new <console|classlib|dll> -n <name> [-o <directory>] [--force]");
+    if (parsed.values.size() < 2U)
+        return result.failure(error, "usage: nsc new <console|classlib|dll> -n <name> [-o <directory>] [--force]");
     const std::string kind(parsed.values[1]);
     std::string name;
     std::optional<fs::path> directory;
@@ -591,8 +272,10 @@ ExitCode runNew(std::span<const std::string_view> raw, std::ostream& output, std
     for (std::size_t index = 2; index < parsed.values.size(); ++index)
     {
         const std::string_view argument = parsed.values[index];
-        if ((argument == "-n" || argument == "--name") && index + 1 < parsed.values.size()) name = parsed.values[++index];
-        else if ((argument == "-o" || argument == "--output") && index + 1 < parsed.values.size()) directory = fs::path(parsed.values[++index]);
+        if ((argument == "-n" || argument == "--name") && index + 1 < parsed.values.size())
+            name = parsed.values[++index];
+        else if ((argument == "-o" || argument == "--output") && index + 1 < parsed.values.size())
+            directory = fs::path(parsed.values[++index]);
         else if (argument == "--force") force = true;
         else return result.failure(error, "unknown new option: '" + std::string(argument) + "'");
     }
@@ -613,8 +296,10 @@ ExitCode runNew(std::span<const std::string_view> raw, std::ostream& output, std
         return result.failure(error, "project already exists; pass --force to replace its configuration");
     fs::create_directories(root, fileError);
     if (fileError) return result.failure(error, "cannot create project directory: " + fileError.message());
-    const std::string xml = "<Project>\n  <PropertyGroup>\n    <Name>" + name + "</Name>\n    <OutputType>" + outputType +
-        "</OutputType>\n  </PropertyGroup>\n  <ItemGroup>\n    <Compile Include=\"**/*.ns\" />\n  </ItemGroup>\n</Project>\n";
+    const std::string xml = "<Project>\n  <PropertyGroup>\n    <Name>" + name + "</Name>\n    <OutputType>" +
+                            outputType +
+                            "</OutputType>\n  </PropertyGroup>\n  <ItemGroup>\n    <Compile Include=\"**/*.ns\" />\n  "
+                            "</ItemGroup>\n</Project>\n";
     Sidecar model;
     model.project = project.filename().string();
     model.rootNamespace = name;
@@ -637,17 +322,6 @@ ExitCode runNew(std::span<const std::string_view> raw, std::ostream& output, std
                           "\"template\":\"" + jsonEscape(kind) + "\"");
 }
 
-struct Artifact final
-{
-    std::string type;
-    fs::path source;
-    fs::path relativeDestination;
-    std::string hash;
-    std::uintmax_t size = 0;
-};
-struct RestoredPackage final { PackageRequest request; fs::path sourceRoot; std::vector<Artifact> artifacts; };
-struct RestorePlan final { std::vector<RestoredPackage> packages; std::string lock; fs::path root; };
-
 bool isSafeRelative(const fs::path& path)
 {
     if (path.empty() || path.is_absolute() || path.has_root_name()) return false;
@@ -659,13 +333,21 @@ bool isSafeRelative(const fs::path& path)
 bool appendArtifact(RestoredPackage& package, std::string type, const fs::path& relative,
                     const fs::path& destinationBase, std::string& error)
 {
-    if (!isSafeRelative(relative)) { error = "package artifact path is not safe: '" + relative.string() + "'"; return false; }
+    if (!isSafeRelative(relative))
+    {
+        error = "package artifact path is not safe: '" + relative.string() + "'";
+        return false;
+    }
     const fs::path source = (package.sourceRoot / relative).lexically_normal();
     std::error_code fileError;
     const fs::path canonicalRoot = fs::weakly_canonical(package.sourceRoot, fileError);
     if (fileError) { error = "cannot resolve package root: " + fileError.message(); return false; }
     const fs::path canonicalSource = fs::weakly_canonical(source, fileError);
-    if (fileError || !fs::is_regular_file(canonicalSource)) { error = "package artifact does not exist: '" + source.string() + "'"; return false; }
+    if (fileError || !fs::is_regular_file(canonicalSource))
+    {
+        error = "package artifact does not exist: '" + source.string() + "'";
+        return false;
+    }
     auto rootIterator = canonicalRoot.begin();
     auto sourceIterator = canonicalSource.begin();
     for (; rootIterator != canonicalRoot.end(); ++rootIterator, ++sourceIterator)
@@ -717,14 +399,19 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
     if (!request.source.empty()) source = request.source;
     else if (sourceOverride.has_value()) source = *sourceOverride;
     else if (const std::optional<std::string> environment = environmentValue("NSC_PACKAGE_ROOT")) source = *environment;
-    else if (const std::optional<std::string> local = environmentValue("LOCALAPPDATA")) source = fs::path(*local) / "NativeSharp" / "packages";
+    else if (const std::optional<std::string> local = environmentValue("LOCALAPPDATA"))
+        source = fs::path(*local) / "NativeSharp" / "packages";
     else { error = "package source is not configured; use --source or NSC_PACKAGE_ROOT"; return false; }
     std::error_code fileError;
     source = fs::absolute(source, fileError).lexically_normal();
     if (fileError) { error = "cannot resolve package source"; return false; }
     if (!packageManifest(source).has_value() && !looksLikeConventionPackage(source))
         source /= fs::path(request.id) / request.version;
-    if (!fs::is_directory(source)) { error = "package source directory does not exist: '" + source.string() + "'"; return false; }
+    if (!fs::is_directory(source))
+    {
+        error = "package source directory does not exist: '" + source.string() + "'";
+        return false;
+    }
     package.request = request;
     package.sourceRoot = source;
     const fs::path destinationBase = fs::path(request.id) / request.version;
@@ -741,7 +428,8 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
         for (const Json& library : *libraries->array())
         {
             if (!appendArtifact(package, "library", stringMember(library, "library"), destinationBase, error) ||
-                !appendArtifact(package, "metadata", stringMember(library, "metadata"), destinationBase, error)) return false;
+                !appendArtifact(package, "metadata", stringMember(library, "metadata"), destinationBase, error))
+                return false;
             const std::string runtime = stringMember(library, "runtime");
             if (!runtime.empty() && !appendArtifact(package, "runtime", runtime, destinationBase, error)) return false;
         }
@@ -750,7 +438,9 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
             if (files->array() == nullptr) { error = "package files must be an array"; return false; }
             for (const Json& value : *files->array())
             {
-                if (value.string() == nullptr || !appendArtifact(package, "file", *value.string(), destinationBase, error)) return false;
+                if (value.string() == nullptr ||
+                    !appendArtifact(package, "file", *value.string(), destinationBase, error))
+                    return false;
             }
         }
     }
@@ -759,7 +449,8 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
         std::vector<fs::path> libraries;
         std::vector<fs::path> metadata;
         std::vector<fs::path> runtimes;
-        for (fs::directory_iterator iterator(source, fileError), end; iterator != end && !fileError; iterator.increment(fileError))
+        for (fs::directory_iterator iterator(source, fileError), end; iterator != end && !fileError;
+             iterator.increment(fileError))
         {
             if (!iterator->is_regular_file()) continue;
             const std::string extension = iterator->path().extension().string();
@@ -772,7 +463,8 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
         { error = "convention package requires exactly one .lib, one .nsmeta, and at most one .dll"; return false; }
         if (!appendArtifact(package, "library", libraries.front(), destinationBase, error) ||
             !appendArtifact(package, "metadata", metadata.front(), destinationBase, error)) return false;
-        if (!runtimes.empty() && !appendArtifact(package, "runtime", runtimes.front(), destinationBase, error)) return false;
+        if (!runtimes.empty() && !appendArtifact(package, "runtime", runtimes.front(), destinationBase, error))
+            return false;
     }
     return true;
 }
@@ -861,7 +553,8 @@ bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& erro
         {
             const fs::path destination = staging / artifact.relativeDestination;
             fs::create_directories(destination.parent_path(), fileError);
-            if (!fileError) fs::copy_file(artifact.source, destination, fs::copy_options::overwrite_existing, fileError);
+            if (!fileError)
+                fs::copy_file(artifact.source, destination, fs::copy_options::overwrite_existing, fileError);
             if (fileError)
             {
                 fs::remove_all(staging, fileError);
@@ -871,7 +564,12 @@ bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& erro
             ++copied;
         }
     if (fs::exists(plan.root)) fs::rename(plan.root, backup, fileError);
-    if (fileError) { fs::remove_all(staging, fileError); error = "cannot begin restore transaction: " + fileError.message(); return false; }
+    if (fileError)
+    {
+        fs::remove_all(staging, fileError);
+        error = "cannot begin restore transaction: " + fileError.message();
+        return false;
+    }
     fs::rename(staging, plan.root, fileError);
     if (fileError)
     {
@@ -885,15 +583,6 @@ bool materialize(const RestorePlan& plan, std::size_t& copied, std::string& erro
     return true;
 }
 
-struct RestoreOptions final
-{
-    std::optional<fs::path> project;
-    std::optional<fs::path> source;
-    bool force = false;
-    bool locked = false;
-    bool verify = false;
-};
-
 bool parseRestoreOptions(std::span<const std::string_view> arguments, RestoreOptions& options, std::string& error)
 {
     for (std::size_t index = 1; index < arguments.size(); ++index)
@@ -903,11 +592,19 @@ bool parseRestoreOptions(std::span<const std::string_view> arguments, RestoreOpt
         else if (argument == "--locked-mode") options.locked = true;
         else if (argument == "--verify") options.verify = true;
         else if (argument == "--source" && index + 1 < arguments.size()) options.source = fs::path(arguments[++index]);
-        else if (argument.starts_with('-')) { error = "unknown restore option: '" + std::string(argument) + "'"; return false; }
+        else if (argument.starts_with('-'))
+        {
+            error = "unknown restore option: '" + std::string(argument) + "'";
+            return false;
+        }
         else if (options.project.has_value()) { error = "restore accepts only one project"; return false; }
         else options.project = fs::path(argument);
     }
-    if (options.force && (options.locked || options.verify)) { error = "--force cannot be combined with --locked-mode or --verify"; return false; }
+    if (options.force && (options.locked || options.verify))
+    {
+        error = "--force cannot be combined with --locked-mode or --verify";
+        return false;
+    }
     return true;
 }
 
@@ -927,7 +624,8 @@ ExitCode executeRestore(const RestoreOptions& options, bool json, std::ostream& 
     if (options.locked)
     {
         std::string existing;
-        if (!readText(lockPath, existing, message)) return result.failure(error, "locked restore requires a readable lock file: " + message);
+        if (!readText(lockPath, existing, message))
+            return result.failure(error, "locked restore requires a readable lock file: " + message);
         if (existing != plan.lock) return result.failure(error, "locked restore rejected package source changes");
     }
     std::size_t verified = 0;
@@ -1027,14 +725,112 @@ bool makeGeneratedProject(const fs::path& project, const RestorePlan& plan, fs::
     return atomicWrite(generated, xml, error);
 }
 
-class TemporaryFile final
+bool failContentStaging(
+    const fs::path& staging,
+    std::string message,
+    std::string& error)
 {
-public:
-    explicit TemporaryFile(fs::path path) : path_(std::move(path)) {}
-    ~TemporaryFile() { std::error_code error; fs::remove(path_, error); }
-private:
-    fs::path path_;
-};
+    std::error_code cleanupError;
+    fs::remove_all(staging, cleanupError);
+    error = std::move(message);
+    return false;
+}
+
+bool copyContentEntries(
+    const fs::path& source,
+    const fs::path& staging,
+    std::size_t& copiedFiles,
+    std::string& error)
+{
+    std::error_code fileError;
+    fs::recursive_directory_iterator iterator(source, fileError);
+    const fs::recursive_directory_iterator end;
+    if (fileError)
+        return failContentStaging(
+            staging, "cannot enumerate project Content directory: " + fileError.message(), error);
+    while (iterator != end)
+    {
+        const fs::directory_entry& entry = *iterator;
+        const fs::path relative = fs::relative(entry.path(), source, fileError);
+        if (fileError)
+            return failContentStaging(
+                staging, "cannot resolve a Content path: " + fileError.message(), error);
+        const fs::file_status status = entry.symlink_status(fileError);
+        if (fileError)
+            return failContentStaging(
+                staging, "cannot inspect Content entry: " + fileError.message(), error);
+        const fs::path target = staging / relative;
+        if (fs::is_symlink(status))
+            return failContentStaging(staging,
+                "Content does not permit symbolic links: '" + pathText(entry.path()) + "'", error);
+        if (fs::is_directory(status))
+        {
+            fs::create_directories(target, fileError);
+            if (fileError)
+                return failContentStaging(
+                    staging, "cannot create Content directory: " + fileError.message(), error);
+        }
+        else if (fs::is_regular_file(status))
+        {
+            fs::create_directories(target.parent_path(), fileError);
+            if (fileError)
+                return failContentStaging(staging,
+                    "cannot create Content parent directory: " + fileError.message(), error);
+            fs::copy_file(entry.path(), target, fs::copy_options::overwrite_existing, fileError);
+            if (fileError)
+                return failContentStaging(
+                    staging, "cannot copy Content file: " + fileError.message(), error);
+            ++copiedFiles;
+        }
+        else
+            return failContentStaging(staging,
+                "Content contains an unsupported filesystem entry: '" +
+                    pathText(entry.path()) + "'", error);
+        iterator.increment(fileError);
+        if (fileError)
+            return failContentStaging(
+                staging, "cannot enumerate project Content directory: " + fileError.message(), error);
+    }
+    return true;
+}
+
+bool publishContentStaging(
+    const fs::path& destination,
+    const fs::path& staging,
+    const fs::path& backup,
+    std::string& error)
+{
+    std::error_code fileError;
+    const bool destinationExists = fs::exists(destination, fileError);
+    if (fileError)
+        return failContentStaging(
+            staging, "cannot inspect output Content directory: " + fileError.message(), error);
+    if (destinationExists)
+    {
+        fs::rename(destination, backup, fileError);
+        if (fileError)
+            return failContentStaging(staging,
+                "cannot preserve the previous Content directory: " + fileError.message(), error);
+    }
+    fs::rename(staging, destination, fileError);
+    if (fileError)
+    {
+        const std::string publishError = fileError.message();
+        if (destinationExists)
+        {
+            std::error_code rollbackError;
+            fs::rename(backup, destination, rollbackError);
+        }
+        return failContentStaging(
+            staging, "cannot publish Content directory: " + publishError, error);
+    }
+    if (!destinationExists) return true;
+    fs::remove_all(backup, fileError);
+    if (!fileError) return true;
+    error = "Content was published but its previous backup could not be removed: " +
+        fileError.message();
+    return false;
+}
 
 bool publishContentDirectory(const fs::path& projectRoot, const fs::path& outputDirectory,
                              std::size_t& copiedFiles, std::string& error)
@@ -1074,128 +870,9 @@ bool publishContentDirectory(const fs::path& projectRoot, const fs::path& output
         return false;
     }
 
-    auto fail = [&](std::string message) {
-        std::error_code cleanupError;
-        fs::remove_all(staging, cleanupError);
-        error = std::move(message);
-        return false;
-    };
-
-    fs::recursive_directory_iterator iterator(source, fileError);
-    const fs::recursive_directory_iterator end;
-    if (fileError) return fail("cannot enumerate project Content directory: " + fileError.message());
-    while (iterator != end)
-    {
-        const fs::directory_entry& entry = *iterator;
-        const fs::path relative = fs::relative(entry.path(), source, fileError);
-        if (fileError) return fail("cannot resolve a Content path: " + fileError.message());
-        const fs::file_status status = entry.symlink_status(fileError);
-        if (fileError) return fail("cannot inspect Content entry: " + fileError.message());
-        const fs::path target = staging / relative;
-        if (fs::is_symlink(status))
-            return fail("Content does not permit symbolic links: '" + pathText(entry.path()) + "'");
-        if (fs::is_directory(status))
-        {
-            fs::create_directories(target, fileError);
-            if (fileError) return fail("cannot create Content directory: " + fileError.message());
-        }
-        else if (fs::is_regular_file(status))
-        {
-            fs::create_directories(target.parent_path(), fileError);
-            if (fileError) return fail("cannot create Content parent directory: " + fileError.message());
-            fs::copy_file(entry.path(), target, fs::copy_options::overwrite_existing, fileError);
-            if (fileError) return fail("cannot copy Content file: " + fileError.message());
-            ++copiedFiles;
-        }
-        else
-            return fail("Content contains an unsupported filesystem entry: '" + pathText(entry.path()) + "'");
-        iterator.increment(fileError);
-        if (fileError) return fail("cannot enumerate project Content directory: " + fileError.message());
-    }
-
-    const bool destinationExists = fs::exists(destination, fileError);
-    if (fileError) return fail("cannot inspect output Content directory: " + fileError.message());
-    if (destinationExists)
-    {
-        fs::rename(destination, backup, fileError);
-        if (fileError) return fail("cannot preserve the previous Content directory: " + fileError.message());
-    }
-    fs::rename(staging, destination, fileError);
-    if (fileError)
-    {
-        const std::string publishError = fileError.message();
-        if (destinationExists)
-        {
-            std::error_code rollbackError;
-            fs::rename(backup, destination, rollbackError);
-        }
-        return fail("cannot publish Content directory: " + publishError);
-    }
-    if (destinationExists)
-    {
-        fs::remove_all(backup, fileError);
-        if (fileError)
-        {
-            error = "Content was published but its previous backup could not be removed: " + fileError.message();
-            return false;
-        }
-    }
-    return true;
+    if (!copyContentEntries(source, staging, copiedFiles, error)) return false;
+    return publishContentStaging(destination, staging, backup, error);
 }
-
-class EnvironmentOverride final
-{
-public:
-    EnvironmentOverride(std::string name, std::optional<std::string> value) : name_(std::move(name))
-    {
-        if (!value.has_value()) return;
-        active_ = true;
-        previous_ = environmentValue(name_.c_str());
-        set(*value);
-    }
-    ~EnvironmentOverride()
-    {
-        if (!active_) return;
-        if (previous_.has_value()) set(*previous_); else clear();
-    }
-private:
-    void set(const std::string& value)
-    {
-#if defined(_WIN32)
-        _putenv_s(name_.c_str(), value.c_str());
-#else
-        setenv(name_.c_str(), value.c_str(), 1);
-#endif
-    }
-    void clear()
-    {
-#if defined(_WIN32)
-        _putenv_s(name_.c_str(), "");
-#else
-        unsetenv(name_.c_str());
-#endif
-    }
-    std::string name_;
-    std::optional<std::string> previous_;
-    bool active_ = false;
-};
-
-struct BuildOptions final
-{
-    std::optional<fs::path> project;
-    std::optional<std::string> configuration;
-    std::optional<std::string> optimization;
-    std::optional<std::string> debug;
-    std::optional<std::string> linker;
-    std::optional<fs::path> libraryReferenceRoot;
-    std::optional<std::size_t> compilerJobs;
-    bool noRestore = false;
-    bool precompiledOnly = false;
-    bool dependencyReport = false;
-    bool progress = false;
-    std::optional<std::string> progressFormat;
-    std::vector<std::string> programArguments;
-};
 
 bool parseBuildProgressOption(
     std::string_view argument,
@@ -1241,8 +918,10 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
         const std::string_view argument = arguments[index];
         if (run && argument == "--") { program = true; continue; }
         if (program) { options.programArguments.emplace_back(argument); continue; }
-        if ((argument == "-c" || argument == "--configuration") && index + 1 < arguments.size()) options.configuration = std::string(arguments[++index]);
-        else if (argument == "--linker" && index + 1 < arguments.size()) options.linker = std::string(arguments[++index]);
+        if ((argument == "-c" || argument == "--configuration") && index + 1 < arguments.size())
+            options.configuration = std::string(arguments[++index]);
+        else if (argument == "--linker" && index + 1 < arguments.size())
+            options.linker = std::string(arguments[++index]);
         else if (argument == "--no-restore") options.noRestore = true;
         else if (argument == "--precompiled-only") options.precompiledOnly = true;
         else if (argument == "--dependency-report") options.dependencyReport = true;
@@ -1292,9 +971,15 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
             { error = "--library-reference-root requires an absolute directory"; return false; }
             options.libraryReferenceRoot = fs::path(value);
         }
-        else if (argument == "-O0" || argument == "-O1" || argument == "-O2" || argument == "-O3") options.optimization = std::string(argument.substr(1));
-        else if (argument == "-g" || argument == "-g0" || argument == "-gline-tables-only") options.debug = std::string(argument);
-        else if (argument.starts_with('-')) { error = "unknown build option: '" + std::string(argument) + "'"; return false; }
+        else if (argument == "-O0" || argument == "-O1" || argument == "-O2" || argument == "-O3")
+            options.optimization = std::string(argument.substr(1));
+        else if (argument == "-g" || argument == "-g0" || argument == "-gline-tables-only")
+            options.debug = std::string(argument);
+        else if (argument.starts_with('-'))
+        {
+            error = "unknown build option: '" + std::string(argument) + "'";
+            return false;
+        }
         else if (options.project.has_value()) { error = "build accepts only one project"; return false; }
         else options.project = fs::path(argument);
     }
@@ -1338,16 +1023,6 @@ bool loadPlanFromLock(const fs::path& project, RestorePlan& plan, std::string& e
     std::size_t verified = 0;
     return verifyPlan(plan, verified, error);
 }
-
-struct BuildResult final { fs::path project; fs::path artifact; std::string compilerOutput; std::string compilerError; };
-
-struct DependencyProvenance final
-{
-    std::string kind;
-    std::string identity;
-    fs::path path;
-    std::string fingerprint;
-};
 
 std::string fingerprintFiles(std::vector<fs::path> files)
 {
@@ -1428,45 +1103,71 @@ std::string dependencyProvenanceJson(std::span<const DependencyProvenance> recor
     return json.str();
 }
 
-ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecutor& executor,
-                      std::ostream& output, std::ostream& error, BuildResult* buildResult)
+bool resolveBuildSettings(
+    const BuildOptions& options,
+    const compilation::ProjectBuildSettings& projectSettings,
+    const Sidecar& sidecar,
+    std::string& configuration,
+    std::string& optimization,
+    std::string& debug,
+    std::string& linker,
+    std::optional<fs::path>& libraryReferenceRoot,
+    std::optional<std::size_t>& compilerJobs,
+    std::string& message)
 {
-    CommandOutput result{json, "build", {}};
-    fs::path project;
-    std::string message;
-    if (!inferProject(options.project, project, message)) return result.failure(error, message);
-    result.project = project;
-    compilation::ProjectLoader loader;
-    const std::optional<compilation::ProjectBuildSettings> projectSettings =
-        loader.loadBuildSettings(project, message);
-    if (!projectSettings.has_value())
-        return result.failure(error, message, ExitCode::CompilationError);
-    Sidecar sidecar;
-    if (!loadSidecar(project, sidecar, message, false)) return result.failure(error, message);
-    std::string configuration = options.configuration.value_or(sidecar.build.configuration);
-    if (configuration != "Debug" && configuration != "Release") return result.failure(error, "configuration must be Debug or Release");
+    configuration = options.configuration.value_or(sidecar.build.configuration);
+    if (configuration != "Debug" && configuration != "Release")
+    {
+        message = "configuration must be Debug or Release";
+        return false;
+    }
     const std::optional<std::string> projectOptimization =
-        projectSettings->optimizationLevel.has_value()
-            ? std::optional<std::string>{"O" + std::to_string(*projectSettings->optimizationLevel)}
+        projectSettings.optimizationLevel.has_value()
+            ? std::optional<std::string>{
+                "O" + std::to_string(*projectSettings.optimizationLevel)}
             : std::nullopt;
-    std::string optimization = options.optimization.value_or(
+    optimization = options.optimization.value_or(
         projectOptimization.value_or(sidecar.build.optimization));
-    if (optimization != "O0" && optimization != "O1" && optimization != "O2" && optimization != "O3")
-        return result.failure(error, "optimization must be O0, O1, O2, or O3");
-    std::string debug = options.debug.value_or(sidecar.build.debugInformation == "none" ? "-g0" :
+    if (optimization != "O0" && optimization != "O1" &&
+        optimization != "O2" && optimization != "O3")
+    {
+        message = "optimization must be O0, O1, O2, or O3";
+        return false;
+    }
+    debug = options.debug.value_or(sidecar.build.debugInformation == "none" ? "-g0" :
         sidecar.build.debugInformation == "line-tables-only" ? "-gline-tables-only" : "-g");
-    std::string linker = options.linker.value_or(sidecar.build.linker);
-    if (linker != "NSLink") return result.failure(error, "linker must be NSLink");
-    if (options.libraryReferenceRoot.has_value() && !options.libraryReferenceRoot->is_absolute())
-        return result.failure(error, "library-reference root requires an absolute directory");
-    const std::optional<fs::path> libraryReferenceRoot =
-        options.libraryReferenceRoot.has_value()
-            ? options.libraryReferenceRoot
-            : projectSettings->libraryReferenceRoot;
-    const std::optional<std::size_t> compilerJobs =
-        options.compilerJobs.has_value() ? options.compilerJobs : projectSettings->compilerJobs;
+    linker = options.linker.value_or(sidecar.build.linker);
+    if (linker != "NSLink")
+    {
+        message = "linker must be NSLink";
+        return false;
+    }
+    if (options.libraryReferenceRoot.has_value() &&
+        !options.libraryReferenceRoot->is_absolute())
+    {
+        message = "library-reference root requires an absolute directory";
+        return false;
+    }
+    libraryReferenceRoot = options.libraryReferenceRoot.has_value()
+        ? options.libraryReferenceRoot
+        : projectSettings.libraryReferenceRoot;
+    compilerJobs = options.compilerJobs.has_value()
+        ? options.compilerJobs
+        : projectSettings.compilerJobs;
+    return true;
+}
 
-    RestorePlan plan;
+ExitCode restoreBuildPlan(
+    const BuildOptions& options,
+    bool json,
+    const Sidecar& sidecar,
+    const fs::path& project,
+    CommandOutput& result,
+    std::ostream& output,
+    std::ostream& error,
+    RestorePlan& plan,
+    std::string& message)
+{
     if (options.noRestore || options.precompiledOnly || !sidecar.build.restoreBeforeBuild)
     {
         if (!sidecar.packages.empty() && !loadPlanFromLock(project, plan, message))
@@ -1475,69 +1176,109 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
                 " requires an existing verified lock/store closure: " + message,
                 ExitCode::CompilationError);
         plan.root = project.parent_path() / "obj" / "nativesharp" / "packages";
+        return ExitCode::Success;
     }
-    else
-    {
-        RestoreOptions restoreOptions;
-        restoreOptions.project = project;
-        std::ostringstream restoreOutput;
-        std::ostringstream restoreError;
-        const ExitCode restored = executeRestore(restoreOptions, false, restoreOutput, restoreError, &plan);
-        if (restored != ExitCode::Success) return result.failure(error, restoreError.str(), restored);
-        if (!json) output << restoreOutput.str();
-    }
-    fs::path generated;
-    if (!makeGeneratedProject(project, plan, generated, message)) return result.failure(error, message, ExitCode::InternalError);
-    TemporaryFile removeGenerated(generated);
-    compilation::ProjectLoadOptions projectLoadOptions;
-    projectLoadOptions.libraryReferenceRoot = libraryReferenceRoot;
-    std::optional<compilation::Project> loaded = loader.load(generated, projectLoadOptions, message);
-    if (!loaded.has_value()) return result.failure(error, "generated build project is invalid: " + message, ExitCode::CompilationError);
+    RestoreOptions restoreOptions;
+    restoreOptions.project = project;
+    std::ostringstream restoreOutput;
+    std::ostringstream restoreError;
+    const ExitCode restored =
+        executeRestore(restoreOptions, false, restoreOutput, restoreError, &plan);
+    if (restored != ExitCode::Success)
+        return result.failure(error, restoreError.str(), restored);
+    if (!json) output << restoreOutput.str();
+    return ExitCode::Success;
+}
+
+ExitCode loadBuildClosure(
+    const BuildOptions& options,
+    const fs::path& generated,
+    const compilation::ProjectLoadOptions& projectLoadOptions,
+    const std::optional<std::size_t>& compilerJobs,
+    CommandOutput& result,
+    compilation::ProjectLoader& loader,
+    std::optional<compilation::Project>& loaded,
+    std::optional<compilation::ProjectGraph>& graph,
+    std::string& message,
+    std::ostream& error)
+{
+    loaded = loader.load(generated, projectLoadOptions, message);
+    if (!loaded.has_value())
+        return result.failure(error,
+            "generated build project is invalid: " + message,
+            ExitCode::CompilationError);
     compilation::ProjectGraphLoader graphLoader(
         compilerJobs.value_or(1U), {}, projectLoadOptions);
-    std::optional<compilation::ProjectGraph> graph = graphLoader.load(generated, message);
+    graph = graphLoader.load(generated, message);
     if (!graph.has_value())
-        return result.failure(error, "dependency closure is invalid: " + message,
-            ExitCode::CompilationError);
-    if (options.precompiledOnly && graph->projects().size() > 1U)
-    {
-        const compilation::Project& sourceDependency = graph->projects().front();
         return result.failure(error,
-            "--precompiled-only rejected source ProjectReference module '" +
-                sourceDependency.moduleName() + "' at '" +
-                pathText(sourceDependency.projectFile()) +
-                "'; publish and reference its .lib + .nsmeta closure",
+            "dependency closure is invalid: " + message,
             ExitCode::CompilationError);
-    }
-    std::vector<DependencyProvenance> provenance = dependencyProvenance(*graph, plan);
+    if (!options.precompiledOnly || graph->projects().size() <= 1U)
+        return ExitCode::Success;
+    const compilation::Project& sourceDependency = graph->projects().front();
+    return result.failure(error,
+        "--precompiled-only rejected source ProjectReference module '" +
+            sourceDependency.moduleName() + "' at '" +
+            pathText(sourceDependency.projectFile()) +
+            "'; publish and reference its .lib + .nsmeta closure",
+        ExitCode::CompilationError);
+}
+
+void updateRootDependencyProvenance(
+    const fs::path& project,
+    const compilation::Project& loaded,
+    std::vector<DependencyProvenance>& provenance)
+{
     for (DependencyProvenance& record : provenance)
     {
         if (record.kind != "source") continue;
         record.path = project;
         std::vector<fs::path> rootInputs = {project};
-        for (const compilation::ProjectSource& source : loaded->sourceSet().sources())
+        for (const compilation::ProjectSource& source : loaded.sourceSet().sources())
             rootInputs.push_back(source.absolutePath);
         record.fingerprint = fingerprintFiles(std::move(rootInputs));
     }
-    if (options.dependencyReport && !json)
-    {
-        output << "Dependency provenance:\n";
-        for (const DependencyProvenance& record : provenance)
-            output << "  " << record.kind << ' ' << record.identity << " path="
-                   << pathText(record.path) << " sha256=" << record.fingerprint << '\n';
-    }
-    std::string action;
-    std::string extension;
-    if (loaded->outputKind() == compilation::ProjectOutputKind::Executable) { action = "--emit-project-oop-exe"; extension = ".exe"; }
-    else if (loaded->outputKind() == compilation::ProjectOutputKind::Library) { action = "--emit-project-oop-lib"; extension = ".lib"; }
-    else { action = "--emit-project-oop-dll"; extension = ".dll"; }
-    const fs::path artifact = projectSettings->outputPath.value_or(
-        project.parent_path() / "bin" / configuration / (loaded->moduleName() + extension));
-    std::error_code fileError;
-    fs::create_directories(artifact.parent_path(), fileError);
-    if (fileError) return result.failure(error, "cannot create build output directory: " + fileError.message(), ExitCode::InternalError);
+}
 
-    std::vector<std::string> owned{action, generated.string(), "-" + optimization, debug};
+void printDependencyProvenance(
+    std::ostream& output,
+    const std::vector<DependencyProvenance>& provenance)
+{
+    output << "Dependency provenance:\n";
+    for (const DependencyProvenance& record : provenance)
+        output << "  " << record.kind << ' ' << record.identity << " path="
+               << pathText(record.path) << " sha256=" << record.fingerprint << '\n';
+}
+
+void selectBuildAction(
+    compilation::ProjectOutputKind outputKind,
+    std::string& action,
+    std::string& extension)
+{
+    if (outputKind == compilation::ProjectOutputKind::Executable)
+    {
+        action = "--emit-project-oop-exe";
+        extension = ".exe";
+    }
+    else if (outputKind == compilation::ProjectOutputKind::Library)
+    {
+        action = "--emit-project-oop-lib";
+        extension = ".lib";
+    }
+    else
+    {
+        action = "--emit-project-oop-dll";
+        extension = ".dll";
+    }
+}
+
+void appendNestedCompilerOptions(
+    const BuildOptions& options,
+    const std::optional<fs::path>& libraryReferenceRoot,
+    const std::optional<std::size_t>& compilerJobs,
+    std::vector<std::string>& owned)
+{
     if (libraryReferenceRoot.has_value())
     {
         owned.push_back("--library-reference-root");
@@ -1558,54 +1299,182 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
     {
         owned.push_back("--progress-format=" + *options.progressFormat);
     }
-    owned.push_back("-o");
-    owned.push_back(artifact.string());
-    std::vector<std::string_view> views;
-    for (const std::string& value : owned) views.push_back(value);
-    std::string compilerOutputText;
-    std::ostringstream compilerOutput;
-    std::ostringstream compilerError;
+}
+
+ExitCode invokeNestedCompiler(
+    const BuildOptions& options,
+    bool json,
+    const DriverExecutor& executor,
+    const std::vector<std::string_view>& views,
+    std::ostream& output,
+    std::ostream& error,
+    std::string& compilerOutputText,
+    std::ostringstream& compilerOutput,
+    std::ostringstream& compilerError)
+{
     const bool forwardJsonProgress = json && options.progress &&
         options.progressFormat == "json";
-    std::ostream& nestedError = json ? static_cast<std::ostream&>(compilerError) : error;
-    ExitCode code = ExitCode::InternalError;
+    std::ostream& nestedError = json
+        ? static_cast<std::ostream&>(compilerError)
+        : error;
     if (forwardJsonProgress)
     {
         ProgressJsonForwardingBuffer progressBuffer(output, compilerOutputText);
         std::ostream progressOutput(&progressBuffer);
-        code = executor(views, progressOutput, nestedError);
+        const ExitCode code = executor(views, progressOutput, nestedError);
         progressBuffer.finish();
+        return code;
     }
-    else
-    {
-        std::ostream& nestedOutput = json
-            ? static_cast<std::ostream&>(compilerOutput)
-            : output;
-        code = executor(views, nestedOutput, nestedError);
-        if (json) compilerOutputText = compilerOutput.str();
-    }
+    std::ostream& nestedOutput = json
+        ? static_cast<std::ostream&>(compilerOutput)
+        : output;
+    const ExitCode code = executor(views, nestedOutput, nestedError);
+    if (json) compilerOutputText = compilerOutput.str();
+    return code;
+}
+
+ExitCode executeConfiguredBuild(
+    const BuildOptions& options,
+    bool json,
+    const DriverExecutor& executor,
+    const fs::path& project,
+    const compilation::ProjectBuildSettings& projectSettings,
+    const std::string& configuration,
+    const std::string& optimization,
+    const std::string& debug,
+    const std::string& linker,
+    const std::optional<fs::path>& libraryReferenceRoot,
+    const std::optional<std::size_t>& compilerJobs,
+    const fs::path& generated,
+    const compilation::Project& loaded,
+    const std::vector<DependencyProvenance>& provenance,
+    CommandOutput& result,
+    std::ostream& output,
+    std::ostream& error,
+    BuildResult* buildResult)
+{
+    std::string action;
+    std::string extension;
+    selectBuildAction(loaded.outputKind(), action, extension);
+    const fs::path artifact = projectSettings.outputPath.value_or(
+        project.parent_path() / "bin" / configuration / (loaded.moduleName() + extension));
+    std::error_code fileError;
+    fs::create_directories(artifact.parent_path(), fileError);
+    if (fileError)
+        return result.failure(error,
+            "cannot create build output directory: " + fileError.message(),
+            ExitCode::InternalError);
+
+    std::vector<std::string> owned{action, generated.string(), "-" + optimization, debug};
+    appendNestedCompilerOptions(options, libraryReferenceRoot, compilerJobs, owned);
+    owned.push_back("-o");
+    owned.push_back(artifact.string());
+    std::vector<std::string_view> views;
+    for (const std::string& value : owned) views.push_back(value);
+
+    std::string compilerOutputText;
+    std::ostringstream compilerOutput;
+    std::ostringstream compilerError;
+    const ExitCode code = invokeNestedCompiler(options, json, executor, views,
+        output, error, compilerOutputText, compilerOutput, compilerError);
     if (code != ExitCode::Success)
     {
         if (json)
-            return result.failure(error, compilerError.str().empty() ? "compiler failed" : compilerError.str(), code);
+            return result.failure(error,
+                compilerError.str().empty() ? "compiler failed" : compilerError.str(),
+                code);
         return code;
     }
+
     std::size_t contentFiles = 0;
-    if (!publishContentDirectory(project.parent_path(), artifact.parent_path(), contentFiles, message))
+    std::string message;
+    if (!publishContentDirectory(
+            project.parent_path(), artifact.parent_path(), contentFiles, message))
         return result.failure(error, message, ExitCode::InternalError);
     if (buildResult != nullptr)
-        *buildResult = BuildResult{project, artifact, compilerOutputText, compilerError.str()};
+        *buildResult = BuildResult{
+            project, artifact, compilerOutputText, compilerError.str()};
     return result.success(output,
         "Build succeeded: " + artifact.string(),
-        "\"artifact\":\"" + jsonEscape(pathText(artifact)) + "\",\"configuration\":\"" +
-        jsonEscape(configuration) + "\",\"optimization\":\"" + jsonEscape(optimization) +
-        "\",\"linker\":\"" + jsonEscape(linker) + "\",\"contentFiles\":" +
-        std::to_string(contentFiles) +
+        "\"artifact\":\"" + jsonEscape(pathText(artifact)) +
+        "\",\"configuration\":\"" + jsonEscape(configuration) +
+        "\",\"optimization\":\"" + jsonEscape(optimization) +
+        "\",\"linker\":\"" + jsonEscape(linker) +
+        "\",\"contentFiles\":" + std::to_string(contentFiles) +
         (options.dependencyReport
             ? ",\"dependencyProvenance\":" + dependencyProvenanceJson(provenance)
             : std::string{}) +
-        ",\"stdout\":\"" +
-        jsonEscape(compilerOutputText) + "\",\"stderr\":\"" + jsonEscape(compilerError.str()) + "\"");
+        ",\"stdout\":\"" + jsonEscape(compilerOutputText) +
+        "\",\"stderr\":\"" + jsonEscape(compilerError.str()) + "\"");
+}
+
+ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecutor& executor,
+                      std::ostream& output, std::ostream& error, BuildResult* buildResult)
+{
+    CommandOutput result{json, "build", {}};
+    fs::path project;
+    std::string message;
+    if (!inferProject(options.project, project, message))
+        return result.failure(error, message);
+    result.project = project;
+
+    compilation::ProjectLoader loader;
+    const std::optional<compilation::ProjectBuildSettings> projectSettings =
+        loader.loadBuildSettings(project, message);
+    if (!projectSettings.has_value())
+        return result.failure(error, message, ExitCode::CompilationError);
+    Sidecar sidecar;
+    if (!loadSidecar(project, sidecar, message, false))
+        return result.failure(error, message);
+
+    std::string configuration, optimization, debug, linker;
+    std::optional<fs::path> libraryReferenceRoot;
+    std::optional<std::size_t> compilerJobs;
+    if (!resolveBuildSettings(options, *projectSettings, sidecar,
+            configuration, optimization, debug, linker,
+            libraryReferenceRoot, compilerJobs, message))
+        return result.failure(error, message);
+
+    RestorePlan plan;
+    const ExitCode restored = restoreBuildPlan(
+        options, json, sidecar, project, result, output, error, plan, message);
+    if (restored != ExitCode::Success) return restored;
+
+    fs::path generated;
+    if (!makeGeneratedProject(project, plan, generated, message))
+        return result.failure(error, message, ExitCode::InternalError);
+    TemporaryFile removeGenerated(generated);
+    compilation::ProjectLoadOptions projectLoadOptions;
+    projectLoadOptions.libraryReferenceRoot = libraryReferenceRoot;
+    std::optional<compilation::Project> loaded;
+    std::optional<compilation::ProjectGraph> graph;
+    const ExitCode closure = loadBuildClosure(options, generated,
+        projectLoadOptions, compilerJobs, result, loader, loaded, graph, message, error);
+    if (closure != ExitCode::Success) return closure;
+
+    std::vector<DependencyProvenance> provenance = dependencyProvenance(*graph, plan);
+    updateRootDependencyProvenance(project, *loaded, provenance);
+    if (options.dependencyReport && !json)
+        printDependencyProvenance(output, provenance);
+    return executeConfiguredBuild(
+        options,
+        json,
+        executor,
+        project,
+        *projectSettings,
+        configuration,
+        optimization,
+        debug,
+        linker,
+        libraryReferenceRoot,
+        compilerJobs,
+        generated,
+        *loaded,
+        provenance,
+        result,
+        output,
+        error,
+        buildResult);
 }
 
 ExitCode runBuild(std::span<const std::string_view> raw, std::ostream& output, std::ostream& error,
@@ -1628,7 +1497,13 @@ std::wstring quoteWindows(std::wstring_view value)
     for (wchar_t character : value)
     {
         if (character == L'\\') { ++slashes; continue; }
-        if (character == L'"') { result.append(slashes * 2U + 1U, L'\\'); result.push_back(L'"'); slashes = 0; continue; }
+        if (character == L'"')
+        {
+            result.append(slashes * 2U + 1U, L'\\');
+            result.push_back(L'"');
+            slashes = 0;
+            continue;
+        }
         result.append(slashes, L'\\'); slashes = 0; result.push_back(character);
     }
     result.append(slashes * 2U, L'\\');
@@ -1636,15 +1511,18 @@ std::wstring quoteWindows(std::wstring_view value)
     return result;
 }
 
-bool launch(const fs::path& executable, const std::vector<std::string>& arguments, unsigned long& exitCode, std::string& error)
+bool launch(const fs::path &executable, const std::vector<std::string> &arguments, unsigned long &exitCode,
+            std::string &error)
 {
     std::wstring command = quoteWindows(executable.wstring());
     for (const std::string& argument : arguments)
     {
-        const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, argument.data(), static_cast<int>(argument.size()), nullptr, 0);
+        const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, argument.data(),
+                                             static_cast<int>(argument.size()), nullptr, 0);
         if (size <= 0) { error = "program argument is not valid UTF-8"; return false; }
         std::wstring wide(static_cast<std::size_t>(size), L'\0');
-        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, argument.data(), static_cast<int>(argument.size()), wide.data(), size);
+        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, argument.data(), static_cast<int>(argument.size()),
+                            wide.data(), size);
         command.push_back(L' ');
         command += quoteWindows(wide);
     }
@@ -1688,7 +1566,8 @@ ExitCode runRun(std::span<const std::string_view> raw, std::ostream& output, std
         return result.failure(error, message, ExitCode::CompilationError);
     result.project = built.project;
     if (processExit != 0U)
-        return result.failure(error, "program exited with code " + std::to_string(processExit), ExitCode::CompilationError);
+        return result.failure(error, "program exited with code " + std::to_string(processExit),
+                              ExitCode::CompilationError);
     return result.success(output, "Program exited with code 0",
         "\"artifact\":\"" + jsonEscape(pathText(built.artifact)) + "\",\"programExitCode\":0");
 #else
@@ -1713,15 +1592,22 @@ ExitCode runClean(std::span<const std::string_view> raw, std::ostream& output, s
     for (const char* name : {"bin", "obj"})
     {
         const fs::path target = root / name;
-        if (target.parent_path() != root) return result.failure(error, "clean safety validation failed", ExitCode::InternalError);
+        if (target.parent_path() != root)
+            return result.failure(error, "clean safety validation failed", ExitCode::InternalError);
         removed += fs::remove_all(target, fileError);
-        if (fileError) return result.failure(error, "cannot clean '" + target.string() + "': " + fileError.message(), ExitCode::InternalError);
+        if (fileError)
+            return result.failure(error, "cannot clean '" + target.string() + "': " + fileError.message(),
+                                  ExitCode::InternalError);
     }
-    for (fs::directory_iterator iterator(root, fileError), end; iterator != end && !fileError; iterator.increment(fileError))
+    for (fs::directory_iterator iterator(root, fileError), end; iterator != end && !fileError;
+         iterator.increment(fileError))
         if (iterator->is_regular_file() && iterator->path().filename().string().starts_with(".nspm.") &&
             iterator->path().extension() == ".nsproj") { fs::remove(iterator->path(), fileError); ++removed; }
-    if (fileError) return result.failure(error, "cannot clean generated project files: " + fileError.message(), ExitCode::InternalError);
-    return result.success(output, "Cleaned " + std::to_string(removed) + " filesystem entr" + (removed == 1U ? "y" : "ies"),
+    if (fileError)
+        return result.failure(error, "cannot clean generated project files: " + fileError.message(),
+                              ExitCode::InternalError);
+    return result.success(output,
+                          "Cleaned " + std::to_string(removed) + " filesystem entr" + (removed == 1U ? "y" : "ies"),
                           "\"removed\":" + std::to_string(removed));
 }
 
@@ -1745,9 +1631,12 @@ ExitCode runPackage(std::span<const std::string_view> raw, std::ostream& output,
     for (; index < parsed.values.size(); ++index)
     {
         const std::string_view argument = parsed.values[index];
-        if (command == "add" && argument == "--version" && index + 1 < parsed.values.size()) version = parsed.values[++index];
-        else if (command == "add" && argument == "--source" && index + 1 < parsed.values.size()) source = parsed.values[++index];
-        else if (argument.starts_with('-')) return result.failure(error, "unknown package option: '" + std::string(argument) + "'");
+        if (command == "add" && argument == "--version" && index + 1 < parsed.values.size())
+            version = parsed.values[++index];
+        else if (command == "add" && argument == "--source" && index + 1 < parsed.values.size())
+            source = parsed.values[++index];
+        else if (argument.starts_with('-'))
+            return result.failure(error, "unknown package option: '" + std::string(argument) + "'");
         else if (requested.has_value()) return result.failure(error, "only one project may be specified");
         else requested = fs::path(argument);
     }
@@ -1774,14 +1663,17 @@ ExitCode runPackage(std::span<const std::string_view> raw, std::ostream& output,
             return result.success(output, std::to_string(sidecar.packages.size()) + " package(s)", packages.str());
         }
         for (const auto& package : sidecar.packages)
-            output << package.id << ' ' << package.version << (package.source.empty() ? "" : " " + package.source) << '\n';
+            output << package.id << ' ' << package.version << (package.source.empty() ? "" : " " + package.source)
+                   << '\n';
         return ExitCode::Success;
     }
     const auto matches = [&](const PackageRequest& package) {
         std::string left = package.id;
         std::string right = id;
-        std::transform(left.begin(), left.end(), left.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        std::transform(right.begin(), right.end(), right.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::transform(left.begin(), left.end(), left.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::transform(right.begin(), right.end(), right.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return left == right;
     };
     auto found = std::find_if(sidecar.packages.begin(), sidecar.packages.end(), matches);
@@ -1790,7 +1682,8 @@ ExitCode runPackage(std::span<const std::string_view> raw, std::ostream& output,
         if (!safeComponent(id) || !safeComponent(version)) return result.failure(error, "unsafe package id or version");
         if (found == sidecar.packages.end()) sidecar.packages.push_back(PackageRequest{id, version, source});
         else *found = PackageRequest{id, version, source};
-        std::sort(sidecar.packages.begin(), sidecar.packages.end(), [](const auto& left, const auto& right) { return left.id < right.id; });
+        std::sort(sidecar.packages.begin(), sidecar.packages.end(),
+                  [](const auto &left, const auto &right) { return left.id < right.id; });
     }
     else
     {
@@ -1803,25 +1696,35 @@ ExitCode runPackage(std::span<const std::string_view> raw, std::ostream& output,
                           "\"package\":\"" + jsonEscape(id) + "\"");
 }
 
-struct ExplainTopic final
-{
-    std::string_view status;
-    std::string_view present;
-    std::string_view missing;
-};
-
 std::optional<ExplainTopic> explainTopic(std::string_view topic)
 {
-    if (topic == "build") return ExplainTopic{"available", "project defaults, progress, diagnostics, cache", "long-lived build server"};
-    if (topic == "cache") return ExplainTopic{"available", "content-addressed objects, quarantine, eviction, pipeline identity", "cross-process daemon ownership"};
-    if (topic == "overload") return ExplainTopic{"partial", "deterministic semantic diagnostics", "ranked candidate causal chain"};
-    if (topic == "trait") return ExplainTopic{"partial", "static and dynamic interface MIR", "complete coherence causal chain"};
-    if (topic == "effect") return ExplainTopic{"partial", "MIR ownership, cleanup, allocation and synchronization sites", "general effect type system"};
-    if (topic == "api") return ExplainTopic{"available", "nsc --api-diff over NSMETA fingerprints", "source migration fix-its"};
-    if (topic == "abi") return ExplainTopic{"available", "nsc --abi-diff and structural ABI report", "final cross-toolchain certification"};
-    if (topic == "session") return ExplainTopic{"partial", "one project descriptor session per invocation, bounded scheduler, cancellation hooks", "persistent isolated compiler server"};
-    if (topic == "packages") return ExplainTopic{"partial", "new, restore, deterministic lock, build, run, clean, add, remove, list", "test, pack, publish registry workflow"};
-    if (topic == "debug-allocator") return ExplainTopic{"missing", "MIR allocation and drop visibility", "guarded allocator, leak, UAF and double-drop runtime"};
+    if (topic == "build")
+        return ExplainTopic{"available", "project defaults, progress, diagnostics, cache", "long-lived build server"};
+    if (topic == "cache")
+        return ExplainTopic{"available", "content-addressed objects, quarantine, eviction, pipeline identity",
+                            "cross-process daemon ownership"};
+    if (topic == "overload")
+        return ExplainTopic{"partial", "deterministic semantic diagnostics", "ranked candidate causal chain"};
+    if (topic == "trait")
+        return ExplainTopic{"partial", "static and dynamic interface MIR", "complete coherence causal chain"};
+    if (topic == "effect")
+        return ExplainTopic{"partial", "MIR ownership, cleanup, allocation and synchronization sites",
+                            "general effect type system"};
+    if (topic == "api")
+        return ExplainTopic{"available", "nsc --api-diff over NSMETA fingerprints", "source migration fix-its"};
+    if (topic == "abi")
+        return ExplainTopic{"available", "nsc --abi-diff and structural ABI report",
+                            "final cross-toolchain certification"};
+    if (topic == "session")
+        return ExplainTopic{"partial",
+                            "one project descriptor session per invocation, bounded scheduler, cancellation hooks",
+                            "persistent isolated compiler server"};
+    if (topic == "packages")
+        return ExplainTopic{"partial", "new, restore, deterministic lock, build, run, clean, add, remove, list",
+                            "test, pack, publish registry workflow"};
+    if (topic == "debug-allocator")
+        return ExplainTopic{"missing", "MIR allocation and drop visibility",
+                            "guarded allocator, leak, UAF and double-drop runtime"};
     return std::nullopt;
 }
 
@@ -1838,7 +1741,8 @@ ExitCode runExplain(std::span<const std::string_view> raw, std::ostream& output,
         if (parsed.values.size() != 2U)
             return result.failure(error, "usage: nsc explain optimization");
         if (parsed.json)
-            return result.failure(error, "optimization contract is a versioned text manifest; omit --output-format=json");
+            return result.failure(error,
+                                  "optimization contract is a versioned text manifest; omit --output-format=json");
         constexpr std::array<std::string_view, 1> nested = {"--print-optimization-contract"};
         return executor(nested, output, error);
     }
@@ -1860,9 +1764,9 @@ ExitCode runExplain(std::span<const std::string_view> raw, std::ostream& output,
         return result.failure(error, "topic '" + std::string(topic) + "' does not accept a project argument");
     const std::optional<ExplainTopic> description = explainTopic(topic);
     if (!description.has_value())
-        return result.failure(error,
-            "unknown explain topic '" + std::string(topic) +
-            "'; expected build, cache, optimization, costs, overload, trait, effect, api, abi, session, packages, or debug-allocator");
+        return result.failure(error, "unknown explain topic '" + std::string(topic) +
+                                         "'; expected build, cache, optimization, costs, overload, trait, effect, api, "
+                                         "abi, session, packages, or debug-allocator");
     if (parsed.json)
     {
         output << "{\"schema\":\"NSEXPLAIN 1.0\",\"topic\":\"" << jsonEscape(topic)

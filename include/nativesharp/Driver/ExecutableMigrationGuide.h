@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Driver/ExecutableMigrationChapter.h"
+#include "nativesharp/Driver/ExecutableMigrationStep.h"
 #include "nativesharp/Driver/MigrationAnalyzer.h"
 
 #include <filesystem>
@@ -8,21 +10,6 @@
 
 namespace nativesharp::driver
 {
-struct ExecutableMigrationStep final
-{
-    MigrationFinding finding;
-    std::string before;
-    std::string after;
-    bool automatic = false;
-};
-
-struct ExecutableMigrationChapter final
-{
-    std::string identity;
-    int order = 0;
-    std::vector<ExecutableMigrationStep> steps;
-};
-
 struct ExecutableMigrationGuide final
 {
     std::filesystem::path sourcePath;

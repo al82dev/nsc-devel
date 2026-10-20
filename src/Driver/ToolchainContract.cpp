@@ -69,6 +69,69 @@ void removeCarriageReturn(std::string &line) {
     line.pop_back();
   }
 }
+
+bool parseToolchainFields(
+    std::ifstream& stream,
+    const std::unordered_map<std::string, std::string>& expectedByName,
+    std::vector<Field>& parsed,
+    std::unordered_set<std::string>& seen,
+    std::string& error) {
+  std::string line;
+  std::size_t lineNumber = 1;
+  while (std::getline(stream, line)) {
+    ++lineNumber;
+    removeCarriageReturn(line);
+    const std::size_t separator = line.find('=');
+    if (line.empty() || separator == std::string::npos || separator == 0 ||
+        separator + 1 >= line.size()) {
+      error = "malformed toolchain contract line " +
+              std::to_string(lineNumber) + ": '" + line + "'";
+      return false;
+    }
+    std::string name = line.substr(0, separator);
+    std::string value = line.substr(separator + 1);
+    const auto expectedField = expectedByName.find(name);
+    if (expectedField == expectedByName.end()) {
+      error = "unknown toolchain contract field '" + name + "' on line " +
+              std::to_string(lineNumber);
+      return false;
+    }
+    if (!seen.insert(name).second) {
+      error = "duplicate toolchain contract field '" + name + "' on line " +
+              std::to_string(lineNumber);
+      return false;
+    }
+    if (value != expectedField->second) {
+      error = "incompatible toolchain contract field '" + name + "': found '" +
+              value + "', expected '" + expectedField->second + "'";
+      return false;
+    }
+    parsed.emplace_back(std::move(name), std::move(value));
+  }
+  return true;
+}
+
+bool validateToolchainFields(
+    const std::vector<Field>& expected,
+    const std::vector<Field>& parsed,
+    const std::unordered_set<std::string>& seen,
+    std::string& error) {
+  for (const Field& field : expected) {
+    if (!seen.contains(field.first)) {
+      error = "missing toolchain contract field '" + field.first + "'";
+      return false;
+    }
+  }
+  for (std::size_t index = 0; index < expected.size(); ++index) {
+    if (parsed[index].first != expected[index].first) {
+      error = "toolchain contract field '" + parsed[index].first +
+              "' is out of canonical order; expected '" +
+              expected[index].first + "'";
+      return false;
+    }
+  }
+  return true;
+}
 } // namespace
 
 std::string currentToolchainContract() {
@@ -150,57 +213,13 @@ bool verifyToolchainContract(const std::filesystem::path &source,
 
   std::vector<Field> parsed;
   std::unordered_set<std::string> seen;
-  std::size_t lineNumber = 1;
-  while (std::getline(stream, line)) {
-    ++lineNumber;
-    removeCarriageReturn(line);
-    const std::size_t separator = line.find('=');
-    if (line.empty() || separator == std::string::npos || separator == 0 ||
-        separator + 1 >= line.size()) {
-      error = "malformed toolchain contract line " +
-              std::to_string(lineNumber) + ": '" + line + "'";
-      return false;
-    }
-
-    std::string name = line.substr(0, separator);
-    std::string value = line.substr(separator + 1);
-    const auto expectedField = expectedByName.find(name);
-    if (expectedField == expectedByName.end()) {
-      error = "unknown toolchain contract field '" + name + "' on line " +
-              std::to_string(lineNumber);
-      return false;
-    }
-    if (!seen.insert(name).second) {
-      error = "duplicate toolchain contract field '" + name + "' on line " +
-              std::to_string(lineNumber);
-      return false;
-    }
-    if (value != expectedField->second) {
-      error = "incompatible toolchain contract field '" + name + "': found '" +
-              value + "', expected '" + expectedField->second + "'";
-      return false;
-    }
-    parsed.emplace_back(std::move(name), std::move(value));
-  }
+  if (!parseToolchainFields(stream, expectedByName, parsed, seen, error))
+    return false;
   if (stream.bad()) {
     error = "cannot read toolchain contract '" + source.string() + "'";
     return false;
   }
 
-  for (const Field &field : expected) {
-    if (!seen.contains(field.first)) {
-      error = "missing toolchain contract field '" + field.first + "'";
-      return false;
-    }
-  }
-  for (std::size_t index = 0; index < expected.size(); ++index) {
-    if (parsed[index].first != expected[index].first) {
-      error = "toolchain contract field '" + parsed[index].first +
-              "' is out of canonical order; expected '" +
-              expected[index].first + "'";
-      return false;
-    }
-  }
-  return true;
+  return validateToolchainFields(expected, parsed, seen, error);
 }
 } // namespace nativesharp::driver

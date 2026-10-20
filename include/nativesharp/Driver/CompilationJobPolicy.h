@@ -28,18 +28,7 @@ private:
     std::size_t reservedCores_ = kDefaultReservedCompilationCores;
 };
 
-class CompilationJobPolicyScope final
-{
-public:
-    explicit CompilationJobPolicyScope(const CompilationJobPolicy& policy) noexcept;
-    ~CompilationJobPolicyScope();
-
-    CompilationJobPolicyScope(const CompilationJobPolicyScope&) = delete;
-    CompilationJobPolicyScope& operator=(const CompilationJobPolicyScope&) = delete;
-
-private:
-    const CompilationJobPolicy* previous_;
-};
-
 const CompilationJobPolicy* activeCompilationJobPolicy() noexcept;
 }
+
+#include "nativesharp/Driver/CompilationJobPolicyScope.h"

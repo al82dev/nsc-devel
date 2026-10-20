@@ -1,5 +1,10 @@
 #pragma once
 
+#include "nativesharp/Driver/DeprecatedFeature.h"
+#include "nativesharp/Driver/DeprecationDecision.h"
+#include "nativesharp/Driver/DeprecationKind.h"
+#include "nativesharp/Driver/DeprecationRelease.h"
+#include "nativesharp/Driver/DeprecationState.h"
 #include "nativesharp/Language/CompatibilitySemantics.h"
 
 #include <optional>
@@ -9,30 +14,6 @@
 
 namespace nativesharp::driver
 {
-enum class DeprecationKind { SyntaxAlias, Behavior };
-enum class DeprecationState { Suppressed, Warning, Error, Removed };
-
-struct DeprecationRelease final
-{
-    unsigned major = 3;
-    unsigned minor = 0;
-};
-
-struct DeprecatedFeature final
-{
-    std::string_view identity;
-    DeprecationKind kind = DeprecationKind::Behavior;
-    language::MigrationIssue issue = language::MigrationIssue::NewlyContextualWord;
-    DeprecationRelease deprecatedSince;
-    DeprecationRelease removalNotBefore{4, 0};
-};
-
-struct DeprecationDecision final
-{
-    const DeprecatedFeature* feature = nullptr;
-    DeprecationState state = DeprecationState::Warning;
-};
-
 std::span<const DeprecatedFeature> deprecatedFeatures() noexcept;
 const DeprecatedFeature* deprecatedFeature(std::string_view identity) noexcept;
 const DeprecatedFeature* deprecatedFeature(language::MigrationIssue issue) noexcept;

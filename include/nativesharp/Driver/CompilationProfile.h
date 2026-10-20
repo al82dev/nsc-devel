@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Driver/CompilationProfileSettings.h"
 #include "nativesharp/LLVM/DebugInformationKind.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 
@@ -12,14 +13,6 @@ enum class CompilationProfile
 {
     Debug,
     Release,
-};
-
-struct CompilationProfileSettings final
-{
-    llvm_backend::LlvmOptimizationLevel optimizationLevel =
-        llvm_backend::LlvmOptimizationLevel::O0;
-    llvm_backend::DebugInformationKind debugInformation =
-        llvm_backend::DebugInformationKind::None;
 };
 
 std::optional<CompilationProfile> parseCompilationProfile(std::string_view name) noexcept;

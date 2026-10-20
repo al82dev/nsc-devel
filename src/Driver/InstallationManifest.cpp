@@ -1,4 +1,5 @@
 #include "nativesharp/Driver/InstallationManifest.h"
+#include "Internal/ManifestEntry.h"
 
 #include "nativesharp/Basic/Sha256.h"
 
@@ -15,12 +16,6 @@ namespace nativesharp::driver {
 namespace {
 constexpr std::size_t kMaximumEntries = 10'000;
 constexpr std::size_t kMaximumLineLength = 16'384;
-
-struct ManifestEntry final {
-  std::string sha256;
-  std::uintmax_t size = 0;
-  std::string relativePath;
-};
 
 void removeCarriageReturn(std::string &line) {
   if (!line.empty() && line.back() == '\r') {

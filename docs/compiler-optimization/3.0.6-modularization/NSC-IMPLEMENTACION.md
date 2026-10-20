@@ -1,10 +1,10 @@
 # NSC — IMPLEMENTACIÓN
 
-Progreso absoluto: **1068/1227**
+Progreso absoluto: **1152/1227**
 
-Completados: **1068**
+Completados: **1152**
 
-Pendientes: **159**
+Pendientes: **75**
 
 Fuente canónica: `NSC-GUIA-DE-IMPLEMENTACION.md` y sus anexos A, B, C, D y F, medidos el 2026-10-19.
 
@@ -14,7 +14,7 @@ casillas se agrupen por integración.
 Quedan fuera del denominador: cambios a NSC Builder, cambios de CLI/sintaxis/ABI/NSMETA/contratos 3.0.4,
 eliminación de recursión y las tareas de rendimiento que requieren autorización funcional independiente.
 
-## Refactor mecánico y reorganización sin cambios funcionales — 1068/1225
+## Refactor mecánico y reorganización sin cambios funcionales — 1152/1225
 
 Política de integración: **10 commits técnicos**, uno por límite de subsistema. Un commit se crea únicamente
 cuando su conjunto está completo, revisado y cuenta con la evidencia focal aplicable. Ninguna optimización entra
@@ -3583,268 +3583,276 @@ LlvmLowerer::Implementation, preservación de campos, métodos, comentarios, lit
 tipos definidos en .cpp, cero funciones mayores de 60 líneas ejecutables y líneas dentro de 120 columnas.
 No se ejecutaron compilación, pruebas, suites ni baseline por instrucción del propietario.
 
-### Commit REF-08 — Driver, comandos de proyecto y superficie pública — 0/84
+### Commit REF-08 — Driver, comandos de proyecto y superficie pública — 84/84
 
 Divide Driver y ProjectCommands conservando CLI, ayuda, orden de fases y superficies generadas.
 
-- [ ] NSC-IMPL-0019 — Extraer el struct InvocationCapabilities desde src/Driver/CompilerInvocation.cpp:168-173 (6) hacia
+- [x] NSC-IMPL-0019 — Extraer el struct InvocationCapabilities desde src/Driver/CompilerInvocation.cpp:168-173 (6) hacia
   src/Driver/Internal/InvocationCapabilities.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0020 — Extraer el struct OptionResult desde src/Driver/CompilerOptionParser.cpp:16-20 (5) hacia
+- [x] NSC-IMPL-0020 — Extraer el struct OptionResult desde src/Driver/CompilerOptionParser.cpp:16-20 (5) hacia
   src/Driver/Internal/OptionResult.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0021 — Extraer el struct OptionContext desde src/Driver/CompilerOptionParser.cpp:22-30 (9) hacia
+- [x] NSC-IMPL-0021 — Extraer el struct OptionContext desde src/Driver/CompilerOptionParser.cpp:22-30 (9) hacia
   src/Driver/Internal/OptionContext.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0022 — Extraer el enum MillisecondsParseResult desde src/Driver/CompilerOptionParser.cpp:56-61 (6) hacia
+- [x] NSC-IMPL-0022 — Extraer el enum MillisecondsParseResult desde src/Driver/CompilerOptionParser.cpp:56-61 (6) hacia
   src/Driver/Internal/MillisecondsParseResult.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0023 — Extraer el struct InputIdentity desde src/Driver/DiagnosticBundle.cpp:18-22 (5) hacia
+- [x] NSC-IMPL-0023 — Extraer el struct InputIdentity desde src/Driver/DiagnosticBundle.cpp:18-22 (5) hacia
   src/Driver/Internal/InputIdentity.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0024 — Extraer el struct DriverExecutionScope desde src/Driver/Driver.cpp:146-241 (96) hacia
+- [x] NSC-IMPL-0024 — Extraer el struct DriverExecutionScope desde src/Driver/Driver.cpp:146-241 (96) hacia
   src/Driver/Internal/DriverExecutionScope.h, y mover sus cuerpos a src/Driver/Internal/DriverExecutionScope.cpp;
   conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0025 — Extraer el class DriverPhaseTimer desde src/Driver/Driver.cpp:261-293 (33) hacia
+- [x] NSC-IMPL-0025 — Extraer el class DriverPhaseTimer desde src/Driver/Driver.cpp:261-293 (33) hacia
   src/Driver/Internal/DriverPhaseTimer.h, y mover sus cuerpos a src/Driver/Internal/DriverPhaseTimer.cpp; conservar
   texto, comentarios, firmas, orden y conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0026 — Extraer el struct LayoutRow desde src/Driver/Driver.cpp:366-370 (5) hacia
+- [x] NSC-IMPL-0026 — Extraer el struct LayoutRow desde src/Driver/Driver.cpp:366-370 (5) hacia
   src/Driver/Internal/LayoutRow.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0027 — Extraer el struct PrecompiledExportContract desde src/Driver/Driver.cpp:398-404 (7) hacia
+- [x] NSC-IMPL-0027 — Extraer el struct PrecompiledExportContract desde src/Driver/Driver.cpp:398-404 (7) hacia
   src/Driver/Internal/PrecompiledExportContract.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0028 — Extraer el struct LoadedPrecompiledMetadata desde src/Driver/Driver.cpp:406-411 (6) hacia
+- [x] NSC-IMPL-0028 — Extraer el struct LoadedPrecompiledMetadata desde src/Driver/Driver.cpp:406-411 (6) hacia
   src/Driver/Internal/LoadedPrecompiledMetadata.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0029 — Extraer el struct ManifestEntry desde src/Driver/InstallationManifest.cpp:19-23 (5) hacia
+- [x] NSC-IMPL-0029 — Extraer el struct ManifestEntry desde src/Driver/InstallationManifest.cpp:19-23 (5) hacia
   src/Driver/Internal/ManifestEntry.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0030 — Extraer el struct RequiredFile desde src/Driver/InstallationVerifier.cpp:18-21 (4) hacia
+- [x] NSC-IMPL-0030 — Extraer el struct RequiredFile desde src/Driver/InstallationVerifier.cpp:18-21 (4) hacia
   src/Driver/Internal/RequiredFile.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0031 — Extraer el struct Token desde src/Driver/MigrationAnalyzer.cpp:19-27 (9) hacia
+- [x] NSC-IMPL-0031 — Extraer el struct Token desde src/Driver/MigrationAnalyzer.cpp:19-27 (9) hacia
   src/Driver/Internal/Token.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta. Restricción
   de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0032 — Extraer el struct ManifestEntry desde src/Driver/PackageLifecycle.cpp:21-26 (6) hacia
+- [x] NSC-IMPL-0032 — Extraer el struct ManifestEntry desde src/Driver/PackageLifecycle.cpp:21-26 (6) hacia
   src/Driver/Internal/ManifestEntry.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0033 — Extraer el struct PlanEntry desde src/Driver/PackageLifecycle.cpp:28-32 (5) hacia
+- [x] NSC-IMPL-0033 — Extraer el struct PlanEntry desde src/Driver/PackageLifecycle.cpp:28-32 (5) hacia
   src/Driver/Internal/PlanEntry.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0034 — Extraer el class ProgressJsonForwardingBuffer desde src/Driver/ProjectCommands.cpp:44-108 (65)
+- [x] NSC-IMPL-0034 — Extraer el class ProgressJsonForwardingBuffer desde src/Driver/ProjectCommands.cpp:44-108 (65)
   hacia src/Driver/Internal/ProgressJsonForwardingBuffer.h, y mover sus cuerpos a
   src/Driver/Internal/ProgressJsonForwardingBuffer.cpp; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0035 — Extraer el struct Json desde src/Driver/ProjectCommands.cpp:160-170 (11) hacia
+- [x] NSC-IMPL-0035 — Extraer el struct Json desde src/Driver/ProjectCommands.cpp:160-170 (11) hacia
   src/Driver/Internal/Json.h, y mover sus cuerpos a src/Driver/Internal/Json.cpp; conservar texto, comentarios, firmas,
   orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0036 — Extraer el class JsonParser desde src/Driver/ProjectCommands.cpp:172-332 (161) hacia
+- [x] NSC-IMPL-0036 — Extraer el class JsonParser desde src/Driver/ProjectCommands.cpp:172-332 (161) hacia
   src/Driver/Internal/JsonParser.h, y mover sus cuerpos a src/Driver/Internal/JsonParser.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0037 — Extraer el struct PackageRequest desde src/Driver/ProjectCommands.cpp:392-392 (1) hacia
+- [x] NSC-IMPL-0037 — Extraer el struct PackageRequest desde src/Driver/ProjectCommands.cpp:392-392 (1) hacia
   src/Driver/Internal/PackageRequest.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0038 — Extraer el struct BuildPreferences desde src/Driver/ProjectCommands.cpp:393-401 (9) hacia
+- [x] NSC-IMPL-0038 — Extraer el struct BuildPreferences desde src/Driver/ProjectCommands.cpp:393-401 (9) hacia
   src/Driver/Internal/BuildPreferences.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0039 — Extraer el struct Sidecar desde src/Driver/ProjectCommands.cpp:402-409 (8) hacia
+- [x] NSC-IMPL-0039 — Extraer el struct Sidecar desde src/Driver/ProjectCommands.cpp:402-409 (8) hacia
   src/Driver/Internal/Sidecar.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta. Restricción
   de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0040 — Extraer el struct CommandOutput desde src/Driver/ProjectCommands.cpp:532-563 (32) hacia
+- [x] NSC-IMPL-0040 — Extraer el struct CommandOutput desde src/Driver/ProjectCommands.cpp:532-563 (32) hacia
   src/Driver/Internal/CommandOutput.h, y mover sus cuerpos a src/Driver/Internal/CommandOutput.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0041 — Extraer el struct CommonArguments desde src/Driver/ProjectCommands.cpp:565-569 (5) hacia
+- [x] NSC-IMPL-0041 — Extraer el struct CommonArguments desde src/Driver/ProjectCommands.cpp:565-569 (5) hacia
   src/Driver/Internal/CommonArguments.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0042 — Extraer el struct Artifact desde src/Driver/ProjectCommands.cpp:640-647 (8) hacia
+- [x] NSC-IMPL-0042 — Extraer el struct Artifact desde src/Driver/ProjectCommands.cpp:640-647 (8) hacia
   src/Driver/Internal/Artifact.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0043 — Extraer el struct RestoredPackage desde src/Driver/ProjectCommands.cpp:648-648 (1) hacia
+- [x] NSC-IMPL-0043 — Extraer el struct RestoredPackage desde src/Driver/ProjectCommands.cpp:648-648 (1) hacia
   src/Driver/Internal/RestoredPackage.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0044 — Extraer el struct RestorePlan desde src/Driver/ProjectCommands.cpp:649-649 (1) hacia
+- [x] NSC-IMPL-0044 — Extraer el struct RestorePlan desde src/Driver/ProjectCommands.cpp:649-649 (1) hacia
   src/Driver/Internal/RestorePlan.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0045 — Extraer el struct RestoreOptions desde src/Driver/ProjectCommands.cpp:888-895 (8) hacia
+- [x] NSC-IMPL-0045 — Extraer el struct RestoreOptions desde src/Driver/ProjectCommands.cpp:888-895 (8) hacia
   src/Driver/Internal/RestoreOptions.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0046 — Extraer el class TemporaryFile desde src/Driver/ProjectCommands.cpp:1030-1037 (8) hacia
+- [x] NSC-IMPL-0046 — Extraer el class TemporaryFile desde src/Driver/ProjectCommands.cpp:1030-1037 (8) hacia
   src/Driver/Internal/TemporaryFile.h, y mover sus cuerpos a src/Driver/Internal/TemporaryFile.cpp; conservar texto,
   comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0047 — Extraer el class EnvironmentOverride desde src/Driver/ProjectCommands.cpp:1146-1181 (36) hacia
+- [x] NSC-IMPL-0047 — Extraer el class EnvironmentOverride desde src/Driver/ProjectCommands.cpp:1146-1181 (36) hacia
   src/Driver/Internal/EnvironmentOverride.h, y mover sus cuerpos a src/Driver/Internal/EnvironmentOverride.cpp;
   conservar texto, comentarios, firmas, orden y conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0048 — Extraer el struct BuildOptions desde src/Driver/ProjectCommands.cpp:1183-1198 (16) hacia
+- [x] NSC-IMPL-0048 — Extraer el struct BuildOptions desde src/Driver/ProjectCommands.cpp:1183-1198 (16) hacia
   src/Driver/Internal/BuildOptions.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0049 — Extraer el struct BuildResult desde src/Driver/ProjectCommands.cpp:1342-1342 (1) hacia
+- [x] NSC-IMPL-0049 — Extraer el struct BuildResult desde src/Driver/ProjectCommands.cpp:1342-1342 (1) hacia
   src/Driver/Internal/BuildResult.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0050 — Extraer el struct DependencyProvenance desde src/Driver/ProjectCommands.cpp:1344-1350 (7) hacia
+- [x] NSC-IMPL-0050 — Extraer el struct DependencyProvenance desde src/Driver/ProjectCommands.cpp:1344-1350 (7) hacia
   src/Driver/Internal/DependencyProvenance.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y
   conducta. Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0051 — Extraer el struct ExplainTopic desde src/Driver/ProjectCommands.cpp:1806-1811 (6) hacia
+- [x] NSC-IMPL-0051 — Extraer el struct ExplainTopic desde src/Driver/ProjectCommands.cpp:1806-1811 (6) hacia
   src/Driver/Internal/ExplainTopic.h, sin .cpp adicional; conservar texto, comentarios, firmas, orden y conducta.
   Restricción de pruebas: lista del suite (A-1).
-- [ ] NSC-IMPL-0246 — Conservar el class CompilationJobPolicy como tipo principal de
+- [x] NSC-IMPL-0246 — Conservar el class CompilationJobPolicy como tipo principal de
   include/nativesharp/Driver/CompilationJobPolicy.h:10-29 y convertir ese archivo en umbrella de sus tipos extraídos,
   sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0247 — Extraer el class CompilationJobPolicyScope desde
+- [x] NSC-IMPL-0247 — Extraer el class CompilationJobPolicyScope desde
   include/nativesharp/Driver/CompilationJobPolicy.h:31-42 hacia include/nativesharp/Driver/CompilationJobPolicyScope.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0248 — Conservar el enum CompilationProfile como tipo principal de
+- [x] NSC-IMPL-0248 — Conservar el enum CompilationProfile como tipo principal de
   include/nativesharp/Driver/CompilationProfile.h:11-15 y convertir ese archivo en umbrella de sus tipos extraídos, sin
   alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0249 — Extraer el struct CompilationProfileSettings desde
+- [x] NSC-IMPL-0249 — Extraer el struct CompilationProfileSettings desde
   include/nativesharp/Driver/CompilationProfile.h:17-23 hacia include/nativesharp/Driver/CompilationProfileSettings.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0250 — Extraer el enum CompilerLanguage desde include/nativesharp/Driver/CompilerConsole.h:11-15 hacia
+- [x] NSC-IMPL-0250 — Extraer el enum CompilerLanguage desde include/nativesharp/Driver/CompilerConsole.h:11-15 hacia
   include/nativesharp/Driver/CompilerLanguage.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0251 — Extraer el struct CompilerConsoleArguments desde
+- [x] NSC-IMPL-0251 — Extraer el struct CompilerConsoleArguments desde
   include/nativesharp/Driver/CompilerConsole.h:17-22 hacia include/nativesharp/Driver/CompilerConsoleArguments.h;
   conservar texto, comentarios, orden de declaración y cierre transitivo mediante el umbrella original. Restricción de
   pruebas: ninguna.
-- [ ] NSC-IMPL-0252 — Extraer el class CompilerLanguageScope desde include/nativesharp/Driver/CompilerConsole.h:30-41
+- [x] NSC-IMPL-0252 — Extraer el class CompilerLanguageScope desde include/nativesharp/Driver/CompilerConsole.h:30-41
   hacia include/nativesharp/Driver/CompilerLanguageScope.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0253 — Extraer el enum DeprecationKind desde include/nativesharp/Driver/DeprecationPolicy.h:12-12 hacia
+- [x] NSC-IMPL-0253 — Extraer el enum DeprecationKind desde include/nativesharp/Driver/DeprecationPolicy.h:12-12 hacia
   include/nativesharp/Driver/DeprecationKind.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0254 — Extraer el enum DeprecationState desde include/nativesharp/Driver/DeprecationPolicy.h:13-13 hacia
+- [x] NSC-IMPL-0254 — Extraer el enum DeprecationState desde include/nativesharp/Driver/DeprecationPolicy.h:13-13 hacia
   include/nativesharp/Driver/DeprecationState.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0255 — Extraer el struct DeprecationRelease desde include/nativesharp/Driver/DeprecationPolicy.h:15-19
+- [x] NSC-IMPL-0255 — Extraer el struct DeprecationRelease desde include/nativesharp/Driver/DeprecationPolicy.h:15-19
   hacia include/nativesharp/Driver/DeprecationRelease.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0256 — Extraer el struct DeprecatedFeature desde include/nativesharp/Driver/DeprecationPolicy.h:21-28
+- [x] NSC-IMPL-0256 — Extraer el struct DeprecatedFeature desde include/nativesharp/Driver/DeprecationPolicy.h:21-28
   hacia include/nativesharp/Driver/DeprecatedFeature.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0257 — Extraer el struct DeprecationDecision desde include/nativesharp/Driver/DeprecationPolicy.h:30-34
+- [x] NSC-IMPL-0257 — Extraer el struct DeprecationDecision desde include/nativesharp/Driver/DeprecationPolicy.h:30-34
   hacia include/nativesharp/Driver/DeprecationDecision.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0258 — Extraer el struct ExecutableMigrationStep desde
+- [x] NSC-IMPL-0258 — Extraer el struct ExecutableMigrationStep desde
   include/nativesharp/Driver/ExecutableMigrationGuide.h:11-17 hacia
   include/nativesharp/Driver/ExecutableMigrationStep.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0259 — Extraer el struct ExecutableMigrationChapter desde
+- [x] NSC-IMPL-0259 — Extraer el struct ExecutableMigrationChapter desde
   include/nativesharp/Driver/ExecutableMigrationGuide.h:19-24 hacia
   include/nativesharp/Driver/ExecutableMigrationChapter.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0260 — Conservar el struct ExecutableMigrationGuide como tipo principal de
+- [x] NSC-IMPL-0260 — Conservar el struct ExecutableMigrationGuide como tipo principal de
   include/nativesharp/Driver/ExecutableMigrationGuide.h:26-30 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0261 — Extraer el struct MigrationTextEdit desde include/nativesharp/Driver/MigrationAnalyzer.h:14-20
+- [x] NSC-IMPL-0261 — Extraer el struct MigrationTextEdit desde include/nativesharp/Driver/MigrationAnalyzer.h:14-20
   hacia include/nativesharp/Driver/MigrationTextEdit.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0262 — Extraer el struct MigrationFinding desde include/nativesharp/Driver/MigrationAnalyzer.h:22-32
+- [x] NSC-IMPL-0262 — Extraer el struct MigrationFinding desde include/nativesharp/Driver/MigrationAnalyzer.h:22-32
   hacia include/nativesharp/Driver/MigrationFinding.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0263 — Extraer el struct MigrationAnalysis desde include/nativesharp/Driver/MigrationAnalyzer.h:34-39
+- [x] NSC-IMPL-0263 — Extraer el struct MigrationAnalysis desde include/nativesharp/Driver/MigrationAnalyzer.h:34-39
   hacia include/nativesharp/Driver/MigrationAnalysis.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0264 — Extraer el struct MigrationCompatibilityEntry desde
+- [x] NSC-IMPL-0264 — Extraer el struct MigrationCompatibilityEntry desde
   include/nativesharp/Driver/MigrationCompatibilityMatrix.h:10-18 hacia
   include/nativesharp/Driver/MigrationCompatibilityEntry.h; conservar texto, comentarios, orden de declaración y cierre
   transitivo mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0265 — Conservar el struct MigrationCompatibilityMatrix como tipo principal de
+- [x] NSC-IMPL-0265 — Conservar el struct MigrationCompatibilityMatrix como tipo principal de
   include/nativesharp/Driver/MigrationCompatibilityMatrix.h:20-31 y convertir ese archivo en umbrella de sus tipos
   extraídos, sin alterar el cierre transitivo. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0819 — Extraer el struct ObjectPublication desde src/Driver/ArtifactPublisher.h:11-15 hacia
+- [x] NSC-IMPL-0819 — Extraer el struct ObjectPublication desde src/Driver/ArtifactPublisher.h:11-15 hacia
   src/Driver/ObjectPublication.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0820 — Extraer el struct ExecutablePublication desde src/Driver/ArtifactPublisher.h:17-25 hacia
+- [x] NSC-IMPL-0820 — Extraer el struct ExecutablePublication desde src/Driver/ArtifactPublisher.h:17-25 hacia
   src/Driver/ExecutablePublication.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante el
   umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0821 — Extraer el struct StaticLibraryPublication desde src/Driver/ArtifactPublisher.h:27-35 hacia
+- [x] NSC-IMPL-0821 — Extraer el struct StaticLibraryPublication desde src/Driver/ArtifactPublisher.h:27-35 hacia
   src/Driver/StaticLibraryPublication.h; conservar texto, comentarios, orden de declaración y cierre transitivo mediante
   el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0822 — Extraer el struct DynamicLibraryPublication desde src/Driver/ArtifactPublisher.h:37-49 hacia
+- [x] NSC-IMPL-0822 — Extraer el struct DynamicLibraryPublication desde src/Driver/ArtifactPublisher.h:37-49 hacia
   src/Driver/DynamicLibraryPublication.h; conservar texto, comentarios, orden de declaración y cierre transitivo
   mediante el umbrella original. Restricción de pruebas: ninguna.
-- [ ] NSC-IMPL-0823 — Conservar el class ArtifactPublisher como tipo principal de src/Driver/ArtifactPublisher.h:52-100
+- [x] NSC-IMPL-0823 — Conservar el class ArtifactPublisher como tipo principal de src/Driver/ArtifactPublisher.h:52-100
   y convertir ese archivo en umbrella de sus tipos extraídos, sin alterar el cierre transitivo. Restricción de pruebas:
   ninguna.
-- [ ] NSC-IMPL-0858 — Descomponer PublicSurfaceEmitter::build en src/Driver/PublicSurfaceEmitter.cpp:28 (1305 líneas
+- [x] NSC-IMPL-0858 — Descomponer PublicSurfaceEmitter::build en src/Driver/PublicSurfaceEmitter.cpp:28 (1305 líneas
   ejecutables; 1620 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0892 — Descomponer Driver::printHelp en src/Driver/Driver.cpp:2892 (299 líneas ejecutables; 304 totales)
+- [x] NSC-IMPL-0892 — Descomponer Driver::printHelp en src/Driver/Driver.cpp:2892 (299 líneas ejecutables; 304 totales)
   hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni
   resultados.
-- [ ] NSC-IMPL-0898 — Descomponer Driver::runProject en src/Driver/Driver.cpp:3500 (275 líneas ejecutables; 414 totales)
+- [x] NSC-IMPL-0898 — Descomponer Driver::runProject en src/Driver/Driver.cpp:3500 (275 líneas ejecutables; 414 totales)
   hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni
   resultados.
-- [ ] NSC-IMPL-0905 — Descomponer Driver::runProjectOopDynamicLibraryGeneration en src/Driver/Driver.cpp:4474 (258
+- [x] NSC-IMPL-0905 — Descomponer Driver::runProjectOopDynamicLibraryGeneration en src/Driver/Driver.cpp:4474 (258
   líneas ejecutables; 351 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de
   flujo, estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0917 — Descomponer configurePrecompiledModules en src/Driver/Driver.cpp:1672 (220 líneas ejecutables; 301
+- [x] NSC-IMPL-0917 — Descomponer configurePrecompiledModules en src/Driver/Driver.cpp:1672 (220 líneas ejecutables; 301
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0928 — Descomponer appendValidatedLibraryReferences en src/Driver/Driver.cpp:2002 (196 líneas
+- [x] NSC-IMPL-0928 — Descomponer appendValidatedLibraryReferences en src/Driver/Driver.cpp:2002 (196 líneas
   ejecutables; 295 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0948 — Descomponer Driver::runProjectOopExecutableGeneration en src/Driver/Driver.cpp:4081 (163 líneas
+- [x] NSC-IMPL-0948 — Descomponer Driver::runProjectOopExecutableGeneration en src/Driver/Driver.cpp:4081 (163 líneas
   ejecutables; 223 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0957 — Descomponer executeBuild en src/Driver/ProjectCommands.cpp:1431 (150 líneas ejecutables; 179
+- [x] NSC-IMPL-0957 — Descomponer executeBuild en src/Driver/ProjectCommands.cpp:1431 (150 líneas ejecutables; 179
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0965 — Descomponer Driver::runFrontend en src/Driver/Driver.cpp:5279 (140 líneas ejecutables; 240
+- [x] NSC-IMPL-0965 — Descomponer Driver::runFrontend en src/Driver/Driver.cpp:5279 (140 líneas ejecutables; 240
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-0977 — Descomponer Driver::runProjectOopStaticLibraryGeneration en src/Driver/Driver.cpp:4305 (131 líneas
+- [x] NSC-IMPL-0977 — Descomponer Driver::runProjectOopStaticLibraryGeneration en src/Driver/Driver.cpp:4305 (131 líneas
   ejecutables; 168 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-0981 — Descomponer applyInstallationRemovalPlan en src/Driver/PackageLifecycle.cpp:545 (128 líneas
+- [x] NSC-IMPL-0981 — Descomponer applyInstallationRemovalPlan en src/Driver/PackageLifecycle.cpp:545 (128 líneas
   ejecutables; 218 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1001 — Descomponer Driver::verifyLibraryArtifacts en src/Driver/Driver.cpp:5116 (114 líneas ejecutables;
+- [x] NSC-IMPL-1001 — Descomponer Driver::verifyLibraryArtifacts en src/Driver/Driver.cpp:5116 (114 líneas ejecutables;
   162 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1069 — Descomponer renderCompilationTimeTraceJson en src/Driver/CompilationTelemetry.cpp:139 (85 líneas
+- [x] NSC-IMPL-1069 — Descomponer renderCompilationTimeTraceJson en src/Driver/CompilationTelemetry.cpp:139 (85 líneas
   ejecutables; 103 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1071 — Descomponer Driver::runProjectOopCodeGeneration en src/Driver/Driver.cpp:3915 (84 líneas
+- [x] NSC-IMPL-1071 — Descomponer Driver::runProjectOopCodeGeneration en src/Driver/Driver.cpp:3915 (84 líneas
   ejecutables; 121 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1088 — Descomponer analyzeMigrationSource en src/Driver/MigrationAnalyzer.cpp:228 (80 líneas ejecutables;
+- [x] NSC-IMPL-1088 — Descomponer analyzeMigrationSource en src/Driver/MigrationAnalyzer.cpp:228 (80 líneas ejecutables;
   117 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1111 — Descomponer publishContentDirectory en src/Driver/ProjectCommands.cpp:1039 (76 líneas ejecutables;
+- [x] NSC-IMPL-1111 — Descomponer publishContentDirectory en src/Driver/ProjectCommands.cpp:1039 (76 líneas ejecutables;
   106 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1117 — Descomponer tokenize en src/Driver/MigrationAnalyzer.cpp:41 (75 líneas ejecutables; 112 totales)
+- [x] NSC-IMPL-1117 — Descomponer tokenize en src/Driver/MigrationAnalyzer.cpp:41 (75 líneas ejecutables; 112 totales)
   hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni
   resultados.
-- [ ] NSC-IMPL-1126 — Descomponer verifyInstallation en src/Driver/InstallationVerifier.cpp:52 (74 líneas ejecutables;
+- [x] NSC-IMPL-1126 — Descomponer verifyInstallation en src/Driver/InstallationVerifier.cpp:52 (74 líneas ejecutables;
   103 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1135 — Descomponer Driver::runCodeGeneration en src/Driver/Driver.cpp:3230 (72 líneas ejecutables; 119
+- [x] NSC-IMPL-1135 — Descomponer Driver::runCodeGeneration en src/Driver/Driver.cpp:3230 (72 líneas ejecutables; 119
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1158 — Descomponer sourceTypeForMetadataKey en src/Driver/Driver.cpp:447 (67 líneas ejecutables; 101
+- [x] NSC-IMPL-1158 — Descomponer sourceTypeForMetadataKey en src/Driver/Driver.cpp:447 (67 líneas ejecutables; 101
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1166 — Descomponer localizeCompilerMessage en src/Driver/CompilerConsole.cpp:108 (65 líneas ejecutables;
+- [x] NSC-IMPL-1166 — Descomponer localizeCompilerMessage en src/Driver/CompilerConsole.cpp:108 (65 líneas ejecutables;
   74 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1169 — Descomponer writeTextAtomically en src/Driver/PackageLifecycle.cpp:167 (64 líneas ejecutables; 94
+- [x] NSC-IMPL-1169 — Descomponer writeTextAtomically en src/Driver/PackageLifecycle.cpp:167 (64 líneas ejecutables; 94
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1176 — Descomponer verifyToolchainContract en src/Driver/ToolchainContract.cpp:122 (63 líneas
+- [x] NSC-IMPL-1176 — Descomponer verifyToolchainContract en src/Driver/ToolchainContract.cpp:122 (63 líneas
   ejecutables; 84 totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo,
   estado, algoritmo ni resultados.
-- [ ] NSC-IMPL-1184 — Descomponer readPlan en src/Driver/PackageLifecycle.cpp:354 (62 líneas ejecutables; 92 totales)
+- [x] NSC-IMPL-1184 — Descomponer readPlan en src/Driver/PackageLifecycle.cpp:354 (62 líneas ejecutables; 92 totales)
   hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado, algoritmo ni
   resultados.
-- [ ] NSC-IMPL-1196 — Descomponer writeDiagnosticBundle en src/Driver/DiagnosticBundle.cpp:50 (61 líneas ejecutables; 81
+- [x] NSC-IMPL-1196 — Descomponer writeDiagnosticBundle en src/Driver/DiagnosticBundle.cpp:50 (61 líneas ejecutables; 81
   totales) hasta que cada función quede en ≤60 líneas ejecutables, sin cambiar orden, control de flujo, estado,
   algoritmo ni resultados.
-- [ ] NSC-IMPL-1218 — Partir Driver.cpp según los rangos medidos, conservando Driver como fachada y la salida de ayuda
+- [x] NSC-IMPL-1218 — Partir Driver.cpp según los rangos medidos, conservando Driver como fachada y la salida de ayuda
   byte-idéntica.
+
+Nota de cierre REF-08: Driver, comandos de proyecto y superficie pública se separaron en 24 fuentes de
+implementación nuevas y tipos con un archivo por definición, manteniendo las fachadas y umbrellas originales.
+La auditoría estática comprobó 84/84 ítems, salida de ayuda literal idéntica (15,308 bytes de literales),
+preservación de 3,705 literales y 226 comentarios del corpus original, registro exacto de fuentes en CMake,
+resolución de includes, cero tipos definidos en .cpp, cero líneas mayores de 120 columnas y descomposición de
+las 25 funciones inventariadas hasta un máximo de 60 líneas ejecutables por función. No se ejecutaron
+compilación, pruebas, suites ni baseline por instrucción del propietario.
 
 ### Commit REF-09 — Linker, runtime y ejecutable — 0/55
 
