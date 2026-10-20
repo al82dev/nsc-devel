@@ -742,7 +742,7 @@ void ProjectMethodBodyModel::processTryFrame(
             if (restoreAfterExit.has_value()) restoreOwnershipFlow(*restoreAfterExit);
             return;
         }
-        const ast::AstNode* const tryBody = frame.state->tryBody;
+        const ast::AstNode* const tryBody = frame.statement->first();
         const std::size_t tryScope = frame.scopeOrdinal;
         frame.stage = TryStage::AfterTryBody;
         if (tryBody != nullptr)
@@ -757,28 +757,26 @@ void ProjectMethodBodyModel::processTryFrame(
     }
     if (frame.stage == TryStage::NextCatch)
     {
-        const std::optional<std::pair<const ast::AstNode*, std::size_t>> nextCatch =
-            prepareNextCatch(*frame.state, methodMemberOrdinal, diagnostics);
-        if (nextCatch.has_value())
+        const ast::AstNode* catchBody = nullptr;
+        if (prepareNextCatch(
+                *frame.state, catchBody, methodMemberOrdinal, diagnostics))
         {
             frame.stage = TryStage::AfterCatch;
-            if (nextCatch->first != nullptr)
+            if (catchBody != nullptr)
                 pushBlockFrame(
-                    frames, nextCatch->first, nextCatch->second, false, methodMemberOrdinal);
-            return;
-        }
-        const std::optional<std::pair<const ast::AstNode*, std::size_t>> finallyBody =
-            prepareFinally(*frame.state, methodMemberOrdinal);
-        if (finallyBody.has_value())
-        {
-            frame.stage = TryStage::AfterFinally;
-            if (finallyBody->first != nullptr)
-                pushBlockFrame(
-                    frames, finallyBody->first, finallyBody->second, true,
+                    frames, catchBody, frame.state->currentCatchScope, false,
                     methodMemberOrdinal);
             return;
         }
-        finishTry(*frame.state);
+        const ast::AstNode* finallyBody = nullptr;
+        if (prepareFinally(*frame.state, finallyBody))
+        {
+            frame.stage = TryStage::AfterFinally;
+            if (finallyBody != nullptr)
+                pushBlockFrame(
+                    frames, finallyBody, frame.scopeOrdinal, true, methodMemberOrdinal);
+            return;
+        }
     }
     else if (frame.stage == TryStage::AfterCatch)
     {
@@ -789,7 +787,6 @@ void ProjectMethodBodyModel::processTryFrame(
     else
     {
         finishFinally(*frame.state);
-        finishTry(*frame.state);
     }
     std::optional<OwnershipFlowSnapshot> restoreAfterExit =
         std::move(frame.restoreAfterExit);
@@ -1518,7 +1515,7 @@ void ProjectMethodBodyModel::analyzeWhileCondition(
     }
 }
 
-ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeWhileBody(
+OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeWhileBody(
     const ast::AstNode* statement,
     std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal,
@@ -1547,7 +1544,7 @@ ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeWhi
     return joinOwnershipFlows(noBackEdge, backEdgeStates);
 }
 
-ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeDoWhileCondition(
+OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeDoWhileCondition(
     const ast::AstNode* statement,
     std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal,
@@ -1663,7 +1660,7 @@ void ProjectMethodBodyModel::validateWhilePartialMoveBackEdge(
     }
 }
 
-ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::completeWhileFlow(
+OwnershipFlowSnapshot ProjectMethodBodyModel::completeWhileFlow(
     bool isDoWhile,
     bool conditionAlwaysTrue,
     const OwnershipFlowSnapshot& loopEntry,
@@ -3210,7 +3207,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::evaluateVariabl
         // C7: a braced initializer has no type of its own -- it is filled AGAINST the
         // declared type, exactly like a lambda is bound against a delegate type just below.
         return bindAggregateInitializer(
-            variable->first(), typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics, true);
+            variable->first(), std::string(typeKey), methodMemberOrdinal, scopeOrdinal,
+            diagnostics, true);
     }
     if (variable->first()->kind() == ast::AstNodeKind::LambdaExpression &&
         isDelegateTypeKey(typeKey))
@@ -4224,7 +4222,7 @@ bool ProjectMethodBodyModel::analyzeForCondition(
     return conditionAlwaysTrue;
 }
 
-ProjectMethodBodyModel::OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeForUpdate(
+OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeForUpdate(
     const ast::AstNode* statement,
     OwnershipFlowSnapshot backEdgeState,
     std::size_t methodMemberOrdinal,

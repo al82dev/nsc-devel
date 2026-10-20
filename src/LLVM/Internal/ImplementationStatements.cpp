@@ -278,6 +278,8 @@ bool LlvmLowerer::Implementation::lowerInstructionGroup01(
         case mir::MirOpcode::Copy:
             result = operand(instruction, 0, error);
             break;
+        default:
+            break;
     }
 
     return finishInstruction(instruction, result, error);
@@ -329,6 +331,8 @@ bool LlvmLowerer::Implementation::lowerInstructionGroup02(
             {
                 return failInstruction(instruction, "address.symbol references unknown storage", error);
             }
+            break;
+        default:
             break;
     }
 
@@ -383,7 +387,8 @@ bool LlvmLowerer::Implementation::lowerInstructionGroup03(
                 : LLVMBuildNeg(builder_, value, name.c_str());
             break;
         }
-
+        default:
+            break;
     }
 
     return finishInstruction(instruction, result, error);
@@ -448,6 +453,8 @@ bool LlvmLowerer::Implementation::lowerInstructionGroup03Remainder(
 
         case mir::MirOpcode::PointerDifference:
             result = lowerPointerDifference(instruction, error);
+            break;
+        default:
             break;
     }
 
@@ -519,6 +526,8 @@ bool LlvmLowerer::Implementation::lowerInstructionGroup04(
                 builder_, deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
             return true;
         }
+        default:
+            break;
     }
 
     return finishInstruction(instruction, result, error);
@@ -530,6 +539,7 @@ bool LlvmLowerer::Implementation::lowerInstructionGroup05(
     const std::string& name,
     std::string& error)
 {
+    (void)name;
     switch (instruction->opcode())
     {
         case mir::MirOpcode::Jump:
@@ -575,6 +585,8 @@ bool LlvmLowerer::Implementation::lowerInstructionGroup05(
         case mir::MirOpcode::Unreachable:
             LLVMBuildUnreachable(builder_);
             return true;
+        default:
+            break;
     }
 
     return finishInstruction(instruction, result, error);

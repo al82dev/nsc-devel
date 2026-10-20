@@ -282,13 +282,13 @@ bool OopLlvmImplementation::initializeAggregateField(
             LLVMValueRef address = byteOffset(slot, child->immediate, "aggregate.element.addr");
             if (child->bitWidth.has_value())
             {
-                LLVMTypeRef storageType = bitFieldStorageType(child.get(), error);
+                LLVMTypeRef storageType = bitFieldStorageType(child, error);
                 if (storageType == nullptr) return false;
                 LLVMValueRef previous = LLVMBuildLoad2(
                     builder_, storageType, address, "aggregate.bitfield.storage.load");
                 LLVMSetAlignment(previous, static_cast<unsigned>(child->alignment));
                 if (child->volatileAccess) LLVMSetVolatile(previous, 1);
-                LLVMValueRef merged = insertBitField(child.get(), previous, value, error);
+                LLVMValueRef merged = insertBitField(child, previous, value, error);
                 if (merged == nullptr) return false;
                 LLVMValueRef store = LLVMBuildStore(builder_, merged, address);
                 LLVMSetAlignment(store, static_cast<unsigned>(child->alignment));

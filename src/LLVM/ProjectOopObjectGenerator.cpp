@@ -262,6 +262,8 @@ std::unique_ptr<LlvmModule> lowerCodeUnit(
     return module;
 }
 
+}
+
 std::unique_ptr<LlvmTargetMachine> prepareCodeUnitTarget(
     LlvmModule& module,
     LlvmOptimizationLevel optimizationLevel,
@@ -297,6 +299,9 @@ std::unique_ptr<LlvmTargetMachine> prepareCodeUnitTarget(
     telemetry.optimizationMicros += optimization.elapsedMicros();
     return targetMachine;
 }
+
+namespace
+{
 
 bool restorePostLlvmObject(
     const CompilationArtifactCache* cache,
@@ -344,6 +349,8 @@ bool restorePostLlvmObject(
     return true;
 }
 
+}
+
 void emitAndStoreCodeUnit(
     LlvmModule& module,
     LlvmTargetMachine& targetMachine,
@@ -370,6 +377,9 @@ void emitAndStoreCodeUnit(
     cache->storeObject(cacheKey, objectFile, moduleError);
     telemetry.storeMicros += store.elapsedMicros();
 }
+
+namespace
+{
 
 void processObjectCodeUnit(
     std::size_t ordinal,

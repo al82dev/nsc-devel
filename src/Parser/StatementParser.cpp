@@ -1,5 +1,7 @@
 #include "nativesharp/Parser/Parser.h"
 
+#include "Internal/ConditionDeclarationBinding.h"
+
 #include "Internal/StructuredControlParser.h"
 #include "Internal/StatementDivergenceWork.h"
 
@@ -1284,36 +1286,6 @@ ast::AstNode* Parser::finishVariableDeclaration(
     ast::AstNode* const result = declarationList == nullptr ? variable : declarationList;
     result->setRange(tokenRangeFrom(beginIndex));
     return result;
-}
-
-namespace
-{
-const ast::AstNode* conditionDeclarationBinding(
-    ast::AstNode* declaration,
-    diagnostics::DiagnosticEngine& diagnostics)
-{
-    if (declaration == nullptr)
-    {
-        return nullptr;
-    }
-
-    const ast::AstNode* binding = declaration;
-    if (declaration->kind() == ast::AstNodeKind::BlockStatement &&
-        declaration->auxiliaryText() == "declaration-list")
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidCondition,
-            diagnostics::DiagnosticSeverity::Error,
-            declaration->range(),
-            "a condition declaration must declare exactly one local");
-        if (declaration->children().empty())
-        {
-            return nullptr;
-        }
-        binding = declaration->children().front();
-    }
-    return binding;
-}
 }
 
 bool Parser::statementAlwaysDiverges(const ast::AstNode* statement) const

@@ -75,8 +75,10 @@ bool isComparison(lexer::TokenKind kind) noexcept
         kind == lexer::TokenKind::Greater || kind == lexer::TokenKind::GreaterEqual;
 }
 
+}
+
 std::unique_ptr<ProjectOopHirNode> buildInterpolationHandlerExpression(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     const MethodCoreBinding& core,
     std::size_t tempOrdinal,
     const std::vector<language::InterpolationPart>& parts,
@@ -138,12 +140,9 @@ std::unique_ptr<ProjectOopHirNode> buildInterpolationHandlerExpression(
     return block;
 }
 
-
-}
-
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     std::string& error)
 {
@@ -155,7 +154,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpression(
 // wrapper after the child expression has been lowered.
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -168,7 +167,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionStatement(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerVariableDeclarationStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -178,7 +177,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerVariableDeclarationS
 std::unique_ptr<ProjectOopHirNode>
 ProjectOopHirModel::lowerDeconstructionDeclarationStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -187,7 +186,7 @@ ProjectOopHirModel::lowerDeconstructionDeclarationStatement(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInlineAssemblyStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -197,7 +196,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInlineAssemblyStatem
 std::unique_ptr<ProjectOopHirNode>
 ProjectOopHirModel::lowerStaticAssertStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -210,7 +209,7 @@ ProjectOopHirModel::lowerStaticAssertStatement(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIfStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -223,7 +222,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIfStatement(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerLoopStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -236,7 +235,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerLoopStatement(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerSwitchStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -249,7 +248,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerSwitchStatement(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerForStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -262,7 +261,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerForStatement(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerForeachStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -275,7 +274,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerForeachStatement(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExitValueStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -288,7 +287,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExitValueStatement(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCoroutineValueStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -301,7 +300,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCoroutineValueStatem
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerUsingStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -314,7 +313,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerUsingStatement(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerTryStatement(
     const ast::AstNode* statement,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error)
 {
     return lowerExpressionWithStatementFrame(
@@ -328,8 +327,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerTryStatement(
 // Executes expression lowering with an optional bottom frame that owns the
 // statement continuation. Ordinary expression callers pass no such frame.
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatementFrame(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const ast::AstNode* statementContinuation,
     std::string& error)
@@ -387,35 +386,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
         {
             return nullptr;
         }
-        while (!worklistComplete)
-        {
-            const bool schedulerResult = runExpressionScheduler(
-                frames,
-                current,
-                currentMemberOrdinal,
-                currentAddressContext,
-                currentInputKind,
-                lowered,
-                error,
-                worklistComplete,
-                rootCleanupDepth,
-                rootExceptionHandlerDepth);
-            if (schedulerResult) break;
-            if (resumePendingConditionStatementAfterFailure(
-                    frames,
-                    current,
-                    currentMemberOrdinal,
-                    currentAddressContext,
-                    currentInputKind,
-                    lowered,
-                    error))
-            {
-                continue;
-            }
-            rollbackMatchCleanups(
-                frames, rootCleanupDepth, rootExceptionHandlerDepth);
-            return nullptr;
-        }
+        if (!runRootExpressionWorklist(
+                frames, current, currentMemberOrdinal, currentAddressContext,
+                currentInputKind, lowered, error, worklistComplete,
+                rootCleanupDepth, rootExceptionHandlerDepth)) return nullptr;
     }
     else
     {
@@ -426,8 +400,39 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionWithStatem
     return lowered;
 }
 
+// ES: Ejecuta el worklist raíz y conserva la recuperación de condiciones y rollback existentes.
+// EN: Runs the root worklist while preserving existing condition recovery and rollback.
+// Parámetros / Parameters: transportan por referencia todo el estado iterativo ya inicializado.
+// Retorno / Return: false sólo en el mismo fallo terminal; O(número de tramas procesadas).
+bool ProjectOopHirModel::runRootExpressionWorklist(
+    std::vector<IterativeExpressionFrame>& frames,
+    const ast::AstNode*& current,
+    std::size_t& currentMemberOrdinal,
+    bool& currentAddressContext,
+    IterativeInputKind& currentInputKind,
+    std::unique_ptr<ProjectOopHirNode>& lowered,
+    std::string& error,
+    bool& worklistComplete,
+    std::size_t rootCleanupDepth,
+    std::size_t rootExceptionHandlerDepth)
+{
+    while (!worklistComplete)
+    {
+        if (runExpressionScheduler(
+                frames, current, currentMemberOrdinal, currentAddressContext,
+                currentInputKind, lowered, error, worklistComplete,
+                rootCleanupDepth, rootExceptionHandlerDepth)) break;
+        if (resumePendingConditionStatementAfterFailure(
+                frames, current, currentMemberOrdinal, currentAddressContext,
+                currentInputKind, lowered, error)) continue;
+        rollbackMatchCleanups(frames, rootCleanupDepth, rootExceptionHandlerDepth);
+        return false;
+    }
+    return true;
+}
+
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::buildConditionalExpression(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     std::unique_ptr<ProjectOopHirNode> condition,
     std::unique_ptr<ProjectOopHirNode> whenTrue,
     std::unique_ptr<ProjectOopHirNode> whenFalse)
@@ -486,7 +491,7 @@ bool ProjectOopHirModel::isZeroIntegerLiteral(const ast::AstNode* syntax) noexce
 }
 
 void ProjectOopHirModel::convertBinaryEnumZeroOperands(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     std::unique_ptr<ProjectOopHirNode>& left,
     std::unique_ptr<ProjectOopHirNode>& right)
 {
@@ -511,7 +516,7 @@ void ProjectOopHirModel::convertBinaryEnumZeroOperands(
 }
 
 std::optional<std::string> ProjectOopHirModel::numericBinaryOperandType(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     const ProjectOopHirNode& left,
     const ProjectOopHirNode& right,
     const std::string& resultType) const
@@ -531,7 +536,7 @@ std::optional<std::string> ProjectOopHirModel::numericBinaryOperandType(
 }
 
 void ProjectOopHirModel::convertNumericBinaryOperands(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     const std::string& numericOperandType,
     std::unique_ptr<ProjectOopHirNode>& left,
     std::unique_ptr<ProjectOopHirNode>& right)
@@ -553,7 +558,7 @@ void ProjectOopHirModel::convertNumericBinaryOperands(
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::buildBuiltinBinaryExpression(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     std::unique_ptr<ProjectOopHirNode> left,
     std::unique_ptr<ProjectOopHirNode> right)
 {
@@ -587,7 +592,7 @@ bool ProjectOopHirModel::hasValidDelegateCreationTarget(
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishDelegateCreation(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     const MethodDelegateBinding& binding,
     std::unique_ptr<ProjectOopHirNode> receiver)
 {
@@ -610,8 +615,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishDelegateCreation(
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerThisExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const std::string& resultType,
     std::string& error)
@@ -665,8 +670,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerThisExpressionImplCa
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullConditionalMemberExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodExpressionTypeBinding* typeBinding,
     const std::string& resultType,
@@ -720,8 +725,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullConditionalMembe
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNameExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     std::string& error)
 {
@@ -802,8 +807,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNameExpressionImplCa
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInterpolatedStringExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     std::string& error)
 {
@@ -852,8 +857,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerInterpolatedStringEx
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerUnaryExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const std::string& resultType,
     std::string& error)
@@ -866,53 +871,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerUnaryExpressionImplC
         // ruta paralela. La tarea 62 pedia extender esto "para punteros" cuando no existia
         // para ningun tipo; aqui entra para los dos a la vez, que es la unica forma de que
         // `++p` y `++i` no se separen.
-        if (addressContext)
-        {
-            error = "the result of ++/-- is a value, not addressable storage";
-            return nullptr;
-        }
-        const MethodExpressionTypeBinding* targetType = expressionType(expression->first());
-        if (targetType == nullptr)
-        {
-            error = "Stage 34 ++/-- operand has no resolved semantic type";
-            return nullptr;
-        }
-        auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
-        if (address == nullptr) return nullptr;
-
-        auto step = makeNode(ProjectOopHirNodeKind::CompoundStore, expression, targetType->typeKey);
-        step->operation = expression->tokenKind() == lexer::TokenKind::PlusPlus
-            ? lexer::TokenKind::Plus
-            : lexer::TokenKind::Minus;
-        // La UNICA diferencia entre postfijo y prefijo.
-        step->booleanValue = expression->kind() == ast::AstNodeKind::PostfixExpression;
-
-        std::unique_ptr<ProjectOopHirNode> one;
-        if (ProjectTypeConversion::isPointer(targetType->typeKey))
-        {
-            // `++p` avanza UN ELEMENTO, no un byte. El tipo apuntado es lo que da el paso,
-            // y lo resuelve el MIR con el mismo servicio de tamano que todo lo demas.
-            step->elementTypeKey = targetType->typeKey.substr(0, targetType->typeKey.size() - 1);
-            one = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:nint");
-            one->integerValue = 1;
-        }
-        else if (ProjectTypeConversion::isNumeric(targetType->typeKey) &&
-                 !ProjectTypeConversion::isIntegral(targetType->typeKey))
-        {
-            one = makeNode(ProjectOopHirNodeKind::FloatingConstant, expression, targetType->typeKey);
-            one->floatingValue = 1.0;
-        }
-        else
-        {
-            // El uno se construye YA en el tipo del destino, no en `int` con una conversion
-            // detras: asi la operacion entera ocurre en un solo tipo y no hay una segunda
-            // regla de promocion que mantener de acuerdo con la de `Binary`.
-            one = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, targetType->typeKey);
-            one->integerValue = 1;
-        }
-        step->children.push_back(std::move(address));
-        step->children.push_back(std::move(one));
-        return step;
+        return lowerIncrementDecrementExpression(
+            expression, memberOrdinal, addressContext, error);
     }
     // Interop Foundation: `&lvalue` and `*pointer` are now first-class in the OOP
     // pipeline. HISTORY: both used to be walled off ("keeps raw pointer
@@ -988,10 +948,67 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerUnaryExpressionImplC
     return node;
 }
 
-
-std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullCoalescingExpressionImplCase(
+// ES: Baja ++/-- con el mismo CompoundStore, constantes y semántica de punteros existentes.
+// EN: Lowers ++/-- with the existing CompoundStore, constants, and pointer semantics.
+// Parámetros / Parameters: expression y memberOrdinal identifican el operando; error conserva diagnósticos.
+// Retorno / Return: nodo CompoundStore o nullptr con el mismo error; O(costo de bajar el operando).
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIncrementDecrementExpression(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
+    bool addressContext,
+    std::string& error)
+{
+    if (addressContext)
+    {
+        error = "the result of ++/-- is a value, not addressable storage";
+        return nullptr;
+    }
+    const MethodExpressionTypeBinding* targetType = expressionType(expression->first());
+    if (targetType == nullptr)
+    {
+        error = "Stage 34 ++/-- operand has no resolved semantic type";
+        return nullptr;
+    }
+    auto address = lowerExpression(expression->first(), memberOrdinal, true, error);
+    if (address == nullptr) return nullptr;
+    auto step = makeNode(
+        ProjectOopHirNodeKind::CompoundStore, expression, targetType->typeKey);
+    step->operation = expression->tokenKind() == lexer::TokenKind::PlusPlus
+        ? lexer::TokenKind::Plus : lexer::TokenKind::Minus;
+    // La UNICA diferencia entre postfijo y prefijo.
+    step->booleanValue = expression->kind() == ast::AstNodeKind::PostfixExpression;
+    std::unique_ptr<ProjectOopHirNode> one;
+    if (ProjectTypeConversion::isPointer(targetType->typeKey))
+    {
+        // `++p` avanza UN ELEMENTO, no un byte. El tipo apuntado es lo que da el paso,
+        // y lo resuelve el MIR con el mismo servicio de tamano que todo lo demas.
+        step->elementTypeKey = targetType->typeKey.substr(0, targetType->typeKey.size() - 1);
+        one = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:nint");
+        one->integerValue = 1;
+    }
+    else if (ProjectTypeConversion::isNumeric(targetType->typeKey) &&
+             !ProjectTypeConversion::isIntegral(targetType->typeKey))
+    {
+        one = makeNode(ProjectOopHirNodeKind::FloatingConstant, expression, targetType->typeKey);
+        one->floatingValue = 1.0;
+    }
+    else
+    {
+        // El uno se construye YA en el tipo del destino, no en `int` con una conversion
+        // detras: asi la operacion entera ocurre en un solo tipo y no hay una segunda
+        // regla de promocion que mantener de acuerdo con la de `Binary`.
+        one = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, targetType->typeKey);
+        one->integerValue = 1;
+    }
+    step->children.push_back(std::move(address));
+    step->children.push_back(std::move(one));
+    return step;
+}
+
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullCoalescingExpressionImplCase(
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const std::string& resultType,
     std::string& error)
@@ -1035,8 +1052,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullCoalescingExpres
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBinaryExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     std::string& error)
 {
@@ -1052,35 +1069,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBinaryExpressionImpl
     // un segundo modo seria un segundo sitio donde la regla puede discrepar.
     if (stringCore != nullptr && stringCore->kind == MethodCoreOperationKind::StructEquals)
     {
-        if (addressContext)
-        {
-            error = "C8 struct comparison result is not addressable";
-            return nullptr;
-        }
-        auto node = makeNode(
-            ProjectOopHirNodeKind::AggregateEquals, expression, stringCore->resultTypeKey);
-        node->elementTypeKey = stringCore->elementTypeKey;
-        auto left = lowerExpression(expression->first(), memberOrdinal, false, error);
-        if (left == nullptr) return nullptr;
-        auto right = lowerExpression(expression->second(), memberOrdinal, false, error);
-        if (right == nullptr) return nullptr;
-        node->children.push_back(std::move(left));
-        node->children.push_back(std::move(right));
-        node->argumentCount = node->children.size();
-        if (!appendAggregateLeaves(
-                stringCore->elementTypeKey, 0, expression, node->children, error))
-        {
-            return nullptr;
-        }
-        if (expression->tokenKind() == lexer::TokenKind::BangEqual)
-        {
-            auto negated = makeNode(
-                ProjectOopHirNodeKind::Unary, expression, stringCore->resultTypeKey);
-            negated->operation = lexer::TokenKind::Bang;
-            negated->children.push_back(std::move(node));
-            return negated;
-        }
-        return node;
+        return lowerStructEqualityExpression(
+            expression, memberOrdinal, addressContext, *stringCore, error);
     }
     if (stringCore != nullptr &&
         (stringCore->kind == MethodCoreOperationKind::StringConcat ||
@@ -1138,10 +1128,47 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBinaryExpressionImpl
         expression, std::move(left), std::move(right));
 }
 
-
-std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerRangeEndpoint(
+// ES: Baja igualdad estructural usando exactamente el nodo agregado y la negación existentes.
+// EN: Lowers structural equality using the existing aggregate node and negation.
+// Parámetros / Parameters: expression, memberOrdinal y binding son los congelados; error conserva diagnóstico.
+// Retorno / Return: AggregateEquals, su negación o nullptr; O(número de hojas agregadas).
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStructEqualityExpression(
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
+    bool addressContext,
+    const MethodCoreBinding& binding,
+    std::string& error)
+{
+    if (addressContext)
+    {
+        error = "C8 struct comparison result is not addressable";
+        return nullptr;
+    }
+    auto node = makeNode(
+        ProjectOopHirNodeKind::AggregateEquals, expression, binding.resultTypeKey);
+    node->elementTypeKey = binding.elementTypeKey;
+    auto left = lowerExpression(expression->first(), memberOrdinal, false, error);
+    if (left == nullptr) return nullptr;
+    auto right = lowerExpression(expression->second(), memberOrdinal, false, error);
+    if (right == nullptr) return nullptr;
+    node->children.push_back(std::move(left));
+    node->children.push_back(std::move(right));
+    node->argumentCount = node->children.size();
+    if (!appendAggregateLeaves(
+            binding.elementTypeKey, 0, expression, node->children, error))
+        return nullptr;
+    if (expression->tokenKind() != lexer::TokenKind::BangEqual) return node;
+    auto negated = makeNode(
+        ProjectOopHirNodeKind::Unary, expression, binding.resultTypeKey);
+    negated->operation = lexer::TokenKind::Bang;
+    negated->children.push_back(std::move(node));
+    return negated;
+}
+
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerRangeEndpoint(
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     const ast::AstNode* syntax,
     const ProjectImplicitConversion& conversion,
     std::string& error)
@@ -1168,8 +1195,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerRangeEndpoint(
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerRangeSliceIndexExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodRangeSliceBinding* range,
     std::string& error)
@@ -1221,8 +1248,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerRangeSliceIndexExpre
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayOrStringIndexExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodCoreBinding* core,
     std::string& error)
@@ -1274,8 +1301,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayOrStringIndexEx
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullConditionalArrayIndexExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodCoreBinding* core,
     std::string& error)
@@ -1301,8 +1328,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullConditionalArray
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullConditionalUserIndexExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodExpressionTypeBinding* typeBinding,
     std::string& error)
@@ -1339,8 +1366,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullConditionalUserI
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerVariableArrayIndexExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodCoreBinding* core,
     const MethodVariableArrayIndexBinding* variableArrayIndex,
@@ -1475,8 +1502,8 @@ void ProjectOopHirModel::configureFlexibleArrayBounds(
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerOrdinaryRawElementIndexExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodCoreBinding* core,
     const MethodExpressionTypeBinding* baseType,
@@ -1524,8 +1551,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerOrdinaryRawElementIn
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerRawElementIndexExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodCoreBinding* core,
     std::string& error)
@@ -1576,8 +1603,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerRawElementIndexExpre
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIndexerAccessorExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodExpressionTypeBinding* typeBinding,
     const MethodCallBinding* indexerCall,
@@ -1611,8 +1638,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIndexerAccessorExpre
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIndexExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodExpressionTypeBinding* typeBinding,
     std::string& error)
@@ -1674,8 +1701,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIndexExpressionImplC
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullCoalescingAssignmentExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     std::string& error)
 {
@@ -1746,8 +1773,8 @@ bool ProjectOopHirModel::expandAssignmentTargetTuple(
 
 
 bool ProjectOopHirModel::appendAssignmentTargetLeaf(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     ProjectOopHirNode* node,
     std::string& error,
     const ast::AstNode* targetSyntax,
@@ -1785,8 +1812,8 @@ bool ProjectOopHirModel::appendAssignmentTargetLeaf(
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerTupleDeconstructionAssignmentExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     std::string& error)
 {
@@ -1839,8 +1866,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerTupleDeconstructionA
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventAssignmentExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodEventBinding* stage42Event,
     std::string& error)
@@ -1898,8 +1925,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventAssignmentExpre
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundSetterAssignmentExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodExpressionTypeBinding* typeBinding,
     const MethodCallBinding* setterCall,
@@ -1961,8 +1988,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundSetterAssign
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerSetterAssignmentExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodExpressionTypeBinding* typeBinding,
     const MethodCallBinding* setterCall,
@@ -2038,8 +2065,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerSetterAssignmentExpr
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceSetterAssignmentExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const NamespaceFunctionCallBinding* namespaceSetter,
     std::string& error)
@@ -2104,8 +2131,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceSetterAssig
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullConditionalMemberAssignmentExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     const std::string& resultType,
     std::string& error)
 {
@@ -2137,8 +2164,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullConditionalMembe
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullConditionalIndexAssignmentExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     const std::string& resultType,
     std::string& error)
 {
@@ -2171,7 +2198,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNullConditionalIndex
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::createOrdinaryAssignmentNode(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     const std::string& resultType)
 {
     auto node = makeNode(ProjectOopHirNodeKind::Assignment, expression, resultType);
@@ -2214,8 +2241,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::createOrdinaryAssignmentN
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const std::string& resultType,
     std::unique_ptr<ProjectOopHirNode> node,
@@ -2319,8 +2346,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerSimpleAssignmentExpression(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::unique_ptr<ProjectOopHirNode> node,
     std::string& error)
 {
@@ -2346,8 +2373,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerSimpleAssignmentExpr
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAssignmentExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const MethodExpressionTypeBinding* typeBinding,
     const std::string& resultType,
@@ -2434,8 +2461,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAssignmentExpression
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerMoveExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     std::string& error)
 {
@@ -2511,8 +2538,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerMoveExpressionImplCa
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerResultPropagationExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     const std::string& resultType,
     std::string& error)
@@ -2562,7 +2589,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerResultPropagationExp
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerLambdaCreationExpressionImplCase(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     const MethodLambdaBinding* stage43Lambda,
     std::string& error)
 {
@@ -2619,7 +2646,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerLambdaCreationExpres
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDelegateCreationExpressionImplCase(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     const MethodDelegateBinding* stage42Delegate,
     std::string& error)
 {
@@ -2664,8 +2691,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDelegateCreationExpr
 // borrows-- sigue siendo el mismo codigo para todas las llamadas resueltas, que es justamente
 // el motivo de entrar por aqui en vez de armar el nodo de llamada a mano.
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerResolvedCall(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     std::string& error,
     const MethodExpressionTypeBinding* typeBinding,
@@ -2688,8 +2715,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerResolvedCall(
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventBacking(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     std::string& error,
     const MethodEventBinding* binding,
     bool address)
@@ -2699,7 +2726,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventBacking(
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerLiteralExpressionImplCase(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     bool addressContext,
     const std::string& resultType,
     std::string& error)
@@ -2792,8 +2819,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerLiteralExpressionImp
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerOverflowPolicyExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     std::string& error)
 {
@@ -2808,8 +2835,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerOverflowPolicyExpres
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerConditionalExpressionImplCase(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     std::string& error)
 {
@@ -2833,8 +2860,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerConditionalExpressio
 
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
-    const ast::AstNode* expression,
-    std::size_t memberOrdinal,
+    [[maybe_unused]] const ast::AstNode* expression,
+    [[maybe_unused]] std::size_t memberOrdinal,
     bool addressContext,
     std::string& error)
 {
@@ -2859,6 +2886,53 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
     const std::string resultType = typeBinding != nullptr ? typeBinding->typeKey :
         stage42Delegate != nullptr ? stage42Delegate->resultTypeKey : "<error>";
 
+    switch (expression->kind())
+    {
+        case ast::AstNodeKind::LoopExpression:
+        case ast::AstNodeKind::ThisExpression:
+        case ast::AstNodeKind::NullConditionalMemberExpression:
+        case ast::AstNodeKind::IdentifierExpression:
+        case ast::AstNodeKind::MemberExpression:
+        case ast::AstNodeKind::IntegerLiteralExpression:
+        case ast::AstNodeKind::CharacterLiteralExpression:
+        case ast::AstNodeKind::FloatingLiteralExpression:
+        case ast::AstNodeKind::StringLiteralExpression:
+        case ast::AstNodeKind::NameOfExpression:
+        case ast::AstNodeKind::BooleanLiteralExpression:
+        case ast::AstNodeKind::NullLiteralExpression:
+        case ast::AstNodeKind::DefaultValueExpression:
+        case ast::AstNodeKind::OverflowPolicyExpression:
+        case ast::AstNodeKind::InterpolatedStringExpression:
+            return lowerExpressionImplGroup1(
+                expression, memberOrdinal, addressContext, typeBinding, resultType, error);
+        case ast::AstNodeKind::UnaryExpression:
+        case ast::AstNodeKind::PostfixExpression:
+        case ast::AstNodeKind::NullCoalescingExpression:
+        case ast::AstNodeKind::MatchValueExpression:
+        case ast::AstNodeKind::MatchExpression:
+        case ast::AstNodeKind::MatchArmExpression:
+        case ast::AstNodeKind::ConditionalExpression:
+        case ast::AstNodeKind::BinaryExpression:
+            return lowerExpressionImplGroup2(
+                expression, memberOrdinal, addressContext, resultType, error);
+        default:
+            return lowerExpressionImplGroup3(
+                expression, memberOrdinal, addressContext, typeBinding, resultType, error);
+    }
+}
+
+// ES: Despacha formas primarias y literales sin cambiar sus rutas de lowering.
+// EN: Dispatches primary and literal forms without changing their lowering routes.
+// Parámetros / Parameters: conservan sintaxis, miembro, contexto, tipos y diagnóstico.
+// Retorno / Return: el mismo nodo o nullptr producido por la rama original; O(1) acotado.
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImplGroup1(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    bool addressContext,
+    const MethodExpressionTypeBinding* typeBinding,
+    const std::string& resultType,
+    std::string& error)
+{
     switch (expression->kind())
     {
         case ast::AstNodeKind::LoopExpression:
@@ -2902,6 +2976,24 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
             return lowerInterpolatedStringExpressionImplCase(
                 expression, memberOrdinal, addressContext, error);
 
+        default:
+            return nullptr;
+    }
+}
+
+// ES: Despacha operadores y control de valor sin cambiar sus rutas de lowering.
+// EN: Dispatches operators and value control without changing their lowering routes.
+// Parámetros / Parameters: conservan sintaxis, miembro, contexto, tipo y diagnóstico.
+// Retorno / Return: el mismo nodo o nullptr producido por la rama original; O(1) acotado.
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImplGroup2(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    bool addressContext,
+    const std::string& resultType,
+    std::string& error)
+{
+    switch (expression->kind())
+    {
         case ast::AstNodeKind::UnaryExpression:
         case ast::AstNodeKind::PostfixExpression:
         {
@@ -2937,6 +3029,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
                 expression, memberOrdinal, addressContext, error);
         }
 
+        default:
+            return nullptr;
+    }
+}
+
+// ES: Despacha acceso, construcción, conversión y errores finales conservando el switch exhaustivo.
+// EN: Dispatches access, construction, conversion, and final errors while preserving exhaustive behavior.
+// Parámetros / Parameters: conservan sintaxis, miembro, contexto, tipos y diagnóstico.
+// Retorno / Return: el mismo nodo o nullptr producido por la rama original; O(1) acotado.
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImplGroup3(
+    const ast::AstNode* expression,
+    std::size_t memberOrdinal,
+    bool addressContext,
+    const MethodExpressionTypeBinding* typeBinding,
+    const std::string& resultType,
+    std::string& error)
+{
+    switch (expression->kind())
+    {
         case ast::AstNodeKind::IndexExpression:
         case ast::AstNodeKind::NullConditionalIndexExpression:
         {
@@ -3040,7 +3151,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExpressionImpl(
 // TemporaryAddress path and the struct method received the address of something that was never
 // stored.
 const MethodCallBinding* ProjectOopHirModel::accessorGetterBinding(
-    const ast::AstNode* expression) const noexcept
+    [[maybe_unused]] const ast::AstNode* expression) const noexcept
 {
     if (expression == nullptr || memberModel_ == nullptr) return nullptr;
     switch (expression->kind())
@@ -3084,7 +3195,7 @@ const MethodCallBinding* ProjectOopHirModel::accessorGetterBinding(
 //
 // NSC-LIMIT-008 added the one case where syntax lies: a property or indexer getter is written like
 // a field or an element and is a call. See accessorGetterBinding.
-bool ProjectOopHirModel::isNaturallyAddressable(const ast::AstNode* expression) const noexcept
+bool ProjectOopHirModel::isNaturallyAddressable([[maybe_unused]] const ast::AstNode* expression) const noexcept
 {
     if (expression == nullptr) return false;
     switch (expression->kind())

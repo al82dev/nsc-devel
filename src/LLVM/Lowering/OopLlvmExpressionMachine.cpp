@@ -685,6 +685,7 @@ bool OopLlvmImplementation::lowerExpressionFrame010OverflowPolicy(
         const LlvmExpressionFrame& frame, std::vector<LlvmExpressionFrame>& frames,
         std::vector<LLVMValueRef>& values, std::string& error)
 {
+    (void)error;
     const frontend::ProjectOopMirNode* current = frame.node;
     if (!(current->kind == frontend::ProjectOopMirNodeKind::OverflowPolicy)) return false;
     if (frame.phase == 0)
@@ -4735,7 +4736,7 @@ void OopLlvmImplementation::finishFixedArraySpanFrame(
         return;
     }
     LLVMBuildStore(builder_, data, byteOffset(slot, 0, "fixed.span.start.addr"));
-    LLVMBuildStore(builder_, count, byteOffset(slot, 8, "fixed.span.count.addr"));
+    LLVMBuildStore(builder_, countNative, byteOffset(slot, 8, "fixed.span.count.addr"));
     LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "fixed.span.init.value");
     if (carrierAlignment > 1U) LLVMSetAlignment(loaded, carrierAlignment);
     values.push_back(loaded);

@@ -1,6 +1,6 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../Internal/CloneDepthGuard.h"
-#include "../Internal/ByteReader.h"
+#include "../Cache/CachePayloadReader.h"
 #include "../Internal/EnumConstResolver.h"
 #include "../Internal/SpecializationWaveTimer.h"
 #include "../Internal/InterfaceFingerprint.h"
@@ -80,7 +80,7 @@ using internal::templateCacheKey;
 using internal::templateSourceSpelling;
 using internal::trailingPackIndex;
 using internal::valueParameterCount;
-using internal::ByteReader;
+using internal::CachePayloadReader;
 using internal::EnumConstResolver;
 using internal::MirCacheRecord;
 using internal::SpecializationWaveTimer;
@@ -103,10 +103,10 @@ void ProjectGenericModel::collectTraitImplementationNodes(
         currentNamespace = namespaceAppend(parentNamespace, node->text());
     if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
         node->auxiliaryText() == "ns3-trait-impl" && !node->genericParameters().empty())
-        implementations.push_back(LocatedNode{&unit, node, currentNamespace});
+        implementations.push_back(LocatedNode{&unit, node, currentNamespace, {}});
     else if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
              !node->genericParameters().empty())
-        templates.push_back(LocatedNode{&unit, node, currentNamespace});
+        templates.push_back(LocatedNode{&unit, node, currentNamespace, {}});
     for (ast::AstNode* child : node->children())
         collectTraitImplementationNodes(
             unit, child, currentNamespace, templates, implementations);

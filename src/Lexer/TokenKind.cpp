@@ -50,6 +50,7 @@ std::string_view tokenKindNamePart1(TokenKind kind) noexcept
         NS_TOKEN_CASE(KwPrivate);
         NS_TOKEN_CASE(KwIf);
 #undef NS_TOKEN_CASE
+        default: break;
     }
 
     return {};
@@ -101,6 +102,7 @@ std::string_view tokenKindNamePart2(TokenKind kind) noexcept
         NS_TOKEN_CASE(KwOverride);
         NS_TOKEN_CASE(KwAbstract);
 #undef NS_TOKEN_CASE
+        default: break;
     }
 
     return {};
@@ -152,6 +154,7 @@ std::string_view tokenKindNamePart3(TokenKind kind) noexcept
         NS_TOKEN_CASE(EqualEqual);
         NS_TOKEN_CASE(BangEqual);
 #undef NS_TOKEN_CASE
+        default: break;
     }
 
     return {};
@@ -195,6 +198,7 @@ std::string_view tokenKindNamePart4(TokenKind kind) noexcept
         NS_TOKEN_CASE(DotDotEqual);
         NS_TOKEN_CASE(Utf8StringLiteral);
 #undef NS_TOKEN_CASE
+        default: break;
     }
 
     return {};

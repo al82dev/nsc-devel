@@ -281,7 +281,8 @@ void SemanticAnalyzer::analyzeEnumMembers(ast::AstNode* node, Symbol* enumSymbol
                 "auto-incremented enum value is not representable as NativeSharp int");
         }
 
-        Symbol* member = createSymbol(SymbolKind::EnumMember, memberNode, enumType, false);
+        Symbol* member = createSymbol(
+            SymbolKind::EnumMember, memberNode, enumSymbol->type(), false);
         member->setEnumValue(value);
         member->setConstantValue(ConstantValue::signedInteger(value));
         enumSymbol->addMember(member);

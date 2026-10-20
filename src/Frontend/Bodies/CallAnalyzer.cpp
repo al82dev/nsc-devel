@@ -1927,6 +1927,7 @@ void ProjectMethodBodyModel::recognizeCoreAtomicValueOperations(
     ExpressionResult& result,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    (void)result;
     // Stage 54.2/Item 311 atomics. Recognition is deliberately exact by declaring type,
     // name, parameter mode, value type, result type, and MemoryOrder position.
     //
@@ -2822,6 +2823,7 @@ void ProjectMethodBodyModel::applySelectedCoreOperations(
     ExpressionResult& result,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    (void)call;
     if (nameLookup_ != nullptr && selectedMember.declaringTypeOrdinal < nameLookup_->namedTypes().size())
     {
         const NamedTypeDeclaration& declaringType = nameLookup_->namedTypes()[selectedMember.declaringTypeOrdinal];
@@ -3568,10 +3570,10 @@ bool ProjectMethodBodyModel::callIsStringLiteralBorrow(
 
 std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::analyzeGenericLambdaSpecializedCall(
     const ast::AstNode* expression,
-    const ExpressionResult& callee,
+    [[maybe_unused]] const ExpressionResult& callee,
     std::vector<ExpressionResult>& arguments,
     bool allArgumentsValid,
-    MethodCallBinding& call,
+    [[maybe_unused]] MethodCallBinding& call,
     std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
@@ -3662,6 +3664,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    (void)call;
     ExpressionResult result;
     if (callee.eventMemberOrdinal.has_value())
     {
@@ -4483,7 +4486,9 @@ bool ProjectMethodBodyModel::reportCallPassKindDiagnostic(
         }
     }
     if (!mismatch) return false;
-    checkArgumentPassKinds(expression, call.methodName, soleCandidate, arguments, diagnostics);
+    const std::vector<ExpressionResult> argumentValues(arguments.begin(), arguments.end());
+    checkArgumentPassKinds(
+        expression, call.methodName, soleCandidate, argumentValues, diagnostics);
     return true;
 }
 
@@ -4516,7 +4521,7 @@ bool ProjectMethodBodyModel::chooseNonDominatedCallCandidate(
     const ast::AstNode* expression,
     std::span<const std::size_t> viableEvaluationOrdinals,
     MethodCallBinding& call,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    diagnostics::DiagnosticEngine& diagnostics)
 {
     std::vector<std::size_t> nonDominated;
     nonDominated.reserve(viableEvaluationOrdinals.size());
@@ -4575,8 +4580,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     if (!validateSelectedCallReceiver(
             provenVariantCase, expression, callee, selected,
             call, scopeOrdinal, diagnostics)) return result;
+    const std::vector<ExpressionResult> argumentValues(arguments.begin(), arguments.end());
     checkArgumentPassKinds(
-        expression, call.methodName, selected.memberOrdinal, arguments, diagnostics,
+        expression, call.methodName, selected.memberOrdinal, argumentValues, diagnostics,
         std::span<const std::size_t>(selected.argumentParameterOrdinals).subspan(
             coreStringForwarding ? 1U : 0U));
     invalidateCallArgumentFlow(
@@ -5259,6 +5265,7 @@ void ProjectMethodBodyModel::configureCallLambdaTargets(
     bool& coreStringForwarding,
     std::vector<std::string>& lambdaTargetTypes)
 {
+    (void)call;
     // Native string instance syntax forwards to a static Core.String method whose first
     // parameter is the receiver.  Named source arguments must never be allowed to bind that
     // compiler-supplied parameter.

@@ -19,8 +19,8 @@ using internal::MonitorCoreCallFrameState;
 using internal::StructAggregateCallFrameState;
 
 bool ProjectOopHirModel::initializeAssertionCoreFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     frame.core = coreBinding(frame.syntax);
     if (frame.core == nullptr ||
@@ -75,8 +75,8 @@ bool ProjectOopHirModel::initializeAssertionCoreFrame(
 }
 
 bool ProjectOopHirModel::initializeIteratorCoreCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     frame.core = coreBinding(frame.syntax);
     if (frame.core == nullptr ||
@@ -115,8 +115,8 @@ bool ProjectOopHirModel::initializeIteratorCoreCallFrame(
 }
 
 bool ProjectOopHirModel::initializeCoreOperandCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     frame.core = coreBinding(frame.syntax);
     CoreOperandCallFrameState call;
@@ -156,9 +156,9 @@ bool ProjectOopHirModel::initializeCoreOperandCallFrame(
 }
 
 bool ProjectOopHirModel::initializeSpanCoreOperandCallFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     CoreOperandCallFrameState& call,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (frame.addressContext)
     {
@@ -188,9 +188,9 @@ bool ProjectOopHirModel::initializeSpanCoreOperandCallFrame(
 }
 
 bool ProjectOopHirModel::initializeStringCoreOperandCallFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     CoreOperandCallFrameState& call,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const std::optional<HirCoreOperandCallPlan> plan =
         hirCoreOperandCallPlan(frame.core->kind);
@@ -248,7 +248,7 @@ bool ProjectOopHirModel::nextCoreOperandCallChild(
 }
 
 void ProjectOopHirModel::acceptCoreOperandCallChild(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     std::unique_ptr<ProjectOopHirNode> child)
 {
     CoreOperandCallFrameState& call = *frame.coreOperandCall;
@@ -266,8 +266,8 @@ void ProjectOopHirModel::acceptCoreOperandCallChild(
 }
 
 bool ProjectOopHirModel::initializeAtomicCoreCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     frame.core = coreBinding(frame.syntax);
     const std::optional<HirAtomicCallPlan> plan =
@@ -315,7 +315,7 @@ bool ProjectOopHirModel::initializeAtomicCoreCallFrame(
 }
 
 bool ProjectOopHirModel::nextAtomicCoreCallChild(
-    const IterativeExpressionFrame& frame,
+    [[maybe_unused]] const IterativeExpressionFrame& frame,
     const ast::AstNode*& syntax)
 {
     const AtomicCoreCallFrameState& call = *frame.atomicCoreCall;
@@ -334,9 +334,9 @@ bool ProjectOopHirModel::nextAtomicCoreCallChild(
 }
 
 bool ProjectOopHirModel::acceptAtomicCoreCallChild(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     AtomicCoreCallFrameState& call = *frame.atomicCoreCall;
     if (call.stage == AtomicCoreCallFrameStage::Location)
@@ -398,8 +398,8 @@ bool ProjectOopHirModel::acceptAtomicCoreCallChild(
 }
 
 bool ProjectOopHirModel::initializeMonitorCoreCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     frame.core = coreBinding(frame.syntax);
     const std::optional<HirMonitorCallPlan> plan =
@@ -478,7 +478,7 @@ bool ProjectOopHirModel::nextMonitorCoreCallChild(
 }
 
 void ProjectOopHirModel::acceptMonitorCoreCallChild(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     std::unique_ptr<ProjectOopHirNode> child)
 {
     MonitorCoreCallFrameState& call = *frame.monitorCoreCall;
@@ -523,8 +523,8 @@ void ProjectOopHirModel::acceptMonitorCoreCallChild(
 }
 
 bool ProjectOopHirModel::initializeConsoleOutputCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     frame.core = coreBinding(frame.syntax);
     if (frame.addressContext || frame.syntax->children().size() != 1U)
@@ -546,8 +546,8 @@ bool ProjectOopHirModel::initializeConsoleOutputCallFrame(
 }
 
 bool ProjectOopHirModel::initializeConsoleReadLineCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     frame.core = coreBinding(frame.syntax);
     if (frame.addressContext || frame.syntax->children().size() != 1U)
@@ -559,8 +559,8 @@ bool ProjectOopHirModel::initializeConsoleReadLineCallFrame(
 }
 
 bool ProjectOopHirModel::initializeEnumToStringCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     frame.core = coreBinding(frame.syntax);
     if (frame.addressContext)
@@ -611,8 +611,8 @@ bool ProjectOopHirModel::initializeEnumToStringCallFrame(
 }
 
 bool ProjectOopHirModel::initializeStructCloneCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     frame.core = coreBinding(frame.syntax);
     if (frame.addressContext || !frame.syntax->children().empty())
@@ -632,8 +632,8 @@ bool ProjectOopHirModel::initializeStructCloneCallFrame(
 }
 
 bool ProjectOopHirModel::initializeStructAggregateCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     frame.core = coreBinding(frame.syntax);
     StructAggregateCallFrameState call;
@@ -662,8 +662,8 @@ bool ProjectOopHirModel::initializeStructAggregateCallFrame(
 }
 
 bool ProjectOopHirModel::initializeEnvironmentExitCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     frame.core = coreBinding(frame.syntax);
     if (frame.addressContext || frame.syntax->children().size() != 1U)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Parser/Parser.h"
+#include "nativesharp/Source/SourceFile.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -58,7 +59,7 @@ private:
         std::string text;
         bool flag = false;
         std::uint8_t precedence = 0;
-        TokenKind tokenKind = TokenKind::Invalid;
+        lexer::TokenKind tokenKind = lexer::TokenKind::Invalid;
         std::string auxiliaryText;
         std::vector<ast::AstNode*> children;
         std::size_t frameIndex = noSlot;

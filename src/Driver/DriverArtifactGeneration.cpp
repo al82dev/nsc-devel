@@ -366,7 +366,8 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
         for (const std::string &symbol : module.symbols)
             appendExternalImport(externalImports, module.dllName, symbol);
     builder.setExternalImports(std::move(externalImports));
-    builder.setExtraLinkLibraries(referencedLibraries);
+    builder.setExtraLinkLibraries(
+        std::vector<std::filesystem::path>(referencedLibraries.begin(), referencedLibraries.end()));
     std::string buildError;
     ArtifactPublisher artifactPublisher;
     if (!artifactPublisher.prepareStaticLibrary(pathFromUtf8(outputPath), publication, buildError))

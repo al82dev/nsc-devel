@@ -10,7 +10,7 @@ namespace nativesharp::frontend
 using internal::IterativeExpressionFrame;
 
 bool ProjectOopHirModel::expandDeconstructionAssignmentTargetTuple(
-    std::string& error,
+    [[maybe_unused]] std::string& error,
     const ast::AstNode* targetSyntax,
     const std::string& sourceTypeKey,
     std::uint64_t byteOffset,
@@ -39,7 +39,7 @@ bool ProjectOopHirModel::expandDeconstructionAssignmentTargetTuple(
 }
 
 bool ProjectOopHirModel::collectDeconstructionAssignmentTargetLeaf(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* targetSyntax,
     const std::string& sourceTypeKey,
     std::uint64_t byteOffset)
@@ -55,8 +55,8 @@ bool ProjectOopHirModel::collectDeconstructionAssignmentTargetLeaf(
 }
 
 void ProjectOopHirModel::materializeSetterReceiver(
-    IterativeExpressionFrame& frame,
-    std::unique_ptr<ProjectOopHirNode>& lowered)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered)
 {
     frame.first = std::move(lowered);
     if (!frame.materializeReceiverTemporary) return;

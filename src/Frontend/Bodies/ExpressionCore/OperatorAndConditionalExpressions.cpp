@@ -57,13 +57,13 @@ using method_body_detail::writeMethodBodyTrace;
 ProjectMethodBodyModel::ExpressionResult
 ProjectMethodBodyModel::analyzeExpressionKindUnaryExpressionOrPostfixExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -80,13 +80,13 @@ ProjectMethodBodyModel::analyzeExpressionKindUnaryExpressionOrPostfixExpression(
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindBinaryExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -102,13 +102,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindNullCoalescingExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -194,13 +194,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindTupleExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -267,9 +267,9 @@ void ProjectMethodBodyModel::bindWithUpdate(
     std::span<const std::string> names,
     std::optional<std::size_t> sourceTypeOrdinal,
     const ClassMemberSymbol* caller,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     MethodAggregateInitializerEntryBinding entry;
     entry.syntax = update;
@@ -342,13 +342,13 @@ void ProjectMethodBodyModel::bindWithUpdate(
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindWithExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -422,9 +422,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
 void ProjectMethodBodyModel::analyzeConditionalBranches(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
     ExpressionResult& whenTrue,
     ExpressionResult& whenFalse)
 {
@@ -572,7 +572,7 @@ bool ProjectMethodBodyModel::resolveConditionalMatchingType(
     const ast::AstNode* expression,
     const ExpressionResult& whenTrue,
     const ExpressionResult& whenFalse,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (whenTrue.typeKey != whenFalse.typeKey) return false;
     if (ProjectTypeConversion::isPointer(whenTrue.typeKey) &&
@@ -605,7 +605,7 @@ void ProjectMethodBodyModel::resolveConditionalSpecialType(
     const ast::AstNode* expression,
     const ExpressionResult& whenTrue,
     const ExpressionResult& whenFalse,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     // A string literal already converts implicitly to the native string value everywhere
     // else (assignment, arguments and returns).  The conditional join must use that same
@@ -660,13 +660,13 @@ void ProjectMethodBodyModel::resolveConditionalSpecialType(
 ProjectMethodBodyModel::ExpressionResult
 ProjectMethodBodyModel::analyzeExpressionKindConditionalExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     ExpressionResult whenTrue;

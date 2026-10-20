@@ -191,7 +191,7 @@ bool createRuntimeTemporaryFiles(
 }
 
 bool emitAndVerifyRuntimeObject(
-    const llvm_backend::LlvmModule& module,
+    llvm_backend::LlvmModule& module,
     const llvm_backend::LlvmTargetMachine& targetMachine,
     const TemporaryFiles& temporary,
     std::string& error)

@@ -69,6 +69,12 @@ bool parseBuiltinHole(const InterpolationPart& part, ParsedBuiltinHole& parsed) 
 }
 }
 
+bool builtinStaticInterpolationHoleSupported(const InterpolationPart& part) noexcept
+{
+    if (part.kind != InterpolationPartKind::Hole) return true;
+    return builtinHoleSyntaxSupported(part);
+}
+
 BuiltinStaticInterpolationHandler::BuiltinStaticInterpolationHandler(
     std::string& result) noexcept : result_(result) {}
 

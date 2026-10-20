@@ -50,7 +50,7 @@ private:
         std::size_t sourcePlan = 0;
         std::size_t nextChild = 0;
         ast::AstNode* result = nullptr;
-        TokenKind operation = TokenKind::AmpAmp;
+        lexer::TokenKind operation = lexer::TokenKind::AmpAmp;
     };
 
     void schedule(Work work);
@@ -72,7 +72,7 @@ private:
     void startLogical(
         const Pattern& pattern,
         std::size_t sourcePlan,
-        TokenKind operation);
+        lexer::TokenKind operation);
     void finishLogical(Work work);
     void startStruct(const Pattern& pattern, std::size_t sourcePlan);
     void continueStruct(Work work);

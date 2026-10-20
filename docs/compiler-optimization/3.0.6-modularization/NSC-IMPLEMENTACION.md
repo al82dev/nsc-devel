@@ -1,10 +1,10 @@
 # NSC — IMPLEMENTACIÓN
 
-Progreso absoluto: **1207/1227**
+Progreso absoluto: **1216/1227**
 
-Completados: **1207**
+Completados: **1216**
 
-Pendientes: **20**
+Pendientes: **11**
 
 Fuente canónica: `NSC-GUIA-DE-IMPLEMENTACION.md` y sus anexos A, B, C, D y F, medidos el 2026-10-19.
 
@@ -14,7 +14,7 @@ casillas se agrupen por integración.
 Quedan fuera del denominador: cambios a NSC Builder, cambios de CLI/sintaxis/ABI/NSMETA/contratos 3.0.4,
 eliminación de recursión y las tareas de rendimiento que requieren autorización funcional independiente.
 
-## Refactor mecánico y reorganización sin cambios funcionales — 1207/1225
+## Refactor mecánico y reorganización sin cambios funcionales — 1216/1225
 
 Política de integración: **10 commits técnicos**, uno por límite de subsistema. Un commit se crea únicamente
 cuando su conjunto está completo, revisado y cuenta con la evidencia focal aplicable. Ninguna optimización entra
@@ -4032,28 +4032,35 @@ registro exacto de los CPP nuevos en CMake, orden idéntico de 73 imports/global
 y preservación de los 1,335 comentarios del corpus original. No se ejecutaron compilación, pruebas, suites ni
 baseline por instrucción del propietario.
 
-### Commit REF-10 — Utilidades compartidas, includes y cierre transversal — 0/9
+### Commit REF-10 — Utilidades compartidas, includes y cierre transversal — 9/9
 
 Consolida duplicados permitidos, reduce includes internos y ejecuta el cierre estructural del refactor.
 
-- [ ] NSC-IMPL-0848 — Unificar MirByteReader y ByteReader en CachePayloadReader con la unión exacta de métodos y migrar
+- [x] NSC-IMPL-0848 — Unificar MirByteReader y ByteReader en CachePayloadReader con la unión exacta de métodos y migrar
   ambos llamadores.
-- [ ] NSC-IMPL-0849 — Unificar los escritores binarios MIR y genéricos en CachePayloadWriter, preservando bytes
+- [x] NSC-IMPL-0849 — Unificar los escritores binarios MIR y genéricos en CachePayloadWriter, preservando bytes
   little-endian idénticos.
-- [ ] NSC-IMPL-0850 — Unificar las tres copias del almacén de caché en CacheEntryStore parametrizado, preservando cada
+- [x] NSC-IMPL-0850 — Unificar las tres copias del almacén de caché en CacheEntryStore parametrizado, preservando cada
   política y mensaje.
-- [ ] NSC-IMPL-0851 — Unificar los directorios temporales de los builders de EXE y LIB en ScopedTemporaryDirectory,
+- [x] NSC-IMPL-0851 — Unificar los directorios temporales de los builders de EXE y LIB en ScopedTemporaryDirectory,
   preservando prefijos, mensajes y keep.
-- [ ] NSC-IMPL-1221 — Inventariar después de R1–R6 los includes directos y transitivos de todos los .cpp y headers
+- [x] NSC-IMPL-1221 — Inventariar después de R1–R6 los includes directos y transitivos de todos los .cpp y headers
   internos del árbol resultante.
-- [ ] NSC-IMPL-1222 — Reemplazar en cada .cpp los umbrellas por headers directos de tipo cuando el cierre y la
+- [x] NSC-IMPL-1222 — Reemplazar en cada .cpp los umbrellas por headers directos de tipo cuando el cierre y la
   compilación permanezcan idénticos.
-- [ ] NSC-IMPL-1223 — Reducir includes de headers internos sin quitar ningún include de headers públicos ni alterar su
+- [x] NSC-IMPL-1223 — Reducir includes de headers internos sin quitar ningún include de headers públicos ni alterar su
   cierre transitivo.
-- [ ] NSC-IMPL-1224 — Verificar que cada archivo nuevo o movido incluya directamente todas sus dependencias y no dependa
+- [x] NSC-IMPL-1224 — Verificar que cada archivo nuevo o movido incluya directamente todas sus dependencias y no dependa
   de orden incidental.
-- [ ] NSC-IMPL-1225 — Comparar el .ninja_log limpio posterior con R0 y documentar el efecto informativo de R7 sin usarlo
+- [x] NSC-IMPL-1225 — Comparar el .ninja_log limpio posterior con R0 y documentar el efecto informativo de R7 sin usarlo
   como gate funcional.
+
+Nota de cierre REF-10: las utilidades binarias de caché, sus metadatos y el almacén de entradas quedaron consolidados;
+los builders de EXE y LIB comparten el directorio temporal con sus políticas originales; y el cierre de includes quedó
+inventariado en `REF-10-INCLUDE-INVENTORY.tsv`. La compilación focal limpia completó 565/565 y la repetición incremental
+final completó 114/114, incluido el enlace de `nsc.exe` y su contrato estático del runtime. La comparación de
+`.ninja_log` fue informativa y no constituye una certificación de rendimiento. No se ejecutaron suites, dumps,
+comparación NSMETA, self-host ni baseline funcional externo.
 
 ## Implementación de optimizaciones — 0/2
 

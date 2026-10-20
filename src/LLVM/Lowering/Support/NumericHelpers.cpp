@@ -101,7 +101,7 @@ bool decimalCoefficientAndScale(double value, std::uint64_t& coefficient, int& s
     return true;
 }
 
-LLVMValueRef applyFloatingPointMode(LLVMValueRef instruction, bool contractable = false) noexcept
+LLVMValueRef applyFloatingPointMode(LLVMValueRef instruction, bool contractable) noexcept
 {
     if (instruction == nullptr) return instruction;
     unsigned flags = activeFloatingPointMode() == FloatingPointMode::Fast

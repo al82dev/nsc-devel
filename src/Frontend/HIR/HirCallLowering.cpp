@@ -737,7 +737,7 @@ bool isDebugCoreCall(MethodCoreOperationKind kind) noexcept
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEventBackingField(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     std::size_t memberOrdinal,
     std::string& error,
     const MethodEventBinding* binding,
@@ -1388,7 +1388,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerDelegateInvocation(
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerViewCoreCall(
-    const ast::AstNode* expression,
+    [[maybe_unused]] const ast::AstNode* expression,
     bool addressContext,
     const MethodCoreBinding& binding,
     std::string& error)

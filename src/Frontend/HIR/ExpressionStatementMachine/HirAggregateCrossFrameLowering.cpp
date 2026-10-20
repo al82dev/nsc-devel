@@ -16,7 +16,7 @@ using internal::IterativeExpressionFrame;
 
 bool ProjectOopHirModel::prepareAggregateCrossStructuralFrame(
     AggregateCrossStructuralFrame& structural,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const auto tupleElements =
         ProjectTypeConversion::tupleElementTypeKeys(structural.targetTypeKey);
@@ -53,7 +53,7 @@ bool ProjectOopHirModel::prepareAggregateCrossStructuralFrame(
 bool ProjectOopHirModel::prepareTupleAggregateCrossStructuralFrame(
     AggregateCrossStructuralFrame& structural,
     const std::vector<std::string>& tupleElements,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
     {
@@ -93,7 +93,7 @@ bool ProjectOopHirModel::prepareTupleAggregateCrossStructuralFrame(
 bool ProjectOopHirModel::prepareFixedArrayAggregateCrossStructuralFrame(
     AggregateCrossStructuralFrame& structural,
     std::string_view elementTypeKey,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const auto count = ProjectMemberModel::fixedArrayCount(structural.targetTypeKey);
     if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
@@ -125,7 +125,7 @@ bool ProjectOopHirModel::prepareFixedArrayAggregateCrossStructuralFrame(
 
 bool ProjectOopHirModel::prepareStructAggregateCrossStructuralFrame(
     AggregateCrossStructuralFrame& structural,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (objectLayoutModel_ == nullptr || inheritanceModel_ == nullptr)
     {
@@ -163,7 +163,7 @@ bool ProjectOopHirModel::prepareStructAggregateCrossStructuralFrame(
 
 bool ProjectOopHirModel::advanceAggregateCrossFrame(
     AggregateCrossFrameState& aggregate,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     while (!aggregate.structuralFrames.empty())
     {
@@ -203,7 +203,7 @@ bool ProjectOopHirModel::advanceAggregateCrossEntry(
     AggregateCrossFrameState& aggregate,
     AggregateCrossStructuralFrame& structural,
     bool& continueStructural,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const MethodAggregateInitializerEntryBinding& entry =
         structural.binding->entries[structural.entryIndex++];
@@ -259,8 +259,8 @@ bool ProjectOopHirModel::advanceAggregateCrossEntry(
 }
 
 bool ProjectOopHirModel::initializeAggregateCrossFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     const MethodExpressionTypeBinding* targetType = expressionType(frame.syntax);
     if (targetType == nullptr)
@@ -306,7 +306,7 @@ bool ProjectOopHirModel::nextAggregateCrossChild(
 bool ProjectOopHirModel::acceptAggregateCrossChild(
     AggregateCrossFrameState& aggregate,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (aggregate.structuralFrames.empty())
     {
@@ -344,7 +344,7 @@ bool ProjectOopHirModel::acceptAggregateWithSource(
     AggregateCrossFrameState& aggregate,
     const AggregateCrossStructuralFrame& structural,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     auto spread = makeNode(
         ProjectOopHirNodeKind::AggregateSpread,
@@ -377,7 +377,7 @@ bool ProjectOopHirModel::acceptAggregateSpreadSource(
     AggregateCrossFrameState& aggregate,
     const AggregateCrossStructuralFrame& structural,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     auto spread = makeNode(
         ProjectOopHirNodeKind::AggregateSpread,
@@ -448,7 +448,7 @@ void ProjectOopHirModel::acceptAggregateValue(
 }
 
 std::unique_ptr<ProjectOopHirNode>
-ProjectOopHirModel::finishAggregateCrossFrame(IterativeExpressionFrame& frame)
+ProjectOopHirModel::finishAggregateCrossFrame([[maybe_unused]] IterativeExpressionFrame& frame)
 {
     return std::move(frame.aggregateCross->node);
 }

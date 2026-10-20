@@ -2,7 +2,10 @@
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
+#include "../SignedDivisionCorrection.h"
 #include "OopLlvmSupport.h"
+
+#include "nativesharp/Language/AbiSemantics.h"
 
 namespace nativesharp::llvm_backend
 {

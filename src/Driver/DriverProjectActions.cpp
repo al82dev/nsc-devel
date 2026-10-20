@@ -275,7 +275,7 @@ bool validateProjectCompilationResult(bool success, bool oopHirAction, frontend:
 }
 
 void printProjectCheckPart1(std::string_view action, frontend::ProjectCompilation &projectCompilation,
-                            const std::unique_ptr<llvm_backend::LlvmModule> &oopLlvmModule, std::ostream &output)
+                            std::ostream &output)
 {
     if (action == "--check-project-syntax")
     {
@@ -331,7 +331,7 @@ void printProjectCheckPart1(std::string_view action, frontend::ProjectCompilatio
 }
 
 void printProjectCheckPart2(std::string_view action, frontend::ProjectCompilation &projectCompilation,
-                            const std::unique_ptr<llvm_backend::LlvmModule> &oopLlvmModule, std::ostream &output)
+                            std::ostream &output)
 {
     if (action == "--check-project-virtual-dispatch" && projectCompilation.virtualDispatchModel() != nullptr)
     {
@@ -449,8 +449,8 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
         !validateProjectCompilationResult(success, oopHirAction, projectCompilation, error))
         return ExitCode::CompilationError;
 
-    printProjectCheckPart1(action, projectCompilation, oopLlvmModule, output);
-    printProjectCheckPart2(action, projectCompilation, oopLlvmModule, output);
+    printProjectCheckPart1(action, projectCompilation, output);
+    printProjectCheckPart2(action, projectCompilation, output);
     printProjectCheckPart3(action, projectCompilation, oopLlvmModule, output);
     return ExitCode::Success;
 }
@@ -545,6 +545,7 @@ bool publishOopCodeObject(std::string_view outputPath, frontend::ProjectCompilat
                           llvm_backend::DebugInformationKind debugInformation, std::string &loadError,
                           std::ostream &output, std::ostream &error)
 {
+    std::string targetError;
     const std::filesystem::path destination = pathFromUtf8(outputPath);
     ArtifactPublisher artifactPublisher;
     ObjectPublication publication;

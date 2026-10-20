@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+#include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 
 #include <chrono>
 #include <cstddef>

@@ -12,11 +12,11 @@ using internal::IterativeInputKind;
 using internal::LoopBlockAdvance;
 
 bool ProjectOopHirModel::beginMatchArm(
-    IterativeExpressionFrame& frame,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] std::string& error)
 {
     const ast::AstNode* armSyntax = frame.syntax->children()[frame.armIndex];
     if (armSyntax == nullptr || armSyntax->first() == nullptr ||
@@ -40,13 +40,13 @@ bool ProjectOopHirModel::beginMatchArm(
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::advanceMatchVariableDeclaration(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* declaration,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] std::string& error)
 {
     if (declaration == nullptr || declaration->kind() !=
         ast::AstNodeKind::VariableDeclarationStatement)
@@ -79,13 +79,13 @@ ProjectOopHirModel::advanceMatchVariableDeclaration(
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::advanceMatchDeconstructionDeclaration(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* declaration,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] std::string& error)
 {
     if (declaration == nullptr || declaration->kind() !=
         ast::AstNodeKind::DeconstructionDeclarationStatement)
@@ -118,13 +118,13 @@ ProjectOopHirModel::advanceMatchDeconstructionDeclaration(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceMatchInlineAssembly(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* declaration,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] std::string& error)
 {
     if (declaration == nullptr ||
         declaration->kind() != ast::AstNodeKind::InlineAssemblyStatement)
@@ -157,12 +157,12 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceMatchInlineAssembly(
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::advanceMatchConditionalOrLoop(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* declaration,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext)
 {
     if (declaration != nullptr &&
         declaration->kind() == ast::AstNodeKind::IfStatement)
@@ -206,14 +206,14 @@ ProjectOopHirModel::advanceMatchConditionalOrLoop(
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::advanceMatchSwitchOrIteration(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* declaration,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     if (declaration != nullptr &&
         declaration->kind() == ast::AstNodeKind::SwitchStatement)
@@ -264,14 +264,14 @@ ProjectOopHirModel::advanceMatchSwitchOrIteration(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceMatchValueStatement(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* declaration,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     if (isExitValueStatement(declaration))
     {
@@ -313,13 +313,13 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceMatchValueStatement(
 }
 
 bool ProjectOopHirModel::advanceMatchDeclarations(
-    IterativeExpressionFrame& frame,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     const ast::AstNode* armSyntax = frame.syntax->children()[frame.armIndex];
     while (frame.syntheticLocalOrdinal < armSyntax->children().size())
@@ -370,13 +370,13 @@ bool ProjectOopHirModel::advanceMatchDeclarations(
 }
 
 bool ProjectOopHirModel::beginMatchValue(
-    IterativeExpressionFrame& frame,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     frame.cleanupDepth = activeHirCleanupRegions_.size();
     frame.cleanupActive = true;
@@ -393,8 +393,8 @@ bool ProjectOopHirModel::beginMatchValue(
 }
 
 void ProjectOopHirModel::finishMatch(
-    IterativeExpressionFrame& frame,
-    std::unique_ptr<ProjectOopHirNode>& lowered)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered)
 {
     lowered = std::move(frame.matchNode);
     if (!frame.matchBinding->referenceResult || frame.addressContext) return;

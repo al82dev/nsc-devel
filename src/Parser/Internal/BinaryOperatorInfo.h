@@ -7,8 +7,6 @@
 
 namespace nativesharp::parser
 {
-namespace
-{
 struct BinaryOperatorInfo final
 {
     std::uint8_t leftBindingPower;
@@ -16,5 +14,4 @@ struct BinaryOperatorInfo final
     BinaryRightHandSide rightHandSide;
     ast::AstNodeKind resultKind;
 };
-}
 }

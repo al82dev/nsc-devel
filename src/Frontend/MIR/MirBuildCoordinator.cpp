@@ -3,7 +3,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include "MirConstantEvaluator.h"
-#include "Internal/MirByteReader.h"
+#include "../Cache/CachePayloadReader.h"
 #include "MirVerifier.h"
 
 #include "nativesharp/Basic/Sha256.h"

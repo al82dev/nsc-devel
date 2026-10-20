@@ -23,7 +23,7 @@ bool ProjectOopHirModel::applyExpressionBoundaryPostconditions(
     std::unique_ptr<ProjectOopHirNode>& child,
     const ast::AstNode* childSyntax,
     std::size_t childMemberOrdinal,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const ClassMemberSymbol* activeMember = memberModel_ != nullptr &&
             childMemberOrdinal < memberModel_->members().size()
@@ -51,7 +51,7 @@ bool ProjectOopHirModel::applyExpressionBoundaryPostconditions(
 }
 
 const ProjectOopHirNode* ProjectOopHirModel::rootLoweredExpression(
-    const std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] const std::unique_ptr<ProjectOopHirNode>& lowered,
     const ast::AstNode* statementContinuation) noexcept
 {
     const ProjectOopHirNode* expression = lowered.get();
@@ -92,11 +92,11 @@ bool ProjectOopHirModel::statementChildPolicyApplied(
 }
 
 void ProjectOopHirModel::applyRootExpressionPostconditions(
-    std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
     const ast::AstNode* expression,
     std::size_t memberOrdinal,
     const ast::AstNode* statementContinuation,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const ClassMemberSymbol* activeMember = memberModel_ != nullptr &&
             memberOrdinal < memberModel_->members().size()
@@ -158,7 +158,7 @@ bool ProjectOopHirModel::directlyAllocatesHeap(
 void ProjectOopHirModel::rejectDirectNoHeapAllocation(
     std::unique_ptr<ProjectOopHirNode>& child,
     const ClassMemberSymbol& activeMember,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const ProjectOopHirNode* loweredChild = child.get();
     if (loweredChild == nullptr || !directlyAllocatesHeap(loweredChild->kind)) return;
@@ -172,7 +172,7 @@ void ProjectOopHirModel::rejectNoHeapBoundCall(
     std::unique_ptr<ProjectOopHirNode>& child,
     const ast::AstNode* childSyntax,
     const ClassMemberSymbol& activeMember,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const MethodCallBinding* call = callBinding(childSyntax);
     if (call == nullptr ||
@@ -193,7 +193,7 @@ void ProjectOopHirModel::rejectNoHeapBoundCall(
 void ProjectOopHirModel::rejectNoHeapIndirectInvocation(
     std::unique_ptr<ProjectOopHirNode>& child,
     const ClassMemberSymbol& activeMember,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const ProjectOopHirNode* loweredChild = child.get();
     if (loweredChild == nullptr ||
@@ -211,7 +211,7 @@ void ProjectOopHirModel::rejectNoHeapConstruction(
     std::unique_ptr<ProjectOopHirNode>& child,
     const ast::AstNode* childSyntax,
     const ClassMemberSymbol& activeMember,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const ProjectOopHirNode* loweredChild = child.get();
     if (loweredChild == nullptr ||
@@ -241,9 +241,9 @@ void ProjectOopHirModel::rejectNoHeapConstruction(
 // Inicializa el frame de switch con su binding semantico congelado.
 // Initializes the switch frame with its frozen semantic binding.
 bool ProjectOopHirModel::initializeSwitchStatementFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const MethodSwitchBinding* binding = switchBinding(statement);
     if (binding == nullptr)
@@ -261,7 +261,7 @@ bool ProjectOopHirModel::initializeSwitchStatementFrame(
 }
 
 void ProjectOopHirModel::initializeForStatementFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement)
 {
     frame.kind = IterativeExpressionKind::ForStatement;
@@ -274,9 +274,9 @@ void ProjectOopHirModel::initializeForStatementFrame(
 }
 
 bool ProjectOopHirModel::initializeForeachStatementFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const MethodLocalSymbol* sourceLocal = localSymbol(statement->first());
     if (sourceLocal == nullptr)
@@ -309,9 +309,9 @@ bool ProjectOopHirModel::initializeForeachStatementFrame(
 }
 
 bool ProjectOopHirModel::initializeExitValueStatementFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     frame.kind = IterativeExpressionKind::ExitValueStatement;
     frame.syntax = statement;
@@ -331,9 +331,9 @@ bool ProjectOopHirModel::initializeExitValueStatementFrame(
 }
 
 bool ProjectOopHirModel::initializeBreakValueStatementFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     ExitValueStatementFrameState& state = *frame.exitValueStatement;
     state.node = makeNode(ProjectOopHirNodeKind::Break, statement, "builtin:void");
@@ -351,9 +351,9 @@ bool ProjectOopHirModel::initializeBreakValueStatementFrame(
 }
 
 bool ProjectOopHirModel::initializeReturnValueStatementFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     ExitValueStatementFrameState& state = *frame.exitValueStatement;
     state.node = makeNode(
@@ -394,9 +394,9 @@ bool ProjectOopHirModel::initializeReturnValueStatementFrame(
 }
 
 bool ProjectOopHirModel::initializeThrowValueStatementFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     ExitValueStatementFrameState& state = *frame.exitValueStatement;
     const MethodExceptionBinding* binding = exceptionBinding(statement);
@@ -433,7 +433,7 @@ bool ProjectOopHirModel::initializeThrowValueStatementFrame(
 }
 
 void ProjectOopHirModel::initializeCoroutineValueStatementFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
     std::size_t statementMemberOrdinal)
 {
@@ -464,9 +464,9 @@ void ProjectOopHirModel::initializeCoroutineValueStatementFrame(
 }
 
 bool ProjectOopHirModel::initializeUsingStatementFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const MethodUsingBinding* binding = usingBinding(statement);
     const std::optional<std::size_t> cleanupOrdinal =
@@ -502,7 +502,7 @@ bool ProjectOopHirModel::initializeUsingStatementFrame(
 }
 
 void ProjectOopHirModel::initializeTryStatementFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement)
 {
     frame.kind = IterativeExpressionKind::TryStatement;

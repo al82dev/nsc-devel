@@ -2,6 +2,8 @@
 
 #include "nativesharp/Parser/Parser.h"
 
+#include <deque>
+
 namespace nativesharp::parser
 {
 class Parser::PatternBindingEmitter final

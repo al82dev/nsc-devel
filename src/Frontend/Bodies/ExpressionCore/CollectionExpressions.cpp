@@ -57,9 +57,9 @@ using method_body_detail::writeMethodBodyTrace;
 std::vector<ProjectMethodBodyModel::ExpressionResult>
 ProjectMethodBodyModel::analyzeNullConditionalIndices(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     std::vector<ExpressionResult> indices;
     const auto& indexSyntaxes = expression->children();
@@ -84,9 +84,9 @@ bool ProjectMethodBodyModel::analyzeNullConditionalNativeArray(
     const ast::AstNode* expression,
     const ExpressionResult& base,
     std::span<const ExpressionResult> indices,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     if (!base.valid || !ProjectTypeConversion::isNativeArray(base.typeKey)) return false;
     // NS304-T10-F05: sólo el array nativo tiene READ null-conditional (receptor + índice);
@@ -134,9 +134,9 @@ bool ProjectMethodBodyModel::analyzeNullConditionalUserIndex(
     const ast::AstNode* expression,
     const ExpressionResult& base,
     const std::vector<ExpressionResult>& indices,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     // NS304-T10-F05: a USER indexer (`this[...]`) supports the null-conditional form: the
     // receiver is null-checked and get_Item runs only on the non-null path.
@@ -181,13 +181,13 @@ bool ProjectMethodBodyModel::analyzeNullConditionalUserIndex(
 ProjectMethodBodyModel::ExpressionResult
 ProjectMethodBodyModel::analyzeExpressionKindNullConditionalIndexExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     const ExpressionResult base = analyzeExpression(
@@ -234,9 +234,9 @@ bool ProjectMethodBodyModel::bindCollectionBuilder(
     const ast::AstNode* expression,
     std::string_view explicitTarget,
     std::size_t typeOrdinal,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const std::optional<std::size_t> createBuilder =
         collectionBuilderMember(typeOrdinal, "CreateBuilder", true);
@@ -302,9 +302,9 @@ bool ProjectMethodBodyModel::collectCollectionSpreadSegments(
     std::vector<bool>& spreads,
     std::vector<ExpressionResult>& values,
     std::vector<std::string>& elementTypes,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     for (const ast::AstNode* child : expression->children())
     {
@@ -366,7 +366,7 @@ bool ProjectMethodBodyModel::validateCollectionSpreadSegments(
     std::span<const ExpressionResult> values,
     std::span<const std::string> elementTypes,
     std::string_view element,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     bool elementsValid = true;
     for (std::size_t index = 0; index < spreads.size(); ++index)
@@ -403,8 +403,8 @@ void ProjectMethodBodyModel::completeCollectionArrayResult(
     const ast::AstNode* expression,
     std::string_view element,
     bool elementsValid,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal)
 {
     result.typeKey = std::string(element) + "[]";
     result.valid = elementsValid;
@@ -426,9 +426,9 @@ bool ProjectMethodBodyModel::analyzeCollectionSpreadSegments(
     ExpressionResult& result,
     const ast::AstNode* expression,
     std::string_view explicitTarget,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const bool hasSpread = std::ranges::any_of(
         expression->children(),
@@ -487,9 +487,9 @@ void ProjectMethodBodyModel::analyzeCollectionElements(
     ExpressionResult& result,
     const ast::AstNode* expression,
     std::string_view explicitTarget,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     std::vector<ExpressionResult> elementValues;
     std::vector<const ast::AstNode*> elementSyntaxes;
@@ -567,13 +567,13 @@ void ProjectMethodBodyModel::analyzeCollectionElements(
 ProjectMethodBodyModel::ExpressionResult
 ProjectMethodBodyModel::analyzeExpressionKindCollectionExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     // NS304-T09-F05: `[a, b, c]` targets a native array or infers one from the

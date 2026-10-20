@@ -1,6 +1,6 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../../Internal/CloneDepthGuard.h"
-#include "../../Internal/ByteReader.h"
+#include "../../Cache/CachePayloadReader.h"
 #include "../../Internal/EnumConstResolver.h"
 #include "../../Internal/SpecializationWaveTimer.h"
 #include "../../Internal/InterfaceFingerprint.h"
@@ -80,7 +80,7 @@ using internal::templateCacheKey;
 using internal::templateSourceSpelling;
 using internal::trailingPackIndex;
 using internal::valueParameterCount;
-using internal::ByteReader;
+using internal::CachePayloadReader;
 using internal::EnumConstResolver;
 using internal::MirCacheRecord;
 using internal::SpecializationWaveTimer;
@@ -107,7 +107,7 @@ bool ProjectGenericModel::tryRestoreTemplateRecord(
     std::string error;
     if (!templateCache_.restore(key, payload, hit, error) || !hit) return false;
     GenericTemplateRecord record;
-    if (!deserializeTemplateRecord(payload, record)) return false;
+    if (!internal::deserializeTemplateRecord(payload, record)) return false;
     record.syntax = node;
     record.sourceFingerprint = fingerprint;
     record.c1CacheKey = key;

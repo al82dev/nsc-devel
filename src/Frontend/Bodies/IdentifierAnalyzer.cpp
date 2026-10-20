@@ -49,6 +49,8 @@
 
 namespace nativesharp::frontend
 {
+using lexer::TokenKind;
+
 using method_body_detail::pointerContract;
 using method_body_detail::Stage37ConstantKind;
 using method_body_detail::Stage37ConstantValue;

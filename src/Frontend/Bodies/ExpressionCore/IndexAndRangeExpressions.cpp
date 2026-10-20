@@ -56,13 +56,13 @@ using method_body_detail::writeMethodBodyTrace;
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindFromEndExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -104,13 +104,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindRangeExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -151,9 +151,9 @@ void ProjectMethodBodyModel::analyzeIndexOperands(
     ExpressionResult& base,
     std::vector<ExpressionResult>& indices,
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     ++partialProjectionReceiverDepth_;
     base = analyzeExpression(expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
@@ -180,9 +180,9 @@ bool ProjectMethodBodyModel::analyzeNativeArrayIndex(
     const ast::AstNode* expression,
     const ExpressionResult& base,
     const std::vector<ExpressionResult>& indices,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     if (!base.valid || !ProjectTypeConversion::isNativeArray(base.typeKey)) return false;
     const std::size_t arrayRank = ProjectTypeConversion::nativeArrayRank(base.typeKey);
@@ -237,9 +237,9 @@ bool ProjectMethodBodyModel::analyzeNativeStringIndex(
     const ast::AstNode* expression,
     const ExpressionResult& base,
     const std::vector<ExpressionResult>& indices,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     if (!base.valid || (!ProjectTypeConversion::isNativeString(base.typeKey) &&
         base.typeKey != "string-literal")) return false;
@@ -307,7 +307,7 @@ std::vector<std::size_t> ProjectMethodBodyModel::rangeProtocolCandidates(
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzedRangeEndpoint(
     const ast::AstNode* syntax,
-    std::size_t methodMemberOrdinal) const
+    [[maybe_unused]] std::size_t methodMemberOrdinal) const
 {
     ExpressionResult endpoint;
     if (syntax == nullptr) return endpoint;
@@ -330,9 +330,9 @@ bool ProjectMethodBodyModel::resolveRangeProtocol(
     const ExpressionResult& base,
     std::size_t receiverType,
     std::size_t accessingTypeOrdinal,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const std::vector<ExpressionResult> noArguments;
     const ExpressionResult lengthResult = resolveSyntheticCall(
@@ -373,7 +373,7 @@ bool ProjectMethodBodyModel::validateRangeProtocolMembers(
     const ast::AstNode* rangeSyntax,
     const MethodCallBinding& lengthCall,
     const MethodCallBinding& sliceCall,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     const ClassMemberSymbol& lengthMember =
         memberModel_->members()[*lengthCall.selectedMemberOrdinal];
@@ -408,8 +408,8 @@ bool ProjectMethodBodyModel::validateRangeEndpoints(
     ExpressionResult& startResult,
     ExpressionResult& endResult,
     const ast::AstNode* rangeSyntax,
-    std::size_t methodMemberOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     const ast::AstNode* writtenStart = rangeSyntax->first();
     const ast::AstNode* writtenEnd = rangeSyntax->second();
@@ -461,8 +461,8 @@ void ProjectMethodBodyModel::recordRangeSliceBinding(
     const ExpressionResult& endResult,
     const ProjectImplicitConversion& startConversion,
     const ProjectImplicitConversion& endConversion,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal)
 {
     const ast::AstNode* rangeSyntax = expression->children().empty()
         ? expression->second() : expression->children().front();
@@ -515,9 +515,9 @@ bool ProjectMethodBodyModel::analyzeRangeIndexer(
     const ExpressionResult& base,
     std::size_t receiverType,
     std::size_t accessingTypeOrdinal,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const auto& indexSyntaxes = expression->children();
     const ast::AstNode* rangeSyntax = !indexSyntaxes.empty()
@@ -561,9 +561,9 @@ bool ProjectMethodBodyModel::analyzeUserIndexer(
     const ast::AstNode* expression,
     const ExpressionResult& base,
     const std::vector<ExpressionResult>& indices,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     // C6 "struct members": an indexer is a pair of accessor METHODS, and a struct
     // instance method already works -- it takes the receiver's address, which is exactly
@@ -620,7 +620,7 @@ bool ProjectMethodBodyModel::validateFixedArrayIndices(
     const ast::AstNode* expression,
     const ExpressionResult& base,
     const std::vector<ExpressionResult>& indices,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     const std::optional<std::string> fixedElementType = memberModel_ != nullptr
         ? ProjectMemberModel::fixedArrayElementTypeKey(base.typeKey) : std::nullopt;
@@ -666,7 +666,7 @@ bool ProjectMethodBodyModel::validateFixedArrayIndices(
 const MethodLocalSymbol* ProjectMethodBodyModel::variableArrayLocal(
     const ast::AstNode* expression,
     const ExpressionResult& base,
-    std::size_t scopeOrdinal) const
+    [[maybe_unused]] std::size_t scopeOrdinal) const
 {
     if (!base.valid || expression->first() == nullptr ||
         expression->first()->kind() != ast::AstNodeKind::IdentifierExpression) return nullptr;
@@ -683,9 +683,9 @@ bool ProjectMethodBodyModel::analyzeVariableArrayIndex(
     const ast::AstNode* expression,
     const std::vector<ExpressionResult>& indices,
     const MethodLocalSymbol* variableArrayLocal,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     if (variableArrayLocal == nullptr ||
         variableArrayLocal->variableLengthArrayExtentSyntaxes.size() <= 1) return false;
@@ -728,9 +728,9 @@ void ProjectMethodBodyModel::analyzeRawIndex(
     const ast::AstNode* expression,
     const ExpressionResult& base,
     const std::vector<ExpressionResult>& indices,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     // C2.1 "fixed arrays". Two bases share one rule here, because their address
     // arithmetic is the same and neither carries a length: a FIXED ARRAY (`float[4]`,
@@ -792,13 +792,13 @@ void ProjectMethodBodyModel::analyzeRawIndex(
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindIndexExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     if (expression->kind() != ast::AstNodeKind::IndexExpression) return result;
@@ -856,13 +856,13 @@ ProjectMethodBodyModel::ExpressionResult
 ProjectMethodBodyModel::
 analyzeExpressionKindSizeofTypeExpressionOrSizeofExpressionOrAlignofTypeExpressionOrAlignofExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())

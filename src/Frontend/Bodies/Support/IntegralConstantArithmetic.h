@@ -50,16 +50,16 @@ std::optional<Stage37ConstantValue> evaluateStage37Unary(
 std::optional<Stage37ConstantValue> evaluateStage37Comparison(
     const Stage37ConstantValue& leftRaw,
     const Stage37ConstantValue& rightRaw,
-    TokenKind operation);
+    lexer::TokenKind operation);
 std::optional<Stage37ConstantValue> evaluateStage37FloatingArithmetic(
     const Stage37ConstantValue& left,
     const Stage37ConstantValue& right,
-    TokenKind operation,
+    lexer::TokenKind operation,
     std::string_view resultType);
 std::optional<Stage37ConstantValue> evaluateStage37IntegerArithmetic(
     const Stage37ConstantValue& left,
     const Stage37ConstantValue& right,
-    TokenKind operation,
+    lexer::TokenKind operation,
     std::string_view resultType);
 std::optional<Stage37ConstantValue> evaluateStage37Binary(
     const ProjectMethodBodyModel& model,

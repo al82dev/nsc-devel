@@ -78,6 +78,7 @@
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/MatchArmCoverage.h"
+#include "nativesharp/Language/PointerContract.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
 
 #include <cstddef>
@@ -3100,7 +3101,7 @@ private:
         const ast::AstNode* expression,
         std::span<const std::size_t> viableEvaluationOrdinals,
         MethodCallBinding& call,
-        diagnostics::DiagnosticEngine& diagnostics) const;
+        diagnostics::DiagnosticEngine& diagnostics);
     std::optional<ExpressionResult> prepareCallCallee(
         const ast::AstNode* expression,
         MethodCallBinding& call,
@@ -3719,7 +3720,7 @@ private:
     void analyzeLogicalBinaryStep(
         ExpressionResult& accumulated,
         const ast::AstNode* logical,
-        TokenKind operation,
+        lexer::TokenKind operation,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
@@ -3728,7 +3729,7 @@ private:
         const ast::AstNode* expression,
         const ExpressionResult& left,
         const ExpressionResult& right,
-        TokenKind operation,
+        lexer::TokenKind operation,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal);
     bool analyzeOverloadedBinary(
@@ -3736,7 +3737,7 @@ private:
         const ast::AstNode* expression,
         const ExpressionResult& left,
         const ExpressionResult& right,
-        TokenKind operation,
+        lexer::TokenKind operation,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
@@ -3745,21 +3746,21 @@ private:
         const ast::AstNode* expression,
         const ExpressionResult& left,
         const ExpressionResult& right,
-        TokenKind operation,
+        lexer::TokenKind operation,
         diagnostics::DiagnosticEngine& diagnostics) const;
     bool analyzeEnumBinary(
         ExpressionResult& result,
         const ast::AstNode* expression,
         const ExpressionResult& left,
         const ExpressionResult& right,
-        TokenKind operation,
+        lexer::TokenKind operation,
         diagnostics::DiagnosticEngine& diagnostics) const;
     bool analyzeStructComparison(
         ExpressionResult& result,
         const ast::AstNode* expression,
         const ExpressionResult& left,
         const ExpressionResult& right,
-        TokenKind operation,
+        lexer::TokenKind operation,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
@@ -3778,7 +3779,7 @@ private:
         ConditionFlowStates& flow,
         bool& published,
         const ast::AstNode* expression,
-        TokenKind operation,
+        lexer::TokenKind operation,
         std::size_t scopeOrdinal) const;
     void publishBinaryIntegerFlow(
         ConditionFlowStates& flow,
@@ -3786,14 +3787,14 @@ private:
         const ast::AstNode* expression,
         const ExpressionResult& left,
         const ExpressionResult& right,
-        TokenKind operation,
+        lexer::TokenKind operation,
         std::size_t scopeOrdinal) const;
     bool analyzeBinaryComparison(
         ExpressionResult& result,
         const ast::AstNode* expression,
         const ExpressionResult& left,
         const ExpressionResult& right,
-        TokenKind operation,
+        lexer::TokenKind operation,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
     bool analyzeShiftBinary(
@@ -3801,14 +3802,14 @@ private:
         const ast::AstNode* expression,
         const ExpressionResult& left,
         const ExpressionResult& right,
-        TokenKind operation,
+        lexer::TokenKind operation,
         diagnostics::DiagnosticEngine& diagnostics) const;
     bool analyzePointerArithmetic(
         ExpressionResult& result,
         const ast::AstNode* expression,
         const ExpressionResult& left,
         const ExpressionResult& right,
-        TokenKind operation,
+        lexer::TokenKind operation,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
@@ -3817,7 +3818,7 @@ private:
         const ast::AstNode* expression,
         const ExpressionResult& left,
         const ExpressionResult& right,
-        TokenKind operation,
+        lexer::TokenKind operation,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics) const;
     ExpressionResult analyzeAssignment(

@@ -10,7 +10,7 @@ struct BoundCallFrameState final
 {
     const MethodCallBinding* binding = nullptr;
     const MethodExpressionTypeBinding* typeBinding = nullptr;
-    BoundCallTarget target;
+    ProjectOopHirModel::BoundCallTarget target;
     BoundCallFrameStage stage = BoundCallFrameStage::Ready;
     std::vector<const ast::AstNode*> argumentSyntaxes;
     std::vector<std::unique_ptr<ProjectOopHirNode>> arguments;

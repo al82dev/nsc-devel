@@ -5,8 +5,8 @@
 
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 
-#include "Bodies/MethodBodyInternals.h"
-#include "Internal/Stage37ConstantValue.h"
+#include "../MethodBodyInternals.h"
+#include "../../Internal/Stage37ConstantValue.h"
 
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
@@ -49,6 +49,8 @@
 
 namespace nativesharp::frontend
 {
+using lexer::TokenKind;
+
 bool isComparison(TokenKind kind) noexcept
 {
     return kind == TokenKind::EqualEqual || kind == TokenKind::BangEqual ||

@@ -28,7 +28,7 @@ private:
         ContinuationKind kind;
         ast::AstNode* first = nullptr;
         ast::AstNode* second = nullptr;
-        TokenKind operation = TokenKind::Invalid;
+        lexer::TokenKind operation = lexer::TokenKind::Invalid;
         bool reference = false;
     };
 

@@ -13,6 +13,7 @@
 #include "nativesharp/Frontend/SpecializationState.h"
 
 #include "nativesharp/AST/AstNode.h"
+#include "nativesharp/AST/OwnershipQualifierSyntaxKind.h"
 #if 0 // INSTRUMENTATION CODE: detailed generics trace support.
 #include "nativesharp/Basic/CompilationEvent.h"
 #endif // INSTRUMENTATION CODE

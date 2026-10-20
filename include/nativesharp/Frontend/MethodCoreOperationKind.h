@@ -23,7 +23,6 @@
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
-#include "nativesharp/Frontend/MethodCoreBinding.h"
 
 #include <array>
 #include <cstddef>

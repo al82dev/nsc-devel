@@ -12,17 +12,20 @@
 #include "ScopedDebugScope.h"
 #include "StaticLocalGuard.h"
 #include "StaticLocalStorage.h"
+#include "LlvmExpressionFrame.h"
 #include "../LlvmCApi.h"
 
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Frontend/BuiltinIntegerTypes.h"
 #include "nativesharp/LLVM/DebugInformationKind.h"
 #include "nativesharp/LLVM/DebugPrefixMap.h"
 #include "nativesharp/LLVM/FloatingPointRoundingMode.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
+#include "nativesharp/LLVM/LlvmTrapReason.h"
 #include "nativesharp/Language/PortableSimdType.h"
 #include "nativesharp/Source/SourceManager.h"
 
@@ -1013,6 +1016,7 @@ private:
         LLVMValueRef future,
         LLVMValueRef asyncIterator,
         LLVMTypeRef intType,
+        LLVMValueRef& iteratorState,
         LLVMBasicBlockRef& runBlock,
         std::string& error);
     LLVMValueRef prepareAsyncYieldFrame(
@@ -2812,7 +2816,13 @@ private:
         LLVMValueRef value, std::string_view typeKey, std::string& error);
 
     template <typename AddAttribute>
-    void applyInRegAttribute(AddAttribute&& addAttribute, unsigned parameterPosition);
+    void applyInRegAttribute(AddAttribute&& addAttribute, unsigned parameterPosition)
+    {
+        const unsigned inregKind = LLVMGetEnumAttributeKindForName("inreg", 5);
+        addAttribute(
+            parameterPosition + 1U,
+            LLVMCreateEnumAttribute(context_, inregKind, 0));
+    }
 
     // Win64 aggregate ABI (ground truth: clang for x86_64-pc-windows-msvc). True for a struct
     // whose size is not 1/2/4/8 -- the sizes that travel directly as integers. Everything else
@@ -2844,7 +2854,24 @@ private:
     // a function or call -- the exact attribute set clang stamps on the hidden return slot.
     template <typename AddAttribute>
     void applySretAttributes(
-        AddAttribute&& addAttribute, unsigned parameterPosition, std::string_view typeKey);
+        AddAttribute&& addAttribute, unsigned parameterPosition, std::string_view typeKey)
+    {
+        LLVMTypeRef carrier = nullptr;
+        {
+            std::string ignored;
+            carrier = llvmType(typeKey, ignored);
+        }
+        if (carrier == nullptr) return;
+        const LLVMAttributeIndex index = parameterPosition + 1U;
+        const unsigned sretKind = LLVMGetEnumAttributeKindForName("sret", 4);
+        const unsigned noaliasKind = LLVMGetEnumAttributeKindForName("noalias", 7);
+        const unsigned alignKind = LLVMGetEnumAttributeKindForName("align", 5);
+        addAttribute(index, LLVMCreateTypeAttribute(context_, sretKind, carrier));
+        addAttribute(index, LLVMCreateEnumAttribute(context_, noaliasKind, 0));
+        addAttribute(
+            index,
+            LLVMCreateEnumAttribute(context_, alignKind, structAlignmentFor(typeKey)));
+    }
 
     // The one way a value leaves a function: through RAX for direct types, through the sret
     // slot for indirect aggregates. Both return sites (the plain exit and the EH spill-slot

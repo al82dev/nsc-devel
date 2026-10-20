@@ -1,5 +1,5 @@
 #include "nativesharp/Linker/WindowsExecutableBuilder.h"
-#include "Internal/TemporaryDirectory.h"
+#include "Internal/ScopedTemporaryDirectory.h"
 
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 
@@ -74,57 +74,13 @@ std::string linkTemporaryRootOverride()
 #endif
 }
 
-std::unique_ptr<TemporaryDirectory> createTemporaryDirectory(std::string& error)
+std::unique_ptr<ScopedTemporaryDirectory> createScopedTemporaryDirectory(std::string& error)
 {
-    error.clear();
-    std::error_code filesystemError;
-
     // Con la variable puesta, la raiz la elige quien llama y el directorio SOBREVIVE. Se crea el
     // arbol si no existe: pedir que exista de antemano solo mueve el fallo de sitio.
     const std::string keepRoot = linkTemporaryRootOverride();
-    const bool keep = !keepRoot.empty();
-    std::filesystem::path root;
-    if (keep)
-    {
-        root = std::filesystem::path(keepRoot);
-        std::filesystem::create_directories(root, filesystemError);
-        if (filesystemError)
-        {
-            error = "could not create the NSC_KEEP_LINK_TEMPS directory '" + keepRoot +
-                "': " + filesystemError.message();
-            return nullptr;
-        }
-        filesystemError.clear();
-    }
-    else
-    {
-        root = std::filesystem::temp_directory_path(filesystemError);
-        if (filesystemError)
-        {
-            error = "could not resolve the system temporary directory: " + filesystemError.message();
-            return nullptr;
-        }
-    }
-
-    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    for (std::uint32_t attempt = 0; attempt < 100; ++attempt)
-    {
-        const std::filesystem::path candidate = root /
-            ("nativesharp-stage20-" + std::to_string(stamp) + "-" + std::to_string(attempt));
-        filesystemError.clear();
-        if (std::filesystem::create_directory(candidate, filesystemError))
-        {
-            return std::make_unique<TemporaryDirectory>(candidate, keep);
-        }
-        if (filesystemError && filesystemError != std::errc::file_exists)
-        {
-            error = "could not create a Stage 20 temporary directory: " + filesystemError.message();
-            return nullptr;
-        }
-    }
-
-    error = "could not allocate a unique Stage 20 temporary directory";
-    return nullptr;
+    return ScopedTemporaryDirectory::create(
+        "nativesharp-stage20-", "Stage 20", keepRoot, error);
 }
 
 bool verifyObject(const std::filesystem::path& path, std::string_view label, std::string& error)
@@ -337,13 +293,13 @@ bool emitExecutableObjects(
     llvm_backend::LlvmModule& programModule,
     llvm_backend::LlvmModule& runtimeModule,
     const llvm_backend::LlvmTargetMachine& targetMachine,
-    std::unique_ptr<TemporaryDirectory>& temporaryDirectory,
+    std::unique_ptr<ScopedTemporaryDirectory>& temporaryDirectory,
     std::filesystem::path& programObject,
     std::filesystem::path& runtimeObject,
     std::string& error)
 {
     std::string temporaryError;
-    temporaryDirectory = createTemporaryDirectory(temporaryError);
+    temporaryDirectory = createScopedTemporaryDirectory(temporaryError);
     if (temporaryDirectory == nullptr)
     {
         error = temporaryError;
@@ -496,7 +452,7 @@ bool WindowsExecutableBuilder::build(
             runtimeLibrary_, mainSymbol, independentRuntime, runtimeModule, error)) return false;
     if (!optimizeExecutableModules(
             programModule, *runtimeModule, *targetMachine, optimizationLevel, error)) return false;
-    std::unique_ptr<TemporaryDirectory> temporaryDirectory;
+    std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory;
     std::filesystem::path programObject;
     std::filesystem::path runtimeObject;
     if (!emitExecutableObjects(
@@ -590,14 +546,14 @@ bool prepareIncrementalExecutable(
 }
 
 bool emitPartitionedRuntimeObject(
-    const llvm_backend::LlvmModule& runtimeModule,
+    llvm_backend::LlvmModule& runtimeModule,
     const llvm_backend::LlvmTargetMachine& targetMachine,
-    std::unique_ptr<TemporaryDirectory>& temporaryDirectory,
+    std::unique_ptr<ScopedTemporaryDirectory>& temporaryDirectory,
     std::filesystem::path& runtimeObject,
     std::string& error)
 {
     std::string targetError;
-    temporaryDirectory = createTemporaryDirectory(targetError);
+    temporaryDirectory = createScopedTemporaryDirectory(targetError);
     if (temporaryDirectory == nullptr)
     {
         error = targetError;
@@ -643,7 +599,7 @@ bool WindowsExecutableBuilder::buildObjects(
             outputPath, incrementalLink_, incrementalKey, statePath, info_,
             reusedIncrementalLink_, error)) return false;
     if (reusedIncrementalLink_) return true;
-    std::unique_ptr<TemporaryDirectory> temporaryDirectory;
+    std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory;
     std::filesystem::path runtimeObject;
     if (!emitPartitionedRuntimeObject(
             *runtimeModule, *targetMachine, temporaryDirectory, runtimeObject, error)) return false;

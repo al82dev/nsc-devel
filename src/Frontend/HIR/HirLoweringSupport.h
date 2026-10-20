@@ -6,6 +6,7 @@
 #include "HirTuplePatternFrame.h"
 
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "nativesharp/Language/ExpressionErgonomics.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -30,6 +31,14 @@ std::unique_ptr<ProjectOopHirNode> makeNode(
     ProjectOopHirNodeKind kind,
     const ast::AstNode* syntax,
     std::string typeKey = {});
+
+std::unique_ptr<ProjectOopHirNode> buildInterpolationHandlerExpression(
+    const ast::AstNode* expression,
+    const MethodCoreBinding& core,
+    std::size_t tempOrdinal,
+    const std::vector<language::InterpolationPart>& parts,
+    std::vector<std::unique_ptr<ProjectOopHirNode>> holes,
+    std::string& error);
 
 void destroyHirTreeIteratively(std::unique_ptr<ProjectOopHirNode>& root);
 

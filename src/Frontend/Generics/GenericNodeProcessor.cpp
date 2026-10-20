@@ -1,6 +1,6 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../Internal/CloneDepthGuard.h"
-#include "../Internal/ByteReader.h"
+#include "../Cache/CachePayloadReader.h"
 #include "../Internal/EnumConstResolver.h"
 #include "../Internal/SpecializationWaveTimer.h"
 #include "../Internal/InterfaceFingerprint.h"
@@ -80,7 +80,7 @@ using internal::templateCacheKey;
 using internal::templateSourceSpelling;
 using internal::trailingPackIndex;
 using internal::valueParameterCount;
-using internal::ByteReader;
+using internal::CachePayloadReader;
 using internal::EnumConstResolver;
 using internal::MirCacheRecord;
 using internal::SpecializationWaveTimer;

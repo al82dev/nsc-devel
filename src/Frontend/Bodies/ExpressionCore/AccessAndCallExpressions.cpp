@@ -56,13 +56,13 @@ using method_body_detail::writeMethodBodyTrace;
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindNullConditionalMemberExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -132,13 +132,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindMemberExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -160,13 +160,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindPointerMemberExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -184,13 +184,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindCallExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -209,7 +209,7 @@ bool ProjectMethodBodyModel::resolveResultPropagationErrorConversion(
     const MethodResultPropagationBinding& destination,
     const ast::AstNode* expression,
     std::optional<std::size_t>& errorConversion,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (source.sourceErrorTypeKey == destination.sourceErrorTypeKey) return true;
     if (inheritanceModel_ == nullptr)
@@ -244,8 +244,8 @@ void ProjectMethodBodyModel::recordResultPropagationBinding(
     MethodResultPropagationBinding source,
     const MethodResultPropagationBinding& destination,
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
     std::string_view returnTypeKey,
     std::optional<std::size_t> errorConversion,
     ExpressionResult& result)
@@ -280,8 +280,8 @@ void ProjectMethodBodyModel::recordResultPropagationBinding(
 
 bool ProjectMethodBodyModel::validateResultPropagationContext(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
     std::string& returnTypeKey)
 {
     if (!finallyStack_.empty())
@@ -312,13 +312,13 @@ bool ProjectMethodBodyModel::validateResultPropagationContext(
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindResultPropagationExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())

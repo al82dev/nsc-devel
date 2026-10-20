@@ -11,7 +11,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCoreNameExpression(
     std::size_t memberOrdinal,
     bool addressContext,
     const MethodCoreBinding& core,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (core.kind == MethodCoreOperationKind::FixedArrayLength)
     {
@@ -217,7 +217,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerFieldNameBinding(
     std::size_t memberOrdinal,
     bool addressContext,
     const MethodNameBinding& binding,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (binding.candidateMemberOrdinals.empty())
     {
@@ -249,7 +249,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
     const ast::AstNode* expression,
     bool addressContext,
     const MethodNameBinding& binding,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (binding.candidateMemberOrdinals.size() != 1 ||
         namespaceFunctionModel_ == nullptr ||
@@ -279,7 +279,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStaticFieldNameBindi
     const ast::AstNode* expression,
     bool addressContext,
     const MethodNameBinding& binding,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (binding.candidateMemberOrdinals.empty())
     {
@@ -306,7 +306,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundNameExpression(
     std::size_t memberOrdinal,
     bool addressContext,
     const MethodNameBinding& binding,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (binding.kind == MethodNameBindingKind::Parameter)
         return lowerParameterNameBinding(expression, addressContext, binding);

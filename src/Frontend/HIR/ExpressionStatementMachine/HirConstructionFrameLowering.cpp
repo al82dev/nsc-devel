@@ -17,7 +17,7 @@ using internal::OrdinaryConstructionFrameState;
 
 bool ProjectOopHirModel::prepareOrdinaryConstructionTail(
     OrdinaryConstructionFrameState& construction,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (!appendOrdinaryConstructionDefaults(construction, error)) return false;
     if (!appendEmptyOrdinaryConstructionPack(construction, error)) return false;
@@ -32,7 +32,7 @@ bool ProjectOopHirModel::prepareOrdinaryConstructionTail(
 
 bool ProjectOopHirModel::appendOrdinaryConstructionDefaults(
     OrdinaryConstructionFrameState& construction,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const ObjectConstructionBinding& binding = *construction.binding;
     if (binding.selectedDefaultArguments.empty()) return true;
@@ -73,7 +73,7 @@ bool ProjectOopHirModel::appendOrdinaryConstructionDefaults(
 
 bool ProjectOopHirModel::appendEmptyOrdinaryConstructionPack(
     OrdinaryConstructionFrameState& construction,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const ObjectConstructionBinding& binding = *construction.binding;
     if (!binding.selectedSynthesizesEmptyParameterPack) return true;
@@ -133,8 +133,8 @@ void ProjectOopHirModel::collectImplicitOrdinaryConstructionFields(
 }
 
 bool ProjectOopHirModel::initializeOrdinaryConstructionFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     const ObjectConstructionBinding* binding = constructionBinding(frame.syntax);
     if (binding == nullptr || constructionModel_ == nullptr ||
@@ -225,7 +225,7 @@ bool ProjectOopHirModel::nextOrdinaryConstructionChild(
 bool ProjectOopHirModel::acceptOrdinaryConstructionChild(
     OrdinaryConstructionFrameState& construction,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (construction.stage == OrdinaryConstructionFrameStage::Storage)
     {
@@ -254,7 +254,7 @@ bool ProjectOopHirModel::acceptOrdinaryConstructionChild(
 bool ProjectOopHirModel::acceptOrdinaryConstructionArgument(
     OrdinaryConstructionFrameState& construction,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const std::size_t index = construction.nextArgument++;
     const ast::AstNode* argumentSyntax =
@@ -313,7 +313,7 @@ bool ProjectOopHirModel::appendOrdinaryConstructionPackElement(
     std::unique_ptr<ProjectOopHirNode> child,
     const ast::AstNode* argumentSyntax,
     std::size_t parameterIndex,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (!construction.binding->selectedConstructorMemberOrdinal.has_value() ||
         memberModel_ == nullptr ||
@@ -356,7 +356,7 @@ bool ProjectOopHirModel::appendOrdinaryConstructionPackElement(
 bool ProjectOopHirModel::acceptOrdinaryConstructionFieldInitializer(
     OrdinaryConstructionFrameState& construction,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (memberModel_ == nullptr || inheritanceModel_ == nullptr ||
         construction.nextFieldInitializer >= construction.fieldMemberOrdinals.size())
@@ -419,7 +419,7 @@ bool ProjectOopHirModel::acceptOrdinaryConstructionFieldInitializer(
 
 std::unique_ptr<ProjectOopHirNode>
 ProjectOopHirModel::finishOrdinaryConstructionFrame(
-    IterativeExpressionFrame& frame)
+    [[maybe_unused]] IterativeExpressionFrame& frame)
 {
     OrdinaryConstructionFrameState& construction = *frame.ordinaryConstruction;
     return wrapFullExpressionCleanup(
@@ -429,8 +429,8 @@ ProjectOopHirModel::finishOrdinaryConstructionFrame(
 }
 
 bool ProjectOopHirModel::initializeAllocatorConstructionFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     const ObjectConstructionBinding* binding = constructionBinding(frame.syntax);
     if (binding == nullptr ||
@@ -526,7 +526,7 @@ bool ProjectOopHirModel::nextAllocatorConstructionChild(
 bool ProjectOopHirModel::acceptAllocatorConstructionChild(
     AllocatorConstructionFrameState& construction,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (construction.stage == AllocatorConstructionFrameStage::Receiver)
     {
@@ -561,8 +561,8 @@ bool ProjectOopHirModel::acceptAllocatorConstructionChild(
 
 std::unique_ptr<ProjectOopHirNode>
 ProjectOopHirModel::finishAllocatorConstructionFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     AllocatorConstructionFrameState& construction = *frame.allocatorConstruction;
     return finishAllocatorConstructionExpression(

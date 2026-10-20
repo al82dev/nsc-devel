@@ -190,6 +190,7 @@ void Parser::ParseContinuationCoordinator::executeControlWork(const Work& work)
     case WorkKind::FinishInlineAssemblyOutput: finishInlineAssemblyOutput(work); return;
     case WorkKind::FinishInlineAssemblyInput: finishInlineAssemblyInput(work); return;
     case WorkKind::FinishComprehensionYield: finishComprehensionYield(work); return;
+    default: return;
     }
 }
 

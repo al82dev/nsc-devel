@@ -1,6 +1,6 @@
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 
-#include "Internal/CacheMetadata.h"
+#include "../Frontend/Cache/CacheEntryStore.h"
 #include "Internal/ArtifactCacheFilesystemPath.h"
 #include "Internal/CacheEntryLock.h"
 #include "Internal/CachePruneEntry.h"
@@ -14,24 +14,13 @@
 #include "nativesharp/LLVM/LlvmVersion.h"
 
 #include <algorithm>
-#include <array>
 #include <atomic>
-#include <charconv>
-#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <limits>
-#include <mutex>
 #include <span>
 #include <system_error>
-#include <thread>
 #include <vector>
-
-#if defined(_WIN32)
-#define NOMINMAX
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-#endif
 
 namespace nativesharp::llvm_backend
 {
@@ -39,60 +28,10 @@ namespace
 {
 thread_local const CompilationArtifactCache* activeCache = nullptr;
 std::atomic<unsigned long long> temporaryOrdinal = 0;
-
-std::filesystem::path temporarySibling(const std::filesystem::path& destination)
-{
-#if defined(_WIN32)
-    const unsigned long process = ::GetCurrentProcessId();
-#else
-    const unsigned long process = 0;
-#endif
-    return destination.string() + ".tmp." + std::to_string(process) + "." +
-        std::to_string(temporaryOrdinal.fetch_add(1, std::memory_order_relaxed));
-}
-
-bool replaceFileAtomically(
-    const std::filesystem::path& temporary,
-    const std::filesystem::path& destination,
-    std::string& error)
-{
-#if defined(_WIN32)
-    // Cache entries are rebuildable and authenticated on every restore. Keep the rename atomic,
-    // but do not force every parallel object and metadata publication through a volume-wide
-    // durability barrier. A power-loss partial publication remains a safe miss because metadata
-    // is published last and restore verifies both size and SHA-256 before copying any object.
-    if (::MoveFileExW(
-            extendedWindowsPath(temporary).c_str(),
-            extendedWindowsPath(destination).c_str(),
-            MOVEFILE_REPLACE_EXISTING) != 0)
-        return true;
-    const unsigned long failure = ::GetLastError();
-    std::error_code ignored;
-    std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
-    error = "cannot atomically publish artifact-cache file '" + destination.string() +
-        "' (Win32 error " + std::to_string(failure) + ")";
-    return false;
-#else
-    std::error_code filesystemError;
-    std::filesystem::rename(temporary, destination, filesystemError);
-    if (!filesystemError) return true;
-    std::filesystem::remove(temporary, filesystemError);
-    error = "cannot atomically publish artifact-cache file '" + destination.string() + "'";
-    return false;
-#endif
-}
-
-bool validKey(std::string_view key) noexcept
-{
-    if (key.size() != 64U) return false;
-    for (const char character : key)
-    {
-        if ((character < '0' || character > '9') &&
-            (character < 'a' || character > 'f'))
-            return false;
-    }
-    return true;
-}
+frontend::internal::CacheEntryStore objectEntryStore(
+    temporaryOrdinal, "NSCOBJ 1", "artifact-cache", "artifact-cache", false, true);
+frontend::internal::CacheEntryStore codePartitionEntryStore(
+    temporaryOrdinal, "NSCPART 1", "code-partition", "artifact-cache", false, true);
 
 std::filesystem::path objectDirectory(
     const std::filesystem::path& root,
@@ -184,29 +123,6 @@ void quarantineInvalidCodePartitionPlan(
         filesystemError);
 }
 
-bool readMetadata(const std::filesystem::path& path, CacheMetadata& metadata)
-{
-    std::ifstream stream(cacheFilesystemPath(path), std::ios::binary);
-    std::string header;
-    std::string keyLine;
-    std::string digestLine;
-    std::string sizeLine;
-    std::string trailing;
-    if (!stream || !std::getline(stream, header) || !std::getline(stream, keyLine) ||
-        !std::getline(stream, digestLine) || !std::getline(stream, sizeLine) ||
-        std::getline(stream, trailing) || header != "NSCOBJ 1" ||
-        !keyLine.starts_with("key ") || !digestLine.starts_with("sha256 ") ||
-        !sizeLine.starts_with("size "))
-        return false;
-    metadata.key = keyLine.substr(4U);
-    metadata.digest = digestLine.substr(7U);
-    if (!validKey(metadata.key) || !validKey(metadata.digest)) return false;
-    const std::string_view sizeText(sizeLine.data() + 5U, sizeLine.size() - 5U);
-    const auto [end, parseError] = std::from_chars(
-        sizeText.data(), sizeText.data() + sizeText.size(), metadata.size);
-    return parseError == std::errc{} && end == sizeText.data() + sizeText.size();
-}
-
 bool cacheEntryFilesAvailable(
     const std::filesystem::path& cachedObject,
     const std::filesystem::path& cachedMetadata,
@@ -222,87 +138,6 @@ bool cacheEntryFilesAvailable(
         return true;
     if (reason != nullptr) *reason = CacheMissReason::IncompletePublication;
     return false;
-}
-
-bool writeMetadataAtomically(
-    const std::filesystem::path& destination,
-    std::string_view key,
-    std::string_view digest,
-    std::uintmax_t size,
-    std::string& error)
-{
-    const std::filesystem::path temporary = temporarySibling(destination);
-    {
-        std::ofstream stream(cacheFilesystemPath(temporary), std::ios::binary | std::ios::trunc);
-        if (!stream)
-        {
-            error = "cannot open artifact-cache metadata temporary '" +
-                temporary.string() + "'";
-            return false;
-        }
-        stream << "NSCOBJ 1\nkey " << key << "\nsha256 " << digest <<
-            "\nsize " << size << '\n';
-        if (!stream)
-        {
-            std::error_code ignored;
-            std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
-            error = "cannot write artifact-cache metadata '" + temporary.string() + "'";
-            return false;
-        }
-    }
-    return replaceFileAtomically(temporary, destination, error);
-}
-
-bool readCodePartitionMetadata(const std::filesystem::path& path, CacheMetadata& metadata)
-{
-    std::ifstream stream(cacheFilesystemPath(path), std::ios::binary);
-    std::string header;
-    std::string keyLine;
-    std::string digestLine;
-    std::string sizeLine;
-    std::string trailing;
-    if (!stream || !std::getline(stream, header) || !std::getline(stream, keyLine) ||
-        !std::getline(stream, digestLine) || !std::getline(stream, sizeLine) ||
-        std::getline(stream, trailing) || header != "NSCPART 1" ||
-        !keyLine.starts_with("key ") || !digestLine.starts_with("sha256 ") ||
-        !sizeLine.starts_with("size "))
-        return false;
-    metadata.key = keyLine.substr(4U);
-    metadata.digest = digestLine.substr(7U);
-    if (!validKey(metadata.key) || !validKey(metadata.digest)) return false;
-    const std::string_view sizeText(sizeLine.data() + 5U, sizeLine.size() - 5U);
-    const auto [end, parseError] = std::from_chars(
-        sizeText.data(), sizeText.data() + sizeText.size(), metadata.size);
-    return parseError == std::errc{} && end == sizeText.data() + sizeText.size();
-}
-
-bool writeCodePartitionMetadataAtomically(
-    const std::filesystem::path& destination,
-    std::string_view key,
-    std::string_view digest,
-    std::uintmax_t size,
-    std::string& error)
-{
-    const std::filesystem::path temporary = temporarySibling(destination);
-    {
-        std::ofstream stream(cacheFilesystemPath(temporary), std::ios::binary | std::ios::trunc);
-        if (!stream)
-        {
-            error = "cannot open code-partition metadata temporary '" +
-                temporary.string() + "'";
-            return false;
-        }
-        stream << "NSCPART 1\nkey " << key << "\nsha256 " << digest <<
-            "\nsize " << size << '\n';
-        if (!stream)
-        {
-            std::error_code ignored;
-            std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
-            error = "cannot write code-partition metadata '" + temporary.string() + "'";
-            return false;
-        }
-    }
-    return replaceFileAtomically(temporary, destination, error);
 }
 
 bool collectPrunableEntries(
@@ -332,7 +167,7 @@ bool collectPrunableEntries(
         if (filesystemError) { filesystemError.clear(); continue; }
         if (!regular || entry.path().extension() != ".meta") continue;
         const std::string key = entry.path().stem().string();
-        if (!validKey(key)) continue;
+        if (!frontend::internal::CacheEntryStore::validKey(key)) continue;
         std::filesystem::path payload = entry.path();
         payload.replace_extension(payloadExtension);
         const std::uintmax_t size = std::filesystem::file_size(payload, filesystemError);
@@ -461,7 +296,7 @@ bool CompilationArtifactCache::restoreObject(
     hit = false;
     error.clear();
     if (reason != nullptr) *reason = CacheMissReason::Cold;
-    if (!enabled() || !validKey(key))
+    if (!enabled() || !frontend::internal::CacheEntryStore::validKey(key))
     {
         if (!enabled())
         {
@@ -481,8 +316,8 @@ bool CompilationArtifactCache::restoreObject(
     if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
     if (!cacheEntryFilesAvailable(cachedObject, cachedMetadata, reason)) return true;
 
-    CacheMetadata metadata;
-    if (!readMetadata(cachedMetadata, metadata) || metadata.key != key)
+    frontend::internal::CacheMetadata metadata;
+    if (!objectEntryStore.readMetadata(cachedMetadata, metadata) || metadata.key != key)
     {
         if (reason != nullptr) *reason = CacheMissReason::Corruption;
         quarantineInvalidEntry(root_, key, cachedObject, cachedMetadata);
@@ -521,7 +356,7 @@ bool CompilationArtifactCache::storeObject(
 {
     error.clear();
     if (!enabled()) return true;
-    if (!validKey(key))
+    if (!frontend::internal::CacheEntryStore::validKey(key))
     {
         error = "artifact-cache object key is not canonical SHA-256";
         return false;
@@ -542,7 +377,8 @@ bool CompilationArtifactCache::storeObject(
     const std::filesystem::path cachedObject = objectPath(root_, key);
     CacheEntryLock entryLock;
     if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
-    const std::filesystem::path temporaryObject = temporarySibling(cachedObject);
+    const std::filesystem::path temporaryObject =
+        objectEntryStore.temporarySibling(cachedObject);
     std::filesystem::copy_file(cacheFilesystemPath(source), cacheFilesystemPath(temporaryObject),
         std::filesystem::copy_options::overwrite_existing, filesystemError);
     if (filesystemError)
@@ -562,8 +398,8 @@ bool CompilationArtifactCache::storeObject(
         return false;
     }
     filesystemError.clear();
-    if (!replaceFileAtomically(temporaryObject, cachedObject, error)) return false;
-    return writeMetadataAtomically(
+    if (!objectEntryStore.replaceFileAtomically(temporaryObject, cachedObject, error)) return false;
+    return objectEntryStore.writeMetadataAtomically(
         cachedMetadata, key, basic::sha256Hex(digest), size, error);
 }
 
@@ -577,7 +413,7 @@ bool CompilationArtifactCache::restoreCodePartitionPlan(
     payload.clear();
     error.clear();
     if (!enabled()) return true;
-    if (!validKey(key))
+    if (!frontend::internal::CacheEntryStore::validKey(key))
     {
         error = "code-partition plan key is not canonical SHA-256";
         return false;
@@ -591,8 +427,8 @@ bool CompilationArtifactCache::restoreCodePartitionPlan(
 
     CacheEntryLock entryLock;
     if (!entryLock.acquire(payloadFile.string() + ".lock", error)) return false;
-    CacheMetadata metadata;
-    if (!readCodePartitionMetadata(metadataFile, metadata) || metadata.key != key)
+    frontend::internal::CacheMetadata metadata;
+    if (!codePartitionEntryStore.readMetadata(metadataFile, metadata) || metadata.key != key)
     {
         quarantineInvalidCodePartitionPlan(root_, key, payloadFile, metadataFile);
         return true;
@@ -632,7 +468,7 @@ bool CompilationArtifactCache::storeCodePartitionPlan(
 {
     error.clear();
     if (!enabled()) return true;
-    if (!validKey(key))
+    if (!frontend::internal::CacheEntryStore::validKey(key))
     {
         error = "code-partition plan key is not canonical SHA-256";
         return false;
@@ -649,7 +485,8 @@ bool CompilationArtifactCache::storeCodePartitionPlan(
     }
     CacheEntryLock entryLock;
     if (!entryLock.acquire(payloadFile.string() + ".lock", error)) return false;
-    const std::filesystem::path temporary = temporarySibling(payloadFile);
+    const std::filesystem::path temporary =
+        codePartitionEntryStore.temporarySibling(payloadFile);
     {
         std::ofstream stream(cacheFilesystemPath(temporary), std::ios::binary | std::ios::trunc);
         if (!stream)
@@ -675,10 +512,10 @@ bool CompilationArtifactCache::storeCodePartitionPlan(
             "': " + filesystemError.message();
         return false;
     }
-    if (!replaceFileAtomically(temporary, payloadFile, error)) return false;
+    if (!codePartitionEntryStore.replaceFileAtomically(temporary, payloadFile, error)) return false;
     const std::span<const std::uint8_t> bytes(
         reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
-    return writeCodePartitionMetadataAtomically(
+    return codePartitionEntryStore.writeMetadataAtomically(
         metadataFile, key, basic::sha256Hex(basic::sha256(bytes)), payload.size(), error);
 }
 

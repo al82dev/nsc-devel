@@ -90,6 +90,7 @@ void dumpCallables(
     const ProjectNameLookup& nameLookup,
     std::ostream& output)
 {
+    (void)model;
 output << "callables:\n";
 for (std::size_t ordinal = 0; ordinal < memberModel.members().size(); ++ordinal)
 {

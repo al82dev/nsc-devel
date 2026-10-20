@@ -425,7 +425,7 @@ LLVMMetadataRef OopLlvmImplementation::debugClassPointee(
                 nameLookup_.namedTypes()[*layout.baseTypeOrdinal];
             const std::string baseKey = "type:" + base.identity.key();
             (void)debugType(baseKey);
-            if (const auto found = debugPointeeTypes_.find(baseKey);
+            if (const auto found = debugPointeeTypes_.find(std::string(baseKey));
                 found != debugPointeeTypes_.end())
                 derivedFrom = found->second;
         }
@@ -696,7 +696,7 @@ LLVMMetadataRef OopLlvmImplementation::debugPlacementBase(
         LLVMMetadataRef base = physical;
         if (named.kind == frontend::NamedTypeDeclarationKind::Class)
         {
-            if (const auto found = debugPointeeTypes_.find(baseKey);
+            if (const auto found = debugPointeeTypes_.find(std::string(baseKey));
                 found != debugPointeeTypes_.end())
                 base = found->second;
             if (const frontend::ProjectOopMirClassLayout* layout = findClassLayout(mirModel_, baseKey);

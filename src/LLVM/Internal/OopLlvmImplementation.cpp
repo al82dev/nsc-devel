@@ -4,6 +4,8 @@
 #include "MatchValuePop.h"
 #include "../Lowering/OopLlvmSupport.h"
 
+#include <fstream>
+
 namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;

@@ -13,13 +13,13 @@ using internal::LoopBlockAdvance;
 using internal::SwitchStatementFrameState;
 
 LoopBlockAdvance ProjectOopHirModel::advanceSwitchStatementFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
     std::size_t frameIndex)
 {
     while (true)
@@ -65,10 +65,10 @@ LoopBlockAdvance ProjectOopHirModel::advanceSwitchStatementFrame(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::beginNextSwitchSection(
-    IterativeExpressionFrame& frame,
-    std::vector<IterativeExpressionFrame>& frames,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error)
 {
     SwitchStatementFrameState& state = *frame.switchStatement;
     if (state.sectionSyntax != nullptr) return std::nullopt;
@@ -105,7 +105,7 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::beginNextSwitchSection(
 }
 
 const ast::AstNode* ProjectOopHirModel::nextSwitchSectionStatement(
-    IterativeExpressionFrame& frame)
+    [[maybe_unused]] IterativeExpressionFrame& frame)
 {
     SwitchStatementFrameState& state = *frame.switchStatement;
     while (state.nextSectionChild < state.sectionSyntax->children().size())
@@ -126,13 +126,13 @@ const ast::AstNode* ProjectOopHirModel::nextSwitchSectionStatement(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceSwitchSimpleStatement(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind)
 {
     if (statement->kind() == ast::AstNodeKind::BlockStatement)
     {
@@ -158,14 +158,14 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceSwitchSimpleStatement
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::advanceSwitchDeclarationStatement(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     std::optional<LoopBlockAdvance> advance = advanceSwitchVariableStatement(
         frame, statement, frames, current, currentMemberOrdinal,
@@ -186,14 +186,14 @@ ProjectOopHirModel::advanceSwitchDeclarationStatement(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceSwitchVariableStatement(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     if (statement->kind() != ast::AstNodeKind::VariableDeclarationStatement)
         return std::nullopt;
@@ -225,14 +225,14 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceSwitchVariableStateme
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::advanceSwitchDeconstructionStatement(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     if (statement->kind() !=
         ast::AstNodeKind::DeconstructionDeclarationStatement)
@@ -264,14 +264,14 @@ ProjectOopHirModel::advanceSwitchDeconstructionStatement(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceSwitchAssemblyStatement(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     if (statement->kind() != ast::AstNodeKind::InlineAssemblyStatement)
         return std::nullopt;
@@ -302,14 +302,14 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceSwitchAssemblyStateme
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceSwitchControlStatement(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     std::optional<LoopBlockAdvance> advance = advanceSwitchConditionalStatement(
         frame, statement, frames, current, currentMemberOrdinal,
@@ -325,13 +325,13 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceSwitchControlStatemen
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::advanceSwitchConditionalStatement(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind)
 {
     IterativeExpressionFrame nestedFrame;
     if (statement->kind() == ast::AstNodeKind::StaticAssertStatement)
@@ -359,14 +359,14 @@ ProjectOopHirModel::advanceSwitchConditionalStatement(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceSwitchLoopStatement(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     IterativeExpressionFrame nestedFrame;
     if (statement->kind() == ast::AstNodeKind::WhileStatement ||
@@ -402,14 +402,14 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceSwitchLoopStatement(
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::advanceSwitchIterationStatement(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     IterativeExpressionFrame nestedFrame;
     if (statement->kind() == ast::AstNodeKind::ForStatement)
@@ -433,14 +433,14 @@ ProjectOopHirModel::advanceSwitchIterationStatement(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceSwitchValueStatement(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statement,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     if (isExitValueStatement(statement))
     {

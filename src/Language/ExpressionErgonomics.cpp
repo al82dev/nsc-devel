@@ -243,12 +243,6 @@ bool renderStaticInterpolation(
     return true;
 }
 
-bool builtinStaticInterpolationHoleSupported(const InterpolationPart& part) noexcept
-{
-    if (part.kind != InterpolationPartKind::Hole) return true;
-    return builtinHoleSyntaxSupported(part);
-}
-
 bool renderBuiltinStaticInterpolation(
     std::span<const InterpolationPart> parts,
     std::string& result,

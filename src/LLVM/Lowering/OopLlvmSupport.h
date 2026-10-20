@@ -4,6 +4,16 @@
 
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/LLVM/DebugPrefixMap.h"
+#include "nativesharp/LLVM/FloatingPointMode.h"
+#include "nativesharp/LLVM/FloatingPointModeScope.h"
+#include "nativesharp/LLVM/LlvmModuleMetadata.h"
+#include "nativesharp/LLVM/LlvmRuntimeNames.h"
+#include "nativesharp/LLVM/LlvmTrapReason.h"
+#include "nativesharp/LLVM/LlvmTypeClassification.h"
+#include "nativesharp/LLVM/LlvmTypeLayout.h"
+#include "nativesharp/LLVM/ProjectOopFunctionReachability.h"
+#include "nativesharp/Source/SourceManager.h"
 
 #include <cstddef>
 #include <cstdint>

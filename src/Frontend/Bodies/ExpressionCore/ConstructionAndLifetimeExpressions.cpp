@@ -61,13 +61,13 @@ constexpr std::string_view kGenericRawNewAuxiliary = "stage52-generic-raw-new";
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindOffsetofExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -146,13 +146,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindDefaultValueExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -186,13 +186,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindObjectCreationExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -328,9 +328,9 @@ bool ProjectMethodBodyModel::analyzeConstructionArguments(
     ProjectConstructionSite& site,
     const ast::AstNode* expression,
     std::size_t constructorArgumentCount,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     bool argumentsValid = true;
     for (std::size_t argumentIndex = 0;
@@ -424,13 +424,13 @@ void ProjectMethodBodyModel::completePlacementConstructionResult(
 ProjectMethodBodyModel::ExpressionResult
 ProjectMethodBodyModel::analyzeExpressionKindPlacementConstructionExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     if (memberModel_ == nullptr || nameLookup_ == nullptr) return result;
@@ -503,9 +503,9 @@ bool ProjectMethodBodyModel::analyzeRangeArrayAllocation(
     ExpressionResult& result,
     const ast::AstNode* expression,
     std::string_view element,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     if (!expression->auxiliaryText().starts_with("range-array-allocation:"))
         return false;
@@ -561,9 +561,9 @@ void ProjectMethodBodyModel::analyzeNativeArrayAllocation(
     const ast::AstNode* expression,
     std::string_view element,
     const ExpressionResult& count,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const bool inferredInitializer =
         expression->auxiliaryText() == "inferred-array-initializer";
@@ -638,7 +638,7 @@ bool ProjectMethodBodyModel::validateRawAllocationElement(
     std::string_view element,
     bool isStackalloc,
     bool isRawNew,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     // CC1 fases 4B y 4C. Hasta aqui llegan las dos formas que quedaban SIN VALIDAR y
     // sin binding: `stackalloc T[n]` y el `new T` escalar. Las dos ponian `T*`,
@@ -693,8 +693,8 @@ bool ProjectMethodBodyModel::validateStackalloc(
     const ast::AstNode* expression,
     const ExpressionResult& count,
     bool allocationValid,
-    std::size_t methodMemberOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     // El contador. La forma dinamica de `new T[n]` ya lo exige arriba; esta rama
     // no lo hacia, asi que `stackalloc int[unaCadena]` tipaba sin una palabra.
@@ -805,8 +805,8 @@ void ProjectMethodBodyModel::recordRawAllocation(
     bool allocationValid,
     bool isStackalloc,
     bool isRawNew,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal)
 {
     result.typeKey = std::string(element) + '*';
     result.valid = allocationValid;
@@ -829,13 +829,13 @@ void ProjectMethodBodyModel::recordRawAllocation(
 ProjectMethodBodyModel::ExpressionResult
 ProjectMethodBodyModel::analyzeExpressionKindNewExpressionOrStackallocExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     if (memberModel_ == nullptr || nameLookup_ == nullptr) return result;
@@ -895,13 +895,13 @@ ProjectMethodBodyModel::analyzeExpressionKindNewExpressionOrStackallocExpression
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindDeleteExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -996,7 +996,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 bool ProjectMethodBodyModel::validateDestroyTarget(
     const ast::AstNode* expression,
     const ExpressionResult& operand,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (!operand.valid) return false;
     // A class/interface reference carries the runtime descriptor needed for dynamic
@@ -1027,13 +1027,13 @@ bool ProjectMethodBodyModel::validateDestroyTarget(
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindDestroyExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())

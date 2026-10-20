@@ -4,6 +4,8 @@
 
 namespace nativesharp::runtime::internal
 {
+using namespace llvm_api;
+
 struct RuntimeModuleState final
 {
     LLVMContextRef context = nullptr;

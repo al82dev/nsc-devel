@@ -68,19 +68,19 @@ using internal::LoopBlockAdvance;
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::initializeScheduledAccessFrame(
-    IterativeExpressionFrame& frame,
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
-    else if (currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
+    if (currentKind == IterativeExpressionKind::ExtensionPropertyGetter)
         return initializeScheduledExtensionPropertyGetterFrame(
             frame, currentKind, frames, current, currentMemberOrdinal,
                 currentAddressContext, currentInputKind, lowered, error,
@@ -125,17 +125,17 @@ ProjectOopHirModel::initializeScheduledAccessFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::initializeScheduledExtensionPropertyGetterFrame(
-    IterativeExpressionFrame& frame,
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     frame.extensionPropertyBinding = namespaceFunctionCallBinding(current);
     frame.operandAddressContext =
@@ -145,17 +145,17 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledExtensionPropertyGetterF
 }
 
 LoopBlockAdvance ProjectOopHirModel::initializeScheduledUserIndexerGetterFrame(
-    IterativeExpressionFrame& frame,
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     const MethodCoreBinding* core = coreBinding(current);
     frame.nullConditionalCall = core != nullptr &&
@@ -186,17 +186,17 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledUserIndexerGetterFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::initializeScheduledDelegateCreationReceiverFrame(
-    IterativeExpressionFrame& frame,
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     frame.delegateCreationBinding = delegateBinding(current);
     const std::optional<bool> receiverReady = initializeReceiverFrame(
@@ -217,17 +217,17 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledDelegateCreationReceiver
 }
 
 LoopBlockAdvance ProjectOopHirModel::initializeScheduledInterpolationHandlerFrame(
-    IterativeExpressionFrame& frame,
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     frame.core = coreBinding(current);
     frame.syntheticLocalOrdinal = nextSyntheticLocalOrdinal_++;
@@ -255,17 +255,17 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledInterpolationHandlerFram
 }
 
 LoopBlockAdvance ProjectOopHirModel::initializeScheduledCollectionBuilderFrame(
-    IterativeExpressionFrame& frame,
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     frame.core = coreBinding(current);
     frame.syntheticLocalOrdinal = nextSyntheticLocalOrdinal_++;
@@ -277,17 +277,17 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledCollectionBuilderFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::initializeScheduledArrayConstructionFrame(
-    IterativeExpressionFrame& frame,
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     frame.core = coreBinding(current);
     frame.first = makeNode(
@@ -341,17 +341,17 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledArrayConstructionFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::initializeScheduledInstanceFieldFrame(
-    IterativeExpressionFrame& frame,
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     frame.fieldBinding = nameBinding(current);
     if (currentKind == IterativeExpressionKind::InstanceField)
@@ -365,17 +365,17 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledInstanceFieldFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::initializeScheduledRangeSliceFrame(
-    IterativeExpressionFrame& frame,
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     frame.rangeBinding = rangeSliceBinding(current);
     frame.materializeReceiverTemporary =

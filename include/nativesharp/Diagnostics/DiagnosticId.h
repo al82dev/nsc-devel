@@ -205,6 +205,7 @@ constexpr std::string_view diagnosticIdName(DiagnosticId id) noexcept
         case DiagnosticId::NS3030MissingEffectContext: return "NS3030";
         case DiagnosticId::NS3049DeferredLanguageSurface: return "NS3049";
         case DiagnosticId::NS3099InvalidConformanceManifest: return "NS3099";
+        default: break;
     }
     return "UnknownDiagnostic";
 }

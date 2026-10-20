@@ -145,7 +145,7 @@ bool verifyPrecompiledGenericTemplateSource(const interop::LibraryMetadata &meta
 
 bool writeVerifiedLibraryMetadata(const frontend::ProjectCompilation &compilation,
                                   const std::filesystem::path &destination, std::string &error,
-                                  interop::LibraryMetadata *writtenModel = nullptr)
+                                  interop::LibraryMetadata *writtenModel)
 {
     interop::LibraryMetadataCodec codec;
     interop::LibraryMetadata written;

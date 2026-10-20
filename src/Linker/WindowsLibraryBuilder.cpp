@@ -1,5 +1,5 @@
 #include "nativesharp/Linker/WindowsLibraryBuilder.h"
-#include "Internal/TemporaryDirectory.h"
+#include "Internal/ScopedTemporaryDirectory.h"
 
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 
@@ -27,36 +27,10 @@ namespace nativesharp::linker
 {
 namespace
 {
-std::unique_ptr<TemporaryDirectory> createTemporaryDirectory(std::string& error)
+std::unique_ptr<ScopedTemporaryDirectory> createScopedTemporaryDirectory(std::string& error)
 {
-    error.clear();
-    std::error_code filesystemError;
-    const std::filesystem::path root = std::filesystem::temp_directory_path(filesystemError);
-    if (filesystemError)
-    {
-        error = "could not resolve the system temporary directory: " + filesystemError.message();
-        return nullptr;
-    }
-
-    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    for (std::uint32_t attempt = 0; attempt < 100; ++attempt)
-    {
-        const std::filesystem::path candidate = root /
-            ("nativesharp-stage46-" + std::to_string(stamp) + "-" + std::to_string(attempt));
-        filesystemError.clear();
-        if (std::filesystem::create_directory(candidate, filesystemError))
-        {
-            return std::make_unique<TemporaryDirectory>(candidate);
-        }
-        if (filesystemError && filesystemError != std::errc::file_exists)
-        {
-            error = "could not create a Stage 46 temporary directory: " + filesystemError.message();
-            return nullptr;
-        }
-    }
-
-    error = "could not allocate a unique Stage 46 temporary directory";
-    return nullptr;
+    return ScopedTemporaryDirectory::create(
+        "nativesharp-stage46-", "Stage 46", {}, error);
 }
 
 bool validateOutputParent(const std::filesystem::path& path, std::string_view label, std::string& error)
@@ -199,12 +173,12 @@ bool emitLibraryObjects(
     llvm_backend::LlvmModule& programModule,
     llvm_backend::LlvmModule* runtimeModule,
     const llvm_backend::LlvmTargetMachine& targetMachine,
-    std::unique_ptr<TemporaryDirectory>& temporaryDirectory,
+    std::unique_ptr<ScopedTemporaryDirectory>& temporaryDirectory,
     std::filesystem::path& programObject,
     std::filesystem::path& runtimeObject,
     std::string& error)
 {
-    temporaryDirectory = createTemporaryDirectory(error);
+    temporaryDirectory = createScopedTemporaryDirectory(error);
     if (temporaryDirectory == nullptr) return false;
     programObject = temporaryDirectory->path() / "program.obj";
     runtimeObject = temporaryDirectory->path() / "runtime.obj";
@@ -278,7 +252,7 @@ bool WindowsLibraryBuilder::buildStatic(
     if (!optimizeLibraryModules(
             programModule, runtimeModule.get(), *targetMachine, optimizationLevel, error))
         return false;
-    std::unique_ptr<TemporaryDirectory> temporaryDirectory;
+    std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory;
     std::filesystem::path programObject;
     std::filesystem::path runtimeObject;
     if (!emitLibraryObjects(
@@ -448,7 +422,7 @@ bool WindowsLibraryBuilder::buildDynamic(
     if (!optimizeLibraryModules(
             programModule, runtimeModule.get(), *targetMachine, optimizationLevel, error))
         return false;
-    std::unique_ptr<TemporaryDirectory> temporaryDirectory;
+    std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory;
     std::filesystem::path programObject;
     std::filesystem::path runtimeObject;
     if (!emitLibraryObjects(
@@ -663,7 +637,7 @@ bool WindowsLibraryBuilder::buildStaticObjects(
             programObjects, outputPath, archiveInfo_, staticArchiveCacheAttempted_,
             reusedStaticArchive_, error);
     }
-    std::unique_ptr<TemporaryDirectory> temporaryDirectory = createTemporaryDirectory(error);
+    std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory = createScopedTemporaryDirectory(error);
     if (temporaryDirectory == nullptr) return false;
     const std::filesystem::path runtimeObject = temporaryDirectory->path() / "runtime.obj";
     if (!buildRuntimeObjectForStaticArchive(
@@ -719,13 +693,13 @@ bool optimizeDynamicRuntime(
 }
 
 bool emitDynamicRuntimeObject(
-    const llvm_backend::LlvmModule* runtimeModule,
+    llvm_backend::LlvmModule* runtimeModule,
     const llvm_backend::LlvmTargetMachine& targetMachine,
-    std::unique_ptr<TemporaryDirectory>& temporaryDirectory,
+    std::unique_ptr<ScopedTemporaryDirectory>& temporaryDirectory,
     std::filesystem::path& runtimeObject,
     std::string& error)
 {
-    temporaryDirectory = createTemporaryDirectory(error);
+    temporaryDirectory = createScopedTemporaryDirectory(error);
     if (temporaryDirectory == nullptr) return false;
     runtimeObject = temporaryDirectory->path() / "runtime.obj";
     if (runtimeModule == nullptr) return true;
@@ -809,7 +783,7 @@ bool WindowsLibraryBuilder::buildDynamicObjects(
             independentRuntime, runtimeModule, error)) return false;
     if (!optimizeDynamicRuntime(
             runtimeModule.get(), *targetMachine, optimizationLevel, error)) return false;
-    std::unique_ptr<TemporaryDirectory> temporaryDirectory;
+    std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory;
     std::filesystem::path runtimeObject;
     if (!emitDynamicRuntimeObject(
             runtimeModule.get(), *targetMachine, temporaryDirectory, runtimeObject, error))

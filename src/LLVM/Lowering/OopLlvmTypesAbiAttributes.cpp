@@ -401,15 +401,6 @@ LLVMValueRef OopLlvmImplementation::vectorCallAbiToCarrier(
         return load;
     }
 
-template <typename AddAttribute>
-    void OopLlvmImplementation::applyInRegAttribute(AddAttribute&& addAttribute, unsigned parameterPosition)
-{
-        const unsigned inregKind = LLVMGetEnumAttributeKindForName("inreg", 5);
-        addAttribute(
-            parameterPosition + 1U,
-            LLVMCreateEnumAttribute(context_, inregKind, 0));
-    }
-
 bool OopLlvmImplementation::isIndirectStructTypeKey(std::string_view typeKey) const noexcept
 {
         if (isEnumTypeKey(nameLookup_, typeKey)) return false;
@@ -456,25 +447,6 @@ LLVMValueRef OopLlvmImplementation::wrapIndirectArgument(
         LLVMValueRef store = LLVMBuildStore(builder_, value, copy);
         if (alignment > 1U) LLVMSetAlignment(store, alignment);
         return copy;
-    }
-
-template <typename AddAttribute>
-    void OopLlvmImplementation::applySretAttributes(
-        AddAttribute&& addAttribute, unsigned parameterPosition, std::string_view typeKey)
-{
-        LLVMTypeRef carrier = nullptr;
-        {
-            std::string ignored;
-            carrier = llvmType(typeKey, ignored);
-        }
-        if (carrier == nullptr) return;
-        const LLVMAttributeIndex index = parameterPosition + 1U;
-        const unsigned sretKind = LLVMGetEnumAttributeKindForName("sret", 4);
-        const unsigned noaliasKind = LLVMGetEnumAttributeKindForName("noalias", 7);
-        const unsigned alignKind = LLVMGetEnumAttributeKindForName("align", 5);
-        addAttribute(index, LLVMCreateTypeAttribute(context_, sretKind, carrier));
-        addAttribute(index, LLVMCreateEnumAttribute(context_, noaliasKind, 0));
-        addAttribute(index, LLVMCreateEnumAttribute(context_, alignKind, structAlignmentFor(typeKey)));
     }
 
 void OopLlvmImplementation::emitAbiReturn(LLVMValueRef value)

@@ -496,6 +496,7 @@ std::optional<ExpressionInfo> SemanticAnalyzer::analyzeEqualityBinary(
     TokenKind operation,
     bool shortCircuit)
 {
+    (void)shortCircuit;
     ExpressionInfo result;
     if (operation == TokenKind::EqualEqual || operation == TokenKind::BangEqual)
     {
@@ -572,6 +573,7 @@ std::optional<ExpressionInfo> SemanticAnalyzer::analyzeRelationalBinary(
     TokenKind operation,
     bool shortCircuit)
 {
+    (void)shortCircuit;
     ExpressionInfo result;
     if (operation == TokenKind::Less || operation == TokenKind::LessEqual ||
         operation == TokenKind::Greater || operation == TokenKind::GreaterEqual)
@@ -635,6 +637,7 @@ std::optional<ExpressionInfo> SemanticAnalyzer::analyzeArithmeticBinary(
     TokenKind operation,
     bool shortCircuit)
 {
+    (void)shortCircuit;
     ExpressionInfo result;
     if (operation == TokenKind::Plus || operation == TokenKind::Minus)
     {
@@ -975,7 +978,7 @@ Type* SemanticAnalyzer::resolveIndexedElement(
     bool& fixedArray)
 {
     Type* element = nullptr;
-    bool fixedArray = false;
+    fixedArray = false;
     if (base.type->kind() == TypeKind::Array)
     {
         fixedArray = true;

@@ -683,7 +683,6 @@ bool Parser::tryDispatchStructOrEnumGlobal(
     const bool isAbstract = state.isAbstract;
     const bool isSealed = state.isSealed;
     const bool isStatic = state.isStatic;
-    const bool isReadonlyType = state.isReadonlyType;
     const bool isRecordStruct = state.isRecordStruct;
     const bool isBorrowedView = state.isBorrowedView;
     const bool isCopyType = state.isCopyType;

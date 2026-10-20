@@ -53,8 +53,8 @@ using method_body_detail::pointerContract;
 using method_body_detail::Stage37ConstantKind;
 using method_body_detail::Stage37ConstantValue;
 using method_body_detail::writeMethodBodyTrace;
+using lexer::TokenKind;
 
-+
 // ID 82. La clase de expresiones que se puede bajar DOS VECES sin que se note. El porque esta en
 // la declaracion (ProjectMethodBodyModel.h); aqui esta el que.
 //

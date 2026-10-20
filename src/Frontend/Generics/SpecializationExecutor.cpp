@@ -1,6 +1,6 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../Internal/CloneDepthGuard.h"
-#include "../Internal/ByteReader.h"
+#include "../Cache/CachePayloadReader.h"
 #include "../Internal/EnumConstResolver.h"
 #include "../Internal/SpecializationWaveTimer.h"
 #include "../Internal/InterfaceFingerprint.h"
@@ -80,7 +80,7 @@ using internal::templateCacheKey;
 using internal::templateSourceSpelling;
 using internal::trailingPackIndex;
 using internal::valueParameterCount;
-using internal::ByteReader;
+using internal::CachePayloadReader;
 using internal::EnumConstResolver;
 using internal::MirCacheRecord;
 // NSC305-P01. Times one specialization materialization and, on completion, records the
@@ -402,7 +402,7 @@ std::string ProjectGenericModel::executeTypeDemand(
         std::string error;
         if (templateCache_.restore(key, payload, hit, error) && hit)
         {
-            ByteReader reader(payload);
+            CachePayloadReader reader(payload);
             ast::AstNode* clone = deserializeAstNodeTree(state.unit->arena(), reader);
             if (clone != nullptr)
             {
@@ -468,7 +468,7 @@ bool ProjectGenericModel::restoreTypeSpecializationFromCache(
     std::string error;
     if (!templateCache_.restore(key, payload, hit, error) || !hit) return false;
 
-    ByteReader reader(payload);
+    CachePayloadReader reader(payload);
     ast::AstNode* clone = deserializeAstNodeTree(state.unit->arena(), reader);
     if (clone == nullptr) return false;
     const std::size_t ordinal =

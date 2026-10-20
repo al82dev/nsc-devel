@@ -32,7 +32,7 @@ class SourceManager;
 
 namespace nativesharp::llvm_backend
 {
-class ColdLlvmPreambleTelemetry;
+struct ColdLlvmPreambleTelemetry;
 class ProjectOopCodePartition;
 class ProjectOopFunctionReachabilityAnalysis;
 

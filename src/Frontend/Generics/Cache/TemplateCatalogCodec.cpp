@@ -1,49 +1,20 @@
-#include "nativesharp/Frontend/ProjectGenericModel.h"
-#include "../../Internal/CloneDepthGuard.h"
-#include "../../Internal/ByteReader.h"
-#include "../../Internal/EnumConstResolver.h"
-#include "../../Internal/SpecializationWaveTimer.h"
+#include "TemplateCatalogCodec.h"
+
+#include "../../Cache/CachePayloadWriter.h"
 #include "../../Internal/InterfaceFingerprint.h"
 #include "../../Internal/ImplementationFingerprint.h"
 #include "../../Internal/LocatedNode.h"
 #include "../../Internal/MirFunctionKey.h"
-#include "../../Internal/MirCacheRecord.h"
-#include "../../Internal/ProjectGenericDependencyFrame.h"
-#include "../../Internal/ProjectGenericBodyFrame.h"
-#include "../../Internal/ProjectGenericAliasFrame.h"
-#include "../../Internal/ProjectGenericChildWork.h"
-#include "../../Internal/ProjectGenericCollectFrame.h"
-#include "../../Internal/ProjectGenericProcessFrame.h"
-#include "../../Internal/ProjectGenericReservedDemand.h"
 #include "../../Internal/TypeWork.h"
 #include "nativesharp/Frontend/ProjectOpaqueResultModel.h"
 
 #include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Basic/Sha256.h"
-#include "nativesharp/Diagnostics/DiagnosticEngine.h"
-#include "nativesharp/Diagnostics/DiagnosticId.h"
-#include "nativesharp/Diagnostics/DiagnosticSeverity.h"
-#include "nativesharp/Frontend/IntegerLiteralTyping.h"
-#include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
-#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
-#include <algorithm>
-#include <array>
-#include <cctype>
-#include <charconv>
-#include <chrono>
 #include <cstdint>
-#include <filesystem>
-#include <functional>
-#include <future>
-#include <iomanip>
-#include <limits>
-#include <sstream>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
-#include "TemplateCatalogCodec.h"
+
 namespace nativesharp::frontend::internal
 {
 // NSC305-C01. SHA-256 of a template's source text (reconstructed from the lexer tokens), the C1
@@ -87,65 +58,33 @@ std::string templateCacheKey(std::string_view sourceFingerprint)
 // a GenericTemplateRecord -- the C1 cache payload skeleton. The AST subtree (syntax/extensionSyntaxes,
 // parameterSyntaxes, constraints, externalTypeReferences) is intentionally not covered here; it is
 // the next layer of the codec.
-static void appendByte(std::string& out, std::uint8_t value)
-{
-    out.push_back(static_cast<char>(value));
-}
-
-static void appendU32(std::string& out, std::uint32_t value)
-{
-    out.push_back(static_cast<char>(value & 0xFFu));
-    out.push_back(static_cast<char>((value >> 8U) & 0xFFu));
-    out.push_back(static_cast<char>((value >> 16U) & 0xFFu));
-    out.push_back(static_cast<char>((value >> 24U) & 0xFFu));
-}
-
-static void appendU64(std::string& out, std::uint64_t value)
-{
-    for (unsigned shift = 0; shift < 64U; shift += 8U)
-        out.push_back(static_cast<char>((value >> shift) & 0xFFu));
-}
-
-static void appendString(std::string& out, std::string_view value)
-{
-    appendU32(out, static_cast<std::uint32_t>(value.size()));
-    out.append(value);
-}
-
-static void appendStringVector(std::string& out, const std::vector<std::string>& values)
-{
-    appendU32(out, static_cast<std::uint32_t>(values.size()));
-    for (const std::string& value : values) appendString(out, value);
-}
-
-
 [[maybe_unused]] static std::string serializeTemplateRecord(const GenericTemplateRecord& record)
 {
     std::string out;
-    appendByte(out, static_cast<std::uint8_t>(record.kind));
-    appendByte(out, static_cast<std::uint8_t>(record.accessibility));
-    appendU64(out, record.projectOrdinal);
-    appendU64(out, record.sourceOrdinal);
-    appendString(out, record.moduleName);
-    appendString(out, record.namespaceName);
-    appendString(out, record.ownerName);
-    appendString(out, record.name);
-    appendString(out, record.qualifiedTypeName);
-    appendStringVector(out, record.parameters);
-    appendString(out, record.canonicalKey);
-    appendString(out, record.specializationFamilyKey);
-    appendByte(out, record.isControlledSpecialization ? 1U : 0U);
-    appendByte(out, record.isControlledSpecializationFamily ? 1U : 0U);
-    appendStringVector(out, record.dependencies);
-    appendStringVector(out, record.unresolvedDependencies);
-    appendString(out, record.sourceFingerprint);
-    appendString(out, record.c1CacheKey);
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(record.kind));
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(record.accessibility));
+    internal::CachePayloadWriter::u64(out, record.projectOrdinal);
+    internal::CachePayloadWriter::u64(out, record.sourceOrdinal);
+    internal::CachePayloadWriter::string(out, record.moduleName);
+    internal::CachePayloadWriter::string(out, record.namespaceName);
+    internal::CachePayloadWriter::string(out, record.ownerName);
+    internal::CachePayloadWriter::string(out, record.name);
+    internal::CachePayloadWriter::string(out, record.qualifiedTypeName);
+    internal::CachePayloadWriter::stringVector(out, record.parameters);
+    internal::CachePayloadWriter::string(out, record.canonicalKey);
+    internal::CachePayloadWriter::string(out, record.specializationFamilyKey);
+    internal::CachePayloadWriter::byte(out, record.isControlledSpecialization ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, record.isControlledSpecializationFamily ? 1U : 0U);
+    internal::CachePayloadWriter::stringVector(out, record.dependencies);
+    internal::CachePayloadWriter::stringVector(out, record.unresolvedDependencies);
+    internal::CachePayloadWriter::string(out, record.sourceFingerprint);
+    internal::CachePayloadWriter::string(out, record.c1CacheKey);
     return out;
 }
 
-// NSC305-C01. ByteReader-based record metadata read (shared by deserializeTemplateRecord and the
+// NSC305-C01. CachePayloadReader-based record metadata read (shared by deserializeTemplateRecord and the
 // C02 catalog restore).
-[[maybe_unused]] static bool readTemplateRecord(ByteReader& reader, GenericTemplateRecord& record)
+[[maybe_unused]] static bool readTemplateRecord(CachePayloadReader& reader, GenericTemplateRecord& record)
 {
     std::uint8_t kind = 0;
     std::uint8_t accessibility = 0;
@@ -174,9 +113,9 @@ static void appendStringVector(std::string& out, const std::vector<std::string>&
     return true;
 }
 
-[[maybe_unused]] static bool deserializeTemplateRecord(std::string_view bytes, GenericTemplateRecord& record)
+bool deserializeTemplateRecord(std::string_view bytes, GenericTemplateRecord& record)
 {
-    ByteReader reader(bytes);
+    CachePayloadReader reader(bytes);
     return readTemplateRecord(reader, record);
 }
 
@@ -185,43 +124,43 @@ static void appendStringVector(std::string& out, const std::vector<std::string>&
 [[maybe_unused]] std::string serializeTypeSyntaxScalars(const ast::TypeSyntax& type)
 {
     std::string out;
-    appendU32(out, type.range().begin().offset());
-    appendU32(out, type.range().end().offset());
-    appendU32(out, static_cast<std::uint32_t>(type.baseTokenKind()));
-    appendString(out, type.baseName());
-    appendByte(out, static_cast<std::uint8_t>(type.ownershipQualifier()));
-    appendByte(out, static_cast<std::uint8_t>(type.referenceQualifier()));
-    appendString(out, type.lifetimeName());
-    appendByte(out, type.isDynamicTrait() ? 1U : 0U);
-    appendByte(out, type.isOpaqueResult() ? 1U : 0U);
-    appendString(out, type.opaqueResultTraitName());
-    appendByte(out, type.isExplicitTraitImplementation() ? 1U : 0U);
-    appendByte(out, type.isPointeeConst() ? 1U : 0U);
-    appendByte(out, type.isTuple() ? 1U : 0U);
-    appendByte(out, type.isFunction() ? 1U : 0U);
-    appendByte(out, type.isPackExpansion() ? 1U : 0U);
-    appendByte(out, static_cast<std::uint8_t>(type.functionCarrier()));
-    appendByte(out, static_cast<std::uint8_t>(type.functionCallingConvention()));
-    appendByte(out, type.functionIsVariadic() ? 1U : 0U);
-    appendByte(out, type.functionIsUnsafe() ? 1U : 0U);
-    appendByte(out, type.functionIsNoHeap() ? 1U : 0U);
-    appendByte(out, type.functionIsAsync() ? 1U : 0U);
-    appendByte(out, type.functionIsNullable() ? 1U : 0U);
-    appendString(out, type.functionLifetimeName());
-    appendStringVector(out, type.tupleElementNames());
-    appendByte(out, type.originProjectOrdinal().has_value() ? 1U : 0U);
+    internal::CachePayloadWriter::u32(out, type.range().begin().offset());
+    internal::CachePayloadWriter::u32(out, type.range().end().offset());
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(type.baseTokenKind()));
+    internal::CachePayloadWriter::string(out, type.baseName());
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(type.ownershipQualifier()));
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(type.referenceQualifier()));
+    internal::CachePayloadWriter::string(out, type.lifetimeName());
+    internal::CachePayloadWriter::byte(out, type.isDynamicTrait() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, type.isOpaqueResult() ? 1U : 0U);
+    internal::CachePayloadWriter::string(out, type.opaqueResultTraitName());
+    internal::CachePayloadWriter::byte(out, type.isExplicitTraitImplementation() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, type.isPointeeConst() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, type.isTuple() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, type.isFunction() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, type.isPackExpansion() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(type.functionCarrier()));
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(type.functionCallingConvention()));
+    internal::CachePayloadWriter::byte(out, type.functionIsVariadic() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, type.functionIsUnsafe() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, type.functionIsNoHeap() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, type.functionIsAsync() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, type.functionIsNullable() ? 1U : 0U);
+    internal::CachePayloadWriter::string(out, type.functionLifetimeName());
+    internal::CachePayloadWriter::stringVector(out, type.tupleElementNames());
+    internal::CachePayloadWriter::byte(out, type.originProjectOrdinal().has_value() ? 1U : 0U);
     if (type.originProjectOrdinal().has_value())
-        appendU64(out, type.originProjectOrdinal().value());
-    appendByte(out, type.originNamespace().has_value() ? 1U : 0U);
+        internal::CachePayloadWriter::u64(out, type.originProjectOrdinal().value());
+    internal::CachePayloadWriter::byte(out, type.originNamespace().has_value() ? 1U : 0U);
     if (type.originNamespace().has_value())
-        appendString(out, type.originNamespace().value());
+        internal::CachePayloadWriter::string(out, type.originNamespace().value());
     return out;
 }
 
 // NSC305-C01. Deserializes the scalar/string fields written by serializeTypeSyntaxScalars. The
 // SourceRange's FileId is left default (invalid); the caller restores it from the owning unit.
 static bool readTypeSyntaxHeader(
-    ByteReader& reader,
+    CachePayloadReader& reader,
     std::uint32_t& begin,
     std::uint32_t& end,
     std::uint32_t& tokenKind,
@@ -232,7 +171,7 @@ static bool readTypeSyntaxHeader(
 }
 
 static bool readTypeSyntaxQualifiers(
-    ByteReader& reader,
+    CachePayloadReader& reader,
     std::uint8_t& ownership,
     std::uint8_t& reference,
     std::string& lifetimeName,
@@ -253,7 +192,7 @@ static bool readTypeSyntaxQualifiers(
 }
 
 static bool readTypeSyntaxFunction(
-    ByteReader& reader,
+    CachePayloadReader& reader,
     std::uint8_t& carrier,
     std::uint8_t& convention,
     std::uint8_t& variadic,
@@ -271,7 +210,7 @@ static bool readTypeSyntaxFunction(
 }
 
 static bool readTypeSyntaxOrigin(
-    ByteReader& reader,
+    CachePayloadReader& reader,
     std::uint8_t& hasProject,
     std::uint64_t& project,
     std::uint8_t& hasNamespace,
@@ -345,7 +284,7 @@ static void applyTypeSyntaxOrigin(
 [[maybe_unused]] static bool deserializeTypeSyntaxScalars(
     std::string_view bytes, ast::TypeSyntax& type)
 {
-    ByteReader reader(bytes);
+    CachePayloadReader reader(bytes);
     std::uint32_t begin = 0, end = 0, tokenKind = 0;
     std::string baseName, lifetimeName, opaqueResultTraitName, functionLifetimeName;
     std::uint8_t ownership = 0, reference = 0, dynamicTrait = 0, opaqueResult = 0;
@@ -384,13 +323,13 @@ static void applyTypeSyntaxOrigin(
 {
     if (type == nullptr) return {};
     std::string out = serializeTypeSyntaxScalars(*type);
-    appendU32(out, static_cast<std::uint32_t>(type->typeArguments().size()));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(type->typeArguments().size()));
     for (const ast::TypeSyntax* argument : type->typeArguments())
         out += serializeTypeSyntaxTree(argument);
     const bool hasReturn = type->functionReturnType() != nullptr;
     const bool hasError = type->functionErrorType() != nullptr;
-    appendByte(out, hasReturn ? 1U : 0U);
-    appendByte(out, hasError ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, hasReturn ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, hasError ? 1U : 0U);
     if (hasReturn) out += serializeTypeSyntaxTree(type->functionReturnType());
     if (hasError) out += serializeTypeSyntaxTree(type->functionErrorType());
     return out;
@@ -399,11 +338,11 @@ static void applyTypeSyntaxOrigin(
 // NSC305-C01. Recursive deserialization of a TypeSyntax tree into `arena` (inverse of
 // serializeTypeSyntaxTree). The SourceRange's FileId is left default (invalid); the caller restores
 // it from the owning unit.
-static ast::TypeSyntax* deserializeTypeSyntaxTree(ast::AstArena& arena, ByteReader& reader);
+static ast::TypeSyntax* deserializeTypeSyntaxTree(ast::AstArena& arena, CachePayloadReader& reader);
 
 static bool deserializeTypeSyntaxArguments(
     ast::AstArena& arena,
-    ByteReader& reader,
+    CachePayloadReader& reader,
     ast::TypeSyntax& type,
     bool tuple,
     const std::vector<std::string>& tupleNames)
@@ -424,7 +363,7 @@ static bool deserializeTypeSyntaxArguments(
 
 static bool deserializeTypeSyntaxFunctionTypes(
     ast::AstArena& arena,
-    ByteReader& reader,
+    CachePayloadReader& reader,
     ast::TypeSyntax& type)
 {
     std::uint8_t hasReturn = 0, hasError = 0;
@@ -445,7 +384,7 @@ static bool deserializeTypeSyntaxFunctionTypes(
 }
 
 [[maybe_unused]] static ast::TypeSyntax* deserializeTypeSyntaxTree(
-    ast::AstArena& arena, ByteReader& reader)
+    ast::AstArena& arena, CachePayloadReader& reader)
 {
     std::uint32_t begin = 0, end = 0, tokenKind = 0;
     std::string baseName;
@@ -486,36 +425,36 @@ static bool deserializeTypeSyntaxFunctionTypes(
 [[maybe_unused]] std::string serializeAstNodeScalars(const ast::AstNode& node)
 {
     std::string out;
-    appendU32(out, static_cast<std::uint32_t>(node.kind()));
-    appendU32(out, node.range().begin().offset());
-    appendU32(out, node.range().end().offset());
-    appendString(out, node.text());
-    appendString(out, node.auxiliaryText());
-    appendString(out, node.argumentName());
-    appendString(out, node.allocatorFailureProfile());
-    appendU32(out, static_cast<std::uint32_t>(node.tokenKind()));
-    appendU32(out, static_cast<std::uint32_t>(node.modifiers().size()));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.kind()));
+    internal::CachePayloadWriter::u32(out, node.range().begin().offset());
+    internal::CachePayloadWriter::u32(out, node.range().end().offset());
+    internal::CachePayloadWriter::string(out, node.text());
+    internal::CachePayloadWriter::string(out, node.auxiliaryText());
+    internal::CachePayloadWriter::string(out, node.argumentName());
+    internal::CachePayloadWriter::string(out, node.allocatorFailureProfile());
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.tokenKind()));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.modifiers().size()));
     for (const lexer::TokenKind modifier : node.modifiers())
-        appendU32(out, static_cast<std::uint32_t>(modifier));
-    appendStringVector(out, node.genericParameters());
-    appendString(out, node.lifetimeName());
-    appendByte(out, node.flag() ? 1U : 0U);
-    appendByte(out, node.isReference() ? 1U : 0U);
-    appendByte(out, node.isVariadic() ? 1U : 0U);
-    appendByte(out, node.isUnsafe() ? 1U : 0U);
-    appendByte(out, static_cast<std::uint8_t>(node.floatingPointMode()));
-    appendByte(out, static_cast<std::uint8_t>(node.ffiUnwindPolicy()));
-    appendU64(out, node.integerValue());
+        internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(modifier));
+    internal::CachePayloadWriter::stringVector(out, node.genericParameters());
+    internal::CachePayloadWriter::string(out, node.lifetimeName());
+    internal::CachePayloadWriter::byte(out, node.flag() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, node.isReference() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, node.isVariadic() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, node.isUnsafe() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(node.floatingPointMode()));
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(node.ffiUnwindPolicy()));
+    internal::CachePayloadWriter::u64(out, node.integerValue());
     std::uint64_t floatingBits = 0;
     const double floatingValue = node.floatingValue();
     std::memcpy(&floatingBits, &floatingValue, sizeof(floatingBits));
-    appendU64(out, floatingBits);
+    internal::CachePayloadWriter::u64(out, floatingBits);
     return out;
 }
 
 // NSC305-C01. Inverse of serializeAstNodeScalars (allocates the node into `arena`).
 [[maybe_unused]] ast::AstNode* deserializeAstNodeScalars(
-    ast::AstArena& arena, ByteReader& reader)
+    ast::AstArena& arena, CachePayloadReader& reader)
 {
     std::uint32_t kind = 0;
     std::uint32_t begin = 0;
@@ -585,23 +524,23 @@ static bool deserializeTypeSyntaxFunctionTypes(
     std::string out = serializeAstNodeScalars(*node);
     const ast::TypeSyntax* typeSyntax = node->typeSyntax();
     const ast::TypeSyntax* throwsType = node->throwsTypeSyntax();
-    appendByte(out, typeSyntax != nullptr ? 1U : 0U);
-    appendByte(out, throwsType != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, typeSyntax != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, throwsType != nullptr ? 1U : 0U);
     if (typeSyntax != nullptr) out += serializeTypeSyntaxTree(typeSyntax);
     if (throwsType != nullptr) out += serializeTypeSyntaxTree(throwsType);
-    appendU32(out, static_cast<std::uint32_t>(node->typeSyntaxes().size()));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node->typeSyntaxes().size()));
     for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
         out += serializeTypeSyntaxTree(syntax);
     const ast::AstNode* first = node->first();
     const ast::AstNode* second = node->second();
     const ast::AstNode* third = node->third();
-    appendByte(out, first != nullptr ? 1U : 0U);
-    appendByte(out, second != nullptr ? 1U : 0U);
-    appendByte(out, third != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, first != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, second != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, third != nullptr ? 1U : 0U);
     if (first != nullptr) out += serializeAstNodeTree(first);
     if (second != nullptr) out += serializeAstNodeTree(second);
     if (third != nullptr) out += serializeAstNodeTree(third);
-    appendU32(out, static_cast<std::uint32_t>(node->children().size()));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node->children().size()));
     for (const ast::AstNode* child : node->children())
         out += serializeAstNodeTree(child);
     return out;
@@ -609,7 +548,7 @@ static bool deserializeTypeSyntaxFunctionTypes(
 
 // NSC305-C01. Inverse of serializeAstNodeTree (allocates the tree into `arena`).
 [[maybe_unused]] ast::AstNode* deserializeAstNodeTree(
-    ast::AstArena& arena, ByteReader& reader)
+    ast::AstArena& arena, CachePayloadReader& reader)
 {
     ast::AstNode* node = deserializeAstNodeScalars(arena, reader);
     if (node == nullptr) return nullptr;
@@ -674,13 +613,13 @@ static bool deserializeTypeSyntaxFunctionTypes(
 [[maybe_unused]] std::string serializeGenericParameter(const ast::GenericParameterSyntax& parameter)
 {
     std::string out;
-    appendString(out, parameter.name);
-    appendByte(out, static_cast<std::uint8_t>(parameter.kind));
-    appendByte(out, parameter.constantType != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::string(out, parameter.name);
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(parameter.kind));
+    internal::CachePayloadWriter::byte(out, parameter.constantType != nullptr ? 1U : 0U);
     if (parameter.constantType != nullptr)
         out += serializeTypeSyntaxTree(parameter.constantType);
-    appendU32(out, parameter.range.begin().offset());
-    appendU32(out, parameter.range.end().offset());
+    internal::CachePayloadWriter::u32(out, parameter.range.begin().offset());
+    internal::CachePayloadWriter::u32(out, parameter.range.end().offset());
     return out;
 }
 
@@ -688,30 +627,30 @@ static bool deserializeTypeSyntaxFunctionTypes(
 [[maybe_unused]] std::string serializeGenericConstraint(const ast::GenericConstraintClause& clause)
 {
     std::string out;
-    appendString(out, clause.parameterName);
-    appendU32(out, clause.parameterRange.begin().offset());
-    appendU32(out, clause.parameterRange.end().offset());
-    appendByte(out, clause.requiresClass ? 1U : 0U);
-    appendByte(out, clause.requiresValueType ? 1U : 0U);
-    appendByte(out, clause.requiresDefaultConstructor ? 1U : 0U);
-    appendByte(out, clause.requiresCopy ? 1U : 0U);
-    appendByte(out, clause.requiresMove ? 1U : 0U);
-    appendByte(out, clause.requiresTrackedLifetime ? 1U : 0U);
-    appendByte(out, clause.requiresUnmanaged ? 1U : 0U);
-    appendByte(out, clause.requiresNotNull ? 1U : 0U);
-    appendByte(out, clause.requiresRefLike ? 1U : 0U);
-    appendByte(out, clause.equalityConstraint != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::string(out, clause.parameterName);
+    internal::CachePayloadWriter::u32(out, clause.parameterRange.begin().offset());
+    internal::CachePayloadWriter::u32(out, clause.parameterRange.end().offset());
+    internal::CachePayloadWriter::byte(out, clause.requiresClass ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresValueType ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresDefaultConstructor ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresCopy ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresMove ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresTrackedLifetime ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresUnmanaged ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresNotNull ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresRefLike ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.equalityConstraint != nullptr ? 1U : 0U);
     if (clause.equalityConstraint != nullptr)
         out += serializeTypeSyntaxTree(clause.equalityConstraint);
-    appendByte(out, clause.associatedProjection != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.associatedProjection != nullptr ? 1U : 0U);
     if (clause.associatedProjection != nullptr)
         out += serializeTypeSyntaxTree(clause.associatedProjection);
-    appendU32(out, static_cast<std::uint32_t>(clause.typeConstraints.size()));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(clause.typeConstraints.size()));
     for (const ast::TypeSyntax* constraint : clause.typeConstraints)
         out += serializeTypeSyntaxTree(constraint);
-    appendU32(out, clause.range.begin().offset());
-    appendU32(out, clause.range.end().offset());
-    appendByte(out, clause.substitutedArgument != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::u32(out, clause.range.begin().offset());
+    internal::CachePayloadWriter::u32(out, clause.range.end().offset());
+    internal::CachePayloadWriter::byte(out, clause.substitutedArgument != nullptr ? 1U : 0U);
     if (clause.substitutedArgument != nullptr)
         out += serializeTypeSyntaxTree(clause.substitutedArgument);
     return out;
@@ -719,7 +658,7 @@ static bool deserializeTypeSyntaxFunctionTypes(
 
 // NSC305-C01. Inverse of serializeGenericParameter (allocates the constantType into `arena`).
 [[maybe_unused]] static bool deserializeGenericParameter(
-    ast::AstArena& arena, ByteReader& reader, ast::GenericParameterSyntax& parameter)
+    ast::AstArena& arena, CachePayloadReader& reader, ast::GenericParameterSyntax& parameter)
 {
     std::uint8_t kind = 0;
     std::uint8_t hasConstantType = 0;
@@ -741,7 +680,7 @@ static bool deserializeTypeSyntaxFunctionTypes(
 
 // NSC305-C01. Inverse of serializeGenericConstraint (allocates TypeSyntax references into `arena`).
 [[maybe_unused]] static bool deserializeGenericConstraint(
-    ast::AstArena& arena, ByteReader& reader, ast::GenericConstraintClause& clause)
+    ast::AstArena& arena, CachePayloadReader& reader, ast::GenericConstraintClause& clause)
 {
     std::uint8_t requiresClass = 0;
     std::uint8_t requiresValueType = 0;
@@ -821,7 +760,7 @@ static bool deserializeTypeSyntaxFunctionTypes(
 [[maybe_unused]] bool restoreCatalogEntry(
     ast::AstArena& arena, std::string_view bytes, GenericTemplateRecord& record)
 {
-    ByteReader reader(bytes);
+    CachePayloadReader reader(bytes);
     if (!readTemplateRecord(reader, record)) return false;
     record.syntax = deserializeAstNodeTree(arena, reader);
     return record.syntax != nullptr;
@@ -892,17 +831,17 @@ static bool deserializeTypeSyntaxFunctionTypes(
 [[maybe_unused]] static std::string serializeMirFunctionKey(const MirFunctionKey& key)
 {
     std::string out;
-    appendString(out, key.mangledName);
-    appendString(out, key.genericSpecializationKey);
-    appendString(out, key.returnTypeKey);
-    appendString(out, key.errorTypeKey);
-    appendStringVector(out, key.parameterTypeKeys);
+    internal::CachePayloadWriter::string(out, key.mangledName);
+    internal::CachePayloadWriter::string(out, key.genericSpecializationKey);
+    internal::CachePayloadWriter::string(out, key.returnTypeKey);
+    internal::CachePayloadWriter::string(out, key.errorTypeKey);
+    internal::CachePayloadWriter::stringVector(out, key.parameterTypeKeys);
     return out;
 }
 
 [[maybe_unused]] static bool restoreMirFunctionKey(std::string_view bytes, MirFunctionKey& key)
 {
-    ByteReader reader(bytes);
+    CachePayloadReader reader(bytes);
     return reader.string(key.mangledName) &&
         reader.string(key.genericSpecializationKey) &&
         reader.string(key.returnTypeKey) &&
@@ -917,14 +856,14 @@ static bool deserializeTypeSyntaxFunctionTypes(
 [[maybe_unused]] std::string serializeMirCacheRecord(const MirCacheRecord& record)
 {
     std::string out = serializeMirFunctionKey(record.key);
-    appendString(out, record.interfaceFingerprint);
-    appendString(out, record.implementationFingerprint);
+    internal::CachePayloadWriter::string(out, record.interfaceFingerprint);
+    internal::CachePayloadWriter::string(out, record.implementationFingerprint);
     return out;
 }
 
 [[maybe_unused]] bool restoreMirCacheRecord(std::string_view bytes, MirCacheRecord& record)
 {
-    ByteReader reader(bytes);
+    CachePayloadReader reader(bytes);
     return reader.string(record.key.mangledName) &&
         reader.string(record.key.genericSpecializationKey) &&
         reader.string(record.key.returnTypeKey) &&

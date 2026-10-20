@@ -6,6 +6,7 @@
 #include <bit>
 #include <limits>
 #include <ranges>
+#include <unordered_map>
 #include <utility>
 
 namespace nativesharp::driver
@@ -140,14 +141,16 @@ bool PublicSurfaceBuilder::emitParameterSlice(std::string_view memberName,
 {
     if (begin > parameters.size() || count > parameters.size() - begin)
     {
-        error = "metadata member '" + memberName + "' has an invalid parameter range";
+        error = "metadata member '" + std::string(memberName) +
+            "' has an invalid parameter range";
         return false;
     }
     for (std::size_t index = 0; index < count; ++index)
     {
         if (index != 0)
             (*generated) << ", ";
-        if (!emitParameter(parameters[begin + index], memberName, begin + index))
+        if (!emitParameter(
+                parameters[begin + index], std::string(memberName), begin + index))
             return false;
     }
     return true;

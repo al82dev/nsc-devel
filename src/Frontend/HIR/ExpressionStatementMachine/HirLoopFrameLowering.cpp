@@ -14,12 +14,12 @@ using internal::IterativeInputKind;
 using internal::LoopBlockAdvance;
 
 LoopBlockAdvance ProjectOopHirModel::advanceForStatementFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error,
     std::size_t frameIndex)
 {
     while (true)
@@ -58,12 +58,12 @@ LoopBlockAdvance ProjectOopHirModel::advanceForStatementFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::advanceForInitializer(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error,
     std::size_t frameIndex)
 {
     IterativeExpressionFrame& frame = frames[frameIndex];
@@ -116,11 +116,11 @@ LoopBlockAdvance ProjectOopHirModel::advanceForInitializer(
 }
 
 LoopBlockAdvance ProjectOopHirModel::advanceForCondition(
-    IterativeExpressionFrame& frame,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind)
 {
     frame.stage = 2U;
     const ast::AstNode* condition = frame.syntax->second();
@@ -137,11 +137,11 @@ LoopBlockAdvance ProjectOopHirModel::advanceForCondition(
 }
 
 LoopBlockAdvance ProjectOopHirModel::advanceForIncrement(
-    IterativeExpressionFrame& frame,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind)
 {
     frame.stage = 3U;
     const ast::AstNode* increment = frame.syntax->third();
@@ -160,12 +160,12 @@ LoopBlockAdvance ProjectOopHirModel::advanceForIncrement(
 }
 
 LoopBlockAdvance ProjectOopHirModel::advanceForBody(
-    IterativeExpressionFrame& frame,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     if (frame.syntax->children().empty())
     {
@@ -181,14 +181,14 @@ LoopBlockAdvance ProjectOopHirModel::advanceForBody(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachSimpleSource(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* source,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     std::optional<LoopBlockAdvance> advance = advanceForeachBasicSource(
         frame, source, frames, current, currentMemberOrdinal,
@@ -209,13 +209,13 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachSimpleSource(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachBasicSource(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* source,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind)
 {
     if (source != nullptr && source->kind() == ast::AstNodeKind::BlockStatement)
     {
@@ -243,14 +243,14 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachBasicSource(
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::advanceForeachDeclarationSource(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* source,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     ForeachStatementFrameState& state = *frame.foreachStatement;
     if (source != nullptr &&
@@ -308,14 +308,14 @@ ProjectOopHirModel::advanceForeachDeclarationSource(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachAssemblySource(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* source,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     ForeachStatementFrameState& state = *frame.foreachStatement;
     if (source == nullptr ||
@@ -347,14 +347,14 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachAssemblySource
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachControlSource(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* source,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error,
     std::size_t& frameIndex)
 {
     std::optional<LoopBlockAdvance> advance = advanceForeachConditionalSource(
@@ -377,14 +377,14 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachControlSource(
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::advanceForeachConditionalSource(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* source,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     if (source != nullptr &&
         source->kind() == ast::AstNodeKind::StaticAssertStatement)
@@ -440,14 +440,14 @@ ProjectOopHirModel::advanceForeachConditionalSource(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachSwitchSource(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* source,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     if (source == nullptr || source->kind() != ast::AstNodeKind::SwitchStatement)
         return std::nullopt;
@@ -464,14 +464,14 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachSwitchSource(
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachIterationSource(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* source,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error,
     std::size_t& frameIndex)
 {
     if (source != nullptr && source->kind() == ast::AstNodeKind::ForStatement)
@@ -499,14 +499,14 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachIterationSourc
 }
 
 std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachValueSource(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* source,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error)
 {
     if (isExitValueStatement(source))
     {
@@ -540,12 +540,12 @@ std::optional<LoopBlockAdvance> ProjectOopHirModel::advanceForeachValueSource(
 }
 
 LoopBlockAdvance ProjectOopHirModel::advanceForeachStatementFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error,
     std::size_t frameIndex)
 {
     while (true)

@@ -19,8 +19,8 @@ using internal::VariableDeclarationFrameMode;
 using internal::VariableDeclarationFrameState;
 
 std::optional<bool> ProjectOopHirModel::prepareSetterReceiver(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     const MethodCallBinding& binding = *frame.propertySetterBinding;
     if (binding.staticCall) return true;
@@ -64,8 +64,8 @@ std::optional<bool> ProjectOopHirModel::prepareSetterReceiver(
 }
 
 bool ProjectOopHirModel::initializeVariableDeclarationFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     VariableDeclarationFrameState variable;
     variable.local = localSymbol(frame.syntax);
@@ -100,7 +100,7 @@ bool ProjectOopHirModel::initializeVariableDeclarationFrame(
 bool ProjectOopHirModel::initializeVariableCleanup(
     VariableDeclarationFrameState& variable,
     const ast::AstNode* syntax,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const MethodLocalSymbol& local = *variable.local;
     if (local.isStatic ||
@@ -126,7 +126,7 @@ bool ProjectOopHirModel::initializeVariableCleanup(
 bool ProjectOopHirModel::initializeVariableMode(
     VariableDeclarationFrameState& variable,
     const ast::AstNode* syntax,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const MethodLocalSymbol& local = *variable.local;
     if (!local.isVariableLengthArray)
@@ -164,7 +164,7 @@ bool ProjectOopHirModel::initializeVariableMode(
 }
 
 bool ProjectOopHirModel::nextVariableDeclarationChild(
-    const IterativeExpressionFrame& frame,
+    [[maybe_unused]] const IterativeExpressionFrame& frame,
     const ast::AstNode*& syntax,
     bool& addressContext)
 {
@@ -192,7 +192,7 @@ bool ProjectOopHirModel::nextVariableDeclarationChild(
 }
 
 void ProjectOopHirModel::completeVariableAllocation(
-    IterativeExpressionFrame& frame)
+    [[maybe_unused]] IterativeExpressionFrame& frame)
 {
     VariableDeclarationFrameState& variable = *frame.variableDeclaration;
     auto allocation = makeNode(
@@ -209,9 +209,9 @@ void ProjectOopHirModel::completeVariableAllocation(
 }
 
 bool ProjectOopHirModel::acceptVariableDeclarationChild(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     VariableDeclarationFrameState& variable = *frame.variableDeclaration;
     if (variable.mode == VariableDeclarationFrameMode::Initializer)
@@ -232,7 +232,7 @@ bool ProjectOopHirModel::acceptVariableDeclarationChild(
 }
 
 bool ProjectOopHirModel::acceptVariableInitializer(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     std::unique_ptr<ProjectOopHirNode> child)
 {
     VariableDeclarationFrameState& variable = *frame.variableDeclaration;
@@ -276,7 +276,7 @@ bool ProjectOopHirModel::acceptVariableInitializer(
 }
 
 void ProjectOopHirModel::acceptVariableExtent(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     std::unique_ptr<ProjectOopHirNode> child)
 {
     VariableDeclarationFrameState& variable = *frame.variableDeclaration;
@@ -307,7 +307,7 @@ void ProjectOopHirModel::acceptVariableExtent(
 }
 
 std::unique_ptr<ProjectOopHirNode>
-ProjectOopHirModel::finishVariableDeclarationFrame(IterativeExpressionFrame& frame)
+ProjectOopHirModel::finishVariableDeclarationFrame([[maybe_unused]] IterativeExpressionFrame& frame)
 {
     VariableDeclarationFrameState& variable = *frame.variableDeclaration;
     if (variable.mode == VariableDeclarationFrameMode::NoChild)
@@ -318,8 +318,8 @@ ProjectOopHirModel::finishVariableDeclarationFrame(IterativeExpressionFrame& fra
 }
 
 bool ProjectOopHirModel::initializeDeconstructionDeclarationFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     if (objectLayoutModel_ == nullptr || nameLookup_ == nullptr)
     {
@@ -363,7 +363,7 @@ bool ProjectOopHirModel::initializeDeconstructionDeclarationFrame(
 }
 
 bool ProjectOopHirModel::nextDeconstructionDeclarationChild(
-    const IterativeExpressionFrame& frame,
+    [[maybe_unused]] const IterativeExpressionFrame& frame,
     const ast::AstNode*& syntax,
     bool& addressContext)
 {
@@ -378,9 +378,9 @@ bool ProjectOopHirModel::nextDeconstructionDeclarationChild(
 }
 
 bool ProjectOopHirModel::acceptDeconstructionDeclarationChild(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     DeconstructionDeclarationFrameState& state =
         *frame.deconstructionDeclaration;
@@ -406,8 +406,8 @@ bool ProjectOopHirModel::acceptDeconstructionDeclarationChild(
 
 std::unique_ptr<ProjectOopHirNode>
 ProjectOopHirModel::finishDeconstructionDeclarationFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     DeconstructionDeclarationFrameState& state = *frame.deconstructionDeclaration;
     if (state.source == nullptr)
@@ -471,7 +471,7 @@ ProjectOopHirModel::finishDeconstructionDeclarationFrame(
 }
 
 bool ProjectOopHirModel::expandDeconstructionBindingTuple(
-    std::string& error,
+    [[maybe_unused]] std::string& error,
     const ast::AstNode* bindingSyntax,
     const std::string& typeKey,
     std::uint64_t byteOffset,
@@ -502,7 +502,7 @@ bool ProjectOopHirModel::expandDeconstructionBindingTuple(
 bool ProjectOopHirModel::appendDeconstructionBindingLeaf(
     ProjectOopHirNode& block,
     ProjectOopHirNode& deconstruct,
-    std::string& error,
+    [[maybe_unused]] std::string& error,
     const ast::AstNode* bindingSyntax,
     const std::string& typeKey,
     std::uint64_t byteOffset)
@@ -544,7 +544,7 @@ bool ProjectOopHirModel::appendDeconstructionBindingLeaf(
 }
 
 void ProjectOopHirModel::initializeInlineAssemblyFrame(
-    IterativeExpressionFrame& frame)
+    [[maybe_unused]] IterativeExpressionFrame& frame)
 {
     InlineAssemblyFrameState state;
     state.node = makeNode(
@@ -556,10 +556,10 @@ void ProjectOopHirModel::initializeInlineAssemblyFrame(
 }
 
 bool ProjectOopHirModel::advanceInlineAssemblyFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode*& syntax,
     bool& addressContext,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     InlineAssemblyFrameState& state = *frame.inlineAssembly;
     while (state.nextRecord < frame.syntax->children().size())
@@ -617,9 +617,9 @@ bool ProjectOopHirModel::advanceInlineAssemblyFrame(
 }
 
 bool ProjectOopHirModel::acceptInlineAssemblyOperand(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     InlineAssemblyFrameState& state = *frame.inlineAssembly;
     const ast::AstNode* record = state.pendingOperand;
@@ -647,7 +647,7 @@ bool ProjectOopHirModel::acceptInlineAssemblyOperand(
 }
 
 std::unique_ptr<ProjectOopHirNode>
-ProjectOopHirModel::finishInlineAssemblyFrame(IterativeExpressionFrame& frame)
+ProjectOopHirModel::finishInlineAssemblyFrame([[maybe_unused]] IterativeExpressionFrame& frame)
 {
     return std::move(frame.inlineAssembly->node);
 }

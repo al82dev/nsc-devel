@@ -116,7 +116,9 @@ void Parser::MatchExpressionPatternAnalyzer::mergeBindings(BindingCounts& target
     }
 
 template <typename Value>
-static void Parser::MatchExpressionPatternAnalyzer::mergeVector(std::vector<Value>& target, std::vector<Value>& source)
+void Parser::MatchExpressionPatternAnalyzer::mergeVector(
+    std::vector<Value>& target,
+    std::vector<Value>& source)
 {
         if (target.size() < source.size()) target.swap(source);
         target.insert(
@@ -126,7 +128,7 @@ static void Parser::MatchExpressionPatternAnalyzer::mergeVector(std::vector<Valu
         source.clear();
     }
 
-MatchPatternAnalysis Parser::MatchExpressionPatternAnalyzer::finishAnalysis(Summary summary)
+Parser::MatchPatternAnalysis Parser::MatchExpressionPatternAnalyzer::finishAnalysis(Summary summary)
 {
         reportInvalidOrPatterns();
         MatchPatternAnalysis result;

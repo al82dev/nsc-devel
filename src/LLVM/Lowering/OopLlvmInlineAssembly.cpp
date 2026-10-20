@@ -259,18 +259,21 @@ bool OopLlvmImplementation::emitInlineAssemblyCall(
         if (resultTypes.size() == 1) returnType = resultTypes.front();
         else if (resultTypes.size() > 1)
             returnType = LLVMStructTypeInContext(
-                context_, resultTypes.data(), static_cast<unsigned>(resultTypes.size()), 0);
+                context_, const_cast<LLVMTypeRef*>(resultTypes.data()),
+                static_cast<unsigned>(resultTypes.size()), 0);
         LLVMTypeRef functionType = LLVMFunctionType(
-            returnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
+            returnType,
+            parameterTypes.empty() ? nullptr : const_cast<LLVMTypeRef*>(parameterTypes.data()),
             static_cast<unsigned>(parameterTypes.size()), 0);
         LLVMValueRef inlineAssembly = LLVMGetInlineAsm(
-            functionType, assembly.data(), assembly.size(), constraints.data(), constraints.size(),
+            functionType, const_cast<char*>(assembly.data()), assembly.size(), constraints.data(),
+            constraints.size(),
             node->inlineAssemblyHasSideEffects ? 1 : 0, 0, LLVMInlineAsmDialectIntel, 0);
         if (inlineAssembly == nullptr)
             return fail(error, "LLVM rejected the integrated assembly contract");
         LLVMValueRef call = LLVMBuildCall2(
             builder_, functionType, inlineAssembly,
-            arguments.empty() ? nullptr : arguments.data(),
+            arguments.empty() ? nullptr : const_cast<LLVMValueRef*>(arguments.data()),
             static_cast<unsigned>(arguments.size()), resultTypes.empty() ? "" : "asm.result");
         if (call == nullptr) return fail(error, "LLVM could not build the integrated assembly call");
         const unsigned elementTypeKind = LLVMGetEnumAttributeKindForName("elementtype", 11);

@@ -376,7 +376,7 @@ private:
         std::size_t childSlot = noSlot;
         std::size_t beginIndex = 0;
         ast::AstNode* node = nullptr;
-        TokenKind tokenKind = TokenKind::Invalid;
+        lexer::TokenKind tokenKind = lexer::TokenKind::Invalid;
         bool flag = false;
         bool secondaryFlag = false;
         std::string text;

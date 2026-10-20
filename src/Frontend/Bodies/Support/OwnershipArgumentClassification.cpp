@@ -5,8 +5,8 @@
 
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 
-#include "Bodies/MethodBodyInternals.h"
-#include "Internal/Stage37ConstantValue.h"
+#include "../MethodBodyInternals.h"
+#include "../../Internal/Stage37ConstantValue.h"
 
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
@@ -74,8 +74,6 @@ bool isGenericValueTypeKey(std::string_view typeKey) noexcept
     // required transfer for a move-only specialization. Keep this rule local to explicit-move
     // admission; classifying every generic as globally move-only would break `where T : copy`.
     return typeKey.starts_with("generic:");
-}
-
 }
 
 // NSC-LIMIT-010. LA REGLA DE COMPATIBILIDAD DE PROPIEDAD, ESCRITA UNA SOLA VEZ.
@@ -202,8 +200,6 @@ std::string ownershipArgumentFitMessage(
     return {};
 }
 
-namespace
-{
 using lexer::TokenKind;
 
 std::string typeCandidateList(

@@ -68,15 +68,15 @@ using internal::LoopBlockAdvance;
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::completeScheduledAccessFrames(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     const IterativeExpressionKind kind = frames.back().kind;
     if (kind == IterativeExpressionKind::CoreMember)
@@ -113,15 +113,15 @@ ProjectOopHirModel::completeScheduledAccessFrames(
 }
 
 LoopBlockAdvance ProjectOopHirModel::completeScheduledCoreMemberFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     bool descend = false;
     while (!frames.empty() &&
@@ -147,90 +147,29 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCoreMemberFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::completeScheduledCoreIndexFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     bool descend = false;
     while (!frames.empty() &&
         frames.back().kind == IterativeExpressionKind::CoreIndex)
     {
         IterativeExpressionFrame& frame = frames.back();
-        if (frame.stage == 0U)
+        if (scheduleNextCoreIndexOperand(
+                frame, current, currentMemberOrdinal,
+                currentAddressContext, lowered))
         {
-            frame.first = std::move(lowered);
-            frame.stage = 1U;
-            const ast::AstNode* syntax = frame.operandSyntaxes.front();
-            current = syntax->kind() == ast::AstNodeKind::FromEndExpression
-                ? syntax->first() : syntax;
-            currentMemberOrdinal = frame.memberOrdinal;
-            currentAddressContext = false;
             descend = true;
             break;
         }
-        frame.operands.push_back(std::move(lowered));
-        if (frame.operands.size() < frame.operandSyntaxes.size())
-        {
-            const ast::AstNode* syntax =
-                frame.operandSyntaxes[frame.operands.size()];
-            current = syntax->kind() == ast::AstNodeKind::FromEndExpression
-                ? syntax->first() : syntax;
-            currentMemberOrdinal = frame.memberOrdinal;
-            currentAddressContext = false;
-            descend = true;
-            break;
-        }
-
-        const MethodCoreBinding& core = *frame.core;
-        if (core.kind == MethodCoreOperationKind::NullConditionalArrayElement)
-        {
-            auto element = makeNode(
-                ProjectOopHirNodeKind::NullConditionalArrayLoad,
-                frame.syntax,
-                core.resultTypeKey);
-            element->elementTypeKey = core.elementTypeKey;
-            element->children.push_back(std::move(frame.first));
-            element->children.push_back(std::move(frame.operands.front()));
-            lowered = std::move(element);
-            frames.pop_back();
-            continue;
-        }
-
-        ProjectOopHirNodeKind nodeKind = ProjectOopHirNodeKind::StringElementValue;
-        if (core.kind == MethodCoreOperationKind::ArrayElement)
-        {
-            nodeKind = frame.addressContext
-                ? ProjectOopHirNodeKind::ArrayElementAddress
-                : ProjectOopHirNodeKind::ArrayElementValue;
-        }
-        else if (core.kind == MethodCoreOperationKind::RangeArrayElement)
-        {
-            nodeKind = frame.addressContext
-                ? ProjectOopHirNodeKind::RangeArrayElementAddress
-                : ProjectOopHirNodeKind::RangeArrayElementValue;
-        }
-        auto element = makeNode(nodeKind, frame.syntax, core.resultTypeKey);
-        element->elementTypeKey = core.elementTypeKey;
-        element->nativeArrayRank = core.kind == MethodCoreOperationKind::RangeArrayElement
-            ? frame.operandSyntaxes.size() : 1U;
-        element->children.push_back(std::move(frame.first));
-        for (std::size_t dimension = 0;
-            dimension < frame.operandSyntaxes.size(); ++dimension)
-        {
-            const bool fromEnd = frame.operandSyntaxes[dimension]->kind() ==
-                ast::AstNodeKind::FromEndExpression;
-            if (dimension == 0U) element->booleanValue = fromEnd;
-            if (fromEnd && dimension < 64U)
-                element->integerValue |= (std::uint64_t{1} << dimension);
-            element->children.push_back(std::move(frame.operands[dimension]));
-        }
-        lowered = std::move(element);
+        finishCoreIndexFrame(frame, lowered);
         frames.pop_back();
         continue;
 
@@ -239,16 +178,97 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCoreIndexFrame(
     return descend ? LoopBlockAdvance::Descend : LoopBlockAdvance::Complete;
 }
 
-LoopBlockAdvance ProjectOopHirModel::completeScheduledRawIndexFrame(
-    std::vector<IterativeExpressionFrame>& frames,
+// ES: Conserva la secuencia del receptor y los índices y programa exactamente el siguiente operando.
+// EN: Preserves receiver/index sequencing and schedules exactly the next operand.
+// Parámetros / Parameters: frame mantiene el estado; current y lowered transportan el siguiente paso.
+// Retorno / Return: true si queda un operando; muta sólo el estado de la misma trama; O(1).
+bool ProjectOopHirModel::scheduleNextCoreIndexOperand(
+    IterativeExpressionFrame& frame,
     const ast::AstNode*& current,
     std::size_t& currentMemberOrdinal,
     bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    std::unique_ptr<ProjectOopHirNode>& lowered)
+{
+    if (frame.stage == 0U)
+    {
+        frame.first = std::move(lowered);
+        frame.stage = 1U;
+    }
+    else
+    {
+        frame.operands.push_back(std::move(lowered));
+    }
+    if (frame.operands.size() >= frame.operandSyntaxes.size()) return false;
+    const ast::AstNode* syntax = frame.operandSyntaxes[frame.operands.size()];
+    current = syntax->kind() == ast::AstNodeKind::FromEndExpression
+        ? syntax->first() : syntax;
+    currentMemberOrdinal = frame.memberOrdinal;
+    currentAddressContext = false;
+    return true;
+}
+
+// ES: Construye el nodo de índice con los operandos ya completados, sin alterar el orden de hijos.
+// EN: Builds the index node from completed operands without changing child order.
+// Parámetros / Parameters: frame aporta binding y operandos; lowered recibe el nodo final.
+// Retorno / Return: no aplica; consume los mismos valores; O(rango del índice).
+void ProjectOopHirModel::finishCoreIndexFrame(
+    IterativeExpressionFrame& frame,
+    std::unique_ptr<ProjectOopHirNode>& lowered)
+{
+    const MethodCoreBinding& core = *frame.core;
+    if (core.kind == MethodCoreOperationKind::NullConditionalArrayElement)
+    {
+        auto element = makeNode(
+            ProjectOopHirNodeKind::NullConditionalArrayLoad,
+            frame.syntax,
+            core.resultTypeKey);
+        element->elementTypeKey = core.elementTypeKey;
+        element->children.push_back(std::move(frame.first));
+        element->children.push_back(std::move(frame.operands.front()));
+        lowered = std::move(element);
+        return;
+    }
+    ProjectOopHirNodeKind nodeKind = ProjectOopHirNodeKind::StringElementValue;
+    if (core.kind == MethodCoreOperationKind::ArrayElement)
+    {
+        nodeKind = frame.addressContext
+            ? ProjectOopHirNodeKind::ArrayElementAddress
+            : ProjectOopHirNodeKind::ArrayElementValue;
+    }
+    else if (core.kind == MethodCoreOperationKind::RangeArrayElement)
+    {
+        nodeKind = frame.addressContext
+            ? ProjectOopHirNodeKind::RangeArrayElementAddress
+            : ProjectOopHirNodeKind::RangeArrayElementValue;
+    }
+    auto element = makeNode(nodeKind, frame.syntax, core.resultTypeKey);
+    element->elementTypeKey = core.elementTypeKey;
+    element->nativeArrayRank = core.kind == MethodCoreOperationKind::RangeArrayElement
+        ? frame.operandSyntaxes.size() : 1U;
+    element->children.push_back(std::move(frame.first));
+    for (std::size_t dimension = 0;
+        dimension < frame.operandSyntaxes.size(); ++dimension)
+    {
+        const bool fromEnd = frame.operandSyntaxes[dimension]->kind() ==
+            ast::AstNodeKind::FromEndExpression;
+        if (dimension == 0U) element->booleanValue = fromEnd;
+        if (fromEnd && dimension < 64U)
+            element->integerValue |= (std::uint64_t{1} << dimension);
+        element->children.push_back(std::move(frame.operands[dimension]));
+    }
+    lowered = std::move(element);
+}
+
+LoopBlockAdvance ProjectOopHirModel::completeScheduledRawIndexFrame(
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     bool descend = false;
     while (!frames.empty() &&
@@ -278,11 +298,11 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledRawIndexFrame(
 }
 
 bool ProjectOopHirModel::scheduleNextRawIndexChild(
-    IterativeExpressionFrame& frame,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    std::unique_ptr<ProjectOopHirNode>& lowered)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered)
 {
     if (frame.stage == 0U)
     {
@@ -302,8 +322,8 @@ bool ProjectOopHirModel::scheduleNextRawIndexChild(
 }
 
 void ProjectOopHirModel::finishVariableRawIndex(
-    IterativeExpressionFrame& frame,
-    std::unique_ptr<ProjectOopHirNode>& lowered)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered)
 {
     const MethodCoreBinding& core = *frame.core;
     std::unique_ptr<ProjectOopHirNode> linearIndex;
@@ -365,7 +385,7 @@ void ProjectOopHirModel::finishVariableRawIndex(
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::loadRawIndexAddress(
     const IterativeExpressionFrame& frame,
-    std::unique_ptr<ProjectOopHirNode> address)
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode> address)
 {
     if (frame.addressContext) return address;
     auto value = makeNode(
@@ -377,8 +397,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::loadRawIndexAddress(
 }
 
 void ProjectOopHirModel::finishArrayRawIndex(
-    IterativeExpressionFrame& frame,
-    std::unique_ptr<ProjectOopHirNode>& lowered)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered)
 {
     const MethodExpressionTypeBinding* baseType =
         expressionType(frame.syntax->first());
@@ -458,15 +478,15 @@ void ProjectOopHirModel::applyRawIndexTrailingBounds(
 }
 
 LoopBlockAdvance ProjectOopHirModel::completeScheduledNamespaceCallFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     bool descend = false;
     while (!frames.empty() &&
@@ -518,15 +538,15 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledNamespaceCallFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::completeScheduledEventInvokeFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     bool descend = false;
     while (!frames.empty() &&
@@ -564,15 +584,15 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledEventInvokeFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::completeScheduledDelegateInvokeFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     bool descend = false;
     while (!frames.empty() &&

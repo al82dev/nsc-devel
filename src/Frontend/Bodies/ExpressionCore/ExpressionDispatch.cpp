@@ -57,9 +57,9 @@ using method_body_detail::writeMethodBodyTrace;
 bool ProjectMethodBodyModel::analyzeExpressionCoreFlowKinds(
     ExpressionResult& result,
     const ExpressionAnalysisRequest& request,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const ast::AstNode* expression = request.syntax;
     switch (expression->kind())
@@ -102,9 +102,9 @@ bool ProjectMethodBodyModel::analyzeExpressionCoreFlowKinds(
 bool ProjectMethodBodyModel::analyzeExpressionCorePrimaryKinds(
     ExpressionResult& result,
     const ExpressionAnalysisRequest& request,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const ast::AstNode* expression = request.syntax;
     switch (expression->kind())
@@ -135,9 +135,9 @@ bool ProjectMethodBodyModel::analyzeExpressionCorePrimaryKinds(
 bool ProjectMethodBodyModel::analyzeExpressionCoreLiteralKinds(
     ExpressionResult& result,
     const ExpressionAnalysisRequest& request,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const ast::AstNode* expression = request.syntax;
     switch (expression->kind())
@@ -204,9 +204,9 @@ bool ProjectMethodBodyModel::analyzeExpressionCoreLiteralKinds(
 bool ProjectMethodBodyModel::analyzeExpressionCoreAccessKinds(
     ExpressionResult& result,
     const ExpressionAnalysisRequest& request,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const ast::AstNode* expression = request.syntax;
     switch (expression->kind())
@@ -261,9 +261,9 @@ bool ProjectMethodBodyModel::analyzeExpressionCoreAccessKinds(
 bool ProjectMethodBodyModel::analyzeExpressionCoreOperatorKinds(
     ExpressionResult& result,
     const ExpressionAnalysisRequest& request,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const ast::AstNode* expression = request.syntax;
     switch (expression->kind())
@@ -319,9 +319,9 @@ bool ProjectMethodBodyModel::analyzeExpressionCoreOperatorKinds(
 bool ProjectMethodBodyModel::analyzeExpressionCoreTypeKinds(
     ExpressionResult& result,
     const ExpressionAnalysisRequest& request,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const ast::AstNode* expression = request.syntax;
     switch (expression->kind())
@@ -387,9 +387,9 @@ bool ProjectMethodBodyModel::analyzeExpressionCoreTypeKinds(
 bool ProjectMethodBodyModel::analyzeExpressionCoreConstructionKinds(
     ExpressionResult& result,
     const ExpressionAnalysisRequest& request,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const ast::AstNode* expression = request.syntax;
     switch (expression->kind())
@@ -444,13 +444,13 @@ bool ProjectMethodBodyModel::analyzeExpressionCoreConstructionKinds(
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionCore(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     if (expression == nullptr)
     {

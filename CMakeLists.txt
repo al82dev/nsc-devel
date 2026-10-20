@@ -318,7 +318,9 @@ add_library(nsc_frontend STATIC
     src/Parser/GenericSyntaxParser.cpp
     src/Parser/AttributeParser.cpp
     src/Parser/KnownGenericTypeScope.cpp
+    src/Parser/Internal/ConditionDeclarationBinding.cpp
     src/Parser/Internal/ExpressionIterationMachine.cpp
+    src/Parser/Internal/ExpressionParsingSupport.cpp
     src/Parser/Internal/MatchExpressionPatternAnalyzer.cpp
     src/Parser/Internal/PatternAlternativeExpander.cpp
     src/Parser/Internal/PatternIterationParser.cpp
@@ -417,7 +419,9 @@ add_library(nsc_frontend STATIC
     src/Frontend/Internal/ProjectPhaseTimer.cpp
     src/Frontend/Internal/SpecializationWaveTimer.cpp
     src/Frontend/Internal/EnumConstResolver.cpp
-    src/Frontend/Internal/ByteReader.cpp
+    src/Frontend/Cache/CacheEntryStore.cpp
+    src/Frontend/Cache/CachePayloadReader.cpp
+    src/Frontend/Cache/CachePayloadWriter.cpp
     src/Frontend/Internal/CloneDepthGuard.cpp
     src/Frontend/Internal/EnumInitializerResolver.cpp
     src/Frontend/ComptimeEngine.cpp
@@ -595,7 +599,6 @@ add_library(nsc_frontend STATIC
     src/Frontend/HIR/ExpressionStatementMachine/HirStatementFrameInitialization.cpp
     src/Frontend/HIR/ExpressionStatementMachine/HirSwitchFrameLowering.cpp
     src/Frontend/HIR/HirLoweringSupport.cpp
-    src/Frontend/MIR/Internal/MirByteReader.cpp
     src/Frontend/MIR/Internal/MirNodeMachine.cpp
     src/Frontend/MIR/MirCache.cpp
     src/Frontend/MIR/MirNodeKindNames.cpp
@@ -871,7 +874,7 @@ nsc_enable_warnings(nsc_runtime)
 add_library(nsc_linker STATIC
     src/Linker/LldLinker.cpp
     src/Linker/CoffArchiveVerifier.cpp
-    src/Linker/Internal/TemporaryDirectory.cpp
+    src/Linker/Internal/ScopedTemporaryDirectory.cpp
     src/Linker/Internal/TemporaryFiles.cpp
     src/Linker/PeExecutableVerifier.cpp
     src/Linker/PdbVerifier.cpp

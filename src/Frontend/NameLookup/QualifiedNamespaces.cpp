@@ -167,11 +167,12 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
     //
     // Antes el orden estaba escrito aqui y COPIADO, mas simple y por tanto distinto, dentro de
     // `ProjectGenericModel`. Ver QualifiedNameLadder.h.
+    const std::vector<std::string> enclosing = enclosingTypeSpellings(environment);
     const bool simpleName = nameSegments.size() == 1 &&
         environment.aliases.find(nameSegments.front()) == environment.aliases.end();
     QualifiedNameSite site;
     site.namespaceSegments = namespaceSegments;
-    site.enclosingTypeNames = enclosingTypeSpellings(environment);
+    site.enclosingTypeNames = enclosing;
     site.aliases = &environment.aliases;
     site.importedNamespaces = environment.importedNamespaces;
     for (const QualifiedNameRung& rung : qualifiedNameLadder(site, writtenName))

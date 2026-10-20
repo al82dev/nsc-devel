@@ -5,11 +5,13 @@
 #include "nativesharp/LLVM/LlvmOptimizationLevel.h"
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 
+#include <memory>
 #include <string>
 #include <string_view>
 
 namespace nativesharp::llvm_backend
 {
+struct CodeUnitTelemetry;
 class LlvmModule;
 class ProjectOopObjectGenerator;
 class LlvmTargetMachine;
@@ -50,6 +52,12 @@ public:
 
 private:
     friend class ProjectOopObjectGenerator;
+    friend std::unique_ptr<LlvmTargetMachine> prepareCodeUnitTarget(
+        LlvmModule& module,
+        LlvmOptimizationLevel optimizationLevel,
+        bool requiresWholeModuleRequiredInlining,
+        std::string& moduleError,
+        CodeUnitTelemetry& telemetry);
 
     // The project object pipeline has just verified the lowerer's output and configured it with
     // this exact TargetMachine. Keep the public optimizer boundary defensive while allowing that

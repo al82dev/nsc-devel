@@ -1,9 +1,15 @@
 #include "PostfixIterationMachine.h"
 
+#include "BinaryOperatorInfo.h"
+#include "BinaryRightHandSide.h"
+#include "ExpressionParsingSupport.h"
+
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
+#include "nativesharp/Language/IterationSemantics.h"
 #include "nativesharp/Language/Language3Surface.h"
+#include "nativesharp/Lexer/Lexer.h"
 
 #include <algorithm>
 #include <cassert>
@@ -908,7 +914,8 @@ void Parser::PostfixIterationMachine::startInterpolationToken(
         return;
     }
     node->setIntegerValue(frame.parts.size());
-    frame.runtime = !std::ranges::all_of(frame.parts, isStaticInterpolationHole);
+    frame.runtime = !std::ranges::all_of(
+        frame.parts, language::builtinStaticInterpolationHoleSupported);
     if (frame.runtime)
         frame.runtimeResult = parser_.makeInterpolationStringLiteral(token, "");
     scheduleInterpolation(frameIndex, work.resultSlot);

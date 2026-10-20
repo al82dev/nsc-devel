@@ -290,13 +290,15 @@ void ProjectNameLookup::applyAggregatedTypeProperties(
     // su primera parte. El agregador si aporta las demas propiedades: las clases an anidadas
     // `partial` se usan al reconstruir propietarios de plantillas desde NSMETA y deben unir
     // static/abstract/sealed igual que una clase de namespace.
+    const auto aggregatedTypes = aggregator.types();
+    const auto& aggregatedType = aggregatedTypes.front();
     accessibility = aggregatedTypeAccessibility(
         groupBegin, groupEnd, primary, aggregator, diagnostics);
-    isAbstract = aggregator.types().front().isAbstract;
-    isSealed = aggregator.types().front().isSealed;
-    isStatic = aggregator.types().front().isStatic;
+    isAbstract = aggregatedType.isAbstract;
+    isSealed = aggregatedType.isSealed;
+    isStatic = aggregatedType.isStatic;
     isPartial = false;
-    for (const compilation::TypePartDescriptor& part : aggregator.types().front().parts)
+    for (const compilation::TypePartDescriptor& part : aggregatedType.parts)
     {
         if (part.isPartial)
         {

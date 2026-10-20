@@ -198,7 +198,6 @@ void OopLlvmImplementation::declareRuntimeConsoleTimeEnvironment()
 
 void OopLlvmImplementation::declareRuntimeFilesystem()
 {
-        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
         LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         // Stage 53.3 "Filesystem/Paths". Exists takes one NativeSharp string pointer (a path)
@@ -562,7 +561,6 @@ void OopLlvmImplementation::declareRuntimeProcessSystemDiagnostics()
 {
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
         LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         // Stage 55.1 "Process". Five zero-argument builtin:long imports (the CURRENT process
         // HANDLE is obtained inside the runtime wrapper itself, never passed in from here).
         processGetCurrentProcessIdFunctionType_ = LLVMFunctionType(i64, nullptr, 0, 0);

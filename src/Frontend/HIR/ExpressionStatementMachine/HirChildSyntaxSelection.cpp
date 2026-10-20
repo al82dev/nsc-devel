@@ -13,20 +13,21 @@ using internal::IterativeExpressionFrame;
 using internal::IterativeExpressionKind;
 using internal::IterativeInputKind;
 using internal::LoopBlockAdvance;
+using internal::AggregateCrossFramePhase;
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledLoopAwaitChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::LoopExpression ||
         currentKind == IterativeExpressionKind::AwaitExpression))
@@ -58,17 +59,17 @@ else if (isBoundCallKind(currentKind))
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledNamespaceEventChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::NamespaceCall ||
         currentKind == IterativeExpressionKind::EventInvoke))
@@ -114,17 +115,17 @@ else if (currentKind == IterativeExpressionKind::EventInvoke)
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledDelegateConsoleChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::DelegateInvoke ||
         currentKind == IterativeExpressionKind::ConsoleOutputCall ||
@@ -175,17 +176,17 @@ else if (currentKind == IterativeExpressionKind::StructAggregateCall)
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledCoreOperandChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::AssertionCore ||
         currentKind == IterativeExpressionKind::IteratorCoreCall ||
@@ -224,17 +225,17 @@ else if (currentKind == IterativeExpressionKind::CoreOperandCall)
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledAtomicMonitorChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::AtomicCoreCall ||
         currentKind == IterativeExpressionKind::MonitorCoreCall))
@@ -273,17 +274,17 @@ else if (currentKind == IterativeExpressionKind::MonitorCoreCall)
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledOrdinaryCallChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::OrdinaryCall))
         return std::nullopt;
@@ -310,17 +311,17 @@ if (currentKind == IterativeExpressionKind::OrdinaryCall)
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledAggregateChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::AggregateCrossLowering))
         return std::nullopt;
@@ -358,17 +359,17 @@ if (currentKind == IterativeExpressionKind::AggregateCrossLowering)
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledOrdinaryConstructionChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::OrdinaryConstruction))
         return std::nullopt;
@@ -402,17 +403,17 @@ if (currentKind == IterativeExpressionKind::OrdinaryConstruction)
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledAllocatorChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::AllocatorConstruction))
         return std::nullopt;
@@ -439,17 +440,17 @@ if (currentKind == IterativeExpressionKind::AllocatorConstruction)
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledReceiverChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::DelegateCreationReceiver ||
         currentKind == IterativeExpressionKind::ExtensionPropertyGetter ||
@@ -483,23 +484,25 @@ else if (currentKind == IterativeExpressionKind::ArrayConstruction)
 else if (currentKind == IterativeExpressionKind::InstanceField)
     current = frames.back().fieldBinding->receiverSyntax;
 else if (currentKind == IterativeExpressionKind::RangeSlice)
+{
     current = frames.back().rangeBinding->receiverSyntax;
-    return LoopBlockAdvance::Complete;
+}
+return LoopBlockAdvance::Complete;
 }
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledRemainingChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::CoreIndex ||
         currentKind == IterativeExpressionKind::RawIndex ||
@@ -552,8 +555,10 @@ else if (currentKind == IterativeExpressionKind::MoveProjection &&
     frames.back().move->sourceIsIteratorCurrent)
     current = current->first()->first();
 else
+{
     current = current->first();
-    return LoopBlockAdvance::Complete;
+}
+return LoopBlockAdvance::Complete;
 }
 
 }

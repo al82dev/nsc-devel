@@ -67,15 +67,15 @@ using internal::IterativeInputKind;
 using internal::LoopBlockAdvance;
 
 LoopBlockAdvance ProjectOopHirModel::scheduleCurrentExpression(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     const std::optional<IterativeExpressionKind> currentKind =
         iterativeExpressionKind(current, currentAddressContext);
@@ -96,14 +96,14 @@ LoopBlockAdvance ProjectOopHirModel::scheduleCurrentExpression(
 
 LoopBlockAdvance ProjectOopHirModel::lowerScheduledDirectExpression(
     bool completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
     const ast::AstNode* current,
     std::size_t currentMemberOrdinal,
     bool currentAddressContext,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (completedWithoutChild) return LoopBlockAdvance::Complete;
     lowered = scheduledChildUsesExpressionImpl(frames)
@@ -122,7 +122,7 @@ LoopBlockAdvance ProjectOopHirModel::lowerScheduledDirectExpression(
 }
 
 bool ProjectOopHirModel::scheduledChildUsesExpressionImpl(
-    const std::vector<IterativeExpressionFrame>& frames) const
+    [[maybe_unused]] const std::vector<IterativeExpressionFrame>& frames) const
 {
     const bool isExpressionStatementRoot =
         frames.size() == 1u &&
@@ -147,7 +147,7 @@ bool ProjectOopHirModel::scheduledChildUsesExpressionImpl(
 }
 
 void ProjectOopHirModel::setScheduledLoweringErrorRange(
-    const std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const std::vector<IterativeExpressionFrame>& frames,
     const ast::AstNode* current)
 {
     if (lastErrorRange_.isValid() || frames.empty()) return;
@@ -173,17 +173,17 @@ void ProjectOopHirModel::setScheduledLoweringErrorRange(
 }
 
 LoopBlockAdvance ProjectOopHirModel::scheduleIterativeExpression(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
 IterativeExpressionFrame frame;
 frame.kind = currentKind;
@@ -211,17 +211,17 @@ if (!completedWithoutChild) return LoopBlockAdvance::Descend;
 }
 
 LoopBlockAdvance ProjectOopHirModel::initializeScheduledExpressionFrame(
-    IterativeExpressionFrame& frame,
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (const auto primaryAdvance = initializeScheduledPrimaryFrame(
             frame, currentKind, frames, current, currentMemberOrdinal,
@@ -263,17 +263,17 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledExpressionFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::selectScheduledExpressionChild(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
 const LoopBlockAdvance syntaxAdvance = selectScheduledChildSyntax(
         currentKind, completedWithoutChild, frames, current,
@@ -286,23 +286,25 @@ configureScheduledChildContext(
     currentInputKind);
 
 if (currentKind != IterativeExpressionKind::LoopExpression)
+{
     currentInputKind = IterativeInputKind::Expression;
-    return LoopBlockAdvance::Complete;
+}
+return LoopBlockAdvance::Complete;
 }
 
 
 LoopBlockAdvance ProjectOopHirModel::selectScheduledChildSyntax(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (const auto primaryAdvance = selectScheduledPrimaryChildSyntax(
             currentKind, completedWithoutChild, frames, current,
@@ -321,17 +323,17 @@ LoopBlockAdvance ProjectOopHirModel::selectScheduledChildSyntax(
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledPrimaryChildSyntax(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (const auto loopAwaitAdvance = selectScheduledLoopAwaitChild(
             currentKind, completedWithoutChild, frames, current,
@@ -374,17 +376,17 @@ ProjectOopHirModel::selectScheduledPrimaryChildSyntax(
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::selectScheduledSecondaryChildSyntax(
-    IterativeExpressionKind currentKind,
-    bool& completedWithoutChild,
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& completedWithoutChild,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (const auto aggregateAdvance = selectScheduledAggregateChild(
             currentKind, completedWithoutChild, frames, current,
@@ -421,11 +423,11 @@ ProjectOopHirModel::selectScheduledSecondaryChildSyntax(
 }
 
 void ProjectOopHirModel::configureScheduledChildContext(
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind)
 {
     if (configureScheduledPrimaryChildContext(
             currentKind, frames, currentMemberOrdinal, currentAddressContext,
@@ -441,11 +443,11 @@ void ProjectOopHirModel::configureScheduledChildContext(
 }
 
 bool ProjectOopHirModel::configureScheduledPrimaryChildContext(
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind)
 {
     if (currentKind == IterativeExpressionKind::LoopExpression)
     {
@@ -485,9 +487,9 @@ bool ProjectOopHirModel::configureScheduledPrimaryChildContext(
 }
 
 bool ProjectOopHirModel::configureScheduledValueChildContext(
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    bool& currentAddressContext)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] bool& currentAddressContext)
 {
     if (currentKind == IterativeExpressionKind::InstanceField)
     {
@@ -542,9 +544,9 @@ bool ProjectOopHirModel::configureScheduledValueChildContext(
 }
 
 bool ProjectOopHirModel::configureScheduledCallChildContext(
-    IterativeExpressionKind currentKind,
-    std::vector<IterativeExpressionFrame>& frames,
-    bool& currentAddressContext)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] bool& currentAddressContext)
 {
     if (currentKind == IterativeExpressionKind::EventSubscription)
     {
@@ -589,8 +591,8 @@ bool ProjectOopHirModel::configureScheduledCallChildContext(
 }
 
 void ProjectOopHirModel::configureScheduledFallbackChildContext(
-    IterativeExpressionKind currentKind,
-    bool& currentAddressContext)
+    [[maybe_unused]] IterativeExpressionKind currentKind,
+    [[maybe_unused]] bool& currentAddressContext)
 {
     if (currentKind == IterativeExpressionKind::AtomicCoreCall)
     {

@@ -466,7 +466,7 @@ LLVMValueRef OopLlvmImplementation::prepareYieldValueFrame(
                     const auto localFound = localStorage_.find(localOrdinal);
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
-                    if (localType == nullptr) return false;
+                    if (localType == nullptr) return nullptr;
                     LLVMBuildStore(
                         builder_,
                         LLVMBuildLoad2(builder_, localType, localFound->second, "yield.local"),
@@ -539,9 +539,10 @@ bool OopLlvmImplementation::lowerAsyncYieldValueStatement(
                     byteOffset(future, 8, "ayield.frame.addr"), "ayield.iter");
                 LLVMTypeRef intType = llvmType("builtin:int", error);
                 if (intType == nullptr) return false;
+                LLVMValueRef iterState = nullptr;
                 LLVMBasicBlockRef runBlock = nullptr;
                 if (!prepareAsyncYieldRun(
-                        node, future, asyncIter, intType, runBlock, error)) return false;
+                        node, future, asyncIter, intType, iterState, runBlock, error)) return false;
                 if (terminated()) return true;
                 LLVMValueRef prevState = LLVMConstInt(intType, node->integerValue - 1, 0);
                 LLVMBasicBlockRef entryBlock = appendBlock("ayield.entry");
@@ -576,10 +577,11 @@ bool OopLlvmImplementation::prepareAsyncYieldRun(
         LLVMValueRef future,
         LLVMValueRef asyncIterator,
         LLVMTypeRef intType,
+        LLVMValueRef& iteratorState,
         LLVMBasicBlockRef& runBlock,
         std::string& error)
 {
-                LLVMValueRef iterState = LLVMBuildLoad2(
+                iteratorState = LLVMBuildLoad2(
                     builder_, intType, asyncIterator, "ayield.iter.state");
                 // NS304-T07-F05: a cancelled async-iterator (state == -3) yields no more items; the
                 // poll returns false and parks the iterator at the terminal state.
@@ -588,7 +590,9 @@ bool OopLlvmImplementation::prepareAsyncYieldRun(
                 runBlock = appendBlock("ayield.run");
                 LLVMBuildCondBr(
                     builder_,
-                    LLVMBuildICmp(builder_, LLVMIntEQ, iterState, cancelledConst, "ayield.is.cancelled"),
+                    LLVMBuildICmp(
+                        builder_, LLVMIntEQ, iteratorState, cancelledConst,
+                        "ayield.is.cancelled"),
                     cancelledBlock, runBlock);
                 LLVMPositionBuilderAtEnd(builder_, cancelledBlock);
                 // NS304-T07-F05: a cooperative cancellation runs the active finally/defer once
@@ -658,7 +662,7 @@ LLVMValueRef OopLlvmImplementation::prepareAsyncYieldFrame(
                     frameTrap, frameOk);
                 LLVMPositionBuilderAtEnd(builder_, frameTrap);
                 if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
-                    return fail(error, "async yield frame invariant trap is unavailable");
+                    return failValue(error, "async yield frame invariant trap is unavailable");
                 {
                     LLVMValueRef trapReason = LLVMConstInt(
                         LLVMInt32TypeInContext(context_), static_cast<std::uint64_t>(0x7F04), 0);
@@ -672,7 +676,7 @@ LLVMValueRef OopLlvmImplementation::prepareAsyncYieldFrame(
                     const auto localFound = localStorage_.find(localOrdinal);
                     if (localFound == localStorage_.end() || localFound->second == nullptr) continue;
                     LLVMTypeRef localType = llvmType(typeKey, error);
-                    if (localType == nullptr) return false;
+                    if (localType == nullptr) return nullptr;
                     LLVMBuildStore(
                         builder_,
                         LLVMBuildLoad2(builder_, localType, localFound->second, "ayield.local"),
@@ -701,13 +705,13 @@ LLVMValueRef OopLlvmImplementation::lowerAsyncYieldItem(
                             if (lo == *node->children.front()->localOrdinal)
                             { itemOffset = off; foundItemOffset = true; break; }
                         if (!foundItemOffset)
-                            return fail(error, "async ref item local has no frame slot");
+                            return failValue(error, "async ref item local has no frame slot");
                         item = byteOffset(frame, itemOffset, "ayield.item.frame.slot");
                     }
                     else
                     {
                         item = lowerExpression(node->children.front().get(), error);
-                        if (item == nullptr) return false;
+                        if (item == nullptr) return nullptr;
                     }
                 }
                 return item;
@@ -739,7 +743,7 @@ bool OopLlvmImplementation::restoreAsyncYieldFrame(
 }
 
 bool OopLlvmImplementation::lowerDropFrameStatement(
-        const frontend::ProjectOopMirNode* node, std::string& error)
+        [[maybe_unused]] const frontend::ProjectOopMirNode* node, std::string& error)
 {
                 // NS304-T06-F07: `Gen$drop` destroys the frame's live locals (reverse order) via
                 // the drop glue.

@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "Support/OwnershipFlowSnapshotQueries.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"

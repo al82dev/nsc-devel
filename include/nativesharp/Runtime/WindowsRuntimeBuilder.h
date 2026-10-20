@@ -11,6 +11,11 @@ class LlvmModule;
 
 namespace nativesharp::runtime
 {
+namespace internal
+{
+struct RuntimeModuleState;
+}
+
 class WindowsRuntimeBuilder final
 {
 public:
@@ -26,6 +31,11 @@ public:
         std::string& error) const;
 
 private:
+    std::unique_ptr<llvm_backend::LlvmModule> finalizeRuntimeModule(
+        internal::RuntimeModuleState& state,
+        bool includeStart,
+        std::string& error) const;
+
     std::unique_ptr<llvm_backend::LlvmModule> buildInternal(
         std::string_view mainSymbol,
         bool includeStart,

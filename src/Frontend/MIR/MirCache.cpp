@@ -3,7 +3,8 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include "MirConstantEvaluator.h"
-#include "Internal/MirByteReader.h"
+#include "../Cache/CachePayloadReader.h"
+#include "../Cache/CachePayloadWriter.h"
 #include "MirVerifier.h"
 
 #include "nativesharp/Basic/Sha256.h"
@@ -59,77 +60,34 @@ std::string normalizeMirNodeStream(const ProjectOopMirNode* node)
 
 // NSC305-C04. Relocatable codec for a MIR node tree (the C4 cache payload). The syntax pointer is
 // re-linked on restore; all scalars, strings, optionals, vectors and children round-trip.
-void appendMirU32(std::string& out, std::uint32_t value)
-{
-    for (unsigned shift = 0; shift < 32U; shift += 8U)
-        out.push_back(static_cast<char>((value >> shift) & 0xFFu));
-}
-
-void appendMirU64(std::string& out, std::uint64_t value)
-{
-    for (unsigned shift = 0; shift < 64U; shift += 8U)
-        out.push_back(static_cast<char>((value >> shift) & 0xFFu));
-}
-
-void appendMirString(std::string& out, std::string_view value)
-{
-    appendMirU32(out, static_cast<std::uint32_t>(value.size()));
-    out.append(value);
-}
-
-void appendMirStringVector(std::string& out, const std::vector<std::string>& values)
-{
-    appendMirU32(out, static_cast<std::uint32_t>(values.size()));
-    for (const std::string& value : values) appendMirString(out, value);
-}
-
-void appendMirSizeVector(std::string& out, const std::vector<std::size_t>& values)
-{
-    appendMirU32(out, static_cast<std::uint32_t>(values.size()));
-    for (const std::size_t value : values) appendMirU64(out, static_cast<std::uint64_t>(value));
-}
-
-void appendMirInt64Vector(std::string& out, const std::vector<std::int64_t>& values)
-{
-    appendMirU32(out, static_cast<std::uint32_t>(values.size()));
-    for (const std::int64_t value : values)
-        appendMirU64(out, static_cast<std::uint64_t>(value));
-}
-
-void appendMirU32Vector(std::string& out, const std::vector<std::uint32_t>& values)
-{
-    appendMirU32(out, static_cast<std::uint32_t>(values.size()));
-    for (const std::uint32_t value : values) appendMirU32(out, value);
-}
-
 void appendMirNodeCoreFields(std::string& out, const ProjectOopMirNode& node)
 {
-    appendMirU32(out, static_cast<std::uint32_t>(node.kind));
-    appendMirString(out, node.typeKey);
-    appendMirString(out, node.elementTypeKey);
-    appendMirString(out, node.stringValue);
-    appendMirString(out, node.debugDisplayName);
-    appendMirU32(out, static_cast<std::uint32_t>(node.operation));
-    appendMirU64(out, node.immediate);
-    appendMirU64(out, node.secondaryImmediate);
-    appendMirU64(out, node.integerValue);
-    appendMirU64(out, node.bitStorageSize);
-    appendMirU64(out, node.alignment);
-    appendMirU64(out, node.resultSuccessTag);
-    appendMirU64(out, node.resultErrorTag);
-    appendMirU64(out, node.resultReturnErrorTag);
-    appendMirString(out, node.resultSourceCarrierTypeKey);
-    appendMirString(out, node.resultSourceErrorTypeKey);
-    appendMirString(out, node.resultReturnCarrierTypeKey);
-    appendMirString(out, node.resultReturnErrorTypeKey);
-    appendMirString(out, node.allocatorDeallocateCalleeName);
-    appendMirString(out, node.calleeName);
-    appendMirString(out, node.secondaryCalleeName);
-    appendMirString(out, node.resultSuccessTestCalleeName);
-    appendMirString(out, node.resultSuccessExtractorCalleeName);
-    appendMirString(out, node.resultErrorExtractorCalleeName);
-    appendMirString(out, node.resultErrorFactoryCalleeName);
-    appendMirString(out, node.resultErrorConversionCalleeName);
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.kind));
+    internal::CachePayloadWriter::string(out, node.typeKey);
+    internal::CachePayloadWriter::string(out, node.elementTypeKey);
+    internal::CachePayloadWriter::string(out, node.stringValue);
+    internal::CachePayloadWriter::string(out, node.debugDisplayName);
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.operation));
+    internal::CachePayloadWriter::u64(out, node.immediate);
+    internal::CachePayloadWriter::u64(out, node.secondaryImmediate);
+    internal::CachePayloadWriter::u64(out, node.integerValue);
+    internal::CachePayloadWriter::u64(out, node.bitStorageSize);
+    internal::CachePayloadWriter::u64(out, node.alignment);
+    internal::CachePayloadWriter::u64(out, node.resultSuccessTag);
+    internal::CachePayloadWriter::u64(out, node.resultErrorTag);
+    internal::CachePayloadWriter::u64(out, node.resultReturnErrorTag);
+    internal::CachePayloadWriter::string(out, node.resultSourceCarrierTypeKey);
+    internal::CachePayloadWriter::string(out, node.resultSourceErrorTypeKey);
+    internal::CachePayloadWriter::string(out, node.resultReturnCarrierTypeKey);
+    internal::CachePayloadWriter::string(out, node.resultReturnErrorTypeKey);
+    internal::CachePayloadWriter::string(out, node.allocatorDeallocateCalleeName);
+    internal::CachePayloadWriter::string(out, node.calleeName);
+    internal::CachePayloadWriter::string(out, node.secondaryCalleeName);
+    internal::CachePayloadWriter::string(out, node.resultSuccessTestCalleeName);
+    internal::CachePayloadWriter::string(out, node.resultSuccessExtractorCalleeName);
+    internal::CachePayloadWriter::string(out, node.resultErrorExtractorCalleeName);
+    internal::CachePayloadWriter::string(out, node.resultErrorFactoryCalleeName);
+    internal::CachePayloadWriter::string(out, node.resultErrorConversionCalleeName);
 }
 
 void appendMirNodeShapeFields(std::string& out, const ProjectOopMirNode& node)
@@ -141,21 +99,21 @@ void appendMirNodeShapeFields(std::string& out, const ProjectOopMirNode& node)
         std::memcpy(&bits, &node.floatingValue, sizeof(bits));
         return bits;
     }();
-    appendMirU64(out, floatingBits);
-    appendMirU64(out, static_cast<std::uint64_t>(node.trailingLengthRelativeOffset));
-    appendMirU32(
+    internal::CachePayloadWriter::u64(out, floatingBits);
+    internal::CachePayloadWriter::u64(out, static_cast<std::uint64_t>(node.trailingLengthRelativeOffset));
+    internal::CachePayloadWriter::u32(
         out,
         node.variableLengthArrayRank ? static_cast<std::uint32_t>(node.variableLengthArrayRank) : 0U);
-    appendMirU32(
+    internal::CachePayloadWriter::u32(
         out,
         node.nativeArrayRank ? static_cast<std::uint32_t>(node.nativeArrayRank) : 0U);
-    appendMirU32(out, static_cast<std::uint32_t>(node.argumentCount));
-    appendMirStringVector(out, node.argumentTypeKeys);
-    appendMirStringVector(out, node.catchMatchedErrorTypeKeys);
-    appendMirU32(out, static_cast<std::uint32_t>(node.ownership));
-    appendMirU32(out, static_cast<std::uint32_t>(node.objectLifetimeOwnership));
-    appendMirU32(out, static_cast<std::uint32_t>(node.storageOwnership));
-    appendMirU32(out, static_cast<std::uint32_t>(node.captureMode));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.argumentCount));
+    internal::CachePayloadWriter::stringVector(out, node.argumentTypeKeys);
+    internal::CachePayloadWriter::stringVector(out, node.catchMatchedErrorTypeKeys);
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.ownership));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.objectLifetimeOwnership));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.storageOwnership));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.captureMode));
 }
 
 void appendMirNodeFlags(std::string& out, const ProjectOopMirNode& node)
@@ -196,13 +154,13 @@ void appendMirNodeFlags(std::string& out, const ProjectOopMirNode& node)
     setFlag(27, node.inlineAssemblyHasSideEffects);
     setFlag(28, node.inlineAssemblyClobbersMemory);
     setFlag(29, node.inlineAssemblyClobbersFlags);
-    appendMirU32(out, flags);
+    internal::CachePayloadWriter::u32(out, flags);
 }
 
 void appendMirOptionalU64(std::string& out, const std::optional<std::size_t>& value)
 {
     out.push_back(value.has_value() ? '\x01' : '\x00');
-    if (value.has_value()) appendMirU64(out, static_cast<std::uint64_t>(*value));
+    if (value.has_value()) internal::CachePayloadWriter::u64(out, static_cast<std::uint64_t>(*value));
 }
 
 template <typename T>
@@ -210,7 +168,7 @@ void appendMirOptionalEnum(std::string& out, const std::optional<T>& value)
 {
     out.push_back(value.has_value() ? '\x01' : '\x00');
     if (value.has_value())
-        appendMirU32(out, static_cast<std::uint32_t>(*value));
+        internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(*value));
 }
 
 void appendMirNodeOptionals(std::string& out, const ProjectOopMirNode& node)
@@ -252,16 +210,16 @@ void appendMirNodeOptionals(std::string& out, const ProjectOopMirNode& node)
 void appendMirNodeVectors(std::string& out, const ProjectOopMirNode& node)
 {
     // Vectors.
-    appendMirSizeVector(out, node.cleanupRegionOrdinals);
-    appendMirInt64Vector(out, node.switchLabels);
+    internal::CachePayloadWriter::sizeVector(out, node.cleanupRegionOrdinals);
+    internal::CachePayloadWriter::int64Vector(out, node.switchLabels);
     {
         std::vector<std::uint32_t> segments;
         segments.reserve(node.collectionSegments.size());
         for (const ProjectCollectionSegmentKind segment : node.collectionSegments)
             segments.push_back(static_cast<std::uint32_t>(segment));
-        appendMirU32Vector(out, segments);
+        internal::CachePayloadWriter::u32Vector(out, segments);
     }
-    appendMirSizeVector(out, node.argumentParameterOrdinals);
+    internal::CachePayloadWriter::sizeVector(out, node.argumentParameterOrdinals);
 }
 
 // Serializes one node's scalar/string/flag fields (children recurse iteratively below).
@@ -287,20 +245,20 @@ void appendMirNodeFields(std::string& out, const ProjectOopMirNode& node)
         work.pop_back();
         if (node == nullptr)
         {
-            appendMirU32(out, 0xFFFFFFFEu); // null child marker
+            internal::CachePayloadWriter::u32(out, 0xFFFFFFFEu); // null child marker
             continue;
         }
-        appendMirU32(out, 0xFFFFFFFFu); // node marker
+        internal::CachePayloadWriter::u32(out, 0xFFFFFFFFu); // node marker
         appendMirNodeFields(out, *node);
-        appendMirU32(out, static_cast<std::uint32_t>(node->children.size()));
+        internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node->children.size()));
         for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
             work.push_back(it->get());
     }
-    appendMirU32(out, 0xFFFFFFFEu); // end marker
+    internal::CachePayloadWriter::u32(out, 0xFFFFFFFEu); // end marker
     return out;
 }
 
-bool readMirNodeCoreFields(internal::MirByteReader& reader, ProjectOopMirNode& node)
+bool readMirNodeCoreFields(internal::CachePayloadReader& reader, ProjectOopMirNode& node)
 {
     std::uint32_t u32 = 0;
     if (!reader.u32(u32)) return false;
@@ -332,7 +290,7 @@ bool readMirNodeCoreFields(internal::MirByteReader& reader, ProjectOopMirNode& n
     return true;
 }
 
-bool readMirNodeShapeFields(internal::MirByteReader& reader, ProjectOopMirNode& node)
+bool readMirNodeShapeFields(internal::CachePayloadReader& reader, ProjectOopMirNode& node)
 {
     std::uint32_t u32 = 0;
     std::uint64_t u64 = 0;
@@ -396,7 +354,7 @@ void applyMirNodeFlags(std::uint32_t flags, ProjectOopMirNode& node)
 }
 
 bool readMirOptionalU64(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     std::optional<std::size_t>& value)
 {
     std::uint8_t present = 0;
@@ -410,7 +368,7 @@ bool readMirOptionalU64(
 
 template <typename T>
 bool readMirOptionalEnum(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     std::optional<T>& value)
 {
     std::uint8_t present = 0;
@@ -422,7 +380,7 @@ bool readMirOptionalEnum(
     return true;
 }
 
-bool readMirNodeOptionals(internal::MirByteReader& reader, ProjectOopMirNode& node)
+bool readMirNodeOptionals(internal::CachePayloadReader& reader, ProjectOopMirNode& node)
 {
     if (!readMirOptionalU64(reader, node.memberOrdinal) ||
         !readMirOptionalU64(reader, node.namespaceFunctionOrdinal) ||
@@ -460,7 +418,7 @@ bool readMirNodeOptionals(internal::MirByteReader& reader, ProjectOopMirNode& no
 }
 
 bool readMirSizeVector(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     std::vector<std::size_t>& values)
 {
     std::uint32_t count = 0;
@@ -477,7 +435,7 @@ bool readMirSizeVector(
 }
 
 bool readMirInt64Vector(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     std::vector<std::int64_t>& values)
 {
     std::uint32_t count = 0;
@@ -493,7 +451,7 @@ bool readMirInt64Vector(
     return true;
 }
 
-bool readMirNodeVectors(internal::MirByteReader& reader, ProjectOopMirNode& node)
+bool readMirNodeVectors(internal::CachePayloadReader& reader, ProjectOopMirNode& node)
 {
     if (!readMirSizeVector(reader, node.cleanupRegionOrdinals) ||
         !readMirInt64Vector(reader, node.switchLabels))
@@ -514,7 +472,7 @@ bool readMirNodeVectors(internal::MirByteReader& reader, ProjectOopMirNode& node
 }
 
 // Reads one node's scalar/string/flag/optional/vector fields (symmetric to appendMirNodeFields).
-bool readMirNodeFields(internal::MirByteReader& reader, ProjectOopMirNode& node)
+bool readMirNodeFields(internal::CachePayloadReader& reader, ProjectOopMirNode& node)
 {
     if (!readMirNodeCoreFields(reader, node) || !readMirNodeShapeFields(reader, node))
         return false;
@@ -526,7 +484,7 @@ bool readMirNodeFields(internal::MirByteReader& reader, ProjectOopMirNode& node)
 }
 
 bool readMirNodeRecord(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     std::unique_ptr<ProjectOopMirNode>& out)
 {
     std::uint32_t marker = 0;
@@ -560,7 +518,7 @@ void discardMirNodeTree(std::unique_ptr<ProjectOopMirNode>& root)
     }
 }
 
-bool readMirNode(internal::MirByteReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
+bool readMirNode(internal::CachePayloadReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
 {
     std::unique_ptr<ProjectOopMirNode> root;
     if (!readMirNodeRecord(reader, root)) return false;
@@ -594,7 +552,7 @@ bool readMirNode(internal::MirByteReader& reader, std::unique_ptr<ProjectOopMirN
 [[maybe_unused]] bool restoreMirNodeTree(
     std::string_view bytes, std::unique_ptr<ProjectOopMirNode>& body)
 {
-    internal::MirByteReader reader(bytes);
+    internal::CachePayloadReader reader(bytes);
     return readMirNode(reader, body);
 }
 
@@ -640,30 +598,31 @@ ProjectOopMirNode* nodeByPreorderIndex(ProjectOopMirNode* body, std::size_t targ
 // remaining function fields (ABI/effects/closure/exception flow) are the next serialization layer.
 void appendMirFunctionIdentity(std::string& out, const ProjectOopMirFunction& function)
 {
-    appendMirString(out, function.mangledName);
-    appendMirString(out, function.genericSpecializationKey);
-    appendMirString(out, function.returnTypeKey);
-    appendMirString(out, function.errorTypeKey);
-    appendMirStringVector(out, function.parameterTypeKeys);
-    appendMirStringVector(out, function.parameterNames);
-    appendMirStringVector(out, function.captureTypeKeys);
-    appendMirStringVector(out, function.captureNames);
-    appendMirStringVector(out, function.generatorParameterTypeKeys);
-    appendMirString(out, function.importDllName);
-    appendMirString(out, function.cAbiName);
-    appendMirString(out, function.debugDisplayName);
-    appendMirU64(out, function.memberOrdinal ? static_cast<std::uint64_t>(function.memberOrdinal) : 0U);
-    appendMirU64(out, function.declaringTypeOrdinal);
-    appendMirU64(out, function.closureLayoutSize);
-    appendMirU64(out, function.closureLayoutAlignment);
-    appendMirU64(out, function.asyncFrameSize);
-    appendMirU32(out, static_cast<std::uint32_t>(function.inliningPolicy));
-    appendMirU32(out, static_cast<std::uint32_t>(function.callableTrait));
-    appendMirU32(out, static_cast<std::uint32_t>(function.frameStorage));
-    appendMirU32(out, static_cast<std::uint32_t>(function.returnOwnership));
+    internal::CachePayloadWriter::string(out, function.mangledName);
+    internal::CachePayloadWriter::string(out, function.genericSpecializationKey);
+    internal::CachePayloadWriter::string(out, function.returnTypeKey);
+    internal::CachePayloadWriter::string(out, function.errorTypeKey);
+    internal::CachePayloadWriter::stringVector(out, function.parameterTypeKeys);
+    internal::CachePayloadWriter::stringVector(out, function.parameterNames);
+    internal::CachePayloadWriter::stringVector(out, function.captureTypeKeys);
+    internal::CachePayloadWriter::stringVector(out, function.captureNames);
+    internal::CachePayloadWriter::stringVector(out, function.generatorParameterTypeKeys);
+    internal::CachePayloadWriter::string(out, function.importDllName);
+    internal::CachePayloadWriter::string(out, function.cAbiName);
+    internal::CachePayloadWriter::string(out, function.debugDisplayName);
+    internal::CachePayloadWriter::u64(
+        out, function.memberOrdinal ? static_cast<std::uint64_t>(function.memberOrdinal) : 0U);
+    internal::CachePayloadWriter::u64(out, function.declaringTypeOrdinal);
+    internal::CachePayloadWriter::u64(out, function.closureLayoutSize);
+    internal::CachePayloadWriter::u64(out, function.closureLayoutAlignment);
+    internal::CachePayloadWriter::u64(out, function.asyncFrameSize);
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.inliningPolicy));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.callableTrait));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.frameStorage));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.returnOwnership));
     out.push_back(function.lambdaOrdinal.has_value() ? '\x01' : '\x00');
     if (function.lambdaOrdinal.has_value())
-        appendMirU64(out, static_cast<std::uint64_t>(*function.lambdaOrdinal));
+        internal::CachePayloadWriter::u64(out, static_cast<std::uint64_t>(*function.lambdaOrdinal));
 }
 
 void appendMirFunctionFlags(std::string& out, const ProjectOopMirFunction& function)
@@ -689,36 +648,36 @@ void appendMirFunctionFlags(std::string& out, const ProjectOopMirFunction& funct
     setFlag(13, function.capturesThisCell);
     setFlag(14, function.isGeneratorConstructor);
     setFlag(15, function.isTransportedInlineBody);
-    appendMirU32(out, flags);
+    internal::CachePayloadWriter::u32(out, flags);
 }
 
 void appendMirFunctionAbi(std::string& out, const ProjectOopMirFunction& function)
 {
-    appendMirU32(out, function.effects.bits());
-    appendMirU32(out, static_cast<std::uint32_t>(function.abi.returnPassing));
+    internal::CachePayloadWriter::u32(out, function.effects.bits());
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.abi.returnPassing));
     out.push_back(function.abi.hiddenReturnParameterOrdinal.has_value() ? '\x01' : '\x00');
     if (function.abi.hiddenReturnParameterOrdinal.has_value())
-        appendMirU64(out, static_cast<std::uint64_t>(*function.abi.hiddenReturnParameterOrdinal));
+        internal::CachePayloadWriter::u64(out, static_cast<std::uint64_t>(*function.abi.hiddenReturnParameterOrdinal));
     {
         std::vector<std::uint32_t> passing;
         passing.reserve(function.abi.parameterPassing.size());
         for (const ProjectOopMirAbiPassing p : function.abi.parameterPassing)
             passing.push_back(static_cast<std::uint32_t>(p));
-        appendMirU32Vector(out, passing);
+        internal::CachePayloadWriter::u32Vector(out, passing);
     }
-    appendMirSizeVector(out, function.abi.parameterPhysicalOrdinals);
-    appendMirU32(out, static_cast<std::uint32_t>(function.abi.physicalParameterCount));
+    internal::CachePayloadWriter::sizeVector(out, function.abi.parameterPhysicalOrdinals);
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.abi.physicalParameterCount));
 }
 
 template <typename Tuples>
 void appendMirAsyncTuples(std::string& out, const Tuples& tuples)
 {
-    appendMirU32(out, static_cast<std::uint32_t>(tuples.size()));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(tuples.size()));
     for (const auto& [ordinal, offset, typeKey] : tuples)
     {
-        appendMirU64(out, static_cast<std::uint64_t>(ordinal));
-        appendMirU64(out, offset);
-        appendMirString(out, typeKey);
+        internal::CachePayloadWriter::u64(out, static_cast<std::uint64_t>(ordinal));
+        internal::CachePayloadWriter::u64(out, offset);
+        internal::CachePayloadWriter::string(out, typeKey);
     }
 }
 
@@ -731,38 +690,38 @@ void appendMirFunctionCaptures(std::string& out, const ProjectOopMirFunction& fu
         kinds.reserve(function.captureSourceKinds.size());
         for (const MethodLambdaCaptureSourceKind kind : function.captureSourceKinds)
             kinds.push_back(static_cast<std::uint32_t>(kind));
-        appendMirU32Vector(out, kinds);
+        internal::CachePayloadWriter::u32Vector(out, kinds);
     }
     {
         std::vector<std::uint32_t> modes;
         modes.reserve(function.captureModes.size());
         for (const language::CaptureMode mode : function.captureModes)
             modes.push_back(static_cast<std::uint32_t>(mode));
-        appendMirU32Vector(out, modes);
+        internal::CachePayloadWriter::u32Vector(out, modes);
     }
-    appendMirU32(out, static_cast<std::uint32_t>(function.captureOwnsValues.size()));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.captureOwnsValues.size()));
     for (const bool owns : function.captureOwnsValues) out.push_back(owns ? '\x01' : '\x00');
-    appendMirSizeVector(out, function.capturedLocalOrdinals);
-    appendMirSizeVector(out, function.capturedParameterOrdinals);
-    appendMirSizeVector(out, function.localOrdinals);
+    internal::CachePayloadWriter::sizeVector(out, function.capturedLocalOrdinals);
+    internal::CachePayloadWriter::sizeVector(out, function.capturedParameterOrdinals);
+    internal::CachePayloadWriter::sizeVector(out, function.localOrdinals);
 }
 
 void appendMirFunctionCleanupRegions(std::string& out, const ProjectOopMirFunction& function)
 {
     // Cleanup regions + exception flow (node pointers stored as pre-order indices).
-    appendMirU32(out, static_cast<std::uint32_t>(function.cleanupRegions.size()));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.cleanupRegions.size()));
     for (const ProjectOopMirCleanupRegion& region : function.cleanupRegions)
     {
-        appendMirU64(out, static_cast<std::uint64_t>(region.ordinal));
-        appendMirU32(out, static_cast<std::uint32_t>(region.kind));
-        appendMirU64(out, static_cast<std::uint64_t>(
+        internal::CachePayloadWriter::u64(out, static_cast<std::uint64_t>(region.ordinal));
+        internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(region.kind));
+        internal::CachePayloadWriter::u64(out, static_cast<std::uint64_t>(
             nodePreorderIndex(function.body.get(), region.action)));
         out.push_back(region.localOrdinal.has_value() ? '\x01' : '\x00');
-        if (region.localOrdinal.has_value()) appendMirU64(out, *region.localOrdinal);
+        if (region.localOrdinal.has_value()) internal::CachePayloadWriter::u64(out, *region.localOrdinal);
         out.push_back(region.parameterOrdinal.has_value() ? '\x01' : '\x00');
-        if (region.parameterOrdinal.has_value()) appendMirU64(out, *region.parameterOrdinal);
-        appendMirString(out, region.typeKey);
-        appendMirU32(out, static_cast<std::uint32_t>(region.ownership));
+        if (region.parameterOrdinal.has_value()) internal::CachePayloadWriter::u64(out, *region.parameterOrdinal);
+        internal::CachePayloadWriter::string(out, region.typeKey);
+        internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(region.ownership));
         out.push_back(region.automaticDestruction ? '\x01' : '\x00');
     }
 }
@@ -770,24 +729,24 @@ void appendMirFunctionCleanupRegions(std::string& out, const ProjectOopMirFuncti
 void appendMirFunctionExceptionFlow(std::string& out, const ProjectOopMirFunction& function)
 {
     out.push_back(function.exceptionFlow.requiresPersonality ? '\x01' : '\x00');
-    appendMirSizeVector(out, function.exceptionFlow.protectedRegionOrdinals);
-    appendMirU32(out, static_cast<std::uint32_t>(function.exceptionFlow.catchRegionCount));
-    appendMirU32(out, static_cast<std::uint32_t>(function.exceptionFlow.finallyRegionCount));
-    appendMirU32(out, static_cast<std::uint32_t>(function.exceptionFlow.nonlocalExits.size()));
+    internal::CachePayloadWriter::sizeVector(out, function.exceptionFlow.protectedRegionOrdinals);
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.exceptionFlow.catchRegionCount));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.exceptionFlow.finallyRegionCount));
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.exceptionFlow.nonlocalExits.size()));
     for (const ProjectOopMirNonlocalExit& exit : function.exceptionFlow.nonlocalExits)
     {
-        appendMirU32(out, static_cast<std::uint32_t>(exit.kind));
-        appendMirU64(out, static_cast<std::uint64_t>(
+        internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(exit.kind));
+        internal::CachePayloadWriter::u64(out, static_cast<std::uint64_t>(
             nodePreorderIndex(function.body.get(), exit.node)));
-        appendMirSizeVector(out, exit.cleanupRegionOrdinals);
+        internal::CachePayloadWriter::sizeVector(out, exit.cleanupRegionOrdinals);
         out.push_back(exit.targetScopeOrdinal.has_value() ? '\x01' : '\x00');
-        if (exit.targetScopeOrdinal.has_value()) appendMirU64(out, *exit.targetScopeOrdinal);
+        if (exit.targetScopeOrdinal.has_value()) internal::CachePayloadWriter::u64(out, *exit.targetScopeOrdinal);
         out.push_back(exit.exceptionTargetRegionOrdinal.has_value() ? '\x01' : '\x00');
         if (exit.exceptionTargetRegionOrdinal.has_value())
-            appendMirU64(out, *exit.exceptionTargetRegionOrdinal);
+            internal::CachePayloadWriter::u64(out, *exit.exceptionTargetRegionOrdinal);
         out.push_back(exit.cleanupContinuationKind.has_value() ? '\x01' : '\x00');
         if (exit.cleanupContinuationKind.has_value())
-            appendMirU32(out, static_cast<std::uint32_t>(*exit.cleanupContinuationKind));
+            internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(*exit.cleanupContinuationKind));
     }
 }
 
@@ -805,7 +764,7 @@ void appendMirFunctionExceptionFlow(std::string& out, const ProjectOopMirFunctio
 }
 
 bool readMirFunctionIdentity(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     ProjectOopMirFunction& function)
 {
     std::uint32_t u32 = 0;
@@ -848,7 +807,7 @@ bool readMirFunctionIdentity(
 }
 
 bool readMirFunctionFlags(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     ProjectOopMirFunction& function)
 {
     std::uint32_t flags = 0;
@@ -874,7 +833,7 @@ bool readMirFunctionFlags(
 }
 
 bool readMirFunctionEffects(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     ProjectOopMirFunction& function)
 {
     std::uint32_t effectBits = 0;
@@ -891,7 +850,7 @@ bool readMirFunctionEffects(
 }
 
 bool readMirFunctionAbi(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     ProjectOopMirFunction& function)
 {
     std::uint32_t u32 = 0;
@@ -929,7 +888,7 @@ bool readMirFunctionAbi(
 }
 
 template <typename Tuples>
-bool readMirAsyncTuples(internal::MirByteReader& reader, Tuples& tuples)
+bool readMirAsyncTuples(internal::CachePayloadReader& reader, Tuples& tuples)
 {
     std::uint32_t count = 0;
     if (!reader.u32(count)) return false;
@@ -949,7 +908,7 @@ bool readMirAsyncTuples(internal::MirByteReader& reader, Tuples& tuples)
 }
 
 bool readMirFunctionCaptures(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     ProjectOopMirFunction& function)
 {
     if (!readMirAsyncTuples(reader, function.asyncFrameLocals) ||
@@ -989,7 +948,7 @@ bool readMirFunctionCaptures(
 }
 
 bool readMirCleanupRegion(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     ProjectOopMirCleanupRegion& region,
     std::size_t& actionIndex)
 {
@@ -1023,7 +982,7 @@ bool readMirCleanupRegion(
 }
 
 bool readMirFunctionCleanupRegions(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     ProjectOopMirFunction& function,
     std::vector<std::size_t>& regionActionIndices)
 {
@@ -1045,7 +1004,7 @@ bool readMirFunctionCleanupRegions(
 }
 
 bool readMirNonlocalExit(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     ProjectOopMirNonlocalExit& exit,
     std::size_t& nodeIndex)
 {
@@ -1079,7 +1038,7 @@ bool readMirNonlocalExit(
 }
 
 bool readMirFunctionExceptionFlow(
-    internal::MirByteReader& reader,
+    internal::CachePayloadReader& reader,
     ProjectOopMirFunction& function,
     std::vector<std::size_t>& exitNodeIndices)
 {
@@ -1110,7 +1069,7 @@ bool readMirFunctionExceptionFlow(
 [[maybe_unused]] bool restoreMirFunctionCore(
     std::string_view bytes, ProjectOopMirFunction& function)
 {
-    internal::MirByteReader reader(bytes);
+    internal::CachePayloadReader reader(bytes);
     if (!readMirFunctionIdentity(reader, function) ||
         !readMirFunctionFlags(reader, function) ||
         !readMirFunctionEffects(reader, function) ||

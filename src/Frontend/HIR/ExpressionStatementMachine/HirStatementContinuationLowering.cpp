@@ -14,9 +14,9 @@ using internal::LoopBlockAdvance;
 using internal::TryStatementFrameState;
 
 void ProjectOopHirModel::rollbackMatchCleanups(
-    std::vector<IterativeExpressionFrame>& frames,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     // A failed If condition must still lower its then block to preserve
     // the historical diagnostic ordering.  Its continuation owns the
@@ -77,13 +77,13 @@ void ProjectOopHirModel::rollbackMatchCleanups(
 }
 
 bool ProjectOopHirModel::resumePendingConditionStatementAfterFailure(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error)
 {
     for (std::size_t index = frames.size(); index > 0U; --index)
     {
@@ -195,12 +195,12 @@ bool ProjectOopHirModel::isCoroutineValueStatement(
 }
 
 bool ProjectOopHirModel::beginExitValueStatement(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error,
     const ast::AstNode* statement,
     std::size_t statementMemberOrdinal)
 {
@@ -218,11 +218,11 @@ bool ProjectOopHirModel::beginExitValueStatement(
 }
 
 void ProjectOopHirModel::beginCoroutineValueStatement(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
     const ast::AstNode* statement,
     std::size_t statementMemberOrdinal)
 {
@@ -239,12 +239,12 @@ void ProjectOopHirModel::beginCoroutineValueStatement(
 }
 
 bool ProjectOopHirModel::beginUsingStatement(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error,
     const ast::AstNode* statement,
     std::size_t statementMemberOrdinal)
 {
@@ -261,11 +261,11 @@ bool ProjectOopHirModel::beginUsingStatement(
 }
 
 void ProjectOopHirModel::beginTryStatement(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
     const ast::AstNode* statement,
     std::size_t statementMemberOrdinal)
 {
@@ -280,11 +280,11 @@ void ProjectOopHirModel::beginTryStatement(
 }
 
 bool ProjectOopHirModel::initializeStatementContinuationFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statementContinuation,
     std::size_t memberOrdinal,
     bool& addressContext,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     std::optional<bool> initialized =
         initializeDeclarationContinuationFrame(frame, statementContinuation);
@@ -308,7 +308,7 @@ bool ProjectOopHirModel::initializeStatementContinuationFrame(
 }
 
 std::optional<bool> ProjectOopHirModel::initializeDeclarationContinuationFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statementContinuation)
 {
     if (statementContinuation->kind() ==
@@ -339,9 +339,9 @@ std::optional<bool> ProjectOopHirModel::initializeDeclarationContinuationFrame(
 }
 
 std::optional<bool> ProjectOopHirModel::initializeControlContinuationFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statementContinuation,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (statementContinuation->kind() == ast::AstNodeKind::IfStatement)
     {
@@ -384,11 +384,11 @@ std::optional<bool> ProjectOopHirModel::initializeControlContinuationFrame(
 }
 
 std::optional<bool> ProjectOopHirModel::initializeValueContinuationFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const ast::AstNode* statementContinuation,
     std::size_t memberOrdinal,
     bool& addressContext,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if ((statementContinuation->kind() == ast::AstNodeKind::BreakStatement ||
               statementContinuation->kind() == ast::AstNodeKind::ReturnStatement ||
@@ -425,15 +425,15 @@ std::optional<bool> ProjectOopHirModel::initializeValueContinuationFrame(
 }
 
 bool ProjectOopHirModel::initializeRootLoopWorklist(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::string& error,
     bool& worklistComplete,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (frames.size() != 1U) return true;
     LoopBlockAdvance advance = LoopBlockAdvance::Complete;
@@ -465,11 +465,11 @@ bool ProjectOopHirModel::initializeRootLoopWorklist(
 }
 
 bool ProjectOopHirModel::initializeRootVariableWorklist(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    bool& currentAddressContext,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
     bool& worklistComplete)
 {
     if (!initializeVariableDeclarationFrame(frames.back(), error))
@@ -494,11 +494,11 @@ bool ProjectOopHirModel::initializeRootVariableWorklist(
 }
 
 bool ProjectOopHirModel::initializeRootDeconstructionWorklist(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    bool& currentAddressContext,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
     bool& worklistComplete,
     const ast::AstNode* statementContinuation)
 {
@@ -527,11 +527,11 @@ bool ProjectOopHirModel::initializeRootDeconstructionWorklist(
 }
 
 bool ProjectOopHirModel::initializeRootInlineAssemblyWorklist(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    bool& currentAddressContext,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
     bool& worklistComplete)
 {
     initializeInlineAssemblyFrame(frames.back());
@@ -558,11 +558,11 @@ bool ProjectOopHirModel::initializeRootInlineAssemblyWorklist(
 }
 
 bool ProjectOopHirModel::initializeRootDeclarationWorklist(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    bool& currentAddressContext,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
     bool& worklistComplete,
     const ast::AstNode* statementContinuation)
 {

@@ -382,6 +382,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup01(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
             // NSC305-L04: the leaf family (literals/names) lives in lowerLeafExpression.
             case frontend::ProjectOopMirNodeKind::ThisValue:
             case frontend::ProjectOopMirNodeKind::ParameterValue:
@@ -447,6 +449,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup02(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
             case frontend::ProjectOopMirNodeKind::MoveValue:
             {
                 if (node->localOrdinal.has_value() == node->parameterOrdinal.has_value())
@@ -515,6 +519,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup03(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
             case frontend::ProjectOopMirNodeKind::AddressValue:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::RawElementAddress:
@@ -601,6 +607,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup04(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
             case frontend::ProjectOopMirNodeKind::ArrayAllocate:
                 return lowerArrayAllocate(node, error);
             case frontend::ProjectOopMirNodeKind::RangeArrayAllocate:
@@ -672,6 +680,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup05(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
             // C8 "type root": the two primitives NativeSharp.Core.Object's virtual methods rest
             // on. Both take the object reference as their single operand.
             case frontend::ProjectOopMirNodeKind::AggregateEquals:
@@ -729,6 +739,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup06(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
 
             // Stage 53.3 "Filesystem/Paths": File.Exists/Directory.Exists take one string
             // argument (a path) and return the runtime hook's i1 result directly -- no result
@@ -809,6 +821,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup07(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
 
             // Stage 54.1 "Threads". ThreadCreate takes one operand -- a ThreadStart delegate
             // value (already fully constructed by the time it reaches this static call: whoever
@@ -862,6 +876,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup08(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
 
             case frontend::ProjectOopMirNodeKind::CoreAtomicLoadInt32:
                 return lowerExpressionIterative(node, error);
@@ -935,6 +951,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup09(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
             case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt32:
             case frontend::ProjectOopMirNodeKind::CoreAtomicStoreInt64:
                 return lowerExpressionIterative(node, error);
@@ -978,6 +996,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup10(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
 
             // Stage 54.3 "Mutex". MutexCreate takes ZERO operands (the first zero-operand core
             // operation in the project) and returns the real, meaningful i64 HANDLE (as nint) --
@@ -1051,6 +1071,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup11(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
 
             // Stage 55.1 "Process". Every getter is the simplest possible core-operation shape
             // (zero arguments, one call, return its result) -- same as CoreClockQueryCounter.
@@ -1092,6 +1114,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup12(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
 
             // Stage 55.2 "Hardware / System Info". Same zero-argument shape as Process above.
             case frontend::ProjectOopMirNodeKind::CoreSystemInfoGetPageSize:
@@ -1156,6 +1180,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup12DiagnosticsAndUtilitie
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
             // Stage 55.3 "Diagnostics".
             case frontend::ProjectOopMirNodeKind::CoreDebugIsDebuggerPresent:
                 if (debugIsDebuggerPresentFunction_ == nullptr)
@@ -1187,6 +1213,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup13(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
 
             case frontend::ProjectOopMirNodeKind::LambdaCreate:
                 return lowerLambdaCreate(node, error);
@@ -1216,6 +1244,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup14(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
 
             case frontend::ProjectOopMirNodeKind::Unary:
             case frontend::ProjectOopMirNodeKind::Binary:
@@ -1280,6 +1310,8 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup15(
 {
     switch (node->kind)
     {
+        default:
+            return nullptr;
 
             // LOS VEINTE QUE NO SON EXPRESIONES, escritos uno a uno en vez de un `default:`.
             //

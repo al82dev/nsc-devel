@@ -58,8 +58,8 @@ bool ProjectMethodBodyModel::acceptMovedMethodLocal(
     ExpressionResult& movedMethod,
     const ast::AstNode* expression,
     const ScopeName& source,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     if (source.semanticOrdinal >= locals_.size()) return false;
     const MethodLocalSymbol& local = locals_[source.semanticOrdinal];
@@ -123,9 +123,9 @@ bool ProjectMethodBodyModel::acceptMovedMethodParameter(
     ExpressionResult& movedMethod,
     const ast::AstNode* expression,
     const ScopeName& source,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const ClassMemberSymbol* owner = methodSymbol(methodMemberOrdinal);
     if (owner == nullptr || source.semanticOrdinal >= owner->parameters.size()) return false;
@@ -171,10 +171,10 @@ bool ProjectMethodBodyModel::acceptMovedMethodParameter(
 bool ProjectMethodBodyModel::analyzeMovedMethodValue(
     ExpressionResult& result,
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
     bool moveAllowed)
 {
     // T08-F05. `move(receiver.Method)` is the explicit owning method-value form.  It is
@@ -223,8 +223,8 @@ bool ProjectMethodBodyModel::analyzeMovedMethodValue(
 
 std::optional<ProjectMethodBodyModel::ScopeName> ProjectMethodBodyModel::partialMoveRoot(
     const ast::AstNode* storage,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal) const
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal) const
 {
     // A field/element move mutates one slot without consuming its containing owner. Find
     // the named owner at the root of that storage expression so an outstanding borrowed
@@ -259,9 +259,9 @@ bool ProjectMethodBodyModel::rejectInvalidPartialMove(
     const std::optional<ScopeName>& root,
     const ast::AstNode* placeExpression,
     const ast::AstNode* moveExpression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (!root.has_value()) return false;
     const std::optional<std::string> operationPlace =
@@ -307,9 +307,9 @@ bool ProjectMethodBodyModel::rejectInvalidPartialMove(
 bool ProjectMethodBodyModel::analyzeMovedArrayElement(
     ExpressionResult& result,
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
     bool moveAllowed)
 {
     // Stage 52: move(...) also accepts a direct native-array element access, e.g.
@@ -360,9 +360,9 @@ bool ProjectMethodBodyModel::analyzeMovedArrayElement(
 bool ProjectMethodBodyModel::validateMovedArrayElementSource(
     const ExpressionResult& element,
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     bool acceptableElementSource = element.valid && element.assignable;
     if (acceptableElementSource)
@@ -391,8 +391,8 @@ void ProjectMethodBodyModel::recordMovedArrayElement(
     const ExpressionResult& element,
     const ast::AstNode* expression,
     const std::optional<ScopeName>& partialRoot,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal)
 {
     MethodMoveBinding move;
     move.syntax = expression;
@@ -420,9 +420,9 @@ bool ProjectMethodBodyModel::validateOwnedFieldMovePlace(
     std::vector<std::string>& fieldPath,
     const ast::AstNode* expression,
     const std::optional<ScopeName>& partialRoot,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const std::optional<std::string> place = partialMovePlaceKey(
         expression->first(), scopeOrdinal, &fieldPath);
@@ -476,9 +476,9 @@ bool ProjectMethodBodyModel::tryOwnedFieldMoveSource(
     const ExpressionResult& fieldSource,
     const ast::AstNode* expression,
     const std::optional<ScopeName>& partialRoot,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     // Bloque 1 (audit finding "move-out desde field owned"): move(...) also accepts a
     // direct `owned` FIELD access -- `move(holder.slot)` and, inside the declaring class,
@@ -541,9 +541,9 @@ bool ProjectMethodBodyModel::analyzeMovedIteratorCurrent(
     ExpressionResult& result,
     const ExpressionResult& member,
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     // NS304-T07-F04: `move(it.Current)` transfers a move-only item out of the
     // iterator's item slot exactly once.
@@ -581,9 +581,9 @@ bool ProjectMethodBodyModel::analyzeMovedIteratorCurrent(
 bool ProjectMethodBodyModel::analyzeMovedMember(
     ExpressionResult& result,
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
     bool moveAllowed)
 {
     if (!moveAllowed || expression->first() == nullptr ||
@@ -616,9 +616,9 @@ bool ProjectMethodBodyModel::validateLocalMoveState(
     const MethodLocalSymbol& local,
     const ast::AstNode* expression,
     std::size_t sourceOrdinal,
-    std::size_t scopeOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
     bool sourceRequiresMove,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (!sourceRequiresMove) return true;
     if (local.isPinned)
@@ -667,10 +667,10 @@ bool ProjectMethodBodyModel::completeLocalMove(
     const MethodLocalSymbol& local,
     const ast::AstNode* expression,
     std::size_t sourceOrdinal,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
     bool sourceRequiresMove,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::Local, expression->first(), methodMemberOrdinal, scopeOrdinal,
@@ -718,10 +718,10 @@ bool ProjectMethodBodyModel::analyzeNamedLocalMove(
     bool& copyShapedMove,
     const ast::AstNode* expression,
     const ScopeName& source,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
     bool compilerVariantResultTransfer,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     if (source.semanticOrdinal >= locals_.size()) return false;
     const MethodLocalSymbol& local = locals_[source.semanticOrdinal];
@@ -751,9 +751,9 @@ bool ProjectMethodBodyModel::validateParameterMoveState(
     const MethodParameterSymbol& parameter,
     const ast::AstNode* expression,
     std::size_t sourceOrdinal,
-    std::size_t scopeOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
     bool sourceRequiresMove,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (!sourceRequiresMove) return true;
     if (movedOwnedParameters_.contains(sourceOrdinal))
@@ -792,10 +792,10 @@ bool ProjectMethodBodyModel::completeParameterMove(
     const MethodParameterSymbol& parameter,
     const ast::AstNode* expression,
     std::size_t sourceOrdinal,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
     bool sourceRequiresMove,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::Parameter, expression->first(), methodMemberOrdinal, scopeOrdinal,
@@ -842,10 +842,10 @@ bool ProjectMethodBodyModel::analyzeNamedParameterMove(
     bool& copyShapedMove,
     const ast::AstNode* expression,
     const ScopeName& source,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
     bool compilerVariantResultTransfer,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
     if (method == nullptr || source.semanticOrdinal >= method->parameters.size()) return false;
@@ -877,7 +877,7 @@ bool ProjectMethodBodyModel::analyzeNamedParameterMove(
 
 bool ProjectMethodBodyModel::moveExpressionAllowed(
     const ast::AstNode* expression,
-    bool allowMove) const
+    [[maybe_unused]] bool allowMove) const
 {
     return allowMove || expression->auxiliaryText() == "variant-payload-transfer" ||
         expression->auxiliaryText() == "variant-payload-extract" ||
@@ -905,13 +905,13 @@ void ProjectMethodBodyModel::completeMoveResult(
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindMoveExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     if (expression->kind() != ast::AstNodeKind::MoveExpression) return result;

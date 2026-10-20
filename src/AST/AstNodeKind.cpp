@@ -50,6 +50,7 @@ std::string_view astNodeKindNamePart1(AstNodeKind kind) noexcept
         NS_AST_KIND(ThrowStatement);
         NS_AST_KIND(UsingStatement);
 #undef NS_AST_KIND
+        default: break;
     }
 
     return {};
@@ -101,6 +102,7 @@ std::string_view astNodeKindNamePart2(AstNodeKind kind) noexcept
         NS_AST_KIND(DeleteExpression);
         NS_AST_KIND(DestroyExpression);
 #undef NS_AST_KIND
+        default: break;
     }
 
     return {};
@@ -140,6 +142,7 @@ std::string_view astNodeKindNamePart3(AstNodeKind kind) noexcept
         NS_AST_KIND(NameOfExpression);
         NS_AST_KIND(OverflowPolicyExpression);
 #undef NS_AST_KIND
+        default: break;
     }
 
     return {};

@@ -210,7 +210,11 @@ const char* methodBorrowStateName(MethodBorrowState state) noexcept
 
 namespace
 {
-const char* methodCoreOperationKindNameGroup1(MethodCoreOperationKind kind) noexcept
+// ES: Busca el nombre estable en una partición acotada del catálogo de operaciones.
+// EN: Looks up the stable name in one bounded partition of the operation catalog.
+// Parámetro / Parameter: kind conserva el enumerador original sin transformarlo.
+// Retorno / Return: nombre estable o nullptr; sin efectos; orden constante acotado.
+const char* methodCoreOperationKindNamePart01(MethodCoreOperationKind kind) noexcept
 {
     switch (kind)
     {
@@ -260,6 +264,20 @@ const char* methodCoreOperationKindNameGroup1(MethodCoreOperationKind kind) noex
             return "readonly-span-from-fixed-array";
         case MethodCoreOperationKind::ConsoleWriteLine:
             return "console-writeline";
+        default:
+            break;
+    }
+    return nullptr;
+}
+
+// ES: Busca el nombre estable en una partición acotada del catálogo de operaciones.
+// EN: Looks up the stable name in one bounded partition of the operation catalog.
+// Parámetro / Parameter: kind conserva el enumerador original sin transformarlo.
+// Retorno / Return: nombre estable o nullptr; sin efectos; orden constante acotado.
+const char* methodCoreOperationKindNamePart02(MethodCoreOperationKind kind) noexcept
+{
+    switch (kind)
+    {
         case MethodCoreOperationKind::ConsoleWrite:
             return "console-write";
         case MethodCoreOperationKind::ConsoleErrorWriteLine:
@@ -304,16 +322,22 @@ const char* methodCoreOperationKindNameGroup1(MethodCoreOperationKind kind) noex
             return "environment-tick-count64";
         case MethodCoreOperationKind::EnvironmentProcessorCount:
             return "environment-processor-count";
+        case MethodCoreOperationKind::EnvironmentExit:
+            return "environment-exit";
+        default:
+            break;
     }
     return nullptr;
 }
 
-const char* methodCoreOperationKindNameGroup2(MethodCoreOperationKind kind) noexcept
+// ES: Busca el nombre estable en una partición acotada del catálogo de operaciones.
+// EN: Looks up the stable name in one bounded partition of the operation catalog.
+// Parámetro / Parameter: kind conserva el enumerador original sin transformarlo.
+// Retorno / Return: nombre estable o nullptr; sin efectos; orden constante acotado.
+const char* methodCoreOperationKindNamePart03(MethodCoreOperationKind kind) noexcept
 {
     switch (kind)
     {
-        case MethodCoreOperationKind::EnvironmentExit:
-            return "environment-exit";
         case MethodCoreOperationKind::EnvironmentGetVariable:
             return "environment-get-variable";
         case MethodCoreOperationKind::EnvironmentSetVariable:
@@ -360,6 +384,20 @@ const char* methodCoreOperationKindNameGroup2(MethodCoreOperationKind kind) noex
             return "iterator-move-next-async";
         case MethodCoreOperationKind::IteratorCancel:
             return "iterator-cancel";
+        default:
+            break;
+    }
+    return nullptr;
+}
+
+// ES: Busca el nombre estable en una partición acotada del catálogo de operaciones.
+// EN: Looks up the stable name in one bounded partition of the operation catalog.
+// Parámetro / Parameter: kind conserva el enumerador original sin transformarlo.
+// Retorno / Return: nombre estable o nullptr; sin efectos; orden constante acotado.
+const char* methodCoreOperationKindNamePart04(MethodCoreOperationKind kind) noexcept
+{
+    switch (kind)
+    {
         case MethodCoreOperationKind::CollectionBuilder:
             return "collection-builder";
         case MethodCoreOperationKind::InterpolationHandler:
@@ -402,18 +440,24 @@ const char* methodCoreOperationKindNameGroup2(MethodCoreOperationKind kind) noex
             return "interlocked-decrement-int32";
         case MethodCoreOperationKind::InterlockedAddInt32:
             return "interlocked-add-int32";
-    }
-    return nullptr;
-}
-
-const char* methodCoreOperationKindNameGroup3(MethodCoreOperationKind kind) noexcept
-{
-    switch (kind)
-    {
         case MethodCoreOperationKind::InterlockedExchangeInt32:
             return "interlocked-exchange-int32";
         case MethodCoreOperationKind::InterlockedCompareExchangeInt32:
             return "interlocked-compare-exchange-int32";
+        default:
+            break;
+    }
+    return nullptr;
+}
+
+// ES: Busca el nombre estable en una partición acotada del catálogo de operaciones.
+// EN: Looks up the stable name in one bounded partition of the operation catalog.
+// Parámetro / Parameter: kind conserva el enumerador original sin transformarlo.
+// Retorno / Return: nombre estable o nullptr; sin efectos; orden constante acotado.
+const char* methodCoreOperationKindNamePart05(MethodCoreOperationKind kind) noexcept
+{
+    switch (kind)
+    {
         case MethodCoreOperationKind::AtomicLoadInt64:
             return "atomic-load-int64";
         case MethodCoreOperationKind::AtomicStoreInt64:
@@ -460,6 +504,20 @@ const char* methodCoreOperationKindNameGroup3(MethodCoreOperationKind kind) noex
             return "simd-float256-multiply";
         case MethodCoreOperationKind::SimdInt256Add:
             return "simd-int256-add";
+        default:
+            break;
+    }
+    return nullptr;
+}
+
+// ES: Busca el nombre estable en una partición acotada del catálogo de operaciones.
+// EN: Looks up the stable name in one bounded partition of the operation catalog.
+// Parámetro / Parameter: kind conserva el enumerador original sin transformarlo.
+// Retorno / Return: nombre estable o nullptr; sin efectos; orden constante acotado.
+const char* methodCoreOperationKindNamePart06(MethodCoreOperationKind kind) noexcept
+{
+    switch (kind)
+    {
         case MethodCoreOperationKind::SimdInt256Subtract:
             return "simd-int256-subtract";
         case MethodCoreOperationKind::SimdInt256Multiply:
@@ -500,20 +558,26 @@ const char* methodCoreOperationKindNameGroup3(MethodCoreOperationKind kind) noex
             return "bit-byte-swap";
         case MethodCoreOperationKind::CpuPrefetchRead:
             return "cpu-prefetch-read";
-    }
-    return nullptr;
-}
-
-const char* methodCoreOperationKindNameGroup4(MethodCoreOperationKind kind) noexcept
-{
-    switch (kind)
-    {
         case MethodCoreOperationKind::CpuPause:
             return "cpu-pause";
         case MethodCoreOperationKind::CpuReadTimestamp:
             return "cpu-read-timestamp";
         case MethodCoreOperationKind::MutexCreate:
             return "mutex-create";
+        default:
+            break;
+    }
+    return nullptr;
+}
+
+// ES: Busca el nombre estable en una partición acotada del catálogo de operaciones.
+// EN: Looks up the stable name in one bounded partition of the operation catalog.
+// Parámetro / Parameter: kind conserva el enumerador original sin transformarlo.
+// Retorno / Return: nombre estable o nullptr; sin efectos; orden constante acotado.
+const char* methodCoreOperationKindNamePart07(MethodCoreOperationKind kind) noexcept
+{
+    switch (kind)
+    {
         case MethodCoreOperationKind::MutexCreateNamed:
             return "mutex-create-named";
         case MethodCoreOperationKind::MutexLock:
@@ -560,6 +624,20 @@ const char* methodCoreOperationKindNameGroup4(MethodCoreOperationKind kind) noex
             return "process-get-working-set-size";
         case MethodCoreOperationKind::ProcessGetKernelTimeRaw:
             return "process-get-kernel-time";
+        default:
+            break;
+    }
+    return nullptr;
+}
+
+// ES: Busca el nombre estable en una partición acotada del catálogo de operaciones.
+// EN: Looks up the stable name in one bounded partition of the operation catalog.
+// Parámetro / Parameter: kind conserva el enumerador original sin transformarlo.
+// Retorno / Return: nombre estable o nullptr; sin efectos; orden constante acotado.
+const char* methodCoreOperationKindNamePart08(MethodCoreOperationKind kind) noexcept
+{
+    switch (kind)
+    {
         case MethodCoreOperationKind::ProcessGetUserTimeRaw:
             return "process-get-user-time";
         case MethodCoreOperationKind::ProcessGetPriorityClassRaw:
@@ -592,6 +670,8 @@ const char* methodCoreOperationKindNameGroup4(MethodCoreOperationKind kind) noex
             return "file-move";
         case MethodCoreOperationKind::DirectoryMoveRaw:
             return "directory-move";
+        default:
+            break;
     }
     return nullptr;
 }
@@ -600,10 +680,14 @@ const char* methodCoreOperationKindNameGroup4(MethodCoreOperationKind kind) noex
 
 const char* methodCoreOperationKindName(MethodCoreOperationKind kind) noexcept
 {
-    if (const char* name = methodCoreOperationKindNameGroup1(kind)) return name;
-    if (const char* name = methodCoreOperationKindNameGroup2(kind)) return name;
-    if (const char* name = methodCoreOperationKindNameGroup3(kind)) return name;
-    if (const char* name = methodCoreOperationKindNameGroup4(kind)) return name;
+    if (const char* name = methodCoreOperationKindNamePart01(kind)) return name;
+    if (const char* name = methodCoreOperationKindNamePart02(kind)) return name;
+    if (const char* name = methodCoreOperationKindNamePart03(kind)) return name;
+    if (const char* name = methodCoreOperationKindNamePart04(kind)) return name;
+    if (const char* name = methodCoreOperationKindNamePart05(kind)) return name;
+    if (const char* name = methodCoreOperationKindNamePart06(kind)) return name;
+    if (const char* name = methodCoreOperationKindNamePart07(kind)) return name;
+    if (const char* name = methodCoreOperationKindNamePart08(kind)) return name;
     return "array-allocation";
 }
 

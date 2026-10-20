@@ -1,5 +1,7 @@
 #include "StructuredControlParser.h"
 
+#include "ConditionDeclarationBinding.h"
+
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Language/Language3Surface.h"

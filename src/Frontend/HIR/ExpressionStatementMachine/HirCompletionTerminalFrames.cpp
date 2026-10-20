@@ -60,15 +60,15 @@ using internal::LoopBlockAdvance;
 
 std::optional<LoopBlockAdvance>
 ProjectOopHirModel::completeScheduledTerminalFrames(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     const IterativeExpressionKind kind = frames.back().kind;
     if (kind == IterativeExpressionKind::ResultPropagation)
@@ -110,15 +110,15 @@ ProjectOopHirModel::completeScheduledTerminalFrames(
 }
 
 LoopBlockAdvance ProjectOopHirModel::completeScheduledResultPropagationFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     bool descend = false;
     while (!frames.empty() &&
@@ -172,15 +172,15 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledResultPropagationFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::completeScheduledDestructionFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     bool descend = false;
     while (!frames.empty() &&
@@ -252,15 +252,15 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledDestructionFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::completeScheduledStackAllocationFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     bool descend = false;
     while (!frames.empty() &&
@@ -325,26 +325,43 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledStackAllocationFrame(
 }
 
 LoopBlockAdvance ProjectOopHirModel::completeScheduledStorageUnaryFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     bool descend = false;
     while (!frames.empty() &&
         frames.back().kind == IterativeExpressionKind::StorageUnary)
     {
         IterativeExpressionFrame& frame = frames.back();
-        const MethodExpressionTypeBinding* frameType = expressionType(frame.syntax);
-        const MethodDelegateBinding* frameDelegate = delegateBinding(frame.syntax);
-        const std::string resultType = frameType != nullptr
-            ? frameType->typeKey
-            : frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
+        finishStorageUnaryFrame(frame, lowered);
+        frames.pop_back();
+        continue;
+
+    }
+    if (lowered == nullptr && !error.empty()) return LoopBlockAdvance::Error;
+    return descend ? LoopBlockAdvance::Descend : LoopBlockAdvance::Complete;
+}
+
+// ES: Construye la operación unaria de almacenamiento preservando clase de nodo y constantes.
+// EN: Builds the storage unary operation while preserving node kind and constants.
+// Parámetros / Parameters: frame aporta sintaxis y contexto; lowered contiene y recibe el valor.
+// Retorno / Return: no aplica; consume el mismo hijo; O(1).
+void ProjectOopHirModel::finishStorageUnaryFrame(
+    IterativeExpressionFrame& frame,
+    std::unique_ptr<ProjectOopHirNode>& lowered)
+{
+    const MethodExpressionTypeBinding* frameType = expressionType(frame.syntax);
+    const MethodDelegateBinding* frameDelegate = delegateBinding(frame.syntax);
+    const std::string resultType = frameType != nullptr
+        ? frameType->typeKey
+        : frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
         if (frame.syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
             frame.syntax->tokenKind() == lexer::TokenKind::MinusMinus)
         {
@@ -409,24 +426,18 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledStorageUnaryFrame(
             load->children.push_back(std::move(lowered));
             lowered = std::move(load);
         }
-        frames.pop_back();
-        continue;
-
-    }
-    if (lowered == nullptr && !error.empty()) return LoopBlockAdvance::Error;
-    return descend ? LoopBlockAdvance::Descend : LoopBlockAdvance::Complete;
 }
 
 LoopBlockAdvance ProjectOopHirModel::completeScheduledMoveProjectionFrame(
-    std::vector<IterativeExpressionFrame>& frames,
-    const ast::AstNode*& current,
-    std::size_t& currentMemberOrdinal,
-    bool& currentAddressContext,
-    IterativeInputKind& currentInputKind,
-    std::unique_ptr<ProjectOopHirNode>& lowered,
-    std::string& error,
-    std::size_t rootCleanupDepth,
-    std::size_t rootExceptionHandlerDepth)
+    [[maybe_unused]] std::vector<IterativeExpressionFrame>& frames,
+    [[maybe_unused]] const ast::AstNode*& current,
+    [[maybe_unused]] std::size_t& currentMemberOrdinal,
+    [[maybe_unused]] bool& currentAddressContext,
+    [[maybe_unused]] IterativeInputKind& currentInputKind,
+    [[maybe_unused]] std::unique_ptr<ProjectOopHirNode>& lowered,
+    [[maybe_unused]] std::string& error,
+    [[maybe_unused]] std::size_t rootCleanupDepth,
+    [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     bool descend = false;
     while (!frames.empty() &&

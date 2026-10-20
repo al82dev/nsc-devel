@@ -15,6 +15,8 @@ class TargetInfo;
 
 namespace nativesharp::llvm_backend
 {
+struct CodeUnitTelemetry;
+class CompilationArtifactCache;
 class LlvmModule;
 class LlvmNativeSanitizer;
 class LlvmOptimizer;
@@ -60,6 +62,14 @@ private:
     friend class LlvmOptimizer;
     friend class LlvmNativeSanitizer;
     friend class ProjectOopObjectGenerator;
+    friend void emitAndStoreCodeUnit(
+        LlvmModule& module,
+        LlvmTargetMachine& targetMachine,
+        const CompilationArtifactCache* cache,
+        const std::string& cacheKey,
+        const std::filesystem::path& objectFile,
+        CodeUnitTelemetry& telemetry,
+        std::string& moduleError);
 
     LlvmTargetMachine(
         void* targetMachine,

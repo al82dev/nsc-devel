@@ -5,8 +5,8 @@
 
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 
-#include "Bodies/MethodBodyInternals.h"
-#include "Internal/Stage37ConstantValue.h"
+#include "../MethodBodyInternals.h"
+#include "../../Internal/Stage37ConstantValue.h"
 
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
@@ -49,6 +49,9 @@
 
 namespace nativesharp::frontend
 {
+using lexer::TokenKind;
+using method_body_detail::Stage37ConstantKind;
+
 bool isErrorType(std::string_view key) noexcept
 {
     return key.empty() || key == "<error>";

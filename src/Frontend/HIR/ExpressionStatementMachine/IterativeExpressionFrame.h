@@ -73,7 +73,7 @@ struct IterativeExpressionFrame final
     const MethodDelegateBinding* delegateCreationBinding = nullptr;
     ReceiverFrameState receiverFrame;
     const NamespaceFunctionCallBinding* extensionPropertyBinding = nullptr;
-    BoundCallTarget callTarget;
+    ProjectOopHirModel::BoundCallTarget callTarget;
     const MethodRangeSliceBinding* rangeBinding = nullptr;
     const MethodCoreBinding* core = nullptr;
     const MethodVariableArrayIndexBinding* variableArrayIndex = nullptr;

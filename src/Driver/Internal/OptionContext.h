@@ -7,7 +7,7 @@
 
 namespace nativesharp::driver
 {
-class CompilerInvocation;
+struct CompilerInvocation;
 
 namespace
 {

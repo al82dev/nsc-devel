@@ -5545,7 +5545,7 @@ bool buildHalfExtend(
     LLVMValueRef extendFunction = LLVMAddFunction(module, "__extendhfsf2", extendType);
     if (extendFunction == nullptr) return false;
     LLVMBasicBlockRef extendEntry = LLVMAppendBasicBlockInContext(context, extendFunction, "entry");
-    builder = LLVMCreateBuilderInContext(context);
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
     LLVMPositionBuilderAtEnd(builder, extendEntry);
     LLVMValueRef halfBits16 = LLVMBuildBitCast(builder, LLVMGetParam(extendFunction, 0), i16, "half.bits");
     LLVMValueRef halfBits = LLVMBuildZExt(builder, halfBits16, i32, "half.bits.i32");
@@ -7333,10 +7333,10 @@ bool buildRuntimeFamilies(
         buildRuntimeSystemAndDiagnosticsFamily(state);
 }
 
-std::unique_ptr<llvm_backend::LlvmModule> finalizeRuntimeModule(
+std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::finalizeRuntimeModule(
     RuntimeModuleState& state,
     bool includeStart,
-    std::string& error)
+    std::string& error) const
 {
     std::unique_ptr<llvm_backend::LlvmModule> result(
         new llvm_backend::LlvmModule(state.context, state.module));

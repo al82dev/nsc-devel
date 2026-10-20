@@ -3,7 +3,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include "MirConstantEvaluator.h"
-#include "Internal/MirByteReader.h"
+#include "../Cache/CachePayloadReader.h"
 #include "MirVerifier.h"
 
 #include "nativesharp/Basic/Sha256.h"
@@ -100,6 +100,8 @@ const char* projectOopMirNodeKindNameGroup01(ProjectOopMirNodeKind kind) noexcep
         case ProjectOopMirNodeKind::FullExpressionCleanup: return "full-expression-cleanup";
         case ProjectOopMirNodeKind::PointerLoad: return "pointer-load";
         case ProjectOopMirNodeKind::RawElementAddress: return "raw-element-address";
+        default:
+            break;
     }
     return nullptr;
 }
@@ -148,6 +150,8 @@ const char* projectOopMirNodeKindNameGroup02(ProjectOopMirNodeKind kind) noexcep
         case ProjectOopMirNodeKind::AsyncYieldValue: return "async-yield-value";
         case ProjectOopMirNodeKind::DropFrame: return "drop-frame";
         case ProjectOopMirNodeKind::StaticFieldAddress: return "static-field-address";
+        default:
+            break;
     }
     return nullptr;
 }
@@ -196,6 +200,8 @@ const char* projectOopMirNodeKindNameGroup03(ProjectOopMirNodeKind kind) noexcep
         case ProjectOopMirNodeKind::CoreClockQuerySystemFileTime: return "core-clock-query-system-filetime";
         case ProjectOopMirNodeKind::CoreEnvironmentTickCount64: return "core-environment-tick-count64";
         case ProjectOopMirNodeKind::CoreEnvironmentProcessorCount: return "core-environment-processor-count";
+        default:
+            break;
     }
     return nullptr;
 }
@@ -246,6 +252,8 @@ const char* projectOopMirNodeKindNameGroup04(ProjectOopMirNodeKind kind) noexcep
         case ProjectOopMirNodeKind::CoreInterlockedDecrementInt64: return "core-interlocked-decrement-int64";
         case ProjectOopMirNodeKind::CoreInterlockedAddInt64: return "core-interlocked-add-int64";
         case ProjectOopMirNodeKind::CoreInterlockedExchangeInt64: return "core-interlocked-exchange-int64";
+        default:
+            break;
     }
     return nullptr;
 }
@@ -296,6 +304,8 @@ const char* projectOopMirNodeKindNameGroup05(ProjectOopMirNodeKind kind) noexcep
         case ProjectOopMirNodeKind::CoreCpuPause: return "core-cpu-pause";
         case ProjectOopMirNodeKind::CoreCpuReadTimestamp: return "core-cpu-read-timestamp";
         case ProjectOopMirNodeKind::CoreMutexCreate: return "core-mutex-create";
+        default:
+            break;
     }
     return nullptr;
 }
@@ -349,6 +359,8 @@ const char* projectOopMirNodeKindNameGroup06(ProjectOopMirNodeKind kind) noexcep
         case ProjectOopMirNodeKind::CoreFileMove: return "core-file-move";
         case ProjectOopMirNodeKind::CoreDirectoryMove: return "core-directory-move";
         case ProjectOopMirNodeKind::DelegateCreate: return "delegate-create";
+        default:
+            break;
     }
     return nullptr;
 }
@@ -394,6 +406,8 @@ const char* projectOopMirNodeKindNameGroup07(ProjectOopMirNodeKind kind) noexcep
         case ProjectOopMirNodeKind::MatchArm: return "match-arm";
         case ProjectOopMirNodeKind::MatchValue: return "match-value";
         case ProjectOopMirNodeKind::OverflowPolicy: return "overflow-policy";
+        default:
+            break;
     }
     return nullptr;
 }

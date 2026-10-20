@@ -20,9 +20,10 @@ const interop::LibraryMetadataType *metadataTypeForKey(const interop::LibraryMet
                                                        const std::string &typeKey);
 std::optional<std::string> metadataSpecializedTypeKey(
     const interop::LibraryMetadataGenericSpecialization &specialization);
-bool validatePrecompiledExternalTypeClosure(const std::vector<LoadedPrecompiledMetadata> &loaded,
-                                            const std::map<std::filesystem::path, compilation::Project> &sourceProjects,
-                                            std::string &error);
+bool validatePrecompiledExternalTypeClosure(
+    std::span<const LoadedPrecompiledMetadata> loaded,
+    const std::unordered_map<std::string, std::filesystem::path> &sourceProjects,
+    std::string &error);
 bool isPubliclyReachableMetadataType(const interop::LibraryMetadata &metadata,
                                      const interop::LibraryMetadataType &type) noexcept;
 bool canMaterializePrecompiledDeclaration(const interop::LibraryMetadata &metadata,
@@ -61,6 +62,8 @@ std::size_t effectiveCompilationJobs() noexcept;
 
 std::string_view subsystemDisplayName(linker::WindowsExecutableSubsystem subsystem);
 bool hasConsumerCallableAccessibility(std::uint8_t accessibility) noexcept;
+bool hasConsumerCallableAccessibility(frontend::ClassMemberAccessibility accessibility) noexcept;
+bool isConsumerCallableNativeMethod(const interop::LibraryMetadataMember &member) noexcept;
 bool isPubliclyReachableNamedType(std::span<const frontend::NamedTypeDeclaration> types,
                                   std::size_t typeOrdinal) noexcept;
 std::vector<std::string> metadataRequiredSymbols(const interop::LibraryMetadata &metadata);

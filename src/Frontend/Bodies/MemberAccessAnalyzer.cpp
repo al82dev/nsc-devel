@@ -1092,6 +1092,7 @@ void ProjectMethodBodyModel::classifyMemberReceiverKinds(
     bool typeReceiver,
     std::size_t receiverType) const
 {
+    (void)receiver;
     receiverIsStruct = receiverType < nameLookup_->namedTypes().size() &&
         nameLookup_->namedTypes()[receiverType].kind == NamedTypeDeclarationKind::Struct;
     receiverIsEnumValue = !typeReceiver &&

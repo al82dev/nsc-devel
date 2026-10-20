@@ -56,13 +56,13 @@ using method_body_detail::writeMethodBodyTrace;
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindAssignmentExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -79,13 +79,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 ProjectMethodBodyModel::ExpressionResult
 ProjectMethodBodyModel::analyzeExpressionKindTypeTestExpressionOrSafeCastExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     switch (expression->kind())
@@ -164,7 +164,7 @@ bool ProjectMethodBodyModel::validateNamedCast(
     const ast::AstNode* expression,
     std::string_view namedCast,
     bool targetPointeeReadonly,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     const bool sourcePointer = ProjectTypeConversion::isPointer(operand.typeKey);
     const bool targetPointer = ProjectTypeConversion::isPointer(result.typeKey);
@@ -219,9 +219,9 @@ bool ProjectMethodBodyModel::applyUserDefinedCast(
     const ExpressionResult& operand,
     const ast::AstNode* expression,
     const ProjectConversionClassifier& classifier,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const ProjectImplicitConversion userConversion =
         classifier.classifyExplicitUserDefined(operand.typeKey, result.typeKey);
@@ -251,7 +251,7 @@ bool ProjectMethodBodyModel::validateFunctionPointerCast(
     ExpressionResult& result,
     const ExpressionResult& operand,
     const ast::AstNode* expression,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
     // C1.1 "function-pointer round trip". A delegate type key is neither a class
     // nor an interface, so before this existed NOTHING classified a cast that
@@ -325,9 +325,9 @@ void ProjectMethodBodyModel::validateReferenceCast(
     const ExpressionResult& operand,
     const ast::AstNode* expression,
     const ProjectConversionClassifier& classifier,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
     const bool sourceIsReference =
         operand.typeKey == "builtin:null" || isReferenceTypeKey(operand.typeKey);
@@ -366,13 +366,13 @@ void ProjectMethodBodyModel::validateReferenceCast(
 ProjectMethodBodyModel::ExpressionResult
 ProjectMethodBodyModel::analyzeExpressionKindCastExpression(
     const ast::AstNode* expression,
-    std::size_t methodMemberOrdinal,
-    std::size_t scopeOrdinal,
-    diagnostics::DiagnosticEngine& diagnostics,
-    bool allowMethodGroup,
-    bool allowEvent,
-    bool allowMove,
-    bool allowConstructorPropertyWrite)
+    [[maybe_unused]] std::size_t methodMemberOrdinal,
+    [[maybe_unused]] std::size_t scopeOrdinal,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics,
+    [[maybe_unused]] bool allowMethodGroup,
+    [[maybe_unused]] bool allowEvent,
+    [[maybe_unused]] bool allowMove,
+    [[maybe_unused]] bool allowConstructorPropertyWrite)
 {
     ExpressionResult result;
     const ExpressionResult operand = analyzeExpression(

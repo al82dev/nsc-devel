@@ -31,7 +31,7 @@ std::optional<bool> ProjectOopHirModel::initializeReceiverFrame(
     ReceiverFrameState& receiver,
     const ast::AstNode* receiverSyntax,
     std::string_view receiverTypeKey,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (receiverTypeKey.empty())
     {
@@ -71,11 +71,11 @@ void ProjectOopHirModel::acceptReceiverChild(
 }
 
 bool ProjectOopHirModel::initializeBoundCallFrame(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     const MethodCallBinding* binding,
     std::vector<const ast::AstNode*> arguments,
     bool nullConditional,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (binding == nullptr ||
         binding->resolution != MethodCallResolutionKind::Resolved ||
@@ -164,7 +164,7 @@ void ProjectOopHirModel::acceptBoundCallChild(
 
 bool ProjectOopHirModel::validateOrdinaryCallMember(
     const OrdinaryCallFrameState& call,
-    std::string& error) const
+    [[maybe_unused]] std::string& error) const
 {
     if (memberModel_ == nullptr ||
         call.selectedMemberOrdinal >= memberModel_->members().size())
@@ -176,8 +176,8 @@ bool ProjectOopHirModel::validateOrdinaryCallMember(
 }
 
 bool ProjectOopHirModel::initializeOrdinaryCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     const MethodCallBinding* binding = callBinding(frame.syntax);
     if (binding == nullptr || !binding->selectedMemberOrdinal.has_value())
@@ -248,7 +248,7 @@ void ProjectOopHirModel::redirectOrdinaryInterfaceCall(
 
 void ProjectOopHirModel::initializeOrdinaryCallNode(
     OrdinaryCallFrameState& call,
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     bool interfaceDispatch)
 {
     const MethodCallBinding& binding = *call.binding;
@@ -279,8 +279,8 @@ void ProjectOopHirModel::initializeOrdinaryCallNode(
 
 bool ProjectOopHirModel::scheduleOrdinaryCallFrame(
     OrdinaryCallFrameState& call,
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     if (call.binding->forwardedReceiver)
     {
@@ -339,7 +339,7 @@ bool ProjectOopHirModel::nextOrdinaryCallChild(
 bool ProjectOopHirModel::acceptOrdinaryCallChild(
     OrdinaryCallFrameState& call,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (call.stage == OrdinaryCallFrameStage::Receiver)
     {
@@ -351,7 +351,7 @@ bool ProjectOopHirModel::acceptOrdinaryCallChild(
 bool ProjectOopHirModel::acceptOrdinaryCallReceiverChild(
     OrdinaryCallFrameState& call,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (call.forwardedReceiver)
     {
@@ -383,7 +383,7 @@ bool ProjectOopHirModel::acceptOrdinaryCallReceiverChild(
 bool ProjectOopHirModel::acceptOrdinaryCallArgumentChild(
     OrdinaryCallFrameState& call,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const std::size_t index = call.nextArgument++;
     const std::size_t selectedIndex = index + call.conversionOffset;
@@ -454,8 +454,8 @@ bool ProjectOopHirModel::acceptOrdinaryCallArgumentChild(
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishOrdinaryCall(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     OrdinaryCallFrameState& call = *frame.ordinaryCall;
     const ClassMemberSymbol& selectedMember =
@@ -528,8 +528,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishOrdinaryCall(
 }
 
 bool ProjectOopHirModel::initializeNamespaceCallFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     const NamespaceFunctionCallBinding* binding =
         namespaceFunctionCallBinding(frame.syntax);
@@ -615,7 +615,7 @@ bool ProjectOopHirModel::nextNamespaceCallChild(
 bool ProjectOopHirModel::acceptNamespaceCallChild(
     internal::NamespaceCallFrameState& call,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     if (call.stage == internal::NamespaceCallFrameStage::Receiver)
         return acceptNamespaceCallReceiverChild(call, std::move(child));
@@ -654,7 +654,7 @@ bool ProjectOopHirModel::acceptNamespaceCallReceiverChild(
 bool ProjectOopHirModel::acceptNamespaceCallArgumentChild(
     internal::NamespaceCallFrameState& call,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     const std::size_t index = call.nextArgument++;
     const std::size_t selectedIndex = index + call.argumentOffset;
@@ -726,8 +726,8 @@ bool ProjectOopHirModel::acceptNamespaceCallArgumentChild(
 }
 
 bool ProjectOopHirModel::initializeEventInvokeFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     const MethodEventBinding* binding = eventBinding(frame.syntax);
     if (frame.addressContext)
@@ -815,9 +815,9 @@ bool ProjectOopHirModel::nextEventInvokeChild(
 }
 
 bool ProjectOopHirModel::acceptEventInvokeChild(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     std::unique_ptr<ProjectOopHirNode> child,
-    std::string& error)
+    [[maybe_unused]] std::string& error)
 {
     internal::EventInvokeFrameState& call = *frame.eventInvoke;
     if (call.stage == internal::EventInvokeFrameStage::Receiver)
@@ -857,8 +857,8 @@ bool ProjectOopHirModel::acceptEventInvokeChild(
 }
 
 bool ProjectOopHirModel::initializeDelegateInvokeFrame(
-    IterativeExpressionFrame& frame,
-    std::string& error)
+    [[maybe_unused]] IterativeExpressionFrame& frame,
+    [[maybe_unused]] std::string& error)
 {
     const MethodDelegateBinding* binding = delegateBinding(frame.syntax);
     if (frame.addressContext)
@@ -892,7 +892,7 @@ bool ProjectOopHirModel::initializeDelegateInvokeFrame(
 }
 
 bool ProjectOopHirModel::nextDelegateInvokeChild(
-    const IterativeExpressionFrame& frame,
+    [[maybe_unused]] const IterativeExpressionFrame& frame,
     const ast::AstNode*& syntax)
 {
     const internal::DelegateInvokeFrameState& call = *frame.delegateInvoke;
@@ -911,7 +911,7 @@ bool ProjectOopHirModel::nextDelegateInvokeChild(
 }
 
 void ProjectOopHirModel::acceptDelegateInvokeChild(
-    IterativeExpressionFrame& frame,
+    [[maybe_unused]] IterativeExpressionFrame& frame,
     std::unique_ptr<ProjectOopHirNode> child)
 {
     internal::DelegateInvokeFrameState& call = *frame.delegateInvoke;
