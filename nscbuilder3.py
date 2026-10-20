@@ -50,6 +50,10 @@ RUN_SUITE_PATH = CONTROLLER_ROOT / "run_suite.py"
 DEFAULT_COMPILER_LLVM_ROOT = Path("C:/clang-llvm")
 REQUIRED_LLVM_MAJOR = 23
 LLVM_PRODUCER_NAMES = ("clang_cl", "lld_link", "llvm_rc", "llvm_mt")
+WINDOWS_HIDDEN_PROCESS_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+WINDOWS_HIDDEN_PROCESS_GROUP_FLAGS = WINDOWS_HIDDEN_PROCESS_FLAGS | getattr(
+    subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+)
 
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1, "WEEKLY": 2}
 TERMINAL_FAILURES = {
@@ -387,6 +391,7 @@ def current_revision() -> str:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        creationflags=WINDOWS_HIDDEN_PROCESS_FLAGS if os.name == "nt" else 0,
         check=False,
     )
     return completed.stdout.strip() if completed.returncode == 0 else "UNKNOWN"
@@ -451,6 +456,7 @@ def _llvm_producer_identity(path: Path) -> str:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        creationflags=WINDOWS_HIDDEN_PROCESS_FLAGS if sys.platform == "win32" else 0,
         check=False,
     )
     return (completed.stdout + "\n" + completed.stderr).strip()
@@ -1977,7 +1983,7 @@ class ProcessController:
             message = f"{stop_reason} before launch\n"
             self.output(message)
             return 130, message
-        flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        flags = WINDOWS_HIDDEN_PROCESS_GROUP_FLAGS if os.name == "nt" else 0
         process = subprocess.Popen(
             [str(part) for part in command],
             cwd=cwd,
@@ -2059,7 +2065,7 @@ class ProcessController:
             message = f"{stop_reason} before launch\n"
             self.output(message)
             return subprocess.CompletedProcess(arguments, 130, "", message)
-        flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        flags = WINDOWS_HIDDEN_PROCESS_GROUP_FLAGS if os.name == "nt" else 0
         process = subprocess.Popen(
             arguments,
             cwd=cwd,
@@ -2174,6 +2180,7 @@ class ProcessController:
             completed = subprocess.run(
                 ["taskkill", "/PID", str(process.pid), "/T", "/F"],
                 capture_output=True,
+                creationflags=WINDOWS_HIDDEN_PROCESS_FLAGS,
                 check=False,
             )
             if completed.returncode != 0 and process.poll() is None:

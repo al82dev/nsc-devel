@@ -25,7 +25,11 @@ python nsc-builder/nscbuilder3.pyw --audit-catalog
 python nsc-builder/nscbuilder3.pyw --gui-smoke
 ```
 
-On Windows, double-click `nscbuilder3.pyw` to open the GUI without a console window.
+En Windows, un doble clic en `nscbuilder3.pyw` abre la GUI sin una consola.
+Todas las herramientas no interactivas lanzadas por el Builder se ejecutan sin
+crear ventanas de consola visibles. Su salida estándar y sus errores permanecen
+capturados por la GUI y por sus archivos de evidencia. Las acciones explícitas
+del usuario para abrir una carpeta siguen abriendo el Explorador.
 
 The package does not configure or build NSC unless the operator explicitly
 uses those GUI actions.

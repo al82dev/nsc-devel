@@ -12,6 +12,7 @@ from typing import Any
 from .manifest import CaseManifest
 from .oracle import compare_structured
 from .result import CaseResult, CaseStatus
+from .subprocess_policy import HIDDEN_PROCESS_FLAGS
 from .workspace import CaseWorkspace
 
 
@@ -219,6 +220,7 @@ class CompilerIdentityExecutor:
             encoding="utf-8",
             errors="replace",
             capture_output=True,
+            creationflags=HIDDEN_PROCESS_FLAGS,
             check=False,
         )
         workspace.logs.joinpath(f"{stem}.stdout.log").write_text(

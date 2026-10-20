@@ -80,6 +80,31 @@ class ModularInventoryTests(unittest.TestCase):
                 self.assertNotIn("._runtime", source)
                 self.assertNotIn("nscbuilder3.py", source)
 
+    def test_every_direct_subprocess_launch_has_an_explicit_window_policy(self) -> None:
+        package_root = MODULAR_ROOT / "nsc_builder"
+        launches = {"Popen", "run", "call", "check_call", "check_output"}
+        observed: list[str] = []
+        for path in package_root.glob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                    continue
+                owner = node.func.value
+                if (
+                    not isinstance(owner, ast.Name)
+                    or owner.id != "subprocess"
+                    or node.func.attr not in launches
+                ):
+                    continue
+                location = f"{path.name}:{node.lineno}"
+                observed.append(location)
+                self.assertIn(
+                    "creationflags",
+                    {keyword.arg for keyword in node.keywords},
+                    f"subprocess launch has no explicit window policy: {location}",
+                )
+        self.assertEqual(len(observed), 5)
+
 
 if __name__ == "__main__":
     unittest.main()

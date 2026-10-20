@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -10,6 +11,10 @@ APP_NAME = "NSC Builder 3"
 DEFAULT_COMPILER_LLVM_ROOT = Path("C:/clang-llvm")
 REQUIRED_LLVM_MAJOR = 23
 LLVM_PRODUCER_NAMES = ("clang_cl", "lld_link", "llvm_rc", "llvm_mt")
+WINDOWS_HIDDEN_PROCESS_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+WINDOWS_HIDDEN_PROCESS_GROUP_FLAGS = WINDOWS_HIDDEN_PROCESS_FLAGS | getattr(
+    subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+)
 
 PROFILE_RANK = {"PR": 0, "NIGHTLY": 1, "WEEKLY": 2}
 TERMINAL_FAILURES = {

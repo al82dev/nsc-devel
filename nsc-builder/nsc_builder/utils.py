@@ -95,6 +95,7 @@ def current_revision() -> str:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        creationflags=WINDOWS_HIDDEN_PROCESS_FLAGS if os.name == "nt" else 0,
         check=False,
     )
     return completed.stdout.strip() if completed.returncode == 0 else "UNKNOWN"

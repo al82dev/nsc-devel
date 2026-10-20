@@ -113,7 +113,7 @@ class ProcessController:
             message = f"{stop_reason} before launch\n"
             self.output(message)
             return 130, message
-        flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        flags = WINDOWS_HIDDEN_PROCESS_GROUP_FLAGS if os.name == "nt" else 0
         process = subprocess.Popen(
             [str(part) for part in command],
             cwd=cwd,
@@ -195,7 +195,7 @@ class ProcessController:
             message = f"{stop_reason} before launch\n"
             self.output(message)
             return subprocess.CompletedProcess(arguments, 130, "", message)
-        flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        flags = WINDOWS_HIDDEN_PROCESS_GROUP_FLAGS if os.name == "nt" else 0
         process = subprocess.Popen(
             arguments,
             cwd=cwd,
@@ -310,6 +310,7 @@ class ProcessController:
             completed = subprocess.run(
                 ["taskkill", "/PID", str(process.pid), "/T", "/F"],
                 capture_output=True,
+                creationflags=WINDOWS_HIDDEN_PROCESS_FLAGS,
                 check=False,
             )
             if completed.returncode != 0 and process.poll() is None:

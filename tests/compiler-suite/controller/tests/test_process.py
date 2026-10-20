@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ast
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,6 +17,7 @@ from nsc_suite.dispatch import ExecutorRouter
 from nsc_suite.manifest import CaseManifest
 from nsc_suite.process import CompilerIdentityExecutor
 from nsc_suite.result import CaseStatus
+from nsc_suite.subprocess_policy import HIDDEN_PROCESS_FLAGS
 from nsc_suite.workspace import WorkspaceManager
 
 
@@ -62,6 +66,31 @@ def case(operation: str, case_id: str = "TB-BAS-020") -> CaseManifest:
 
 
 class CompilerIdentityExecutorTests(unittest.TestCase):
+    def test_noninteractive_suite_launches_share_the_hidden_window_policy(self) -> None:
+        if os.name == "nt":
+            self.assertEqual(
+                HIDDEN_PROCESS_FLAGS & subprocess.CREATE_NO_WINDOW,
+                subprocess.CREATE_NO_WINDOW,
+            )
+        for filename in ("host.py", "process.py"):
+            path = CONTROLLER_ROOT / "nsc_suite" / filename
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            calls = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "subprocess"
+                and node.func.attr == "run"
+            ]
+            self.assertEqual(len(calls), 1, filename)
+            self.assertIn(
+                "creationflags",
+                {keyword.arg for keyword in calls[0].keywords},
+                filename,
+            )
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(
             prefix="nsc-suite-process-", dir=Path.cwd()

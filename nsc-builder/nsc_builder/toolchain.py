@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+from .constants import WINDOWS_HIDDEN_PROCESS_FLAGS
+
 
 DEFAULT_LLVM_ROOT = Path("C:/clang-llvm")
 REQUIRED_LLVM_MAJOR = 23
@@ -50,6 +52,7 @@ def _llvm_producer_identity(path: Path) -> str:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        creationflags=WINDOWS_HIDDEN_PROCESS_FLAGS if sys.platform == "win32" else 0,
         check=False,
     )
     return (completed.stdout + "\n" + completed.stderr).strip()

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .manifest import CaseManifest
 from .result import CaseResult, CaseStatus
+from .subprocess_policy import HIDDEN_PROCESS_FLAGS
 from .workspace import CaseWorkspace
 
 
@@ -43,6 +44,7 @@ class HostExecutor:
                 encoding="utf-8",
                 errors="replace",
                 capture_output=True,
+                creationflags=HIDDEN_PROCESS_FLAGS,
                 check=False,
             )
         except OSError as error:
