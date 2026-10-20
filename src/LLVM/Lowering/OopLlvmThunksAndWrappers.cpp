@@ -841,8 +841,6 @@ LLVMValueRef OopLlvmImplementation::beginObjectDestructionEntry(
         }
         LLVMBasicBlockRef entry = appendBlock("destroy.entry");
         LLVMPositionBuilderAtEnd(builder_, entry);
-        ScopedDebugLocation generatedLocation(
-            builder_, debugSubprogramLocation(debugRange, currentDebugSubprogram_));
         LLVMValueRef object = LLVMGetParam(currentFunction_, 0);
         LLVMSetValueName2(object, "object", 6);
         return object;
@@ -977,6 +975,8 @@ bool OopLlvmImplementation::defineDestructionEntries(std::string& error)
             SourceRange debugRange;
             LLVMValueRef object = beginObjectDestructionEntry(
                 table, objectEntryFound->second, debugRange);
+            ScopedDebugLocation generatedLocation(
+                builder_, debugSubprogramLocation(debugRange, currentDebugSubprogram_));
             // The destruction-order CONTRACT executes here, step by step, exactly as the
             // frontend froze it: most-derived destructor body, that class's owned fields in
             // reverse declaration order, then the base, up the chain -- destruction is the

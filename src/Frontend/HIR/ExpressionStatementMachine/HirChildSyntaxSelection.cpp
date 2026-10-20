@@ -30,7 +30,8 @@ ProjectOopHirModel::selectScheduledLoopAwaitChild(
     [[maybe_unused]] std::size_t rootExceptionHandlerDepth)
 {
     if (!(currentKind == IterativeExpressionKind::LoopExpression ||
-        currentKind == IterativeExpressionKind::AwaitExpression))
+        currentKind == IterativeExpressionKind::AwaitExpression ||
+        isBoundCallKind(currentKind)))
         return std::nullopt;
 if (currentKind == IterativeExpressionKind::LoopExpression)
     current = current->first();
