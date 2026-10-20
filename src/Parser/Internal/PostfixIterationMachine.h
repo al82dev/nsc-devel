@@ -15,6 +15,15 @@
 
 namespace nativesharp::parser
 {
+#if defined(NSC_PARSER_SCHEDULER_TEST_HOOKS)
+namespace scheduler_test_hooks
+{
+extern thread_local std::size_t activeDepth;
+extern thread_local std::size_t maximumDepth;
+extern thread_local std::size_t unfinishedResults;
+}
+#endif
+
 class Parser::PostfixIterationMachine final : public Parser::ExpressionContinuation
 {
 public:
