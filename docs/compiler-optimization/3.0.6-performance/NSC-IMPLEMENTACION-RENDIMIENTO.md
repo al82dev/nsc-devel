@@ -1,6 +1,7 @@
 # NSC — Tracking absoluto de implementación de rendimiento
 
-**Fecha:** 2026-10-20
+**Fecha original:** 2026-10-20  
+**Reauditoría vigente:** 2026-10-21, `development` en `1bded1486299a90b0b956e3029ce60b8796c989d`
 **Documento base:** `NSC-ANALISIS-RENDIMIENTO-POR-FUNCION.md`, en la misma carpeta. Ahí están las ediciones exactas; este documento las ordena, les pone gate y les asigna autorización.
 **Rama de trabajo:** `development`. El respaldo certificado es la versión 3.0.6.
 
@@ -15,24 +16,60 @@
 
 ## 0. Control absoluto y distribución
 
-**Estado inicial autorizado:** `0 / 60` entradas del Grupo A implementadas.
+**Estado absoluto de implementación:** `0 / 174` work items terminados.  
+**Paquetes causales:** `0 / 60` entradas `T-xx` cerradas.  
+**Tandas:** `0 / 7` cerradas.
 
-| Tanda | Entradas | Cantidad | Alcance dominante | Cierre esperado |
-|---|---|---:|---|---|
-| 1 | `T-01..T-05`, `T-25..T-27` | 8 | Identidades, SHA-256, lectura PE, tipos LLVM y trabajo repetido del driver | 8 commits aislados y gates `=ART` |
-| 2 | `T-06..T-19` | 14 | Índices internos, fallbacks lineales y caché de tipos LLVM | 14 commits aislados y pruebas diferenciales de índices |
-| 3 | `T-20..T-24` | 5 | Construcción HIR, orden paralelo, bindings y closures | 5 commits aislados y dump HIR idéntico |
-| 4 | `T-29` | 1 | Carga y normalización del grafo de proyectos | 1 commit aislado y grafo/orden idénticos |
-| 5 | `T-30`, `T-31`, `T-62`, `T-33..T-40` | 11 | Genéricos, lexer, parser y nombres conocidos | 11 commits aislados y artefactos idénticos |
-| 6 | `T-41..T-54` | 14 | Superficie pública, metadatos, cuerpos e índices precompilados | 14 commits aislados y diagnósticos/textos idénticos |
-| 7 | `T-55..T-61` | 7 | Debug info, MIR, visibilidad, estáticos, referencias y LLVM | 7 commits aislados y gates `=ART` |
-| **Total** |  | **60** |  | **60 entradas cerradas** |
+| Tanda | Entradas | Paquetes | Work items | Alcance dominante |
+|---|---|---:|---:|---|
+| 1 | `T-01..T-05`, `T-25..T-27` | 8 | 16 | Identidades, SHA-256, PE, LLVM y driver |
+| 2 | `T-06..T-19` | 14 | 48 | Índices internos, fallbacks y caché de tipos LLVM |
+| 3 | `T-20..T-24` | 5 | 18 | HIR, orden paralelo, bindings y closures |
+| 4 | `T-29` | 1 | 4 | Carga y normalización del grafo de proyectos |
+| 5 | `T-30`, `T-31`, `T-62`, `T-33..T-40` | 11 | 23 | Genéricos, lexer, parser y nombres conocidos |
+| 6 | `T-41..T-54` | 14 | 50 | Superficie, metadatos, bodies e identidades precompiladas |
+| 7 | `T-55..T-61` | 7 | 15 | Debug info, MIR, visibilidad, estáticos, referencias y LLVM |
+| **Total** |  | **60** | **174** | **Implementación completa del Grupo A** |
 
-Los **11 cambios del Grupo B no forman parte del denominador `0/60`** y no se ejecutan sin autorización
+Los **11 cambios del Grupo B no forman parte del denominador `0/174`** y no se ejecutan sin autorización
 explícita de Alberto. Los **12 hallazgos del Grupo C** permanecen documentados como `NO IMPLEMENTAR`.
 
 No se inicia `T-01` hasta que Alberto revise este documento y autorice expresamente el comienzo. Antes del
 primer commit también debe existir el oráculo de artefactos descrito en la sección 1.
+
+### 0.1 Reauditoría del código y de los commits posteriores
+
+**HECHO.** La rama es `development`, el `HEAD` auditado es `1bded1486299a90b0b956e3029ce60b8796c989d`
+y el worktree estaba limpio al iniciar esta revisión.
+
+Se revisaron todos los commits posteriores al estado certificado `8eef25d97`:
+
+- `3c8df0287`: añadió semantic member completion y extrajo la preparación precompilada a
+  `Compilation/PrecompiledProjectPreparation.cpp`;
+- `acab683ef` y `f78fd562a`: incorporaron el análisis y el tracking de rendimiento originales;
+- `ffbae3dfb`: retiró una consulta duplicada de miembros promovidos;
+- `387c579f2`: corrigió el recorrido de la raíz de namespace del servicio de lenguaje;
+- `dd2992e89`: documentó su validación;
+- `1bded1486`: reutilizó el snapshot residente para completion.
+
+**Conclusión de la reauditoría.** Ninguno de esos commits cerró una entrada `T-xx` del camino de
+`nsc build`. El cambio `1bded1486` optimiza exclusivamente la consulta interactiva del servicio de
+lenguaje y no se vuelve a contar aquí. Los solapamientos reales con este plan son:
+
+- `T-27` se mueve de `Driver/PrecompiledModuleConfiguration.cpp` a
+  `Compilation/PrecompiledProjectPreparation.cpp::loadExplicitMetadata`;
+- `T-57` debe conservar las nuevas rutas `typeIsVisibleFromProject` y
+  `nestedTypeIsVisibleFrom` al precalcular nombres plegados;
+- `T-47` conserva el nuevo acceso público `ProjectMemberModel::typeOrdinalForTypeKey`; no sustituye
+  el índice pendiente `membersDeclaredByType`;
+- `T-51` y `T-54` deben convivir con `completionScopes_`, que no sustituye el índice de extensiones
+  ni el índice de identidades precompiladas;
+- `TransparentStringHash` ya existe anidado en `ProjectMemberModel`; `T-06` debe extraerlo a un
+  header compartido y reutilizarlo, no introducir una segunda implementación.
+
+Los work items siguientes son pasos verificables dentro de los 60 paquetes causales. No son 174 commits:
+un commit sigue correspondiendo a una entrada `T-xx` y puede cerrar varios work items inseparables de la
+misma hipótesis.
 
 ---
 
