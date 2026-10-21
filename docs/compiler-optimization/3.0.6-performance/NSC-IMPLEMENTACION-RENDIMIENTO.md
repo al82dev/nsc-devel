@@ -1,7 +1,7 @@
-# NSC — Tracking absoluto de implementación de rendimiento
+# NSC — Implementación y tracking absoluto de rendimiento de compilación
 
-**Fecha original:** 2026-10-20  
-**Reauditoría vigente:** 2026-10-21, `development` en `1bded1486299a90b0b956e3029ce60b8796c989d`
+**Fecha original:** 2026-10-20
+**Reauditoría vigente:** 2026-10-21, `development` en `aa6644dde7418ea267d1006f251863dbe382505b`
 **Documento base:** `NSC-ANALISIS-RENDIMIENTO-POR-FUNCION.md`, en la misma carpeta. Ahí están las ediciones exactas; este documento las ordena, les pone gate y les asigna autorización.
 **Rama de trabajo:** `development`. El respaldo certificado es la versión 3.0.6.
 
@@ -14,24 +14,30 @@
 
 **Certeza.** HECHO = leído en el código o en las pruebas con línea exacta. NO VERIFICADO = no se pudo comprobar con lo disponible.
 
+**Propiedad y alcance vigentes.** Toda la implementación de los 302 work items atómicos y de sus 60 paquetes
+causales será realizada por Codex sobre este repositorio. El trabajo del IDE queda pausado y fuera de esta
+campaña: no se delega ninguna optimización al agente del IDE ni se depende de él para cerrar una tanda. Se
+conservan las APIs que el compilador ya expone al IDE. Cualquier solicitud futura para exponer una API nueva
+se tratará como un alcance separado y no entrará silenciosamente en este tracking.
+
 ## 0. Control absoluto y distribución
 
-**Estado absoluto de implementación:** `0 / 174` work items terminados.  
-**Paquetes causales:** `0 / 60` entradas `T-xx` cerradas.  
+**Estado absoluto de implementación:** `0 / 302` work items atómicos terminados.
+**Paquetes causales:** `0 / 60` entradas `T-xx` cerradas.
 **Tandas:** `0 / 7` cerradas.
 
 | Tanda | Entradas | Paquetes | Work items | Alcance dominante |
 |---|---|---:|---:|---|
-| 1 | `T-01..T-05`, `T-25..T-27` | 8 | 16 | Identidades, SHA-256, PE, LLVM y driver |
-| 2 | `T-06..T-19` | 14 | 48 | Índices internos, fallbacks y caché de tipos LLVM |
-| 3 | `T-20..T-24` | 5 | 18 | HIR, orden paralelo, bindings y closures |
-| 4 | `T-29` | 1 | 4 | Carga y normalización del grafo de proyectos |
-| 5 | `T-30`, `T-31`, `T-62`, `T-33..T-40` | 11 | 23 | Genéricos, lexer, parser y nombres conocidos |
-| 6 | `T-41..T-54` | 14 | 50 | Superficie, metadatos, bodies e identidades precompiladas |
-| 7 | `T-55..T-61` | 7 | 15 | Debug info, MIR, visibilidad, estáticos, referencias y LLVM |
-| **Total** |  | **60** | **174** | **Implementación completa del Grupo A** |
+| 1 | `T-01..T-05`, `T-25..T-27` | 8 | 20 | Identidades, SHA-256, PE, LLVM y driver |
+| 2 | `T-06..T-19` | 14 | 84 | Índices internos, fallbacks y caché de tipos LLVM |
+| 3 | `T-20..T-24` | 5 | 30 | HIR, orden paralelo, bindings y closures |
+| 4 | `T-29` | 1 | 9 | Carga y normalización del grafo de proyectos |
+| 5 | `T-30`, `T-31`, `T-62`, `T-33..T-40` | 11 | 28 | Genéricos, lexer, parser y nombres conocidos |
+| 6 | `T-41..T-54` | 14 | 100 | Superficie, metadatos, bodies e identidades precompiladas |
+| 7 | `T-55..T-61` | 7 | 31 | Debug info, MIR, visibilidad, estáticos, referencias y LLVM |
+| **Total** |  | **60** | **302** | **Implementación completa del Grupo A** |
 
-Los **11 cambios del Grupo B no forman parte del denominador `0/174`** y no se ejecutan sin autorización
+Los **11 cambios del Grupo B no forman parte del denominador `0/302`** y no se ejecutan sin autorización
 explícita de Alberto. Los **12 hallazgos del Grupo C** permanecen documentados como `NO IMPLEMENTAR`.
 
 No se inicia `T-01` hasta que Alberto revise este documento y autorice expresamente el comienzo. Antes del
@@ -39,8 +45,10 @@ primer commit también debe existir el oráculo de artefactos descrito en la sec
 
 ### 0.1 Reauditoría del código y de los commits posteriores
 
-**HECHO.** La rama es `development`, el `HEAD` auditado es `1bded1486299a90b0b956e3029ce60b8796c989d`
-y el worktree estaba limpio al iniciar esta revisión.
+**HECHO.** La rama es `development`. El `HEAD` al iniciar la revisión era
+`1bded1486299a90b0b956e3029ce60b8796c989d` y el worktree estaba limpio. Durante la revisión, Alberto
+incorporó `aa6644dde7418ea267d1006f251863dbe382505b`, limitado a este documento; ese commit también fue
+auditado y es el `HEAD` vigente de este cierre.
 
 Se revisaron todos los commits posteriores al estado certificado `8eef25d97`:
 
@@ -50,7 +58,9 @@ Se revisaron todos los commits posteriores al estado certificado `8eef25d97`:
 - `ffbae3dfb`: retiró una consulta duplicada de miembros promovidos;
 - `387c579f2`: corrigió el recorrido de la raíz de namespace del servicio de lenguaje;
 - `dd2992e89`: documentó su validación;
-- `1bded1486`: reutilizó el snapshot residente para completion.
+- `1bded1486`: reutilizó el snapshot residente para completion;
+- `aa6644dde`: actualizó este tracking con la reauditoría y el denominador granular; no modificó código
+  del compilador.
 
 **Conclusión de la reauditoría.** Ninguno de esos commits cerró una entrada `T-xx` del camino de
 `nsc build`. El cambio `1bded1486` optimiza exclusivamente la consulta interactiva del servicio de
@@ -67,9 +77,215 @@ lenguaje y no se vuelve a contar aquí. Los solapamientos reales con este plan s
 - `TransparentStringHash` ya existe anidado en `ProjectMemberModel`; `T-06` debe extraerlo a un
   header compartido y reutilizarlo, no introducir una segunda implementación.
 
-Los work items siguientes son pasos verificables dentro de los 60 paquetes causales. No son 174 commits:
-un commit sigue correspondiendo a una entrada `T-xx` y puede cerrar varios work items inseparables de la
-misma hipótesis.
+La vista canónica de estado es `NSC-PENDIENTES-Y-TERMINADOS-RENDIMIENTO.md`: contiene los 302 work items
+atómicos, sin agrupar consumidores ni sitios. Los bullets técnicos siguientes son una descomposición de diseño
+en 174 pasos y no son el denominador de avance. No son 302 commits: un commit sigue correspondiendo a una
+entrada `T-xx` y puede cerrar varios work items inseparables de la misma hipótesis.
+
+### 0.2 Descomposición técnica por tandas — 174 pasos de diseño
+
+Cada bullet hereda el presupuesto, dependencia, gate y prueba focal de su entrada `T-xx` en la sección 6.
+Cambiar su archivo o símbolo exige actualizar primero el presupuesto documental.
+
+#### Tanda 1 — `0 / 16`
+
+- [ ] `PERF-0001` (`T-01`) Añadir a `TypeIdentity` el valor residente de `fullyQualifiedName`.
+- [ ] `PERF-0002` (`T-01`) Añadir a `TypeIdentity` el valor residente de `key` sin reconstruirlo por llamada.
+- [ ] `PERF-0003` (`T-01`) Hacer que ambos accesores devuelvan referencias estables sin cambiar su texto.
+- [ ] `PERF-0004` (`T-01`) Añadir `TypeIdentityCacheTests.cpp` con copia, namespace, anidado y aridad.
+- [ ] `PERF-0005` (`T-02`) Extraer `sha256BlockWords` conservando literalmente la transformación actual.
+- [ ] `PERF-0006` (`T-02`) Rehacer `sha256` por bloques sin copiar y rellenar toda la entrada.
+- [ ] `PERF-0007` (`T-03`) Leer `sha256File` en bloques de 64 KiB sin lectura byte a byte.
+- [ ] `PERF-0008` (`T-02`) Añadir equivalencia en memoria para tamaños `0..300`, 1 MiB y vectores FIPS.
+- [ ] `PERF-0009` (`T-03`) Añadir equivalencia de archivo para los seis tamaños frontera del tracking.
+- [ ] `PERF-0010` (`T-04`) Sustituir `readPeBytes` por una lectura contigua preservando errores y contenido.
+- [ ] `PERF-0011` (`T-05`) Retirar de `llvmType` el chequeo de puntero duplicado antes de `mapLlvmType`.
+- [ ] `PERF-0012` (`T-25`) Calcular `dependencyProvenance` solo cuando se solicitó `--dependency-report`.
+- [ ] `PERF-0013` (`T-26`) Canonicalizar una vez la raíz por paquete en `appendArtifact`.
+- [ ] `PERF-0014` (`T-26`) Mover, no copiar, el plan al cierre de `executeRestore`.
+- [ ] `PERF-0015` (`T-27`) Deduplicar rutas de NSMETA en
+  `Compilation/PrecompiledProjectPreparation.cpp::loadExplicitMetadata`.
+- [ ] `PERF-0016` (`T-27`) Añadir `PrecompiledMetadataDedupTests.cpp` y registrar su target focal.
+
+#### Tanda 2 — `0 / 48`
+
+- [ ] `PERF-0017` (`T-06`) Extraer `TransparentStringHash` de `ProjectMemberModel` a su header compartido.
+- [ ] `PERF-0018` (`T-06`) Migrar los mapas actuales de `ProjectMemberModel` al hash compartido sin cambiar tipos.
+- [ ] `PERF-0019` (`T-06`) Declarar las consultas por identity key y type key en `ProjectNameLookup`.
+- [ ] `PERF-0020` (`T-06`) Añadir el mapa de ordinal por identity key y su bandera independiente de `built_`.
+- [ ] `PERF-0021` (`T-06`) Construir el índice una sola vez dentro de `ProjectNameLookup::build`.
+- [ ] `PERF-0022` (`T-06`) Conservar el recorrido lineal original cuando la bandera del índice sea falsa.
+- [ ] `PERF-0023` (`T-06`) Registrar `NameLookup/TypeIdentityKeyIndex.cpp` en CMake.
+- [ ] `PERF-0024` (`T-06`) Añadir la prueba diferencial completa, incluido el modelo armado manualmente.
+- [ ] `PERF-0025` (`T-07`) Delegar `ProjectInheritanceModel::typeOrdinalForTypeKey` al índice común.
+- [ ] `PERF-0026` (`T-07`) Delegar `ProjectInterfaceModel::typeOrdinalForTypeKey` al índice común.
+- [ ] `PERF-0027` (`T-07`) Delegar `ProjectGenericConstraintModel::declarationForTypeKey` al índice común.
+- [ ] `PERF-0028` (`T-08`) Indexar `ProjectObjectLayoutModel::valueLayoutForTypeKey`.
+- [ ] `PERF-0029` (`T-08`) Indexar `ProjectObjectLayoutModel::hasTrivialStructLifetime`.
+- [ ] `PERF-0030` (`T-08`) Indexar `ProjectObjectLayoutModel::structBitFieldWidth`.
+- [ ] `PERF-0031` (`T-08`) Indexar `ProjectObjectLayoutModel::isClassBitFieldBase`.
+- [ ] `PERF-0032` (`T-09`) Sustituir las búsquedas de tipo en `HIR/HirBuildCoordinator.cpp`.
+- [ ] `PERF-0033` (`T-09`) Sustituir la búsqueda de enum en `HIR/HirExpressionMachine.cpp`.
+- [ ] `PERF-0034` (`T-09`) Sustituir la búsqueda de tipo en `HIR/HirCallLowering.cpp`.
+- [ ] `PERF-0035` (`T-09`) Sustituir la búsqueda en `HirCoreCallFrameLowering.cpp`.
+- [ ] `PERF-0036` (`T-10`) Sustituir la búsqueda de tipo de `MIR/Internal/MirNodeMachine.cpp`.
+- [ ] `PERF-0037` (`T-11`) Migrar las dos consultas de `Bodies/MethodBodyTypeQueries.cpp`.
+- [ ] `PERF-0038` (`T-11`) Migrar las tres consultas de `Bodies/TypeKeyPredicates.cpp`.
+- [ ] `PERF-0039` (`T-11`) Migrar las seis consultas de `Bodies/ConstructionAnalyzer.cpp`.
+- [ ] `PERF-0040` (`T-11`) Migrar `Bodies/LambdaDelegateBinder.cpp`.
+- [ ] `PERF-0041` (`T-11`) Migrar las dos consultas de `Bodies/ConversionAndPassKindChecks.cpp`.
+- [ ] `PERF-0042` (`T-12`) Migrar `MemberModel/BuildAndDeclaration.cpp::namedTypeForKey`.
+- [ ] `PERF-0043` (`T-13`) Migrar `LLVM/LlvmTypeLayout.cpp::findEnumUnderlyingInfo`.
+- [ ] `PERF-0044` (`T-13`) Migrar las consultas de `LLVM/LlvmTypeClassification.cpp`.
+- [ ] `PERF-0045` (`T-13`) Migrar `LLVM/Lowering/OopLlvmDebugInfo.cpp::debugNamedType`.
+- [ ] `PERF-0046` (`T-13`) Migrar las dos consultas de `OopLlvmThunksAndWrappers.cpp`.
+- [ ] `PERF-0047` (`T-13`) Migrar las cinco consultas SIMD/ABI de `OopLlvmTypesAbiAttributes.cpp`.
+- [ ] `PERF-0048` (`T-14`) Migrar las dos consultas de tipos de `Interop/CHeaderGenerator.cpp`.
+- [ ] `PERF-0049` (`T-15`) Añadir almacenamiento y bandera del índice `fieldLayoutByMember`.
+- [ ] `PERF-0050` (`T-15`) Construir el índice con precedencia struct, class y promovido.
+- [ ] `PERF-0051` (`T-15`) Hacer que `fieldLayoutForMember` use índice o fallback lineal idéntico.
+- [ ] `PERF-0052` (`T-15`) Añadir y registrar `FieldLayoutIndexTests.cpp`.
+- [ ] `PERF-0053` (`T-16`) Añadir mapas y accesores de layout MIR por `typeKey`.
+- [ ] `PERF-0054` (`T-16`) Construir ambos índices antes de bajar funciones MIR.
+- [ ] `PERF-0055` (`T-16`) Delegar `findStructLayout` y `findClassLayout` desde LLVM.
+- [ ] `PERF-0056` (`T-16`) Añadir y registrar `MirLayoutIndexTests.cpp`.
+- [ ] `PERF-0057` (`T-17`) Añadir la sobrecarga indexada de `abiPassingForType`.
+- [ ] `PERF-0058` (`T-17`) Pasar el índice a `configureFunctionAbi` y `lowerOneFunction`.
+- [ ] `PERF-0059` (`T-17`) Usar el índice en `sumAwaitedFrameSizeNodes`.
+- [ ] `PERF-0060` (`T-18`) Añadir `sharedStructLayouts_` y `activeStructLayouts` sin retirar el vector actual.
+- [ ] `PERF-0061` (`T-18`) Compartir las layouts con cada lowerer de función en vez de copiarlas.
+- [ ] `PERF-0062` (`T-18`) Migrar los dos lectores de `MirNodeMachine` al acceso activo.
+- [ ] `PERF-0063` (`T-19`) Añadir `llvmTypeCache_` a `OopLlvmImplementation`.
+- [ ] `PERF-0064` (`T-19`) Memoizar solamente resultados LLVM no nulos y conservar fallos idénticos.
+
+#### Tanda 3 — `0 / 18`
+
+- [ ] `PERF-0065` (`T-20`) Extraer `makePrecompiledRegularFunction` sin mutar el modelo HIR.
+- [ ] `PERF-0066` (`T-20`) Extraer `makeImportedCRegularFunction` sin mutar el modelo HIR.
+- [ ] `PERF-0067` (`T-20`) Añadir `resolveRegularFunctionWithoutBody` para importadas y descartadas.
+- [ ] `PERF-0068` (`T-20`) Resolver esas funciones en el coordinador sin crear un worker completo.
+- [ ] `PERF-0069` (`T-21`) Centralizar las tres escrituras en `recordFunctionForMember`.
+- [ ] `PERF-0070` (`T-21`) Evitar que cada worker dimensione los vectores globales de función.
+- [ ] `PERF-0071` (`T-22`) Hacer directa la ruta filtrada de `buildRegularFunctionsSequentially`.
+- [ ] `PERF-0072` (`T-23`) Añadir el índice `localOrdinalsByCallable`.
+- [ ] `PERF-0073` (`T-23`) Añadir el índice `localOrdinalsByLambda`.
+- [ ] `PERF-0074` (`T-23`) Añadir el índice `parameterCleanupOrdinalsByCallable`.
+- [ ] `PERF-0075` (`T-23`) Construir los tres índices una sola vez en `indexBuildBindings`.
+- [ ] `PERF-0076` (`T-23`) Usar locales indexados al construir funciones regulares.
+- [ ] `PERF-0077` (`T-23`) Usar locales indexados al construir funciones de namespace.
+- [ ] `PERF-0078` (`T-23`) Usar locales indexados al construir funciones lambda.
+- [ ] `PERF-0079` (`T-23`) Usar cleanups indexados en funciones regulares.
+- [ ] `PERF-0080` (`T-23`) Usar cleanups indexados en funciones de namespace.
+- [ ] `PERF-0081` (`T-20`) Añadir `HirParallelOrderTests.cpp` para comparar `-j1` contra `-jN`.
+- [ ] `PERF-0082` (`T-24`) Indexar una vez `functionByLambdaOrdinal` en `markLambdaClosureCells`.
+
+#### Tanda 4 — `0 / 4`
+
+- [ ] `PERF-0083` (`T-29`) Evitar canonicalizaciones repetidas en `ProjectSourceSet::add`.
+- [ ] `PERF-0084` (`T-29`) Reutilizar índices y claves durante `ProjectSourceSet::finalize`.
+- [ ] `PERF-0085` (`T-29`) Indexar `normalizeTransitiveSourceOwnership` sin alterar el orden del grafo.
+- [ ] `PERF-0086` (`T-29`) Indexar `preferExactSourceModuleArtifacts` conservando el primer artefacto.
+
+#### Tanda 5 — `0 / 23`
+
+- [ ] `PERF-0087` (`T-30`) Añadir `declaredTypeOrdinalsBySourceName_` a `ProjectGenericModel`.
+- [ ] `PERF-0088` (`T-30`) Poblar el índice durante `TemplateCollector` en orden de ordinal.
+- [ ] `PERF-0089` (`T-30`) Usarlo en `resolveModuleQualifiedDeclaredTypeIdentity`.
+- [ ] `PERF-0090` (`T-30`) Usarlo en `resolveDeclaredTypeIdentity`.
+- [ ] `PERF-0091` (`T-30`) Añadir y registrar `DeclaredTypeIdentityIndexTests.cpp`.
+- [ ] `PERF-0092` (`T-31`) Hacer perezosa la materialización de `GenericLookupScope::Cow`.
+- [ ] `PERF-0093` (`T-62`) Evitar materializar `Cow` cuando `GenericNodeProcessor` no escribe.
+- [ ] `PERF-0094` (`T-33`) Evitar copiar `children()` en el sitio seguro de `ProjectGenericModel.cpp`.
+- [ ] `PERF-0095` (`T-33`) Evitar copiar `children()` en el sitio seguro de `TypeAliasExpander.cpp`.
+- [ ] `PERF-0096` (`T-33`) Evitar copiar `children()` en el sitio seguro de `GenericNodeProcessor.cpp`.
+- [ ] `PERF-0097` (`T-33`) Auditar y eliminar la primera copia segura en `TemplateDependencyCollector.cpp`.
+- [ ] `PERF-0098` (`T-33`) Auditar y eliminar la segunda copia segura en `TemplateDependencyCollector.cpp`.
+- [ ] `PERF-0099` (`T-33`) Evitar copiar `children()` en el sitio seguro de `TemplateCollector.cpp`.
+- [ ] `PERF-0100` (`T-34`) Evitar la copia de `originNamespace()` conservando lifetime y nulabilidad.
+- [ ] `PERF-0101` (`T-35`) Posponer strings en `TemplateResolver::resolveTypeTemplate` hasta necesitarlos.
+- [ ] `PERF-0102` (`T-35`) Reutilizar la resolución en `TypeDemandScheduler::processTypeSyntax`.
+- [ ] `PERF-0103` (`T-36`) Precalcular por proyecto la ruta canónica usada por `buildVisibility`.
+- [ ] `PERF-0104` (`T-37`) Resolver `keywordKind` con una sola consulta discriminada.
+- [ ] `PERF-0105` (`T-38`) Reservar capacidad estimada en `Lexer::lexAll`.
+- [ ] `PERF-0106` (`T-39`) Añadir `typeNameLookupScratch_` al parser sin cambiar `knownTypeNames_`.
+- [ ] `PERF-0107` (`T-39`) Reservar el scratch durante la construcción del contexto del parser.
+- [ ] `PERF-0108` (`T-39`) Reutilizar el scratch en la consulta de `TypeParser.cpp`.
+- [ ] `PERF-0109` (`T-40`) Reservar y construir una sola vez la lista de nombres conocidos por compilación.
+
+#### Tanda 6 — `0 / 50`
+
+- [ ] `PERF-0110` (`T-41`) Añadir `findMetadataTypeByTypeKey` con ruta ordenada y fallback seguro.
+- [ ] `PERF-0111` (`T-41`) Usar la consulta en `PublicSurfaceBuilder::collectPublishedMembers`.
+- [ ] `PERF-0112` (`T-41`) Usar la consulta en `PublicSurfaceBuilder::publishContractTypes`.
+- [ ] `PERF-0113` (`T-41`) Añadir `PublicSurfaceLookupTests.cpp` para metadata ordenada y en memoria.
+- [ ] `PERF-0114` (`T-42`) Calcular una vez el rank usado por `orderedPublishedMethods`.
+- [ ] `PERF-0115` (`T-42`) Evitar llamadas repetidas a `dispatchRank` dentro del comparador.
+- [ ] `PERF-0116` (`T-43`) Crear `ContractMaterializationCache` en archivos propios.
+- [ ] `PERF-0117` (`T-43`) Consultar la caché en los sitios de materialización de contratos.
+- [ ] `PERF-0118` (`T-43`) Propagar una sola caché por toda la materialización recursiva del módulo.
+- [ ] `PERF-0119` (`T-43`) Añadir y registrar `ContractMaterializationCacheTests.cpp`.
+- [ ] `PERF-0120` (`T-44`) Memoizar estados de `verifyGenericTemplateClosure`.
+- [ ] `PERF-0121` (`T-44`) Compartir el memo entre raíces desde `verifyGenericTemplates`.
+- [ ] `PERF-0122` (`T-45`) Indexar las tablas de dispatch de metadata por identidad.
+- [ ] `PERF-0123` (`T-45`) Indexar miembros virtuales usados por `verifyVirtualMemberDispatch`.
+- [ ] `PERF-0124` (`T-45`) Sustituir los recorridos `findMetadataDispatch*` por los índices.
+- [ ] `PERF-0125` (`T-46`) Construir el primer diagnóstico de verificación solo en la rama de error.
+- [ ] `PERF-0126` (`T-46`) Construir el segundo diagnóstico de verificación solo en la rama de error.
+- [ ] `PERF-0127` (`T-46`) Construir el tercer diagnóstico de verificación solo en la rama de error.
+- [ ] `PERF-0128` (`T-46`) Construir el cuarto diagnóstico de verificación solo en la rama de error.
+- [ ] `PERF-0129` (`T-47`) Añadir `membersDeclaredByType`, índice, bandera y fallback lineal.
+- [ ] `PERF-0130` (`T-47`) Usar el índice en `Bodies/TypeKeyPredicates.cpp`.
+- [ ] `PERF-0131` (`T-47`) Usar el índice en los cuatro recorridos de `Bodies/CallAnalyzer.cpp`.
+- [ ] `PERF-0132` (`T-47`) Usar el índice en `Bodies/ConstructionAnalyzer.cpp`.
+- [ ] `PERF-0133` (`T-47`) Sustituir solo el bucle interno de `MethodBodyCallableLifecycle.cpp`.
+- [ ] `PERF-0134` (`T-47`) Usar el índice en `HIR/HirBuildCoordinator.cpp`.
+- [ ] `PERF-0135` (`T-47`) Usar el índice en `HirCoreCallFrameLowering.cpp`.
+- [ ] `PERF-0136` (`T-47`) Usar el índice en `LLVM/Lowering/OopLlvmDebugInfo.cpp`.
+- [ ] `PERF-0137` (`T-47`) Usar el índice en `ProjectGenericConstraintModel.cpp`.
+- [ ] `PERF-0138` (`T-47`) Añadir y registrar `MembersDeclaredByTypeIndexTests.cpp`.
+- [ ] `PERF-0139` (`T-48`) Indexar planes de interfaz por ordinal de clase.
+- [ ] `PERF-0140` (`T-48`) Usar ese índice en `Bodies/AssignmentAnalyzer.cpp`.
+- [ ] `PERF-0141` (`T-49`) Añadir `CoreTypeOrdinals` a `ProjectMethodBodyModel`.
+- [ ] `PERF-0142` (`T-49`) Resolver sus ordinales una vez en `MethodBodyBuildCoordinator`.
+- [ ] `PERF-0143` (`T-49`) Copiar la estructura al shard en `MethodBodyCallableLifecycle.cpp`.
+- [ ] `PERF-0144` (`T-49`) Sustituir la búsqueda de la raíz de excepciones en `StatementAnalyzer.cpp`.
+- [ ] `PERF-0145` (`T-49`) Sustituir la búsqueda de `IDisposable` en `StatementAnalyzer.cpp`.
+- [ ] `PERF-0146` (`T-49`) Sustituir la búsqueda de `ThreadStart` en `CallAnalyzer.cpp`.
+- [ ] `PERF-0147` (`T-49`) Sustituir la búsqueda de tipo del patrón de string en `CallAnalyzer.cpp`.
+- [ ] `PERF-0148` (`T-49`) Sustituir la búsqueda de fachada nativa en `MemberAccessAnalyzer.cpp`.
+- [ ] `PERF-0149` (`T-50`) Añadir al name lookup el índice por nombre simple conservando ordinales.
+- [ ] `PERF-0150` (`T-50`) Usar el índice en `AssignmentAnalyzer::resolveTypeIdentifier`.
+- [ ] `PERF-0151` (`T-50`) Extender la prueba de `T-06` con nombres simples repetidos.
+- [ ] `PERF-0152` (`T-51`) Indexar funciones de extensión por nombre en `ProjectNamespaceFunctionModel`.
+- [ ] `PERF-0153` (`T-51`) Usar el índice en `MemberAccessAnalyzer::stage38OperatorCandidates`.
+- [ ] `PERF-0154` (`T-52`) Indexar plantillas genéricas por `canonicalKey`.
+- [ ] `PERF-0155` (`T-52`) Usar el índice en `Bodies/CarrierResolver.cpp`.
+- [ ] `PERF-0156` (`T-53`) Reutilizar identidades cacheadas en `bindPrecompiledPhysicalNames`.
+- [ ] `PERF-0157` (`T-54`) Crear el índice de identidades de funciones precompiladas.
+- [ ] `PERF-0158` (`T-54`) Usarlo en `bindPrecompiledEscapeSummaries` sin tocar `completionScopes_`.
+- [ ] `PERF-0159` (`T-54`) Añadir y registrar `PrecompiledNamespaceFunctionIdentityIndexTests.cpp`.
+
+#### Tanda 7 — `0 / 15`
+
+- [ ] `PERF-0160` (`T-55`) Añadir una caché compartida para checksums de fuentes de debug info.
+- [ ] `PERF-0161` (`T-55`) Pasar esa caché desde `ProjectOopObjectGenerator` a cada emisor.
+- [ ] `PERF-0162` (`T-56`) Indexar bindings de interfaz por el par de tipos consultado.
+- [ ] `PERF-0163` (`T-56`) Indexar slots de interfaz por miembro en `MirBuildCoordinator`.
+- [ ] `PERF-0164` (`T-57`) Precalcular paquetes, módulos y amigos plegados en `initializeModules`.
+- [ ] `PERF-0165` (`T-57`) Usar las formas plegadas en `typeIsVisibleTo` sin cambiar las APIs del IDE.
+- [ ] `PERF-0166` (`T-58`) Hacer transparente el hash de `specializationBySpecializedName_`.
+- [ ] `PERF-0167` (`T-58`) Indexar por nombre el primer template usado por `closedTypeKeyForTemplate`.
+- [ ] `PERF-0168` (`T-59`) Construir el índice `memberOrdinal -> field initializer` en `buildStaticFields`.
+- [ ] `PERF-0169` (`T-59`) Usar ese índice en `materializeStaticFieldConstant`.
+- [ ] `PERF-0170` (`T-60`) Indexar módulos runtime por nombre de DLL plegado.
+- [ ] `PERF-0171` (`T-60`) Deduplicar símbolos con conjuntos locales conservando el orden de salida.
+- [ ] `PERF-0172` (`T-61`) Exponer en lectura el índice `functionsByName_` del análisis LLVM existente.
+- [ ] `PERF-0173` (`T-61`) Usar el índice en `closureContextDestroy`.
+- [ ] `PERF-0174` (`T-61`) Usar el índice en `findCallbackMirFunction`.
+
+**Tracking absoluto:** `302` work items atómicos, `60` paquetes causales y `7` tandas. El avance se actualiza
+en `NSC-PENDIENTES-Y-TERMINADOS-RENDIMIENTO.md` únicamente cuando el código del renglón existe en disco y su
+evidencia focal está registrada.
 
 ---
 
@@ -202,7 +418,7 @@ Columnas:
 | T-05 | R-05.1 | `src/LLVM/Lowering/OopLlvmTypesAbiAttributes.cpp` → `llvmType` (11-19) | =ART | No hace falta | — |
 | T-25 | R-07.2 | `src/Driver/ProjectCommands.cpp` → `executeBuild` (1455-1456) | =ART, y la salida de `nsc build --dependency-report` idéntica | No hace falta: lo cubren `ProjectCommandsTests.cpp` y `DriverTests.cpp` | — |
 | T-26 | R-07.3.1 y R-07.3.4 | `src/Driver/ProjectCommands.cpp` → `appendArtifact` (canónico de la raíz por paquete; firma interna nueva) y `executeRestore:649` (`std::move(plan)`) | =ART | No hace falta | — |
-| T-27 | R-07.5.1 | `src/Driver/PrecompiledModuleConfiguration.cpp` → `loadExplicitPrecompiledMetadata` (92-135). Caché local `foldedPathKey(metadataPath) → moduleName`. Cuando la ruta se repite, se reproduce la decisión sin leer: si el módulo está en `sourceProjects`, `sourceReplacements.push_back(...)` igual que en 112-115; si no, `continue`, porque la ruta y la huella son las mismas que la entrada ya cargada. | =ART, con los mismos diagnósticos cuando hay conflicto | `PrecompiledMetadataDedupTests.cpp`: dos proyectos que referencian el mismo `.nsmeta`; uno que referencia dos rutas distintas del mismo módulo (debe seguir dando el mismo error, sin cambios en el texto) | — |
+| T-27 | R-07.5.1 | `src/Compilation/PrecompiledProjectPreparation.cpp` → `loadExplicitMetadata`. Caché local `foldedPathKey(metadataPath) → moduleName`. Cuando la ruta se repite, se reproduce la decisión sin leer: si el módulo está en `sourceProjects`, `sourceReplacements.push_back(...)` como en la ruta vigente; si no, `continue`, porque la ruta y la huella son las mismas que la entrada ya cargada. | =ART, con los mismos diagnósticos cuando hay conflicto | `PrecompiledMetadataDedupTests.cpp`: dos proyectos que referencian el mismo `.nsmeta`; uno que referencia dos rutas distintas del mismo módulo (debe seguir dando el mismo error, sin cambios en el texto) | — |
 
 ### Lote 2 — índices
 
@@ -265,14 +481,14 @@ Columnas:
 | T-44 | R-10.5 | `Interop/LibraryMetadataVerification.cpp` → `verifyGenericTemplateClosure`/`verifyGenericTemplates` (839-907) | =ART, con los mismos diagnósticos | No hace falta | — |
 | T-45 | R-10.6 | `Interop/LibraryMetadataVerification.cpp` → `verifyMetadataDispatchContracts` (675-702), `verifyVirtualMemberDispatch` (644-645), `findMetadataDispatch*` (595-618) | =ART | No hace falta | — |
 | T-46 | R-10.7 | `Interop/LibraryMetadataVerification.cpp` (1492-1505, 1530, 1560, 1574-1584) | =ART, con el **texto de cada diagnóstico idéntico** | No hace falta | — |
-| T-47 | R-13 (infra y sitios) | `ProjectMemberModel.h`/`.cpp` → `membersDeclaredByType`, índice y bandera, construidos al final de `build`. Sitios: `TypeKeyPredicates.cpp:113`; `CallAnalyzer.cpp:2232`, `:2444`, `:4921`, `:4942`; `ConstructionAnalyzer.cpp:232`; `MethodBodyCallableLifecycle.cpp:384` (solo el bucle interno); `HirBuildCoordinator.cpp:1364`; `HirCoreCallFrameLowering.cpp:604`; `OopLlvmDebugInfo.cpp:865`; `ProjectGenericConstraintModel.cpp:867` | =ART, con los diagnósticos en el mismo orden | `MembersDeclaredByTypeIndexTests.cpp`: el índice contra el filtro lineal para todos los tipos, incluidos destructores y miembros promovidos; y el fallback en un modelo armado a mano | — |
+| T-47 | R-13 (infra y sitios) | `ProjectMemberModel.h`/`.cpp` → `membersDeclaredByType`, índice y bandera, construidos al final de `build`, conservando sin cambios el acceso público vigente `typeOrdinalForTypeKey`. Sitios: `TypeKeyPredicates.cpp:113`; `CallAnalyzer.cpp:2232`, `:2444`, `:4921`, `:4942`; `ConstructionAnalyzer.cpp:232`; `MethodBodyCallableLifecycle.cpp:384` (solo el bucle interno); `HirBuildCoordinator.cpp:1364`; `HirCoreCallFrameLowering.cpp:604`; `OopLlvmDebugInfo.cpp:865`; `ProjectGenericConstraintModel.cpp:867` | =ART, con los diagnósticos en el mismo orden | `MembersDeclaredByTypeIndexTests.cpp`: el índice contra el filtro lineal para todos los tipos, incluidos destructores y miembros promovidos; y el fallback en un modelo armado a mano | — |
 | T-48 | R-13.1 | `ProjectInterfaceModel.h`/`.cpp` (índice `classTypeOrdinal → plans`); `AssignmentAnalyzer.cpp:2566-2585` | =ART | No hace falta | — |
 | T-49 | R-13.4/13.5 | `ProjectMethodBodyModel.h` (`CoreTypeOrdinals`); `MethodBodyBuildCoordinator.cpp` (cálculo); `MethodBodyCallableLifecycle.cpp:250-270` (copia al shard); `StatementAnalyzer.cpp:2106-2122` y `:2182-2198`; `CallAnalyzer.cpp:1855`, `:3073`; `MemberAccessAnalyzer.cpp:412` | =ART | No hace falta | T-01 |
 | T-50 | R-13.6 | `ProjectNameLookup` (índice por nombre simple, junto al de T-06); `AssignmentAnalyzer.cpp:2634-2660` | =ART | Extender la prueba de T-06 con nombres repetidos | T-06 |
-| T-51 | R-13.8 | `ProjectNamespaceFunctionModel.h`/`.cpp` (índice de extensiones por nombre); `MemberAccessAnalyzer.cpp:1258-1268` | =ART | No hace falta | — |
+| T-51 | R-13.8 | `ProjectNamespaceFunctionModel.h`/`.cpp` (índice de extensiones por nombre, independiente de `completionScopes_`); `MemberAccessAnalyzer.cpp:1258-1268` | =ART | No hace falta | — |
 | T-52 | R-13.9 | `ProjectGenericModel` (índice `canonicalKey → template`); `CarrierResolver.cpp:153-224` | =ART | No hace falta | T-47 |
 | T-53 | R-14.1 | `MemberModel/BuildSupport.cpp` → `bindPrecompiledPhysicalNames` (316-390) | =ART | No hace falta | T-01 |
-| T-54 | R-14.2 | Nuevo `PrecompiledNamespaceFunctionIdentityIndex.h`/`.cpp`; `ProjectNamespaceFunctionModel.cpp:1593-1625` | =ART, con los mismos mensajes de error | `PrecompiledNamespaceFunctionIdentityIndexTests.cpp`, siguiendo el patrón de `PrecompiledMemberIdentityIndexTests.cpp` | — |
+| T-54 | R-14.2 | Nuevo `PrecompiledNamespaceFunctionIdentityIndex.h`/`.cpp`; `ProjectNamespaceFunctionModel.cpp` → `bindPrecompiledEscapeSummaries`, sin sustituir ni alterar `completionScopes_` | =ART, con los mismos mensajes de error | `PrecompiledNamespaceFunctionIdentityIndexTests.cpp`, siguiendo el patrón de `PrecompiledMemberIdentityIndexTests.cpp` | — |
 
 ### Lote 7 — varios (P2)
 
@@ -280,7 +496,7 @@ Columnas:
 |---|---|---|---|---|---|
 | T-55 | R-15.1 | `LLVM/Lowering/Support/DebugInfoEmission.cpp` (111-149) y el paso de la caché compartida desde `ProjectOopObjectGenerator.cpp` | =ART con `debug=full` | No hace falta | T-02 |
 | T-56 | R-15.2 | `MIR/MirBuildCoordinator.cpp` → `interfaceBindingForTypes`, `interfaceSlotForMember` (~760-785) | =ART | No hace falta | — |
-| T-57 | R-15.5 | `NameLookup/TypeVisibility.cpp` (37-100); `NameLookup/ProjectSetup.cpp` (`initializeModules`) | =ART, con los mismos diagnósticos de visibilidad | No hace falta | — |
+| T-57 | R-15.5 | `NameLookup/TypeVisibility.cpp`; `NameLookup/ProjectSetup.cpp` (`initializeModules`). Precalcular formas plegadas conservando las rutas públicas vigentes `typeIsVisibleFromProject` y `nestedTypeIsVisibleFrom`. | =ART, con los mismos diagnósticos de visibilidad | No hace falta | — |
 | T-58 | R-15.7 | `ProjectGenericModel.cpp` (630-660) | =ART | No hace falta | T-06 |
 | T-59 | R-15.8 | `MIR/MirBuildCoordinator.cpp` → `materializeStaticFieldConstant` (439-…), `buildStaticFields` (548) | =ART | No hace falta | — |
 | T-60 | R-15.9 | `Driver/LibraryReferenceValidation.cpp:9-21` y sus 4 llamadores | =ART | No hace falta | — |
@@ -319,12 +535,13 @@ Estado: CERRADO / REABIERTO (causa)
 
 ---
 
-## 9. Texto para el agente implementador (copiar y pegar)
+## 9. Protocolo de ejecución de esta campaña
 
 ```text
-Implementa el tracking NSC-TRACKING-RENDIMIENTO.md (ediciones exactas en NSC-ANALISIS-RENDIMIENTO-POR-FUNCION.md,
+Implementa el tracking NSC-IMPLEMENTACION-RENDIMIENTO.md (ediciones exactas en NSC-ANALISIS-RENDIMIENTO-POR-FUNCION.md,
 leer primero su §0.5 de correcciones). Antes de tocar nada lee completos A:\LINEAMIENTOS-DESARROLLO-COMPILADOR-NATIVESHARP.md
 y las secciones §2, §8, §9 y §10 de A:\LINEAMIENTOS-DE-TRABAJO-Y-PORTEO.md.
+- Toda la implementacion corresponde a Codex en A:\nsc-devel. El IDE y su agente quedan fuera de alcance y no reciben tareas.
 - Solo Grupo A (§6), en el orden de §8. Grupo B solo con autorizacion explicita de Alberto por entrada. Grupo C: no tocar.
 - Una entrada T-xx = un commit = una hipotesis. Presupuesto cerrado: solo los archivos y simbolos listados.
 - Equivalencia estricta contra el oraculo 3.0.6 (3149/3149 unitarias, 6026/6026 externas). No modificar pruebas, fixtures
