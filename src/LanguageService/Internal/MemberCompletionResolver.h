@@ -44,7 +44,8 @@ class MemberCompletionResolver final
 public:
     MemberCompletionResolver(
         const frontend::ProjectCompilation& compilation,
-        const MemberCompletionRequest& request);
+        const MemberCompletionRequest& request,
+        std::optional<std::string_view> documentText = std::nullopt);
 
     MemberCompletionResult resolve();
 
@@ -142,6 +143,8 @@ private:
 
     const frontend::ProjectCompilation& compilation_;
     const MemberCompletionRequest& request_;
+    std::optional<std::string_view> overlayText_;
+    std::string_view documentText_;
     const frontend::ProjectSyntaxUnit* unit_ = nullptr;
     const source::SourceFile* file_ = nullptr;
     std::size_t operatorOffset_ = 0;
@@ -159,6 +162,7 @@ private:
     bool baseReceiver_ = false;
     bool staticReceiver_ = false;
     bool namespaceReceiver_ = false;
+    bool semanticPrefixChanged_ = false;
     bool enumerationComplete_ = true;
     std::unordered_set<std::string> hiddenNames_;
     std::unordered_set<std::string> synthesizedRootBlockedNames_;

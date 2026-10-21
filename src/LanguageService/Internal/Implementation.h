@@ -26,6 +26,7 @@ public:
     mutable std::mutex mutex;
     std::unordered_map<std::string, StoredDocument> documents;
     std::unordered_map<std::string, std::shared_ptr<SemanticIndex>> lastGoodSemantic;
+    std::unordered_map<std::string, AnalysisSnapshot> lastProjectSnapshots;
     std::atomic_uint64_t nextGeneration = 1;
 };
 }

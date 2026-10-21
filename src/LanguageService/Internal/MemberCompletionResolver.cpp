@@ -70,9 +70,11 @@ std::string withOwnershipQualifier(
 
 MemberCompletionResolver::MemberCompletionResolver(
     const frontend::ProjectCompilation& compilation,
-    const MemberCompletionRequest& request)
+    const MemberCompletionRequest& request,
+    std::optional<std::string_view> documentText)
     : compilation_(compilation),
-      request_(request)
+      request_(request),
+      overlayText_(documentText)
 {
 }
 
@@ -93,6 +95,7 @@ bool MemberCompletionResolver::locateDocument()
         if (source == nullptr || completionPathKey(source->path()) != wanted) continue;
         unit_ = candidate.get();
         file_ = source;
+        documentText_ = overlayText_.value_or(file_->buffer());
         accessingProjectOrdinal_ = candidate->projectOrdinal();
         return true;
     }
@@ -101,7 +104,7 @@ bool MemberCompletionResolver::locateDocument()
 
 bool MemberCompletionResolver::locateOperator()
 {
-    const std::string_view text = file_->buffer();
+    const std::string_view text = documentText_;
     const auto requestedOperator =
         byteOffsetForUtf16Position(text, request_.operatorPosition);
     const auto requestedCaret = byteOffsetForUtf16Position(text, request_.caretPosition);
@@ -130,6 +133,13 @@ bool MemberCompletionResolver::locateOperator()
            std::isspace(static_cast<unsigned char>(text[receiverEndOffset_ - 1])) != 0)
     {
         --receiverEndOffset_;
+    }
+    const std::string_view analyzedText = file_->buffer();
+    if (receiverEndOffset_ > analyzedText.size() ||
+        analyzedText.substr(0, receiverEndOffset_) != text.substr(0, receiverEndOffset_))
+    {
+        semanticPrefixChanged_ = true;
+        return false;
     }
     return receiverEndOffset_ != 0;
 }
@@ -208,7 +218,7 @@ bool MemberCompletionResolver::locateTypeReceiver()
 
 bool MemberCompletionResolver::locateNamespaceReceiver()
 {
-    const std::string_view text = file_->buffer();
+    const std::string_view text = documentText_;
     std::size_t begin = receiverEndOffset_;
     while (begin > 0 && (identifierPart(text[begin - 1]) || text[begin - 1] == '.')) --begin;
     std::string written = std::string(text.substr(begin, receiverEndOffset_ - begin));
@@ -1437,7 +1447,9 @@ MemberCompletionResult MemberCompletionResolver::resolve()
     {
         result_.status = cancellationRequested()
             ? MemberCompletionStatus::Cancelled
-            : MemberCompletionStatus::InvalidPosition;
+            : semanticPrefixChanged_
+                ? MemberCompletionStatus::Incomplete
+                : MemberCompletionStatus::InvalidPosition;
         return result_;
     }
     if (!locateReceiver())

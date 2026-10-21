@@ -1312,7 +1312,14 @@ AnalysisSnapshot LanguageService::analyzeProject(
             result->usedPreviousSemanticModel = true;
         }
     }
-    return AnalysisSnapshot(std::move(result));
+    AnalysisSnapshot snapshot(result);
+    if (!result->cancelled)
+    {
+        implementation_->lastProjectSnapshots.insert_or_assign(
+            keyedProject->first,
+            snapshot);
+    }
+    return snapshot;
 }
 
 MemberCompletionResult LanguageService::memberCompletions(
@@ -1326,6 +1333,41 @@ MemberCompletionResult LanguageService::memberCompletions(
         result.status = MemberCompletionStatus::Cancelled;
         return finishMemberCompletionTiming(std::move(result), 0, resolutionStarted);
     }
+    const auto project = Implementation::documentKey(request.projectPath);
+    const auto document = Implementation::documentKey(request.documentPath);
+    if (!project.has_value() || !document.has_value())
+    {
+        result.status = MemberCompletionStatus::Unavailable;
+        return finishMemberCompletionTiming(std::move(result), 0, resolutionStarted);
+    }
+    AnalysisSnapshot residentSnapshot;
+    std::string activeText;
+    {
+        std::scoped_lock lock(implementation_->mutex);
+        const auto active = implementation_->documents.find(document->first);
+        if (active == implementation_->documents.end() ||
+            active->second.version != request.documentVersion)
+        {
+            result.status = MemberCompletionStatus::StaleDocument;
+            return finishMemberCompletionTiming(std::move(result), 0, resolutionStarted);
+        }
+        activeText = active->second.text;
+        const auto resident = implementation_->lastProjectSnapshots.find(project->first);
+        if (resident != implementation_->lastProjectSnapshots.end())
+        {
+            residentSnapshot = resident->second;
+        }
+    }
+    if (residentSnapshot.implementation_ != nullptr &&
+        residentSnapshot.implementation_->currentCompilation != nullptr)
+    {
+        result = MemberCompletionResolver(
+            *residentSnapshot.implementation_->currentCompilation,
+            request,
+            activeText).resolve();
+        return finishMemberCompletionTiming(std::move(result), 0, resolutionStarted);
+    }
+
     AnalysisSnapshot currentSnapshot = analyzeProject(
         request.projectPath, jobs, request.cancellationCheck);
     result = currentSnapshot.memberCompletions(request);
@@ -1336,16 +1378,7 @@ MemberCompletionResult LanguageService::memberCompletions(
             ? currentSnapshot.implementation_->currentCompilation.get()
             : nullptr);
     result = {};
-    const auto project = Implementation::documentKey(request.projectPath);
-    const auto document = Implementation::documentKey(request.documentPath);
-    if (!project.has_value() || !document.has_value())
-    {
-        result.status = MemberCompletionStatus::Unavailable;
-        return finishMemberCompletionTiming(
-            std::move(result), currentAnalysisNanoseconds, resolutionStarted);
-    }
     std::unordered_map<std::string, std::string> overlays;
-    std::string activeText;
     {
         std::scoped_lock lock(implementation_->mutex);
         const auto active = implementation_->documents.find(document->first);
