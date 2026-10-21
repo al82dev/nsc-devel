@@ -18,7 +18,7 @@
 
 namespace nativesharp::language_service
 {
-inline constexpr std::uint32_t kAnalysisAbiVersion = 2;
+inline constexpr std::uint32_t kAnalysisAbiVersion = 3;
 
 // Stable facade for editor analysis. Internal lexer, parser and semantic model classes remain
 // implementation details so the future compiler rewrite does not leak into nsc-lsp.
@@ -58,6 +58,9 @@ public:
         const std::filesystem::path& project,
         std::size_t jobs = 1,
         std::function<bool()> cancellationCheck = {});
+    MemberCompletionResult memberCompletions(
+        const MemberCompletionRequest& request,
+        std::size_t jobs = 1);
 
 private:
     class Implementation;

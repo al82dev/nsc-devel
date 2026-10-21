@@ -335,6 +335,7 @@ void ProjectNamespaceFunctionModel::resetBuildState()
     referenceBindingBySyntax_.clear();
     extensionBindings_.clear();
     extensionBindingBySyntax_.clear();
+    completionScopes_.clear();
     built_ = false;
 }
 
@@ -1427,6 +1428,16 @@ void ProjectNamespaceFunctionModel::walkNamespaceScope(
         }
     }
 
+    if (scopeNode->range().isValid())
+    {
+        completionScopes_.push_back(NamespaceCompletionScope{
+            unit.fileId(),
+            scopeNode->range(),
+            unit.projectOrdinal(),
+            lexicalNamespace,
+            environment.importedNamespaces,
+            environment.aliases});
+    }
     const std::vector<ast::AstNode*>& children = scopeNode->children();
     for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
     {
@@ -1694,6 +1705,12 @@ std::span<const NamespaceStateReferenceBinding>
 ProjectNamespaceFunctionModel::stateReferenceBindings() const noexcept
 {
     return stateReferenceBindings_;
+}
+
+std::span<const NamespaceCompletionScope>
+ProjectNamespaceFunctionModel::completionScopes() const noexcept
+{
+    return completionScopes_;
 }
 
 bool ProjectNamespaceFunctionModel::isBuilt() const noexcept

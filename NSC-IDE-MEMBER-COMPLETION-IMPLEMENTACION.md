@@ -1,0 +1,337 @@
+- [TERMINADO] SCOPE LOCK — Crear exclusivamente el inventario granular por tandas para implementar semantic member completion.
+- [TERMINADO] SCOPE LOCK — Limitar esta modificación al archivo `NSC-IDE-MEMBER-COMPLETION-IMPLEMENTACION.md`.
+- [TERMINADO] SCOPE LOCK — Mantener sin cambios lexer, parser, AST, NSMETA, HIR, MIR, LLVM IR, objetos, ABI, CLI y diagnósticos.
+- [TERMINADO] SCOPE LOCK — Mantener sin cambios NSC Builder, CMake, fixtures, pruebas existentes y trabajo ajeno.
+- [TERMINADO] SCOPE LOCK — No implementar código, no compilar, no ejecutar pruebas y no crear commits durante esta entrega documental.
+- [TERMINADO] SCOPE LOCK ENMIENDA 1 — Implementar de forma persistente los ítems autorizados sobre `development` exclusivamente en `A:\nsc-devel`.
+- [TERMINADO] SCOPE LOCK ENMIENDA 1 — Preservar sintaxis, semántica, lexer, parser, AST, contratos 3.0.4, NSMETA, HIR, MIR, LLVM IR, objetos, ABI, CLI, diagnósticos, pruebas existentes y trabajo ajeno.
+- [TERMINADO] SCOPE LOCK ENMIENDA 1 — No tocar NSC Builder, no usar PowerShell ni MSYS, no usar elevaciones, no hacer push, pull, fetch, instalación ni deploy.
+- [TERMINADO] SCOPE LOCK ENMIENDA 1 — Autorizar en CMake únicamente el cableado de fuentes y targets productivos necesarios, incluida la lista manual del compiler-suite, sin crear ni modificar casos de prueba.
+- [TERMINADO] SCOPE LOCK ENMIENDA 1 — Implementar secuencialmente por tandas y mantener este tracking con estados `PENDIENTE` y `TERMINADO`.
+- [TERMINADO] SCOPE LOCK ENMIENDA 1 — No crear mini-pruebas ni ejecutar suites, baterías o baseline durante las tandas.
+- [TERMINADO] SCOPE LOCK ENMIENDA 2 — Excluir del alcance de este trabajo la creación de pruebas, fixtures y mediciones de las tandas 14 y 15.
+- [TERMINADO] SCOPE LOCK ENMIENDA 2 — Reservar la validación funcional cotidiana para el agente del IDE y la compilación integral final para Alberto.
+- [TERMINADO] SCOPE LOCK ENMIENDA 3 — Mantener esta implementación exclusivamente en `A:\nsc-devel`; no modificar desde este trabajo los checkouts de `nsc-lsp` ni del IDE.
+- [TERMINADO] SCOPE LOCK ENMIENDA 3 — Registrar las tandas 12 y 13 como integración externa pendiente, sin contarlas como implementación faltante del compilador.
+- [TERMINADO] SCOPE LOCK ENMIENDA 1 — Reservar la compilación y validación integral para una sola ejecución final del usuario mediante NSC Builder.
+- [TERMINADO] SCOPE LOCK ENMIENDA 1 — Considerar terminado únicamente el cierre estático completo y la entrega lista para la validación final del usuario.
+- [PENDIENTE] PROGRESO GLOBAL — 216/260 ítems de implementación terminados; 40/40 ítems de pruebas excluidos; 40/40 ítems externos de LSP/IDE pendientes fuera de `A:\nsc-devel`.
+- [TERMINADO] CIERRE ESTÁTICO DEL COMPILADOR — MC-021 a MC-220 implementados en `A:\nsc-devel`; contrato público, carga precompilada, snapshots, recuperación focal, resolución y proyección pública conciliados estáticamente.
+- [TERMINADO] AUDITORÍA ESTÁTICA DEL CONTRATO — Completadas la documentación `///` para miembros, funciones, estados, tipos anidados y tipos de namespace; las firmas legibles de overloads conservan parámetros `ref`/`out`/`in`, ownership sin duplicarlo ante lifetimes, valores predeterminados disponibles, lifetimes explícitos, genéricos de tipo/const/lifetime, restricciones, errores tipados y modificadores; `LanguageService::memberCompletions` intenta primero la compilación normal, incluso si otro diagnóstico dejó el análisis global incompleto, y ejecuta la recuperación focal sólo cuando el resolver no conserva modelos confiables; la accesibilidad de receptores de interfaz coincide con el binder y publica sólo miembros `public`; los aliases promovidos de agregados anónimos permanecen visibles sin exponer backing fields ni carriers; fachadas intrínsecas y de string conservan su precedencia sobre extensiones homónimas; el placeholder se contrasta contra texto y nombres semánticos, incluidos los precompilados; modelos semánticos ausentes producen `Incomplete`, nunca una lista vacía definitiva; un `prefix` vacío devuelve la superficie completa y un `prefix` explícito activa el filtro del servidor; documento ausente produce `Unavailable` y sólo una posición inválida produce `InvalidPosition`; la clasificación observa cancelación dentro de sus recorridos y conserva `Cancelled` como estado prioritario; la publicación revalida cancelación y versión; NSMETA continúa devolviendo documentación ausente sin inventarla.
+- [TERMINADO] AUDITORÍA ESTÁTICA DE ENLACE — Definida la consulta `ProjectMemberModel::promotedMembersOfType` que consume el resolver; la declaración pública y la implementación productiva coinciden y la consulta devuelve una vista vacía segura para ordinals fuera de rango.
+- [PENDIENTE] VALIDACIÓN FINAL DEL COMPILADOR — Compilación integral pendiente de Alberto mediante NSC Builder; no se ejecutaron builds, pruebas, suites, baterías ni baseline durante las tandas.
+- [PENDIENTE] TANDA 01 — 16/20 ítems terminados.
+- [TERMINADO] MC-001 — Rama confirmada mediante `.git\HEAD`: `development`.
+- [TERMINADO] MC-002 — HEAD inicial registrado mediante `.git\refs\heads\development`: `8eef25d97c7ad0c83655c0b8e866b64df1ee294f`.
+- [TERMINADO] MC-003 — Últimos commits registrados desde el reflog: `8eef25d9 fix(builder3): package the installed prefix`; `8ff27a77 fix(refactor): restore receiver and debug scopes`; `4bbcadf0 fix(refactor): restore HIR progress and selected NSLink`; `8bc5da56 fix(builder3): keep child processes inside GUI`; `5306f874 fix(tests): link LLVM reachability producer`.
+- [PENDIENTE] MC-004 — Registrar el estado inicial del worktree.
+- [PENDIENTE] MC-005 — Registrar el diff inicial del worktree.
+- [PENDIENTE] MC-006 — Identificar cada cambio ajeno presente en el worktree.
+- [PENDIENTE] MC-007 — Marcar cada cambio ajeno como archivo protegido.
+- [TERMINADO] MC-008 — Headers públicos inventariados: `LanguageService.h`, `AnalysisSnapshot.h`, `DocumentSnapshot.h`, `LanguageServiceIdentity.h`, `ProtocolTypes.h` y los tipos agregados por `ProtocolTypes.h`.
+- [TERMINADO] MC-009 — Implementación inventariada: `LanguageService.cpp`, `Internal/Implementation.cpp`, `ProtocolTypes.cpp`, `Internal/Implementation.h`, `Internal/AnalysisSnapshotImplementation.h`, `Internal/SemanticIndex.h` y `Internal/StoredDocument.h`.
+- [TERMINADO] MC-010 — Entradas públicas consumibles por `nsc-lsp` inventariadas: ciclo de documentos de `LanguageService`, `analyzeProject` y consultas inmutables de `AnalysisSnapshot`; los modelos Frontend no se exponen.
+- [TERMINADO] MC-011 — Ruta del IDE inventariada: IDE → protocolo LSP → `nsc-lsp` → fachada pública de LanguageService; el IDE no debe leer NSMETA ni modelos internos.
+- [TERMINADO] MC-012 — Carga precompilada inventariada en `Driver/PrecompiledModuleConfiguration.cpp`: grafo, NSMETA explícito, clausura binaria transitiva, sustitución por fuente, validación, materialización, módulos y grafo precargado.
+- [TERMINADO] MC-013 — Modelos consultables inventariados: `ProjectNameLookup`, `ProjectMemberModel`, `ProjectMethodBodyModel`, `ProjectInheritanceModel`, `ProjectInterfaceModel`, `ProjectGenericModel`, `ProjectGenericConstraintModel` y modelos de namespace.
+- [TERMINADO] MC-014 — Resolución real inventariada en `Bodies/MemberAccessAnalyzer.cpp`: precedencia valor/tipo, receptor estático/instancia/base, miembros ordinarios, propiedades, extensiones, fachadas e intrínsecos.
+- [TERMINADO] MC-015 — Accesibilidad real inventariada en `ProjectMemberAccessibility`: public/private/internal/protected, identidad de proyecto, derivación y restricción protected por tipo del receptor.
+- [TERMINADO] MC-016 — Herencia y ocultamiento inventariados en `ProjectInheritanceModel`, `ProjectInterfaceModel`, `ProjectMemberModel` y `MemberAccessAnalyzer`; las interfaces ya publican miembros efectivos y la herencia publica la cadena base.
+- [TERMINADO] MC-017 — Overloads inventariados: `ClassMemberSymbol` conserva `signatureKey`, retorno, parámetros, genéricos y modificadores; los grupos actuales conservan ordinals de candidatos y `callableDetail` sólo proyecta texto parcial.
+- [TERMINADO] MC-018 — Comentarios `///` inventariados como no conservados: el lexer descarta comentarios de línea, AST y símbolos Frontend no poseen campo documental.
+- [TERMINADO] MC-019 — NSMETA inventariado sin campo documental: `LibraryMetadataType`, `LibraryMetadataMember`, funciones y estados conservan contratos semánticos/ABI, pero no comentarios `///`.
+- [TERMINADO] MC-020 — Matriz congelada: carga=`PrecompiledModuleConfiguration`/Driver+LanguageService; tipo del receptor=`ProjectMethodBodyModel`; miembros=`ProjectMemberModel`; acceso=`ProjectMemberAccessibility`; herencia=`ProjectInheritanceModel`/`ProjectInterfaceModel`; contrato=`LanguageService`; consumo=`nsc-lsp`/IDE; validación final=NSC Builder del usuario.
+- [TERMINADO] TANDA 02 — 20/20 ítems terminados.
+- [TERMINADO] MC-021 — Preparación reutilizable extraída del Driver a `PrecompiledProjectPreparation`.
+- [TERMINADO] MC-022 — Preparación compartida ubicada en la capa neutral `Compilation` y en el target `nsc_precompiled`.
+- [TERMINADO] MC-023 — LanguageService depende de `nsc_precompiled`, no de `nsc_driver`.
+- [TERMINADO] MC-024 — Dependencias conservadas sin ciclo: Frontend → Precompiled → LanguageService/Driver.
+- [TERMINADO] MC-025 — `preparePrecompiledProject` recibe el grafo cargado y `ProjectLoadOptions` efectivos.
+- [TERMINADO] MC-026 — Clausura directa preservada mediante lectura de cada `LibraryReference` explícita.
+- [TERMINADO] MC-027 — Clausura transitiva preservada mediante `binaryDependencies` y cursor iterativo.
+- [TERMINADO] MC-028 — Orden determinista preservado mediante orden del grafo y expansión estable por cursor.
+- [TERMINADO] MC-029 — Resolución vigente preservada: junto a NSMETA, root explícito y fallback root.
+- [TERMINADO] MC-030 — Textos y contexto de diagnósticos de NSMETA preservados en la extracción.
+- [TERMINADO] MC-031 — Validación vigente preservada mediante `LibraryMetadataCodec::verifyCurrentCompiler`.
+- [TERMINADO] MC-032 — API pública y plantillas materializadas por los emisores existentes sin duplicarlos.
+- [TERMINADO] MC-033 — Módulos materializados entregados mediante `setPrecompiledModules`.
+- [TERMINADO] MC-034 — Grafo efectivo entregado mediante `setPreloadedProjectGraph`.
+- [TERMINADO] MC-035 — Driver reutiliza `preparePrecompiledProject` conservando su loader y telemetría.
+- [TERMINADO] MC-036 — LanguageService carga el grafo y reutiliza `preparePrecompiledProject` antes del análisis.
+- [TERMINADO] MC-037 — Ruta productiva del Driver conserva loader, jobs, opciones, timer, errores y orden.
+- [TERMINADO] MC-038 — La preparación de tooling termina en modelos Frontend; no invoca LLVM, objetos, linker ni PDB.
+- [TERMINADO] MC-039 — La preparación sólo lee NSMETA; no invoca `write`, `writeModel` ni publicación.
+- [TERMINADO] MC-040 — Clausura precompilada consolidada en una sola implementación compartida.
+- [TERMINADO] TANDA 03 — 20/20 ítems terminados.
+- [TERMINADO] MC-041 — Cada documento abierto conserva su versión exacta en `StoredDocument`.
+- [TERMINADO] MC-042 — Cada snapshot captura el mapa exacto de versiones analizadas.
+- [TERMINADO] MC-043 — Cada snapshot conserva su ruta canónica de proyecto.
+- [TERMINADO] MC-044 — Cada snapshot conserva sus `ProjectLoadOptions` efectivos.
+- [TERMINADO] MC-045 — Cada snapshot conserva `currentCompilation`, que posee el grafo precompilado efectivo.
+- [TERMINADO] MC-046 — El snapshot captura bajo mutex las versiones de todos los documentos abiertos.
+- [TERMINADO] MC-047 — Un cambio del documento solicitado exige un análisis nuevo y produce otra versión de snapshot.
+- [TERMINADO] MC-048 — Un cambio de cualquier overlay exige un análisis nuevo y produce otra generación inmutable.
+- [TERMINADO] MC-049 — Cada análisis vuelve a cargar el archivo de proyecto; no reutiliza un grafo obsoleto.
+- [TERMINADO] MC-050 — Cada análisis vuelve a resolver `LibraryReference` directas y transitivas.
+- [TERMINADO] MC-051 — Cada análisis vuelve a leer y verificar los archivos NSMETA efectivos.
+- [TERMINADO] MC-052 — La configuración efectiva queda ligada a la compilación y al snapshot recién creados.
+- [TERMINADO] MC-053 — `lastGoodSemantic` conserva un único modelo histórico exitoso por proyecto.
+- [TERMINADO] MC-054 — Prohibir usar un snapshot histórico para una versión distinta.
+- [TERMINADO] MC-055 — `analyzedDocumentVersion` expone sólo la versión, sin modelos internos.
+- [TERMINADO] MC-056 — Disponibilidad, éxito, modelo previo, cancelación y error permanecen públicos.
+- [TERMINADO] MC-057 — `currentCompilation` permanece vivo mediante `shared_ptr` durante toda consulta del snapshot.
+- [TERMINADO] MC-058 — El snapshot se publica terminado y después es inmutable; los mapas compartidos se protegen con mutex.
+- [TERMINADO] MC-059 — Sólo se conserva un `lastGoodSemantic` por proyecto; su reemplazo libera el anterior cuando ya no tiene lectores.
+- [TERMINADO] MC-060 — La liberación usa ownership de `shared_ptr`; no existen punteros internos públicos ni destrucción manual.
+- [TERMINADO] TANDA 04 — 20/20 ítems terminados.
+- [TERMINADO] MC-061 — Definir `MemberCompletionRequest` como contrato público de tooling.
+- [TERMINADO] MC-062 — Añadir la identidad del proyecto a `MemberCompletionRequest`.
+- [TERMINADO] MC-063 — Añadir la ruta del documento a `MemberCompletionRequest`.
+- [TERMINADO] MC-064 — Añadir la versión del documento a `MemberCompletionRequest`.
+- [TERMINADO] MC-065 — Añadir la posición del caret a `MemberCompletionRequest`.
+- [TERMINADO] MC-066 — Añadir la posición del operador a `MemberCompletionRequest`.
+- [TERMINADO] MC-067 — Añadir el prefijo opcional a `MemberCompletionRequest`.
+- [TERMINADO] MC-068 — Añadir la función de cancelación a `MemberCompletionRequest`.
+- [TERMINADO] MC-069 — Validar que la ruta solicitada pertenece al proyecto.
+- [TERMINADO] MC-070 — Validar que la versión solicitada coincide con el documento abierto.
+- [TERMINADO] MC-071 — Validar que la posición pertenece al documento solicitado.
+- [TERMINADO] MC-072 — Reconocer el disparador `.`.
+- [TERMINADO] MC-073 — Reconocer el disparador `?.`.
+- [TERMINADO] MC-074 — Reconocer un identificador parcial después de `.`.
+- [TERMINADO] MC-075 — Reconocer un identificador parcial después de `?.`.
+- [TERMINADO] MC-076 — Reconocer una solicitud explícita de Ctrl+Espacio.
+- [TERMINADO] MC-077 — Localizar el nodo receptor anterior al operador.
+- [TERMINADO] MC-078 — Clasificar el receptor como valor, tipo, namespace o indeterminado.
+- [TERMINADO] MC-079 — Rechazar posiciones que no sean contextos de member completion.
+- [TERMINADO] MC-080 — Cancelar la clasificación cuando la solicitud quede obsoleta.
+- [TERMINADO] TANDA 05 — 20/20 ítems terminados.
+- [TERMINADO] MC-081 — Reutilizar el binder vigente para resolver el tipo del receptor.
+- [TERMINADO] MC-082 — Reutilizar el binder vigente para resolver receptores estáticos.
+- [TERMINADO] MC-083 — Reutilizar la tabla vigente para resolver namespaces.
+- [TERMINADO] MC-084 — Reutilizar la sustitución vigente de parámetros genéricos.
+- [TERMINADO] MC-085 — Reutilizar las restricciones genéricas vigentes.
+- [TERMINADO] MC-086 — Reutilizar la accesibilidad vigente desde el sitio de consulta.
+- [TERMINADO] MC-087 — Enumerar campos accesibles de instancia.
+- [TERMINADO] MC-088 — Enumerar campos accesibles estáticos.
+- [TERMINADO] MC-089 — Enumerar propiedades accesibles de instancia.
+- [TERMINADO] MC-090 — Enumerar propiedades accesibles estáticas.
+- [TERMINADO] MC-091 — Enumerar métodos accesibles de instancia.
+- [TERMINADO] MC-092 — Enumerar métodos accesibles estáticos.
+- [TERMINADO] MC-093 — Enumerar eventos accesibles de instancia.
+- [TERMINADO] MC-094 — Enumerar eventos accesibles estáticos.
+- [TERMINADO] MC-095 — Enumerar constantes accesibles.
+- [TERMINADO] MC-096 — Enumerar miembros de enum accesibles.
+- [TERMINADO] MC-097 — Enumerar tipos anidados accesibles.
+- [TERMINADO] MC-098 — Enumerar namespaces hijos accesibles.
+- [TERMINADO] MC-099 — Enumerar funciones de namespace accesibles.
+- [TERMINADO] MC-100 — Enumerar variables de namespace accesibles.
+- [TERMINADO] TANDA 06 — 20/20 ítems terminados.
+- [TERMINADO] MC-101 — Aplicar el ocultamiento de miembros por nombre vigente.
+- [TERMINADO] MC-102 — Aplicar la búsqueda de bases de clase vigente.
+- [TERMINADO] MC-103 — Aplicar los métodos efectivos de interfaces vigentes.
+- [TERMINADO] MC-104 — Aplicar la resolución de implementación predeterminada vigente.
+- [TERMINADO] MC-105 — Aplicar la precedencia vigente de miembros ordinarios.
+- [TERMINADO] MC-106 — Aplicar la precedencia vigente de métodos de extensión.
+- [TERMINADO] MC-107 — Incluir extensiones sólo cuando el contexto vigente las permite.
+- [TERMINADO] MC-108 — Incluir el miembro intrínseco `Length` cuando corresponda.
+- [TERMINADO] MC-109 — Incluir la fachada vigente de arrays cuando corresponda.
+- [TERMINADO] MC-110 — Incluir la fachada vigente de strings cuando corresponda.
+- [TERMINADO] MC-111 — Incluir la fachada vigente de spans cuando corresponda.
+- [TERMINADO] MC-112 — Incluir la fachada vigente de iteradores cuando corresponda.
+- [TERMINADO] MC-113 — Excluir miembros inaccesibles desde el sitio solicitado.
+- [TERMINADO] MC-114 — Excluir miembros incompatibles con receptor de instancia.
+- [TERMINADO] MC-115 — Excluir miembros incompatibles con receptor de tipo.
+- [TERMINADO] MC-116 — Agrupar métodos pertenecientes al mismo overload set.
+- [TERMINADO] MC-117 — Deduplicar miembros heredados equivalentes.
+- [TERMINADO] MC-118 — Deduplicar extensiones equivalentes.
+- [TERMINADO] MC-119 — Ordenar las entradas de forma determinista.
+- [TERMINADO] MC-120 — Prohibir una compilación o probe separado por candidato.
+- [TERMINADO] TANDA 07 — 20/20 ítems terminados.
+- [TERMINADO] MC-121 — Definir `MemberCompletionEntryKind` fuera de `LanguageSymbolKind`.
+- [TERMINADO] MC-122 — Añadir `Field` a `MemberCompletionEntryKind`.
+- [TERMINADO] MC-123 — Añadir `Property` a `MemberCompletionEntryKind`.
+- [TERMINADO] MC-124 — Añadir `Method` a `MemberCompletionEntryKind`.
+- [TERMINADO] MC-125 — Añadir `Event` a `MemberCompletionEntryKind`.
+- [TERMINADO] MC-126 — Añadir `EnumMember` a `MemberCompletionEntryKind`.
+- [TERMINADO] MC-127 — Añadir `Constant` a `MemberCompletionEntryKind`.
+- [TERMINADO] MC-128 — Añadir `Type` a `MemberCompletionEntryKind`.
+- [TERMINADO] MC-129 — Añadir `Namespace` a `MemberCompletionEntryKind`.
+- [TERMINADO] MC-130 — Añadir `Function` a `MemberCompletionEntryKind`.
+- [TERMINADO] MC-131 — Añadir `Variable` a `MemberCompletionEntryKind`.
+- [TERMINADO] MC-132 — Definir `MemberCompletionEntry` como tipo público de tooling.
+- [TERMINADO] MC-133 — Añadir el texto de inserción a `MemberCompletionEntry`.
+- [TERMINADO] MC-134 — Añadir el nombre visible a `MemberCompletionEntry`.
+- [TERMINADO] MC-135 — Añadir la clase de entrada a `MemberCompletionEntry`.
+- [TERMINADO] MC-136 — Añadir el indicador estático a `MemberCompletionEntry`.
+- [TERMINADO] MC-137 — Añadir el tipo declarador legible a `MemberCompletionEntry`.
+- [TERMINADO] MC-138 — Añadir el tipo resultante legible a `MemberCompletionEntry`.
+- [TERMINADO] MC-139 — Prohibir type keys en `MemberCompletionEntry`.
+- [TERMINADO] MC-140 — Prohibir ordinals internos en `MemberCompletionEntry`.
+- [TERMINADO] TANDA 08 — 20/20 ítems terminados.
+- [TERMINADO] MC-141 — Definir `MemberCompletionOverload` como tipo público de tooling.
+- [TERMINADO] MC-142 — Añadir la firma legible a `MemberCompletionOverload`.
+- [TERMINADO] MC-143 — Añadir el tipo de retorno legible a `MemberCompletionOverload`.
+- [TERMINADO] MC-144 — Añadir los parámetros legibles a `MemberCompletionOverload`.
+- [TERMINADO] MC-145 — Añadir los parámetros genéricos legibles a `MemberCompletionOverload`.
+- [TERMINADO] MC-146 — Añadir las restricciones legibles a `MemberCompletionOverload`.
+- [TERMINADO] MC-147 — Añadir modificadores relevantes a `MemberCompletionOverload`.
+- [TERMINADO] MC-148 — Añadir cada overload a su entrada de método.
+- [TERMINADO] MC-149 — Conservar el orden determinista de overloads.
+- [TERMINADO] MC-150 — Obtener comentarios `///` de fuentes cuando estén disponibles.
+- [TERMINADO] MC-151 — Obtener comentarios de NSMETA cuando el formato los contenga.
+- [TERMINADO] MC-152 — Devolver documentación ausente cuando NSMETA no la contenga.
+- [TERMINADO] MC-153 — Evitar inventar documentación para miembros precompilados.
+- [TERMINADO] MC-154 — Definir `MemberCompletionStatus` como tipo público de tooling.
+- [TERMINADO] MC-155 — Añadir el estado `Complete`.
+- [TERMINADO] MC-156 — Añadir el estado `Incomplete`.
+- [TERMINADO] MC-157 — Añadir el estado `Cancelled`.
+- [TERMINADO] MC-158 — Añadir el estado `StaleDocument`.
+- [TERMINADO] MC-159 — Añadir el estado `Unavailable`.
+- [TERMINADO] MC-160 — Añadir el estado `InvalidPosition`.
+- [TERMINADO] TANDA 09 — 20/20 ítems terminados.
+- [TERMINADO] MC-161 — Definir `MemberCompletionResult` como tipo público de tooling.
+- [TERMINADO] MC-162 — Añadir el estado a `MemberCompletionResult`.
+- [TERMINADO] MC-163 — Añadir la colección de entradas a `MemberCompletionResult`.
+- [TERMINADO] MC-164 — Derivar `isIncomplete` del estado del resultado.
+- [TERMINADO] MC-165 — Devolver `Complete` con lista vacía cuando no existan miembros.
+- [TERMINADO] MC-166 — Devolver `Incomplete` cuando falte información semántica confiable.
+- [TERMINADO] MC-167 — Devolver `Cancelled` al activarse la cancelación.
+- [TERMINADO] MC-168 — Devolver `StaleDocument` ante una versión obsoleta.
+- [TERMINADO] MC-169 — Devolver `Unavailable` cuando no exista snapshot suficiente.
+- [TERMINADO] MC-170 — Devolver `InvalidPosition` fuera de un contexto válido.
+- [TERMINADO] MC-171 — Devolver la lista completa cuando el prefijo esté vacío.
+- [TERMINADO] MC-172 — Permitir filtrado opcional por prefijo en el servidor.
+- [TERMINADO] MC-173 — Mantener el filtrado local del IDE como ruta principal.
+- [TERMINADO] MC-174 — Hacer estable el orden del resultado entre solicitudes equivalentes.
+- [TERMINADO] MC-175 — Hacer estable el texto de cada firma legible.
+- [TERMINADO] MC-176 — Evitar rutas sintéticas dentro del resultado.
+- [TERMINADO] MC-177 — Evitar punteros o referencias a modelos internos dentro del resultado.
+- [TERMINADO] MC-178 — Evitar dependencia del resultado respecto al lifetime del snapshot.
+- [TERMINADO] MC-179 — Copiar únicamente los datos públicos necesarios al resultado.
+- [TERMINADO] MC-180 — Versionar el contrato binario de tooling cuando corresponda.
+- [TERMINADO] TANDA 10 — 20/20 ítems terminados.
+- [TERMINADO] MC-181 — Detectar el receptor válido sin overlay cuando el árbol esté completo.
+- [TERMINADO] MC-182 — Detectar el miembro parcial sin overlay cuando el árbol lo conserve.
+- [TERMINADO] MC-183 — Detectar cuándo `x.` requiere recuperación focal.
+- [TERMINADO] MC-184 — Detectar cuándo `x?.` requiere recuperación focal.
+- [TERMINADO] MC-185 — Limitar la recuperación al documento activo.
+- [TERMINADO] MC-186 — Limitar la recuperación al sitio de completion.
+- [TERMINADO] MC-187 — Generar un placeholder ausente del ámbito visible.
+- [TERMINADO] MC-188 — Verificar que el placeholder no colisione con un miembro real.
+- [TERMINADO] MC-189 — Insertar un solo placeholder en el overlay.
+- [TERMINADO] MC-190 — Evitar repetir el receptor una vez por candidato.
+- [TERMINADO] MC-191 — Evitar construir una tupla de probes.
+- [TERMINADO] MC-192 — Evitar modificar el estado de ownership del receptor.
+- [TERMINADO] MC-193 — Evitar modificar el estado de borrow del receptor.
+- [TERMINADO] MC-194 — Evitar modificar el estado de move del receptor.
+- [TERMINADO] MC-195 — Evitar modificar el flujo de control del método analizado.
+- [TERMINADO] MC-196 — Ejecutar como máximo un overlay por solicitud.
+- [TERMINADO] MC-197 — Cancelar el overlay durante parseo cuando la solicitud quede obsoleta.
+- [TERMINADO] MC-198 — Cancelar el overlay durante semántica cuando la solicitud quede obsoleta.
+- [TERMINADO] MC-199 — Descartar todos los artefactos temporales del overlay.
+- [TERMINADO] MC-200 — Devolver `Incomplete` si la recuperación focal no produce un receptor confiable.
+- [TERMINADO] TANDA 11 — 20/20 ítems terminados.
+- [TERMINADO] MC-201 — Añadir la consulta pública de member completion a LanguageService.
+- [TERMINADO] MC-202 — Validar la solicitud antes de adquirir un snapshot.
+- [TERMINADO] MC-203 — Adquirir el snapshot exacto del documento solicitado.
+- [TERMINADO] MC-204 — Rechazar el snapshot cuando la versión no coincida.
+- [TERMINADO] MC-205 — Preparar módulos precompilados antes del análisis semántico.
+- [TERMINADO] MC-206 — Reutilizar la compilación vigente cuando el texto esté completo.
+- [TERMINADO] MC-207 — Ejecutar la recuperación focal sólo cuando sea necesaria.
+- [TERMINADO] MC-208 — Resolver el receptor mediante la consulta compartida del Frontend.
+- [TERMINADO] MC-209 — Enumerar miembros mediante la consulta compartida del Frontend.
+- [TERMINADO] MC-210 — Transformar miembros internos en resultados públicos de tooling.
+- [TERMINADO] MC-211 — Comprobar cancelación antes de resolver el receptor.
+- [TERMINADO] MC-212 — Comprobar cancelación durante la enumeración.
+- [TERMINADO] MC-213 — Comprobar cancelación antes de publicar el resultado.
+- [TERMINADO] MC-214 — Evitar modificar `semanticIndex` durante member completion.
+- [TERMINADO] MC-215 — Evitar indexar símbolos precompilados en consultas existentes.
+- [TERMINADO] MC-216 — Evitar publicar `.nsmeta.public-api.ns` como documento real.
+- [TERMINADO] MC-217 — Evitar publicar diagnósticos sintéticos del overlay.
+- [TERMINADO] MC-218 — Evitar conservar el overlay como `currentCompilation`.
+- [TERMINADO] MC-219 — Registrar tiempos internos sin escribir trazas por función.
+- [TERMINADO] MC-220 — Devolver el resultado sin depender de una compilación posterior.
+- [PENDIENTE] TANDA 12 — 0/20 ítems terminados — INTEGRACIÓN EXTERNA DE `nsc-lsp`; fuera del checkout autorizado `A:\nsc-devel`.
+- [PENDIENTE] MC-221 — Definir el método LSP para member completion semántico.
+- [PENDIENTE] MC-222 — Mapear la URI LSP a la ruta canónica del documento.
+- [PENDIENTE] MC-223 — Mapear la posición LSP a la posición interna exacta.
+- [PENDIENTE] MC-224 — Enviar la versión exacta del documento al LanguageService.
+- [PENDIENTE] MC-225 — Enviar el prefijo opcional al LanguageService.
+- [PENDIENTE] MC-226 — Enviar el ID de cancelación al trabajo semántico.
+- [PENDIENTE] MC-227 — Registrar solicitudes activas por ID LSP.
+- [PENDIENTE] MC-228 — Implementar la recepción de `$/cancelRequest`.
+- [PENDIENTE] MC-229 — Cancelar el trabajo asociado al ID recibido.
+- [PENDIENTE] MC-230 — Cancelar solicitudes anteriores al recibir `didChange`.
+- [PENDIENTE] MC-231 — Priorizar completion sobre análisis de fondo pendiente.
+- [PENDIENTE] MC-232 — Interrumpir análisis de fondo obsoleto del mismo documento.
+- [PENDIENTE] MC-233 — Evitar una espera global mediante `waitForIdle`.
+- [PENDIENTE] MC-234 — Ejecutar completion fuera del loop de lectura LSP.
+- [PENDIENTE] MC-235 — Serializar respuestas mediante el sink sincronizado del servidor.
+- [PENDIENTE] MC-236 — Descartar respuestas cuya versión ya no sea vigente.
+- [PENDIENTE] MC-237 — Descartar respuestas cuya solicitud ya esté cancelada.
+- [PENDIENTE] MC-238 — Retirar el trabajo terminado de la tabla de solicitudes activas.
+- [PENDIENTE] MC-239 — Anunciar `experimental.memberCompletionProvider` en `initialize`.
+- [PENDIENTE] MC-240 — Mantener sin cambios las capacidades LSP existentes.
+- [PENDIENTE] TANDA 13 — 0/20 ítems terminados — INTEGRACIÓN EXTERNA DEL IDE; asignada al agente del IDE y fuera del checkout autorizado `A:\nsc-devel`.
+- [PENDIENTE] MC-241 — Detectar `.` como disparador de completion en el IDE.
+- [PENDIENTE] MC-242 — Detectar `?.` como disparador de completion en el IDE.
+- [PENDIENTE] MC-243 — Detectar Ctrl+Espacio como disparador explícito en el IDE.
+- [PENDIENTE] MC-244 — Volver a solicitar completion al cambiar el documento.
+- [PENDIENTE] MC-245 — Incluir la versión vigente del documento en cada solicitud.
+- [PENDIENTE] MC-246 — Incluir la posición exacta del operador en cada solicitud.
+- [PENDIENTE] MC-247 — Incluir el prefijo actual cuando exista.
+- [PENDIENTE] MC-248 — Cancelar la solicitud anterior al escribir otra tecla.
+- [PENDIENTE] MC-249 — Incrementar la generación local con cada solicitud.
+- [PENDIENTE] MC-250 — Descartar respuestas de una generación anterior.
+- [PENDIENTE] MC-251 — Descartar respuestas de una versión anterior.
+- [PENDIENTE] MC-252 — Reintentar en la siguiente tecla cuando `isIncomplete` sea verdadero.
+- [PENDIENTE] MC-253 — Mostrar lista vacía definitiva cuando `isIncomplete` sea falso.
+- [PENDIENTE] MC-254 — Filtrar entradas localmente con el prefijo actual.
+- [PENDIENTE] MC-255 — Mostrar la clase de cada entrada.
+- [PENDIENTE] MC-256 — Mostrar el tipo declarador de cada entrada.
+- [PENDIENTE] MC-257 — Mostrar la firma de cada overload.
+- [PENDIENTE] MC-258 — Mostrar la documentación disponible de cada entrada.
+- [PENDIENTE] MC-259 — Activar la ruta nueva sólo cuando el servidor anuncie la capacidad.
+- [PENDIENTE] MC-260 — Retirar la aproximación del commit `b7d08cd` después de validar la ruta nueva.
+- [TERMINADO] TANDA 14 — EXCLUIDA DEL ALCANCE — 20/20 ítems excluidos.
+- [TERMINADO] MC-261 — EXCLUIDO DEL ALCANCE — Prueba focal para `Primitives2D` cargado desde SaruDX NSMETA.
+- [TERMINADO] MC-262 — EXCLUIDO DEL ALCANCE — Prueba focal para un tipo de NativeSharp.Core precompilado.
+- [TERMINADO] MC-263 — EXCLUIDO DEL ALCANCE — Prueba focal para un tipo de bindings precompilados.
+- [TERMINADO] MC-264 — EXCLUIDO DEL ALCANCE — Prueba focal para campos de instancia.
+- [TERMINADO] MC-265 — EXCLUIDO DEL ALCANCE — Prueba focal para campos estáticos.
+- [TERMINADO] MC-266 — EXCLUIDO DEL ALCANCE — Prueba focal para propiedades.
+- [TERMINADO] MC-267 — EXCLUIDO DEL ALCANCE — Prueba focal para eventos.
+- [TERMINADO] MC-268 — EXCLUIDO DEL ALCANCE — Prueba focal para constantes.
+- [TERMINADO] MC-269 — EXCLUIDO DEL ALCANCE — Prueba focal para miembros de enum.
+- [TERMINADO] MC-270 — EXCLUIDO DEL ALCANCE — Prueba focal para métodos con overloads.
+- [TERMINADO] MC-271 — EXCLUIDO DEL ALCANCE — Prueba focal para herencia de clases.
+- [TERMINADO] MC-272 — EXCLUIDO DEL ALCANCE — Prueba focal para miembros efectivos de interfaces.
+- [TERMINADO] MC-273 — EXCLUIDO DEL ALCANCE — Prueba focal para métodos de extensión.
+- [TERMINADO] MC-274 — EXCLUIDO DEL ALCANCE — Prueba focal para tipos anidados.
+- [TERMINADO] MC-275 — EXCLUIDO DEL ALCANCE — Prueba focal para namespaces hijos.
+- [TERMINADO] MC-276 — EXCLUIDO DEL ALCANCE — Prueba focal para funciones de namespace.
+- [TERMINADO] MC-277 — EXCLUIDO DEL ALCANCE — Prueba focal para arrays y `Length`.
+- [TERMINADO] MC-278 — EXCLUIDO DEL ALCANCE — Prueba focal para la fachada de strings.
+- [TERMINADO] MC-279 — EXCLUIDO DEL ALCANCE — Prueba focal para spans e iteradores.
+- [TERMINADO] MC-280 — EXCLUIDO DEL ALCANCE — Prueba focal para sustitución y restricciones genéricas.
+- [TERMINADO] TANDA 15 — EXCLUIDA DEL ALCANCE — 20/20 ítems excluidos.
+- [TERMINADO] MC-281 — EXCLUIDO DEL ALCANCE — Prueba focal para `.` con prefijo vacío.
+- [TERMINADO] MC-282 — EXCLUIDO DEL ALCANCE — Prueba focal para `?.` con prefijo vacío.
+- [TERMINADO] MC-283 — EXCLUIDO DEL ALCANCE — Prueba focal para identificador parcial.
+- [TERMINADO] MC-284 — EXCLUIDO DEL ALCANCE — Prueba focal para Ctrl+Espacio.
+- [TERMINADO] MC-285 — EXCLUIDO DEL ALCANCE — Prueba focal para `x.` con texto incompleto.
+- [TERMINADO] MC-286 — EXCLUIDO DEL ALCANCE — Prueba focal para un error posterior al receptor.
+- [TERMINADO] MC-287 — EXCLUIDO DEL ALCANCE — Prueba focal para un error no relacionado en otro archivo.
+- [TERMINADO] MC-288 — EXCLUIDO DEL ALCANCE — Prueba focal para una versión de documento obsoleta.
+- [TERMINADO] MC-289 — EXCLUIDO DEL ALCANCE — Prueba focal para `$/cancelRequest`.
+- [TERMINADO] MC-290 — EXCLUIDO DEL ALCANCE — Prueba focal para cancelación por `didChange`.
+- [TERMINADO] MC-291 — EXCLUIDO DEL ALCANCE — Prueba focal para una respuesta tardía descartada.
+- [TERMINADO] MC-292 — EXCLUIDO DEL ALCANCE — Prueba focal para cero miembros accesibles real.
+- [TERMINADO] MC-293 — EXCLUIDO DEL ALCANCE — Prueba focal para resultado semántico incompleto.
+- [TERMINADO] MC-294 — EXCLUIDO DEL ALCANCE — Prueba focal contra navegación a `.public-api.ns`.
+- [TERMINADO] MC-295 — EXCLUIDO DEL ALCANCE — Prueba focal de invariancia de `workspaceSymbols`.
+- [TERMINADO] MC-296 — EXCLUIDO DEL ALCANCE — Prueba focal de invariancia de `documentSymbols`.
+- [TERMINADO] MC-297 — EXCLUIDO DEL ALCANCE — Prueba focal de invariancia de hover y go-to-definition.
+- [TERMINADO] MC-298 — EXCLUIDO DEL ALCANCE — Prueba focal de invariancia de referencias y rename.
+- [TERMINADO] MC-299 — EXCLUIDO DEL ALCANCE — Medición de latencia caliente con un proyecto real que use SaruDX.
+- [TERMINADO] MC-300 — EXCLUIDO DEL ALCANCE — Matriz requisito-archivo-símbolo-prueba-evidencia.

@@ -34,6 +34,9 @@ public:
         std::size_t derivedTypeOrdinal,
         std::size_t targetBaseTypeOrdinal,
         bool includeIdentity = false) const noexcept;
+    bool protectedNestedTypeIsAccessibleFrom(
+        std::size_t typeOrdinal,
+        std::span<const std::size_t> enclosingTypeOrdinals) const noexcept;
     std::optional<std::size_t> inheritanceDistance(
         std::size_t derivedTypeOrdinal,
         std::size_t targetBaseTypeOrdinal) const noexcept;

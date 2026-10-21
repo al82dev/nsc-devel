@@ -94,6 +94,46 @@ bool ProjectNameLookup::typeIsVisibleTo(
     return true;
 }
 
+bool ProjectNameLookup::typeIsVisibleFromProject(
+    std::size_t accessingProjectOrdinal,
+    std::size_t typeOrdinal) const
+{
+    if (typeOrdinal >= namedTypes_.size()) return false;
+    if (namedTypes_[typeOrdinal].projectOrdinal == accessingProjectOrdinal) return true;
+    return typeIsVisibleTo(accessingProjectOrdinal, typeOrdinal);
+}
+
+bool ProjectNameLookup::nestedTypeIsVisibleFrom(
+    std::size_t typeOrdinal,
+    std::span<const std::size_t> enclosingTypeOrdinals) const noexcept
+{
+    // Se recorre la cadena de contenedores hacia fuera. Basta con que UNO de ellos declare el
+    // eslabon como `private` y no este entre los contenedores lexicos del sitio de uso para que
+    // el nombre no se vea: `Outer.Privada.Item` no es alcanzable desde fuera de `Outer` aunque
+    // `Item` sea public dentro de `Privada`.
+    std::optional<std::size_t> current = typeOrdinal;
+    while (current.has_value() && *current < namedTypes_.size())
+    {
+        const NamedTypeDeclaration& type = namedTypes_[*current];
+        const std::optional<std::size_t> container = type.containingTypeOrdinal;
+        if (!container.has_value()) return true;
+        if (type.accessibility == NamedTypeAccessibility::Private &&
+            std::ranges::find(enclosingTypeOrdinals, *container) ==
+                enclosingTypeOrdinals.end())
+        {
+            return false;
+        }
+        // `Protected` NO se decide aqui, y no por comodidad: la pregunta es «el tipo que escribe
+        // esto deriva del contenedor?», y el modelo de herencia se construye DESPUES de resolver
+        // nombres. Responder aqui obligaria a una de dos mentiras: tratarlo como private
+        // --rechazando el uso legitimo desde una derivada-- o como internal, que deja pasar el
+        // modulo entero. Se acepta, se guarda la cadena del sitio en el binding, y lo comprueba
+        // ProjectInheritanceModel, que es la primera fase que tiene la respuesta.
+        current = container;
+    }
+    return true;
+}
+
 std::optional<std::size_t> ProjectNameLookup::findTypeInModule(
     std::size_t moduleOrdinal,
     const std::string& dottedName) const
@@ -124,39 +164,7 @@ bool ProjectNameLookup::nestedTypeIsVisible(
     std::size_t typeOrdinal,
     const LookupEnvironment& environment) const
 {
-    // Se recorre la cadena de contenedores hacia fuera. Basta con que UNO de ellos declare el
-    // eslabon como `private` y no este entre los contenedores lexicos del sitio de uso para que
-    // el nombre no se vea: `Outer.Privada.Item` no es alcanzable desde fuera de `Outer` aunque
-    // `Item` sea public dentro de `Privada`.
-    std::optional<std::size_t> current = typeOrdinal;
-    while (current.has_value() && *current < namedTypes_.size())
-    {
-        const NamedTypeDeclaration& type = namedTypes_[*current];
-        const std::optional<std::size_t> container = type.containingTypeOrdinal;
-        if (!container.has_value())
-        {
-            return true;
-        }
-        if (type.accessibility == NamedTypeAccessibility::Private)
-        {
-            const bool insideContainer = std::find(
-                environment.enclosingTypeOrdinals.begin(),
-                environment.enclosingTypeOrdinals.end(),
-                *container) != environment.enclosingTypeOrdinals.end();
-            if (!insideContainer)
-            {
-                return false;
-            }
-        }
-        // `Protected` NO se decide aqui, y no por comodidad: la pregunta es «el tipo que escribe
-        // esto deriva del contenedor?», y el modelo de herencia se construye DESPUES de resolver
-        // nombres. Responder aqui obligaria a una de dos mentiras: tratarlo como private
-        // --rechazando el uso legitimo desde una derivada-- o como internal, que deja pasar el
-        // modulo entero. Se acepta, se guarda la cadena del sitio en el binding, y lo comprueba
-        // ProjectInheritanceModel, que es la primera fase que tiene la respuesta.
-        current = container;
-    }
-    return true;
+    return nestedTypeIsVisibleFrom(typeOrdinal, environment.enclosingTypeOrdinals);
 }
 
 std::vector<std::size_t> ProjectNameLookup::findExactTypeCandidates(

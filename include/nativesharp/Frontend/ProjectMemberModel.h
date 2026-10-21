@@ -75,6 +75,8 @@ public:
     std::span<const std::size_t> findMembers(
         std::size_t typeOrdinal,
         std::string_view name) const noexcept;
+    std::optional<std::size_t> typeOrdinalForTypeKey(
+        std::string_view typeKey) const noexcept;
     bool isBuilt() const noexcept;
     std::string canonicalTypeKey(
         const ast::TypeSyntax* syntax,

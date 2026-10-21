@@ -92,6 +92,12 @@ public:
     const ExpressionTypeNameBinding* expressionTypeBinding(
         const ast::AstNode* expression) const noexcept;
     std::span<const ExpressionTypeNameBinding> expressionTypeBindings() const noexcept;
+    bool typeIsVisibleFromProject(
+        std::size_t accessingProjectOrdinal,
+        std::size_t typeOrdinal) const;
+    bool nestedTypeIsVisibleFrom(
+        std::size_t typeOrdinal,
+        std::span<const std::size_t> enclosingTypeOrdinals) const noexcept;
     bool isBuilt() const noexcept;
 
 private:

@@ -21,6 +21,8 @@ public:
     bool available() const noexcept;
     std::uint64_t generation() const noexcept;
     const std::filesystem::path& projectPath() const noexcept;
+    std::optional<std::int64_t> analyzedDocumentVersion(
+        const std::filesystem::path& path) const;
     bool currentAnalysisSucceeded() const noexcept;
     bool semanticModelAvailable() const noexcept;
     bool usedPreviousSemanticModel() const noexcept;
@@ -41,6 +43,8 @@ public:
         const std::filesystem::path& path,
         std::string_view prefix,
         std::size_t limit = 100) const;
+    MemberCompletionResult memberCompletions(
+        const MemberCompletionRequest& request) const;
     std::optional<SignatureHelp> signatureHelp(
         const std::filesystem::path& path,
         TextPosition position) const;

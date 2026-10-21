@@ -7,6 +7,11 @@
 
 namespace nativesharp::language_service
 {
+bool MemberCompletionResult::isIncomplete() const noexcept
+{
+    return status != MemberCompletionStatus::Complete;
+}
+
 namespace
 {
 DecodedCodePoint decodeUtf8(std::string_view text, std::size_t offset) noexcept

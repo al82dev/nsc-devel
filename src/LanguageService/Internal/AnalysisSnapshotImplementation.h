@@ -1,12 +1,14 @@
 #pragma once
 
 #include "SemanticIndex.h"
+#include "nativesharp/Compilation/ProjectLoadOptions.h"
 #include "nativesharp/LanguageService/AnalysisSnapshot.h"
 
 #include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace nativesharp::language_service
@@ -15,7 +17,10 @@ class AnalysisSnapshot::Implementation final
 {
 public:
     std::uint64_t generation = 0;
+    std::uint64_t analysisNanoseconds = 0;
     std::filesystem::path projectPath;
+    compilation::ProjectLoadOptions projectLoadOptions;
+    std::unordered_map<std::string, std::int64_t> documentVersions;
     bool currentAnalysisSucceeded = false;
     bool usedPreviousSemanticModel = false;
     bool cancelled = false;

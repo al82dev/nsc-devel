@@ -7,6 +7,7 @@
 #include "nativesharp/Frontend/NamespaceStateSymbol.h"
 #include "nativesharp/Frontend/NamespaceFunctionReferenceBinding.h"
 #include "nativesharp/Frontend/NamespaceStateReferenceBinding.h"
+#include "nativesharp/Frontend/NamespaceCompletionScope.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 
@@ -72,6 +73,7 @@ public:
     const NamespaceStateReferenceBinding* stateReferenceBinding(
         const ast::AstNode* expressionSyntax) const noexcept;
     std::span<const NamespaceStateReferenceBinding> stateReferenceBindings() const noexcept;
+    std::span<const NamespaceCompletionScope> completionScopes() const noexcept;
     bool isBuilt() const noexcept;
 
 private:
@@ -291,6 +293,7 @@ private:
     std::unordered_map<std::uint64_t, std::size_t> extensionBindingBySyntax_;
     std::vector<NamespaceStateReferenceBinding> stateReferenceBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> stateReferenceBindingBySyntax_;
+    std::vector<NamespaceCompletionScope> completionScopes_;
     bool built_ = false;
 };
 }

@@ -1,8 +1,13 @@
 #include "nativesharp/LanguageService/LanguageService.h"
 
 #include "nativesharp/Basic/Version.h"
+#include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
+#include "nativesharp/Compilation/ProjectGraphLoader.h"
+#include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Lexer/Keyword.h"
@@ -13,11 +18,14 @@
 #include "Internal/LineBraceSummary.h"
 #include "Internal/AnalysisSnapshotImplementation.h"
 #include "Internal/Implementation.h"
+#include "Internal/MemberCompletionAnalysis.h"
+#include "Internal/MemberCompletionResolver.h"
 #include "Internal/SemanticIndex.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -25,6 +33,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::language_service
 {
@@ -105,6 +114,105 @@ bool validRenameIdentifier(std::string_view name)
             return part(static_cast<unsigned char>(value));
         })) return false;
     return lexer::keywordKind(name) == lexer::TokenKind::Identifier;
+}
+
+std::optional<std::string> absolutePathKey(const std::filesystem::path& path)
+{
+    if (path.empty()) return std::nullopt;
+    std::error_code error;
+    std::filesystem::path absolute = std::filesystem::absolute(path, error);
+    if (error) return std::nullopt;
+    return pathKey(absolute);
+}
+
+bool completionIdentifierPart(char value) noexcept
+{
+    const unsigned char byte = static_cast<unsigned char>(value);
+    return std::isalnum(byte) != 0 || value == '_';
+}
+
+std::unordered_set<std::string> completionReservedNames(
+    const frontend::ProjectCompilation* compilation)
+{
+    std::unordered_set<std::string> result;
+    if (compilation == nullptr) return result;
+    if (const frontend::ProjectMemberModel* members = compilation->memberModel())
+    {
+        for (const frontend::ClassMemberSymbol& member : members->members())
+        {
+            result.insert(member.name);
+            if (!member.associatedName.empty()) result.insert(member.associatedName);
+        }
+    }
+    if (const frontend::ProjectNamespaceFunctionModel* functions =
+            compilation->namespaceFunctionModel())
+    {
+        for (const frontend::NamespaceFunctionSymbol& function : functions->functions())
+            result.insert(function.name);
+        for (const frontend::NamespaceStateSymbol& state : functions->states())
+            result.insert(state.name);
+    }
+    if (const frontend::ProjectNameLookup* names = compilation->nameLookup())
+    {
+        for (const frontend::NamedTypeDeclaration& type : names->namedTypes())
+            result.insert(type.identity.name());
+        for (const auto& module : names->modules())
+        {
+            if (module == nullptr) continue;
+            std::vector<const frontend::NamespaceSymbol*> pending = {
+                &module->globalNamespace()};
+            for (std::size_t index = 0; index < pending.size(); ++index)
+            {
+                for (const auto& child : pending[index]->children())
+                {
+                    if (child == nullptr) continue;
+                    result.insert(std::string(child->name()));
+                    pending.push_back(child.get());
+                }
+            }
+        }
+    }
+    return result;
+}
+bool makeMemberCompletionOverlay(
+    std::string_view text,
+    const MemberCompletionRequest& request,
+    const std::unordered_set<std::string>& reservedNames,
+    std::string& overlay)
+{
+    const auto operatorOffset = byteOffsetForUtf16Position(text, request.operatorPosition);
+    const auto caretOffset = byteOffsetForUtf16Position(text, request.caretPosition);
+    if (!operatorOffset.has_value() || !caretOffset.has_value() ||
+        *operatorOffset >= text.size() || *caretOffset > text.size()) return false;
+    std::size_t dotOffset = *operatorOffset;
+    if (text[dotOffset] == '?' && dotOffset + 1 < text.size() && text[dotOffset + 1] == '.')
+        ++dotOffset;
+    if (text[dotOffset] != '.' || *caretOffset < dotOffset + 1) return false;
+    for (std::size_t index = dotOffset + 1; index < *caretOffset; ++index)
+        if (!completionIdentifierPart(text[index])) return false;
+    std::string placeholder = "__nsc_member_completion_placeholder";
+    while (text.find(placeholder) != std::string_view::npos ||
+           reservedNames.contains(placeholder)) placeholder.push_back('_');
+    overlay = std::string(text);
+    overlay.insert(*caretOffset, placeholder);
+    return true;
+}
+
+std::uint64_t completionClockNanoseconds() noexcept
+{
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+MemberCompletionResult finishMemberCompletionTiming(
+    MemberCompletionResult result,
+    std::uint64_t analysisNanoseconds,
+    std::uint64_t resolutionStarted)
+{
+    result.analysisNanoseconds = analysisNanoseconds;
+    result.resolutionNanoseconds = completionClockNanoseconds() - resolutionStarted;
+    return result;
 }
 
 std::string indentation(std::uint32_t depth, DocumentFormattingOptions options)
@@ -610,6 +718,23 @@ const std::filesystem::path& AnalysisSnapshot::projectPath() const noexcept
     return implementation_ != nullptr ? implementation_->projectPath : empty;
 }
 
+std::optional<std::int64_t> AnalysisSnapshot::analyzedDocumentVersion(
+    const std::filesystem::path& path) const
+{
+    if (implementation_ == nullptr)
+    {
+        return std::nullopt;
+    }
+    const auto key = absolutePathKey(path);
+    if (!key.has_value()) return std::nullopt;
+    const auto found = implementation_->documentVersions.find(*key);
+    if (found == implementation_->documentVersions.end())
+    {
+        return std::nullopt;
+    }
+    return found->second;
+}
+
 bool AnalysisSnapshot::currentAnalysisSucceeded() const noexcept
 {
     return implementation_ != nullptr && implementation_->currentAnalysisSucceeded;
@@ -747,6 +872,55 @@ std::vector<CompletionItem> AnalysisSnapshot::completions(
         return left.label < right.label || (left.label == right.label && left.detail < right.detail);
     });
     return result;
+}
+
+MemberCompletionResult AnalysisSnapshot::memberCompletions(
+    const MemberCompletionRequest& request) const
+{
+    const std::uint64_t resolutionStarted = completionClockNanoseconds();
+    MemberCompletionResult result;
+    if (request.cancellationCheck && request.cancellationCheck())
+    {
+        result.status = MemberCompletionStatus::Cancelled;
+        return finishMemberCompletionTiming(std::move(result), 0, resolutionStarted);
+    }
+    if (implementation_ == nullptr)
+    {
+        result.status = MemberCompletionStatus::Unavailable;
+        return finishMemberCompletionTiming(std::move(result), 0, resolutionStarted);
+    }
+    const auto projectKey = absolutePathKey(request.projectPath);
+    const auto snapshotProjectKey = absolutePathKey(implementation_->projectPath);
+    const auto documentKey = absolutePathKey(request.documentPath);
+    if (!projectKey.has_value() || !snapshotProjectKey.has_value() ||
+        *projectKey != *snapshotProjectKey || !documentKey.has_value())
+    {
+        result.status = MemberCompletionStatus::Unavailable;
+        return finishMemberCompletionTiming(
+            std::move(result), implementation_->analysisNanoseconds, resolutionStarted);
+    }
+    const auto version = implementation_->documentVersions.find(*documentKey);
+    if (version == implementation_->documentVersions.end() ||
+        version->second != request.documentVersion)
+    {
+        result.status = MemberCompletionStatus::StaleDocument;
+        return finishMemberCompletionTiming(
+            std::move(result), implementation_->analysisNanoseconds, resolutionStarted);
+    }
+    if (implementation_->currentCompilation == nullptr)
+    {
+        result.status = MemberCompletionStatus::Incomplete;
+        return finishMemberCompletionTiming(
+            std::move(result), implementation_->analysisNanoseconds, resolutionStarted);
+    }
+    result = MemberCompletionResolver(*implementation_->currentCompilation, request).resolve();
+    if (request.cancellationCheck && request.cancellationCheck())
+    {
+        result.entries.clear();
+        result.status = MemberCompletionStatus::Cancelled;
+    }
+    return finishMemberCompletionTiming(
+        std::move(result), implementation_->analysisNanoseconds, resolutionStarted);
 }
 
 std::optional<SignatureHelp> AnalysisSnapshot::signatureHelp(
@@ -1057,12 +1231,14 @@ AnalysisSnapshot LanguageService::analyzeProject(
     std::size_t jobs,
     std::function<bool()> cancellationCheck)
 {
+    const std::uint64_t analysisStarted = completionClockNanoseconds();
     auto result = std::make_shared<AnalysisSnapshot::Implementation>();
     result->generation = implementation_->nextGeneration.fetch_add(1, std::memory_order_relaxed);
     const auto keyedProject = Implementation::documentKey(project);
     if (!keyedProject.has_value())
     {
         result->error = "project path is invalid";
+        result->analysisNanoseconds = completionClockNanoseconds() - analysisStarted;
         return AnalysisSnapshot(std::move(result));
     }
     result->projectPath = keyedProject->second;
@@ -1074,11 +1250,25 @@ AnalysisSnapshot LanguageService::analyzeProject(
         for (const auto& [key, document] : implementation_->documents)
         {
             overlays.emplace(key, document.text);
+            result->documentVersions.emplace(key, document.version);
         }
     }
 
     auto compilation = std::make_shared<frontend::ProjectCompilation>();
-    compilation->setCompilationJobs(std::max<std::size_t>(jobs, 1));
+    const std::size_t effectiveJobs = std::max<std::size_t>(jobs, 1);
+    const ::nativesharp::compilation::ProjectLoadOptions loadOptions;
+    result->projectLoadOptions = loadOptions;
+    ::nativesharp::compilation::ProjectLoader projectLoader;
+    ::nativesharp::compilation::ProjectGraphLoader graphLoader(
+        effectiveJobs,
+        [&projectLoader, loadOptions](
+            const std::filesystem::path& path,
+            std::string& loadError)
+        {
+            return projectLoader.load(path, loadOptions, loadError);
+        });
+    compilation->setCompilationJobs(effectiveJobs);
+    compilation->setProjectLoadOptions(loadOptions);
     compilation->setCancellationCheck(cancellationCheck);
     compilation->setSourceBufferProvider(
         [overlays = std::move(overlays)](const std::filesystem::path& path)
@@ -1090,9 +1280,15 @@ AnalysisSnapshot LanguageService::analyzeProject(
         });
 
     result->currentCompilation = compilation;
-    result->currentAnalysisSucceeded =
-        compilation->compileProjectMethodBodies(result->projectPath, result->error);
+    std::optional<::nativesharp::compilation::ProjectGraph> graph =
+        graphLoader.load(result->projectPath, result->error);
+    result->currentAnalysisSucceeded = graph.has_value() &&
+        ::nativesharp::compilation::preparePrecompiledProject(
+            std::move(*graph), loadOptions, *compilation, result->error) &&
+        compilation->compileProjectMethodBodies(
+            result->projectPath, result->error);
     result->cancelled = cancellationCheck && cancellationCheck();
+    result->analysisNanoseconds = completionClockNanoseconds() - analysisStarted;
     for (const diagnostics::Diagnostic& diagnostic : compilation->diagnostics().diagnostics())
     {
         if (auto converted = makeLanguageDiagnostic(diagnostic, compilation->sourceManager()))
@@ -1117,5 +1313,106 @@ AnalysisSnapshot LanguageService::analyzeProject(
         }
     }
     return AnalysisSnapshot(std::move(result));
+}
+
+MemberCompletionResult LanguageService::memberCompletions(
+    const MemberCompletionRequest& request,
+    std::size_t jobs)
+{
+    const std::uint64_t resolutionStarted = completionClockNanoseconds();
+    MemberCompletionResult result;
+    if (request.cancellationCheck && request.cancellationCheck())
+    {
+        result.status = MemberCompletionStatus::Cancelled;
+        return finishMemberCompletionTiming(std::move(result), 0, resolutionStarted);
+    }
+    AnalysisSnapshot currentSnapshot = analyzeProject(
+        request.projectPath, jobs, request.cancellationCheck);
+    result = currentSnapshot.memberCompletions(request);
+    if (result.status != MemberCompletionStatus::Incomplete) return result;
+    const std::uint64_t currentAnalysisNanoseconds = result.analysisNanoseconds;
+    const std::unordered_set<std::string> reservedNames = completionReservedNames(
+        currentSnapshot.implementation_ != nullptr
+            ? currentSnapshot.implementation_->currentCompilation.get()
+            : nullptr);
+    result = {};
+    const auto project = Implementation::documentKey(request.projectPath);
+    const auto document = Implementation::documentKey(request.documentPath);
+    if (!project.has_value() || !document.has_value())
+    {
+        result.status = MemberCompletionStatus::Unavailable;
+        return finishMemberCompletionTiming(
+            std::move(result), currentAnalysisNanoseconds, resolutionStarted);
+    }
+    std::unordered_map<std::string, std::string> overlays;
+    std::string activeText;
+    {
+        std::scoped_lock lock(implementation_->mutex);
+        const auto active = implementation_->documents.find(document->first);
+        if (active == implementation_->documents.end() ||
+            active->second.version != request.documentVersion)
+        {
+            result.status = MemberCompletionStatus::StaleDocument;
+            return finishMemberCompletionTiming(
+                std::move(result), currentAnalysisNanoseconds, resolutionStarted);
+        }
+        activeText = active->second.text;
+        for (const auto& [key, stored] : implementation_->documents)
+            overlays.emplace(key, stored.text);
+    }
+    const auto documentVersionIsCurrent = [&]
+    {
+        std::scoped_lock lock(implementation_->mutex);
+        const auto current = implementation_->documents.find(document->first);
+        return current != implementation_->documents.end() &&
+            current->second.version == request.documentVersion;
+    };
+    if (!makeMemberCompletionOverlay(
+            activeText, request, reservedNames, overlays[document->first]))
+    {
+        result.status = MemberCompletionStatus::InvalidPosition;
+        return finishMemberCompletionTiming(
+            std::move(result), currentAnalysisNanoseconds, resolutionStarted);
+    }
+    std::string error;
+    const std::uint64_t analysisStarted = completionClockNanoseconds();
+    std::shared_ptr<frontend::ProjectCompilation> compilation =
+        analyzeMemberCompletionOverlay(
+            project->second, std::move(overlays), jobs,
+            request.cancellationCheck, error);
+    const std::uint64_t analysisNanoseconds = currentAnalysisNanoseconds +
+        (completionClockNanoseconds() - analysisStarted);
+    if (request.cancellationCheck && request.cancellationCheck())
+    {
+        result.status = MemberCompletionStatus::Cancelled;
+        return finishMemberCompletionTiming(
+            std::move(result), analysisNanoseconds, resolutionStarted);
+    }
+    if (!documentVersionIsCurrent())
+    {
+        result.status = MemberCompletionStatus::StaleDocument;
+        return finishMemberCompletionTiming(
+            std::move(result), analysisNanoseconds, resolutionStarted);
+    }
+    if (compilation == nullptr)
+    {
+        result.status = MemberCompletionStatus::Incomplete;
+        return finishMemberCompletionTiming(
+            std::move(result), analysisNanoseconds, resolutionStarted);
+    }
+    const std::uint64_t resolverStarted = completionClockNanoseconds();
+    result = MemberCompletionResolver(*compilation, request).resolve();
+    if (request.cancellationCheck && request.cancellationCheck())
+    {
+        result.entries.clear();
+        result.status = MemberCompletionStatus::Cancelled;
+    }
+    else if (!documentVersionIsCurrent())
+    {
+        result.entries.clear();
+        result.status = MemberCompletionStatus::StaleDocument;
+    }
+    return finishMemberCompletionTiming(
+        std::move(result), analysisNanoseconds, resolverStarted);
 }
 }

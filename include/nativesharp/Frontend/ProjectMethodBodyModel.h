@@ -368,6 +368,9 @@ public:
     // in their exported closed types. HIR uses this exact set so an unbound body is never lowered.
     bool callableBodyAnalyzed(std::size_t memberOrdinal) const noexcept;
     bool namespaceFunctionBodyAnalyzed(std::size_t functionOrdinal) const noexcept;
+    bool aggregateAllowsSynthesizedMember(
+        std::string_view typeKey,
+        std::string_view memberName) const noexcept;
     std::span<const language::EscapeClass> parameterEscapeSummary(
         std::size_t callableOrdinal) const noexcept;
     const ProjectOwnershipFlowStatistics& ownershipFlowStatistics() const noexcept;
@@ -4647,9 +4650,6 @@ private:
     // tambien cubre los arreglos de tamanio fijo, y un `int[4] == int[4]` no es lo que este ID
     // define. La pregunta aqui es exactamente la que hace el camino de `Struct.Equals`.
     bool typeKeyIsStruct(std::string_view typeKey) const noexcept;
-    bool aggregateAllowsSynthesizedMember(
-        std::string_view typeKey,
-        std::string_view memberName) const noexcept;
     // NativeSharp 3.0 records synthesize field-wise operations only when every value nested in
     // the physical aggregate can honor the same contract. Equality/hash cannot tunnel through a
     // record that did not opt in, and Clone is a plain value copy so it cannot duplicate a

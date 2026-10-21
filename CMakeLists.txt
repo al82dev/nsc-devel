@@ -623,25 +623,50 @@ target_link_libraries(nsc_frontend PUBLIC nsc_target nsc_compilation)
 target_compile_features(nsc_frontend PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_frontend)
 
+add_library(nsc_precompiled STATIC
+    src/Compilation/PrecompiledProjectPreparation.cpp
+    src/Driver/PrecompiledSurface/ContractMaterialization.cpp
+    src/Driver/PrecompiledSurface/MetadataSourceMapping.cpp
+    src/Driver/PrecompiledSurface/PrecompiledSourceGeneration.cpp
+    src/Driver/PrecompiledSurface/PrecompiledSurfaceAdapters.cpp
+    src/Driver/PublicSurfaceBuilder.cpp
+    src/Driver/PublicSurfaceEmitter.cpp
+    src/Interop/Internal/ByteReader.cpp
+    src/Interop/Internal/ByteWriter.cpp
+    src/Interop/LibraryMetadata.cpp
+    src/Interop/LibraryMetadataCodec.cpp
+    src/Interop/LibraryMetadataConstruction.cpp
+    src/Interop/LibraryMetadataPayload.cpp
+    src/Interop/LibraryMetadataVerification.cpp
+    src/Interop/LibraryMetadataMerger.cpp)
+target_include_directories(nsc_precompiled PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(nsc_precompiled PUBLIC nsc_frontend PRIVATE nsc_basic)
+target_compile_features(nsc_precompiled PUBLIC cxx_std_20)
+nsc_enable_warnings(nsc_precompiled)
+
 add_library(nsc_language_service STATIC
     src/LanguageService/LanguageService.cpp
     src/LanguageService/Internal/Implementation.cpp
+    src/LanguageService/Internal/MemberCompletionAnalysis.cpp
+    src/LanguageService/Internal/MemberCompletionResolver.cpp
     src/LanguageService/ProtocolTypes.cpp)
 
 target_include_directories(nsc_language_service PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(nsc_language_service PUBLIC nsc_frontend PRIVATE nsc_basic)
+target_link_libraries(nsc_language_service PUBLIC nsc_frontend PRIVATE nsc_basic nsc_precompiled)
 target_compile_features(nsc_language_service PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_language_service)
 
 # Build-tree contract consumed by the separate A:\nsc-lsp repository. The language server links
 # the facade statically; only nsc-lsp.exe is installed in the final NativeSharp distribution.
 set_target_properties(nsc_language_service PROPERTIES EXPORT_NAME LanguageService)
+set_target_properties(nsc_precompiled PROPERTIES EXPORT_NAME Precompiled)
 set_target_properties(nsc_frontend PROPERTIES EXPORT_NAME Frontend)
 set_target_properties(nsc_target PROPERTIES EXPORT_NAME Target)
 set_target_properties(nsc_compilation PROPERTIES EXPORT_NAME Compilation)
 set_target_properties(nsc_basic PROPERTIES EXPORT_NAME Basic)
 export(TARGETS
     nsc_language_service
+    nsc_precompiled
     nsc_frontend
     nsc_target
     nsc_compilation
@@ -932,13 +957,7 @@ add_library(nsc_driver STATIC
     src/Driver/NumericContract.cpp
     src/Driver/PackageLifecycle.cpp
     src/Driver/PrecompiledModuleConfiguration.cpp
-    src/Driver/PrecompiledSurface/ContractMaterialization.cpp
-    src/Driver/PrecompiledSurface/MetadataSourceMapping.cpp
-    src/Driver/PrecompiledSurface/PrecompiledSourceGeneration.cpp
-    src/Driver/PrecompiledSurface/PrecompiledSurfaceAdapters.cpp
     src/Driver/ProjectCommands.cpp
-    src/Driver/PublicSurfaceBuilder.cpp
-    src/Driver/PublicSurfaceEmitter.cpp
     src/Driver/PromotionAct.cpp
     src/Driver/ReleaseCandidateFreeze.cpp
     src/Driver/RuntimeClosurePackaging.cpp
@@ -946,18 +965,10 @@ add_library(nsc_driver STATIC
     src/Interop/CHeaderGenerator.cpp
     src/Interop/LibraryCapabilityAudit.cpp
     src/Interop/LibraryAbiReport.cpp
-    src/Interop/LibraryApiDiff.cpp
-    src/Interop/Internal/ByteReader.cpp
-    src/Interop/Internal/ByteWriter.cpp
-    src/Interop/LibraryMetadata.cpp
-    src/Interop/LibraryMetadataCodec.cpp
-    src/Interop/LibraryMetadataConstruction.cpp
-    src/Interop/LibraryMetadataPayload.cpp
-    src/Interop/LibraryMetadataVerification.cpp
-    src/Interop/LibraryMetadataMerger.cpp)
+    src/Interop/LibraryApiDiff.cpp)
 
 target_include_directories(nsc_driver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(nsc_driver PUBLIC nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target nsc_basic)
+target_link_libraries(nsc_driver PUBLIC nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target nsc_basic nsc_precompiled)
 target_compile_features(nsc_driver PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_driver)
 

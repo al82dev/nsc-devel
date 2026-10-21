@@ -233,6 +233,14 @@ bool ProjectInheritanceModel::isDerivedFrom(
     return false;
 }
 
+bool ProjectInheritanceModel::protectedNestedTypeIsAccessibleFrom(
+    std::size_t typeOrdinal,
+    std::span<const std::size_t> enclosingTypeOrdinals) const noexcept
+{
+    return !firstUnreachableProtectedLink(
+        typeOrdinal, enclosingTypeOrdinals).has_value();
+}
+
 std::optional<std::size_t> ProjectInheritanceModel::inheritanceDistance(
     std::size_t derivedTypeOrdinal,
     std::size_t targetBaseTypeOrdinal) const noexcept
