@@ -107,16 +107,6 @@ std::span<const std::size_t> ProjectMemberModel::membersOfType(std::size_t typeO
     return membersByType_[typeOrdinal];
 }
 
-std::span<const std::size_t> ProjectMemberModel::promotedMembersOfType(
-    std::size_t typeOrdinal) const noexcept
-{
-    static const std::vector<std::size_t> empty;
-    if (typeOrdinal >= promotedMembersByType_.size())
-    {
-        return empty;
-    }
-    return promotedMembersByType_[typeOrdinal];
-}
 std::span<const std::size_t> ProjectMemberModel::constructorsOfType(
     std::size_t typeOrdinal) const noexcept
 {
