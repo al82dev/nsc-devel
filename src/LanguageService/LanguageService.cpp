@@ -160,7 +160,7 @@ std::unordered_set<std::string> completionReservedNames(
         {
             if (module == nullptr) continue;
             std::vector<const frontend::NamespaceSymbol*> pending = {
-                &module->globalNamespace()};
+                &module->globalNamespace().root()};
             for (std::size_t index = 0; index < pending.size(); ++index)
             {
                 for (const auto& child : pending[index]->children())
