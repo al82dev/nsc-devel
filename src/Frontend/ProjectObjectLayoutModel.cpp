@@ -134,6 +134,7 @@ bool ProjectObjectLayoutModel::build(
         classLayouts_,
         structLayouts_,
         promotedFieldLayouts_,
+        allocationPlans_,
         memberModel.members().size(),
         nameLookup.namedTypes().size());
     built_ = true;

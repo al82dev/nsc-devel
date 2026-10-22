@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `17 / 60`
+**Progreso:** `18 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -21,7 +21,7 @@
 | T2.6 | Añadir el índice global de miembros por nombre requerido por los consumidores que hoy recorren `members()` completo | TERMINADO |
 | T2.7 | Añadir índices MIR de layouts de struct y clase por ordinal y por `typeKey` | TERMINADO |
 | T2.8 | Añadir índices MIR de funciones por nombre físico y por lambda, además de los índices por miembro ya existentes | TERMINADO |
-| T2.9 | Añadir índices directos de planes de asignación, bindings de interfaz y slots de interfaz | PENDIENTE |
+| T2.9 | Añadir índices directos de planes de asignación, bindings de interfaz y slots de interfaz | TERMINADO |
 | T3.1 | Sustituir las tres tablas `unordered_map` de keywords y sus tres consultas por un único despacho estático sin asignaciones | PENDIENTE |
 | T3.2 | Reservar el vector de tokens con una estimación derivada del tamaño de la fuente | PENDIENTE |
 | T3.3 | Consultar `knownTypeNames_` con `string_view`, sin construir un `std::string` por identificador | PENDIENTE |

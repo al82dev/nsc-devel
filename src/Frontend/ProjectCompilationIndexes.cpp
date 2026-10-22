@@ -10,9 +10,11 @@
 #include "nativesharp/Frontend/MethodLambdaValueBinding.h"
 #include "nativesharp/Frontend/MethodLocalSymbol.h"
 #include "nativesharp/Frontend/NamedTypeDeclaration.h"
+#include "nativesharp/Frontend/ObjectAllocationPlan.h"
 #include "nativesharp/Frontend/ObjectFieldLayout.h"
 #include "nativesharp/Frontend/ProjectOopMirFunction.h"
 #include "nativesharp/Frontend/ProjectOopMirClassLayout.h"
+#include "nativesharp/Frontend/ProjectOopMirInterfaceBinding.h"
 #include "nativesharp/Frontend/ProjectOopMirStructLayout.h"
 #include "nativesharp/Frontend/StructValueLayout.h"
 #include "nativesharp/Frontend/VirtualMethodInfo.h"
@@ -47,6 +49,7 @@ void ProjectCompilationIndexes::clear() noexcept
     classLayoutsByType_.clear();
     structLayoutsByType_.clear();
     fieldLayoutsByMember_.clear();
+    allocationPlansByConstruction_.clear();
     genericTemplatesByOrdinal_.clear();
     genericTemplateByCanonicalKey_.clear();
     genericTemplateOrdinalsByName_.clear();
@@ -72,6 +75,7 @@ void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaratio
     classLayoutsByType_.clear();
     structLayoutsByType_.clear();
     fieldLayoutsByMember_.clear();
+    allocationPlansByConstruction_.clear();
     clearHirBindings();
     typesByOrdinal_.reserve(types.size());
     typeOrdinalByIdentity_.reserve(types.size());
@@ -192,6 +196,7 @@ void ProjectCompilationIndexes::rebuildLayouts(
     std::span<const ClassObjectLayout> classLayouts,
     std::span<const StructValueLayout> structLayouts,
     std::span<const ObjectFieldLayout> promotedFields,
+    std::span<const ObjectAllocationPlan> allocationPlans,
     std::size_t memberCount,
     std::size_t typeCount)
 {
@@ -199,6 +204,7 @@ void ProjectCompilationIndexes::rebuildLayouts(
     classLayoutsByType_.assign(typeCount, nullptr);
     structLayoutsByType_.assign(typeCount, nullptr);
     fieldLayoutsByMember_.assign(memberCount, nullptr);
+    allocationPlansByConstruction_.clear();
     const auto registerField = [this](const ObjectFieldLayout& field)
     {
         if (field.memberOrdinal >= fieldLayoutsByMember_.size())
@@ -229,6 +235,13 @@ void ProjectCompilationIndexes::rebuildLayouts(
         for (const ObjectFieldLayout& field : layout.fields) registerField(field);
     }
     for (const ObjectFieldLayout& field : promotedFields) registerField(field);
+    for (const ObjectAllocationPlan& plan : allocationPlans)
+    {
+        if (plan.constructionOrdinal >= allocationPlansByConstruction_.size())
+            allocationPlansByConstruction_.resize(plan.constructionOrdinal + 1U, nullptr);
+        if (allocationPlansByConstruction_[plan.constructionOrdinal] == nullptr)
+            allocationPlansByConstruction_[plan.constructionOrdinal] = &plan;
+    }
 }
 
 void ProjectCompilationIndexes::rebuildHirBindings(
@@ -334,6 +347,29 @@ void ProjectCompilationIndexes::rebuildMirLayouts(
     }
 }
 
+void ProjectCompilationIndexes::rebuildMirInterfaces(
+    std::span<const ProjectOopMirInterfaceBinding> interfaceBindings)
+{
+    mirInterfaceBindingsByImplementingType_.clear();
+    mirInterfaceSlotsByMember_.clear();
+    for (const ProjectOopMirInterfaceBinding& binding : interfaceBindings)
+    {
+        if (binding.implementingTypeOrdinal >= mirInterfaceBindingsByImplementingType_.size())
+        {
+            mirInterfaceBindingsByImplementingType_.resize(
+                binding.implementingTypeOrdinal + 1U);
+        }
+        mirInterfaceBindingsByImplementingType_[binding.implementingTypeOrdinal].try_emplace(
+            binding.interfaceTypeOrdinal, &binding);
+        for (std::size_t slot = 0; slot < binding.interfaceMemberOrdinals.size(); ++slot)
+        {
+            mirInterfaceSlotsByMember_.try_emplace(
+                binding.interfaceMemberOrdinals[slot],
+                MirInterfaceSlot{binding.stableInterfaceTypeId, slot});
+        }
+    }
+}
+
 void ProjectCompilationIndexes::clearMirFunctions() noexcept
 {
     mirFunctionsByMember_.clear();
@@ -344,6 +380,8 @@ void ProjectCompilationIndexes::clearMirFunctions() noexcept
     mirStructLayoutsByTypeKey_.clear();
     mirClassLayoutsByType_.clear();
     mirClassLayoutsByTypeKey_.clear();
+    mirInterfaceBindingsByImplementingType_.clear();
+    mirInterfaceSlotsByMember_.clear();
     mirAsyncLocalsByFunction_.clear();
     mirAsyncParametersByFunction_.clear();
 }
@@ -454,6 +492,13 @@ const ObjectFieldLayout* ProjectCompilationIndexes::fieldLayoutForMember(
 {
     return memberOrdinal < fieldLayoutsByMember_.size()
         ? fieldLayoutsByMember_[memberOrdinal] : nullptr;
+}
+
+const ObjectAllocationPlan* ProjectCompilationIndexes::allocationPlanForConstruction(
+    std::size_t constructionOrdinal) const noexcept
+{
+    return constructionOrdinal < allocationPlansByConstruction_.size()
+        ? allocationPlansByConstruction_[constructionOrdinal] : nullptr;
 }
 
 const GenericTemplateRecord* ProjectCompilationIndexes::genericTemplateForOrdinal(
@@ -587,6 +632,28 @@ const ProjectOopMirClassLayout* ProjectCompilationIndexes::mirClassLayoutForType
 {
     const auto iterator = mirClassLayoutsByTypeKey_.find(typeKey);
     return iterator == mirClassLayoutsByTypeKey_.end() ? nullptr : iterator->second;
+}
+
+const ProjectOopMirInterfaceBinding* ProjectCompilationIndexes::mirInterfaceBindingForTypes(
+    std::size_t implementingTypeOrdinal,
+    std::size_t interfaceTypeOrdinal) const noexcept
+{
+    if (implementingTypeOrdinal >= mirInterfaceBindingsByImplementingType_.size()) return nullptr;
+    const auto& bindings = mirInterfaceBindingsByImplementingType_[implementingTypeOrdinal];
+    const auto iterator = bindings.find(interfaceTypeOrdinal);
+    return iterator == bindings.end() ? nullptr : iterator->second;
+}
+
+bool ProjectCompilationIndexes::mirInterfaceSlotForMember(
+    std::size_t interfaceMemberOrdinal,
+    std::uint64_t& stableInterfaceTypeId,
+    std::size_t& slot) const noexcept
+{
+    const auto iterator = mirInterfaceSlotsByMember_.find(interfaceMemberOrdinal);
+    if (iterator == mirInterfaceSlotsByMember_.end()) return false;
+    stableInterfaceTypeId = iterator->second.stableInterfaceTypeId;
+    slot = iterator->second.slot;
+    return true;
 }
 
 const ProjectCompilationIndexes::MirAsyncFrameSlot*

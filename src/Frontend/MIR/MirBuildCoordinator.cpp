@@ -709,6 +709,7 @@ bool ProjectOopMirModel::build(
             functions_, memberModel.members().size(), functionByNamespaceFunction_.size());
         indexes_->rebuildMirLayouts(
             structLayouts_, classLayouts_, nameLookup.namedTypes().size());
+        indexes_->rebuildMirInterfaces(interfaceBindings_);
     }
     built_ = true;
     // NSC305-C04. Persist the built MIR functions (no-op when the cache is disabled).
@@ -832,6 +833,11 @@ const ProjectOopMirInterfaceBinding* ProjectOopMirModel::interfaceBindingForType
     std::size_t implementingTypeOrdinal,
     std::size_t interfaceTypeOrdinal) const noexcept
 {
+    if (built_ && indexes_ != nullptr)
+    {
+        return indexes_->mirInterfaceBindingForTypes(
+            implementingTypeOrdinal, interfaceTypeOrdinal);
+    }
     const auto found = std::find_if(interfaceBindings_.begin(), interfaceBindings_.end(),
         [implementingTypeOrdinal, interfaceTypeOrdinal](const ProjectOopMirInterfaceBinding& binding) {
             return binding.implementingTypeOrdinal == implementingTypeOrdinal &&
@@ -845,6 +851,11 @@ bool ProjectOopMirModel::interfaceSlotForMember(
     std::uint64_t& stableInterfaceTypeId,
     std::size_t& slot) const noexcept
 {
+    if (built_ && indexes_ != nullptr)
+    {
+        return indexes_->mirInterfaceSlotForMember(
+            interfaceMemberOrdinal, stableInterfaceTypeId, slot);
+    }
     for (const ProjectOopMirInterfaceBinding& binding : interfaceBindings_)
     {
         const auto found = std::find(binding.interfaceMemberOrdinals.begin(),
@@ -976,6 +987,8 @@ const ObjectAllocationPlan* ProjectOopMirModel::allocationPlan(std::size_t const
     {
         return nullptr;
     }
+    if (indexes_ != nullptr)
+        return indexes_->allocationPlanForConstruction(constructionOrdinal);
     // The plan vector is NOT indexed by construction ordinal, and treating it as if it were was
     // the bug. buildAllocationPlans() walks every construction but APPENDS a plan only for the
     // ones that actually allocate: it skips an unresolved construction, and -- since C6 -- every

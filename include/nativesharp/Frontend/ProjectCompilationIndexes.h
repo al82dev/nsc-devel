@@ -29,7 +29,9 @@ struct MethodLambdaBinding;
 struct MethodLambdaValueBinding;
 struct MethodLocalSymbol;
 struct NamedTypeDeclaration;
+struct ObjectAllocationPlan;
 struct ObjectFieldLayout;
+struct ProjectOopMirInterfaceBinding;
 struct StructValueLayout;
 struct VirtualMethodInfo;
 struct ProjectOopMirFunction;
@@ -51,6 +53,7 @@ public:
         std::span<const ClassObjectLayout> classLayouts,
         std::span<const StructValueLayout> structLayouts,
         std::span<const ObjectFieldLayout> promotedFields,
+        std::span<const ObjectAllocationPlan> allocationPlans,
         std::size_t memberCount,
         std::size_t typeCount);
     void rebuildGenerics(
@@ -69,6 +72,8 @@ public:
         std::span<const ProjectOopMirStructLayout> structLayouts,
         std::span<const ProjectOopMirClassLayout> classLayouts,
         std::size_t typeCount);
+    void rebuildMirInterfaces(
+        std::span<const ProjectOopMirInterfaceBinding> interfaceBindings);
     bool registerBodyTypeDemand(std::string key);
     void clearBodyTypeDemands() noexcept;
     void registerGenericTypeDemand(std::string key);
@@ -87,6 +92,8 @@ public:
     const ClassObjectLayout* classLayoutForType(std::size_t typeOrdinal) const noexcept;
     const StructValueLayout* structLayoutForType(std::size_t typeOrdinal) const noexcept;
     const ObjectFieldLayout* fieldLayoutForMember(std::size_t memberOrdinal) const noexcept;
+    const ObjectAllocationPlan* allocationPlanForConstruction(
+        std::size_t constructionOrdinal) const noexcept;
     const GenericTemplateRecord* genericTemplateForOrdinal(std::size_t ordinal) const noexcept;
     const GenericTemplateRecord* genericTemplateForCanonicalKey(
         std::string_view canonicalKey) const noexcept;
@@ -119,6 +126,13 @@ public:
         std::size_t typeOrdinal) const noexcept;
     const ProjectOopMirClassLayout* mirClassLayoutForTypeKey(
         std::string_view typeKey) const noexcept;
+    const ProjectOopMirInterfaceBinding* mirInterfaceBindingForTypes(
+        std::size_t implementingTypeOrdinal,
+        std::size_t interfaceTypeOrdinal) const noexcept;
+    bool mirInterfaceSlotForMember(
+        std::size_t interfaceMemberOrdinal,
+        std::uint64_t& stableInterfaceTypeId,
+        std::size_t& slot) const noexcept;
     const std::tuple<std::size_t, std::uint64_t, std::string>* mirAsyncLocalForOrdinal(
         const ProjectOopMirFunction& function,
         std::size_t localOrdinal) const noexcept;
@@ -138,6 +152,11 @@ private:
 
     using MirAsyncFrameSlot = std::tuple<std::size_t, std::uint64_t, std::string>;
     using MirAsyncFrameIndex = std::unordered_multimap<std::size_t, const MirAsyncFrameSlot*>;
+    struct MirInterfaceSlot final
+    {
+        std::uint64_t stableInterfaceTypeId = 0;
+        std::size_t slot = 0;
+    };
     template <typename Value>
     using StringIndex = std::unordered_map<
         std::string,
@@ -168,6 +187,7 @@ private:
     std::vector<const ClassObjectLayout*> classLayoutsByType_;
     std::vector<const StructValueLayout*> structLayoutsByType_;
     std::vector<const ObjectFieldLayout*> fieldLayoutsByMember_;
+    std::vector<const ObjectAllocationPlan*> allocationPlansByConstruction_;
     std::vector<const GenericTemplateRecord*> genericTemplatesByOrdinal_;
     StringIndex<const GenericTemplateRecord*> genericTemplateByCanonicalKey_;
     StringIndex<std::vector<std::size_t>> genericTemplateOrdinalsByName_;
@@ -190,6 +210,9 @@ private:
     StringIndex<const ProjectOopMirStructLayout*> mirStructLayoutsByTypeKey_;
     std::vector<const ProjectOopMirClassLayout*> mirClassLayoutsByType_;
     StringIndex<const ProjectOopMirClassLayout*> mirClassLayoutsByTypeKey_;
+    std::vector<std::unordered_map<std::size_t, const ProjectOopMirInterfaceBinding*>>
+        mirInterfaceBindingsByImplementingType_;
+    std::unordered_map<std::size_t, MirInterfaceSlot> mirInterfaceSlotsByMember_;
     std::unordered_map<const ProjectOopMirFunction*, MirAsyncFrameIndex> mirAsyncLocalsByFunction_;
     std::unordered_map<const ProjectOopMirFunction*, MirAsyncFrameIndex> mirAsyncParametersByFunction_;
 
