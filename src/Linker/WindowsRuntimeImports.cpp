@@ -77,7 +77,11 @@ std::filesystem::path canonicalImportLibraryDirectory()
         }
         if (complete) return relative;
     }
+#ifdef NSC_DEFAULT_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY
     return std::filesystem::path(NSC_DEFAULT_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY);
+#else
+    return {};
+#endif
 }
 
 std::string upperAscii(std::string_view text)
