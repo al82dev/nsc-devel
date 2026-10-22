@@ -782,6 +782,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/Internal/ProgressJsonForwardingBuffer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/Internal/ProjectCommandSupport.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/Internal/TemporaryFile.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/CompilationInputManifestFactory.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/ProjectCommands.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/PromotionAct.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/ReleaseCandidateFreeze.cpp"
