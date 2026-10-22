@@ -184,6 +184,16 @@ std::string_view CompilationInputManifest::identity() const noexcept
     return identity_;
 }
 
+void CompilationInputManifest::setBundleLookup(CompilationBundleLookup lookup)
+{
+    bundleLookup_ = std::move(lookup);
+}
+
+const CompilationBundleLookup& CompilationInputManifest::bundleLookup() const noexcept
+{
+    return bundleLookup_;
+}
+
 void CompilationInputManifest::collectGraphInputs(const ProjectGraph& graph)
 {
     for (const Project& project : graph.projects())

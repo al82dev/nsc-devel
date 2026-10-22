@@ -148,8 +148,26 @@ bool configurePrecompiledModules(
         return false;
     }
     manifest.addProjectGraphInputs(*compilation.projectGraph());
-    return manifest.calculateIdentity(
-        compilation.libraryMetadataRepository(), error);
+    if (!manifest.calculateIdentity(
+            compilation.libraryMetadataRepository(), error))
+    {
+        return false;
+    }
+    compilation::CompilationBundleCache bundleCache;
+    const llvm_backend::CompilationArtifactCache* const artifactCache =
+        llvm_backend::activeCompilationArtifactCache();
+    if (artifactCache != nullptr && artifactCache->enabled())
+    {
+        bundleCache.setRoot(
+            artifactCache->root() / "compilation-bundles");
+    }
+    compilation::CompilationBundleLookup lookup;
+    if (!bundleCache.lookup(manifest.identity(), lookup, error))
+    {
+        return false;
+    }
+    manifest.setBundleLookup(std::move(lookup));
+    return true;
 }
 
 void configureObjectGeneratorProgress(

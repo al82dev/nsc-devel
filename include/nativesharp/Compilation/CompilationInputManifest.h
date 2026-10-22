@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Compilation/CompilationBundleCache.h"
 #include "nativesharp/Compilation/LibraryMetadataRepository.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Compilation/ProjectLoadOptions.h"
@@ -34,6 +35,8 @@ public:
         const LibraryMetadataRepository& metadataRepository,
         std::string& error);
     std::string_view identity() const noexcept;
+    void setBundleLookup(CompilationBundleLookup lookup);
+    const CompilationBundleLookup& bundleLookup() const noexcept;
 
 private:
     void collectGraphInputs(const ProjectGraph& graph);
@@ -45,5 +48,6 @@ private:
     std::vector<std::filesystem::path> inputFiles_;
     std::vector<std::pair<std::string, std::string>> identityFields_;
     std::string identity_;
+    CompilationBundleLookup bundleLookup_;
 };
 }
