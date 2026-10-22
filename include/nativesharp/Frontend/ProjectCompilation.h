@@ -158,6 +158,7 @@ private:
         std::size_t projectOrdinal,
         std::string& loadError);
     bool materializePrecompiledSyntax(std::string& loadError);
+    bool calculateTemplateParseCacheKey(std::string& loadError);
     bool lexSyntaxUnits(
         driver::CompilationWorkerPool& syntaxWorkers,
         bool& lexicalOk,
@@ -202,6 +203,7 @@ private:
 #endif // INSTRUMENTATION CODE
     compilation::ProjectLoadOptions projectLoadOptions_;
     std::filesystem::path templateCacheRoot_;
+    std::string templateParseCacheKey_;
     std::size_t compilationJobs_ = 1;
     CompilationStageTracker stageTracker_;
 };

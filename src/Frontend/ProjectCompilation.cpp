@@ -2,6 +2,8 @@
 #include "Internal/ProjectPhaseTimer.h"
 #include "nativesharp/Frontend/ComptimeEngine.h"
 
+#include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Basic/Version.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Lexer/TokenKind.h"
@@ -80,6 +82,25 @@ using lexer::Token;
 using lexer::TokenKind;
 
 using internal::ProjectPhaseTimer;
+
+// Appends one length-delimited field to the cache identity. Length framing prevents different
+// sequences of module names, ordinals or digests from producing the same unhashed material.
+void appendTemplateParseCacheKeyField(std::string& material, std::string_view value)
+{
+    material += std::to_string(value.size());
+    material.push_back(':');
+    material.append(value);
+    material.push_back(';');
+}
+
+// Hashes one source buffer without copying it into the aggregate key material. The returned text
+// has a fixed width, so the aggregate identity remains small even for large precompiled sources.
+std::string templateParseSourceDigest(std::string_view source)
+{
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(source.data()), source.size()};
+    return basic::sha256Hex(basic::sha256(bytes));
+}
 
 void reportSourceProgress(
     const std::function<void(const basic::CompilationEvent&)>& sink,
@@ -1263,6 +1284,43 @@ bool ProjectCompilation::materializePrecompiledSyntax(std::string& loadError)
     return true;
 }
 
+// Computes the whole syntax-corpus identity while every final source buffer is resident but before
+// lexer or parser work starts. The identity deliberately excludes physical paths so equivalent IDE
+// temporary directories can share a hit; unit order, logical ownership, source bytes and compiler
+// build identity still make restored FileIds and parser-wide known-type inputs deterministic.
+bool ProjectCompilation::calculateTemplateParseCacheKey(std::string& loadError)
+{
+    templateParseCacheKey_.clear();
+    if (templateCacheRoot_.empty()) return true;
+
+    std::string material;
+    appendTemplateParseCacheKeyField(material, "nsc-template-parse-input-v1");
+    appendTemplateParseCacheKeyField(material, kCompilerBuildId);
+    appendTemplateParseCacheKeyField(material, std::to_string(units_.size()));
+    for (std::size_t index = 0; index < units_.size(); ++index)
+    {
+        const ProjectSyntaxUnit& unit = *units_[index];
+        const source::SourceFile* sourceFile = sourceManager_.getFile(unit.fileId());
+        if (sourceFile == nullptr)
+        {
+            loadError = "internal error: syntax cache key unit has no SourceFile slot";
+            return false;
+        }
+        appendTemplateParseCacheKeyField(material, std::to_string(index));
+        appendTemplateParseCacheKeyField(material, std::to_string(unit.projectOrdinal()));
+        appendTemplateParseCacheKeyField(material, std::to_string(unit.sourceOrdinal()));
+        appendTemplateParseCacheKeyField(material, unit.moduleName());
+        appendTemplateParseCacheKeyField(material, unit.isPrecompiled() ? "1" : "0");
+        appendTemplateParseCacheKeyField(
+            material,
+            templateParseSourceDigest(sourceFile->buffer()));
+    }
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
+    templateParseCacheKey_ = basic::sha256Hex(basic::sha256(bytes));
+    return true;
+}
+
 bool ProjectCompilation::lexSyntaxUnits(
     driver::CompilationWorkerPool& syntaxWorkers,
     bool& lexicalOk,
@@ -1389,6 +1447,11 @@ bool ProjectCompilation::compileSyntaxCore(
     }
 
     if (!materializePrecompiledSyntax(loadError))
+    {
+        return false;
+    }
+
+    if (!calculateTemplateParseCacheKey(loadError))
     {
         return false;
     }
