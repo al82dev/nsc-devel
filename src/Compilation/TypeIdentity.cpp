@@ -134,6 +134,16 @@ std::string TypeIdentity::key() const
     return key_;
 }
 
+std::string_view TypeIdentity::fullyQualifiedNameView() const noexcept
+{
+    return fullyQualifiedName_;
+}
+
+std::string_view TypeIdentity::keyView() const noexcept
+{
+    return key_;
+}
+
 void TypeIdentity::initializeNames()
 {
     for (const std::string& segment : namespaceSegments_)

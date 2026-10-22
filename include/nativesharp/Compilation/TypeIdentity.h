@@ -105,6 +105,8 @@ public:
     const std::string& validationError() const noexcept;
     std::string fullyQualifiedName() const;
     std::string key() const;
+    std::string_view fullyQualifiedNameView() const noexcept;
+    std::string_view keyView() const noexcept;
 
     bool operator==(const TypeIdentity& other) const noexcept;
 

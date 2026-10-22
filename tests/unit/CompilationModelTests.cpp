@@ -101,6 +101,12 @@ void testTypeIdentity(TestContext& tests)
     tests.expect(player.isValid(), "module-qualified class identity is valid");
     tests.expect(player.fullyQualifiedName() == "Game.Entities.Player", "fully qualified type name is stable");
     tests.expect(player.key() == "Game::Game.Entities.Player", "module participates in type identity");
+    tests.expect(
+        player.fullyQualifiedNameView() == "Game.Entities.Player",
+        "fully qualified type identity exposes its cached internal view");
+    tests.expect(
+        player.keyView() == "Game::Game.Entities.Player",
+        "module-qualified type identity exposes its cached internal view");
 
     const TypeIdentity movedPlayer("Game", {"Game", "Entities"}, {}, "Player");
     tests.expect(player == movedPlayer, "source path does not participate in type identity");

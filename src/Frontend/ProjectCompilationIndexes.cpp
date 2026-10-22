@@ -63,12 +63,13 @@ void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaratio
     {
         const NamedTypeDeclaration& type = types[ordinal];
         typesByOrdinal_.push_back(&type);
-        typeOrdinalByIdentity_.try_emplace(type.identity.key(), ordinal);
+        typeOrdinalByIdentity_.try_emplace(
+            std::string(type.identity.keyView()), ordinal);
         typeOrdinalsByName_[type.identity.name()].push_back(ordinal);
-        const std::string qualifiedName = type.identity.fullyQualifiedName();
+        const std::string_view qualifiedName = type.identity.fullyQualifiedNameView();
         if (qualifiedName != type.identity.name())
         {
-            typeOrdinalsByName_[qualifiedName].push_back(ordinal);
+            typeOrdinalsByName_[std::string(qualifiedName)].push_back(ordinal);
         }
     }
 }
