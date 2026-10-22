@@ -806,7 +806,7 @@ ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(
     copyFunctionMetadata(function, source);
     configureFunctionAbi(function, functionLayouts);
     if (source.isImportedC || source.isImportedNative) return function;
-    function.body = lowerNode(source.body.get(), error);
+    function.body = lowerNode(source.body.get(), error, functionLayouts);
     if (function.mangledName.ends_with("$poll") &&
         !buildPollFrame(function, functionLayouts, objectLayoutModel, nameLookup, error))
         return function;
@@ -841,7 +841,6 @@ void ProjectOopMirModel::configureFunctionLowerer(
     lowerer.interfaceModel_ = &interfaceModel;
     lowerer.destructionModel_ = &destructionModel;
     lowerer.hirModel_ = &hirModel;
-    lowerer.structLayouts_ = structLayouts_;
 }
 
 bool ProjectOopMirModel::lowerFunctions(

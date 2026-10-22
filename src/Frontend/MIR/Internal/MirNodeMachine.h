@@ -7,7 +7,16 @@ namespace nativesharp::frontend
 class ProjectOopMirModel::MirNodeMachine final
 {
 public:
-    explicit MirNodeMachine(ProjectOopMirModel& model) noexcept : model_(model) {}
+    explicit MirNodeMachine(ProjectOopMirModel& model) noexcept
+        : model_(model), structLayouts_(model.structLayouts_)
+    {
+    }
+    MirNodeMachine(
+        ProjectOopMirModel& model,
+        std::span<const ProjectOopMirStructLayout> structLayouts) noexcept
+        : model_(model), structLayouts_(structLayouts)
+    {
+    }
 
     std::unique_ptr<ProjectOopMirNode> lower(
         const ProjectOopHirNode* node,
@@ -193,5 +202,6 @@ private:
         ProjectOopMirNode* result,
         std::string& error);
     ProjectOopMirModel& model_;
+    std::span<const ProjectOopMirStructLayout> structLayouts_;
 };
 }

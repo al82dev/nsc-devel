@@ -439,6 +439,10 @@ private:
     std::unique_ptr<ProjectOopMirNode> lowerNode(
         const ProjectOopHirNode* node,
         std::string& error);
+    std::unique_ptr<ProjectOopMirNode> lowerNode(
+        const ProjectOopHirNode* node,
+        std::string& error,
+        std::span<const ProjectOopMirStructLayout> structLayouts);
     const ObjectFieldLayout* fieldLayout(std::size_t memberOrdinal) const noexcept;
     const ObjectAllocationPlan* allocationPlan(std::size_t constructionOrdinal) const noexcept;
 

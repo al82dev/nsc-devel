@@ -1590,7 +1590,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup16(
                 return -1;
             }
             const ProjectOopMirStructLayout* layout = nullptr;
-            for (const ProjectOopMirStructLayout& candidate : model_.structLayouts_)
+            for (const ProjectOopMirStructLayout& candidate : structLayouts_)
             {
                 if (candidate.typeKey == node->elementTypeKey)
                 {
@@ -1623,7 +1623,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerAwaitFuture(
     std::string& error)
 {
     const ProjectOopMirStructLayout* layout = nullptr;
-    for (const ProjectOopMirStructLayout& candidate : model_.structLayouts_)
+    for (const ProjectOopMirStructLayout& candidate : structLayouts_)
     {
         if (candidate.typeKey == node->elementTypeKey)
         {
