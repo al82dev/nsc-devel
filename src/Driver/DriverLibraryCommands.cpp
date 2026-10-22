@@ -33,7 +33,11 @@ ExitCode Driver::runProjectHostHeaderGeneration(std::string_view inputPath, std:
               << loadError << '\n';
         return ExitCode::CompilationError;
     }
-    if (restored) return ExitCode::Success;
+    if (restored)
+    {
+        output << manifest->bundleLookup().resultOutput;
+        return ExitCode::Success;
+    }
     if (!compilation.compileProjectObjectLayouts(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
@@ -70,9 +74,12 @@ ExitCode Driver::runProjectHostHeaderGeneration(std::string_view inputPath, std:
         error << "nsc: error: Stage 48.1 C header generation failed: " << generationError << '\n';
         return ExitCode::CompilationError;
     }
-
-    output << "C host header emission: ok\n"
-           << "output: " << destination.generic_string() << '\n';
+    std::ostringstream resultOutput;
+    resultOutput << "C host header emission: ok\n"
+                 << "output: " << destination.generic_string() << '\n';
+    manifest->setBundleResultOutput(resultOutput.str());
+    publishCompilationBundle(*manifest);
+    output << resultOutput.str();
     return ExitCode::Success;
 }
 
@@ -105,7 +112,11 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(std::string_view inputPath,
               << loadError << '\n';
         return ExitCode::CompilationError;
     }
-    if (restored) return ExitCode::Success;
+    if (restored)
+    {
+        output << manifest->bundleLookup().resultOutput;
+        return ExitCode::Success;
+    }
     if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
@@ -142,16 +153,23 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(std::string_view inputPath,
         error << "nsc: error: Stage 48.2 metadata generation failed: " << metadataError << '\n';
         return ExitCode::CompilationError;
     }
-
-    output << "NativeSharp library metadata emission: ok\n"
-           << "output: " << destination.generic_string() << '\n'
-           << "format: NSMETA " << metadata.formatMajor << '.' << metadata.formatMinor << '\n'
-           << "module: " << metadata.moduleName << '\n'
-           << "target: " << metadata.targetTriple << '\n'
-           << "types: " << metadata.types.size() << '\n'
-           << "members: " << metadata.members.size() << '\n'
-           << "exports: " << metadata.exports.size() << '\n'
-           << "abi-fingerprint: " << interop::LibraryMetadataCodec::fingerprintHex(metadata.abiFingerprint) << '\n';
+    std::ostringstream resultOutput;
+    resultOutput << "NativeSharp library metadata emission: ok\n"
+                 << "output: " << destination.generic_string() << '\n'
+                 << "format: NSMETA " << metadata.formatMajor << '.'
+                 << metadata.formatMinor << '\n'
+                 << "module: " << metadata.moduleName << '\n'
+                 << "target: " << metadata.targetTriple << '\n'
+                 << "types: " << metadata.types.size() << '\n'
+                 << "members: " << metadata.members.size() << '\n'
+                 << "exports: " << metadata.exports.size() << '\n'
+                 << "abi-fingerprint: "
+                 << interop::LibraryMetadataCodec::fingerprintHex(
+                        metadata.abiFingerprint)
+                 << '\n';
+    manifest->setBundleResultOutput(resultOutput.str());
+    publishCompilationBundle(*manifest);
+    output << resultOutput.str();
     return ExitCode::Success;
 }
 

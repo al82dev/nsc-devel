@@ -41,6 +41,8 @@ public:
     void addRequiredBundleOutput(std::filesystem::path outputPath);
     const std::filesystem::path& bundleOutputDirectory() const noexcept;
     const std::vector<std::string>& requiredBundleOutputNames() const noexcept;
+    void setBundleResultOutput(std::string output);
+    std::string_view bundleResultOutput() const noexcept;
     void setBundleLookup(CompilationBundleLookup lookup);
     const CompilationBundleLookup& bundleLookup() const noexcept;
 
@@ -57,6 +59,7 @@ private:
     std::string bundleProductKind_;
     std::filesystem::path bundleOutputDirectory_;
     std::vector<std::string> requiredBundleOutputNames_;
+    std::string bundleResultOutput_;
     CompilationBundleLookup bundleLookup_;
 };
 }

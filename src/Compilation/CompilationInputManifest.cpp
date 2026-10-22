@@ -224,6 +224,16 @@ CompilationInputManifest::requiredBundleOutputNames() const noexcept
     return requiredBundleOutputNames_;
 }
 
+void CompilationInputManifest::setBundleResultOutput(std::string output)
+{
+    bundleResultOutput_ = std::move(output);
+}
+
+std::string_view CompilationInputManifest::bundleResultOutput() const noexcept
+{
+    return bundleResultOutput_;
+}
+
 void CompilationInputManifest::setBundleLookup(CompilationBundleLookup lookup)
 {
     bundleLookup_ = std::move(lookup);

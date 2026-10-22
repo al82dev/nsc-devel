@@ -222,6 +222,29 @@ bool restoreCompilationBundle(
     return bundleCache.restore(manifest.bundleLookup(), restored, error);
 }
 
+void publishCompilationBundle(
+    const compilation::CompilationInputManifest& manifest) noexcept
+{
+    try
+    {
+        const llvm_backend::CompilationArtifactCache* const artifactCache =
+            llvm_backend::activeCompilationArtifactCache();
+        if (artifactCache == nullptr || !artifactCache->enabled()) return;
+        compilation::CompilationBundleCache bundleCache;
+        bundleCache.setRoot(artifactCache->root() / "compilation-bundles");
+        std::string ignoredError;
+        (void)bundleCache.store(
+            manifest.identity(),
+            manifest.bundleOutputDirectory(),
+            manifest.requiredBundleOutputNames(),
+            manifest.bundleResultOutput(),
+            ignoredError);
+    }
+    catch (...)
+    {
+    }
+}
+
 void configureObjectGeneratorProgress(
     llvm_backend::ProjectOopObjectGenerator& generator)
 {

@@ -28,6 +28,7 @@ struct CompilationBundleLookup final
     CompilationBundleLookupKind kind = CompilationBundleLookupKind::Disabled;
     std::filesystem::path entryDirectory;
     std::filesystem::path manifestPath;
+    std::string resultOutput;
     std::vector<CompilationBundleArtifact> artifacts;
 };
 
@@ -49,6 +50,12 @@ public:
     bool restore(
         const CompilationBundleLookup& lookup,
         bool& restored,
+        std::string& error) const;
+    bool store(
+        std::string_view identity,
+        const std::filesystem::path& outputDirectory,
+        const std::vector<std::string>& outputNames,
+        std::string_view resultOutput,
         std::string& error) const;
 
 private:

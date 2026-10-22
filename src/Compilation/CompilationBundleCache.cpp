@@ -3,6 +3,7 @@
 #include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
 
+#include <atomic>
 #include <charconv>
 #include <fstream>
 #include <set>
@@ -14,6 +15,7 @@ namespace nativesharp::compilation
 namespace
 {
 constexpr std::string_view kManifestHeader = "nsc-compilation-bundle-v1";
+std::atomic<unsigned long long> stagingOrdinal = 0;
 
 int hexDigit(char value)
 {
@@ -36,6 +38,19 @@ bool decodeHex(std::string_view encoded, std::string& decoded)
         decoded.push_back(static_cast<char>((high << 4) | low));
     }
     return true;
+}
+
+std::string encodeHex(std::string_view value)
+{
+    constexpr char digits[] = "0123456789abcdef";
+    std::string result;
+    result.reserve(value.size() * 2);
+    for (const unsigned char byte : value)
+    {
+        result.push_back(digits[byte >> 4]);
+        result.push_back(digits[byte & 0x0f]);
+    }
+    return result;
 }
 
 bool parseSize(std::string_view text, std::uintmax_t& result)
@@ -112,6 +127,12 @@ bool CompilationBundleCache::verify(
     if (!std::getline(input, line) || line != kManifestHeader ||
         !std::getline(input, line) ||
         line != std::string("identity=") + std::string(identity))
+    {
+        lookup.kind = CompilationBundleLookupKind::Missing;
+        return true;
+    }
+    if (!std::getline(input, line) || !line.starts_with("result=") ||
+        !decodeHex(std::string_view(line).substr(7), lookup.resultOutput))
     {
         lookup.kind = CompilationBundleLookupKind::Missing;
         return true;
@@ -207,5 +228,111 @@ bool CompilationBundleCache::restore(
     if (!transaction.commit(error)) return false;
     restored = true;
     return true;
+}
+
+bool CompilationBundleCache::store(
+    std::string_view identity,
+    const std::filesystem::path& outputDirectory,
+    const std::vector<std::string>& outputNames,
+    std::string_view resultOutput,
+    std::string& error) const
+{
+    error.clear();
+    if (root_.empty() || outputNames.empty()) return true;
+    if (identity.size() < 2)
+    {
+        error = "compilation bundle identity is incomplete";
+        return false;
+    }
+    const std::filesystem::path parent = root_ /
+        std::string(identity.substr(0, 2));
+    const std::filesystem::path entry = parent / std::string(identity);
+    std::error_code filesystemError;
+    if (std::filesystem::is_directory(entry, filesystemError) && !filesystemError)
+    {
+        return true;
+    }
+    filesystemError.clear();
+    std::filesystem::create_directories(parent, filesystemError);
+    if (filesystemError)
+    {
+        error = "cannot create compilation bundle cache directory '" +
+            parent.generic_string() + "': " + filesystemError.message();
+        return false;
+    }
+    const std::filesystem::path staging = parent /
+        (std::string(identity) + ".tmp-" +
+         std::to_string(stagingOrdinal.fetch_add(1, std::memory_order_relaxed)));
+    const std::filesystem::path artifacts = staging / "artifacts";
+    std::filesystem::create_directories(artifacts, filesystemError);
+    if (filesystemError)
+    {
+        error = "cannot create compilation bundle staging directory '" +
+            artifacts.generic_string() + "': " + filesystemError.message();
+        return false;
+    }
+    std::ostringstream manifest;
+    manifest << kManifestHeader << '\n'
+             << "identity=" << identity << '\n'
+             << "result=" << encodeHex(resultOutput) << '\n';
+    std::set<std::string> names;
+    for (const std::string& outputName : outputNames)
+    {
+        const std::filesystem::path name = outputName;
+        if (!validArtifactName(name) || !names.insert(outputName).second)
+        {
+            std::filesystem::remove_all(staging, filesystemError);
+            error = "compilation bundle output name is invalid or duplicated: '" +
+                outputName + "'";
+            return false;
+        }
+        const std::filesystem::path source = outputDirectory / name;
+        basic::Sha256Digest digest{};
+        std::uintmax_t size = 0;
+        if (!basic::sha256File(source, digest, size, error))
+        {
+            std::filesystem::remove_all(staging, filesystemError);
+            return false;
+        }
+        std::filesystem::copy_file(
+            source,
+            artifacts / name,
+            std::filesystem::copy_options::overwrite_existing,
+            filesystemError);
+        if (filesystemError)
+        {
+            const std::string copyError = filesystemError.message();
+            std::error_code ignored;
+            std::filesystem::remove_all(staging, ignored);
+            error = "cannot stage compilation bundle artifact '" +
+                source.generic_string() + "': " + copyError;
+            return false;
+        }
+        manifest << "artifact=" << encodeHex(outputName) << '\t'
+                 << size << '\t' << basic::sha256Hex(digest) << '\n';
+    }
+    const std::filesystem::path manifestPath = staging / "bundle.manifest";
+    std::ofstream output(manifestPath, std::ios::binary | std::ios::trunc);
+    output << manifest.str();
+    output.close();
+    if (!output)
+    {
+        std::filesystem::remove_all(staging, filesystemError);
+        error = "cannot write compilation bundle manifest '" +
+            manifestPath.generic_string() + "'";
+        return false;
+    }
+    std::filesystem::rename(staging, entry, filesystemError);
+    if (!filesystemError) return true;
+    std::error_code existsError;
+    if (std::filesystem::is_directory(entry, existsError) && !existsError)
+    {
+        std::filesystem::remove_all(staging, existsError);
+        return true;
+    }
+    std::filesystem::remove_all(staging, existsError);
+    error = "cannot publish compilation bundle '" + entry.generic_string() +
+        "': " + filesystemError.message();
+    return false;
 }
 }

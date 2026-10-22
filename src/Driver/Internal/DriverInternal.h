@@ -95,6 +95,8 @@ bool restoreCompilationBundle(
     const compilation::CompilationInputManifest &manifest,
     bool &restored,
     std::string &error);
+void publishCompilationBundle(
+    const compilation::CompilationInputManifest &manifest) noexcept;
 void configureObjectGeneratorProgress(llvm_backend::ProjectOopObjectGenerator &generator);
 void appendExternalImport(std::vector<linker::ExternalImportModule> &modules, const std::string &dllName,
                           const std::string &symbol);

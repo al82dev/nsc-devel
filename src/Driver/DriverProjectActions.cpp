@@ -629,7 +629,11 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath, std::st
     if (!prepareOopCodeCompilation(
             inputPath, *manifest, compilation, restored, loadError, error))
         return ExitCode::CompilationError;
-    if (restored) return ExitCode::Success;
+    if (restored)
+    {
+        output << manifest->bundleLookup().resultOutput;
+        return ExitCode::Success;
+    }
 
     std::unique_ptr<llvm_backend::LlvmModule> module;
     std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
@@ -637,9 +641,15 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath, std::st
                             error))
         return ExitCode::CompilationError;
 
-    if (!publishOopCodeObject(outputPath, compilation, *module, *targetMachine, optimizationLevel, debugInformation,
-                              loadError, output, error))
+    std::ostringstream resultOutput;
+    if (!publishOopCodeObject(
+            outputPath, compilation, *module, *targetMachine,
+            optimizationLevel, debugInformation, loadError,
+            resultOutput, error))
         return ExitCode::CompilationError;
+    manifest->setBundleResultOutput(resultOutput.str());
+    publishCompilationBundle(*manifest);
+    output << resultOutput.str();
     return ExitCode::Success;
 }
 } // namespace nativesharp::driver

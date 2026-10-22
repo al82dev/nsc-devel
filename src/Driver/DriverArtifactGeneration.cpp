@@ -306,7 +306,11 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     if (!prepareExecutableProject(
             inputPath, *manifest, compilation, entryFunction, restored, error))
         return ExitCode::CompilationError;
-    if (restored) return ExitCode::Success;
+    if (restored)
+    {
+        output << manifest->bundleLookup().resultOutput;
+        return ExitCode::Success;
+    }
     std::string codeGenerationError;
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
         compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError);
@@ -325,10 +329,15 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
         !publishExecutableArtifact(outputPath, *entryFunction, *objectBundle, optimizationLevel, debugInformation,
                                    incrementalLink, runtimeLibraries, builder, packagedRuntimes, error))
         return ExitCode::CompilationError;
-
+    for (const std::filesystem::path &runtime : packagedRuntimes)
+        manifest->addRequiredBundleOutput(runtime.filename());
+    std::ostringstream resultOutput;
     printExecutableGenerationResult(*entryFunction, *objectBundle, builder, optimizationLevel, debugInformation,
                                     linkTimeOptimization, incrementalLink, subsystem, linkLibraries.size(),
-                                    packagedRuntimes.size(), output);
+                                    packagedRuntimes.size(), resultOutput);
+    manifest->setBundleResultOutput(resultOutput.str());
+    publishCompilationBundle(*manifest);
+    output << resultOutput.str();
     return ExitCode::Success;
 }
 
@@ -514,7 +523,11 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     if (!prepareStaticLibraryProject(inputPath, *manifest, compilation, referencedLibraries,
                                      runtimeLibraries, inheritedImports, restored, error))
         return ExitCode::CompilationError;
-    if (restored) return ExitCode::Success;
+    if (restored)
+    {
+        output << manifest->bundleLookup().resultOutput;
+        return ExitCode::Success;
+    }
 
     std::string codeGenerationError;
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
@@ -530,8 +543,12 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     if (!publishStaticLibraryArtifact(outputPath, compilation, *objectBundle, referencedLibraries, inheritedImports,
                                       optimizationLevel, builder, publication, error))
         return ExitCode::CompilationError;
+    std::ostringstream resultOutput;
     printStaticLibraryGenerationResult(*objectBundle, builder, publication, optimizationLevel, debugInformation,
-                                       linkTimeOptimization, referencedLibraries.size(), output);
+                                       linkTimeOptimization, referencedLibraries.size(), resultOutput);
+    manifest->setBundleResultOutput(resultOutput.str());
+    publishCompilationBundle(*manifest);
+    output << resultOutput.str();
     return ExitCode::Success;
 }
 
@@ -934,7 +951,11 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     if (!prepareDynamicLibraryProject(
             inputPath, *manifest, compilation, restored, error))
         return ExitCode::CompilationError;
-    if (restored) return ExitCode::Success;
+    if (restored)
+    {
+        output << manifest->bundleLookup().resultOutput;
+        return ExitCode::Success;
+    }
 
     std::vector<std::string> exportSymbols;
     if (!collectDynamicLibraryExports(compilation, exportSymbols, error))
@@ -968,9 +989,14 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     if (!commitDynamicLibraryProduct(destination, runtimeLibraries, publishPdb, artifactPublisher, publication,
                                      buildError, packagedRuntimes, error))
         return ExitCode::CompilationError;
-
+    for (const std::filesystem::path &runtime : packagedRuntimes)
+        manifest->addRequiredBundleOutput(runtime.filename());
+    std::ostringstream resultOutput;
     printDynamicLibraryGenerationResult(*objectBundle, builder, publication, optimizationLevel, debugInformation,
-                                        linkLibraries.size(), packagedRuntimes.size(), output);
+                                        linkLibraries.size(), packagedRuntimes.size(), resultOutput);
+    manifest->setBundleResultOutput(resultOutput.str());
+    publishCompilationBundle(*manifest);
+    output << resultOutput.str();
     return ExitCode::Success;
 }
 } // namespace nativesharp::driver
