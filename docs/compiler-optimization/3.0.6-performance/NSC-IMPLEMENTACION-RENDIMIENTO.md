@@ -1,8 +1,9 @@
 # NSC — Implementación y tracking absoluto de rendimiento de compilación
 
 **Fecha original:** 2026-10-20
-**Reauditoría vigente:** 2026-10-21, `development` en `aa6644dde7418ea267d1006f251863dbe382505b`
+**Reauditoría vigente:** 2026-10-21, `development` en `5b6582648661fdf78c32d267dca900edca1fffa5`
 **Documento base:** `NSC-ANALISIS-RENDIMIENTO-POR-FUNCION.md`, en la misma carpeta. Ahí están las ediciones exactas; este documento las ordena, les pone gate y les asigna autorización.
+**Matriz de cobertura:** `NSC-MATRIZ-COBERTURA-RENDIMIENTO.md`.
 **Rama de trabajo:** `development`. El respaldo certificado es la versión 3.0.6.
 
 **Reglas aplicadas.** Las de `A:\LINEAMIENTOS-DESARROLLO-COMPILADOR-NATIVESHARP.md`, leído completo hoy, y las secciones de `A:\LINEAMIENTOS-DE-TRABAJO-Y-PORTEO.md` que aplican a optimizaciones:
@@ -14,7 +15,7 @@
 
 **Certeza.** HECHO = leído en el código o en las pruebas con línea exacta. NO VERIFICADO = no se pudo comprobar con lo disponible.
 
-**Propiedad y alcance vigentes.** Toda la implementación de los 302 work items atómicos y de sus 60 paquetes
+**Propiedad y alcance vigentes.** Toda la implementación de los 670 work items atómicos y de sus paquetes
 causales será realizada por Codex sobre este repositorio. El trabajo del IDE queda pausado y fuera de esta
 campaña: no se delega ninguna optimización al agente del IDE ni se depende de él para cerrar una tanda. Se
 conservan las APIs que el compilador ya expone al IDE. Cualquier solicitud futura para exponer una API nueva
@@ -22,33 +23,43 @@ se tratará como un alcance separado y no entrará silenciosamente en este track
 
 ## 0. Control absoluto y distribución
 
-**Estado absoluto de implementación:** `0 / 302` work items atómicos terminados.
-**Paquetes causales:** `0 / 60` entradas `T-xx` cerradas.
-**Tandas:** `0 / 7` cerradas.
+**Estado absoluto de implementación:** `0 / 670` work items atómicos terminados.
+**Tandas:** `0 / 16` cerradas.
 
-| Tanda | Entradas | Paquetes | Work items | Alcance dominante |
-|---|---|---:|---:|---|
-| 1 | `T-01..T-05`, `T-25..T-27` | 8 | 20 | Identidades, SHA-256, PE, LLVM y driver |
-| 2 | `T-06..T-19` | 14 | 84 | Índices internos, fallbacks y caché de tipos LLVM |
-| 3 | `T-20..T-24` | 5 | 30 | HIR, orden paralelo, bindings y closures |
-| 4 | `T-29` | 1 | 9 | Carga y normalización del grafo de proyectos |
-| 5 | `T-30`, `T-31`, `T-62`, `T-33..T-40` | 11 | 28 | Genéricos, lexer, parser y nombres conocidos |
-| 6 | `T-41..T-54` | 14 | 100 | Superficie, metadatos, bodies e identidades precompiladas |
-| 7 | `T-55..T-61` | 7 | 31 | Debug info, MIR, visibilidad, estáticos, referencias y LLVM |
-| **Total** |  | **60** | **302** | **Implementación completa del Grupo A** |
+| Tanda | Work items | Alcance dominante |
+|---|---:|---|
+| 0 | 22 | Oráculo, host O2 y medición basal controlada |
+| 1 | 20 | Identidades, SHA-256, PE, LLVM y driver |
+| 2 | 84 | Índices internos, fallbacks y caché de tipos LLVM |
+| 3 | 30 | HIR, orden paralelo, bindings y closures |
+| 4 | 9 | Carga y normalización del grafo de proyectos |
+| 5 | 28 | Genéricos, lexer, parser y nombres conocidos |
+| 6 | 100 | Superficie, metadatos, bodies e identidades precompiladas |
+| 7 | 31 | Debug info, MIR, visibilidad, estáticos, referencias y LLVM |
+| 8 | 24 | Medición desde `nsc build` e instrumentación |
+| 9 | 30 | Cachés de `runtime.obj` e import libraries |
+| 10 | 30 | Caché de superficies públicas precompiladas |
+| 11 | 25 | Rediseño de `TemplateParseCache` (C01) |
+| 12 | 25 | Rediseño de `MirCache` (C04) |
+| 13 | 42 | Restore, NSMETA, verificación paralela, PE y política de poda |
+| 14 | 152 | Optimizaciones estructurales, caché global, P2 suplementarios y trazabilidad |
+| 15 | 18 | Validación y medición final |
+| **Total absoluto** | **670** | **Toda la campaña de rendimiento** |
 
-Los **11 cambios del Grupo B no forman parte del denominador `0/302`** y no se ejecutan sin autorización
-explícita de Alberto. Los **12 hallazgos del Grupo C** permanecen documentados como `NO IMPLEMENTAR`.
+Los cambios antes llamados Grupo B y Grupo C forman parte del denominador. Permanecen pendientes con
+`REQUIERE AUTORIZACIÓN` o `REQUIERE DISEÑO` hasta satisfacer su gate; esas etiquetas no son exclusiones.
 
-No se inicia `T-01` hasta que Alberto revise este documento y autorice expresamente el comienzo. Antes del
-primer commit también debe existir el oráculo de artefactos descrito en la sección 1.
+No se inicia implementación hasta que Alberto revise el tracking completo y autorice expresamente el comienzo.
+Antes del primer commit también debe existir el oráculo de artefactos descrito en la sección 1.
 
 ### 0.1 Reauditoría del código y de los commits posteriores
 
-**HECHO.** La rama es `development`. El `HEAD` al iniciar la revisión era
-`1bded1486299a90b0b956e3029ce60b8796c989d` y el worktree estaba limpio. Durante la revisión, Alberto
-incorporó `aa6644dde7418ea267d1006f251863dbe382505b`, limitado a este documento; ese commit también fue
-auditado y es el `HEAD` vigente de este cierre.
+**HECHO.** `.git/HEAD` apunta a `refs/heads/development` y esa referencia contiene
+`5b6582648661fdf78c32d267dca900edca1fffa5`. El reflog visible registra, después de
+`aa6644dde7418ea267d1006f251863dbe382505b`, los commits documentales `7a187c84890e5b2ad8d45b6117f23ed3f768d23c`
+(`Update NSC-IMPLEMENTACION-RENDIMIENTO.md`) y `5b6582648661fdf78c32d267dca900edca1fffa5`
+(`Create NSC-PENDIENTES-Y-TERMINADOS-RENDIMIENTO.md`). La inspección estática de símbolos se repitió sobre ese
+checkout antes de ampliar el tracking.
 
 Se revisaron todos los commits posteriores al estado certificado `8eef25d97`:
 
@@ -59,8 +70,8 @@ Se revisaron todos los commits posteriores al estado certificado `8eef25d97`:
 - `387c579f2`: corrigió el recorrido de la raíz de namespace del servicio de lenguaje;
 - `dd2992e89`: documentó su validación;
 - `1bded1486`: reutilizó el snapshot residente para completion;
-- `aa6644dde`: actualizó este tracking con la reauditoría y el denominador granular; no modificó código
-  del compilador.
+- `aa6644dde` y `7a187c848`: actualizaron este documento de implementación;
+- `5b6582648`: creó la vista granular de pendientes y terminados.
 
 **Conclusión de la reauditoría.** Ninguno de esos commits cerró una entrada `T-xx` del camino de
 `nsc build`. El cambio `1bded1486` optimiza exclusivamente la consulta interactiva del servicio de
@@ -77,12 +88,13 @@ lenguaje y no se vuelve a contar aquí. Los solapamientos reales con este plan s
 - `TransparentStringHash` ya existe anidado en `ProjectMemberModel`; `T-06` debe extraerlo a un
   header compartido y reutilizarlo, no introducir una segunda implementación.
 
-La vista canónica de estado es `NSC-PENDIENTES-Y-TERMINADOS-RENDIMIENTO.md`: contiene los 302 work items
-atómicos, sin agrupar consumidores ni sitios. Los bullets técnicos siguientes son una descomposición de diseño
-en 174 pasos y no son el denominador de avance. No son 302 commits: un commit sigue correspondiendo a una
-entrada `T-xx` y puede cerrar varios work items inseparables de la misma hipótesis.
+La vista canónica de estado es `NSC-PENDIENTES-Y-TERMINADOS-RENDIMIENTO.md`: contiene los 670 work items
+atómicos, sin agrupar consumidores ni sitios. Los bullets técnicos siguientes conservan la descomposición
+original de las tandas 1 a 7; las tandas 0 y 8 a 15 están expandidas directamente en la vista canónica. Los
+work items no equivalen a commits: cada commit agrupa una hipótesis causal cohesionada dentro de una tanda sin
+ocultar ni fusionar los identificadores de seguimiento.
 
-### 0.2 Descomposición técnica por tandas — 174 pasos de diseño
+### 0.2 Descomposición técnica por tandas — 219 pasos de diseño
 
 Cada bullet hereda el presupuesto, dependencia, gate y prueba focal de su entrada `T-xx` en la sección 6.
 Cambiar su archivo o símbolo exige actualizar primero el presupuesto documental.
@@ -283,9 +295,60 @@ Cambiar su archivo o símbolo exige actualizar primero el presupuesto documental
 - [ ] `PERF-0173` (`T-61`) Usar el índice en `closureContextDestroy`.
 - [ ] `PERF-0174` (`T-61`) Usar el índice en `findCallbackMirFunction`.
 
-**Tracking absoluto:** `302` work items atómicos, `60` paquetes causales y `7` tandas. El avance se actualiza
+**Tracking absoluto:** `670` work items atómicos y `16` tandas. El avance se actualiza
 en `NSC-PENDIENTES-Y-TERMINADOS-RENDIMIENTO.md` únicamente cuando el código del renglón existe en disco y su
 evidencia focal está registrada.
+
+### 0.3 Cierre de hallazgos suplementarios de los apéndices — tanda 14
+
+Estos renglones no sustituyen a R-01..R-15. Cierran los hallazgos P1/P2 que estaban descritos en los
+apéndices del análisis pero no tenían un consumidor atómico propio en el tracking.
+
+- [ ] `PERF-0498` Usar el índice por nombre de T-58 en `resolveNameOfTemplateGenericMethod`.
+- [ ] `PERF-0499` Probar duplicados, primer match y fallback del lookup anterior.
+- [ ] `PERF-0500` Medir llamadas y longitud efectiva de los barridos de ownership por callable.
+- [ ] `PERF-0501` Diseñar el índice de referencias mutables activas por lugar y alcance.
+- [ ] `PERF-0502` Usar ese índice en `conflictingMutableReference` sin alterar reborrows.
+- [ ] `PERF-0503` Evitar la construcción de `"L" + to_string(localOrdinal)` por consulta.
+- [ ] `PERF-0504` Indexar `localBorrowBindings_` por propietario local.
+- [ ] `PERF-0505` Indexar reasignaciones de parámetros prestados por propietario local.
+- [ ] `PERF-0506` Indexar vistas vivas por raíz local.
+- [ ] `PERF-0507` Comparar la ruta indexada con scopes, reborrows, invalidación y vistas.
+- [ ] `PERF-0508` Medir búsquedas y sustituciones de `resolveCapabilityCalls`.
+- [ ] `PERF-0509` Iterar los descriptores capability por referencia constante.
+- [ ] `PERF-0510` Diseñar una sola pasada únicamente si PERF-0508 demuestra coste material.
+- [ ] `PERF-0511` Conservar texto, dependencias, memoria contabilizada y diagnósticos comptime.
+- [ ] `PERF-0512` Crear la clave compuesta del propietario de implementación de trait.
+- [ ] `PERF-0513` Conservar el primer template coincidente en orden vigente.
+- [ ] `PERF-0514` Usar el índice en `findTraitImplementationOwner`.
+- [ ] `PERF-0515` Cubrir claves repetidas y ausencia de propietario.
+- [ ] `PERF-0516` Crear un índice MIR compartido `mangledName -> primer ordinal`.
+- [ ] `PERF-0517` Usarlo en `inheritMoveNextDropFrames`.
+- [ ] `PERF-0518` Usarlo en `inheritConstructorFrames`.
+- [ ] `PERF-0519` Conservar primer match, orden y fallback de modelos manuales.
+- [ ] `PERF-0520` Cubrir frames async, generator y nombres ausentes.
+- [ ] `PERF-0521` Indexar targets comptime por proyecto, fuente y offset.
+- [ ] `PERF-0522` Usar el índice en `findAttributeTarget` conservando el target más cercano.
+- [ ] `PERF-0523` Indexar `StaticTypeInfo` por identidad para `findType`.
+- [ ] `PERF-0524` Precalcular la vista pública usada por `visibleMembers`.
+- [ ] `PERF-0525` Conservar orden, ownership y visibilidad en metaprogramación.
+- [ ] `PERF-0526` Medir y confirmar la complejidad real de `finalizeExternalMetadataTypes`.
+- [ ] `PERF-0527` Registrar explícitamente el no cambio si sigue siendo una sola pasada.
+- [ ] `PERF-0528` Indexar constructores generator MIR por `memberOrdinal`.
+- [ ] `PERF-0529` Usar el índice en `resolveMemberPhysicalIdentity`.
+- [ ] `PERF-0530` Cubrir miembros normales, async y generator.
+- [ ] `PERF-0531` Evitar claves temporales repetidas dentro del sort de `canonicalize`.
+- [ ] `PERF-0532` Conservar precedencia, conflicto y diagnóstico exacto de canonicalización.
+- [ ] `PERF-0533` Medir copias y ordenamientos de `canonicalizeNestedRecords`.
+- [ ] `PERF-0534` Comparar byte a byte el NSMETA mergeado antes y después.
+- [ ] `PERF-0535` Demostrar la pertenencia del accesor en `recordEventAssignmentBinding`.
+- [ ] `PERF-0536` Sustituir el recorrido sólo cuando PERF-0535 cierre la precondición.
+- [ ] `PERF-0537` Conservar orden y diagnóstico de bindings de eventos.
+- [ ] `PERF-0538` Clasificar las 150 filas del ranking del apéndice B.
+- [ ] `PERF-0539` Exigir procedencia para cada ID del tracking.
+- [ ] `PERF-0540` Exigir IDs para cada hallazgo accionable.
+- [ ] `PERF-0541` Reconciliar el cierre histórico de C01/C04 con el rediseño vigente.
+- [ ] `PERF-0542` Clasificar H-1..H-9 sin mezclar refactor mecánico con rendimiento.
 
 ---
 
@@ -304,7 +367,9 @@ evidencia focal está registrada.
 
 ## 2. Reglas de aplicación para cada entrada
 
-1. **Un commit = una entrada `T-xx`.** Cada entrada es una sola hipótesis causal. No se mezclan entradas ni se agregan "de una vez" limpiezas o mejoras vecinas.
+1. **Un commit = una hipótesis causal cohesionada.** En las tandas 1 a 7 se conserva la agrupación `T-xx`.
+   En las tandas restantes, varios IDs inseparables pueden compartir commit sin perder su estado individual.
+   No se mezclan hipótesis ni se agregan "de una vez" limpiezas o mejoras vecinas.
 2. **Presupuesto cerrado.** Solo se tocan los archivos y símbolos listados en la entrada. Si hace falta tocar otro, se detiene y se pide autorización (§2, "Presupuesto obligatorio de cambio").
 3. **Comentario documental obligatorio en cada función nueva** (§9, "Comentarios obligatorios"): propósito, parámetros, retorno, efectos laterales, casos límite, ownership/lifetime, thread safety, invariantes, algoritmo y complejidad. Los fragmentos de código del documento base **no** traen ese bloque completo; el implementador debe añadirlo.
 4. **Ninguna función de más de 60 líneas ejecutables, ninguna recursión nueva, ninguna lambda nueva.**
@@ -347,19 +412,21 @@ Además vacía (`clear()`) y vuelve a llenar `namedTypes_` (609 y 693) en distin
 | ¿Hay pruebas de SHA-256? | **Sí** | `Stage64InstallationManifestTests.cpp:84-104` (vectores vacío y "abc", más `sha256File`) y `ProjectCallableWaveDriverTests.cpp:68` |
 | ¿`nsc build` reenvía `--time`? | **No** | `ProjectCommands.cpp:1280-1301` solo reenvía `--library-reference-root`, `-j` y `--progress[...]`. `DriverPhaseTimer.cpp:9` también se activa con `reportProgress`, así que para medir se usa `nsc build --progress`. |
 | ¿NSLink enlaza una DLL dummy para generar cada import library? (R-08.2) | **No.** El costo real es un proceso por DLL, no un enlace. | `A:\nslink-devel\src\driver\CompatibleDriver.cpp:782-795`: con `/def` y sin objetos de entrada, el producto es `ImportLibrary` **antes** de mirar `/dll`. `:900-923`: escribe directo con `ImportLibraryWriter::write`. `nsc` pasa `/dll /noentry /def /implib /out:dummy.dll` sin objetos (`LldLinker.cpp:604-610`), así que ya cae en esa ruta. |
-| ¿Es seguro no clonar los tipos hoja en `prepareNodeScope`? (R-06.4) | **No demostrado** | Los consumidores clonan la instantánea (`GenericTypeInference.cpp:122-123`, `cloneInferredType`) y no comparan punteros. Pero hay mutadores en sitio de `TypeSyntax`: `setBaseName` en `TypeAliasExpander.cpp:196` y `ConstGenericArguments.cpp:177`/`:194`, y `setOrigin*`. No se puede probar que un tipo hoja no cambie después de la instantánea. Queda NO IMPLEMENTAR. |
+| ¿Es seguro no clonar los tipos hoja en `prepareNodeScope`? (R-06.4) | **No demostrado** | Los consumidores clonan la instantánea (`GenericTypeInference.cpp:122-123`, `cloneInferredType`) y no comparan punteros. Pero hay mutadores en sitio de `TypeSyntax`: `setBaseName` en `TypeAliasExpander.cpp:196` y `ConstGenericArguments.cpp:177`/`:194`, y `setOrigin*`. No se implementa hasta cerrar `PERF-0364..PERF-0368`; permanece dentro del denominador. |
 
 ---
 
 ## 5. Clasificación de autorización
 
-### Grupo A — optimización interna con equivalencia estricta
+### Grupo A histórico — optimización interna con equivalencia estricta
 
 Dentro del alcance de una tarea de rendimiento autorizada (§12 del documento de compilador). Las entradas T-01 a T-62 de la §6, salvo las marcadas B.
 
-### Grupo B — requiere autorización explícita y separada
+### Grupo B histórico — contado y pendiente de autorización explícita cuando corresponda
 
-Cada una cambia algo protegido por §12 o por §8 ("formatos persistentes, artefactos emitidos, comportamiento de compilación o ejecución"), o retira una verificación existente.
+Cada una cambia algo protegido por §12 o por §8 ("formatos persistentes, artefactos emitidos, comportamiento de
+compilación o ejecución"), o retira una verificación existente. Todas sus partes aparecen en las tandas 8 a 13
+del tracking canónico y cuentan como pendientes hasta su implementación y validación.
 
 | ID | Qué cambia | Por qué no es A |
 |---|---|---|
@@ -375,9 +442,10 @@ Cada una cambia algo protegido por §12 o por §8 ("formatos persistentes, artef
 | B-10 (R-07.5.2) | Reutilizar el NSMETA ya verificado en `validateLibraryReference` | La segunda lectura hoy detecta un `.nsmeta` reemplazado entre configuración y enlace. Reutilizar retira esa garantía. |
 | B-11 (R-08.3.2) | Memoizar la verificación PE de las DLL de runtime | Igual que B-10 |
 
-### Grupo C — NO IMPLEMENTAR (hallazgo no autorizado, §2)
+### Grupo C histórico — contado y pendiente de diseño
 
-Hace falta una evidencia o un diseño que no existe todavía.
+Hace falta evidencia o diseño previo. Estos hallazgos aparecen descompuestos en las tandas 10 a 14 del tracking
+canónico; ninguno se elimina del denominador por esa razón.
 
 | ID | Hallazgo | Estado |
 |---|---|---|
@@ -396,7 +464,7 @@ Hace falta una evidencia o un diseño que no existe todavía.
 
 ---
 
-## 6. Tabla de tracking — Grupo A
+## 6. Tabla técnica original — tandas 1 a 7
 
 Columnas:
 
@@ -528,7 +596,9 @@ Estado: CERRADO / REABIERTO (causa)
 2. **Lote 2**: T-06 primero (infraestructura y su prueba), luego T-07 a T-19.
 3. **Lote 3**: T-20 a T-24.
 4. **Lotes 4 a 7**.
-5. **Grupo B**: solo con la autorización de Alberto, entrada por entrada.
+5. **Tandas 8 a 14**: continuar con medición, cachés y rediseños; cada fila marcada `REQUIERE AUTORIZACIÓN`
+   conserva ese gate sin salir del denominador.
+6. **Tanda 15**: validación y medición final sobre el producto integrado.
 
 **Criterio de parada.** Si una entrada rompe la suite, se detiene el lote. Se revierte **solo** esa entrada, se analiza contra el oráculo (LINEAMIENTOS-DE-TRABAJO §8, "Revisión obligatoria contra el último estado correcto") y no se corrigen consumidores ni pruebas.
 
@@ -542,8 +612,11 @@ Implementa el tracking NSC-IMPLEMENTACION-RENDIMIENTO.md (ediciones exactas en N
 leer primero su §0.5 de correcciones). Antes de tocar nada lee completos A:\LINEAMIENTOS-DESARROLLO-COMPILADOR-NATIVESHARP.md
 y las secciones §2, §8, §9 y §10 de A:\LINEAMIENTOS-DE-TRABAJO-Y-PORTEO.md.
 - Toda la implementacion corresponde a Codex en A:\nsc-devel. El IDE y su agente quedan fuera de alcance y no reciben tareas.
-- Solo Grupo A (§6), en el orden de §8. Grupo B solo con autorizacion explicita de Alberto por entrada. Grupo C: no tocar.
-- Una entrada T-xx = un commit = una hipotesis. Presupuesto cerrado: solo los archivos y simbolos listados.
+- Implementar las 16 tandas y los 670 elementos del tracking canonico. Una marca REQUIERE AUTORIZACION impide
+  ejecutar esa fila hasta obtenerla, pero la fila permanece pendiente y contada. REQUIERE DISENO obliga a cerrar
+  primero su diseno y pruebas de equivalencia; no autoriza omitirla.
+- Un commit = una hipotesis causal cohesionada. Un commit puede cerrar varios IDs inseparables de la misma
+  hipotesis; ningun ID se fusiona, desaparece ni se da por terminado por el commit.
 - Equivalencia estricta contra el oraculo 3.0.6 (3149/3149 unitarias, 6026/6026 externas). No modificar pruebas, fixtures
   ni proyectos. Cada indice nuevo: construido solo en build(), con bandera propia y fallback al recorrido lineal original
   (ProjectOopLoweringTests arma modelos a mano sin build()).

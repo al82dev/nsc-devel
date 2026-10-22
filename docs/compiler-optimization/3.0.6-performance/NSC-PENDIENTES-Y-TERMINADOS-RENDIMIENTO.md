@@ -1,322 +1,54 @@
-# NSC — Pendientes y terminados de rendimiento de compilación
+# NSC — Pendientes y terminados de rendimiento
 
-**Fecha:** 2026-10-21
-**Presupuesto técnico:** `NSC-IMPLEMENTACION-RENDIMIENTO.md`
-**Progreso:** `0 / 302`
-**Pendientes:** `302`
-**Terminados:** `0`
+**Progreso:** `0 / 48`
 
-Esta es la vista canónica de estado granular. Cada renglón representa una sola subtarea verificable; ningún
-renglón representa una tanda, un subsistema completo ni una agrupación de consumidores. El presupuesto, los
-gates y las pruebas permanecen en el documento técnico.
-
-## Pendientes — 302
-
-| Número | Qué resuelve | Estado |
+| Ítem | Qué resuelve | Estado |
 |---|---|---|
-| PERF-0001 | Reconstrucción repetida del nombre completo de los tipos | PENDIENTE |
-| PERF-0002 | Reconstrucción repetida de la clave de los tipos | PENDIENTE |
-| PERF-0003-A | Copia innecesaria al consultar el nombre completo de un tipo | PENDIENTE |
-| PERF-0003-B | Copia innecesaria al consultar la clave de un tipo | PENDIENTE |
-| PERF-0004-A | Cobertura de equivalencia de identidades cacheadas | PENDIENTE |
-| PERF-0004-B | Registro del target focal de identidades cacheadas | PENDIENTE |
-| PERF-0005 | Duplicación del procesamiento interno de bloques SHA-256 | PENDIENTE |
-| PERF-0006 | Copia y relleno completos de entradas SHA-256 en memoria | PENDIENTE |
-| PERF-0007 | Lectura byte a byte durante SHA-256 de archivos | PENDIENTE |
-| PERF-0008 | Equivalencia del SHA-256 optimizado en memoria | PENDIENTE |
-| PERF-0009-A | Equivalencia del SHA-256 optimizado sobre archivos | PENDIENTE |
-| PERF-0009-B | Registro del target focal de SHA-256 | PENDIENTE |
-| PERF-0010 | Lectura fragmentada de ejecutables PE | PENDIENTE |
-| PERF-0011 | Comprobación duplicada al resolver tipos LLVM | PENDIENTE |
-| PERF-0012 | Cálculo innecesario de procedencia de dependencias | PENDIENTE |
-| PERF-0013 | Canonicalización repetida de raíces de paquetes | PENDIENTE |
-| PERF-0014 | Copia innecesaria del plan de restauración | PENDIENTE |
-| PERF-0015 | Relectura de metadatos NSMETA repetidos | PENDIENTE |
-| PERF-0016-A | Cobertura de deduplicación de metadatos precompilados | PENDIENTE |
-| PERF-0016-B | Registro del target focal de deduplicación NSMETA | PENDIENTE |
-| PERF-0017 | Implementaciones dispersas del hash transparente | PENDIENTE |
-| PERF-0018-A | Hash heterogéneo duplicado en el índice de nombres de miembros | PENDIENTE |
-| PERF-0018-B | Hash heterogéneo duplicado en el índice de ordinales de tipos | PENDIENTE |
-| PERF-0019-A | Ausencia de consulta indexada por clave de identidad | PENDIENTE |
-| PERF-0019-B | Ausencia de consulta indexada por clave con prefijo `type:` | PENDIENTE |
-| PERF-0020-A | Ausencia del mapa de ordinales por identidad | PENDIENTE |
-| PERF-0020-B | Ausencia de una bandera propia de disponibilidad del índice | PENDIENTE |
-| PERF-0021 | Construcción repetida de búsquedas de ordinales de tipo | PENDIENTE |
-| PERF-0022 | Compatibilidad de modelos construidos sin índice | PENDIENTE |
-| PERF-0023 | Integración de la implementación del índice de identidades | PENDIENTE |
-| PERF-0024-A | Equivalencia entre búsqueda indexada y recorrido lineal | PENDIENTE |
-| PERF-0024-B | Fallback de búsqueda en modelos armados sin `build()` | PENDIENTE |
-| PERF-0025 | Búsqueda lineal de tipos en herencia | PENDIENTE |
-| PERF-0026 | Búsqueda lineal de tipos en interfaces | PENDIENTE |
-| PERF-0027 | Búsqueda lineal de tipos en restricciones genéricas | PENDIENTE |
-| PERF-0028 | Búsqueda lineal de layouts de valores | PENDIENTE |
-| PERF-0029 | Búsqueda lineal de lifetime trivial de structs | PENDIENTE |
-| PERF-0030 | Búsqueda lineal del ancho de bit-fields | PENDIENTE |
-| PERF-0031 | Búsqueda lineal de bases de bit-fields de clase | PENDIENTE |
-| PERF-0032-A | Búsqueda lineal en `isStructValueType` de HIR | PENDIENTE |
-| PERF-0032-B | Búsqueda lineal en `isClassReferenceType` de HIR | PENDIENTE |
-| PERF-0032-C | Búsqueda lineal en `isReferenceType` de HIR | PENDIENTE |
-| PERF-0033 | Búsqueda lineal de enums durante HIR | PENDIENTE |
-| PERF-0034 | Búsqueda lineal de tipos durante llamadas HIR | PENDIENTE |
-| PERF-0035 | Búsqueda lineal de tipos en call frames de Core | PENDIENTE |
-| PERF-0036 | Búsqueda lineal de tipos durante MIR | PENDIENTE |
-| PERF-0037-A | Búsqueda lineal en `typeKeyHasDefinedDefaultStorage` | PENDIENTE |
-| PERF-0037-B | Búsqueda lineal en `typeKeyIsStruct` | PENDIENTE |
-| PERF-0038-A | Búsqueda lineal en `isEnumTypeKey` | PENDIENTE |
-| PERF-0038-B | Búsqueda lineal en `elementTypeHasTrivialLifetime` | PENDIENTE |
-| PERF-0038-C | Búsqueda lineal en `isExternCDelegateTypeKey` | PENDIENTE |
-| PERF-0039-A | Búsqueda lineal en `aggregateIsUnion` | PENDIENTE |
-| PERF-0039-B | Búsqueda lineal en `aggregateRequiresActiveMember` | PENDIENTE |
-| PERF-0039-C | Búsqueda lineal en `aggregateAllowsSynthesizedMember` | PENDIENTE |
-| PERF-0039-D | Búsqueda lineal en `aggregateIsBorrowedView` | PENDIENTE |
-| PERF-0039-E | Búsqueda lineal en `aggregateElementTypeKeys` | PENDIENTE |
-| PERF-0039-F | Búsqueda lineal en `aggregateElementNames` | PENDIENTE |
-| PERF-0040 | Búsqueda lineal de tipos al enlazar lambdas | PENDIENTE |
-| PERF-0041-A | Búsqueda lineal en `classifyCVariadicPromotion` | PENDIENTE |
-| PERF-0041-B | Búsqueda lineal en `isAnyDelegateTypeKey` | PENDIENTE |
-| PERF-0042 | Búsqueda lineal de tipos nombrados en miembros | PENDIENTE |
-| PERF-0043 | Búsqueda lineal del tipo subyacente de enums en LLVM | PENDIENTE |
-| PERF-0044-A | Búsqueda lineal en `isDelegateReferenceType` de LLVM | PENDIENTE |
-| PERF-0044-B | Búsqueda lineal en `isClassReferenceType` de LLVM | PENDIENTE |
-| PERF-0045 | Búsqueda lineal de tipos para información de depuración | PENDIENTE |
-| PERF-0046-A | Búsqueda lineal en `isExternCDelegateType` | PENDIENTE |
-| PERF-0046-B | Búsqueda lineal en `isVectorCallDelegateType` | PENDIENTE |
-| PERF-0047-A | Búsqueda lineal en `isFloat32x4TypeKey` | PENDIENTE |
-| PERF-0047-B | Búsqueda lineal en `compactFloatVectorLaneCount` | PENDIENTE |
-| PERF-0047-C | Búsqueda lineal en `integerSimd128LaneBits` | PENDIENTE |
-| PERF-0047-D | Búsqueda lineal en `floatingSimd256LaneBits` | PENDIENTE |
-| PERF-0047-E | Búsqueda lineal en `integerSimd256LaneBits` | PENDIENTE |
-| PERF-0048-A | Búsqueda lineal en `namedTypeForCoreKey` | PENDIENTE |
-| PERF-0048-B | Búsqueda lineal en `collectReachableHostTypes` | PENDIENTE |
-| PERF-0049-A | Ausencia del almacenamiento del índice de layouts por miembro | PENDIENTE |
-| PERF-0049-B | Ausencia de una bandera propia de disponibilidad del índice | PENDIENTE |
-| PERF-0050 | Precedencia determinista del índice de layouts | PENDIENTE |
-| PERF-0051 | Recorridos lineales al consultar layouts de campos | PENDIENTE |
-| PERF-0052-A | Cobertura diferencial del índice de layouts de campos | PENDIENTE |
-| PERF-0052-B | Registro del target focal de layouts de campos | PENDIENTE |
-| PERF-0053-A | Ausencia del mapa de layouts de structs por clave | PENDIENTE |
-| PERF-0053-B | Ausencia del acceso indexado a layouts de structs | PENDIENTE |
-| PERF-0053-C | Ausencia del mapa de layouts de clases por clave | PENDIENTE |
-| PERF-0053-D | Ausencia del acceso indexado a layouts de clases | PENDIENTE |
-| PERF-0054-A | Construcción tardía o repetida del índice de structs | PENDIENTE |
-| PERF-0054-B | Construcción tardía o repetida del índice de clases | PENDIENTE |
-| PERF-0055-A | Recorrido LLVM en `findStructLayout` | PENDIENTE |
-| PERF-0055-B | Recorrido LLVM en `findClassLayout` | PENDIENTE |
-| PERF-0055-C | Fallback lineal de layouts de structs para modelos sin índice | PENDIENTE |
-| PERF-0055-D | Fallback lineal de layouts de clases para modelos sin índice | PENDIENTE |
-| PERF-0056-A | Cobertura diferencial de índices de layouts MIR | PENDIENTE |
-| PERF-0056-B | Registro del target focal de índices de layouts MIR | PENDIENTE |
-| PERF-0057 | Resolución ABI lineal cuando existe índice de layouts | PENDIENTE |
-| PERF-0058-A | Falta de propagación del índice a `configureFunctionAbi` | PENDIENTE |
-| PERF-0058-B | Falta de propagación del índice a `lowerOneFunction` | PENDIENTE |
-| PERF-0059 | Recorridos lineales al sumar frames awaited | PENDIENTE |
-| PERF-0060-A | Ausencia de referencia compartida a layouts de structs | PENDIENTE |
-| PERF-0060-B | Ausencia de selección entre layouts propias y compartidas | PENDIENTE |
-| PERF-0061 | Falta de compartición de layouts entre lowerers | PENDIENTE |
-| PERF-0062-A | Lectura directa del vector copiado en `FutureFieldAddress` | PENDIENTE |
-| PERF-0062-B | Lectura directa del vector copiado en `lowerAwaitFuture` | PENDIENTE |
-| PERF-0063 | Ausencia de caché de tipos LLVM | PENDIENTE |
-| PERF-0064-A | Consulta repetida antes de reutilizar un tipo LLVM válido | PENDIENTE |
-| PERF-0064-B | Falta de almacenamiento de resultados LLVM no nulos | PENDIENTE |
-| PERF-0065 | Construcción completa de workers para funciones precompiladas | PENDIENTE |
-| PERF-0066 | Construcción completa de workers para funciones C importadas | PENDIENTE |
-| PERF-0067-A | Falta de una ruta ligera para funciones precompiladas sin cuerpo | PENDIENTE |
-| PERF-0067-B | Falta de una ruta ligera para funciones C importadas | PENDIENTE |
-| PERF-0068-A | Creación de workers para miembros que deben omitirse | PENDIENTE |
-| PERF-0068-B | Creación de workers para funciones precompiladas | PENDIENTE |
-| PERF-0068-C | Creación de workers para funciones C importadas | PENDIENTE |
-| PERF-0069-A | Escritura directa de resultado HIR precompilado | PENDIENTE |
-| PERF-0069-B | Escritura directa de resultado HIR importado desde C | PENDIENTE |
-| PERF-0069-C | Escritura directa de resultado HIR regular | PENDIENTE |
-| PERF-0070-A | Redimensionamiento del vector HIR por miembro en cada worker | PENDIENTE |
-| PERF-0070-B | Redimensionamiento del vector HIR de namespace en cada worker | PENDIENTE |
-| PERF-0071 | Sobrecosto del camino secuencial filtrado de HIR | PENDIENTE |
-| PERF-0072 | Búsqueda repetida de locales por callable | PENDIENTE |
-| PERF-0073 | Búsqueda repetida de locales por lambda | PENDIENTE |
-| PERF-0074 | Búsqueda repetida de cleanups de parámetros | PENDIENTE |
-| PERF-0075-A | Reconstrucción del índice de locales por callable | PENDIENTE |
-| PERF-0075-B | Reconstrucción del índice de locales por lambda | PENDIENTE |
-| PERF-0075-C | Reconstrucción del índice de cleanups por callable | PENDIENTE |
-| PERF-0075-D | Ausencia del acceso a locales indexados por callable | PENDIENTE |
-| PERF-0075-E | Ausencia del acceso a locales indexados por lambda | PENDIENTE |
-| PERF-0075-F | Ausencia del acceso a cleanups indexados por callable | PENDIENTE |
-| PERF-0076 | Recorridos de locales al construir funciones regulares | PENDIENTE |
-| PERF-0077 | Recorridos de locales al construir funciones de namespace | PENDIENTE |
-| PERF-0078 | Recorridos de locales al construir funciones lambda | PENDIENTE |
-| PERF-0079 | Recorridos de cleanups en funciones regulares | PENDIENTE |
-| PERF-0080 | Recorridos de cleanups en funciones de namespace | PENDIENTE |
-| PERF-0081-A | Equivalencia del orden HIR entre ejecución secuencial y paralela | PENDIENTE |
-| PERF-0081-B | Registro del target focal de orden HIR | PENDIENTE |
-| PERF-0082 | Búsqueda repetida de funciones lambda al marcar closures | PENDIENTE |
-| PERF-0083-A | Canonicalización repetida del directorio del proyecto | PENDIENTE |
-| PERF-0083-B | Consulta repetida de existencia del directorio del proyecto | PENDIENTE |
-| PERF-0084-A | Reconstrucción de `comparisonKey` al ordenar fuentes | PENDIENTE |
-| PERF-0084-B | Reconstrucción de `generic_string` al ordenar fuentes | PENDIENTE |
-| PERF-0084-C | Comparación directa repetida durante el ordenamiento de fuentes | PENDIENTE |
-| PERF-0085-A | Canonicalización repetida en el primer recorrido de propiedad transitiva | PENDIENTE |
-| PERF-0085-B | Canonicalización repetida en el segundo recorrido de propiedad transitiva | PENDIENTE |
-| PERF-0086-A | Canonicalización repetida del proyecto al elegir artefactos exactos | PENDIENTE |
-| PERF-0086-B | Canonicalización repetida dentro del ordenamiento de artefactos | PENDIENTE |
-| PERF-0087 | Ausencia de índice de tipos declarados por nombre fuente | PENDIENTE |
-| PERF-0088 | Recolección no indexada de tipos declarados | PENDIENTE |
-| PERF-0089 | Búsqueda lineal de identidades calificadas por módulo | PENDIENTE |
-| PERF-0090 | Búsqueda lineal de identidades de tipos declarados | PENDIENTE |
-| PERF-0091-A | Cobertura diferencial del índice de tipos declarados | PENDIENTE |
-| PERF-0091-B | Registro del target focal de tipos declarados | PENDIENTE |
-| PERF-0092 | Copia anticipada del scope genérico copy-on-write | PENDIENTE |
-| PERF-0093 | Materialización innecesaria de scopes genéricos de solo lectura | PENDIENTE |
-| PERF-0094 | Copia innecesaria de hijos en el modelo genérico | PENDIENTE |
-| PERF-0095 | Copia innecesaria de hijos al expandir aliases | PENDIENTE |
-| PERF-0096 | Copia innecesaria de hijos al procesar nodos genéricos | PENDIENTE |
-| PERF-0097 | Primera copia innecesaria en dependencias de templates | PENDIENTE |
-| PERF-0098 | Segunda copia innecesaria en dependencias de templates | PENDIENTE |
-| PERF-0099 | Copia innecesaria de hijos al recolectar templates | PENDIENTE |
-| PERF-0100 | Copia innecesaria del namespace de origen | PENDIENTE |
-| PERF-0101-A | Construcción de string para buscar templates por nombre terminal | PENDIENTE |
-| PERF-0101-B | Reconstrucción del nombre calificado de cada template | PENDIENTE |
-| PERF-0101-C | Comparación contra nombres calificados reconstruidos | PENDIENTE |
-| PERF-0102 | Resolución duplicada de sintaxis de tipos demandados | PENDIENTE |
-| PERF-0103 | Canonicalización repetida de rutas de visibilidad | PENDIENTE |
-| PERF-0104-A | Tres tablas separadas para clasificar keywords | PENDIENTE |
-| PERF-0104-B | Hasta tres consultas hash por identificador | PENDIENTE |
-| PERF-0105 | Realocaciones evitables durante lexing | PENDIENTE |
-| PERF-0106 | Asignaciones temporales al consultar nombres de tipos | PENDIENTE |
-| PERF-0107 | Crecimiento repetido del buffer de consulta del parser | PENDIENTE |
-| PERF-0108 | Reconstrucción del buffer de búsqueda de tipos | PENDIENTE |
-| PERF-0109-A | Realocaciones al reunir nombres conocidos por el parser | PENDIENTE |
-| PERF-0109-B | Reconstrucción repetida de nombres conocidos por compilación | PENDIENTE |
-| PERF-0110-A | Búsqueda lineal en metadata decodificada y ordenada | PENDIENTE |
-| PERF-0110-B | Búsqueda lineal en metadata construida en memoria | PENDIENTE |
-| PERF-0111 | Recorridos de metadata al publicar miembros | PENDIENTE |
-| PERF-0112 | Recorridos de metadata al publicar contratos | PENDIENTE |
-| PERF-0113-A | Equivalencia de búsquedas en metadata ordenada | PENDIENTE |
-| PERF-0113-B | Equivalencia del fallback sobre metadata en memoria | PENDIENTE |
-| PERF-0113-C | Registro del target focal de superficie pública | PENDIENTE |
-| PERF-0114 | Recalculo de prioridad al ordenar métodos publicados | PENDIENTE |
-| PERF-0115-A | Llamadas repetidas al ranking dentro del comparador | PENDIENTE |
-| PERF-0115-B | Ausencia de índice de dispatch por clave de tipo | PENDIENTE |
-| PERF-0115-C | Ausencia de índice de firmas de interfaces | PENDIENTE |
-| PERF-0115-D | Reconstrucción del orden después de clasificar los métodos | PENDIENTE |
-| PERF-0116-A | Ausencia de memo de resultados de tipos de contrato | PENDIENTE |
-| PERF-0116-B | Ausencia de memo de alcanzabilidad pública | PENDIENTE |
-| PERF-0117-A | Rematerialización al validar declaraciones precompiladas | PENDIENTE |
-| PERF-0117-B | Rematerialización al validar métodos nativos | PENDIENTE |
-| PERF-0117-C | Rematerialización al validar constructores | PENDIENTE |
-| PERF-0117-D | Envoltorios públicos sin reutilización de caché | PENDIENTE |
-| PERF-0117-E | Caché aislada durante generación de superficie pública | PENDIENTE |
-| PERF-0117-F | Caché aislada durante publicación de símbolos nativos | PENDIENTE |
-| PERF-0118 | Cachés aisladas durante materialización recursiva | PENDIENTE |
-| PERF-0119-A | Cobertura de equivalencia de la caché de contratos | PENDIENTE |
-| PERF-0119-B | Registro del target focal de materialización de contratos | PENDIENTE |
-| PERF-0120-A | Nueva visita de un template genérico ya verificado | PENDIENTE |
-| PERF-0120-B | Falta de registro de templates verificados con éxito | PENDIENTE |
-| PERF-0121 | Memos aislados entre raíces de verificación | PENDIENTE |
-| PERF-0122-A | Búsqueda lineal de tablas de dispatch por tipo | PENDIENTE |
-| PERF-0122-B | Búsqueda lineal de slots por firma | PENDIENTE |
-| PERF-0123 | Búsqueda lineal de miembros virtuales | PENDIENTE |
-| PERF-0124-A | Recorrido repetido en `findMetadataDispatch` | PENDIENTE |
-| PERF-0124-B | Recorrido repetido en `findMetadataDispatchSlot` | PENDIENTE |
-| PERF-0124-C | Falta de propagación de índices a `verifyVirtualMemberDispatch` | PENDIENTE |
-| PERF-0125 | Construcción anticipada del primer diagnóstico de metadata | PENDIENTE |
-| PERF-0126 | Construcción anticipada del segundo diagnóstico de metadata | PENDIENTE |
-| PERF-0127 | Construcción anticipada del tercer diagnóstico de metadata | PENDIENTE |
-| PERF-0128 | Construcción anticipada del cuarto diagnóstico de metadata | PENDIENTE |
-| PERF-0129-A | Ausencia del almacenamiento de miembros declarados por tipo | PENDIENTE |
-| PERF-0129-B | Ausencia de una bandera propia de disponibilidad del índice de miembros | PENDIENTE |
-| PERF-0129-C | Ausencia del acceso indexado a miembros declarados por tipo | PENDIENTE |
-| PERF-0129-D | Falta de construcción del índice al cerrar el modelo de miembros | PENDIENTE |
-| PERF-0129-E | Falta de fallback para modelos de miembros armados manualmente | PENDIENTE |
-| PERF-0130 | Filtrado lineal de miembros en predicados de tipos | PENDIENTE |
-| PERF-0131-A | Filtrado lineal de miembros en `bindAtomicOperation` | PENDIENTE |
-| PERF-0131-B | Filtrado lineal de miembros en operaciones Mutex/Monitor | PENDIENTE |
-| PERF-0131-C | Filtrado lineal de miembros en `callTypeIsSend` | PENDIENTE |
-| PERF-0131-D | Filtrado lineal de miembros en `callTypeIsSync` | PENDIENTE |
-| PERF-0132 | Filtrado lineal de miembros durante construcción | PENDIENTE |
-| PERF-0133 | Bucle interno lineal del ciclo de vida de callables | PENDIENTE |
-| PERF-0134 | Filtrado lineal de miembros durante coordinación HIR | PENDIENTE |
-| PERF-0135 | Filtrado lineal de miembros en call frames de Core | PENDIENTE |
-| PERF-0136 | Filtrado lineal de miembros para debug info LLVM | PENDIENTE |
-| PERF-0137 | Filtrado lineal de miembros en restricciones genéricas | PENDIENTE |
-| PERF-0138-A | Cobertura diferencial del índice de miembros por tipo | PENDIENTE |
-| PERF-0138-B | Registro del target focal de miembros por tipo | PENDIENTE |
-| PERF-0139-A | Ausencia del almacenamiento de planes de interfaz por clase | PENDIENTE |
-| PERF-0139-B | Falta de construcción del índice de planes de interfaz | PENDIENTE |
-| PERF-0139-C | Ausencia del acceso indexado a planes de interfaz | PENDIENTE |
-| PERF-0139-D | Falta de fallback lineal para modelos sin índice de planes | PENDIENTE |
-| PERF-0140 | Recorrido lineal de planes de interfaz en asignaciones | PENDIENTE |
-| PERF-0141-A | Ausencia de almacenamiento del ordinal de `Exception` | PENDIENTE |
-| PERF-0141-B | Ausencia de almacenamiento del ordinal de `IDisposable` | PENDIENTE |
-| PERF-0141-C | Ausencia de almacenamiento del ordinal de `ThreadStart` | PENDIENTE |
-| PERF-0141-D | Ausencia de almacenamiento del ordinal de `StringView` | PENDIENTE |
-| PERF-0141-E | Ausencia de almacenamiento del ordinal de la fachada nativa | PENDIENTE |
-| PERF-0142-A | Resolución repetida del ordinal de `Exception` | PENDIENTE |
-| PERF-0142-B | Resolución repetida del ordinal de `IDisposable` | PENDIENTE |
-| PERF-0142-C | Resolución repetida del ordinal de `ThreadStart` | PENDIENTE |
-| PERF-0142-D | Resolución repetida del ordinal de `StringView` | PENDIENTE |
-| PERF-0142-E | Resolución repetida del ordinal de la fachada nativa | PENDIENTE |
-| PERF-0143 | Falta de propagación de ordinales de Core a los shards | PENDIENTE |
-| PERF-0144 | Búsqueda repetida de la raíz de excepciones | PENDIENTE |
-| PERF-0145 | Búsqueda repetida de `IDisposable` | PENDIENTE |
-| PERF-0146 | Búsqueda repetida de `ThreadStart` | PENDIENTE |
-| PERF-0147 | Búsqueda repetida del tipo usado por patrones de string | PENDIENTE |
-| PERF-0148 | Búsqueda repetida de la fachada nativa | PENDIENTE |
-| PERF-0149-A | Ausencia del almacenamiento de tipos por nombre simple | PENDIENTE |
-| PERF-0149-B | Falta de construcción del índice por nombre simple | PENDIENTE |
-| PERF-0149-C | Ausencia del acceso ordenado a candidatos por nombre simple | PENDIENTE |
-| PERF-0150 | Búsqueda lineal de identificadores de tipo en asignaciones | PENDIENTE |
-| PERF-0151 | Cobertura de nombres simples repetidos | PENDIENTE |
-| PERF-0152-A | Ausencia del almacenamiento de extensiones por nombre | PENDIENTE |
-| PERF-0152-B | Falta de construcción del índice de extensiones | PENDIENTE |
-| PERF-0152-C | Ausencia del acceso indexado a extensiones por nombre | PENDIENTE |
-| PERF-0152-D | Falta de fallback lineal para modelos sin índice de extensiones | PENDIENTE |
-| PERF-0153 | Recorrido lineal de extensiones candidatas | PENDIENTE |
-| PERF-0154-A | Ausencia del almacenamiento de templates por clave canónica | PENDIENTE |
-| PERF-0154-B | Falta de construcción del índice de templates | PENDIENTE |
-| PERF-0154-C | Ausencia del acceso indexado a templates por clave | PENDIENTE |
-| PERF-0154-D | Falta de fallback lineal para modelos sin índice de templates | PENDIENTE |
-| PERF-0155 | Recorrido lineal de templates al resolver carriers | PENDIENTE |
-| PERF-0156-A | Alias inútiles recorridos por cada identidad física | PENDIENTE |
-| PERF-0156-B | Recanonicalización de la clave del tipo declarante por miembro | PENDIENTE |
-| PERF-0156-C | Canonicalización innecesaria cuando no existen aliases efectivos | PENDIENTE |
-| PERF-0157-A | Ausencia del almacenamiento del índice de funciones precompiladas | PENDIENTE |
-| PERF-0157-B | Falta de construcción del índice de funciones precompiladas | PENDIENTE |
-| PERF-0157-C | Ausencia de búsqueda por los cuatro campos de identidad | PENDIENTE |
-| PERF-0157-D | Falta de preservación del primer ordinal entre identidades iguales | PENDIENTE |
-| PERF-0158 | Recorrido lineal al enlazar resúmenes de escape | PENDIENTE |
-| PERF-0159-A | Cobertura diferencial de identidades precompiladas | PENDIENTE |
-| PERF-0159-B | Registro del target focal de identidades precompiladas | PENDIENTE |
-| PERF-0160-A | Recalculo del checksum de un archivo en cada unidad LLVM | PENDIENTE |
-| PERF-0160-B | Falta de sincronización por entrada de checksum compartido | PENDIENTE |
-| PERF-0161-A | Falta de propiedad de la caché en `ProjectOopObjectGenerator` | PENDIENTE |
-| PERF-0161-B | Falta de propagación de la caché a cada emisor | PENDIENTE |
-| PERF-0161-C | Falta de consumo de la caché en `createDebugFile` | PENDIENTE |
-| PERF-0162-A | Ausencia del índice de bindings por par de tipos | PENDIENTE |
-| PERF-0162-B | Falta de construcción del índice de bindings de interfaz | PENDIENTE |
-| PERF-0162-C | Falta de fallback lineal para bindings de interfaz | PENDIENTE |
-| PERF-0163-A | Ausencia del índice de slots por miembro | PENDIENTE |
-| PERF-0163-B | Falta de construcción del índice de slots de interfaz | PENDIENTE |
-| PERF-0163-C | Falta de fallback lineal para slots de interfaz | PENDIENTE |
-| PERF-0164-A | Plegado repetido de nombres de paquetes | PENDIENTE |
-| PERF-0164-B | Plegado repetido de nombres de módulos | PENDIENTE |
-| PERF-0164-C | Plegado repetido de nombres de módulos amigos | PENDIENTE |
-| PERF-0165-A | Plegado repetido al comparar visibilidad de paquete | PENDIENTE |
-| PERF-0165-B | Plegado repetido al comparar visibilidad de módulo | PENDIENTE |
-| PERF-0165-C | Plegado repetido al comprobar módulos amigos | PENDIENTE |
-| PERF-0165-D | Compatibilidad de las APIs públicas de visibilidad usadas por el IDE | PENDIENTE |
-| PERF-0166 | Asignaciones de string al consultar especializaciones | PENDIENTE |
-| PERF-0167 | Búsqueda lineal de templates cerrados por nombre | PENDIENTE |
-| PERF-0168 | Búsqueda repetida de inicializadores de campos estáticos | PENDIENTE |
-| PERF-0169 | Recorrido lineal al materializar constantes estáticas | PENDIENTE |
-| PERF-0170 | Búsqueda lineal de módulos runtime por DLL | PENDIENTE |
-| PERF-0171-A | Deduplicación lineal de símbolos por módulo | PENDIENTE |
-| PERF-0171-B | Falta de reutilización del índice en el primer llamador de artefactos | PENDIENTE |
-| PERF-0171-C | Falta de reutilización del índice en el segundo llamador de artefactos | PENDIENTE |
-| PERF-0171-D | Falta de reutilización del índice en el tercer llamador de artefactos | PENDIENTE |
-| PERF-0171-E | Falta de reutilización del índice en validación de referencias | PENDIENTE |
-| PERF-0172 | Índice LLVM existente sin acceso de solo lectura | PENDIENTE |
-| PERF-0173 | Búsqueda lineal de la función destructora de closures | PENDIENTE |
-| PERF-0174 | Búsqueda lineal de funciones callback MIR | PENDIENTE |
-
-## Terminados — 0
-
-Ninguno.
+| T1.1 | Conectar `setTemplateCacheRoot` desde la entrada real de compilación | PENDIENTE |
+| T1.2 | Usar una raíz persistente independiente del directorio temporal del build | PENDIENTE |
+| T1.3 | Calcular la llave de plantillas antes del lexer y parser | PENDIENTE |
+| T1.4 | Restaurar el producto parseado con su identidad y orden originales | PENDIENTE |
+| T1.5 | Omitir lexer, parser y recolección de templates cuando exista un hit válido | PENDIENTE |
+| T1.6 | Publicar el producto solamente después de procesarlo correctamente | PENDIENTE |
+| T1.7 | Conservar publicación atómica, cuarentena, poda y razones de hit o miss | PENDIENTE |
+| T2.1 | Conectar `setMirCacheRoot` desde la entrada real de compilación | PENDIENTE |
+| T2.2 | Calcular la llave MIR antes del lowering | PENDIENTE |
+| T2.3 | Incluir HIR, tipos, ABI, compilador, target y opciones en la llave MIR | PENDIENTE |
+| T2.4 | Consultar la caché antes de construir cada callable MIR | PENDIENTE |
+| T2.5 | Instalar la función MIR restaurada en vez de descartarla | PENDIENTE |
+| T2.6 | Reenlazar referencias, cleanups, excepciones, async frames y ordinales restaurados | PENDIENTE |
+| T2.7 | Construir y publicar solamente los misses MIR | PENDIENTE |
+| T3.1 | Definir la identidad estable de cada módulo precompilado | PENDIENTE |
+| T3.2 | Crear una raíz persistente para productos de módulos precompilados | PENDIENTE |
+| T3.3 | Restaurar `public-api` sin volver a generarlo | PENDIENTE |
+| T3.4 | Restaurar `public-templates` sin volver a generarlo | PENDIENTE |
+| T3.5 | Reconstruir las unidades virtuales con su identidad y orden originales | PENDIENTE |
+| T3.6 | Omitir emitter, lexer, parser y genéricos de la superficie restaurada | PENDIENTE |
+| T3.7 | Publicar e invalidar ambos productos como una unidad atómica | PENDIENTE |
+| T4.1 | Crear un repositorio de NSMETA por compilación | PENDIENTE |
+| T4.2 | Leer y calcular una sola vez el hash de cada NSMETA sin cambios | PENDIENTE |
+| T4.3 | Decodificar una sola vez cada payload NSMETA | PENDIENTE |
+| T4.4 | Ejecutar una sola vez `verifyCurrentCompiler` por identidad NSMETA | PENDIENTE |
+| T4.5 | Compartir el mismo modelo NSMETA entre todos sus consumidores | PENDIENTE |
+| T4.6 | Persistir y restaurar el modelo NSMETA verificado | PENDIENTE |
+| T4.7 | Invalidar NSMETA por contenido o contrato sin cambiar diagnósticos | PENDIENTE |
+| T5.1 | Asignar un propietario único a los índices reutilizables | PENDIENTE |
+| T5.2 | Compartir el índice de tipos por identidad, nombre y ordinal | PENDIENTE |
+| T5.3 | Compartir índices de miembros, firmas y dispatch | PENDIENTE |
+| T5.4 | Compartir índices de layouts de structs, clases y campos | PENDIENTE |
+| T5.5 | Compartir índices de templates, demandas y especializaciones | PENDIENTE |
+| T5.6 | Compartir índices HIR de locales, lambdas y cleanups | PENDIENTE |
+| T5.7 | Compartir índices MIR de funciones, miembros y async frames | PENDIENTE |
+| T6.1 | Construir el manifiesto de entradas antes de `ProjectCompilation` | PENDIENTE |
+| T6.2 | Incluir todas las entradas relevantes en la identidad de compilación | PENDIENTE |
+| T6.3 | Consultar el bundle existente antes de construir el frontend | PENDIENTE |
+| T6.4 | Verificar todos los artefactos solicitados antes de aceptar un hit | PENDIENTE |
+| T6.5 | Restaurar artefactos válidos y omitir las fases ya resueltas | PENDIENTE |
+| T6.6 | Publicar el bundle solamente después de una compilación exitosa | PENDIENTE |
+| T6.7 | Registrar invalidación, corrupción y razón exacta de miss | PENDIENTE |
+| T7.1 | Crear un propietario de vida de compilación para pool, scheduler, cachés e índices | PENDIENTE |
+| T7.2 | Compartir el mismo pool entre grafo, sintaxis, nombres, HIR, MIR y LLVM | PENDIENTE |
+| T7.3 | Eliminar pools internos redundantes por fase | PENDIENTE |
+| T7.4 | Reutilizar productos inmutables sin copiarlos ni reconstruirlos | PENDIENTE |
+| T7.5 | Conservar orden, barreras, cancelación y estado floating-point deterministas | PENDIENTE |
+| T7.6 | Reiniciar el estado al terminar sin contaminar compilaciones posteriores | PENDIENTE |
