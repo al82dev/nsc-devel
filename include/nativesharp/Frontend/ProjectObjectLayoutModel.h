@@ -99,6 +99,9 @@ private:
         std::size_t typeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics,
         SourceRange useRange);
+    std::optional<std::size_t> namedTypeOrdinalForTypeKey(
+        const ProjectNameLookup& nameLookup,
+        std::string_view typeKey) const noexcept;
     bool hasTrivialStructLifetime(
         std::string_view typeKey,
         std::set<std::size_t>& visiting) const;

@@ -38,6 +38,8 @@ std::size_t ProjectCompilationIndexes::TransparentStringHash::operator()(
 
 void ProjectCompilationIndexes::clear() noexcept
 {
+    typeIndexBuilt_ = false;
+    layoutIndexesBuilt_ = false;
     typesByOrdinal_.clear();
     typeOrdinalByIdentity_.clear();
     typeOrdinalsByName_.clear();
@@ -64,6 +66,8 @@ void ProjectCompilationIndexes::clear() noexcept
 
 void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaration> types)
 {
+    typeIndexBuilt_ = false;
+    layoutIndexesBuilt_ = false;
     typesByOrdinal_.clear();
     typeOrdinalByIdentity_.clear();
     typeOrdinalsByName_.clear();
@@ -93,6 +97,7 @@ void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaratio
             typeOrdinalsByName_[std::string(qualifiedName)].push_back(ordinal);
         }
     }
+    typeIndexBuilt_ = true;
 }
 
 void ProjectCompilationIndexes::rebuildGenerics(
@@ -156,6 +161,7 @@ void ProjectCompilationIndexes::clearGenericTypeDemands() noexcept
 
 void ProjectCompilationIndexes::rebuildMembers(std::span<const ClassMemberSymbol> members)
 {
+    layoutIndexesBuilt_ = false;
     membersByOrdinal_.clear();
     memberOrdinalsByName_.clear();
     memberOrdinalsBySignature_.clear();
@@ -200,6 +206,7 @@ void ProjectCompilationIndexes::rebuildLayouts(
     std::size_t memberCount,
     std::size_t typeCount)
 {
+    layoutIndexesBuilt_ = false;
     clearHirBindings();
     classLayoutsByType_.assign(typeCount, nullptr);
     structLayoutsByType_.assign(typeCount, nullptr);
@@ -242,6 +249,17 @@ void ProjectCompilationIndexes::rebuildLayouts(
         if (allocationPlansByConstruction_[plan.constructionOrdinal] == nullptr)
             allocationPlansByConstruction_[plan.constructionOrdinal] = &plan;
     }
+    layoutIndexesBuilt_ = true;
+}
+
+bool ProjectCompilationIndexes::hasTypeIndex() const noexcept
+{
+    return typeIndexBuilt_;
+}
+
+bool ProjectCompilationIndexes::hasLayoutIndexes() const noexcept
+{
+    return layoutIndexesBuilt_;
 }
 
 void ProjectCompilationIndexes::rebuildHirBindings(

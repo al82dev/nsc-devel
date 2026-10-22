@@ -158,7 +158,7 @@ std::span<const ObjectAllocationPlan> ProjectObjectLayoutModel::allocationPlans(
 
 const ClassObjectLayout* ProjectObjectLayoutModel::layoutForType(std::size_t typeOrdinal) const noexcept
 {
-    if (built_)
+    if (indexes_->hasLayoutIndexes())
     {
         return indexes_->classLayoutForType(typeOrdinal);
     }
@@ -172,7 +172,7 @@ const ClassObjectLayout* ProjectObjectLayoutModel::layoutForType(std::size_t typ
 
 const StructValueLayout* ProjectObjectLayoutModel::structLayoutForType(std::size_t typeOrdinal) const noexcept
 {
-    if (built_)
+    if (indexes_->hasLayoutIndexes())
     {
         return indexes_->structLayoutForType(typeOrdinal);
     }
@@ -186,10 +186,12 @@ const StructValueLayout* ProjectObjectLayoutModel::structLayoutForType(std::size
 
 const ObjectFieldLayout* ProjectObjectLayoutModel::fieldLayoutForMember(std::size_t memberOrdinal) const noexcept
 {
-    if (built_)
+    if (indexes_->hasLayoutIndexes())
     {
         return indexes_->fieldLayoutForMember(memberOrdinal);
     }
+    // ES: Los fixtures que ensamblan el modelo a mano no construyen el indice compartido.
+    // EN: Fixtures that assemble the model manually do not build the shared index.
     for (const StructValueLayout& layout : structLayouts_)
     {
         for (const ObjectFieldLayout& field : layout.fields)
@@ -249,48 +251,47 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
         if (!count.has_value() || !elementLayout.has_value()) return std::nullopt;
         return {{elementLayout->first * *count, elementLayout->second}};
     }
-    for (std::size_t ordinal = 0; ordinal < nameLookup.namedTypes().size(); ++ordinal)
+    const std::optional<std::size_t> ordinal =
+        namedTypeOrdinalForTypeKey(nameLookup, typeKey);
+    if (!ordinal.has_value() || *ordinal >= nameLookup.namedTypes().size())
+        return std::nullopt;
+    const NamedTypeDeclaration& declaration = nameLookup.namedTypes()[*ordinal];
+    if (declaration.kind == NamedTypeDeclarationKind::Struct)
     {
-        const NamedTypeDeclaration& declaration = nameLookup.namedTypes()[ordinal];
-        if ("type:" + declaration.identity.key() != typeKey) continue;
-        if (declaration.kind == NamedTypeDeclarationKind::Struct)
-        {
-            const StructValueLayout* layout = structLayoutForType(ordinal);
-            if (layout != nullptr) return {{layout->size, layout->alignment}};
-            return std::nullopt;
-        }
-        // ID 78, P1 -- UN `enum` NO MIDE OCHO.
-        //
-        // Esta funcion es el servicio canonico de tamano del nivel crudo: de ella salen el paso de
-        // un arreglo, `sizeof`, `stackalloc` y el paso de la aritmetica de punteros. Un `enum` caia
-        // hasta el `return {{8, 8}}` de abajo, que existe para las REFERENCIAS -- clase, interfaz,
-        // delegado -- porque todas ellas miden un puntero. Pero un enum es un tipo POR VALOR, y la
-        // otra funcion de tamano de esta misma clase, `layoutNamedType`, contesta 4 para el mismo
-        // tipo (BuiltinLayoutKind::Enum).
-        //
-        // MEDIDO, y la consecuencia no es cosmetica: el offset de un campo `enum` dentro de un
-        // struct lo da layoutNamedType (4), y el paso de un `Color*` lo daba esta (8). Con
-        // `struct S { Color a; Color b; }`, `Color* p = &s.a; p + 1` aterrizaba OCHO bytes mas
-        // alla -- pasado `s.b` por completo, fuera del struct. Dos reglas de tamano para un mismo
-        // tipo es exactamente la duplicacion semantica que el milestone CC1 existe para quitar; el
-        // enum era la que quedaba viva.
-        if (declaration.kind == NamedTypeDeclarationKind::Enum)
-        {
-            // Mismo motivo que en el otro sitio: el ancho del enum es el de su tipo subyacente.
-            target::TypeLayout layout = targetLayout_.layoutOf(target::BuiltinLayoutKind::Enum);
-            if (const builtins::IntegerTypeInfo* info =
-                    builtins::findIntegerType(enumUnderlyingTypeKey(declaration.syntax));
-                info != nullptr && info->width >= 8)
-            {
-                layout.size = info->width / 8U;
-                layout.alignment = layout.size;
-            }
-            return {{layout.size, layout.alignment}};
-        }
-        // Clase, interfaz y delegado: una referencia, que es un puntero nativo.
-        return {{8, 8}};
+        const StructValueLayout* layout = structLayoutForType(*ordinal);
+        if (layout != nullptr) return {{layout->size, layout->alignment}};
+        return std::nullopt;
     }
-    return std::nullopt;
+    // ID 78, P1 -- UN `enum` NO MIDE OCHO.
+    //
+    // Esta funcion es el servicio canonico de tamano del nivel crudo: de ella salen el paso de
+    // un arreglo, `sizeof`, `stackalloc` y el paso de la aritmetica de punteros. Un `enum` caia
+    // hasta el `return {{8, 8}}` de abajo, que existe para las REFERENCIAS -- clase, interfaz,
+    // delegado -- porque todas ellas miden un puntero. Pero un enum es un tipo POR VALOR, y la
+    // otra funcion de tamano de esta misma clase, `layoutNamedType`, contesta 4 para el mismo
+    // tipo (BuiltinLayoutKind::Enum).
+    //
+    // MEDIDO, y la consecuencia no es cosmetica: el offset de un campo `enum` dentro de un
+    // struct lo da layoutNamedType (4), y el paso de un `Color*` lo daba esta (8). Con
+    // `struct S { Color a; Color b; }`, `Color* p = &s.a; p + 1` aterrizaba OCHO bytes mas
+    // alla -- pasado `s.b` por completo, fuera del struct. Dos reglas de tamano para un mismo
+    // tipo es exactamente la duplicacion semantica que el milestone CC1 existe para quitar; el
+    // enum era la que quedaba viva.
+    if (declaration.kind == NamedTypeDeclarationKind::Enum)
+    {
+        // Mismo motivo que en el otro sitio: el ancho del enum es el de su tipo subyacente.
+        target::TypeLayout layout = targetLayout_.layoutOf(target::BuiltinLayoutKind::Enum);
+        if (const builtins::IntegerTypeInfo* info =
+                builtins::findIntegerType(enumUnderlyingTypeKey(declaration.syntax));
+            info != nullptr && info->width >= 8)
+        {
+            layout.size = info->width / 8U;
+            layout.alignment = layout.size;
+        }
+        return {{layout.size, layout.alignment}};
+    }
+    // Clase, interfaz y delegado: una referencia, que es un puntero nativo.
+    return {{8, 8}};
 }
 
 std::optional<language::AggregateLayout> ProjectObjectLayoutModel::tupleLayoutForTypeKey(
@@ -632,6 +633,28 @@ target::StructLayoutOptions parseStructLayoutOptions(const NamedTypeDeclaration&
 }
 }
 
+std::optional<std::size_t> ProjectObjectLayoutModel::namedTypeOrdinalForTypeKey(
+    const ProjectNameLookup& nameLookup,
+    std::string_view typeKey) const noexcept
+{
+    if (!typeKey.starts_with("type:")) return std::nullopt;
+    const std::string_view identity = typeKey.substr(5);
+    if (const std::optional<std::size_t> indexed =
+            nameLookup.typeOrdinalForIdentity(identity))
+    {
+        return indexed;
+    }
+    if (nameLookup.hasTypeIndex()) return std::nullopt;
+    // ES: Conserva el orden historico solo para modelos de prueba ensamblados a mano.
+    // EN: Preserve the historical order only for manually assembled test models.
+    for (std::size_t ordinal = 0; ordinal < nameLookup.namedTypes().size(); ++ordinal)
+    {
+        if (nameLookup.namedTypes()[ordinal].identity.key() == identity)
+            return ordinal;
+    }
+    return std::nullopt;
+}
+
 bool ProjectObjectLayoutModel::hasTrivialStructLifetime(
     std::string_view typeKey,
     std::set<std::size_t>& visiting) const
@@ -640,30 +663,26 @@ bool ProjectObjectLayoutModel::hasTrivialStructLifetime(
     while (const std::optional<std::string> element =
                ProjectMemberModel::fixedArrayElementTypeKey(current))
         current = *element;
-    if (!current.starts_with("type:")) return true;
-    const std::string_view identity = std::string_view(current).substr(5);
-    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+    const std::optional<std::size_t> ordinal =
+        namedTypeOrdinalForTypeKey(*nameLookup_, current);
+    if (!ordinal.has_value() || *ordinal >= nameLookup_->namedTypes().size()) return true;
+    const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[*ordinal];
+    if (declaration.kind != NamedTypeDeclarationKind::Struct) return true;
+    if (!visiting.insert(*ordinal).second) return false;
+    for (const std::size_t nestedOrdinal : memberModel_->membersOfType(*ordinal))
     {
-        const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[ordinal];
-        if (declaration.identity.key() != identity) continue;
-        if (declaration.kind != NamedTypeDeclarationKind::Struct) return true;
-        if (!visiting.insert(ordinal).second) return false;
-        for (const std::size_t nestedOrdinal : memberModel_->membersOfType(ordinal))
+        if (nestedOrdinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& nested = memberModel_->members()[nestedOrdinal];
+        if (nested.kind == ClassMemberKind::Destructor ||
+            (nested.kind == ClassMemberKind::Field && !nested.isStatic &&
+             (nested.declaredOwnership == sema::OwnershipKind::Owned ||
+              !hasTrivialStructLifetime(nested.declaredTypeKey, visiting))))
         {
-            if (nestedOrdinal >= memberModel_->members().size()) continue;
-            const ClassMemberSymbol& nested = memberModel_->members()[nestedOrdinal];
-            if (nested.kind == ClassMemberKind::Destructor ||
-                (nested.kind == ClassMemberKind::Field && !nested.isStatic &&
-                 (nested.declaredOwnership == sema::OwnershipKind::Owned ||
-                  !hasTrivialStructLifetime(nested.declaredTypeKey, visiting))))
-            {
-                visiting.erase(ordinal);
-                return false;
-            }
+            visiting.erase(*ordinal);
+            return false;
         }
-        visiting.erase(ordinal);
-        return true;
     }
+    visiting.erase(*ordinal);
     return true;
 }
 
@@ -679,13 +698,10 @@ bool ProjectObjectLayoutModel::structBitFieldWidth(
         member.declaredTypeKey == "builtin:bool";
     if (!validBase && member.declaredTypeKey.starts_with("type:"))
     {
-        const std::string_view identity = std::string_view(member.declaredTypeKey).substr(5);
-        for (const NamedTypeDeclaration& declaration : nameLookup_->namedTypes())
-        {
-            if (declaration.identity.key() != identity) continue;
-            validBase = declaration.kind == NamedTypeDeclarationKind::Enum;
-            break;
-        }
+        const std::optional<std::size_t> ordinal =
+            namedTypeOrdinalForTypeKey(*nameLookup_, member.declaredTypeKey);
+        validBase = ordinal.has_value() && *ordinal < nameLookup_->namedTypes().size() &&
+            nameLookup_->namedTypes()[*ordinal].kind == NamedTypeDeclarationKind::Enum;
     }
     const std::optional<ProjectIntegerValue> folded =
         ProjectIntegerEvaluator(nullptr).evaluate(member.bitWidthSyntax, typeOrdinal);
@@ -1090,14 +1106,10 @@ bool ProjectObjectLayoutModel::isClassBitFieldBase(std::string_view typeKey) con
 {
     if (ProjectIntegerEvaluator::isIntegerType(typeKey) || typeKey == "builtin:bool")
         return true;
-    if (!typeKey.starts_with("type:")) return false;
-    const std::string_view identity = typeKey.substr(5);
-    for (const NamedTypeDeclaration& declaration : nameLookup_->namedTypes())
-    {
-        if (declaration.identity.key() == identity)
-            return declaration.kind == NamedTypeDeclarationKind::Enum;
-    }
-    return false;
+    const std::optional<std::size_t> ordinal =
+        namedTypeOrdinalForTypeKey(*nameLookup_, typeKey);
+    return ordinal.has_value() && *ordinal < nameLookup_->namedTypes().size() &&
+        nameLookup_->namedTypes()[*ordinal].kind == NamedTypeDeclarationKind::Enum;
 }
 
 bool ProjectObjectLayoutModel::classBitFieldWidth(

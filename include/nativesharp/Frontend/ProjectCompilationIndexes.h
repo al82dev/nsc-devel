@@ -78,6 +78,8 @@ public:
     void clearBodyTypeDemands() noexcept;
     void registerGenericTypeDemand(std::string key);
     void clearGenericTypeDemands() noexcept;
+    bool hasTypeIndex() const noexcept;
+    bool hasLayoutIndexes() const noexcept;
     const NamedTypeDeclaration* typeForOrdinal(std::size_t ordinal) const noexcept;
     std::optional<std::size_t> typeOrdinalForIdentity(std::string_view identity) const;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
@@ -179,6 +181,7 @@ private:
     std::vector<const NamedTypeDeclaration*> typesByOrdinal_;
     TypeIdentityIndex typeOrdinalByIdentity_;
     TypeNameIndex typeOrdinalsByName_;
+    bool typeIndexBuilt_ = false;
     std::vector<const ClassMemberSymbol*> membersByOrdinal_;
     StringIndex<std::vector<std::size_t>> memberOrdinalsByName_;
     std::vector<MemberSignatureIndex> memberOrdinalsBySignature_;
@@ -188,6 +191,7 @@ private:
     std::vector<const StructValueLayout*> structLayoutsByType_;
     std::vector<const ObjectFieldLayout*> fieldLayoutsByMember_;
     std::vector<const ObjectAllocationPlan*> allocationPlansByConstruction_;
+    bool layoutIndexesBuilt_ = false;
     std::vector<const GenericTemplateRecord*> genericTemplatesByOrdinal_;
     StringIndex<const GenericTemplateRecord*> genericTemplateByCanonicalKey_;
     StringIndex<std::vector<std::size_t>> genericTemplateOrdinalsByName_;
