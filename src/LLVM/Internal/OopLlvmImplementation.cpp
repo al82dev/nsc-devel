@@ -93,6 +93,9 @@ bool OopLlvmImplementation::lower(std::string& error)
         context_ = LLVMContextCreate();
         module_ = LLVMModuleCreateWithNameInContext(moduleName_.c_str(), context_);
         builder_ = LLVMCreateBuilderInContext(context_);
+        llvmTypesByKey_.clear();
+        llvmTypesByKey_.reserve(
+            nameLookup_.namedTypes().size() + mirModel_.structLayouts().size() + 32U);
         if (context_ == nullptr || module_ == nullptr || builder_ == nullptr)
         {
             error = "Stage 34 failed to create LLVM context/module/builder";

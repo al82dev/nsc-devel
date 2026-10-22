@@ -10,7 +10,12 @@ using namespace llvm_api;
 
 LLVMTypeRef OopLlvmImplementation::llvmType(std::string_view typeKey, std::string& error) const
 {
-    return mapLlvmType(context_, nameLookup_, mirModel_, typeKey, error);
+    std::string key(typeKey);
+    const auto cached = llvmTypesByKey_.find(key);
+    if (cached != llvmTypesByKey_.end()) return cached->second;
+    LLVMTypeRef lowered = mapLlvmType(context_, nameLookup_, mirModel_, typeKey, error);
+    if (lowered != nullptr) llvmTypesByKey_.try_emplace(std::move(key), lowered);
+    return lowered;
 }
 
 bool OopLlvmImplementation::ensureAllocatorDescriptorSidecar(std::string& error)

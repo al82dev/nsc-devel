@@ -2967,6 +2967,7 @@ private:
     LLVMContextRef context_ = nullptr;
     LLVMModuleRef module_ = nullptr;
     LLVMBuilderRef builder_ = nullptr;
+    mutable std::unordered_map<std::string, LLVMTypeRef> llvmTypesByKey_;
     LLVMDIBuilderRef debugBuilder_ = nullptr;
     LLVMMetadataRef debugCompileUnit_ = nullptr;
     std::unordered_map<std::uint32_t, LLVMMetadataRef> debugFiles_;

@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `40 / 60`
+**Progreso:** `41 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -52,7 +52,7 @@
 | T5.13 | Sustituir las búsquedas lineales de layouts en `MirNodeMachine` por los índices MIR | TERMINADO |
 | T5.14 | Usar índices directos en MIR para planes de asignación, interfaces, slots e inicializadores estáticos | TERMINADO |
 | T6.1 | Eliminar las comprobaciones duplicadas de builtin y pointer-like en la cadena de `llvmType` | TERMINADO |
-| T6.2 | Memoizar por lowerer los `LLVMTypeRef` exitosos por `typeKey`, sin cachear errores ni cambiar diagnósticos | PENDIENTE |
+| T6.2 | Memoizar por lowerer los `LLVMTypeRef` exitosos por `typeKey`, sin cachear errores ni cambiar diagnósticos | TERMINADO |
 | T6.3 | Resolver una vez los ordinales SIMD usados por los cinco clasificadores que hoy recorren todos los tipos | PENDIENTE |
 | T6.4 | Hacer que `LlvmTypeLayout` consulte los índices MIR de layouts en vez de recorrerlos | PENDIENTE |
 | T6.5 | Hacer que `OopLlvmDebugInfo` consulte índices de tipos y miembros | PENDIENTE |
