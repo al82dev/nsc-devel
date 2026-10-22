@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `20 / 48`
+**Progreso:** `21 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -24,7 +24,7 @@
 | T3.4 | Restaurar `public-templates` sin volver a generarlo | TERMINADO |
 | T3.5 | Reconstruir las unidades virtuales con su identidad y orden originales | TERMINADO |
 | T3.6 | Omitir emitter, lexer, parser y genéricos de la superficie restaurada | TERMINADO |
-| T3.7 | Publicar e invalidar ambos productos como una unidad atómica | PENDIENTE |
+| T3.7 | Publicar e invalidar ambos productos como una unidad atómica | TERMINADO |
 | T4.1 | Crear un repositorio de NSMETA por compilación | PENDIENTE |
 | T4.2 | Leer y calcular una sola vez el hash de cada NSMETA sin cambios | PENDIENTE |
 | T4.3 | Decodificar una sola vez cada payload NSMETA | PENDIENTE |

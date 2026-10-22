@@ -626,6 +626,7 @@ target_compile_features(nsc_frontend PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_frontend)
 
 add_library(nsc_precompiled STATIC
+    src/Compilation/PrecompiledProductCache.cpp
     src/Compilation/PrecompiledProjectPreparation.cpp
     src/Driver/PrecompiledSurface/ContractMaterialization.cpp
     src/Driver/PrecompiledSurface/MetadataSourceMapping.cpp

@@ -2,7 +2,7 @@
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
-#include "nativesharp/Frontend/TemplateParseCache.h"
+#include "nativesharp/Compilation/PrecompiledProductCache.h"
 
 #include "../Driver/Internal/DriverInternal.h"
 
@@ -43,64 +43,33 @@ std::string precompiledProductCacheKey(const LoadedMetadata& entry)
     return basic::sha256Hex(basic::sha256(bytes));
 }
 
-bool restorePrecompiledPublicSource(
+bool restorePrecompiledSourceProducts(
     const std::filesystem::path& cacheRoot,
     std::string_view cacheKey,
-    std::string& source)
+    std::string& publicSource,
+    std::string& templateSource)
 {
     if (cacheRoot.empty() || cacheKey.empty()) return false;
-    frontend::TemplateParseCache cache;
-    cache.setRoot(cacheRoot / "public-api");
+    PrecompiledProductCache cache;
+    cache.setRoot(cacheRoot);
     bool hit = false;
     std::string ignoredError;
-    return cache.restore(cacheKey, source, hit, ignoredError) && hit;
+    return cache.restore(
+        cacheKey, publicSource, templateSource, hit, ignoredError) && hit;
 }
 
-bool buildPrecompiledPublicSource(
-    const interop::LibraryMetadata& metadata,
+void storePrecompiledSourceProducts(
     const std::filesystem::path& cacheRoot,
     std::string_view cacheKey,
-    std::string& source,
-    std::string& error)
+    std::string_view publicSource,
+    std::string_view templateSource)
 {
-    if (restorePrecompiledPublicSource(cacheRoot, cacheKey, source)) return true;
-    if (!driver::buildPrecompiledPublicSource(metadata, source, error)) return false;
-    if (cacheRoot.empty() || cacheKey.empty()) return true;
-    frontend::TemplateParseCache cache;
-    cache.setRoot(cacheRoot / "public-api");
+    if (cacheRoot.empty() || cacheKey.empty()) return;
+    PrecompiledProductCache cache;
+    cache.setRoot(cacheRoot);
     std::string ignoredError;
-    (void)cache.store(cacheKey, source, ignoredError);
-    return true;
-}
-
-bool restorePrecompiledTemplateSource(
-    const std::filesystem::path& cacheRoot,
-    std::string_view cacheKey,
-    std::string& source)
-{
-    if (cacheRoot.empty() || cacheKey.empty()) return false;
-    frontend::TemplateParseCache cache;
-    cache.setRoot(cacheRoot / "public-templates");
-    bool hit = false;
-    std::string ignoredError;
-    return cache.restore(cacheKey, source, hit, ignoredError) && hit;
-}
-
-bool buildPrecompiledTemplateSource(
-    const interop::LibraryMetadata& metadata,
-    const std::filesystem::path& cacheRoot,
-    std::string_view cacheKey,
-    std::string& source,
-    std::string& error)
-{
-    if (restorePrecompiledTemplateSource(cacheRoot, cacheKey, source)) return true;
-    if (!driver::buildPrecompiledGenericTemplateSource(metadata, source, error)) return false;
-    if (cacheRoot.empty() || cacheKey.empty()) return true;
-    frontend::TemplateParseCache cache;
-    cache.setRoot(cacheRoot / "public-templates");
-    std::string ignoredError;
-    (void)cache.store(cacheKey, source, ignoredError);
-    return true;
+    (void)cache.store(
+        cacheKey, publicSource, templateSource, ignoredError);
 }
 
 std::vector<frontend::PrecompiledMemberIdentity> memberIdentities(
@@ -204,20 +173,25 @@ bool materializeModules(
         }
         const std::string productCacheKey = precompiledProductCacheKey(entry);
         std::string publicSource;
-        if (!buildPrecompiledPublicSource(
-                metadata, cacheRoot, productCacheKey, publicSource, error))
-        {
-            error = "cannot materialize public API for module '" +
-                metadata.moduleName + "': " + error;
-            return false;
-        }
         std::string templateSource;
-        if (!buildPrecompiledTemplateSource(
-                metadata, cacheRoot, productCacheKey, templateSource, error))
+        if (!restorePrecompiledSourceProducts(
+                cacheRoot, productCacheKey, publicSource, templateSource))
         {
-            error = "cannot materialize public templates for module '" +
-                metadata.moduleName + "': " + error;
-            return false;
+            if (!driver::buildPrecompiledPublicSource(metadata, publicSource, error))
+            {
+                error = "cannot materialize public API for module '" +
+                    metadata.moduleName + "': " + error;
+                return false;
+            }
+            if (!driver::buildPrecompiledGenericTemplateSource(
+                    metadata, templateSource, error))
+            {
+                error = "cannot materialize public templates for module '" +
+                    metadata.moduleName + "': " + error;
+                return false;
+            }
+            storePrecompiledSourceProducts(
+                cacheRoot, productCacheKey, publicSource, templateSource);
         }
         modules.push_back({
             entry.ownerProjectFile,
