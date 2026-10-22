@@ -918,7 +918,7 @@ bool ProjectCompilation::compileProjectObjectLayouts(
     if (cancellationRequested(loadError, "layout")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "layout");
-    objectLayoutModel_ = std::make_unique<ProjectObjectLayoutModel>();
+    objectLayoutModel_ = std::make_unique<ProjectObjectLayoutModel>(indexes_);
     if (!objectLayoutModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *constructionModel_, diagnostics_))
         return false;

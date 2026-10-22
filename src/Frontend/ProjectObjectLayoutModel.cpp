@@ -62,6 +62,17 @@ std::optional<std::uint64_t> checkedAdd(std::uint64_t left, std::uint64_t right)
 
 }
 
+ProjectObjectLayoutModel::ProjectObjectLayoutModel() noexcept
+    : indexes_(&ownedIndexes_)
+{
+}
+
+ProjectObjectLayoutModel::ProjectObjectLayoutModel(
+    ProjectCompilationIndexes& indexes) noexcept
+    : indexes_(&indexes)
+{
+}
+
 bool ProjectObjectLayoutModel::build(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
@@ -119,6 +130,12 @@ bool ProjectObjectLayoutModel::build(
     {
         buildAllocationPlans();
     }
+    indexes_->rebuildLayouts(
+        classLayouts_,
+        structLayouts_,
+        promotedFieldLayouts_,
+        memberModel.members().size(),
+        nameLookup.namedTypes().size());
     built_ = true;
     return !diagnostics.hasErrors();
 }
@@ -140,6 +157,10 @@ std::span<const ObjectAllocationPlan> ProjectObjectLayoutModel::allocationPlans(
 
 const ClassObjectLayout* ProjectObjectLayoutModel::layoutForType(std::size_t typeOrdinal) const noexcept
 {
+    if (built_)
+    {
+        return indexes_->classLayoutForType(typeOrdinal);
+    }
     if (typeOrdinal >= classLayoutIndexByType_.size() || !classLayoutIndexByType_[typeOrdinal].has_value())
     {
         return nullptr;
@@ -150,6 +171,10 @@ const ClassObjectLayout* ProjectObjectLayoutModel::layoutForType(std::size_t typ
 
 const StructValueLayout* ProjectObjectLayoutModel::structLayoutForType(std::size_t typeOrdinal) const noexcept
 {
+    if (built_)
+    {
+        return indexes_->structLayoutForType(typeOrdinal);
+    }
     if (typeOrdinal >= structLayoutIndexByType_.size() || !structLayoutIndexByType_[typeOrdinal].has_value())
     {
         return nullptr;
@@ -160,6 +185,10 @@ const StructValueLayout* ProjectObjectLayoutModel::structLayoutForType(std::size
 
 const ObjectFieldLayout* ProjectObjectLayoutModel::fieldLayoutForMember(std::size_t memberOrdinal) const noexcept
 {
+    if (built_)
+    {
+        return indexes_->fieldLayoutForMember(memberOrdinal);
+    }
     for (const StructValueLayout& layout : structLayouts_)
     {
         for (const ObjectFieldLayout& field : layout.fields)

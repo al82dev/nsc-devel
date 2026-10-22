@@ -11,8 +11,11 @@
 namespace nativesharp::frontend
 {
 struct ClassMemberSymbol;
+struct ClassObjectLayout;
 struct ClassVirtualTable;
 struct NamedTypeDeclaration;
+struct ObjectFieldLayout;
+struct StructValueLayout;
 struct VirtualMethodInfo;
 
 class ProjectCompilationIndexes final
@@ -26,6 +29,12 @@ public:
         std::span<const ClassVirtualTable> classTables,
         std::size_t memberCount,
         std::size_t typeCount);
+    void rebuildLayouts(
+        std::span<const ClassObjectLayout> classLayouts,
+        std::span<const StructValueLayout> structLayouts,
+        std::span<const ObjectFieldLayout> promotedFields,
+        std::size_t memberCount,
+        std::size_t typeCount);
     const NamedTypeDeclaration* typeForOrdinal(std::size_t ordinal) const noexcept;
     std::optional<std::size_t> typeOrdinalForIdentity(std::string_view identity) const;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
@@ -35,6 +44,9 @@ public:
         std::string_view signature) const noexcept;
     const VirtualMethodInfo* virtualMethodForMember(std::size_t memberOrdinal) const noexcept;
     const ClassVirtualTable* virtualTableForType(std::size_t typeOrdinal) const noexcept;
+    const ClassObjectLayout* classLayoutForType(std::size_t typeOrdinal) const noexcept;
+    const StructValueLayout* structLayoutForType(std::size_t typeOrdinal) const noexcept;
+    const ObjectFieldLayout* fieldLayoutForMember(std::size_t memberOrdinal) const noexcept;
 
 private:
     using MemberSignatureIndex =
@@ -47,5 +59,8 @@ private:
     std::vector<MemberSignatureIndex> memberOrdinalsBySignature_;
     std::vector<const VirtualMethodInfo*> virtualMethodsByMember_;
     std::vector<const ClassVirtualTable*> virtualTablesByType_;
+    std::vector<const ClassObjectLayout*> classLayoutsByType_;
+    std::vector<const StructValueLayout*> structLayoutsByType_;
+    std::vector<const ObjectFieldLayout*> fieldLayoutsByMember_;
 };
 }

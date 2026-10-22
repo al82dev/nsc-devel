@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `31 / 48`
+**Progreso:** `32 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -35,7 +35,7 @@
 | T5.1 | Asignar un propietario único a los índices reutilizables | TERMINADO |
 | T5.2 | Compartir el índice de tipos por identidad, nombre y ordinal | TERMINADO |
 | T5.3 | Compartir índices de miembros, firmas y dispatch | TERMINADO |
-| T5.4 | Compartir índices de layouts de structs, clases y campos | PENDIENTE |
+| T5.4 | Compartir índices de layouts de structs, clases y campos | TERMINADO |
 | T5.5 | Compartir índices de templates, demandas y especializaciones | PENDIENTE |
 | T5.6 | Compartir índices HIR de locales, lambdas y cleanups | PENDIENTE |
 | T5.7 | Compartir índices MIR de funciones, miembros y async frames | PENDIENTE |

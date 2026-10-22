@@ -40,6 +40,9 @@ struct ProjectOopHirModelTestAccess;
 class ProjectObjectLayoutModel final
 {
 public:
+    ProjectObjectLayoutModel() noexcept;
+    explicit ProjectObjectLayoutModel(ProjectCompilationIndexes& indexes) noexcept;
+
     bool build(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
@@ -183,6 +186,8 @@ private:
     bool buildPromotedFieldLayouts(diagnostics::DiagnosticEngine& diagnostics);
     void buildAllocationPlans();
 
+    ProjectCompilationIndexes ownedIndexes_;
+    ProjectCompilationIndexes* indexes_ = nullptr;
     const ProjectNameLookup* nameLookup_ = nullptr;
     const ProjectMemberModel* memberModel_ = nullptr;
     const ProjectInheritanceModel* inheritanceModel_ = nullptr;
