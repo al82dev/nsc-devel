@@ -1261,6 +1261,23 @@ void ProjectOopMirModel::calculateMirCacheKeys(const ProjectOopHirModel& hirMode
     }
 }
 
+void ProjectOopMirModel::lookupMirCachePayloads()
+{
+    mirCachePayloads_.clear();
+    mirCachePayloads_.resize(mirCacheKeys_.size());
+    for (std::size_t index = 0; index < mirCacheKeys_.size(); ++index)
+    {
+        std::string payload;
+        bool hit = false;
+        TemplateParseCacheLookupReason reason = TemplateParseCacheLookupReason::Cold;
+        std::string error;
+        if (mirCache_.restore(mirCacheKeys_[index], payload, hit, reason, error) && hit)
+        {
+            mirCachePayloads_[index] = std::move(payload);
+        }
+    }
+}
+
 void ProjectOopMirModel::storeMirFunctions()
 {
     if (!mirCache_.enabled()) return;
