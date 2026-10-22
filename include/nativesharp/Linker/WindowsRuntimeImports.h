@@ -31,10 +31,10 @@ struct ExternalImportModule final
 // both builders consume it, and external imports flow through the same door instead of scaling
 // the hardcoded arrays API by API -- the audit's "no debe escalarse API por API" requirement.
 //
-// `combinedIrText` drives the conditional ucrtbase entries exactly as before: LLVM's own passes
-// can materialize @llvm.memcpy/memset/memmove or reference __C_specific_handler inside EITHER
-// module, so the caller passes both modules' IR text concatenated and the scan decides which
-// compiler-support symbols the link needs.
+// HISTORICAL: `combinedIrText` drove conditional ucrtbase entries because LLVM passes could
+// materialize @llvm.memcpy/memset/memmove or reference __C_specific_handler inside either module.
+// CURRENT: the import closure is canonical and external imports are explicit. The parameter is
+// retained for source and ABI compatibility, but implementations and callers do not serialize IR.
 bool createWindowsImportLibraries(
     const LldLinker& linker,
     const std::filesystem::path& directory,

@@ -327,24 +327,21 @@ bool emitExecutableObjects(
     return verifyObject(runtimeObject, "runtime", error);
 }
 
-std::string combinedExecutableIrText(
-    const llvm_backend::LlvmModule& programModule,
-    const llvm_backend::LlvmModule& runtimeModule)
-{
-    // Stage 53.2b bug fix: this scan MUST cover both modules that actually get linked into the
-    // final executable, not just the user's program module. Before this fix, only programText
-    // was scanned -- which missed the case (introduced by Environment.GetEnvironmentVariable/
-    // SetEnvironmentVariable's hand-rolled byte-copy loop in WindowsRuntimeBuilder.cpp) where
-    // LLVM's own LoopIdiomRecognize optimization pass rewrites a plain copy loop into a call to
-    // the @llvm.memcpy intrinsic *inside the runtime module*, at any optimization level above
-    // O0. That intrinsic call lowers to a real "memcpy" symbol reference in runtime.obj, and
-    // without this fix nothing ever told the linker to import it -- "undefined symbol: memcpy"
-    // at link time, for EVERY executable (not just ones that call GetEnvironmentVariable),
-    // because every executable links against the same runtime module. Concatenating both
-    // modules' IR text before scanning is the minimal, honest fix: it makes no assumption about
-    // which module a future runtime helper's copy/fill loop might get idiom-recognized in.
-    return programModule.text() + runtimeModule.text();
-}
+// HISTORICAL NOTE: the following comment records why both modules were once serialized.
+// The canonical import closure now makes that scan obsolete, and the compatibility parameter
+// retained by createWindowsImportLibraries is intentionally ignored.
+// Stage 53.2b bug fix: this scan MUST cover both modules that actually get linked into the
+// final executable, not just the user's program module. Before this fix, only programText
+// was scanned -- which missed the case (introduced by Environment.GetEnvironmentVariable/
+// SetEnvironmentVariable's hand-rolled byte-copy loop in WindowsRuntimeBuilder.cpp) where
+// LLVM's own LoopIdiomRecognize optimization pass rewrites a plain copy loop into a call to
+// the @llvm.memcpy intrinsic *inside the runtime module*, at any optimization level above
+// O0. That intrinsic call lowers to a real "memcpy" symbol reference in runtime.obj, and
+// without this fix nothing ever told the linker to import it -- "undefined symbol: memcpy"
+// at link time, for EVERY executable (not just ones that call GetEnvironmentVariable),
+// because every executable links against the same runtime module. Concatenating both
+// modules' IR text before scanning is the minimal, honest fix: it makes no assumption about
+// which module a future runtime helper's copy/fill loop might get idiom-recognized in.
 
 bool discoverExecutableImports(
     const std::filesystem::path& temporaryDirectory,
@@ -458,11 +455,10 @@ bool WindowsExecutableBuilder::build(
     if (!emitExecutableObjects(
             programModule, *runtimeModule, *targetMachine, temporaryDirectory,
             programObject, runtimeObject, error)) return false;
-    const std::string programText = combinedExecutableIrText(programModule, *runtimeModule);
     std::unique_ptr<LldLinker> linker;
     std::vector<std::filesystem::path> importLibraries;
     if (!discoverExecutableImports(
-            temporaryDirectory->path(), programText, externalImports_, extraLinkLibraries_,
+            temporaryDirectory->path(), {}, externalImports_, extraLinkLibraries_,
             runtimeLibrary_, independentRuntime, linker, importLibraries, error)) return false;
     const std::array<std::filesystem::path, 2> objectFiles = {programObject, runtimeObject};
     const std::filesystem::path pdbPath = executablePdbPath(outputPath, debugInformation_);
