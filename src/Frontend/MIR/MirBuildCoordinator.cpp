@@ -1,6 +1,7 @@
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 
 #include "MirConstantEvaluator.h"
 #include "../Cache/CachePayloadReader.h"
@@ -79,6 +80,11 @@ std::string genericSpecializationKeyForType(
     return {};
 }
 
+}
+
+ProjectOopMirModel::ProjectOopMirModel(ProjectCompilationIndexes& indexes) noexcept
+    : indexes_(&indexes)
+{
 }
 
 bool ProjectOopMirModel::initializeBuild(
@@ -676,6 +682,11 @@ bool ProjectOopMirModel::build(
     MirVerifier verifier(*this);
     if (!verifier.finalize(error)) return false;
 
+    if (indexes_ != nullptr)
+    {
+        indexes_->rebuildMirFunctions(
+            functions_, memberModel.members().size(), functionByNamespaceFunction_.size());
+    }
     built_ = true;
     // NSC305-C04. Persist the built MIR functions (no-op when the cache is disabled).
     storeMirFunctions();
@@ -789,6 +800,7 @@ bool ProjectOopMirModel::interfaceSlotForMember(
 
 const ProjectOopMirFunction* ProjectOopMirModel::functionForMember(std::size_t memberOrdinal) const noexcept
 {
+    if (built_ && indexes_ != nullptr) return indexes_->mirFunctionForMember(memberOrdinal);
     if (memberOrdinal >= functionByMember_.size() || !functionByMember_[memberOrdinal].has_value())
     {
         return nullptr;
@@ -799,12 +811,37 @@ const ProjectOopMirFunction* ProjectOopMirModel::functionForMember(std::size_t m
 const ProjectOopMirFunction* ProjectOopMirModel::functionForNamespaceFunction(
     std::size_t functionOrdinal) const noexcept
 {
+    if (built_ && indexes_ != nullptr)
+        return indexes_->mirFunctionForNamespaceFunction(functionOrdinal);
     if (functionOrdinal >= functionByNamespaceFunction_.size() ||
         !functionByNamespaceFunction_[functionOrdinal].has_value())
     {
         return nullptr;
     }
     return &functions_[*functionByNamespaceFunction_[functionOrdinal]];
+}
+
+const std::tuple<std::size_t, std::uint64_t, std::string>* ProjectOopMirModel::asyncFrameLocal(
+    const ProjectOopMirFunction& function,
+    std::size_t localOrdinal) const noexcept
+{
+    if (built_ && indexes_ != nullptr)
+        return indexes_->mirAsyncLocalForOrdinal(function, localOrdinal);
+    for (const auto& slot : function.asyncFrameLocals)
+        if (std::get<0>(slot) == localOrdinal) return &slot;
+    return nullptr;
+}
+
+const std::tuple<std::size_t, std::uint64_t, std::string>* ProjectOopMirModel::asyncFrameParameter(
+    const ProjectOopMirFunction& function,
+    std::size_t parameterOrdinal,
+    std::string_view typeKey) const noexcept
+{
+    if (built_ && indexes_ != nullptr)
+        return indexes_->mirAsyncParameterForOrdinal(function, parameterOrdinal, typeKey);
+    for (const auto& slot : function.asyncFrameParameters)
+        if (std::get<0>(slot) == parameterOrdinal && std::get<2>(slot) == typeKey) return &slot;
+    return nullptr;
 }
 const ProjectOopMirFunction* ProjectOopMirModel::executableEntryPoint(
     const ProjectNamespaceFunctionModel& namespaceFunctionModel,

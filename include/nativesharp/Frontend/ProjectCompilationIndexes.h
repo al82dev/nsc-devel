@@ -1,10 +1,12 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -29,6 +31,7 @@ struct NamedTypeDeclaration;
 struct ObjectFieldLayout;
 struct StructValueLayout;
 struct VirtualMethodInfo;
+struct ProjectOopMirFunction;
 
 class ProjectCompilationIndexes final
 {
@@ -55,6 +58,10 @@ public:
         std::span<const MethodLambdaBinding> lambdas,
         std::span<const MethodLambdaValueBinding> lambdaValues,
         std::span<const MethodCleanupRegion> cleanupRegions);
+    void rebuildMirFunctions(
+        std::span<const ProjectOopMirFunction> functions,
+        std::size_t memberCount,
+        std::size_t namespaceFunctionCount);
     bool registerBodyTypeDemand(std::string key);
     void clearBodyTypeDemands() noexcept;
     void registerGenericTypeDemand(std::string key);
@@ -88,8 +95,20 @@ public:
     const MethodLambdaBinding* hirLambdaForSyntax(const ast::AstNode* syntax) const noexcept;
     const MethodLambdaValueBinding* hirLambdaValueForSyntax(const ast::AstNode* syntax) const noexcept;
     const MethodCleanupRegion* hirCleanupRegionForSyntax(const ast::AstNode* syntax) const noexcept;
+    const ProjectOopMirFunction* mirFunctionForMember(std::size_t memberOrdinal) const noexcept;
+    const ProjectOopMirFunction* mirFunctionForNamespaceFunction(
+        std::size_t functionOrdinal) const noexcept;
+    const std::tuple<std::size_t, std::uint64_t, std::string>* mirAsyncLocalForOrdinal(
+        const ProjectOopMirFunction& function,
+        std::size_t localOrdinal) const noexcept;
+    const std::tuple<std::size_t, std::uint64_t, std::string>* mirAsyncParameterForOrdinal(
+        const ProjectOopMirFunction& function,
+        std::size_t parameterOrdinal,
+        std::string_view typeKey) const noexcept;
 
 private:
+    using MirAsyncFrameSlot = std::tuple<std::size_t, std::uint64_t, std::string>;
+    using MirAsyncFrameIndex = std::unordered_multimap<std::size_t, const MirAsyncFrameSlot*>;
     using MemberSignatureIndex =
         std::unordered_map<std::string, std::vector<std::size_t>>;
 
@@ -117,7 +136,12 @@ private:
     std::unordered_map<const ast::AstNode*, const MethodLambdaBinding*> hirLambdaBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodLambdaValueBinding*> hirLambdaValueBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodCleanupRegion*> hirCleanupRegionBySyntax_;
+    std::vector<const ProjectOopMirFunction*> mirFunctionsByMember_;
+    std::vector<const ProjectOopMirFunction*> mirFunctionsByNamespaceFunction_;
+    std::unordered_map<const ProjectOopMirFunction*, MirAsyncFrameIndex> mirAsyncLocalsByFunction_;
+    std::unordered_map<const ProjectOopMirFunction*, MirAsyncFrameIndex> mirAsyncParametersByFunction_;
 
     void clearHirBindings() noexcept;
+    void clearMirFunctions() noexcept;
 };
 }

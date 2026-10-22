@@ -990,7 +990,7 @@ bool ProjectCompilation::compileProjectOopMir(
     if (cancellationRequested(loadError, "oop-mir")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-mir");
-    oopMirModel_ = std::make_unique<ProjectOopMirModel>();
+    oopMirModel_ = std::make_unique<ProjectOopMirModel>(indexes_);
     if (!templateCacheRoot_.empty())
     {
         oopMirModel_->setMirCacheRoot(templateCacheRoot_ / "mir");

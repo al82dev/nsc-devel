@@ -18,6 +18,7 @@
 #include <utility>
 #include <span>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -42,6 +43,7 @@
 
 namespace nativesharp::frontend
 {
+class ProjectCompilationIndexes;
 // The MIR schema is an internal producer/consumer boundary. It is versioned
 // independently from the language and runtime ABI so tools can reject a dump
 // whose node/ownership semantics they do not understand.
@@ -110,6 +112,8 @@ const char* projectOopMirNonlocalExitKindName(ProjectOopMirNonlocalExitKind kind
 class ProjectOopMirModel final
 {
 public:
+    ProjectOopMirModel() = default;
+    explicit ProjectOopMirModel(ProjectCompilationIndexes& indexes) noexcept;
     void setPanicProfile(language::PanicProfile profile) noexcept;
     language::PanicProfile panicProfile() const noexcept;
     void setPanicHandler(std::string handler);
@@ -146,6 +150,13 @@ public:
     const ProjectOopMirFunction* functionForMember(std::size_t memberOrdinal) const noexcept;
     const ProjectOopMirFunction* functionForNamespaceFunction(
         std::size_t functionOrdinal) const noexcept;
+    const std::tuple<std::size_t, std::uint64_t, std::string>* asyncFrameLocal(
+        const ProjectOopMirFunction& function,
+        std::size_t localOrdinal) const noexcept;
+    const std::tuple<std::size_t, std::uint64_t, std::string>* asyncFrameParameter(
+        const ProjectOopMirFunction& function,
+        std::size_t parameterOrdinal,
+        std::string_view typeKey) const noexcept;
     const ProjectOopMirFunction* executableEntryPoint(
         const ProjectNamespaceFunctionModel& namespaceFunctionModel,
         bool& ambiguous) const noexcept;
@@ -410,6 +421,7 @@ private:
     const ProjectInterfaceModel* interfaceModel_ = nullptr;
     const ProjectDestructionModel* destructionModel_ = nullptr;
     const ProjectOopHirModel* hirModel_ = nullptr;
+    ProjectCompilationIndexes* indexes_ = nullptr;
     std::vector<ProjectOopMirFunction> functions_;
     std::vector<ProjectOopMirFieldInitializer> fieldInitializers_;
     std::vector<ProjectOopMirStaticField> staticFields_;

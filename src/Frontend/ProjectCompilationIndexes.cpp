@@ -11,6 +11,7 @@
 #include "nativesharp/Frontend/MethodLocalSymbol.h"
 #include "nativesharp/Frontend/NamedTypeDeclaration.h"
 #include "nativesharp/Frontend/ObjectFieldLayout.h"
+#include "nativesharp/Frontend/ProjectOopMirFunction.h"
 #include "nativesharp/Frontend/StructValueLayout.h"
 #include "nativesharp/Frontend/VirtualMethodInfo.h"
 
@@ -221,6 +222,46 @@ void ProjectCompilationIndexes::clearHirBindings() noexcept
     hirLambdaBySyntax_.clear();
     hirLambdaValueBySyntax_.clear();
     hirCleanupRegionBySyntax_.clear();
+    clearMirFunctions();
+}
+
+void ProjectCompilationIndexes::rebuildMirFunctions(
+    std::span<const ProjectOopMirFunction> functions,
+    std::size_t memberCount,
+    std::size_t namespaceFunctionCount)
+{
+    clearMirFunctions();
+    mirFunctionsByMember_.assign(memberCount, nullptr);
+    mirFunctionsByNamespaceFunction_.assign(namespaceFunctionCount, nullptr);
+    for (const ProjectOopMirFunction& function : functions)
+    {
+        if (function.namespaceFunctionOrdinal.has_value())
+        {
+            const std::size_t ordinal = *function.namespaceFunctionOrdinal;
+            if (ordinal >= mirFunctionsByNamespaceFunction_.size())
+                mirFunctionsByNamespaceFunction_.resize(ordinal + 1U, nullptr);
+            mirFunctionsByNamespaceFunction_[ordinal] = &function;
+        }
+        else if (!function.isLambda && !function.isSyntheticImplicitConstructor &&
+                 function.memberOrdinal < mirFunctionsByMember_.size())
+        {
+            mirFunctionsByMember_[function.memberOrdinal] = &function;
+        }
+        MirAsyncFrameIndex& locals = mirAsyncLocalsByFunction_[&function];
+        for (const MirAsyncFrameSlot& slot : function.asyncFrameLocals)
+            locals.emplace(std::get<0>(slot), &slot);
+        MirAsyncFrameIndex& parameters = mirAsyncParametersByFunction_[&function];
+        for (const MirAsyncFrameSlot& slot : function.asyncFrameParameters)
+            parameters.emplace(std::get<0>(slot), &slot);
+    }
+}
+
+void ProjectCompilationIndexes::clearMirFunctions() noexcept
+{
+    mirFunctionsByMember_.clear();
+    mirFunctionsByNamespaceFunction_.clear();
+    mirAsyncLocalsByFunction_.clear();
+    mirAsyncParametersByFunction_.clear();
 }
 
 void ProjectCompilationIndexes::rebuildDispatch(
@@ -398,5 +439,44 @@ const MethodCleanupRegion* ProjectCompilationIndexes::hirCleanupRegionForSyntax(
 {
     const auto iterator = hirCleanupRegionBySyntax_.find(syntax);
     return iterator == hirCleanupRegionBySyntax_.end() ? nullptr : iterator->second;
+}
+
+const ProjectOopMirFunction* ProjectCompilationIndexes::mirFunctionForMember(
+    std::size_t memberOrdinal) const noexcept
+{
+    return memberOrdinal < mirFunctionsByMember_.size()
+        ? mirFunctionsByMember_[memberOrdinal] : nullptr;
+}
+
+const ProjectOopMirFunction* ProjectCompilationIndexes::mirFunctionForNamespaceFunction(
+    std::size_t functionOrdinal) const noexcept
+{
+    return functionOrdinal < mirFunctionsByNamespaceFunction_.size()
+        ? mirFunctionsByNamespaceFunction_[functionOrdinal] : nullptr;
+}
+
+const ProjectCompilationIndexes::MirAsyncFrameSlot*
+ProjectCompilationIndexes::mirAsyncLocalForOrdinal(
+    const ProjectOopMirFunction& function,
+    std::size_t localOrdinal) const noexcept
+{
+    const auto functionIndex = mirAsyncLocalsByFunction_.find(&function);
+    if (functionIndex == mirAsyncLocalsByFunction_.end()) return nullptr;
+    const auto slot = functionIndex->second.find(localOrdinal);
+    return slot == functionIndex->second.end() ? nullptr : slot->second;
+}
+
+const ProjectCompilationIndexes::MirAsyncFrameSlot*
+ProjectCompilationIndexes::mirAsyncParameterForOrdinal(
+    const ProjectOopMirFunction& function,
+    std::size_t parameterOrdinal,
+    std::string_view typeKey) const noexcept
+{
+    const auto functionIndex = mirAsyncParametersByFunction_.find(&function);
+    if (functionIndex == mirAsyncParametersByFunction_.end()) return nullptr;
+    const auto [first, last] = functionIndex->second.equal_range(parameterOrdinal);
+    for (auto slot = first; slot != last; ++slot)
+        if (std::get<2>(*slot->second) == typeKey) return slot->second;
+    return nullptr;
 }
 }

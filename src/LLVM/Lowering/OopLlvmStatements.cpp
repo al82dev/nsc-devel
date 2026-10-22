@@ -699,14 +699,13 @@ LLVMValueRef OopLlvmImplementation::lowerAsyncYieldItem(
                         node->children.front()->kind == frontend::ProjectOopMirNodeKind::FieldAddress;
                     if (itemByReference && node->children.front()->localOrdinal.has_value())
                     {
-                        std::uint64_t itemOffset = 0;
-                        bool foundItemOffset = false;
-                        for (const auto& [lo, off, tk] : frameLocals)
-                            if (lo == *node->children.front()->localOrdinal)
-                            { itemOffset = off; foundItemOffset = true; break; }
-                        if (!foundItemOffset)
+                        const auto* frameLocal = currentMirFunction_ == nullptr
+                            ? nullptr
+                            : mirModel_.asyncFrameLocal(
+                                *currentMirFunction_, *node->children.front()->localOrdinal);
+                        if (frameLocal == nullptr)
                             return failValue(error, "async ref item local has no frame slot");
-                        item = byteOffset(frame, itemOffset, "ayield.item.frame.slot");
+                        item = byteOffset(frame, std::get<1>(*frameLocal), "ayield.item.frame.slot");
                     }
                     else
                     {

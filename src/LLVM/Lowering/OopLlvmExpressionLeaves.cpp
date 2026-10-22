@@ -100,9 +100,11 @@ LLVMValueRef OopLlvmImplementation::lowerParameterValue(
         if (currentMirFunction_ != nullptr &&
             !currentMirFunction_->asyncFrameParameters.empty())
         {
-            for (const auto& [paramOrdinal, offset, typeKey] :
-                 currentMirFunction_->asyncFrameParameters)
+            const auto* indexedParameter = mirModel_.asyncFrameParameter(
+                *currentMirFunction_, *node->parameterOrdinal, node->typeKey);
+            if (indexedParameter != nullptr)
             {
+                const auto& [paramOrdinal, offset, typeKey] = *indexedParameter;
                 // NS304-T07-F06: match both the ordinal AND the physical type so the poll's
                 // own `self` (ordinal 0, future:<T>*) never aliases a captured ref parameter
                 // (ordinal 0, T*).
@@ -171,9 +173,11 @@ LLVMValueRef OopLlvmImplementation::lowerAddressExpression(const frontend::Proje
                 if (currentMirFunction_ != nullptr &&
                     !currentMirFunction_->asyncFrameParameters.empty())
                 {
-                    for (const auto& [paramOrdinal, offset, typeKey] :
-                         currentMirFunction_->asyncFrameParameters)
+                    const auto* indexedParameter = mirModel_.asyncFrameParameter(
+                        *currentMirFunction_, *node->parameterOrdinal, node->typeKey);
+                    if (indexedParameter != nullptr)
                     {
+                        const auto& [paramOrdinal, offset, typeKey] = *indexedParameter;
                         // NS304-T07-F06: ordinal + physical type must both match (see ParameterValue).
                         if (paramOrdinal == *node->parameterOrdinal && node->typeKey == typeKey)
                         {
