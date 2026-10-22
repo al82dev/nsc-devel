@@ -150,6 +150,15 @@ private:
         std::string& loadError);
     std::optional<std::size_t> precompiledProjectOrdinal(
         const PrecompiledSyntaxModule& module) const;
+    bool materializePrecompiledUnit(
+        const PrecompiledSyntaxModule& module,
+        std::size_t projectOrdinal,
+        std::size_t sourceOrdinal,
+        std::string_view displaySuffix,
+        const std::string& sourceText,
+        bool isPrecompiled,
+        std::string_view productName,
+        std::string& loadError);
     bool materializePrecompiledModule(
         const PrecompiledSyntaxModule& module,
         std::set<std::string>& materializedMetadata,

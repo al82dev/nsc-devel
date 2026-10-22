@@ -1246,27 +1246,38 @@ bool ProjectCompilation::materializePrecompiledTemplateUnit(
     std::size_t projectOrdinal,
     std::string& loadError)
 {
-    if (module.templateSourceText.empty())
-    {
-        return true;
-    }
+    if (module.templateSourceText.empty()) return true;
+    return materializePrecompiledUnit(
+        module, projectOrdinal, 1U, ".public-templates.ns",
+        module.templateSourceText, false, "templates", loadError);
+}
+
+bool ProjectCompilation::materializePrecompiledUnit(
+    const PrecompiledSyntaxModule& module,
+    std::size_t projectOrdinal,
+    std::size_t sourceOrdinal,
+    std::string_view displaySuffix,
+    const std::string& sourceText,
+    bool isPrecompiled,
+    std::string_view productName,
+    std::string& loadError)
+{
     std::filesystem::path displayPath = module.metadataPath;
-    displayPath += ".public-templates.ns";
-    const FileId fileId = sourceManager_.addBuffer(displayPath, module.templateSourceText);
+    displayPath += displaySuffix;
+    const FileId fileId = sourceManager_.addBuffer(displayPath, sourceText);
     const source::SourceFile* sourceFile = sourceManager_.getFile(fileId);
     if (sourceFile == nullptr)
     {
-        loadError = "internal error: generated precompiled templates have no SourceFile slot";
+        loadError = "internal error: generated precompiled " + std::string(productName) +
+            " have no SourceFile slot";
         return false;
     }
-    // Deliberately NOT precompiled: these public bodies are input to the consumer's
-    // ordinary generic pass, which specializes only what that consumer requests.
     units_.push_back(std::make_unique<ProjectSyntaxUnit>(
         projectOrdinal,
-        1,
+        sourceOrdinal,
         module.moduleName,
         fileId,
-        false));
+        isPrecompiled));
     return true;
 }
 
@@ -1294,21 +1305,14 @@ bool ProjectCompilation::materializePrecompiledModule(
             "' has no project-graph node";
         return false;
     }
-    std::filesystem::path displayPath = module.metadataPath;
-    displayPath += ".public-api.ns";
-    const FileId fileId = sourceManager_.addBuffer(displayPath, module.sourceText);
-    const source::SourceFile* sourceFile = sourceManager_.getFile(fileId);
-    if (sourceFile == nullptr)
+    if (!materializePrecompiledUnit(
+            module, *projectOrdinal, 0U, ".public-api.ns", module.sourceText,
+            true, "API", loadError))
     {
-        loadError = "internal error: generated precompiled API has no SourceFile slot";
         return false;
     }
-    units_.push_back(std::make_unique<ProjectSyntaxUnit>(
-        *projectOrdinal,
-        0,
-        module.moduleName,
-        fileId,
-        true));
+    // Deliberately NOT precompiled: these public bodies are input to the consumer's ordinary
+    // generic pass, which specializes only what that consumer requests.
     return materializePrecompiledTemplateUnit(module, *projectOrdinal, loadError);
 }
 
