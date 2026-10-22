@@ -189,6 +189,7 @@ Lexer::Lexer(
 std::vector<Token> Lexer::lexAll()
 {
     std::vector<Token> tokens;
+    tokens.reserve(buffer_.size() / 4U + 1U);
 
     while (true)
     {
