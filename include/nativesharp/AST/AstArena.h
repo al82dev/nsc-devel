@@ -74,7 +74,7 @@ private:
     template <typename T>
     static void destroy(void* pointer)
     {
-        std::destroy_at(static_cast<T*>(pointer));
+        static_cast<T*>(pointer)->~T();
     }
 
     void* allocate(std::size_t size, std::size_t alignment);
