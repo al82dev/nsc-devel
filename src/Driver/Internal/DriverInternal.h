@@ -76,6 +76,19 @@ bool writeVerifiedLibraryMetadata(const frontend::ProjectCompilation &compilatio
 
 std::optional<compilation::CompilationInputManifest> loadCompilationInputManifest(
     const std::filesystem::path &projectFile, std::string &error);
+void addCompilationProductIdentity(compilation::CompilationInputManifest &manifest,
+                                   std::string_view productKind,
+                                   const std::filesystem::path &outputPath = {});
+void addCompilationCodegenIdentity(
+    compilation::CompilationInputManifest &manifest,
+    llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    llvm_backend::DebugInformationKind debugInformation,
+    std::span<const llvm_backend::DebugPrefixMap> debugPrefixMaps,
+    llvm_backend::LinkTimeOptimizationMode linkTimeOptimization);
+void addCompilationLinkIdentity(
+    compilation::CompilationInputManifest &manifest, bool incrementalLink,
+    linker::WindowsExecutableSubsystem subsystem,
+    std::span<const std::filesystem::path> extraLinkLibraries);
 bool configurePrecompiledModules(compilation::CompilationInputManifest &manifest,
                                  frontend::ProjectCompilation &compilation, std::string &error);
 void configureObjectGeneratorProgress(llvm_backend::ProjectOopObjectGenerator &generator);

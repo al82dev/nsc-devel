@@ -1,10 +1,13 @@
 #pragma once
 
+#include "nativesharp/Compilation/LibraryMetadataRepository.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Compilation/ProjectLoadOptions.h"
 
 #include <filesystem>
 #include <span>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -18,19 +21,29 @@ public:
         ProjectLoadOptions loadOptions);
 
     const ProjectGraph& projectGraph() const noexcept;
+    const std::filesystem::path& rootDirectory() const noexcept;
     ProjectGraph releaseProjectGraph();
     const ProjectLoadOptions& loadOptions() const noexcept;
     std::span<const std::filesystem::path> inputFiles() const noexcept;
     // The initial graph supplies the known physical inputs. Dependency discovery may append
     // more files before the manifest identity is calculated, without rebuilding the graph.
     void addInputFile(std::filesystem::path path);
+    void addProjectGraphInputs(const ProjectGraph& graph);
+    void addIdentityField(std::string name, std::string value);
+    bool calculateIdentity(
+        const LibraryMetadataRepository& metadataRepository,
+        std::string& error);
+    std::string_view identity() const noexcept;
 
 private:
-    void collectGraphInputs();
+    void collectGraphInputs(const ProjectGraph& graph);
     void canonicalizeInputOrder();
 
     ProjectGraph graph_;
+    std::filesystem::path rootDirectory_;
     ProjectLoadOptions loadOptions_;
     std::vector<std::filesystem::path> inputFiles_;
+    std::vector<std::pair<std::string, std::string>> identityFields_;
+    std::string identity_;
 };
 }

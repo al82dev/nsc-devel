@@ -1,5 +1,8 @@
 #include "nativesharp/Compilation/CompilationInputManifest.h"
 
+#include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Basic/Version.h"
+
 #include <algorithm>
 #include <cctype>
 #include <string>
@@ -19,21 +22,70 @@ std::string inputPathKey(const std::filesystem::path& path)
         });
     return key;
 }
+
+void appendIdentityField(std::string& material, std::string_view value)
+{
+    material += std::to_string(value.size());
+    material.push_back(':');
+    material.append(value);
+}
+
+std::string logicalInputPath(
+    const std::filesystem::path& rootDirectory,
+    const std::filesystem::path& path)
+{
+    const std::filesystem::path relative = path.lexically_relative(rootDirectory);
+    if (!relative.empty() && *relative.begin() != "..")
+    {
+        return relative.generic_string();
+    }
+    return path.filename().generic_string();
+}
+
+bool appendInputIdentity(
+    std::string& material,
+    const std::filesystem::path& rootDirectory,
+    const std::filesystem::path& path,
+    const LibraryMetadataRepository& metadataRepository,
+    std::string& error)
+{
+    basic::Sha256Digest digest{};
+    std::uintmax_t size = 0;
+    if (const LibraryMetadataRepositoryEntry* entry = metadataRepository.find(path))
+    {
+        digest = entry->contentDigest();
+        size = entry->bytes().size();
+    }
+    else if (!basic::sha256File(path, digest, size, error))
+    {
+        return false;
+    }
+    appendIdentityField(material, logicalInputPath(rootDirectory, path));
+    appendIdentityField(material, std::to_string(size));
+    appendIdentityField(material, basic::sha256Hex(digest));
+    return true;
+}
 }
 
 CompilationInputManifest::CompilationInputManifest(
     ProjectGraph graph,
     ProjectLoadOptions loadOptions)
     : graph_(std::move(graph)),
+      rootDirectory_(graph_.rootProjectFile().parent_path()),
       loadOptions_(std::move(loadOptions))
 {
-    collectGraphInputs();
+    collectGraphInputs(graph_);
     canonicalizeInputOrder();
 }
 
 const ProjectGraph& CompilationInputManifest::projectGraph() const noexcept
 {
     return graph_;
+}
+
+const std::filesystem::path& CompilationInputManifest::rootDirectory() const noexcept
+{
+    return rootDirectory_;
 }
 
 ProjectGraph CompilationInputManifest::releaseProjectGraph()
@@ -70,11 +122,71 @@ void CompilationInputManifest::addInputFile(std::filesystem::path path)
         return;
     }
     inputFiles_.insert(position, std::move(path));
+    identity_.clear();
 }
 
-void CompilationInputManifest::collectGraphInputs()
+void CompilationInputManifest::addIdentityField(std::string name, std::string value)
 {
-    for (const Project& project : graph_.projects())
+    identityFields_.emplace_back(std::move(name), std::move(value));
+    identity_.clear();
+}
+
+void CompilationInputManifest::addProjectGraphInputs(const ProjectGraph& graph)
+{
+    collectGraphInputs(graph);
+    canonicalizeInputOrder();
+    identity_.clear();
+}
+
+bool CompilationInputManifest::calculateIdentity(
+    const LibraryMetadataRepository& metadataRepository,
+    std::string& error)
+{
+    std::vector<std::pair<std::string, std::string>> fields = identityFields_;
+    std::sort(fields.begin(), fields.end());
+    std::string material;
+    appendIdentityField(material, "nsc-compilation-bundle-v1");
+    appendIdentityField(material, kCompilerVersion);
+    appendIdentityField(material, "generic-instantiation-depth");
+    appendIdentityField(
+        material,
+        loadOptions_.genericInstantiationDepth.has_value()
+            ? std::to_string(*loadOptions_.genericInstantiationDepth)
+            : "default");
+    appendIdentityField(material, "generic-instantiation-count");
+    appendIdentityField(
+        material,
+        loadOptions_.genericInstantiationCount.has_value()
+            ? std::to_string(*loadOptions_.genericInstantiationCount)
+            : "default");
+    for (const auto& [name, value] : fields)
+    {
+        appendIdentityField(material, name);
+        appendIdentityField(material, value);
+    }
+    for (const std::filesystem::path& path : inputFiles_)
+    {
+        if (!appendInputIdentity(
+                material, rootDirectory_, path, metadataRepository, error))
+        {
+            identity_.clear();
+            return false;
+        }
+    }
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
+    identity_ = basic::sha256Hex(basic::sha256(bytes));
+    return true;
+}
+
+std::string_view CompilationInputManifest::identity() const noexcept
+{
+    return identity_;
+}
+
+void CompilationInputManifest::collectGraphInputs(const ProjectGraph& graph)
+{
+    for (const Project& project : graph.projects())
     {
         inputFiles_.push_back(project.projectFile());
         for (const ProjectSource& source : project.sourceSet().sources())

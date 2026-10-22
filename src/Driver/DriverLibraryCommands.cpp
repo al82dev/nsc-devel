@@ -15,6 +15,8 @@ ExitCode Driver::runProjectHostHeaderGeneration(std::string_view inputPath, std:
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
+    addCompilationProductIdentity(
+        *manifest, "host-header", pathFromUtf8(outputPath));
     frontend::ProjectCompilation compilation;
     configureProjectExecution(compilation);
     if (!measureDriverPhase(
@@ -77,6 +79,8 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(std::string_view inputPath,
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
+    addCompilationProductIdentity(
+        *manifest, "library-metadata", pathFromUtf8(outputPath));
     frontend::ProjectCompilation compilation;
     configureProjectExecution(compilation);
     if (!measureDriverPhase(

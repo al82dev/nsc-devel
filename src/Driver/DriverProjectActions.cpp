@@ -430,6 +430,7 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
+    addCompilationProductIdentity(*manifest, action);
     frontend::ProjectCompilation projectCompilation;
     configureProjectExecution(projectCompilation);
     if (!measureDriverPhase(
@@ -610,6 +611,11 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath, std::st
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
+    addCompilationProductIdentity(
+        *manifest, "object", pathFromUtf8(outputPath));
+    addCompilationCodegenIdentity(
+        *manifest, optimizationLevel, debugInformation,
+        debugPrefixMaps, llvm_backend::LinkTimeOptimizationMode::None);
     frontend::ProjectCompilation compilation;
     if (!prepareOopCodeCompilation(inputPath, *manifest, compilation, loadError, error))
         return ExitCode::CompilationError;

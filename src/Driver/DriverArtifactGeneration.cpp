@@ -286,6 +286,13 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
+    addCompilationProductIdentity(
+        *manifest, "executable", pathFromUtf8(outputPath));
+    addCompilationCodegenIdentity(
+        *manifest, optimizationLevel, debugInformation,
+        debugPrefixMaps, linkTimeOptimization);
+    addCompilationLinkIdentity(
+        *manifest, incrementalLink, subsystem, extraLinkLibraries);
     frontend::ProjectCompilation compilation;
     const frontend::ProjectOopMirFunction *entryFunction = nullptr;
     if (!prepareExecutableProject(inputPath, *manifest, compilation, entryFunction, error))
@@ -476,6 +483,11 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
+    addCompilationProductIdentity(
+        *manifest, "static-library", pathFromUtf8(outputPath));
+    addCompilationCodegenIdentity(
+        *manifest, optimizationLevel, debugInformation,
+        debugPrefixMaps, linkTimeOptimization);
     frontend::ProjectCompilation compilation;
     std::vector<std::filesystem::path> referencedLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
@@ -882,6 +894,14 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
+    addCompilationProductIdentity(
+        *manifest, "dynamic-library", pathFromUtf8(outputPath));
+    addCompilationCodegenIdentity(
+        *manifest, optimizationLevel, debugInformation,
+        debugPrefixMaps, linkTimeOptimization);
+    addCompilationLinkIdentity(
+        *manifest, false, linker::WindowsExecutableSubsystem::Console,
+        extraLinkLibraries);
     frontend::ProjectCompilation compilation;
     if (!prepareDynamicLibraryProject(inputPath, *manifest, compilation, error))
         return ExitCode::CompilationError;
