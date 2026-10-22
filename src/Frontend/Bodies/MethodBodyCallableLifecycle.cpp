@@ -258,6 +258,13 @@ std::unique_ptr<ProjectMethodBodyModel> ProjectMethodBodyModel::createCallableSh
     shard->interfaceModel_ = &context.interfaceModel();
     shard->genericModel_ = context.genericModel();
     shard->genericConstraintModel_ = context.genericConstraintModel();
+    shard->coreExceptionTypeOrdinal_ = coreExceptionTypeOrdinal_;
+    shard->coreDisposableTypeOrdinal_ = coreDisposableTypeOrdinal_;
+    shard->coreStringTypeOrdinal_ = coreStringTypeOrdinal_;
+    shard->coreStringViewTypeKey_ = coreStringViewTypeKey_;
+    shard->coreThreadStartTypeKey_ = coreThreadStartTypeKey_;
+    shard->coreMemoryOrderTypeKey_ = coreMemoryOrderTypeKey_;
+    shard->coreReadOnlyByteSpanTypeKey_ = coreReadOnlyByteSpanTypeKey_;
     shard->namespaceCallableBase_ = namespaceCallableBase_;
     shard->namespaceCallableAdaptersView_ = namespaceCallableAdapters();
     shard->isolatedCallableOrdinal_ = context.callableOrdinal();

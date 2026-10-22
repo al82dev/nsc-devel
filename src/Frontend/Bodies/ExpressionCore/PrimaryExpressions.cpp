@@ -776,9 +776,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 // NS304-T10-F01: `u8"..."` is a typed UTF-8 literal — a ReadOnlySpan<byte> over the
                 // literal's UTF-8 bytes, emitted as a compile-time constant (no runtime heap).
-                const std::string spanKey = genericModel_ != nullptr
-                    ? genericModel_->closedTypeKeyForTemplate("ReadOnlySpan", "builtin:byte")
-                    : std::string{};
+                const std::string& spanKey = coreReadOnlyByteSpanTypeKey_;
                 if (spanKey.empty())
                 {
                     diagnostics.report(

@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `26 / 60`
+**Progreso:** `27 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -38,7 +38,7 @@
 | T4.6 | Conservar como fallback exacto la generación vigente cuando el sidecar no exista o no sea válido | TERMINADO |
 | T4.7 | Incluir el sidecar en los artefactos de biblioteca y en las reglas CMake de distribución, sin tocar NSC Builder 3 | TERMINADO |
 | T5.1 | Resolver `resolveTypeIdentifier` sobre candidatos por nombre, no recorriendo todos los tipos | TERMINADO |
-| T5.2 | Resolver una vez los tipos Core conocidos usados por excepciones, `IDisposable`, spans, delegates y conversiones | PENDIENTE |
+| T5.2 | Resolver una vez los tipos Core conocidos usados por excepciones, `IDisposable`, spans, delegates y conversiones | TERMINADO |
 | T5.3 | Sustituir los recorridos globales restantes de tipos en los analizadores de cuerpos por los índices de identidad/nombre | PENDIENTE |
 | T5.4 | Sustituir los recorridos globales de miembros en `CallAnalyzer` y `ConstructionAnalyzer` por candidatos indexados | PENDIENTE |
 | T5.5 | Sustituir búsquedas lineales de accessors, predicados de tipo y core calls HIR por índices de miembros | PENDIENTE |

@@ -1844,26 +1844,13 @@ void ProjectMethodBodyModel::recognizeCoreThreadOperations(
             // ThreadStart's typeKey is "type:" + identity.key(), y key() incluye el
             // moduleName ("modulo::NombreCalificado") -- NO simplemente
             // "type:<FullyQualifiedName>". En vez de asumir un moduleName literal (fragil
-            // si cambia el nombre del modulo de la biblioteca), resolvemos el ordinal del
-            // delegate ThreadStart por su nombre completamente calificado y comparamos
-            // contra la key() real -- el mismo patron defensivo que
+            // si cambia el nombre del modulo de la biblioteca), resolvemos una vez el ordinal
+            // de ThreadStart por su nombre completamente calificado al iniciar el modelo y
+            // comparamos contra la key() real -- el mismo patron defensivo que
             // delegateTypeOrdinalForTypeKey (mas abajo en este archivo) usa yendo en la
             // direccion inversa (typeKey -> ordinal).
-            bool parameterIsThreadStart = false;
-            if (nameLookup_ != nullptr)
-            {
-                for (const NamedTypeDeclaration& candidate : nameLookup_->namedTypes())
-                {
-                    if (candidate.kind == NamedTypeDeclarationKind::Delegate &&
-                        candidate.identity.fullyQualifiedName() ==
-                            "NativeSharp.Core.Threading.ThreadStart" &&
-                        selectedMember.parameters[0].typeKey == "type:" + candidate.identity.key())
-                    {
-                        parameterIsThreadStart = true;
-                        break;
-                    }
-                }
-            }
+            const bool parameterIsThreadStart = !coreThreadStartTypeKey_.empty() &&
+                selectedMember.parameters[0].typeKey == coreThreadStartTypeKey_;
             if (parameterIsThreadStart)
             {
                 threadKind = MethodCoreOperationKind::ThreadCreate;
@@ -1910,12 +1897,7 @@ void ProjectMethodBodyModel::recognizeCoreThreadOperations(
 
 bool ProjectMethodBodyModel::isMemoryOrderTypeKey(std::string_view typeKey) const
 {
-    if (inheritanceModel_ == nullptr || nameLookup_ == nullptr) return false;
-    const std::optional<std::size_t> ordinal =
-        inheritanceModel_->typeOrdinalForTypeKey(std::string(typeKey));
-    return ordinal.has_value() && *ordinal < nameLookup_->namedTypes().size() &&
-        nameLookup_->namedTypes()[*ordinal].identity.fullyQualifiedName() ==
-            "NativeSharp.Core.Threading.MemoryOrder";
+    return !coreMemoryOrderTypeKey_.empty() && typeKey == coreMemoryOrderTypeKey_;
 }
 
 void ProjectMethodBodyModel::recognizeCoreAtomicValueOperations(
@@ -2273,15 +2255,10 @@ void ProjectMethodBodyModel::recognizeCoreAtomicOperations(
     // argument never becomes a runtime integer; HIR carries only the validated ABI value.
     if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicFence" &&
         selectedMember.isStatic && selectedMember.declaredTypeKey == "builtin:void" &&
-        selectedMember.parameters.size() == 1 && inheritanceModel_ != nullptr &&
-        nameLookup_ != nullptr)
+        selectedMember.parameters.size() == 1 && !coreMemoryOrderTypeKey_.empty())
     {
-        const std::optional<std::size_t> orderTypeOrdinal =
-            inheritanceModel_->typeOrdinalForTypeKey(selectedMember.parameters[0].typeKey);
-        const bool isMemoryOrder = orderTypeOrdinal.has_value() &&
-            *orderTypeOrdinal < nameLookup_->namedTypes().size() &&
-            nameLookup_->namedTypes()[*orderTypeOrdinal].identity.fullyQualifiedName() ==
-                "NativeSharp.Core.Threading.MemoryOrder";
+        const bool isMemoryOrder =
+            isMemoryOrderTypeKey(selectedMember.parameters[0].typeKey);
         std::optional<MethodCoreOperationKind> fenceKind;
         if (isMemoryOrder && selectedMember.name == "Thread")
             fenceKind = MethodCoreOperationKind::AtomicThreadFence;
@@ -3064,24 +3041,13 @@ ProjectMethodBodyModel::analyzeNativeStringPatternRestCall(
     }
     if (!argumentsValid) return std::nullopt;
     // La clave de tipo de un named type SIEMPRE lleva el modulo: `type:<modulo>::...`.
-    std::string stringViewKey;
-    if (nameLookup_ != nullptr)
-    {
-        for (const NamedTypeDeclaration& candidate : nameLookup_->namedTypes())
-        {
-            if (candidate.identity.fullyQualifiedName() == "NativeSharp.Core.StringView")
-            {
-                stringViewKey = "type:" + candidate.identity.key();
-                break;
-            }
-        }
-    }
-    if (stringViewKey.empty()) return ExpressionResult{};
+    if (coreStringViewTypeKey_.empty()) return ExpressionResult{};
     coreBindings_.push_back(MethodCoreBinding{
         MethodCoreOperationKind::StringViewFromString, expression, methodMemberOrdinal,
-        scopeOrdinal, stringViewKey, "builtin:string", false, std::nullopt, std::nullopt});
+        scopeOrdinal, coreStringViewTypeKey_, "builtin:string",
+        false, std::nullopt, std::nullopt});
     ExpressionResult viewResult;
-    viewResult.typeKey = std::move(stringViewKey);
+    viewResult.typeKey = coreStringViewTypeKey_;
     viewResult.valid = true;
     viewResult.assignable = false;
     viewResult.addressable = false;
@@ -5275,9 +5241,8 @@ void ProjectMethodBodyModel::configureCallLambdaTargets(
             if (ordinal >= memberModel_->members().size()) return false;
             const ClassMemberSymbol& member = memberModel_->members()[ordinal];
             return member.kind == ClassMemberKind::Method && member.isStatic &&
-                member.declaringTypeOrdinal < nameLookup_->namedTypes().size() &&
-                nameLookup_->namedTypes()[member.declaringTypeOrdinal].identity.fullyQualifiedName() ==
-                    "NativeSharp.Core.String";
+                coreStringTypeOrdinal_.has_value() &&
+                member.declaringTypeOrdinal == *coreStringTypeOrdinal_;
         });
     }
 

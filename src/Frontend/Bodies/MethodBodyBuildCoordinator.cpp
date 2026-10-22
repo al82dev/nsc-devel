@@ -147,6 +147,52 @@ void ProjectMethodBodyModel::validateDeclaredErrorTypes(
     }
 }
 
+std::optional<std::size_t> ProjectMethodBodyModel::resolveKnownCoreTypeOrdinal(
+    std::string_view fullyQualifiedName,
+    NamedTypeDeclarationKind kind) const noexcept
+{
+    if (nameLookup_ == nullptr) return std::nullopt;
+    for (const std::size_t ordinal : nameLookup_->typeOrdinalsForName(fullyQualifiedName))
+    {
+        if (ordinal >= nameLookup_->namedTypes().size()) continue;
+        const NamedTypeDeclaration& type = nameLookup_->namedTypes()[ordinal];
+        if (type.kind == kind && type.identity.fullyQualifiedNameView() == fullyQualifiedName)
+        {
+            return ordinal;
+        }
+    }
+    return std::nullopt;
+}
+
+void ProjectMethodBodyModel::initializeKnownCoreTypes()
+{
+    coreExceptionTypeOrdinal_ = resolveKnownCoreTypeOrdinal(
+        "NativeSharp.Core.Exception", NamedTypeDeclarationKind::Class);
+    coreDisposableTypeOrdinal_ = resolveKnownCoreTypeOrdinal(
+        "NativeSharp.Core.IDisposable", NamedTypeDeclarationKind::Interface);
+    coreStringTypeOrdinal_ = resolveKnownCoreTypeOrdinal(
+        "NativeSharp.Core.String", NamedTypeDeclarationKind::Class);
+
+    const auto typeKey = [this](
+        std::string_view name,
+        NamedTypeDeclarationKind kind)
+    {
+        const std::optional<std::size_t> ordinal = resolveKnownCoreTypeOrdinal(name, kind);
+        return ordinal.has_value()
+            ? "type:" + nameLookup_->namedTypes()[*ordinal].identity.key()
+            : std::string{};
+    };
+    coreStringViewTypeKey_ = typeKey(
+        "NativeSharp.Core.StringView", NamedTypeDeclarationKind::Struct);
+    coreThreadStartTypeKey_ = typeKey(
+        "NativeSharp.Core.Threading.ThreadStart", NamedTypeDeclarationKind::Delegate);
+    coreMemoryOrderTypeKey_ = typeKey(
+        "NativeSharp.Core.Threading.MemoryOrder", NamedTypeDeclarationKind::Enum);
+    coreReadOnlyByteSpanTypeKey_ = genericModel_ != nullptr
+        ? genericModel_->closedTypeKeyForTemplate("ReadOnlySpan", "builtin:byte")
+        : std::string{};
+}
+
 void ProjectMethodBodyModel::initializeParameterEscapeSummaries(
     const ProjectMemberModel& memberModel)
 {
@@ -675,6 +721,7 @@ bool ProjectMethodBodyModel::build(
     initializeNamespaceCallableAdapters(nameLookup, memberModel, namespaceFunctionModel);
     inheritanceModel_ = &inheritanceModel;
     interfaceModel_ = &interfaceModel;
+    initializeKnownCoreTypes();
     validateDeclaredErrorTypes(nameLookup, memberModel, diagnostics);
     initializeParameterEscapeSummaries(memberModel);
 

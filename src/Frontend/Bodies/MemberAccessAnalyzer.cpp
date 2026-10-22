@@ -408,20 +408,10 @@ bool ProjectMethodBodyModel::analyzeNativeStringFacadeMember(
         (nativeStringReceiver || receiver.typeKey == "builtin:bool" ||
          ProjectTypeConversion::isNumeric(receiver.typeKey));
     if (!nativeStringReceiver && !primitiveToStringReceiver) return false;
-    std::optional<std::size_t> coreStringTypeOrdinal;
-    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
-    {
-        if (nameLookup_->namedTypes()[ordinal].identity.fullyQualifiedName() ==
-            "NativeSharp.Core.String")
-        {
-            coreStringTypeOrdinal = ordinal;
-            break;
-        }
-    }
-    if (!coreStringTypeOrdinal.has_value()) return false;
+    if (!coreStringTypeOrdinal_.has_value()) return false;
     std::vector<std::size_t> methods;
     for (const std::size_t candidateOrdinal :
-         memberModel_->findMembers(*coreStringTypeOrdinal, expression->text()))
+         memberModel_->findMembers(*coreStringTypeOrdinal_, expression->text()))
     {
         if (candidateOrdinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];

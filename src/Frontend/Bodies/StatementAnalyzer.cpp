@@ -2105,20 +2105,7 @@ void ProjectMethodBodyModel::analyzeStatement(
 
 std::optional<std::size_t> ProjectMethodBodyModel::exceptionRootTypeOrdinal() const noexcept
 {
-    if (nameLookup_ == nullptr)
-    {
-        return std::nullopt;
-    }
-    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
-    {
-        const NamedTypeDeclaration& type = nameLookup_->namedTypes()[ordinal];
-        if (type.kind == NamedTypeDeclarationKind::Class &&
-            type.identity.fullyQualifiedName() == "NativeSharp.Core.Exception")
-        {
-            return ordinal;
-        }
-    }
-    return std::nullopt;
+    return coreExceptionTypeOrdinal_;
 }
 
 bool ProjectMethodBodyModel::isExceptionTypeOrdinal(std::size_t typeOrdinal) const noexcept
@@ -2181,20 +2168,7 @@ std::size_t ProjectMethodBodyModel::addCatchLocal(
 
 std::optional<std::size_t> ProjectMethodBodyModel::disposableTypeOrdinal() const noexcept
 {
-    if (nameLookup_ == nullptr)
-    {
-        return std::nullopt;
-    }
-    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
-    {
-        const NamedTypeDeclaration& type = nameLookup_->namedTypes()[ordinal];
-        if (type.kind == NamedTypeDeclarationKind::Interface &&
-            type.identity.fullyQualifiedName() == "NativeSharp.Core.IDisposable")
-        {
-            return ordinal;
-        }
-    }
-    return std::nullopt;
+    return coreDisposableTypeOrdinal_;
 }
 
 std::optional<std::size_t> ProjectMethodBodyModel::disposableContractMemberOrdinal(

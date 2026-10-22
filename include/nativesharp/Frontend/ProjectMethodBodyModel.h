@@ -4931,6 +4931,10 @@ private:
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         const ProjectNamespaceFunctionModel& namespaceFunctionModel);
+    [[nodiscard]] std::optional<std::size_t> resolveKnownCoreTypeOrdinal(
+        std::string_view fullyQualifiedName,
+        NamedTypeDeclarationKind kind) const noexcept;
+    void initializeKnownCoreTypes();
     void validateDeclaredErrorTypes(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
@@ -5046,6 +5050,13 @@ private:
     const ProjectInterfaceModel* interfaceModel_ = nullptr;
     const ProjectGenericModel* genericModel_ = nullptr;
     const ProjectGenericConstraintModel* genericConstraintModel_ = nullptr;
+    std::optional<std::size_t> coreExceptionTypeOrdinal_;
+    std::optional<std::size_t> coreDisposableTypeOrdinal_;
+    std::optional<std::size_t> coreStringTypeOrdinal_;
+    std::string coreStringViewTypeKey_;
+    std::string coreThreadStartTypeKey_;
+    std::string coreMemoryOrderTypeKey_;
+    std::string coreReadOnlyByteSpanTypeKey_;
     std::vector<MethodScope> scopes_;
     std::vector<std::vector<ScopeName>> scopeNames_;
     std::vector<MethodLocalSymbol> locals_;
