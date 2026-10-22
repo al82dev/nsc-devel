@@ -118,6 +118,15 @@ bool LibraryMetadataCodec::read(
     error.clear();
     std::vector<std::uint8_t> bytes;
     if (!readMetadataBytes(source, bytes, error)) return false;
+    return read(bytes, metadata, error);
+}
+
+bool LibraryMetadataCodec::read(
+    std::span<const std::uint8_t> bytes,
+    LibraryMetadata& metadata,
+    std::string& error) const
+{
+    error.clear();
     if (bytes.size() < kHeaderSize)
     {
         error = "NativeSharp metadata is truncated before its fixed header";

@@ -21,6 +21,7 @@ void appendExternalImport(std::vector<linker::ExternalImportModule> &modules, co
 }
 
 bool loadLibraryReferenceMetadata(const compilation::LibraryReference &reference,
+                                   const compilation::LibraryMetadataRepository &repository,
                                   interop::LibraryMetadataCodec &metadataCodec,
                                   linker::CoffArchiveVerifier &archiveVerifier, interop::LibraryMetadata &metadata,
                                   std::string &error)
@@ -32,7 +33,9 @@ bool loadLibraryReferenceMetadata(const compilation::LibraryReference &reference
         return false;
     }
     std::string metadataError;
-    if (!metadataCodec.read(reference.metadataPath, metadata, metadataError))
+    const compilation::LibraryMetadataRepositoryEntry *file =
+        repository.load(reference.metadataPath, metadataError);
+    if (file == nullptr || !metadataCodec.read(file->bytes(), metadata, metadataError))
     {
         error =
             "cannot read metadata for precompiled library '" + reference.libraryPath.string() + "': " + metadataError;
@@ -142,6 +145,7 @@ bool validateLibraryReferenceRuntime(const compilation::LibraryReference &refere
 }
 
 bool validateLibraryReference(const compilation::LibraryReference &reference,
+                               const compilation::LibraryMetadataRepository &repository,
                               interop::LibraryMetadataCodec &metadataCodec,
                               std::unordered_set<std::string> &linkedLibraries,
                               std::unordered_set<std::string> &validatedReferences,
@@ -158,7 +162,8 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
         return true;
     linker::CoffArchiveVerifier archiveVerifier;
     interop::LibraryMetadata metadata;
-    if (!loadLibraryReferenceMetadata(reference, metadataCodec, archiveVerifier, metadata, error))
+    if (!loadLibraryReferenceMetadata(
+            reference, repository, metadataCodec, archiveVerifier, metadata, error))
         return false;
     if (inheritedImports != nullptr)
         for (const interop::LibraryMetadataPlatformImport &importRecord : metadata.platformImports)
@@ -210,7 +215,8 @@ bool validateProjectLibraryReferences(
     interop::LibraryMetadataCodec metadataCodec;
     for (const compilation::Project &project : compilation.projectGraph()->projects())
         for (const compilation::LibraryReference &reference : project.libraryReferences())
-            if (!validateLibraryReference(reference, metadataCodec, linkedLibraries, validatedReferences, runtimeNames,
+            if (!validateLibraryReference(reference, compilation.libraryMetadataRepository(), metadataCodec,
+                                           linkedLibraries, validatedReferences, runtimeNames,
                                           runtimeByModule, moduleOwners, publishedExports, publishedNativeMethods,
                                           libraries, inheritedImports, error))
                 return false;

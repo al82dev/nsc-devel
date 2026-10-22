@@ -19,6 +19,20 @@ LibraryMetadataRepositoryEntry& LibraryMetadataRepository::entryFor(
     return *iterator->second;
 }
 
+const LibraryMetadataRepositoryEntry* LibraryMetadataRepository::load(
+    const std::filesystem::path& path,
+    std::string& error) const
+{
+    const std::filesystem::path canonical = canonicalPath(path);
+    const std::string key = pathKey(canonical);
+    auto [iterator, inserted] = entries_.try_emplace(key);
+    if (inserted)
+    {
+        iterator->second = std::make_unique<LibraryMetadataRepositoryEntry>(canonical);
+    }
+    return iterator->second->load(error) ? iterator->second.get() : nullptr;
+}
+
 const LibraryMetadataRepositoryEntry* LibraryMetadataRepository::find(
     const std::filesystem::path& path) const
 {

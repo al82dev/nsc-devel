@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string>
 
 namespace nativesharp::frontend
@@ -38,6 +39,11 @@ public:
 
     bool read(
         const std::filesystem::path& source,
+        LibraryMetadata& metadata,
+        std::string& error) const;
+
+    bool read(
+        std::span<const std::uint8_t> bytes,
         LibraryMetadata& metadata,
         std::string& error) const;
 

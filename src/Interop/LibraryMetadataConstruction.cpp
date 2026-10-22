@@ -756,7 +756,10 @@ bool appendBinaryDependencies(
     {
         LibraryMetadata dependencyMetadata;
         std::string dependencyError;
-        if (!codec.read(reference.metadataPath, dependencyMetadata, dependencyError) ||
+        const compilation::LibraryMetadataRepositoryEntry* file =
+            compilation.libraryMetadataRepository().load(reference.metadataPath, dependencyError);
+        if (file == nullptr ||
+            !codec.read(file->bytes(), dependencyMetadata, dependencyError) ||
             !codec.verifyCurrentCompiler(dependencyMetadata, dependencyError))
         {
             error = "cannot record binary dependency '" +

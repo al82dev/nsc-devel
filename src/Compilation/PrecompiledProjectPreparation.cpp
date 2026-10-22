@@ -22,22 +22,30 @@ void appendCacheIdentityField(std::string& material, std::string_view field)
     material.append(field);
 }
 
-std::string precompiledProductCacheKey(const LoadedMetadata& entry)
+bool readMetadata(
+    const LibraryMetadataRepository& repository,
+    interop::LibraryMetadataCodec& codec,
+    const std::filesystem::path& path,
+    interop::LibraryMetadata& metadata,
+    std::string& error)
 {
-    basic::Sha256Digest metadataDigest{};
-    std::uintmax_t metadataSize = 0;
+    const LibraryMetadataRepositoryEntry* file = repository.load(path, error);
+    return file != nullptr && codec.read(file->bytes(), metadata, error);
+}
+
+std::string precompiledProductCacheKey(
+    const LoadedMetadata& entry,
+    const LibraryMetadataRepository& repository)
+{
     std::string ignoredError;
-    if (!basic::sha256File(
-            entry.metadataPath, metadataDigest, metadataSize, ignoredError))
-    {
-        return {};
-    }
+    const LibraryMetadataRepositoryEntry* file = repository.load(entry.metadataPath, ignoredError);
+    if (file == nullptr) return {};
     std::string material;
     appendCacheIdentityField(material, "nsc-precompiled-products-v1");
     appendCacheIdentityField(material, kCompilerBuildId);
     appendCacheIdentityField(material, entry.metadata.moduleName);
-    appendCacheIdentityField(material, std::to_string(metadataSize));
-    appendCacheIdentityField(material, basic::sha256Hex(metadataDigest));
+    appendCacheIdentityField(material, std::to_string(file->bytes().size()));
+    appendCacheIdentityField(material, basic::sha256Hex(file->contentDigest()));
     const std::span<const std::uint8_t> bytes{
         reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
     return basic::sha256Hex(basic::sha256(bytes));
@@ -157,6 +165,7 @@ std::vector<frontend::PrecompiledGenericSpecialization> genericSpecializations(
 
 bool materializeModules(
     std::vector<LoadedMetadata>& loaded,
+    const LibraryMetadataRepository& repository,
     const std::filesystem::path& cacheRoot,
     std::vector<frontend::PrecompiledSyntaxModule>& modules,
     std::string& error)
@@ -171,7 +180,7 @@ bool materializeModules(
         {
             concreteMemberNames.insert(member.name);
         }
-        const std::string productCacheKey = precompiledProductCacheKey(entry);
+        const std::string productCacheKey = precompiledProductCacheKey(entry, repository);
         std::string publicSource;
         std::string templateSource;
         if (!restorePrecompiledSourceProducts(
@@ -209,6 +218,7 @@ bool materializeModules(
 
 bool loadExplicitMetadata(
     const ProjectGraph& graph,
+    const LibraryMetadataRepository& repository,
     interop::LibraryMetadataCodec& codec,
     std::vector<LoadedMetadata>& loaded,
     std::unordered_map<std::string, std::size_t>& loadedByModule,
@@ -225,7 +235,7 @@ bool loadExplicitMetadata(
         for (const LibraryReference& reference : project.libraryReferences())
         {
             interop::LibraryMetadata metadata;
-            if (!codec.read(reference.metadataPath, metadata, error) ||
+            if (!readMetadata(repository, codec, reference.metadataPath, metadata, error) ||
                 !codec.verifyCurrentCompiler(metadata, error))
             {
                 error = "cannot import precompiled metadata '" +
@@ -331,11 +341,12 @@ bool loadBinaryDependency(
     const interop::LibraryMetadataBinaryDependency& dependency,
     const std::string& parentModule,
     const LibraryReference& resolved,
+    const LibraryMetadataRepository& repository,
     interop::LibraryMetadataCodec& codec,
     interop::LibraryMetadata& childMetadata,
     std::string& error)
 {
-    if (!codec.read(resolved.metadataPath, childMetadata, error) ||
+    if (!readMetadata(repository, codec, resolved.metadataPath, childMetadata, error) ||
         !codec.verifyCurrentCompiler(childMetadata, error))
     {
         error = "cannot import transitive metadata '" +
@@ -427,6 +438,7 @@ bool expandBinaryDependency(
     const std::filesystem::path& parentOwner,
     const std::filesystem::path& parentMetadataPath,
     const std::string& parentModule,
+    const LibraryMetadataRepository& repository,
     interop::LibraryMetadataCodec& codec,
     std::vector<LoadedMetadata>& loaded,
     std::unordered_map<std::string, std::size_t>& loadedByModule,
@@ -467,6 +479,7 @@ bool expandBinaryDependency(
             dependency,
             parentModule,
             resolved,
+            repository,
             codec,
             childMetadata,
             error))
@@ -485,6 +498,7 @@ bool expandBinaryDependency(
 
 bool expandBinaryClosure(
     const ProjectLoadOptions& loadOptions,
+    const LibraryMetadataRepository& repository,
     interop::LibraryMetadataCodec& codec,
     std::vector<LoadedMetadata>& loaded,
     std::unordered_map<std::string, std::size_t>& loadedByModule,
@@ -509,6 +523,7 @@ bool expandBinaryClosure(
                     parentOwner,
                     parentMetadataPath,
                     parentModule,
+                    repository,
                     codec,
                     loaded,
                     loadedByModule,
@@ -571,6 +586,7 @@ bool preparePrecompiledProject(
     std::vector<SourceLibraryReferenceReplacement> sourceReplacements;
     if (!loadExplicitMetadata(
             graph,
+            compilation.libraryMetadataRepository(),
             codec,
             loaded,
             loadedByModule,
@@ -585,6 +601,7 @@ bool preparePrecompiledProject(
         discoveredByOwner;
     if (!expandBinaryClosure(
             loadOptions,
+            compilation.libraryMetadataRepository(),
             codec,
             loaded,
             loadedByModule,
@@ -605,7 +622,11 @@ bool preparePrecompiledProject(
 
     std::vector<frontend::PrecompiledSyntaxModule> modules;
     if (!materializeModules(
-            loaded, compilation.precompiledProductCacheRoot(), modules, error) ||
+            loaded,
+            compilation.libraryMetadataRepository(),
+            compilation.precompiledProductCacheRoot(),
+            modules,
+            error) ||
         !compilation.setPrecompiledModules(std::move(modules), error))
     {
         return false;
