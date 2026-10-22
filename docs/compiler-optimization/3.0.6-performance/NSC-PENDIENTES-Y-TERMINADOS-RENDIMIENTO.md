@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `16 / 48`
+**Progreso:** `17 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -20,7 +20,7 @@
 | T2.7 | Construir y publicar solamente los misses MIR | TERMINADO |
 | T3.1 | Definir la identidad estable de cada módulo precompilado | TERMINADO |
 | T3.2 | Crear una raíz persistente para productos de módulos precompilados | TERMINADO |
-| T3.3 | Restaurar `public-api` sin volver a generarlo | PENDIENTE |
+| T3.3 | Restaurar `public-api` sin volver a generarlo | TERMINADO |
 | T3.4 | Restaurar `public-templates` sin volver a generarlo | PENDIENTE |
 | T3.5 | Reconstruir las unidades virtuales con su identidad y orden originales | PENDIENTE |
 | T3.6 | Omitir emitter, lexer, parser y genéricos de la superficie restaurada | PENDIENTE |

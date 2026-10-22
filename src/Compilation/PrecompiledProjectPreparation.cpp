@@ -2,6 +2,7 @@
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
+#include "nativesharp/Frontend/TemplateParseCache.h"
 
 #include "../Driver/Internal/DriverInternal.h"
 
@@ -40,6 +41,36 @@ std::string precompiledProductCacheKey(const LoadedMetadata& entry)
     const std::span<const std::uint8_t> bytes{
         reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
     return basic::sha256Hex(basic::sha256(bytes));
+}
+
+bool restorePrecompiledPublicSource(
+    const std::filesystem::path& cacheRoot,
+    std::string_view cacheKey,
+    std::string& source)
+{
+    if (cacheRoot.empty() || cacheKey.empty()) return false;
+    frontend::TemplateParseCache cache;
+    cache.setRoot(cacheRoot / "public-api");
+    bool hit = false;
+    std::string ignoredError;
+    return cache.restore(cacheKey, source, hit, ignoredError) && hit;
+}
+
+bool buildPrecompiledPublicSource(
+    const interop::LibraryMetadata& metadata,
+    const std::filesystem::path& cacheRoot,
+    std::string_view cacheKey,
+    std::string& source,
+    std::string& error)
+{
+    if (restorePrecompiledPublicSource(cacheRoot, cacheKey, source)) return true;
+    if (!driver::buildPrecompiledPublicSource(metadata, source, error)) return false;
+    if (cacheRoot.empty() || cacheKey.empty()) return true;
+    frontend::TemplateParseCache cache;
+    cache.setRoot(cacheRoot / "public-api");
+    std::string ignoredError;
+    (void)cache.store(cacheKey, source, ignoredError);
+    return true;
 }
 
 std::vector<frontend::PrecompiledMemberIdentity> memberIdentities(
@@ -127,6 +158,7 @@ std::vector<frontend::PrecompiledGenericSpecialization> genericSpecializations(
 
 bool materializeModules(
     std::vector<LoadedMetadata>& loaded,
+    const std::filesystem::path& cacheRoot,
     std::vector<frontend::PrecompiledSyntaxModule>& modules,
     std::string& error)
 {
@@ -140,8 +172,10 @@ bool materializeModules(
         {
             concreteMemberNames.insert(member.name);
         }
+        const std::string productCacheKey = precompiledProductCacheKey(entry);
         std::string publicSource;
-        if (!driver::buildPrecompiledPublicSource(metadata, publicSource, error))
+        if (!buildPrecompiledPublicSource(
+                metadata, cacheRoot, productCacheKey, publicSource, error))
         {
             error = "cannot materialize public API for module '" +
                 metadata.moduleName + "': " + error;
@@ -159,7 +193,7 @@ bool materializeModules(
             entry.ownerProjectFile,
             entry.metadataPath,
             metadata.moduleName,
-            precompiledProductCacheKey(entry),
+            productCacheKey,
             std::move(publicSource),
             std::move(templateSource),
             memberIdentities(metadata),
@@ -566,7 +600,8 @@ bool preparePrecompiledProject(
     }
 
     std::vector<frontend::PrecompiledSyntaxModule> modules;
-    if (!materializeModules(loaded, modules, error) ||
+    if (!materializeModules(
+            loaded, compilation.precompiledProductCacheRoot(), modules, error) ||
         !compilation.setPrecompiledModules(std::move(modules), error))
     {
         return false;
