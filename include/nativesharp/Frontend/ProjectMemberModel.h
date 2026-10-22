@@ -74,6 +74,9 @@ public:
     std::span<const ModuleInitializationRecord> moduleInitializers() const noexcept;
     std::span<const MemberBodyBinding> bodyBindings() const noexcept;
     std::span<const std::size_t> membersOfType(std::size_t typeOrdinal) const noexcept;
+    std::span<const std::size_t> membersDeclaredByType(
+        std::size_t typeOrdinal) const noexcept;
+    bool hasMembersDeclaredByTypeIndex() const noexcept;
     std::span<const std::size_t> constructorsOfType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> promotedMembersOfType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> findMembers(
@@ -228,6 +231,7 @@ private:
         diagnostics::DiagnosticEngine& diagnostics) const;
     void buildTransitiveOwnershipCache();
     void buildMemberNameIndex();
+    void buildMembersDeclaredByTypeIndex();
     bool collectTypeMembers(
         std::size_t typeOrdinal,
         const NamedTypeDeclaration& type,
@@ -530,6 +534,8 @@ private:
     std::vector<ModuleInitializationRecord> moduleInitializers_;
     std::vector<MemberBodyBinding> bodyBindings_;
     std::vector<std::vector<std::size_t>> membersByType_;
+    std::vector<std::vector<std::size_t>> membersDeclaredByType_;
+    bool membersDeclaredByTypeIndexBuilt_ = false;
     std::vector<std::vector<std::size_t>> constructorsByType_;
     std::vector<std::vector<std::size_t>> promotedMembersByType_;
     std::vector<MemberNameIndex> membersByName_;

@@ -1643,15 +1643,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerEnumToStringCoreCall
     {
         const std::string_view identity =
             std::string_view(binding.elementTypeKey).substr(5);
-        for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size();
-             ++ordinal)
-        {
-            if (nameLookup_->namedTypes()[ordinal].identity.key() == identity)
-            {
-                enumOrdinal = ordinal;
-                break;
-            }
-        }
+        enumOrdinal = nameLookup_->typeOrdinalForIdentity(identity);
     }
     if (!enumOrdinal.has_value())
     {

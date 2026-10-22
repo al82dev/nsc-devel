@@ -45,6 +45,8 @@ void ProjectMemberModel::initializeBuildState(
     nameLookup_ = &nameLookup;
     genericModel_ = genericModel;
     membersByType_.resize(nameLookup.namedTypes().size());
+    membersDeclaredByType_.clear();
+    membersDeclaredByTypeIndexBuilt_ = false;
     constructorsByType_.resize(nameLookup.namedTypes().size());
     promotedMembersByType_.resize(nameLookup.namedTypes().size());
     membersByName_.resize(nameLookup.namedTypes().size());

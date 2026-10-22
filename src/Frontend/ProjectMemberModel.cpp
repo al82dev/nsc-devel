@@ -81,6 +81,7 @@ bool ProjectMemberModel::build(
 
     validateRawUnions(nameLookup, diagnostics);
     collectAnonymousMemberPromotions(nameLookup, diagnostics);
+    buildMembersDeclaredByTypeIndex();
     buildMemberNameIndex();
     indexes_->rebuildMembers(members_);
 
@@ -116,6 +117,20 @@ std::span<const std::size_t> ProjectMemberModel::membersOfType(std::size_t typeO
         return empty;
     }
     return membersByType_[typeOrdinal];
+}
+
+std::span<const std::size_t> ProjectMemberModel::membersDeclaredByType(
+    std::size_t typeOrdinal) const noexcept
+{
+    static const std::vector<std::size_t> empty;
+    return membersDeclaredByTypeIndexBuilt_ && typeOrdinal < membersDeclaredByType_.size()
+        ? std::span<const std::size_t>(membersDeclaredByType_[typeOrdinal])
+        : std::span<const std::size_t>(empty);
+}
+
+bool ProjectMemberModel::hasMembersDeclaredByTypeIndex() const noexcept
+{
+    return membersDeclaredByTypeIndexBuilt_;
 }
 
 std::span<const std::size_t> ProjectMemberModel::constructorsOfType(

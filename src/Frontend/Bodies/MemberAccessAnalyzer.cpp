@@ -1246,12 +1246,26 @@ std::vector<std::size_t> ProjectMethodBodyModel::stage38OperatorCandidates(
         // NS304-T08-F04: extension operators (namespace functions) participate in the same lookup.
         if (namespaceFunctionModel_ != nullptr)
         {
-            for (std::size_t functionOrdinal = 0;
-                 functionOrdinal < namespaceFunctionModel_->functions().size(); ++functionOrdinal)
+            std::vector<std::size_t> fallbackFunctionOrdinals;
+            std::span<const std::size_t> functionOrdinals =
+                namespaceFunctionModel_->extensionFunctionsNamed(methodName);
+            if (!namespaceFunctionModel_->hasExtensionFunctionIndex())
             {
+                for (std::size_t ordinal = 0;
+                     ordinal < namespaceFunctionModel_->functions().size(); ++ordinal)
+                {
+                    const NamespaceFunctionSymbol& function =
+                        namespaceFunctionModel_->functions()[ordinal];
+                    if (function.isExtension && function.name == methodName)
+                        fallbackFunctionOrdinals.push_back(ordinal);
+                }
+                functionOrdinals = fallbackFunctionOrdinals;
+            }
+            for (const std::size_t functionOrdinal : functionOrdinals)
+            {
+                if (functionOrdinal >= namespaceFunctionModel_->functions().size()) continue;
                 const NamespaceFunctionSymbol& function =
                     namespaceFunctionModel_->functions()[functionOrdinal];
-                if (!function.isExtension || function.name != methodName) continue;
                 const std::size_t adapterOrdinal = namespaceCallableBase_ + functionOrdinal;
                 if (seen.contains(adapterOrdinal)) continue;
                 seen.insert(adapterOrdinal);

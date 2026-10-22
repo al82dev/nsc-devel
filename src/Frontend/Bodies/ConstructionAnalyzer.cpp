@@ -215,10 +215,22 @@ bool ProjectMethodBodyModel::aggregateSupportsSynthesizedMemberVisit(
         return false;
     }
 
-    // Destructors do not participate in ordinary name lookup. The physical per-type index is
-    // authoritative for every collected member, including destructors, so Clone cannot miss
+    // Destructors do not participate in ordinary name lookup. The declaring-owner index is
+    // authoritative for collected members and promoted aliases, so Clone cannot miss
     // lifetime-only members without scanning unrelated owners.
-    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
+    std::vector<std::size_t> fallbackMemberOrdinals;
+    std::span<const std::size_t> memberOrdinals =
+        memberModel_->membersDeclaredByType(*typeOrdinal);
+    if (!memberModel_->hasMembersDeclaredByTypeIndex())
+    {
+        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+        {
+            if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
+                fallbackMemberOrdinals.push_back(ordinal);
+        }
+        memberOrdinals = fallbackMemberOrdinals;
+    }
+    for (const std::size_t memberOrdinal : memberOrdinals)
     {
         if (memberOrdinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];

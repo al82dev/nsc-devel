@@ -297,4 +297,21 @@ void ProjectMemberModel::buildMemberNameIndex()
     }
 }
 
+void ProjectMemberModel::buildMembersDeclaredByTypeIndex()
+{
+    const std::size_t typeCount = nameLookup_ != nullptr
+        ? nameLookup_->namedTypes().size() : membersByType_.size();
+    membersDeclaredByType_.clear();
+    membersDeclaredByType_.resize(typeCount);
+    for (std::size_t memberOrdinal = 0; memberOrdinal < members_.size(); ++memberOrdinal)
+    {
+        const std::size_t typeOrdinal = members_[memberOrdinal].declaringTypeOrdinal;
+        if (typeOrdinal < membersDeclaredByType_.size())
+        {
+            membersDeclaredByType_[typeOrdinal].push_back(memberOrdinal);
+        }
+    }
+    membersDeclaredByTypeIndexBuilt_ = true;
+}
+
 }

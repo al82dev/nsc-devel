@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `29 / 60`
+**Progreso:** `30 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -41,7 +41,7 @@
 | T5.2 | Resolver una vez los tipos Core conocidos usados por excepciones, `IDisposable`, spans, delegates y conversiones | TERMINADO |
 | T5.3 | Sustituir los recorridos globales restantes de tipos en los analizadores de cuerpos por los índices de identidad/nombre | TERMINADO |
 | T5.4 | Sustituir los recorridos globales de miembros en `CallAnalyzer` y `ConstructionAnalyzer` por candidatos indexados | TERMINADO |
-| T5.5 | Sustituir búsquedas lineales de accessors, predicados de tipo y core calls HIR por índices de miembros | PENDIENTE |
+| T5.5 | Sustituir búsquedas lineales de accessors, predicados de tipo y core calls HIR por índices de miembros | TERMINADO |
 | T5.6 | Eliminar los fallbacks lineales restantes de tipos, structs, clases y campos en `ProjectObjectLayoutModel` | PENDIENTE |
 | T5.7 | Agrupar en `ProjectCompilationIndexes` los locales HIR por miembro propietario | PENDIENTE |
 | T5.8 | Agrupar en `ProjectCompilationIndexes` los locales HIR por lambda propietaria | PENDIENTE |

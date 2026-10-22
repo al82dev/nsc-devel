@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -65,6 +66,9 @@ public:
         std::size_t projectOrdinal,
         std::string_view namespaceName,
         std::string_view name) const noexcept;
+    std::span<const std::size_t> extensionFunctionsNamed(
+        std::string_view name) const noexcept;
+    bool hasExtensionFunctionIndex() const noexcept;
     const NamespaceFunctionReferenceBinding* referenceBinding(
         const ast::AstNode* callSyntax) const noexcept;
     const NamespaceFunctionReferenceBinding* extensionBinding(
@@ -78,6 +82,7 @@ public:
 
 private:
     void resetBuildState();
+    void buildExtensionFunctionIndex();
     void collectNamespaceFunctions(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
@@ -285,6 +290,8 @@ private:
     std::vector<NamespaceStateSymbol> states_;
     std::unordered_map<std::string, std::size_t> stateByName_;
     std::unordered_map<std::string, std::vector<std::size_t>> functionsByName_;
+    std::map<std::string, std::vector<std::size_t>, std::less<>> extensionFunctionsByName_;
+    bool extensionFunctionIndexBuilt_ = false;
     std::vector<NamespaceFunctionReferenceBinding> referenceBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> referenceBindingBySyntax_;
     std::vector<NamespaceFunctionReferenceBinding> extensionBindings_;

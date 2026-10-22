@@ -860,11 +860,23 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
     // cuando sus campos lo son y no contiene raw pointers. No se exige `: Send`.
     language::ThreadSafetyTypeFacts facts;
     facts.typeName = argument.identity.name();
-    for (const ClassMemberSymbol& member : memberModel.members())
+    std::vector<std::size_t> fallbackMemberOrdinals;
+    std::span<const std::size_t> memberOrdinals =
+        memberModel.membersDeclaredByType(argumentOrdinal);
+    if (!memberModel.hasMembersDeclaredByTypeIndex())
     {
-        if (member.kind != ClassMemberKind::Field ||
-            member.declaringTypeOrdinal != argumentOrdinal)
-            continue;
+        for (std::size_t ordinal = 0; ordinal < memberModel.members().size(); ++ordinal)
+        {
+            if (memberModel.members()[ordinal].declaringTypeOrdinal == argumentOrdinal)
+                fallbackMemberOrdinals.push_back(ordinal);
+        }
+        memberOrdinals = fallbackMemberOrdinals;
+    }
+    for (const std::size_t memberOrdinal : memberOrdinals)
+    {
+        if (memberOrdinal >= memberModel.members().size()) continue;
+        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Field) continue;
         language::ThreadSafetyMemberFacts memberFacts;
         memberFacts.name = member.name;
         if (member.declaredTypeKey.starts_with("refmut:"))

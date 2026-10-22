@@ -103,6 +103,8 @@ bool ProjectInterfaceModel::build(
     interfaceInfoByType_.resize(nameLookup.namedTypes().size());
     interfacesByClass_.resize(nameLookup.namedTypes().size());
     operatorWitnessesByType_.resize(nameLookup.namedTypes().size());
+    tablePlanOrdinalsByClass_.resize(nameLookup.namedTypes().size());
+    tablePlanOrdinalsByClassIndexBuilt_ = true;
 
     for (std::size_t ordinal = 0; ordinal < nameLookup.namedTypes().size(); ++ordinal)
     {
@@ -208,6 +210,21 @@ std::span<const TraitOperatorWitness> ProjectInterfaceModel::operatorWitnessesOf
 std::span<const ClassInterfaceTablePlan> ProjectInterfaceModel::tablePlans() const noexcept
 {
     return tablePlans_;
+}
+
+std::span<const std::size_t> ProjectInterfaceModel::tablePlanOrdinalsForClass(
+    std::size_t classTypeOrdinal) const noexcept
+{
+    static const std::vector<std::size_t> empty;
+    return tablePlanOrdinalsByClassIndexBuilt_ &&
+            classTypeOrdinal < tablePlanOrdinalsByClass_.size()
+        ? std::span<const std::size_t>(tablePlanOrdinalsByClass_[classTypeOrdinal])
+        : std::span<const std::size_t>(empty);
+}
+
+bool ProjectInterfaceModel::hasTablePlanOrdinalsByClassIndex() const noexcept
+{
+    return tablePlanOrdinalsByClassIndexBuilt_;
 }
 
 const ClassInterfaceTablePlan* ProjectInterfaceModel::tablePlan(
@@ -1190,7 +1207,10 @@ bool ProjectInterfaceModel::buildInterfacePlan(
     }
     if (!valueType)
     {
+        const std::size_t planOrdinal = tablePlans_.size();
         tablePlans_.push_back(std::move(plan));
+        if (classOrdinal < tablePlanOrdinalsByClass_.size())
+            tablePlanOrdinalsByClass_[classOrdinal].push_back(planOrdinal);
     }
     return ok;
 }

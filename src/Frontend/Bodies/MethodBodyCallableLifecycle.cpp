@@ -388,11 +388,24 @@ void ProjectMethodBodyModel::verifyRequiredFieldAssignments(
         // A constructor that can only throw/terminate never produces an object whose required
         // fields could be observed. Normal returns and fallthrough are recorded explicitly.
         if (!constructorsWithNormalExit_.contains(memberOrdinal)) continue;
-        for (std::size_t fieldOrdinal = 0; fieldOrdinal < memberModel_->members().size(); ++fieldOrdinal)
+        std::vector<std::size_t> fallbackFieldOrdinals;
+        std::span<const std::size_t> fieldOrdinals =
+            memberModel_->membersDeclaredByType(member.declaringTypeOrdinal);
+        if (!memberModel_->hasMembersDeclaredByTypeIndex())
         {
+            for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+            {
+                if (memberModel_->members()[ordinal].declaringTypeOrdinal ==
+                    member.declaringTypeOrdinal)
+                    fallbackFieldOrdinals.push_back(ordinal);
+            }
+            fieldOrdinals = fallbackFieldOrdinals;
+        }
+        for (const std::size_t fieldOrdinal : fieldOrdinals)
+        {
+            if (fieldOrdinal >= memberModel_->members().size()) continue;
             const ClassMemberSymbol& field = memberModel_->members()[fieldOrdinal];
             if (field.kind != ClassMemberKind::Field || !field.isRequired || field.isStatic) continue;
-            if (field.declaringTypeOrdinal != member.declaringTypeOrdinal) continue;
             if (assignedRequiredFields_.contains({memberOrdinal, fieldOrdinal})) continue;
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,

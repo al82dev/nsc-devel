@@ -1374,9 +1374,22 @@ void ProjectOopHirModel::promoteEligibleStackClassLocals(
             nameLookup_->namedTypes()[targetTypeOrdinal].isPrecompiled)
             continue;
         bool hasNontrivialLifetimeMember = false;
-        for (const ClassMemberSymbol& targetMember : memberModel_->members())
+        std::vector<std::size_t> fallbackMemberOrdinals;
+        std::span<const std::size_t> memberOrdinals =
+            memberModel_->membersDeclaredByType(targetTypeOrdinal);
+        if (!memberModel_->hasMembersDeclaredByTypeIndex())
         {
-            if (targetMember.declaringTypeOrdinal != targetTypeOrdinal) continue;
+            for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+            {
+                if (memberModel_->members()[ordinal].declaringTypeOrdinal == targetTypeOrdinal)
+                    fallbackMemberOrdinals.push_back(ordinal);
+            }
+            memberOrdinals = fallbackMemberOrdinals;
+        }
+        for (const std::size_t memberOrdinal : memberOrdinals)
+        {
+            if (memberOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& targetMember = memberModel_->members()[memberOrdinal];
             if (targetMember.kind == ClassMemberKind::Destructor ||
                 (targetMember.kind == ClassMemberKind::Field && !targetMember.isStatic &&
                  targetMember.declaredOwnership == sema::OwnershipKind::Owned))

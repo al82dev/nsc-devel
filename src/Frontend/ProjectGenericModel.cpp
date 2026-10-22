@@ -610,6 +610,26 @@ std::span<const GenericTemplateRecord> ProjectGenericModel::templates() const no
     return templateRecords_;
 }
 
+const GenericTemplateRecord* ProjectGenericModel::templateForCanonicalKey(
+    std::string_view canonicalKey) const noexcept
+{
+    if (indexes_ != nullptr)
+    {
+        if (const GenericTemplateRecord* indexed =
+                indexes_->genericTemplateForCanonicalKey(canonicalKey))
+        {
+            return indexed;
+        }
+    }
+    const auto found = std::ranges::find_if(
+        templateRecords_,
+        [&](const GenericTemplateRecord& record)
+        {
+            return record.canonicalKey == canonicalKey;
+        });
+    return found == templateRecords_.end() ? nullptr : &*found;
+}
+
 std::span<const GenericSpecializationRecord> ProjectGenericModel::specializations() const noexcept
 {
     return specializations_;

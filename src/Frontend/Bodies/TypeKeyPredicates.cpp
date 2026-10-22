@@ -105,9 +105,22 @@ bool ProjectMethodBodyModel::elementTypeHasTrivialLifetime(std::string_view type
         if (kind != NamedTypeDeclarationKind::Struct) return true;
     }
 
-    for (const ClassMemberSymbol& member : memberModel_->members())
+    std::vector<std::size_t> fallbackMemberOrdinals;
+    std::span<const std::size_t> memberOrdinals =
+        memberModel_->membersDeclaredByType(*typeOrdinal);
+    if (!memberModel_->hasMembersDeclaredByTypeIndex())
     {
-        if (member.declaringTypeOrdinal != *typeOrdinal) continue;
+        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+        {
+            if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
+                fallbackMemberOrdinals.push_back(ordinal);
+        }
+        memberOrdinals = fallbackMemberOrdinals;
+    }
+    for (const std::size_t memberOrdinal : memberOrdinals)
+    {
+        if (memberOrdinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
         if (member.kind == ClassMemberKind::Destructor) return false;
         if (member.kind == ClassMemberKind::Field && !member.isStatic &&
             member.declaredOwnership == sema::OwnershipKind::Owned)

@@ -2211,12 +2211,12 @@ void ProjectMethodBodyModel::bindAtomicOperation(
     std::optional<std::size_t> valueFieldOrdinal;
     if (atomicWrapper && memberModel_ != nullptr)
     {
-        for (const std::size_t candidateOrdinal : memberModel_->findMembers("value_"))
+        for (const std::size_t candidateOrdinal : memberModel_->findMembers(
+                 selectedMember.declaringTypeOrdinal, "value_"))
         {
             if (candidateOrdinal >= memberModel_->members().size()) continue;
             const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
-            if (candidate.kind == ClassMemberKind::Field &&
-                candidate.declaringTypeOrdinal == selectedMember.declaringTypeOrdinal)
+            if (candidate.kind == ClassMemberKind::Field)
             {
                 valueFieldOrdinal = candidateOrdinal;
                 break;
@@ -2417,20 +2417,20 @@ void ProjectMethodBodyModel::recognizeCoreMutexMonitorOperations(
         {
             std::optional<std::size_t> lockFieldOrdinal;
             std::optional<std::size_t> cvFieldOrdinal;
-            for (const std::size_t candidateOrdinal : memberModel_->findMembers("lock_"))
+            for (const std::size_t candidateOrdinal : memberModel_->findMembers(
+                     selectedMember.declaringTypeOrdinal, "lock_"))
             {
                 if (candidateOrdinal >= memberModel_->members().size()) continue;
                 const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
-                if (candidate.kind == ClassMemberKind::Field &&
-                    candidate.declaringTypeOrdinal == selectedMember.declaringTypeOrdinal)
+                if (candidate.kind == ClassMemberKind::Field)
                     lockFieldOrdinal = candidateOrdinal;
             }
-            for (const std::size_t candidateOrdinal : memberModel_->findMembers("cv_"))
+            for (const std::size_t candidateOrdinal : memberModel_->findMembers(
+                     selectedMember.declaringTypeOrdinal, "cv_"))
             {
                 if (candidateOrdinal >= memberModel_->members().size()) continue;
                 const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
-                if (candidate.kind == ClassMemberKind::Field &&
-                    candidate.declaringTypeOrdinal == selectedMember.declaringTypeOrdinal)
+                if (candidate.kind == ClassMemberKind::Field)
                     cvFieldOrdinal = candidateOrdinal;
             }
             const bool needsBoth = *monitorKind == MethodCoreOperationKind::MonitorWait;
@@ -4881,7 +4881,19 @@ bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
     }
     const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(typeKey);
     if (!typeOrdinal.has_value()) return true;
-    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
+    std::vector<std::size_t> fallbackMemberOrdinals;
+    std::span<const std::size_t> memberOrdinals =
+        memberModel_->membersDeclaredByType(*typeOrdinal);
+    if (!memberModel_->hasMembersDeclaredByTypeIndex())
+    {
+        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+        {
+            if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
+                fallbackMemberOrdinals.push_back(ordinal);
+        }
+        memberOrdinals = fallbackMemberOrdinals;
+    }
+    for (const std::size_t memberOrdinal : memberOrdinals)
     {
         if (memberOrdinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
@@ -4902,7 +4914,19 @@ bool ProjectMethodBodyModel::callTypeIsSync(const std::string& typeKey) const
     }
     const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(typeKey);
     if (!typeOrdinal.has_value()) return true;
-    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
+    std::vector<std::size_t> fallbackMemberOrdinals;
+    std::span<const std::size_t> memberOrdinals =
+        memberModel_->membersDeclaredByType(*typeOrdinal);
+    if (!memberModel_->hasMembersDeclaredByTypeIndex())
+    {
+        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+        {
+            if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
+                fallbackMemberOrdinals.push_back(ordinal);
+        }
+        memberOrdinals = fallbackMemberOrdinals;
+    }
+    for (const std::size_t memberOrdinal : memberOrdinals)
     {
         if (memberOrdinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
