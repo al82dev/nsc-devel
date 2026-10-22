@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `50 / 60`
+**Progreso:** `51 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -54,7 +54,7 @@
 | T6.1 | Eliminar las comprobaciones duplicadas de builtin y pointer-like en la cadena de `llvmType` | TERMINADO |
 | T6.2 | Memoizar por lowerer los `LLVMTypeRef` exitosos por `typeKey`, sin cachear errores ni cambiar diagnósticos | TERMINADO |
 | T6.3 | Resolver una vez los ordinales SIMD usados por los cinco clasificadores que hoy recorren todos los tipos | TERMINADO |
-| T6.4 | Hacer que `LlvmTypeLayout` consulte los índices MIR de layouts en vez de recorrerlos | PENDIENTE |
+| T6.4 | Hacer que `LlvmTypeLayout` consulte los índices MIR de layouts en vez de recorrerlos | TERMINADO |
 | T6.5 | Hacer que `OopLlvmDebugInfo` consulte índices de tipos y miembros | PENDIENTE |
 | T6.6 | Hacer que closures, thunks, wrappers y estado estático consulten el índice MIR de funciones | PENDIENTE |
 | T6.7 | Reservar mapas y vectores de declaraciones LLVM con los conteos exactos de MIR antes del lowering | PENDIENTE |
