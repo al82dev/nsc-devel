@@ -1,12 +1,46 @@
 #include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
 
+#include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Basic/Version.h"
+
 #include "../Driver/Internal/DriverInternal.h"
+
+#include <span>
+#include <string_view>
 
 namespace nativesharp::compilation
 {
 namespace
 {
 using LoadedMetadata = driver::LoadedPrecompiledMetadata;
+
+void appendCacheIdentityField(std::string& material, std::string_view field)
+{
+    material += std::to_string(field.size());
+    material.push_back(':');
+    material.append(field);
+}
+
+std::string precompiledProductCacheKey(const LoadedMetadata& entry)
+{
+    basic::Sha256Digest metadataDigest{};
+    std::uintmax_t metadataSize = 0;
+    std::string ignoredError;
+    if (!basic::sha256File(
+            entry.metadataPath, metadataDigest, metadataSize, ignoredError))
+    {
+        return {};
+    }
+    std::string material;
+    appendCacheIdentityField(material, "nsc-precompiled-products-v1");
+    appendCacheIdentityField(material, kCompilerBuildId);
+    appendCacheIdentityField(material, entry.metadata.moduleName);
+    appendCacheIdentityField(material, std::to_string(metadataSize));
+    appendCacheIdentityField(material, basic::sha256Hex(metadataDigest));
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
+    return basic::sha256Hex(basic::sha256(bytes));
+}
 
 std::vector<frontend::PrecompiledMemberIdentity> memberIdentities(
     const interop::LibraryMetadata& metadata)
@@ -125,6 +159,7 @@ bool materializeModules(
             entry.ownerProjectFile,
             entry.metadataPath,
             metadata.moduleName,
+            precompiledProductCacheKey(entry),
             std::move(publicSource),
             std::move(templateSource),
             memberIdentities(metadata),

@@ -15,6 +15,7 @@ struct PrecompiledSyntaxModule final
     std::filesystem::path ownerProjectFile;
     std::filesystem::path metadataPath;
     std::string moduleName;
+    std::string productCacheKey;
     std::string sourceText;
     std::string templateSourceText;
     std::vector<PrecompiledMemberIdentity> members;

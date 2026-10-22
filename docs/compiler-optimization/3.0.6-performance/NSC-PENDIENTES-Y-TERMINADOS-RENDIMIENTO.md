@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `14 / 48`
+**Progreso:** `15 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -18,7 +18,7 @@
 | T2.5 | Instalar la función MIR restaurada en vez de descartarla | TERMINADO |
 | T2.6 | Reenlazar referencias, cleanups, excepciones, async frames y ordinales restaurados | TERMINADO |
 | T2.7 | Construir y publicar solamente los misses MIR | TERMINADO |
-| T3.1 | Definir la identidad estable de cada módulo precompilado | PENDIENTE |
+| T3.1 | Definir la identidad estable de cada módulo precompilado | TERMINADO |
 | T3.2 | Crear una raíz persistente para productos de módulos precompilados | PENDIENTE |
 | T3.3 | Restaurar `public-api` sin volver a generarlo | PENDIENTE |
 | T3.4 | Restaurar `public-templates` sin volver a generarlo | PENDIENTE |
