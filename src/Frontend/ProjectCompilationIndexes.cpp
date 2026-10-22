@@ -20,6 +20,18 @@
 
 namespace nativesharp::frontend
 {
+std::size_t ProjectCompilationIndexes::TransparentStringHash::operator()(
+    std::string_view value) const noexcept
+{
+    return std::hash<std::string_view>{}(value);
+}
+
+std::size_t ProjectCompilationIndexes::TransparentStringHash::operator()(
+    const std::string& value) const noexcept
+{
+    return (*this)(std::string_view(value));
+}
+
 void ProjectCompilationIndexes::clear() noexcept
 {
     typesByOrdinal_.clear();
@@ -300,7 +312,7 @@ const NamedTypeDeclaration* ProjectCompilationIndexes::typeForOrdinal(
 std::optional<std::size_t> ProjectCompilationIndexes::typeOrdinalForIdentity(
     std::string_view identity) const
 {
-    const auto iterator = typeOrdinalByIdentity_.find(std::string(identity));
+    const auto iterator = typeOrdinalByIdentity_.find(identity);
     return iterator == typeOrdinalByIdentity_.end()
         ? std::nullopt : std::optional<std::size_t>(iterator->second);
 }
@@ -308,7 +320,7 @@ std::optional<std::size_t> ProjectCompilationIndexes::typeOrdinalForIdentity(
 std::span<const std::size_t> ProjectCompilationIndexes::typeOrdinalsForName(
     std::string_view name) const
 {
-    const auto iterator = typeOrdinalsByName_.find(std::string(name));
+    const auto iterator = typeOrdinalsByName_.find(name);
     return iterator == typeOrdinalsByName_.end()
         ? std::span<const std::size_t>{} : std::span<const std::size_t>(iterator->second);
 }

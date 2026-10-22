@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -107,14 +108,32 @@ public:
         std::string_view typeKey) const noexcept;
 
 private:
+    struct TransparentStringHash final
+    {
+        using is_transparent = void;
+
+        std::size_t operator()(std::string_view value) const noexcept;
+        std::size_t operator()(const std::string& value) const noexcept;
+    };
+
     using MirAsyncFrameSlot = std::tuple<std::size_t, std::uint64_t, std::string>;
     using MirAsyncFrameIndex = std::unordered_multimap<std::size_t, const MirAsyncFrameSlot*>;
     using MemberSignatureIndex =
         std::unordered_map<std::string, std::vector<std::size_t>>;
+    using TypeIdentityIndex = std::unordered_map<
+        std::string,
+        std::size_t,
+        TransparentStringHash,
+        std::equal_to<>>;
+    using TypeNameIndex = std::unordered_map<
+        std::string,
+        std::vector<std::size_t>,
+        TransparentStringHash,
+        std::equal_to<>>;
 
     std::vector<const NamedTypeDeclaration*> typesByOrdinal_;
-    std::unordered_map<std::string, std::size_t> typeOrdinalByIdentity_;
-    std::unordered_map<std::string, std::vector<std::size_t>> typeOrdinalsByName_;
+    TypeIdentityIndex typeOrdinalByIdentity_;
+    TypeNameIndex typeOrdinalsByName_;
     std::vector<const ClassMemberSymbol*> membersByOrdinal_;
     std::vector<MemberSignatureIndex> memberOrdinalsBySignature_;
     std::vector<const VirtualMethodInfo*> virtualMethodsByMember_;
