@@ -42,7 +42,7 @@ void configureProjectExecution(frontend::ProjectCompilation &compilation)
     const llvm_backend::CompilationArtifactCache *const artifactCache =
         llvm_backend::activeCompilationArtifactCache();
     if (artifactCache != nullptr && artifactCache->enabled())
-        compilation.setTemplateCacheRoot(artifactCache->root());
+        compilation.setTemplateCacheRoot(artifactCache->root() / "frontend");
     compilation.setCancellationCheck([] { return activeExecutionScope != nullptr && activeExecutionScope->expired(); });
     if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
     {
