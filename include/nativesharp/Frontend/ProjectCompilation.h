@@ -53,6 +53,7 @@ public:
     void setCompilationJobs(std::size_t jobs) noexcept;
     void setProjectLoadOptions(compilation::ProjectLoadOptions options);
     void setTemplateCacheRoot(std::filesystem::path root);
+    const std::filesystem::path& precompiledProductCacheRoot() const noexcept;
     void setCancellationCheck(std::function<bool()> check);
     // Called concurrently by syntax workers. Returning nullopt falls back to the file on disk.
     void setSourceBufferProvider(SourceBufferProvider provider);
@@ -205,6 +206,7 @@ private:
 #endif // INSTRUMENTATION CODE
     compilation::ProjectLoadOptions projectLoadOptions_;
     std::filesystem::path templateCacheRoot_;
+    std::filesystem::path precompiledProductCacheRoot_;
     std::string templateParseCacheKey_;
     bool templateParseCacheHit_ = false;
     std::size_t compilationJobs_ = 1;

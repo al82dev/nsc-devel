@@ -42,6 +42,14 @@ void ProjectCompilation::setProjectLoadOptions(compilation::ProjectLoadOptions o
 void ProjectCompilation::setTemplateCacheRoot(std::filesystem::path root)
 {
     templateCacheRoot_ = std::move(root);
+    precompiledProductCacheRoot_ = templateCacheRoot_.empty()
+        ? std::filesystem::path{}
+        : templateCacheRoot_ / "precompiled-products";
+}
+
+const std::filesystem::path& ProjectCompilation::precompiledProductCacheRoot() const noexcept
+{
+    return precompiledProductCacheRoot_;
 }
 
 void ProjectCompilation::setCancellationCheck(std::function<bool()> check)
