@@ -175,6 +175,10 @@ public:
     const ProjectOopMirFunction* functionForMember(std::size_t memberOrdinal) const noexcept;
     const ProjectOopMirFunction* functionForNamespaceFunction(
         std::size_t functionOrdinal) const noexcept;
+    const ProjectOopMirFunction* functionForMangledName(
+        std::string_view mangledName) const noexcept;
+    const ProjectOopMirFunction* functionForLambda(
+        std::size_t lambdaOrdinal) const noexcept;
     const std::tuple<std::size_t, std::uint64_t, std::string>* asyncFrameLocal(
         const ProjectOopMirFunction& function,
         std::size_t localOrdinal) const noexcept;

@@ -144,11 +144,7 @@ bool OopLlvmImplementation::emitCallbackBoundaryHandler(std::string& error)
 const frontend::ProjectOopMirFunction* OopLlvmImplementation::findCallbackMirFunction(
         std::string_view targetName) const noexcept
 {
-        for (const frontend::ProjectOopMirFunction& candidate : mirModel_.functions())
-        {
-            if (candidate.mangledName == targetName) return &candidate;
-        }
-        return nullptr;
+        return mirModel_.functionForMangledName(targetName);
     }
 
 LLVMTypeRef OopLlvmImplementation::createCallbackGuardThunkType(

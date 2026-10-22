@@ -269,10 +269,20 @@ void ProjectCompilationIndexes::rebuildMirFunctions(
     clearMirFunctions();
     mirFunctionsByMember_.assign(memberCount, nullptr);
     mirFunctionsByNamespaceFunction_.assign(namespaceFunctionCount, nullptr);
+    mirFunctionsByMangledName_.reserve(functions.size());
     mirAsyncLocalsByFunction_.reserve(functions.size());
     mirAsyncParametersByFunction_.reserve(functions.size());
     for (const ProjectOopMirFunction& function : functions)
     {
+        mirFunctionsByMangledName_.try_emplace(function.mangledName, &function);
+        if (function.isLambda && function.lambdaOrdinal.has_value())
+        {
+            const std::size_t ordinal = *function.lambdaOrdinal;
+            if (ordinal >= mirFunctionsByLambda_.size())
+                mirFunctionsByLambda_.resize(ordinal + 1U, nullptr);
+            if (mirFunctionsByLambda_[ordinal] == nullptr)
+                mirFunctionsByLambda_[ordinal] = &function;
+        }
         if (function.namespaceFunctionOrdinal.has_value())
         {
             const std::size_t ordinal = *function.namespaceFunctionOrdinal;
@@ -328,6 +338,8 @@ void ProjectCompilationIndexes::clearMirFunctions() noexcept
 {
     mirFunctionsByMember_.clear();
     mirFunctionsByNamespaceFunction_.clear();
+    mirFunctionsByMangledName_.clear();
+    mirFunctionsByLambda_.clear();
     mirStructLayoutsByType_.clear();
     mirStructLayoutsByTypeKey_.clear();
     mirClassLayoutsByType_.clear();
@@ -533,6 +545,20 @@ const ProjectOopMirFunction* ProjectCompilationIndexes::mirFunctionForNamespaceF
 {
     return functionOrdinal < mirFunctionsByNamespaceFunction_.size()
         ? mirFunctionsByNamespaceFunction_[functionOrdinal] : nullptr;
+}
+
+const ProjectOopMirFunction* ProjectCompilationIndexes::mirFunctionForMangledName(
+    std::string_view mangledName) const noexcept
+{
+    const auto iterator = mirFunctionsByMangledName_.find(mangledName);
+    return iterator == mirFunctionsByMangledName_.end() ? nullptr : iterator->second;
+}
+
+const ProjectOopMirFunction* ProjectCompilationIndexes::mirFunctionForLambda(
+    std::size_t lambdaOrdinal) const noexcept
+{
+    return lambdaOrdinal < mirFunctionsByLambda_.size()
+        ? mirFunctionsByLambda_[lambdaOrdinal] : nullptr;
 }
 
 const ProjectOopMirStructLayout* ProjectCompilationIndexes::mirStructLayoutForType(

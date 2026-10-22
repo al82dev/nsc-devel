@@ -107,6 +107,10 @@ public:
     const ProjectOopMirFunction* mirFunctionForMember(std::size_t memberOrdinal) const noexcept;
     const ProjectOopMirFunction* mirFunctionForNamespaceFunction(
         std::size_t functionOrdinal) const noexcept;
+    const ProjectOopMirFunction* mirFunctionForMangledName(
+        std::string_view mangledName) const noexcept;
+    const ProjectOopMirFunction* mirFunctionForLambda(
+        std::size_t lambdaOrdinal) const noexcept;
     const ProjectOopMirStructLayout* mirStructLayoutForType(
         std::size_t typeOrdinal) const noexcept;
     const ProjectOopMirStructLayout* mirStructLayoutForTypeKey(
@@ -180,6 +184,8 @@ private:
     std::unordered_map<const ast::AstNode*, const MethodCleanupRegion*> hirCleanupRegionBySyntax_;
     std::vector<const ProjectOopMirFunction*> mirFunctionsByMember_;
     std::vector<const ProjectOopMirFunction*> mirFunctionsByNamespaceFunction_;
+    StringIndex<const ProjectOopMirFunction*> mirFunctionsByMangledName_;
+    std::vector<const ProjectOopMirFunction*> mirFunctionsByLambda_;
     std::vector<const ProjectOopMirStructLayout*> mirStructLayoutsByType_;
     StringIndex<const ProjectOopMirStructLayout*> mirStructLayoutsByTypeKey_;
     std::vector<const ProjectOopMirClassLayout*> mirClassLayoutsByType_;

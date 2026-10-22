@@ -247,15 +247,8 @@ LLVMValueRef OopLlvmImplementation::closureContextDestroy(
         if (existing != closureContextDestroyFunctions_.end()) return existing->second;
         if (!ensureCaptureCellRuntime(error)) return nullptr;
 
-        const frontend::ProjectOopMirFunction* origin = nullptr;
-        for (const frontend::ProjectOopMirFunction& candidate : mirModel_.functions())
-        {
-            if (candidate.mangledName == calleeName)
-            {
-                origin = &candidate;
-                break;
-            }
-        }
+        const frontend::ProjectOopMirFunction* origin =
+            mirModel_.functionForMangledName(calleeName);
         if (origin == nullptr || origin->captureTypeKeys.size() != captureCount ||
             origin->captureModes.size() != captureCount ||
             origin->captureOwnsValues.size() != captureCount)

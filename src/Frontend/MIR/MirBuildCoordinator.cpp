@@ -880,6 +880,26 @@ const ProjectOopMirFunction* ProjectOopMirModel::functionForNamespaceFunction(
     return &functions_[*functionByNamespaceFunction_[functionOrdinal]];
 }
 
+const ProjectOopMirFunction* ProjectOopMirModel::functionForMangledName(
+    std::string_view mangledName) const noexcept
+{
+    if (built_ && indexes_ != nullptr)
+        return indexes_->mirFunctionForMangledName(mangledName);
+    for (const ProjectOopMirFunction& function : functions_)
+        if (function.mangledName == mangledName) return &function;
+    return nullptr;
+}
+
+const ProjectOopMirFunction* ProjectOopMirModel::functionForLambda(
+    std::size_t lambdaOrdinal) const noexcept
+{
+    if (built_ && indexes_ != nullptr)
+        return indexes_->mirFunctionForLambda(lambdaOrdinal);
+    for (const ProjectOopMirFunction& function : functions_)
+        if (function.isLambda && function.lambdaOrdinal == lambdaOrdinal) return &function;
+    return nullptr;
+}
+
 const std::tuple<std::size_t, std::uint64_t, std::string>* ProjectOopMirModel::asyncFrameLocal(
     const ProjectOopMirFunction& function,
     std::size_t localOrdinal) const noexcept
