@@ -3,6 +3,7 @@
 #include "nativesharp/Compilation/PrecompiledProductSidecar.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <span>
 #include <string>
 #include <string_view>
@@ -12,6 +13,15 @@ namespace nativesharp::compilation
 class PrecompiledProductSidecarCodec final
 {
 public:
+    static std::filesystem::path pathForMetadata(
+        const std::filesystem::path& metadataPath);
+
+    static bool write(
+        const std::filesystem::path& metadataPath,
+        const PrecompiledProductSidecar& sidecar,
+        std::span<const std::uint8_t> metadataBytes,
+        std::string& error);
+
     static std::string encode(
         const PrecompiledProductSidecar& sidecar,
         std::span<const std::uint8_t> metadataBytes);

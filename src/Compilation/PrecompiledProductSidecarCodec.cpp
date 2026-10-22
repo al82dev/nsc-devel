@@ -2,6 +2,7 @@
 
 #include "../Frontend/Cache/CachePayloadReader.h"
 #include "../Frontend/Cache/CachePayloadWriter.h"
+#include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
 
@@ -42,6 +43,31 @@ void encodeBody(
     frontend::internal::CachePayloadWriter::string(bytes, sidecar.publicApiSyntax);
     frontend::internal::CachePayloadWriter::string(bytes, sidecar.publicTemplateSyntax);
 }
+}
+
+std::filesystem::path PrecompiledProductSidecarCodec::pathForMetadata(
+    const std::filesystem::path& metadataPath)
+{
+    std::filesystem::path path = metadataPath;
+    path.replace_extension(".nsproducts");
+    return path;
+}
+
+bool PrecompiledProductSidecarCodec::write(
+    const std::filesystem::path& metadataPath,
+    const PrecompiledProductSidecar& sidecar,
+    std::span<const std::uint8_t> metadataBytes,
+    std::string& error)
+{
+    const std::string encoded = encode(sidecar, metadataBytes);
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(encoded.data()), encoded.size()};
+    if (!basic::writeFileTransactionally(pathForMetadata(metadataPath), bytes, error))
+    {
+        error = "cannot write precompiled product sidecar: " + error;
+        return false;
+    }
+    return true;
 }
 
 std::string PrecompiledProductSidecarCodec::encode(

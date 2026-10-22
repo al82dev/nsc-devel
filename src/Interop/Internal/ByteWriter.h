@@ -17,6 +17,7 @@ public:
     void raw(std::span<const std::uint8_t> bytes);
     void text(std::string_view value);
     const std::vector<std::uint8_t>& bytes() const noexcept;
+    std::vector<std::uint8_t> takeBytes() noexcept;
 
 private:
     std::vector<std::uint8_t> bytes_;

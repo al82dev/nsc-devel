@@ -626,6 +626,7 @@ bool writeMetadataFile(
     LibraryMetadata& metadata,
     const std::filesystem::path& destination,
     LibraryMetadata* writtenModel,
+    std::vector<std::uint8_t>* writtenBytes,
     std::string& error)
 {
     metadata.abiFingerprint = basic::sha256(encodeAbiProjection(metadata));
@@ -658,6 +659,7 @@ bool writeMetadataFile(
     file.raw(payloadHash);
     file.raw(payload);
     if (!writeBytesAtomically(destination, file.bytes(), error)) return false;
+    if (writtenBytes != nullptr) *writtenBytes = file.takeBytes();
     if (writtenModel != nullptr) *writtenModel = std::move(metadata);
     return true;
 }

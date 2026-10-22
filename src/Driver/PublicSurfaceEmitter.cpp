@@ -39,7 +39,14 @@ bool PublicSurfaceEmitter::verify(const interop::LibraryMetadata &metadata, std:
 {
     std::string generated;
     if (!build(metadata, generated, error)) return false;
+    return verify(metadata, std::move(generated), error);
+}
 
+bool PublicSurfaceEmitter::verify(
+    const interop::LibraryMetadata& metadata,
+    std::string generated,
+    std::string& error)
+{
     source::SourceManager sources;
     diagnostics::DiagnosticEngine diagnostics;
     std::filesystem::path displayPath = metadata.moduleName;

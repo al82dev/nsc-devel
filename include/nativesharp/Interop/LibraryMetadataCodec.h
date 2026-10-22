@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -27,6 +28,13 @@ public:
         const frontend::ProjectCompilation& compilation,
         const std::filesystem::path& destination,
         LibraryMetadata& writtenModel,
+        std::string& error) const;
+
+    bool write(
+        const frontend::ProjectCompilation& compilation,
+        const std::filesystem::path& destination,
+        LibraryMetadata& writtenModel,
+        std::vector<std::uint8_t>& writtenBytes,
         std::string& error) const;
 
     // Escribe un modelo ya construido, en la version menor que el modelo dice. Es lo que permite
@@ -58,6 +66,7 @@ private:
         const LibraryMetadata& model,
         const std::filesystem::path& destination,
         LibraryMetadata* writtenModel,
+        std::vector<std::uint8_t>* writtenBytes,
         std::string& error) const;
 };
 }

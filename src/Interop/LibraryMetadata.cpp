@@ -78,7 +78,21 @@ bool LibraryMetadataCodec::write(
     error.clear();
     LibraryMetadata metadata;
     if (!buildMetadataModel(compilation, metadata, error)) return false;
-    return writeModelImpl(metadata, destination, &writtenModel, error);
+    return writeModelImpl(metadata, destination, &writtenModel, nullptr, error);
+}
+
+bool LibraryMetadataCodec::write(
+    const frontend::ProjectCompilation& compilation,
+    const std::filesystem::path& destination,
+    LibraryMetadata& writtenModel,
+    std::vector<std::uint8_t>& writtenBytes,
+    std::string& error) const
+{
+    error.clear();
+    writtenBytes.clear();
+    LibraryMetadata metadata;
+    if (!buildMetadataModel(compilation, metadata, error)) return false;
+    return writeModelImpl(metadata, destination, &writtenModel, &writtenBytes, error);
 }
 
 // Escribe un MODELO ya construido, en la version menor que el propio modelo
@@ -94,20 +108,21 @@ bool LibraryMetadataCodec::writeModel(
     const std::filesystem::path& destination,
     std::string& error) const
 {
-    return writeModelImpl(model, destination, nullptr, error);
+    return writeModelImpl(model, destination, nullptr, nullptr, error);
 }
 
 bool LibraryMetadataCodec::writeModelImpl(
     const LibraryMetadata& model,
     const std::filesystem::path& destination,
     LibraryMetadata* writtenModel,
+    std::vector<std::uint8_t>* writtenBytes,
     std::string& error) const
 {
     error.clear();
     LibraryMetadata metadata;
     if (!prepareWritableMetadata(model, metadata, error)) return false;
     if (!applyWritableMetadataDowngrade(metadata, error)) return false;
-    return writeMetadataFile(metadata, destination, writtenModel, error);
+    return writeMetadataFile(metadata, destination, writtenModel, writtenBytes, error);
 }
 
 bool LibraryMetadataCodec::read(

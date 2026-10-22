@@ -1,5 +1,7 @@
 #include "ByteWriter.h"
 
+#include <utility>
+
 namespace nativesharp::interop
 {
 void ByteWriter::u8(std::uint8_t value)
@@ -43,5 +45,10 @@ void ByteWriter::text(std::string_view value)
 const std::vector<std::uint8_t>& ByteWriter::bytes() const noexcept
 {
     return bytes_;
+}
+
+std::vector<std::uint8_t> ByteWriter::takeBytes() noexcept
+{
+    return std::move(bytes_);
 }
 }

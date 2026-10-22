@@ -23,5 +23,11 @@ public:
     static bool verify(
         const interop::LibraryMetadata& metadata,
         std::string& error);
+
+    /// Parses an already rendered projection without rebuilding it from metadata.
+    static bool verify(
+        const interop::LibraryMetadata& metadata,
+        std::string source,
+        std::string& error);
 };
 } // namespace nativesharp::driver

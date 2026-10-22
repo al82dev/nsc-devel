@@ -1,4 +1,5 @@
 #include "../Internal/DriverInternal.h"
+#include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
 
 namespace nativesharp::driver
 {
@@ -94,11 +95,13 @@ bool buildPrecompiledGenericTemplateSource(const interop::LibraryMetadata &metad
     return true;
 }
 
-bool verifyPrecompiledGenericTemplateSource(const interop::LibraryMetadata &metadata, std::string &error)
+namespace
 {
-    std::string generated;
-    if (!buildPrecompiledGenericTemplateSource(metadata, generated, error))
-        return false;
+bool verifyPrecompiledGenericTemplateSourceText(
+    const interop::LibraryMetadata& metadata,
+    std::string generated,
+    std::string& error)
+{
     if (generated.empty())
         return true;
 
@@ -142,6 +145,15 @@ bool verifyPrecompiledGenericTemplateSource(const interop::LibraryMetadata &meta
     }
     return false;
 }
+}
+
+bool verifyPrecompiledGenericTemplateSource(const interop::LibraryMetadata &metadata, std::string &error)
+{
+    std::string generated;
+    if (!buildPrecompiledGenericTemplateSource(metadata, generated, error))
+        return false;
+    return verifyPrecompiledGenericTemplateSourceText(metadata, std::move(generated), error);
+}
 
 bool writeVerifiedLibraryMetadata(const frontend::ProjectCompilation &compilation,
                                   const std::filesystem::path &destination, std::string &error,
@@ -149,8 +161,16 @@ bool writeVerifiedLibraryMetadata(const frontend::ProjectCompilation &compilatio
 {
     interop::LibraryMetadataCodec codec;
     interop::LibraryMetadata written;
-    if (codec.write(compilation, destination, written, error) && codec.verifyCurrentCompiler(written, error) &&
-        verifyPrecompiledPublicSource(written, error) && verifyPrecompiledGenericTemplateSource(written, error))
+    std::vector<std::uint8_t> metadataBytes;
+    compilation::PrecompiledProductSidecar sidecar;
+    if (codec.write(compilation, destination, written, metadataBytes, error) &&
+        codec.verifyCurrentCompiler(written, error) &&
+        buildPrecompiledPublicSource(written, sidecar.publicApiSource, error) &&
+        buildPrecompiledGenericTemplateSource(written, sidecar.publicTemplateSource, error) &&
+        PublicSurfaceEmitter::verify(written, sidecar.publicApiSource, error) &&
+        verifyPrecompiledGenericTemplateSourceText(written, sidecar.publicTemplateSource, error) &&
+        compilation::PrecompiledProductSidecarCodec::write(
+            destination, sidecar, metadataBytes, error))
     {
         if (writtenModel != nullptr)
             *writtenModel = std::move(written);
@@ -159,6 +179,8 @@ bool writeVerifiedLibraryMetadata(const frontend::ProjectCompilation &compilatio
 
     std::error_code ignored;
     std::filesystem::remove(destination, ignored);
+    std::filesystem::remove(
+        compilation::PrecompiledProductSidecarCodec::pathForMetadata(destination), ignored);
     error = "metadata producer read-back verification failed: " + error;
     return false;
 }

@@ -76,6 +76,7 @@ bool writeMetadataFile(
     LibraryMetadata& metadata,
     const std::filesystem::path& destination,
     LibraryMetadata* writtenModel,
+    std::vector<std::uint8_t>* writtenBytes,
     std::string& error);
 bool readMetadataBytes(
     const std::filesystem::path& source,
