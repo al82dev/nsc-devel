@@ -1,6 +1,7 @@
 #include "PublicSurfaceEmitter.h"
 #include "PublicSurfaceBuilder.h"
 #include "PublicSurfaceEmitterSupport.h"
+#include "../Frontend/Cache/SyntaxProductCacheCodec.h"
 
 #include "nativesharp/Diagnostics/DiagnosticRenderer.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
@@ -39,12 +40,31 @@ bool PublicSurfaceEmitter::verify(const interop::LibraryMetadata &metadata, std:
 {
     std::string generated;
     if (!build(metadata, generated, error)) return false;
-    return verify(metadata, std::move(generated), error);
+    return verifyImpl(metadata, std::move(generated), nullptr, error);
 }
 
 bool PublicSurfaceEmitter::verify(
     const interop::LibraryMetadata& metadata,
     std::string generated,
+    std::string& error)
+{
+    return verifyImpl(metadata, std::move(generated), nullptr, error);
+}
+
+bool PublicSurfaceEmitter::verify(
+    const interop::LibraryMetadata& metadata,
+    std::string generated,
+    std::string& syntaxProduct,
+    std::string& error)
+{
+    syntaxProduct.clear();
+    return verifyImpl(metadata, std::move(generated), &syntaxProduct, error);
+}
+
+bool PublicSurfaceEmitter::verifyImpl(
+    const interop::LibraryMetadata& metadata,
+    std::string generated,
+    std::string* syntaxProduct,
     std::string& error)
 {
     source::SourceManager sources;
@@ -107,7 +127,12 @@ bool PublicSurfaceEmitter::verify(
         if (generic.kind != kGenericMethodKind) appendKnownType("type:" + generic.canonicalKey);
     std::sort(knownTypeNames.begin(), knownTypeNames.end());
     knownTypeNames.erase(std::unique(knownTypeNames.begin(), knownTypeNames.end()), knownTypeNames.end());
-    if (unit.lex(*file, diagnostics) && unit.parse(diagnostics, knownTypeNames)) return true;
+    if (unit.lex(*file, diagnostics) && unit.parse(diagnostics, knownTypeNames))
+    {
+        if (syntaxProduct != nullptr)
+            *syntaxProduct = frontend::internal::serializeSyntaxProductUnit(unit);
+        return true;
+    }
 
     error = "generated precompiled public API is not valid NativeSharp source";
     if (!diagnostics.diagnostics().empty())

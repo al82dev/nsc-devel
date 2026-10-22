@@ -1,4 +1,5 @@
 #include "../Internal/DriverInternal.h"
+#include "../../Frontend/Cache/SyntaxProductCacheCodec.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
 
 namespace nativesharp::driver
@@ -100,8 +101,10 @@ namespace
 bool verifyPrecompiledGenericTemplateSourceText(
     const interop::LibraryMetadata& metadata,
     std::string generated,
+    std::string* syntaxProduct,
     std::string& error)
 {
+    if (syntaxProduct != nullptr) syntaxProduct->clear();
     if (generated.empty())
         return true;
 
@@ -133,7 +136,11 @@ bool verifyPrecompiledGenericTemplateSourceText(
 
     frontend::ProjectSyntaxUnit unit(0, 0, metadata.moduleName, fileId, false);
     if (unit.lex(*file, diagnostics) && unit.parse(diagnostics, knownTypeNames))
+    {
+        if (syntaxProduct != nullptr)
+            *syntaxProduct = frontend::internal::serializeSyntaxProductUnit(unit);
         return true;
+    }
 
     error = "generated precompiled public template surface is not valid NativeSharp source";
     if (!diagnostics.diagnostics().empty())
@@ -152,7 +159,8 @@ bool verifyPrecompiledGenericTemplateSource(const interop::LibraryMetadata &meta
     std::string generated;
     if (!buildPrecompiledGenericTemplateSource(metadata, generated, error))
         return false;
-    return verifyPrecompiledGenericTemplateSourceText(metadata, std::move(generated), error);
+    return verifyPrecompiledGenericTemplateSourceText(
+        metadata, std::move(generated), nullptr, error);
 }
 
 bool writeVerifiedLibraryMetadata(const frontend::ProjectCompilation &compilation,
@@ -167,8 +175,13 @@ bool writeVerifiedLibraryMetadata(const frontend::ProjectCompilation &compilatio
         codec.verifyCurrentCompiler(written, error) &&
         buildPrecompiledPublicSource(written, sidecar.publicApiSource, error) &&
         buildPrecompiledGenericTemplateSource(written, sidecar.publicTemplateSource, error) &&
-        PublicSurfaceEmitter::verify(written, sidecar.publicApiSource, error) &&
-        verifyPrecompiledGenericTemplateSourceText(written, sidecar.publicTemplateSource, error) &&
+        PublicSurfaceEmitter::verify(
+            written, sidecar.publicApiSource, sidecar.publicApiSyntax, error) &&
+        verifyPrecompiledGenericTemplateSourceText(
+            written,
+            sidecar.publicTemplateSource,
+            &sidecar.publicTemplateSyntax,
+            error) &&
         compilation::PrecompiledProductSidecarCodec::write(
             destination, sidecar, metadataBytes, error))
     {
