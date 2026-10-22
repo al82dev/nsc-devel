@@ -14,6 +14,7 @@ struct KnownTypeNameHash final
     using is_transparent = void;
 
     std::size_t operator()(std::string_view value) const noexcept;
+    std::size_t operator()(const char* value) const noexcept;
     std::size_t operator()(const std::string& value) const noexcept;
 };
 

@@ -14,6 +14,11 @@ std::size_t KnownTypeNameHash::operator()(std::string_view value) const noexcept
     return std::hash<std::string_view>{}(value);
 }
 
+std::size_t KnownTypeNameHash::operator()(const char* value) const noexcept
+{
+    return (*this)(std::string_view(value));
+}
+
 std::size_t KnownTypeNameHash::operator()(const std::string& value) const noexcept
 {
     return (*this)(std::string_view(value));
