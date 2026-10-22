@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `7 / 48`
+**Progreso:** `8 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -11,7 +11,7 @@
 | T1.5 | Omitir lexer, parser y recolección de templates cuando exista un hit válido | TERMINADO |
 | T1.6 | Publicar el producto solamente después de procesarlo correctamente | TERMINADO |
 | T1.7 | Conservar publicación atómica, cuarentena, poda y razones de hit o miss | TERMINADO |
-| T2.1 | Conectar `setMirCacheRoot` desde la entrada real de compilación | PENDIENTE |
+| T2.1 | Conectar `setMirCacheRoot` desde la entrada real de compilación | TERMINADO |
 | T2.2 | Calcular la llave MIR antes del lowering | PENDIENTE |
 | T2.3 | Incluir HIR, tipos, ABI, compilador, target y opciones en la llave MIR | PENDIENTE |
 | T2.4 | Consultar la caché antes de construir cada callable MIR | PENDIENTE |
