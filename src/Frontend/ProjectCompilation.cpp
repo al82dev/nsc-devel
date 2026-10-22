@@ -185,6 +185,35 @@ bool sourceMayRequireComptime(std::string_view source) noexcept
         source.find("__nsc_macro_") != std::string_view::npos;
 }
 
+ComptimeResult makePassthroughComptimeResult(std::string_view source)
+{
+    ComptimeResult result;
+    const ComptimeLimits limits;
+    if (source.size() > limits.maximumSourceBytes)
+    {
+        result.error = "comptime source byte limit exceeded";
+        return result;
+    }
+    if (source.size() > limits.maximumMemoryBytes)
+    {
+        result.error = "comptime memory budget exceeded by source buffer";
+        return result;
+    }
+
+    constexpr std::string_view DigestPrefix = "nativesharp-comptime-result-v1\n";
+    std::string digestMaterial;
+    digestMaterial.reserve(DigestPrefix.size() + source.size() + 1U);
+    digestMaterial.append(DigestPrefix);
+    digestMaterial.append(source);
+    digestMaterial.push_back('\n');
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(digestMaterial.data()), digestMaterial.size()};
+    result.reproducibilityDigest = basic::sha256Hex(basic::sha256(bytes));
+    result.memoryUsed = source.size();
+    result.success = true;
+    return result;
+}
+
 std::size_t visibleSourceCount(
     const std::vector<std::unique_ptr<ProjectSyntaxUnit>>& units,
     const source::SourceManager& sourceManager)
@@ -1218,8 +1247,10 @@ bool ProjectCompilation::materializeComptimeSource(
         relativePath = read.path.filename();
     }
     appendComptimeRecord(read, relativePath);
-    const FileId fileId = sourceManager_.addBuffer(
-        read.path, std::move(read.comptime->source));
+    std::string source = read.requiresComptime
+        ? std::move(read.comptime->source)
+        : std::move(*read.buffer);
+    const FileId fileId = sourceManager_.addBuffer(read.path, std::move(source));
     reportComptimeDiagnostics(read, fileId);
     units_.push_back(std::make_unique<ProjectSyntaxUnit>(
         read.projectOrdinal,
@@ -1236,17 +1267,31 @@ bool ProjectCompilation::executeSyntaxComptime(
     std::string& loadError)
 {
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-comptime");
-    const auto comptimeCache = std::make_shared<ComptimeCache>();
+    std::shared_ptr<ComptimeCache> comptimeCache;
+    for (const ProjectSyntaxSourceRead& read : sourceReads)
+    {
+        if (!read.requiresComptime) continue;
+        comptimeCache = std::make_shared<ComptimeCache>();
+        break;
+    }
     std::atomic_size_t completed = 0;
     for (std::size_t index = 0; index < sourceReads.size(); ++index)
     {
         syntaxWorkers.submit([&, index](std::size_t)
         {
-            sourceReads[index].comptime = ComptimeEngine(
-                {},
-                comptimeCache,
-                ComptimeExecutionContext{sourceReads[index].path.parent_path(), true, {}})
-                .execute(*sourceReads[index].buffer);
+            if (sourceReads[index].requiresComptime)
+            {
+                sourceReads[index].comptime = ComptimeEngine(
+                    {},
+                    comptimeCache,
+                    ComptimeExecutionContext{sourceReads[index].path.parent_path(), true, {}})
+                    .execute(*sourceReads[index].buffer);
+            }
+            else
+            {
+                sourceReads[index].comptime =
+                    makePassthroughComptimeResult(*sourceReads[index].buffer);
+            }
             reportSourceProgress(
                 progressSink_,
                 "syntax-comptime",
