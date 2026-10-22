@@ -33,6 +33,11 @@ void ProjectCompilation::setProjectLoadOptions(compilation::ProjectLoadOptions o
     projectLoadOptions_ = std::move(options);
 }
 
+void ProjectCompilation::setTemplateCacheRoot(std::filesystem::path root)
+{
+    templateCacheRoot_ = std::move(root);
+}
+
 void ProjectCompilation::setCancellationCheck(std::function<bool()> check)
 {
     cancellationCheck_ = std::move(check);
@@ -574,6 +579,7 @@ bool ProjectCompilation::compileProjectGenerics(
             ProjectGenericModel::DefaultMaximumInstantiationDepth),
         projectLoadOptions_.genericInstantiationCount.value_or(
             ProjectGenericModel::DefaultMaximumInstantiationCount));
+    genericModel_->setTemplateCacheRoot(templateCacheRoot_);
     // NSC305-P01. The generic telemetry is a no-op unless a phase timing sink is wired (which the
     // driver only does for `--time` / `--time-trace`). It forwards sub-phase and per-template
     // timings through the same channel as the parent `generics` timer and never touches

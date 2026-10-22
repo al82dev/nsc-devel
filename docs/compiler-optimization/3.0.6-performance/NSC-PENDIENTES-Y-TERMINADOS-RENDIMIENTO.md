@@ -1,10 +1,10 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `0 / 48`
+**Progreso:** `1 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
-| T1.1 | Conectar `setTemplateCacheRoot` desde la entrada real de compilación | PENDIENTE |
+| T1.1 | Conectar `setTemplateCacheRoot` desde la entrada real de compilación | TERMINADO |
 | T1.2 | Usar una raíz persistente independiente del directorio temporal del build | PENDIENTE |
 | T1.3 | Calcular la llave de plantillas antes del lexer y parser | PENDIENTE |
 | T1.4 | Restaurar el producto parseado con su identidad y orden originales | PENDIENTE |

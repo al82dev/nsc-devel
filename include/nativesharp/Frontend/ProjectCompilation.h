@@ -52,6 +52,7 @@ public:
 
     void setCompilationJobs(std::size_t jobs) noexcept;
     void setProjectLoadOptions(compilation::ProjectLoadOptions options);
+    void setTemplateCacheRoot(std::filesystem::path root);
     void setCancellationCheck(std::function<bool()> check);
     // Called concurrently by syntax workers. Returning nullopt falls back to the file on disk.
     void setSourceBufferProvider(SourceBufferProvider provider);
@@ -200,6 +201,7 @@ private:
     std::function<void(const basic::CompilationEvent&)> detailedProgressSink_;
 #endif // INSTRUMENTATION CODE
     compilation::ProjectLoadOptions projectLoadOptions_;
+    std::filesystem::path templateCacheRoot_;
     std::size_t compilationJobs_ = 1;
     CompilationStageTracker stageTracker_;
 };
