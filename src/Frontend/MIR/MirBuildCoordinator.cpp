@@ -118,6 +118,11 @@ bool ProjectOopMirModel::initializeBuild(
     destructionModel_ = &destructionModel;
     hirModel_ = &hirModel;
     if (!importLayouts(nameLookup, memberModel, objectLayoutModel, hirModel, error)) return false;
+    if (indexes_ != nullptr)
+    {
+        indexes_->rebuildMirLayouts(
+            structLayouts_, classLayouts_, nameLookup.namedTypes().size());
+    }
     functionByMember_.resize(memberModel.members().size());
     for (const ProjectOopHirFunction& function : hirModel.functions())
     {

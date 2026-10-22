@@ -262,6 +262,11 @@ bool ProjectCompilationIndexes::hasLayoutIndexes() const noexcept
     return layoutIndexesBuilt_;
 }
 
+bool ProjectCompilationIndexes::hasMirLayoutIndexes() const noexcept
+{
+    return mirLayoutIndexesBuilt_;
+}
+
 void ProjectCompilationIndexes::rebuildHirBindings(
     std::span<const MethodLocalSymbol> locals,
     std::span<const MethodLambdaBinding> lambdas,
@@ -374,6 +379,7 @@ void ProjectCompilationIndexes::rebuildMirLayouts(
     std::span<const ProjectOopMirClassLayout> classLayouts,
     std::size_t typeCount)
 {
+    mirLayoutIndexesBuilt_ = false;
     mirStructLayoutsByType_.assign(typeCount, nullptr);
     mirStructLayoutsByTypeKey_.clear();
     mirStructLayoutsByTypeKey_.reserve(structLayouts.size());
@@ -395,6 +401,7 @@ void ProjectCompilationIndexes::rebuildMirLayouts(
         mirClassLayoutsByType_[layout.typeOrdinal] = &layout;
         mirClassLayoutsByTypeKey_.try_emplace(layout.typeKey, &layout);
     }
+    mirLayoutIndexesBuilt_ = true;
 }
 
 void ProjectCompilationIndexes::rebuildMirInterfaces(
@@ -422,6 +429,7 @@ void ProjectCompilationIndexes::rebuildMirInterfaces(
 
 void ProjectCompilationIndexes::clearMirFunctions() noexcept
 {
+    mirLayoutIndexesBuilt_ = false;
     mirFunctionsByMember_.clear();
     mirFunctionsByNamespaceFunction_.clear();
     mirFunctionsByMangledName_.clear();

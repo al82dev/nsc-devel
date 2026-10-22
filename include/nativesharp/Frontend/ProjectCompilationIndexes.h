@@ -80,6 +80,7 @@ public:
     void clearGenericTypeDemands() noexcept;
     bool hasTypeIndex() const noexcept;
     bool hasLayoutIndexes() const noexcept;
+    bool hasMirLayoutIndexes() const noexcept;
     const NamedTypeDeclaration* typeForOrdinal(std::size_t ordinal) const noexcept;
     std::optional<std::size_t> typeOrdinalForIdentity(std::string_view identity) const;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
@@ -229,6 +230,7 @@ private:
     StringIndex<const ProjectOopMirStructLayout*> mirStructLayoutsByTypeKey_;
     std::vector<const ProjectOopMirClassLayout*> mirClassLayoutsByType_;
     StringIndex<const ProjectOopMirClassLayout*> mirClassLayoutsByTypeKey_;
+    bool mirLayoutIndexesBuilt_ = false;
     std::vector<std::unordered_map<std::size_t, const ProjectOopMirInterfaceBinding*>>
         mirInterfaceBindingsByImplementingType_;
     std::unordered_map<std::size_t, MirInterfaceSlot> mirInterfaceSlotsByMember_;
