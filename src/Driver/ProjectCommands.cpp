@@ -1419,7 +1419,7 @@ void appendNestedCompilerOptions(
 ExitCode invokeNestedCompiler(
     const BuildOptions& options,
     bool json,
-    const DriverExecutor& executor,
+    const PreparedDriverExecutor& executor,
     compilation::CompilationInputManifest& manifest,
     const std::vector<std::string_view>& views,
     std::ostream& output,
@@ -1453,7 +1453,7 @@ ExitCode invokeNestedCompiler(
 ExitCode executeConfiguredBuild(
     const BuildOptions& options,
     bool json,
-    const DriverExecutor& executor,
+    const PreparedDriverExecutor& executor,
     const fs::path& project,
     const compilation::ProjectBuildSettings& projectSettings,
     const std::string& configuration,
@@ -1526,7 +1526,7 @@ ExitCode executeConfiguredBuild(
         "\",\"stderr\":\"" + jsonEscape(compilerError.str()) + "\"");
 }
 
-ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecutor& executor,
+ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriverExecutor& executor,
                       std::ostream& output, std::ostream& error, BuildResult* buildResult)
 {
     CommandOutput result{json, "build", {}};
@@ -1604,7 +1604,7 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
 }
 
 ExitCode runBuild(std::span<const std::string_view> raw, std::ostream& output, std::ostream& error,
-                  const DriverExecutor& executor)
+                  const PreparedDriverExecutor& executor)
 {
     CommonArguments parsed = stripOutputFormat(raw);
     BuildOptions options;
@@ -1673,7 +1673,7 @@ bool launch(const fs::path &executable, const std::vector<std::string> &argument
 #endif
 
 ExitCode runRun(std::span<const std::string_view> raw, std::ostream& output, std::ostream& error,
-                const DriverExecutor& executor)
+                const PreparedDriverExecutor& executor)
 {
     CommonArguments parsed = stripOutputFormat(raw);
     CommandOutput result{parsed.json, "run", {}};
@@ -1855,7 +1855,7 @@ std::optional<ExplainTopic> explainTopic(std::string_view topic)
 }
 
 ExitCode runExplain(std::span<const std::string_view> raw, std::ostream& output,
-                    std::ostream& error, const DriverExecutor& executor)
+                    std::ostream& error, const PreparedDriverExecutor& executor)
 {
     CommonArguments parsed = stripOutputFormat(raw);
     CommandOutput result{parsed.json, "explain", {}};
@@ -1920,7 +1920,7 @@ bool isProjectCommand(std::string_view command) noexcept
 }
 
 ExitCode runProjectCommand(std::span<const std::string_view> arguments, std::ostream& output,
-                           std::ostream& error, const DriverExecutor& executor)
+                           std::ostream& error, const PreparedDriverExecutor& executor)
 {
     if (arguments.empty()) return ExitCode::CommandLineError;
     if (arguments.front() == "new") return runNew(arguments, output, error);
@@ -1930,5 +1930,21 @@ ExitCode runProjectCommand(std::span<const std::string_view> arguments, std::ost
     if (arguments.front() == "clean") return runClean(arguments, output, error);
     if (arguments.front() == "explain") return runExplain(arguments, output, error, executor);
     return runPackage(arguments, output, error);
+}
+
+ExitCode runProjectCommand(std::span<const std::string_view> arguments, std::ostream& output,
+                           std::ostream& error, const DriverExecutor& executor)
+{
+    return runProjectCommand(
+        arguments,
+        output,
+        error,
+        [&executor](std::span<const std::string_view> nested,
+                    std::ostream& nestedOutput,
+                    std::ostream& nestedError,
+                    compilation::CompilationInputManifest*)
+        {
+            return executor(nested, nestedOutput, nestedError);
+        });
 }
 } // namespace nativesharp::driver

@@ -17,6 +17,11 @@ namespace nativesharp::driver
 using DriverExecutor = std::function<ExitCode(
     std::span<const std::string_view>,
     std::ostream&,
+    std::ostream&)>;
+
+using PreparedDriverExecutor = std::function<ExitCode(
+    std::span<const std::string_view>,
+    std::ostream&,
     std::ostream&,
     compilation::CompilationInputManifest*)>;
 
@@ -27,4 +32,10 @@ ExitCode runProjectCommand(
     std::ostream& output,
     std::ostream& error,
     const DriverExecutor& executor);
+
+ExitCode runProjectCommand(
+    std::span<const std::string_view> arguments,
+    std::ostream& output,
+    std::ostream& error,
+    const PreparedDriverExecutor& executor);
 }
