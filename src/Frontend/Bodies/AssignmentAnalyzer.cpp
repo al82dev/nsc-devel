@@ -2645,8 +2645,9 @@ std::optional<std::size_t> ProjectMethodBodyModel::resolveTypeIdentifier(
 
     const NamedTypeDeclaration& contextType = nameLookup_->namedTypes()[context->declaringTypeOrdinal];
     std::optional<std::size_t> fallback;
-    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+    for (const std::size_t ordinal : nameLookup_->typeOrdinalsForName(name))
     {
+        if (ordinal >= nameLookup_->namedTypes().size()) continue;
         const NamedTypeDeclaration& candidate = nameLookup_->namedTypes()[ordinal];
         if ((candidate.kind != NamedTypeDeclarationKind::Class &&
              candidate.kind != NamedTypeDeclarationKind::Struct &&
