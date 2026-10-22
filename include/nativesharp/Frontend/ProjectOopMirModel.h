@@ -313,6 +313,7 @@ private:
         const ProjectOopHirModel& hirModel,
         std::string& error,
         std::size_t workerCount);
+    void calculateMirCacheKeys(const ProjectOopHirModel& hirModel);
     ProjectOopMirFunction lowerOneFunction(
         const ProjectOopHirFunction& source,
         const ProjectNameLookup& nameLookup,
@@ -423,6 +424,7 @@ private:
     std::string panicHandlerMangledName_;
     // NSC305-C04. The MIR cache (disk I/O). Root empty = disabled.
     TemplateParseCache mirCache_;
+    std::vector<std::string> mirCacheKeys_;
 };
 
 const char* projectOopMirNodeKindName(ProjectOopMirNodeKind kind) noexcept;

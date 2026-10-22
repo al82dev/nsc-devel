@@ -58,6 +58,24 @@ std::string normalizeMirNodeStream(const ProjectOopMirNode* node)
     return basic::sha256Hex(basic::sha256(bytes));
 }
 
+std::string preLowerMirCacheKey(
+    const ProjectOopHirFunction& function,
+    std::size_t functionOrdinal)
+{
+    std::string material;
+    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v1");
+    internal::CachePayloadWriter::u64(material, functionOrdinal);
+    internal::CachePayloadWriter::u64(material, function.memberOrdinal);
+    internal::CachePayloadWriter::byte(
+        material, function.namespaceFunctionOrdinal.has_value() ? 1U : 0U);
+    internal::CachePayloadWriter::u64(
+        material, function.namespaceFunctionOrdinal.value_or(0U));
+    internal::CachePayloadWriter::string(material, function.mangledName);
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
 // NSC305-C04. Relocatable codec for a MIR node tree (the C4 cache payload). The syntax pointer is
 // re-linked on restore; all scalars, strings, optionals, vectors and children round-trip.
 void appendMirNodeCoreFields(std::string& out, const ProjectOopMirNode& node)
@@ -1100,6 +1118,21 @@ bool readMirFunctionExceptionFlow(
 void ProjectOopMirModel::setMirCacheRoot(std::filesystem::path root)
 {
     mirCache_.setRoot(std::move(root));
+}
+
+// Calculates one stable slot key while HIR is still the input and before any callable is lowered.
+// T2.3 extends the material with the complete semantic, ABI, compiler and target identity before
+// T2.4 is allowed to consume these keys for cache lookup.
+void ProjectOopMirModel::calculateMirCacheKeys(const ProjectOopHirModel& hirModel)
+{
+    mirCacheKeys_.clear();
+    if (!mirCache_.enabled()) return;
+    const std::span<const ProjectOopHirFunction> hirFunctions = hirModel.functions();
+    mirCacheKeys_.reserve(hirFunctions.size());
+    for (std::size_t index = 0; index < hirFunctions.size(); ++index)
+    {
+        mirCacheKeys_.push_back(preLowerMirCacheKey(hirFunctions[index], index));
+    }
 }
 
 void ProjectOopMirModel::storeMirFunctions()

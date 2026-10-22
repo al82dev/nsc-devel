@@ -654,6 +654,7 @@ bool ProjectOopMirModel::build(
             hirModel,
             error))
         return false;
+    calculateMirCacheKeys(hirModel);
     if (!lowerFunctions(
             nameLookup,
             memberModel,
