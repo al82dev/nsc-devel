@@ -15,6 +15,25 @@ enum class CompilationBundleLookupKind
     Verified
 };
 
+enum class CompilationBundleMissReason
+{
+    None,
+    Disabled,
+    NotFound,
+    ManifestUnreadable,
+    ManifestInvalid,
+    IdentityMismatch,
+    ArtifactMissing,
+    ArtifactUnreadable,
+    ArtifactSizeMismatch,
+    ArtifactDigestMismatch,
+    RequiredArtifactMissing,
+    Hit
+};
+
+const char* compilationBundleMissReasonName(
+    CompilationBundleMissReason reason) noexcept;
+
 struct CompilationBundleArtifact final
 {
     std::filesystem::path cachedPath;
@@ -26,6 +45,8 @@ struct CompilationBundleArtifact final
 struct CompilationBundleLookup final
 {
     CompilationBundleLookupKind kind = CompilationBundleLookupKind::Disabled;
+    CompilationBundleMissReason reason = CompilationBundleMissReason::Disabled;
+    std::string detail;
     std::filesystem::path entryDirectory;
     std::filesystem::path manifestPath;
     std::string resultOutput;
@@ -59,6 +80,10 @@ public:
         std::string& error) const;
 
 private:
+    void quarantine(
+        CompilationBundleLookup& lookup,
+        CompilationBundleMissReason reason,
+        std::string detail) const noexcept;
     std::filesystem::path root_;
 };
 }

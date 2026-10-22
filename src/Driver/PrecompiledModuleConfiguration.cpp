@@ -209,6 +209,17 @@ bool configurePrecompiledModules(
     {
         return false;
     }
+    if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
+    {
+        activeExecutionScope->output
+            << "compilation-bundle-cache: "
+            << compilation::compilationBundleMissReasonName(lookup.reason);
+        if (!lookup.detail.empty())
+        {
+            activeExecutionScope->output << " detail=" << lookup.detail;
+        }
+        activeExecutionScope->output << '\n';
+    }
     manifest.setBundleLookup(std::move(lookup));
     return true;
 }

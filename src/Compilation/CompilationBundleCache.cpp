@@ -16,6 +16,7 @@ namespace
 {
 constexpr std::string_view kManifestHeader = "nsc-compilation-bundle-v1";
 std::atomic<unsigned long long> stagingOrdinal = 0;
+std::atomic<unsigned long long> quarantineOrdinal = 0;
 
 int hexDigit(char value)
 {
@@ -67,6 +68,32 @@ bool validArtifactName(const std::filesystem::path& name)
 }
 }
 
+const char* compilationBundleMissReasonName(
+    CompilationBundleMissReason reason) noexcept
+{
+    switch (reason)
+    {
+    case CompilationBundleMissReason::None: return "none";
+    case CompilationBundleMissReason::Disabled: return "disabled";
+    case CompilationBundleMissReason::NotFound: return "not-found";
+    case CompilationBundleMissReason::ManifestUnreadable:
+        return "manifest-unreadable";
+    case CompilationBundleMissReason::ManifestInvalid: return "manifest-invalid";
+    case CompilationBundleMissReason::IdentityMismatch: return "identity-mismatch";
+    case CompilationBundleMissReason::ArtifactMissing: return "artifact-missing";
+    case CompilationBundleMissReason::ArtifactUnreadable:
+        return "artifact-unreadable";
+    case CompilationBundleMissReason::ArtifactSizeMismatch:
+        return "artifact-size-mismatch";
+    case CompilationBundleMissReason::ArtifactDigestMismatch:
+        return "artifact-digest-mismatch";
+    case CompilationBundleMissReason::RequiredArtifactMissing:
+        return "required-artifact-missing";
+    case CompilationBundleMissReason::Hit: return "hit";
+    }
+    return "unknown";
+}
+
 void CompilationBundleCache::setRoot(std::filesystem::path root)
 {
     root_ = std::move(root);
@@ -80,6 +107,7 @@ bool CompilationBundleCache::lookup(
     result = {};
     if (root_.empty())
     {
+        result.reason = CompilationBundleMissReason::Disabled;
         return true;
     }
     if (identity.size() < 2)
@@ -102,7 +130,40 @@ bool CompilationBundleCache::lookup(
     result.kind = present
         ? CompilationBundleLookupKind::Candidate
         : CompilationBundleLookupKind::Missing;
+    result.reason = present
+        ? CompilationBundleMissReason::None
+        : CompilationBundleMissReason::NotFound;
     return true;
+}
+
+void CompilationBundleCache::quarantine(
+    CompilationBundleLookup& lookup,
+    CompilationBundleMissReason reason,
+    std::string detail) const noexcept
+{
+    lookup.kind = CompilationBundleLookupKind::Missing;
+    lookup.reason = reason;
+    lookup.detail = std::move(detail);
+    lookup.artifacts.clear();
+    lookup.resultOutput.clear();
+    try
+    {
+        if (root_.empty() || lookup.entryDirectory.empty()) return;
+        const std::filesystem::path quarantineRoot = root_ / "quarantine";
+        std::error_code filesystemError;
+        std::filesystem::create_directories(quarantineRoot, filesystemError);
+        if (filesystemError) return;
+        const std::string suffix = std::to_string(
+            quarantineOrdinal.fetch_add(1, std::memory_order_relaxed));
+        const std::filesystem::path destination = quarantineRoot /
+            (lookup.entryDirectory.filename().generic_string() + "." +
+             suffix + ".bundle");
+        std::filesystem::rename(
+            lookup.entryDirectory, destination, filesystemError);
+    }
+    catch (...)
+    {
+    }
 }
 
 bool CompilationBundleCache::verify(
@@ -120,21 +181,39 @@ bool CompilationBundleCache::verify(
     std::ifstream input(lookup.manifestPath, std::ios::binary);
     if (!input)
     {
-        lookup.kind = CompilationBundleLookupKind::Missing;
+        quarantine(
+            lookup,
+            CompilationBundleMissReason::ManifestUnreadable,
+            lookup.manifestPath.generic_string());
         return true;
     }
+    const auto reject = [&](CompilationBundleMissReason reason, std::string detail)
+    {
+        input.close();
+        quarantine(lookup, reason, std::move(detail));
+    };
     std::string line;
-    if (!std::getline(input, line) || line != kManifestHeader ||
-        !std::getline(input, line) ||
+    if (!std::getline(input, line) || line != kManifestHeader)
+    {
+        reject(
+            CompilationBundleMissReason::ManifestInvalid,
+            "header");
+        return true;
+    }
+    if (!std::getline(input, line) ||
         line != std::string("identity=") + std::string(identity))
     {
-        lookup.kind = CompilationBundleLookupKind::Missing;
+        reject(
+            CompilationBundleMissReason::IdentityMismatch,
+            "identity");
         return true;
     }
     if (!std::getline(input, line) || !line.starts_with("result=") ||
         !decodeHex(std::string_view(line).substr(7), lookup.resultOutput))
     {
-        lookup.kind = CompilationBundleLookupKind::Missing;
+        reject(
+            CompilationBundleMissReason::ManifestInvalid,
+            "result-output");
         return true;
     }
     std::set<std::string> names;
@@ -142,21 +221,27 @@ bool CompilationBundleCache::verify(
     {
         if (!line.starts_with("artifact="))
         {
-            lookup.kind = CompilationBundleLookupKind::Missing;
+            reject(
+                CompilationBundleMissReason::ManifestInvalid,
+                "artifact-record");
             return true;
         }
         const std::size_t firstTab = line.find('\t');
         const std::size_t secondTab = line.find('\t', firstTab + 1);
         if (firstTab == std::string::npos || secondTab == std::string::npos)
         {
-            lookup.kind = CompilationBundleLookupKind::Missing;
+            reject(
+                CompilationBundleMissReason::ManifestInvalid,
+                "artifact-fields");
             return true;
         }
         std::string decodedName;
         if (!decodeHex(
                 std::string_view(line).substr(9, firstTab - 9), decodedName))
         {
-            lookup.kind = CompilationBundleLookupKind::Missing;
+            reject(
+                CompilationBundleMissReason::ManifestInvalid,
+                "artifact-name-encoding");
             return true;
         }
         const std::filesystem::path name =
@@ -170,20 +255,46 @@ bool CompilationBundleCache::verify(
                     firstTab + 1, secondTab - firstTab - 1),
                 expectedSize) || digest.size() != 64)
         {
-            lookup.kind = CompilationBundleLookupKind::Missing;
+            reject(
+                CompilationBundleMissReason::ManifestInvalid,
+                decodedName);
             return true;
         }
         const std::filesystem::path cachedPath =
             lookup.entryDirectory / "artifacts" / name;
+        std::error_code fileError;
+        if (!std::filesystem::is_regular_file(cachedPath, fileError))
+        {
+            reject(
+                fileError
+                    ? CompilationBundleMissReason::ArtifactUnreadable
+                    : CompilationBundleMissReason::ArtifactMissing,
+                decodedName);
+            return true;
+        }
         basic::Sha256Digest actualDigest{};
         std::uintmax_t actualSize = 0;
         std::string hashError;
         if (!basic::sha256File(
-                cachedPath, actualDigest, actualSize, hashError) ||
-            actualSize != expectedSize || basic::sha256Hex(actualDigest) != digest)
+                cachedPath, actualDigest, actualSize, hashError))
         {
-            lookup.kind = CompilationBundleLookupKind::Missing;
-            lookup.artifacts.clear();
+            reject(
+                CompilationBundleMissReason::ArtifactUnreadable,
+                decodedName + ": " + hashError);
+            return true;
+        }
+        if (actualSize != expectedSize)
+        {
+            reject(
+                CompilationBundleMissReason::ArtifactSizeMismatch,
+                decodedName);
+            return true;
+        }
+        if (basic::sha256Hex(actualDigest) != digest)
+        {
+            reject(
+                CompilationBundleMissReason::ArtifactDigestMismatch,
+                decodedName);
             return true;
         }
         lookup.artifacts.push_back({
@@ -193,18 +304,22 @@ bool CompilationBundleCache::verify(
     {
         if (!names.contains(required))
         {
-            lookup.kind = CompilationBundleLookupKind::Missing;
-            lookup.artifacts.clear();
+            reject(
+                CompilationBundleMissReason::RequiredArtifactMissing,
+                required);
             return true;
         }
     }
     if (lookup.artifacts.empty() || requiredOutputNames.empty())
     {
-        lookup.kind = CompilationBundleLookupKind::Missing;
-        lookup.artifacts.clear();
+        reject(
+            CompilationBundleMissReason::ManifestInvalid,
+            "empty-artifact-set");
         return true;
     }
     lookup.kind = CompilationBundleLookupKind::Verified;
+    lookup.reason = CompilationBundleMissReason::Hit;
+    lookup.detail.clear();
     hit = true;
     return true;
 }
