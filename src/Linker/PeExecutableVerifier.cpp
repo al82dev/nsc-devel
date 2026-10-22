@@ -119,8 +119,34 @@ bool readPeBytes(
         error = "could not open PE executable";
         return false;
     }
-    char character = 0;
-    while (stream.get(character)) bytes.push_back(static_cast<unsigned char>(character));
+    stream.seekg(0, std::ios::end);
+    const std::streamoff fileSize = stream.tellg();
+    if (fileSize < 0 || static_cast<std::uintmax_t>(fileSize) >
+            std::numeric_limits<std::size_t>::max())
+    {
+        error = "could not read PE executable";
+        return false;
+    }
+    stream.seekg(0, std::ios::beg);
+    if (!stream)
+    {
+        error = "could not read PE executable";
+        return false;
+    }
+    bytes.resize(static_cast<std::size_t>(fileSize));
+    constexpr std::size_t ReadBlockSize = 64U * 1024U;
+    for (std::size_t offset = 0; offset < bytes.size(); offset += ReadBlockSize)
+    {
+        const std::size_t blockSize = std::min(ReadBlockSize, bytes.size() - offset);
+        stream.read(
+            reinterpret_cast<char*>(bytes.data() + offset),
+            static_cast<std::streamsize>(blockSize));
+        if (stream.gcount() != static_cast<std::streamsize>(blockSize))
+        {
+            error = "could not read PE executable";
+            return false;
+        }
+    }
     if (bytes.size() < 64)
     {
         error = "PE executable is smaller than the DOS header";
