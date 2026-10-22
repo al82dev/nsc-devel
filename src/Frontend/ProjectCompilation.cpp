@@ -1346,8 +1346,8 @@ bool ProjectCompilation::calculateTemplateParseCacheKey(std::string& loadError)
 }
 
 // Restores a complete parsed corpus only after validating every unit and decoding all products into
-// detached arenas. This commit deliberately performs the lookup after normal parsing; T1.5 moves
-// the decision in front of lexer/parser and uses templateParseCacheHit_ to skip their work.
+// detached arenas. A committed hit supplies the token stream used by the template-record cache, so
+// the generic pass can restore records instead of reconstructing them from each declaration.
 bool ProjectCompilation::restoreTemplateParseProduct(std::string& loadError)
 {
     templateParseCacheHit_ = false;
@@ -1537,16 +1537,21 @@ bool ProjectCompilation::compileSyntaxCore(
         return false;
     }
 
+    if (!restoreTemplateParseProduct(loadError))
+    {
+        return false;
+    }
+    if (templateParseCacheHit_)
+    {
+        return enterStage(CompilationStage::Parse, loadError);
+    }
+
     bool lexicalOk = true;
     if (!lexSyntaxUnits(syntaxWorkers, lexicalOk, loadError))
     {
         return false;
     }
-    if (!parseSyntaxUnits(syntaxWorkers, lexicalOk, loadError))
-    {
-        return false;
-    }
-    return restoreTemplateParseProduct(loadError);
+    return parseSyntaxUnits(syntaxWorkers, lexicalOk, loadError);
 }
 
 bool ProjectCompilation::enterStage(CompilationStage stage, std::string& error)

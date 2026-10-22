@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `4 / 48`
+**Progreso:** `5 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -8,7 +8,7 @@
 | T1.2 | Usar una raíz persistente independiente del directorio temporal del build | TERMINADO |
 | T1.3 | Calcular la llave de plantillas antes del lexer y parser | TERMINADO |
 | T1.4 | Restaurar el producto parseado con su identidad y orden originales | TERMINADO |
-| T1.5 | Omitir lexer, parser y recolección de templates cuando exista un hit válido | PENDIENTE |
+| T1.5 | Omitir lexer, parser y recolección de templates cuando exista un hit válido | TERMINADO |
 | T1.6 | Publicar el producto solamente después de procesarlo correctamente | PENDIENTE |
 | T1.7 | Conservar publicación atómica, cuarentena, poda y razones de hit o miss | PENDIENTE |
 | T2.1 | Conectar `setMirCacheRoot` desde la entrada real de compilación | PENDIENTE |
