@@ -927,6 +927,16 @@ target_compile_definitions(nsc_linker PRIVATE
 target_compile_features(nsc_linker PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_linker)
 
+if(WIN32)
+    add_executable(nsc_windows_runtime_imports
+        src/Linker/GenerateWindowsRuntimeImports.cpp)
+    target_link_libraries(nsc_windows_runtime_imports PRIVATE nsc_linker)
+    target_link_options(nsc_windows_runtime_imports PRIVATE
+        "/libpath:${NSC_VS2026_CRT_LIBRARY_DIR}")
+    target_compile_features(nsc_windows_runtime_imports PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_windows_runtime_imports)
+endif()
+
 add_library(nsc_driver STATIC
     src/Driver/ArtifactPublisher.cpp
     src/Driver/BreakingChangeLedger.cpp

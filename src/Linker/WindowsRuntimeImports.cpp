@@ -293,6 +293,18 @@ bool materializeWindowsImportLibraries(
 }
 }
 
+bool createCanonicalWindowsImportLibraries(
+    const LldLinker& linker,
+    const std::filesystem::path& directory,
+    std::vector<std::filesystem::path>& libraries,
+    std::string& error)
+{
+    libraries.clear();
+    const std::vector<PlannedLibrary> planned =
+        planWindowsImportLibraries(std::span<const ExternalImportModule>{});
+    return materializeWindowsImportLibraries(linker, directory, planned, libraries, error);
+}
+
 bool createWindowsImportLibraries(
     const LldLinker& linker,
     const std::filesystem::path& directory,

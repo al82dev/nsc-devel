@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `54 / 60`
+**Progreso:** `55 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -58,7 +58,7 @@
 | T6.5 | Hacer que `OopLlvmDebugInfo` consulte índices de tipos y miembros | TERMINADO |
 | T6.6 | Hacer que closures, thunks, wrappers y estado estático consulten el índice MIR de funciones | TERMINADO |
 | T6.7 | Reservar mapas y vectores de declaraciones LLVM con los conteos exactos de MIR antes del lowering | TERMINADO |
-| T7.1 | Generar como artefactos del toolchain las import libraries canónicas de KERNEL32, KERNELBASE, SHELL32 y ucrtbase | PENDIENTE |
+| T7.1 | Generar como artefactos del toolchain las import libraries canónicas de KERNEL32, KERNELBASE, SHELL32 y ucrtbase | TERMINADO |
 | T7.2 | Incluir esas import libraries en CMake, paquete e instalación del compilador sin tocar NSC Builder 3 | PENDIENTE |
 | T7.3 | Hacer que `WindowsExecutableBuilder` use las import libraries canónicas en lugar de lanzar NSLink cuatro veces | PENDIENTE |
 | T7.4 | Limitar `createImportLibrary` durante el build a DLL externas declaradas por el proyecto | PENDIENTE |

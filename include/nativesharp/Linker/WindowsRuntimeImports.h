@@ -20,6 +20,12 @@ struct ExternalImportModule final
     std::vector<std::string> symbols;
 };
 
+bool createCanonicalWindowsImportLibraries(
+    const LldLinker& linker,
+    const std::filesystem::path& directory,
+    std::vector<std::filesystem::path>& libraries,
+    std::string& error);
+
 // THE single source of truth for the Windows runtime's import surface, and the single place that
 // materializes import libraries for a link.
 //
