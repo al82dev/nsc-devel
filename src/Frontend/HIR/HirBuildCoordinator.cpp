@@ -940,7 +940,7 @@ bool ProjectOopHirModel::appendPrecompiledRegularFunction(
         imported.parameterPassKinds.push_back(parameter.passKind);
         imported.parameterOwnerships.push_back(parameter.ownership);
     }
-    functionByMember_[memberOrdinal] = functions_.size();
+    if (!functionByMember_.empty()) functionByMember_[memberOrdinal] = functions_.size();
     functions_.push_back(std::move(imported));
     return true;
 }
@@ -982,7 +982,7 @@ void ProjectOopHirModel::appendImportedCRegularFunction(
         imported.parameterPassKinds.push_back(parameter.passKind);
         imported.parameterOwnerships.push_back(parameter.ownership);
     }
-    functionByMember_[memberOrdinal] = functions_.size();
+    if (!functionByMember_.empty()) functionByMember_[memberOrdinal] = functions_.size();
     functions_.push_back(std::move(imported));
 }
 
@@ -1533,7 +1533,8 @@ bool ProjectOopHirModel::appendRegularCoroutineFunctions(
             drop = std::move(split.second);
         }
     }
-    functionByMember_[function.memberOrdinal] = functions_.size();
+    if (!functionByMember_.empty())
+        functionByMember_[function.memberOrdinal] = functions_.size();
     functions_.push_back(std::move(function));
     if (poll) functions_.push_back(std::move(*poll));
     if (moveNext) functions_.push_back(std::move(*moveNext));
@@ -2153,9 +2154,12 @@ bool ProjectOopHirModel::buildImpl(
             error))
         return false;
     indexBuildBindings(methodBodyModel, constructionModel);
-    functionByMember_.resize(memberModel.members().size());
-    if (namespaceFunctionModel_ != nullptr)
-        functionByNamespaceFunction_.resize(namespaceFunctionModel_->functions().size());
+    if (!memberFilter.has_value())
+    {
+        functionByMember_.resize(memberModel.members().size());
+        if (namespaceFunctionModel_ != nullptr)
+            functionByNamespaceFunction_.resize(namespaceFunctionModel_->functions().size());
+    }
     const bool regularFunctionsBuiltInParallel = workerCount > 1 && !memberFilter.has_value();
     if (regularFunctionsBuiltInParallel &&
         !buildRegularFunctionsInParallel(workerCount, error))
