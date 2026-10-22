@@ -468,6 +468,8 @@ private:
     ProjectCompilationIndexes* indexes_ = nullptr;
     std::vector<ProjectOopMirFunction> functions_;
     std::vector<ProjectOopMirFieldInitializer> fieldInitializers_;
+    bool hirFieldInitializerIndexBuilt_ = false;
+    std::vector<const ProjectOopHirFieldInitializer*> hirFieldInitializerByMember_;
     std::vector<ProjectOopMirStaticField> staticFields_;
     std::vector<ProjectOopMirStructLayout> structLayouts_;
     std::vector<ProjectOopMirClassLayout> classLayouts_;
@@ -477,6 +479,11 @@ private:
     std::vector<std::optional<std::size_t>> dispatchTableByType_;
     std::vector<ProjectOopMirGenericSpecialization> genericSpecializations_;
     std::vector<ProjectOopMirInterfaceBinding> interfaceBindings_;
+    bool interfaceIndexesBuilt_ = false;
+    std::vector<std::unordered_map<std::size_t, std::size_t>>
+        interfaceBindingIndexByImplementingType_;
+    std::unordered_map<std::size_t, std::pair<std::uint64_t, std::size_t>>
+        interfaceSlotIndexByMember_;
     bool built_ = false;
     language::PanicProfile panicProfile_ = language::PanicProfile::Abort;
     std::string panicHandler_;

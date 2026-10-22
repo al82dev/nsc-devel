@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `38 / 60`
+**Progreso:** `39 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -50,7 +50,7 @@
 | T5.11 | Evitar que cada worker HIR de un solo miembro redimensione tablas globales del tamaño de todo el proyecto | TERMINADO |
 | T5.12 | Resolver el creador de cada closure directamente, sin recorrer todas las funciones HIR por lambda | TERMINADO |
 | T5.13 | Sustituir las búsquedas lineales de layouts en `MirNodeMachine` por los índices MIR | TERMINADO |
-| T5.14 | Usar índices directos en MIR para planes de asignación, interfaces, slots e inicializadores estáticos | PENDIENTE |
+| T5.14 | Usar índices directos en MIR para planes de asignación, interfaces, slots e inicializadores estáticos | TERMINADO |
 | T6.1 | Eliminar las comprobaciones duplicadas de builtin y pointer-like en la cadena de `llvmType` | PENDIENTE |
 | T6.2 | Memoizar por lowerer los `LLVMTypeRef` exitosos por `typeKey`, sin cachear errores ni cambiar diagnósticos | PENDIENTE |
 | T6.3 | Resolver una vez los ordinales SIMD usados por los cinco clasificadores que hoy recorren todos los tipos | PENDIENTE |

@@ -426,8 +426,17 @@ bool ProjectOopMirModel::lowerFieldInitializers(
     const ProjectOopHirModel& hirModel,
     std::string& error)
 {
+    hirFieldInitializerIndexBuilt_ = false;
+    hirFieldInitializerByMember_.clear();
     for (const ProjectOopHirFieldInitializer& source : hirModel.fieldInitializers())
     {
+        if (source.value != nullptr)
+        {
+            if (source.memberOrdinal >= hirFieldInitializerByMember_.size())
+                hirFieldInitializerByMember_.resize(source.memberOrdinal + 1U, nullptr);
+            if (hirFieldInitializerByMember_[source.memberOrdinal] == nullptr)
+                hirFieldInitializerByMember_[source.memberOrdinal] = &source;
+        }
         auto value = lowerNode(source.value.get(), error);
         if (value == nullptr)
         {
@@ -444,6 +453,7 @@ bool ProjectOopMirModel::lowerFieldInitializers(
             source.isConst,
             std::move(value)});
     }
+    hirFieldInitializerIndexBuilt_ = true;
     return true;
 }
 
@@ -454,16 +464,32 @@ bool ProjectOopMirModel::materializeStaticFieldConstant(
     ProjectOopMirStaticField& staticField,
     std::string& error)
 {
-    for (const ProjectOopHirFieldInitializer& initializer : hirModel.fieldInitializers())
+    const ProjectOopHirFieldInitializer* initializer = nullptr;
+    if (hirFieldInitializerIndexBuilt_)
     {
-        if (initializer.memberOrdinal != memberOrdinal || initializer.value == nullptr) continue;
+        if (memberOrdinal < hirFieldInitializerByMember_.size())
+            initializer = hirFieldInitializerByMember_[memberOrdinal];
+    }
+    else
+    {
+        for (const ProjectOopHirFieldInitializer& candidate : hirModel.fieldInitializers())
+        {
+            if (candidate.memberOrdinal == memberOrdinal && candidate.value != nullptr)
+            {
+                initializer = &candidate;
+                break;
+            }
+        }
+    }
+    if (initializer != nullptr)
+    {
         // Stage 51.x: an enum member's declaredTypeKey is its own enum type (see the
         // comment in ProjectMemberModel::collectEnumMembers), so isIntegral() alone
         // would miss it here -- it is still an int-sized compile-time constant.
         if (ProjectTypeConversion::isIntegral(field.declaredTypeKey) || field.isEnumConstant)
         {
             const std::optional<std::uint64_t> value =
-                MirConstantEvaluator::integerValue(initializer.value.get(), staticFields_);
+                MirConstantEvaluator::integerValue(initializer->value.get(), staticFields_);
             if (value.has_value())
             {
                 staticField.hasConstantInitializer = true;
@@ -473,7 +499,7 @@ bool ProjectOopMirModel::materializeStaticFieldConstant(
         else if (field.declaredTypeKey == "builtin:bool")
         {
             const std::optional<bool> value =
-                MirConstantEvaluator::booleanValue(initializer.value.get(), staticFields_);
+                MirConstantEvaluator::booleanValue(initializer->value.get(), staticFields_);
             if (value.has_value())
             {
                 staticField.hasConstantInitializer = true;
@@ -485,7 +511,7 @@ bool ProjectOopMirModel::materializeStaticFieldConstant(
                  field.declaredTypeKey == "builtin:decimal")
         {
             const std::optional<double> value =
-                MirConstantEvaluator::floatingValue(initializer.value.get(), staticFields_);
+                MirConstantEvaluator::floatingValue(initializer->value.get(), staticFields_);
             if (value.has_value())
             {
                 staticField.hasConstantInitializer = true;
@@ -495,14 +521,13 @@ bool ProjectOopMirModel::materializeStaticFieldConstant(
         else if (field.declaredTypeKey == "builtin:string")
         {
             const std::optional<std::string> value =
-                MirConstantEvaluator::stringValue(initializer.value.get(), staticFields_);
+                MirConstantEvaluator::stringValue(initializer->value.get(), staticFields_);
             if (value.has_value())
             {
                 staticField.hasConstantInitializer = true;
                 staticField.constantStringValue = *value;
             }
         }
-        break;
     }
     if (!staticField.hasConstantInitializer)
     {
@@ -705,6 +730,22 @@ bool ProjectOopMirModel::build(
     if (!lowerFieldInitializers(hirModel, error)) return false;
     if (!buildStaticFields(nameLookup, memberModel, hirModel, error)) return false;
     buildNamespaceStateFields(nameLookup, memberModel, namespaceFunctionModel);
+    interfaceIndexesBuilt_ = false;
+    interfaceBindingIndexByImplementingType_.clear();
+    interfaceBindingIndexByImplementingType_.resize(nameLookup.namedTypes().size());
+    interfaceSlotIndexByMember_.clear();
+    std::size_t interfaceBindingCount = 0;
+    std::size_t interfaceSlotCount = 0;
+    for (const ProjectOopMirDispatchTable& table : dispatchTables_)
+    {
+        interfaceBindingCount += table.interfaceTables.size();
+        for (const ProjectOopMirDispatchTable::InterfaceTable& interfaceTable :
+             table.interfaceTables)
+            interfaceSlotCount += interfaceTable.interfaceMemberOrdinals.size();
+    }
+    interfaceBindings_.reserve(interfaceBindingCount);
+    interfaceSlotIndexByMember_.reserve(interfaceSlotCount);
+    interfaceIndexesBuilt_ = true;
     MirVerifier verifier(*this);
     if (!verifier.finalize(error)) return false;
 
@@ -843,6 +884,15 @@ const ProjectOopMirInterfaceBinding* ProjectOopMirModel::interfaceBindingForType
         return indexes_->mirInterfaceBindingForTypes(
             implementingTypeOrdinal, interfaceTypeOrdinal);
     }
+    if (interfaceIndexesBuilt_)
+    {
+        if (implementingTypeOrdinal >= interfaceBindingIndexByImplementingType_.size())
+            return nullptr;
+        const auto& bindings =
+            interfaceBindingIndexByImplementingType_[implementingTypeOrdinal];
+        const auto iterator = bindings.find(interfaceTypeOrdinal);
+        return iterator == bindings.end() ? nullptr : &interfaceBindings_[iterator->second];
+    }
     const auto found = std::find_if(interfaceBindings_.begin(), interfaceBindings_.end(),
         [implementingTypeOrdinal, interfaceTypeOrdinal](const ProjectOopMirInterfaceBinding& binding) {
             return binding.implementingTypeOrdinal == implementingTypeOrdinal &&
@@ -860,6 +910,14 @@ bool ProjectOopMirModel::interfaceSlotForMember(
     {
         return indexes_->mirInterfaceSlotForMember(
             interfaceMemberOrdinal, stableInterfaceTypeId, slot);
+    }
+    if (interfaceIndexesBuilt_)
+    {
+        const auto iterator = interfaceSlotIndexByMember_.find(interfaceMemberOrdinal);
+        if (iterator == interfaceSlotIndexByMember_.end()) return false;
+        stableInterfaceTypeId = iterator->second.first;
+        slot = iterator->second.second;
+        return true;
     }
     for (const ProjectOopMirInterfaceBinding& binding : interfaceBindings_)
     {
@@ -992,7 +1050,7 @@ const ObjectAllocationPlan* ProjectOopMirModel::allocationPlan(std::size_t const
     {
         return nullptr;
     }
-    if (indexes_ != nullptr)
+    if (indexes_ != nullptr && indexes_->hasLayoutIndexes())
         return indexes_->allocationPlanForConstruction(constructionOrdinal);
     // The plan vector is NOT indexed by construction ordinal, and treating it as if it were was
     // the bug. buildAllocationPlans() walks every construction but APPENDS a plan only for the
