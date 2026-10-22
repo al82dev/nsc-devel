@@ -1090,6 +1090,18 @@ bool lockMatchesPackageRequests(const Sidecar& sidecar, const RestorePlan& plan)
     return requested == locked;
 }
 
+void addVerifiedRestoreDigests(
+    compilation::CompilationInputManifest& manifest,
+    const RestorePlan& plan)
+{
+    for (const RestoredPackage& package : plan.packages)
+        for (const Artifact& artifact : package.artifacts)
+            manifest.addVerifiedInputDigest(
+                fs::absolute(plan.root / artifact.relativeDestination),
+                artifact.hash,
+                artifact.size);
+}
+
 } // namespace
 
 std::string fingerprintFiles(
@@ -1560,6 +1572,7 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
 
     compilation::CompilationInputManifest manifest = createCompilationInputManifest(
         std::move(*graph), std::move(projectLoadOptions));
+    addVerifiedRestoreDigests(manifest, plan);
     compilation::LibraryMetadataRepository metadataRepository;
     if (!manifest.calculateIdentity(metadataRepository, message))
         return result.failure(error, message, ExitCode::CompilationError);

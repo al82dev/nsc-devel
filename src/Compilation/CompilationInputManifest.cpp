@@ -172,6 +172,17 @@ void CompilationInputManifest::addIdentityField(std::string name, std::string va
     identity_.clear();
 }
 
+void CompilationInputManifest::addVerifiedInputDigest(
+    std::filesystem::path path,
+    std::string digest,
+    std::uintmax_t size)
+{
+    const std::string key = inputPathKey(path.lexically_normal());
+    inputDigests_.insert_or_assign(key, std::move(digest));
+    inputSizes_.insert_or_assign(key, size);
+    identity_.clear();
+}
+
 void CompilationInputManifest::addProjectGraphInputs(const ProjectGraph& graph)
 {
     collectGraphInputs(graph);

@@ -55,6 +55,10 @@ public:
     void addInputFile(std::filesystem::path path);
     void addProjectGraphInputs(const ProjectGraph& graph);
     void addIdentityField(std::string name, std::string value);
+    void addVerifiedInputDigest(
+        std::filesystem::path path,
+        std::string digest,
+        std::uintmax_t size);
     bool calculateIdentity(
         const LibraryMetadataRepository& metadataRepository,
         std::string& error);

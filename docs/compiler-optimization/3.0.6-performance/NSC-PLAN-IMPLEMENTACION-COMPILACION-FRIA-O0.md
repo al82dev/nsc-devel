@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `59 / 60`
+**Progreso:** `60 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -63,4 +63,4 @@
 | T7.3 | Hacer que `WindowsExecutableBuilder` use las import libraries canónicas en lugar de lanzar NSLink cuatro veces | TERMINADO |
 | T7.4 | Limitar `createImportLibrary` durante el build a DLL externas declaradas por el proyecto | TERMINADO |
 | T7.5 | Consultar primero el lock/store ya verificado y resolver/hashear el paquete fuente sólo cuando falte o difiera un artefacto | TERMINADO |
-| T7.6 | Compartir los digests verificados del restore con el manifiesto de compilación y la procedencia de dependencias | PENDIENTE |
+| T7.6 | Compartir los digests verificados del restore con el manifiesto de compilación y la procedencia de dependencias | TERMINADO |
