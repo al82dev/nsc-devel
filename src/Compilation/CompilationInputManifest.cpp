@@ -2,6 +2,7 @@
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
+#include "nativesharp/Source/SourceManager.h"
 
 #include <algorithm>
 #include <cctype>
@@ -46,12 +47,29 @@ bool appendInputIdentity(
     std::string& material,
     const std::filesystem::path& rootDirectory,
     const std::filesystem::path& path,
+    const std::unordered_set<std::string>& sourceInputKeys,
+    std::unordered_map<std::string, std::string>& sourceBuffers,
     const LibraryMetadataRepository& metadataRepository,
     std::string& error)
 {
     basic::Sha256Digest digest{};
     std::uintmax_t size = 0;
-    if (const LibraryMetadataRepositoryEntry* entry = metadataRepository.find(path))
+    const std::string pathKey = inputPathKey(path);
+    if (sourceInputKeys.contains(pathKey))
+    {
+        std::optional<std::string> buffer =
+            source::SourceManager::readFileBuffer(path, error);
+        if (!buffer.has_value())
+        {
+            return false;
+        }
+        const std::span<const std::uint8_t> bytes{
+            reinterpret_cast<const std::uint8_t*>(buffer->data()), buffer->size()};
+        digest = basic::sha256(bytes);
+        size = buffer->size();
+        sourceBuffers.insert_or_assign(pathKey, std::move(*buffer));
+    }
+    else if (const LibraryMetadataRepositoryEntry* entry = metadataRepository.find(path))
     {
         digest = entry->contentDigest();
         size = entry->bytes().size();
@@ -164,19 +182,40 @@ bool CompilationInputManifest::calculateIdentity(
         appendIdentityField(material, name);
         appendIdentityField(material, value);
     }
+    std::unordered_map<std::string, std::string> sourceBuffers;
+    sourceBuffers.reserve(sourceInputKeys_.size());
     for (const std::filesystem::path& path : inputFiles_)
     {
         if (!appendInputIdentity(
-                material, rootDirectory_, path, metadataRepository, error))
+                material,
+                rootDirectory_,
+                path,
+                sourceInputKeys_,
+                sourceBuffers,
+                metadataRepository,
+                error))
         {
             identity_.clear();
+            sourceBuffers_.clear();
             return false;
         }
     }
     const std::span<const std::uint8_t> bytes{
         reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
     identity_ = basic::sha256Hex(basic::sha256(bytes));
+    sourceBuffers_ = std::move(sourceBuffers);
     return true;
+}
+
+std::optional<std::string> CompilationInputManifest::sourceBuffer(
+    const std::filesystem::path& path) const
+{
+    const auto position = sourceBuffers_.find(inputPathKey(path));
+    if (position == sourceBuffers_.end())
+    {
+        return std::nullopt;
+    }
+    return position->second;
 }
 
 std::string_view CompilationInputManifest::identity() const noexcept
@@ -252,6 +291,7 @@ void CompilationInputManifest::collectGraphInputs(const ProjectGraph& graph)
         for (const ProjectSource& source : project.sourceSet().sources())
         {
             inputFiles_.push_back(source.absolutePath);
+            sourceInputKeys_.insert(inputPathKey(source.absolutePath));
         }
         for (const LibraryReference& reference : project.libraryReferences())
         {

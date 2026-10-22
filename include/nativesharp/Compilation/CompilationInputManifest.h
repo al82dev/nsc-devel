@@ -6,11 +6,32 @@
 #include "nativesharp/Compilation/ProjectLoadOptions.h"
 
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
+
+namespace nativesharp::compilation
+{
+class CompilationInputManifest;
+}
+
+namespace nativesharp::frontend
+{
+class ProjectCompilation;
+}
+
+namespace nativesharp::driver
+{
+bool configurePrecompiledModules(
+    compilation::CompilationInputManifest& manifest,
+    frontend::ProjectCompilation& compilation,
+    std::string& error);
+}
 
 namespace nativesharp::compilation
 {
@@ -47,6 +68,15 @@ public:
     const CompilationBundleLookup& bundleLookup() const noexcept;
 
 private:
+    friend bool driver::configurePrecompiledModules(
+        CompilationInputManifest& manifest,
+        frontend::ProjectCompilation& compilation,
+        std::string& error);
+
+    // Returns the exact source bytes used to calculate the manifest identity. The cache is
+    // immutable after identity calculation, so syntax workers may query it concurrently.
+    std::optional<std::string> sourceBuffer(
+        const std::filesystem::path& path) const;
     void collectGraphInputs(const ProjectGraph& graph);
     void canonicalizeInputOrder();
 
@@ -54,6 +84,8 @@ private:
     std::filesystem::path rootDirectory_;
     ProjectLoadOptions loadOptions_;
     std::vector<std::filesystem::path> inputFiles_;
+    std::unordered_set<std::string> sourceInputKeys_;
+    std::unordered_map<std::string, std::string> sourceBuffers_;
     std::vector<std::pair<std::string, std::string>> identityFields_;
     std::string identity_;
     std::string bundleProductKind_;

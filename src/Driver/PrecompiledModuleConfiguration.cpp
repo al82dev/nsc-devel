@@ -189,6 +189,11 @@ bool configurePrecompiledModules(
     {
         return false;
     }
+    compilation.setSourceBufferProvider(
+        [&manifest](const std::filesystem::path& path)
+        {
+            return manifest.sourceBuffer(path);
+        });
     compilation::CompilationBundleCache bundleCache;
     const llvm_backend::CompilationArtifactCache* const artifactCache =
         llvm_backend::activeCompilationArtifactCache();
