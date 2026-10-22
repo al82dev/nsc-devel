@@ -106,7 +106,9 @@ public:
     bool tryRestoreTemplateRecord(
         ProjectSyntaxUnit& unit,
         ast::AstNode* node,
-        ast::AstNode* parent);
+        ast::AstNode* parent,
+        std::string_view currentNamespace,
+        std::string_view ownerName);
 
     // NSC305-C01. Persists the collected template records to the C1 cache (no-op when disabled).
     void storeTemplateRecords();

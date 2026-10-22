@@ -97,7 +97,9 @@ using internal::GenericWorkProgress;
 bool ProjectGenericModel::tryRestoreTemplateRecord(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
-    ast::AstNode* parent)
+    ast::AstNode* parent,
+    std::string_view currentNamespace,
+    std::string_view ownerName)
 {
     if (!templateCache_.enabled()) return false;
     const std::string fingerprint = computeTemplateSourceFingerprint(unit, node);
@@ -108,7 +110,59 @@ bool ProjectGenericModel::tryRestoreTemplateRecord(
     if (!templateCache_.restore(key, payload, hit, error) || !hit) return false;
     GenericTemplateRecord record;
     if (!internal::deserializeTemplateRecord(payload, record)) return false;
+
+    // The payload owns reusable metadata, but these fields belong to the current syntax graph.
+    // Rebind them exactly as the cold collector does before publishing the restored state.
     record.syntax = node;
+    record.projectOrdinal = unit.projectOrdinal();
+    record.sourceOrdinal = unit.sourceOrdinal();
+    record.moduleName = std::string(unit.moduleName());
+    record.namespaceName = std::string(currentNamespace);
+    record.ownerName = std::string(ownerName);
+    record.name = node->text();
+    record.parameters = node->genericParameters();
+    record.parameterSyntaxes = node->genericParameterSyntaxes();
+    record.constraints = node->genericConstraints();
+    record.extensionSyntaxes.clear();
+    if (const auto extensions = traitImplExtensions_.find(node);
+        extensions != traitImplExtensions_.end())
+    {
+        record.extensionSyntaxes = extensions->second;
+    }
+
+    if (isGenericTypeTemplateNode(node))
+    {
+        record.kind = genericTypeTemplateKind(node);
+        record.accessibility = genericTemplateAccessibility(node, false);
+        record.qualifiedTypeName = appendOwner(record.ownerName, record.name);
+        record.canonicalKey = record.moduleName + "::" +
+            qualifiedName(record.namespaceName, record.qualifiedTypeName) +
+            "`" + genericAritySpelling(record);
+        record.specializationFamilyKey.clear();
+        record.isControlledSpecialization = false;
+        record.isControlledSpecializationFamily = false;
+    }
+    else if (isGenericMethodTemplateNode(node))
+    {
+        record.kind = GenericTemplateKind::Method;
+        record.accessibility = genericTemplateAccessibility(
+            node, node->kind() == ast::AstNodeKind::MethodDeclaration);
+        record.qualifiedTypeName = record.ownerName;
+        const std::string callableScope = record.ownerName.empty()
+            ? record.namespaceName
+            : qualifiedName(record.namespaceName, record.ownerName);
+        record.canonicalKey = record.moduleName + "::" +
+            (callableScope.empty() ? std::string{} : callableScope + ".") +
+            record.name + "``" + genericAritySpelling(record);
+        record.specializationFamilyKey = methodSpecializationFamilyKey(record, node);
+        record.isControlledSpecialization =
+            node->auxiliaryText() == "controlled-specialization";
+        record.isControlledSpecializationFamily = false;
+    }
+    else
+    {
+        return false;
+    }
     record.sourceFingerprint = fingerprint;
     record.c1CacheKey = key;
     telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));

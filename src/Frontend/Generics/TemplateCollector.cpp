@@ -186,7 +186,7 @@ void ProjectGenericModel::collectGenericTypeTemplate(
             "partial generic types are deferred beyond Stage 44; "
             "a monomorphized template must have one canonical body");
     }
-    if (tryRestoreTemplateRecord(unit, node, parent)) return;
+    if (tryRestoreTemplateRecord(unit, node, parent, currentNamespace, ownerName)) return;
     GenericTemplateRecord record;
     record.kind = genericTypeTemplateKind(node);
     record.accessibility = genericTemplateAccessibility(node, false);
@@ -235,7 +235,7 @@ void ProjectGenericModel::collectGenericMethodTemplate(
             "generic methods declared inside generic types are deliberately deferred beyond "
             "Stage 44; specialize one generic dimension at a time");
     }
-    if (tryRestoreTemplateRecord(unit, node, parent)) return;
+    if (tryRestoreTemplateRecord(unit, node, parent, currentNamespace, ownerName)) return;
     GenericTemplateRecord record;
     record.kind = GenericTemplateKind::Method;
     record.accessibility = genericTemplateAccessibility(
