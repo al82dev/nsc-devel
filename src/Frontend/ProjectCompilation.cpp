@@ -45,6 +45,10 @@ void ProjectCompilation::setTemplateCacheRoot(std::filesystem::path root)
     precompiledProductCacheRoot_ = templateCacheRoot_.empty()
         ? std::filesystem::path{}
         : templateCacheRoot_ / "precompiled-products";
+    libraryMetadataRepository_.setCacheRoot(
+        templateCacheRoot_.empty()
+            ? std::filesystem::path{}
+            : templateCacheRoot_ / "verified-nsmeta-models");
 }
 
 const std::filesystem::path& ProjectCompilation::precompiledProductCacheRoot() const noexcept

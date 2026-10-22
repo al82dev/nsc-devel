@@ -38,9 +38,11 @@ private:
     mutable std::shared_ptr<const interop::LibraryMetadata> decodedMetadata_;
     mutable std::string decodeError_;
     mutable std::string verificationError_;
+    mutable std::string persistentCacheKey_;
     mutable bool loadAttempted_ = false;
     mutable bool decodeAttempted_ = false;
     mutable bool verificationAttempted_ = false;
     mutable bool verified_ = false;
+    mutable bool restoredVerified_ = false;
 };
 }

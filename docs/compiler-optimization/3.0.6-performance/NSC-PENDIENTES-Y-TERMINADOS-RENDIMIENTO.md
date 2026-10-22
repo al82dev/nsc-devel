@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `26 / 48`
+**Progreso:** `27 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -30,7 +30,7 @@
 | T4.3 | Decodificar una sola vez cada payload NSMETA | TERMINADO |
 | T4.4 | Ejecutar una sola vez `verifyCurrentCompiler` por identidad NSMETA | TERMINADO |
 | T4.5 | Compartir el mismo modelo NSMETA entre todos sus consumidores | TERMINADO |
-| T4.6 | Persistir y restaurar el modelo NSMETA verificado | PENDIENTE |
+| T4.6 | Persistir y restaurar el modelo NSMETA verificado | TERMINADO |
 | T4.7 | Invalidar NSMETA por contenido o contrato sin cambiar diagnósticos | PENDIENTE |
 | T5.1 | Asignar un propietario único a los índices reutilizables | PENDIENTE |
 | T5.2 | Compartir el índice de tipos por identidad, nombre y ordinal | PENDIENTE |

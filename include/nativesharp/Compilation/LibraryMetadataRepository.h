@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Compilation/LibraryMetadataRepositoryEntry.h"
+#include "nativesharp/Compilation/VerifiedLibraryMetadataCache.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -23,6 +24,7 @@ public:
         const interop::LibraryMetadata&,
         std::string&)>;
 
+    void setCacheRoot(std::filesystem::path root);
     LibraryMetadataRepositoryEntry& entryFor(const std::filesystem::path& path);
     const LibraryMetadataRepositoryEntry* load(
         const std::filesystem::path& path,
@@ -42,6 +44,7 @@ private:
     static std::filesystem::path canonicalPath(const std::filesystem::path& path);
     static std::string pathKey(const std::filesystem::path& path);
 
+    VerifiedLibraryMetadataCache verifiedCache_;
     mutable std::unordered_map<std::string, std::unique_ptr<LibraryMetadataRepositoryEntry>> entries_;
 };
 }

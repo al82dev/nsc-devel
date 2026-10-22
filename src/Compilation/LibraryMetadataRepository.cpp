@@ -1,4 +1,6 @@
 #include "nativesharp/Compilation/LibraryMetadataRepository.h"
+#include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Basic/Version.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 
 #include <algorithm>
@@ -7,6 +9,27 @@
 
 namespace nativesharp::compilation
 {
+namespace
+{
+std::string verifiedCacheKey(const LibraryMetadataRepositoryEntry& entry)
+{
+    std::string material = "nsc-verified-nsmeta-model-v1\n";
+    material += kCompilerBuildId;
+    material.push_back('\n');
+    material += std::to_string(entry.bytes().size());
+    material.push_back('\n');
+    material += basic::sha256Hex(entry.contentDigest());
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+}
+
+void LibraryMetadataRepository::setCacheRoot(std::filesystem::path root)
+{
+    verifiedCache_.setRoot(std::move(root));
+}
+
 LibraryMetadataRepositoryEntry& LibraryMetadataRepository::entryFor(
     const std::filesystem::path& path)
 {
@@ -47,8 +70,21 @@ std::shared_ptr<const interop::LibraryMetadata> LibraryMetadataRepository::decod
         return entry->decodedMetadata_;
     }
     entry->decodeAttempted_ = true;
+    entry->persistentCacheKey_ = verifiedCacheKey(*entry);
+    std::vector<std::uint8_t> restoredBytes;
+    bool restored = false;
+    std::string ignoredCacheError;
+    if (verifiedCache_.restore(
+            entry->persistentCacheKey_, restoredBytes, restored, ignoredCacheError) &&
+        restored && restoredBytes.size() == entry->bytes().size() &&
+        basic::sha256(restoredBytes) == entry->contentDigest())
+    {
+        entry->restoredVerified_ = true;
+    }
+    const std::span<const std::uint8_t> decodeBytes =
+        entry->restoredVerified_ ? std::span<const std::uint8_t>(restoredBytes) : entry->bytes();
     interop::LibraryMetadata metadata;
-    if (!decoder(entry->bytes(), metadata, error))
+    if (!decoder(decodeBytes, metadata, error))
     {
         entry->decodeError_ = error;
         return {};
@@ -76,8 +112,21 @@ bool LibraryMetadataRepository::verify(
         return entry->verified_;
     }
     entry->verificationAttempted_ = true;
+    if (entry->restoredVerified_)
+    {
+        entry->verified_ = true;
+        entry->verificationError_.clear();
+        error.clear();
+        return true;
+    }
     entry->verified_ = verifier(*entry->decodedMetadata_, error);
     entry->verificationError_ = error;
+    if (entry->verified_)
+    {
+        std::string ignoredCacheError;
+        (void)verifiedCache_.store(
+            entry->persistentCacheKey_, entry->bytes(), ignoredCacheError);
+    }
     return entry->verified_;
 }
 
