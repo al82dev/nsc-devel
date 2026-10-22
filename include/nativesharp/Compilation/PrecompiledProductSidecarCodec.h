@@ -22,6 +22,13 @@ public:
         std::span<const std::uint8_t> metadataBytes,
         std::string& error);
 
+    // Reads one sidecar and validates its checksum, compiler build-id and exact NSMETA identity.
+    static bool read(
+        const std::filesystem::path& sidecarPath,
+        std::span<const std::uint8_t> metadataBytes,
+        PrecompiledProductSidecar& sidecar,
+        std::string& error);
+
     static std::string encode(
         const PrecompiledProductSidecar& sidecar,
         std::span<const std::uint8_t> metadataBytes);

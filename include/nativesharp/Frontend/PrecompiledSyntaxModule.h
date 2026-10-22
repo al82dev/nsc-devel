@@ -18,6 +18,8 @@ struct PrecompiledSyntaxModule final
     std::string productCacheKey;
     std::string sourceText;
     std::string templateSourceText;
+    std::string publicApiSyntaxProduct;
+    std::string publicTemplateSyntaxProduct;
     std::vector<PrecompiledMemberIdentity> members;
     std::vector<PrecompiledNamespaceFunctionIdentity> namespaceFunctions;
     std::vector<PrecompiledGenericSpecialization> genericSpecializations;

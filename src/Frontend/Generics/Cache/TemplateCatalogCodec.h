@@ -4,6 +4,7 @@
 #include "../../Internal/MirCacheRecord.h"
 #include "nativesharp/AST/AstArena.h"
 #include "nativesharp/AST/AstNode.h"
+#include "nativesharp/Basic/FileId.h"
 #include "nativesharp/Frontend/GenericTemplateRecord.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 
@@ -19,6 +20,11 @@ std::string templateCacheKey(std::string_view sourceFingerprint);
 bool deserializeTemplateRecord(std::string_view bytes, GenericTemplateRecord& record);
 std::string serializeAstNodeTree(const ast::AstNode* node);
 ast::AstNode* deserializeAstNodeTree(ast::AstArena& arena, CachePayloadReader& reader);
+// Preserves offsets and invalid sentinels while rebinding valid ranges to a consumer FileId.
+ast::AstNode* deserializeAstNodeTree(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    FileId relocatedFileId);
 std::string serializeCatalogEntry(const GenericTemplateRecord& record);
 bool restoreCatalogEntry(
     ast::AstArena& arena,

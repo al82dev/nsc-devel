@@ -23,7 +23,10 @@ void writeSourceRange(std::string& out, SourceRange range)
     CachePayloadWriter::u32(out, range.end().offset());
 }
 
-bool readSourceRange(CachePayloadReader& reader, SourceRange& range)
+bool readSourceRange(
+    CachePayloadReader& reader,
+    SourceRange& range,
+    FileId relocatedFileId)
 {
     std::uint32_t beginFile = 0;
     std::uint32_t beginOffset = 0;
@@ -34,9 +37,20 @@ bool readSourceRange(CachePayloadReader& reader, SourceRange& range)
     {
         return false;
     }
+    FileId beginFileId{beginFile};
+    FileId endFileId{endFile};
+    if (relocatedFileId.isValid() && (beginFileId.isValid() || endFileId.isValid()))
+    {
+        if (!beginFileId.isValid() || !endFileId.isValid() || beginFileId != endFileId)
+        {
+            return false;
+        }
+        beginFileId = relocatedFileId;
+        endFileId = relocatedFileId;
+    }
     range = SourceRange{
-        SourceLocation{FileId{beginFile}, beginOffset},
-        SourceLocation{FileId{endFile}, endOffset}};
+        SourceLocation{beginFileId, beginOffset},
+        SourceLocation{endFileId, endOffset}};
     return true;
 }
 
@@ -108,13 +122,14 @@ bool deserializeTokenValue(CachePayloadReader& reader, lexer::TokenValue& value)
 bool deserializeToken(
     CachePayloadReader& reader,
     const source::SourceFile& sourceFile,
+    FileId relocatedFileId,
     lexer::Token& token)
 {
     std::uint32_t kind = 0;
     SourceRange range;
     std::string storedLexeme;
     lexer::TokenValue value;
-    if (!reader.u32(kind) || !readSourceRange(reader, range) ||
+    if (!reader.u32(kind) || !readSourceRange(reader, range, relocatedFileId) ||
         !reader.string(storedLexeme) || !deserializeTokenValue(reader, value))
     {
         return false;
@@ -131,6 +146,45 @@ bool deserializeToken(
         range.end().offset() - range.begin().offset());
     if (lexeme != storedLexeme) return false;
     token = lexer::Token(static_cast<lexer::TokenKind>(kind), range, lexeme, std::move(value));
+    return true;
+}
+
+// Restores the same payload in exact-cache mode or relocates every valid range for publication.
+bool deserializeSyntaxProductUnitImpl(
+    const source::SourceFile& sourceFile,
+    std::string_view payload,
+    FileId relocatedFileId,
+    std::vector<lexer::Token>& tokens,
+    std::unique_ptr<ast::AstArena>& arena,
+    ast::AstNode*& syntaxTree)
+{
+    CachePayloadReader reader(payload);
+    std::string schema;
+    std::uint32_t tokenCount = 0;
+    if (!reader.string(schema) || schema != syntaxUnitPayloadSchema ||
+        !reader.u32(tokenCount) || tokenCount > sourceFile.buffer().size() + 1U)
+    {
+        return false;
+    }
+    std::vector<lexer::Token> restoredTokens;
+    restoredTokens.reserve(tokenCount);
+    for (std::uint32_t index = 0; index < tokenCount; ++index)
+    {
+        lexer::Token token(lexer::TokenKind::Invalid, SourceRange{}, {});
+        if (!deserializeToken(reader, sourceFile, relocatedFileId, token)) return false;
+        restoredTokens.push_back(std::move(token));
+    }
+    std::string treePayload;
+    if (!reader.string(treePayload) || !reader.remaining().empty()) return false;
+    auto restoredArena = std::make_unique<ast::AstArena>();
+    CachePayloadReader treeReader(treePayload);
+    ast::AstNode* restoredTree = relocatedFileId.isValid()
+        ? deserializeAstNodeTree(*restoredArena, treeReader, relocatedFileId)
+        : deserializeAstNodeTree(*restoredArena, treeReader);
+    if (restoredTree == nullptr || !treeReader.remaining().empty()) return false;
+    tokens = std::move(restoredTokens);
+    arena = std::move(restoredArena);
+    syntaxTree = restoredTree;
     return true;
 }
 }
@@ -162,31 +216,18 @@ bool deserializeSyntaxProductUnit(
     std::unique_ptr<ast::AstArena>& arena,
     ast::AstNode*& syntaxTree)
 {
-    CachePayloadReader reader(payload);
-    std::string schema;
-    std::uint32_t tokenCount = 0;
-    if (!reader.string(schema) || schema != syntaxUnitPayloadSchema ||
-        !reader.u32(tokenCount) || tokenCount > sourceFile.buffer().size() + 1U)
-    {
-        return false;
-    }
-    std::vector<lexer::Token> restoredTokens;
-    restoredTokens.reserve(tokenCount);
-    for (std::uint32_t index = 0; index < tokenCount; ++index)
-    {
-        lexer::Token token(lexer::TokenKind::Invalid, SourceRange{}, {});
-        if (!deserializeToken(reader, sourceFile, token)) return false;
-        restoredTokens.push_back(std::move(token));
-    }
-    std::string treePayload;
-    if (!reader.string(treePayload) || !reader.remaining().empty()) return false;
-    auto restoredArena = std::make_unique<ast::AstArena>();
-    CachePayloadReader treeReader(treePayload);
-    ast::AstNode* restoredTree = deserializeAstNodeTree(*restoredArena, treeReader);
-    if (restoredTree == nullptr || !treeReader.remaining().empty()) return false;
-    tokens = std::move(restoredTokens);
-    arena = std::move(restoredArena);
-    syntaxTree = restoredTree;
-    return true;
+    return deserializeSyntaxProductUnitImpl(
+        sourceFile, payload, FileId{}, tokens, arena, syntaxTree);
+}
+
+bool deserializeRelocatableSyntaxProductUnit(
+    const source::SourceFile& sourceFile,
+    std::string_view payload,
+    std::vector<lexer::Token>& tokens,
+    std::unique_ptr<ast::AstArena>& arena,
+    ast::AstNode*& syntaxTree)
+{
+    return deserializeSyntaxProductUnitImpl(
+        sourceFile, payload, sourceFile.id(), tokens, arena, syntaxTree);
 }
 }

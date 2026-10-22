@@ -165,7 +165,13 @@ private:
         std::size_t sourceOrdinal,
         std::string_view displaySuffix,
         const std::string& sourceText,
+        std::string_view publishedSyntaxProduct,
         bool isPrecompiled,
+        std::string_view productName,
+        std::string& loadError);
+    bool restorePublishedPrecompiledSyntaxUnit(
+        ProjectSyntaxUnit& unit,
+        std::string_view payload,
         std::string_view productName,
         std::string& loadError);
     bool restorePrecompiledSyntaxUnit(

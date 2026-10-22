@@ -13,6 +13,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 namespace nativesharp::frontend::internal
@@ -55,7 +56,10 @@ static void writeSourceRange(std::string& out, SourceRange range)
 
 // Reads the exact SourceRange representation emitted by writeSourceRange. Invalid source ranges
 // remain representable because parser nodes can use them as explicit absence sentinels.
-static bool readSourceRange(CachePayloadReader& reader, SourceRange& range)
+static bool readSourceRange(
+    CachePayloadReader& reader,
+    SourceRange& range,
+    std::optional<FileId> relocatedFileId = std::nullopt)
 {
     std::uint32_t beginFile = 0;
     std::uint32_t beginOffset = 0;
@@ -66,9 +70,20 @@ static bool readSourceRange(CachePayloadReader& reader, SourceRange& range)
     {
         return false;
     }
+    FileId beginFileId{beginFile};
+    FileId endFileId{endFile};
+    if (relocatedFileId.has_value() && (beginFileId.isValid() || endFileId.isValid()))
+    {
+        if (!beginFileId.isValid() || !endFileId.isValid() || beginFileId != endFileId)
+        {
+            return false;
+        }
+        beginFileId = *relocatedFileId;
+        endFileId = *relocatedFileId;
+    }
     range = SourceRange{
-        SourceLocation{FileId{beginFile}, beginOffset},
-        SourceLocation{FileId{endFile}, endOffset}};
+        SourceLocation{beginFileId, beginOffset},
+        SourceLocation{endFileId, endOffset}};
     return true;
 }
 
@@ -191,9 +206,10 @@ static bool readTypeSyntaxHeader(
     CachePayloadReader& reader,
     SourceRange& range,
     std::uint32_t& tokenKind,
-    std::string& baseName)
+    std::string& baseName,
+    std::optional<FileId> relocatedFileId = std::nullopt)
 {
-    return readSourceRange(reader, range) && reader.u32(tokenKind) &&
+    return readSourceRange(reader, range, relocatedFileId) && reader.u32(tokenKind) &&
         reader.string(baseName);
 }
 
@@ -382,20 +398,29 @@ static void applyTypeSyntaxOrigin(
 }
 
 // NSC305-C01. Recursive deserialization of a complete TypeSyntax tree into `arena`.
-static ast::TypeSyntax* deserializeTypeSyntaxTree(ast::AstArena& arena, CachePayloadReader& reader);
+static ast::AstNode* deserializeAstNodeTreeImpl(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    std::optional<FileId> relocatedFileId);
+static ast::TypeSyntax* deserializeTypeSyntaxTree(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    std::optional<FileId> relocatedFileId);
 
 static bool deserializeTypeSyntaxArguments(
     ast::AstArena& arena,
     CachePayloadReader& reader,
     ast::TypeSyntax& type,
     bool tuple,
-    const std::vector<std::string>& tupleNames)
+    const std::vector<std::string>& tupleNames,
+    std::optional<FileId> relocatedFileId)
 {
     std::uint32_t argumentCount = 0;
     if (!reader.u32(argumentCount)) return false;
     for (std::uint32_t index = 0; index < argumentCount; ++index)
     {
-        ast::TypeSyntax* argument = deserializeTypeSyntaxTree(arena, reader);
+        ast::TypeSyntax* argument = deserializeTypeSyntaxTree(
+            arena, reader, relocatedFileId);
         if (argument == nullptr) return false;
         if (tuple && index < tupleNames.size())
             type.addTupleElement(argument, tupleNames[index]);
@@ -408,19 +433,22 @@ static bool deserializeTypeSyntaxArguments(
 static bool deserializeTypeSyntaxFunctionTypes(
     ast::AstArena& arena,
     CachePayloadReader& reader,
-    ast::TypeSyntax& type)
+    ast::TypeSyntax& type,
+    std::optional<FileId> relocatedFileId)
 {
     std::uint8_t hasReturn = 0, hasError = 0;
     if (!reader.byte(hasReturn) || !reader.byte(hasError)) return false;
     if (hasReturn != 0U)
     {
-        ast::TypeSyntax* returnType = deserializeTypeSyntaxTree(arena, reader);
+        ast::TypeSyntax* returnType = deserializeTypeSyntaxTree(
+            arena, reader, relocatedFileId);
         if (returnType == nullptr) return false;
         type.setFunctionReturnType(returnType);
     }
     if (hasError != 0U)
     {
-        ast::TypeSyntax* errorType = deserializeTypeSyntaxTree(arena, reader);
+        ast::TypeSyntax* errorType = deserializeTypeSyntaxTree(
+            arena, reader, relocatedFileId);
         if (errorType == nullptr) return false;
         type.setFunctionErrorType(errorType);
     }
@@ -432,7 +460,8 @@ static bool deserializeTypeSyntaxFunctionTypes(
 static bool deserializeTypeSyntaxModifiers(
     ast::AstArena& arena,
     CachePayloadReader& reader,
-    ast::TypeSyntax& type)
+    ast::TypeSyntax& type,
+    std::optional<FileId> relocatedFileId)
 {
     std::uint32_t modifierCount = 0;
     if (!reader.u32(modifierCount)) return false;
@@ -446,7 +475,8 @@ static bool deserializeTypeSyntaxModifiers(
         std::uint64_t arrayRank = 0;
         std::uint64_t alignment = 0;
         std::uint32_t addressSpace = 0;
-        if (!reader.byte(kind) || !readSourceRange(reader, modifier.range) ||
+        if (!reader.byte(kind) ||
+            !readSourceRange(reader, modifier.range, relocatedFileId) ||
             !reader.u64(arrayRank) || !reader.byte(nullability) ||
             !reader.byte(provenance) || !reader.u64(alignment) ||
             !reader.u32(addressSpace) || !reader.byte(hasArrayCount))
@@ -462,7 +492,8 @@ static bool deserializeTypeSyntaxModifiers(
         modifier.pointerAddressSpace = addressSpace;
         if (hasArrayCount != 0U)
         {
-            modifier.arrayCount = deserializeAstNodeTree(arena, reader);
+            modifier.arrayCount = deserializeAstNodeTreeImpl(
+                arena, reader, relocatedFileId);
             if (modifier.arrayCount == nullptr) return false;
         }
         type.addModifier(modifier);
@@ -475,24 +506,28 @@ static bool deserializeTypeSyntaxModifiers(
 static bool deserializeTypeSyntaxConstExpression(
     ast::AstArena& arena,
     CachePayloadReader& reader,
-    ast::TypeSyntax& type)
+    ast::TypeSyntax& type,
+    std::optional<FileId> relocatedFileId)
 {
     std::uint8_t hasConstExpression = 0;
     if (!reader.byte(hasConstExpression)) return false;
     if (hasConstExpression == 0U) return true;
-    ast::AstNode* expression = deserializeAstNodeTree(arena, reader);
+    ast::AstNode* expression = deserializeAstNodeTreeImpl(
+        arena, reader, relocatedFileId);
     if (expression == nullptr) return false;
     type.setConstExpression(expression);
     return true;
 }
 
 [[maybe_unused]] static ast::TypeSyntax* deserializeTypeSyntaxTree(
-    ast::AstArena& arena, CachePayloadReader& reader)
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    std::optional<FileId> relocatedFileId)
 {
     SourceRange range;
     std::uint32_t tokenKind = 0;
     std::string baseName;
-    if (!readTypeSyntaxHeader(reader, range, tokenKind, baseName))
+    if (!readTypeSyntaxHeader(reader, range, tokenKind, baseName, relocatedFileId))
         return nullptr;
     ast::TypeSyntax* type = arena.make<ast::TypeSyntax>(
         range,
@@ -518,10 +553,11 @@ static bool deserializeTypeSyntaxConstExpression(
     applyTypeSyntaxFunction(*type, carrier, convention, variadic, unsafe, noHeap, async, nullable,
         std::move(functionLifetimeName));
     applyTypeSyntaxOrigin(*type, hasProject, project, hasNamespace, std::move(originNamespace));
-    if (!deserializeTypeSyntaxArguments(arena, reader, *type, tuple != 0U, tupleNames) ||
-        !deserializeTypeSyntaxFunctionTypes(arena, reader, *type) ||
-        !deserializeTypeSyntaxModifiers(arena, reader, *type) ||
-        !deserializeTypeSyntaxConstExpression(arena, reader, *type))
+    if (!deserializeTypeSyntaxArguments(
+            arena, reader, *type, tuple != 0U, tupleNames, relocatedFileId) ||
+        !deserializeTypeSyntaxFunctionTypes(arena, reader, *type, relocatedFileId) ||
+        !deserializeTypeSyntaxModifiers(arena, reader, *type, relocatedFileId) ||
+        !deserializeTypeSyntaxConstExpression(arena, reader, *type, relocatedFileId))
         return nullptr;
     return type;
 }
@@ -558,11 +594,17 @@ static bool deserializeTypeSyntaxConstExpression(
 
 // NSC305-C01. Inverse of serializeAstNodeScalars (allocates the node into `arena`).
 [[maybe_unused]] ast::AstNode* deserializeAstNodeScalars(
-    ast::AstArena& arena, CachePayloadReader& reader)
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    std::optional<FileId> relocatedFileId)
 {
     std::uint32_t kind = 0;
     SourceRange range;
-    if (!reader.u32(kind) || !readSourceRange(reader, range)) return nullptr;
+    if (!reader.u32(kind) ||
+        !readSourceRange(reader, range, relocatedFileId))
+    {
+        return nullptr;
+    }
     ast::AstNode* node = arena.make<ast::AstNode>(
         static_cast<ast::AstNodeKind>(kind),
         range);
@@ -620,11 +662,13 @@ static std::string serializeGenericConstraint(const ast::GenericConstraintClause
 static bool deserializeGenericParameter(
     ast::AstArena& arena,
     CachePayloadReader& reader,
-    ast::GenericParameterSyntax& parameter);
+    ast::GenericParameterSyntax& parameter,
+    std::optional<FileId> relocatedFileId);
 static bool deserializeGenericConstraint(
     ast::AstArena& arena,
     CachePayloadReader& reader,
-    ast::GenericConstraintClause& clause);
+    ast::GenericConstraintClause& clause,
+    std::optional<FileId> relocatedFileId);
 
 // Serializes declaration metadata that is neither a child node nor a TypeSyntax slot. These lists
 // preserve source order because generic binding and lifetime diagnostics observe that order.
@@ -663,14 +707,19 @@ static void serializeAstNodeDeclarationMetadata(std::string& out, const ast::Ast
 static bool deserializeAstNodeDeclarationMetadata(
     ast::AstArena& arena,
     CachePayloadReader& reader,
-    ast::AstNode& node)
+    ast::AstNode& node,
+    std::optional<FileId> relocatedFileId)
 {
     std::uint32_t genericParameterCount = 0;
     if (!reader.u32(genericParameterCount)) return false;
     for (std::uint32_t index = 0; index < genericParameterCount; ++index)
     {
         ast::GenericParameterSyntax parameter;
-        if (!deserializeGenericParameter(arena, reader, parameter)) return false;
+        if (!deserializeGenericParameter(
+                arena, reader, parameter, relocatedFileId))
+        {
+            return false;
+        }
         node.addGenericParameter(std::move(parameter));
     }
     std::uint32_t lifetimeParameterCount = 0;
@@ -679,7 +728,7 @@ static bool deserializeAstNodeDeclarationMetadata(
     {
         ast::LifetimeParameterSyntax parameter;
         if (!reader.string(parameter.name) ||
-            !readSourceRange(reader, parameter.range))
+            !readSourceRange(reader, parameter.range, relocatedFileId))
         {
             return false;
         }
@@ -691,7 +740,7 @@ static bool deserializeAstNodeDeclarationMetadata(
     {
         ast::LifetimeOutlivesConstraint constraint;
         if (!reader.string(constraint.longer) || !reader.string(constraint.shorter) ||
-            !readSourceRange(reader, constraint.range))
+            !readSourceRange(reader, constraint.range, relocatedFileId))
         {
             return false;
         }
@@ -702,7 +751,11 @@ static bool deserializeAstNodeDeclarationMetadata(
     for (std::uint32_t index = 0; index < genericConstraintCount; ++index)
     {
         ast::GenericConstraintClause constraint;
-        if (!deserializeGenericConstraint(arena, reader, constraint)) return false;
+        if (!deserializeGenericConstraint(
+                arena, reader, constraint, relocatedFileId))
+        {
+            return false;
+        }
         node.addGenericConstraint(std::move(constraint));
     }
     return true;
@@ -740,23 +793,28 @@ static bool deserializeAstNodeDeclarationMetadata(
 }
 
 // NSC305-C01. Inverse of serializeAstNodeTree (allocates the tree into `arena`).
-[[maybe_unused]] ast::AstNode* deserializeAstNodeTree(
-    ast::AstArena& arena, CachePayloadReader& reader)
+static ast::AstNode* deserializeAstNodeTreeImpl(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    std::optional<FileId> relocatedFileId)
 {
-    ast::AstNode* node = deserializeAstNodeScalars(arena, reader);
+    ast::AstNode* node = deserializeAstNodeScalars(
+        arena, reader, relocatedFileId);
     if (node == nullptr) return nullptr;
     std::uint8_t hasTypeSyntax = 0;
     std::uint8_t hasThrows = 0;
     if (!reader.byte(hasTypeSyntax) || !reader.byte(hasThrows)) return nullptr;
     if (hasTypeSyntax != 0U)
     {
-        ast::TypeSyntax* type = deserializeTypeSyntaxTree(arena, reader);
+        ast::TypeSyntax* type = deserializeTypeSyntaxTree(
+            arena, reader, relocatedFileId);
         if (type == nullptr) return nullptr;
         node->setTypeSyntax(type);
     }
     if (hasThrows != 0U)
     {
-        ast::TypeSyntax* type = deserializeTypeSyntaxTree(arena, reader);
+        ast::TypeSyntax* type = deserializeTypeSyntaxTree(
+            arena, reader, relocatedFileId);
         if (type == nullptr) return nullptr;
         node->setThrowsTypeSyntax(type);
     }
@@ -764,30 +822,38 @@ static bool deserializeAstNodeDeclarationMetadata(
     if (!reader.u32(typeSyntaxCount)) return nullptr;
     for (std::uint32_t index = 0; index < typeSyntaxCount; ++index)
     {
-        ast::TypeSyntax* type = deserializeTypeSyntaxTree(arena, reader);
+        ast::TypeSyntax* type = deserializeTypeSyntaxTree(
+            arena, reader, relocatedFileId);
         if (type == nullptr) return nullptr;
         node->addTypeSyntax(type);
     }
-    if (!deserializeAstNodeDeclarationMetadata(arena, reader, *node)) return nullptr;
+    if (!deserializeAstNodeDeclarationMetadata(
+            arena, reader, *node, relocatedFileId))
+    {
+        return nullptr;
+    }
     std::uint8_t hasFirst = 0;
     std::uint8_t hasSecond = 0;
     std::uint8_t hasThird = 0;
     if (!reader.byte(hasFirst) || !reader.byte(hasSecond) || !reader.byte(hasThird)) return nullptr;
     if (hasFirst != 0U)
     {
-        ast::AstNode* child = deserializeAstNodeTree(arena, reader);
+        ast::AstNode* child = deserializeAstNodeTreeImpl(
+            arena, reader, relocatedFileId);
         if (child == nullptr) return nullptr;
         node->setFirst(child);
     }
     if (hasSecond != 0U)
     {
-        ast::AstNode* child = deserializeAstNodeTree(arena, reader);
+        ast::AstNode* child = deserializeAstNodeTreeImpl(
+            arena, reader, relocatedFileId);
         if (child == nullptr) return nullptr;
         node->setSecond(child);
     }
     if (hasThird != 0U)
     {
-        ast::AstNode* child = deserializeAstNodeTree(arena, reader);
+        ast::AstNode* child = deserializeAstNodeTreeImpl(
+            arena, reader, relocatedFileId);
         if (child == nullptr) return nullptr;
         node->setThird(child);
     }
@@ -795,11 +861,26 @@ static bool deserializeAstNodeDeclarationMetadata(
     if (!reader.u32(childCount)) return nullptr;
     for (std::uint32_t index = 0; index < childCount; ++index)
     {
-        ast::AstNode* child = deserializeAstNodeTree(arena, reader);
+        ast::AstNode* child = deserializeAstNodeTreeImpl(
+            arena, reader, relocatedFileId);
         if (child == nullptr) return nullptr;
         node->addChild(child);
     }
     return node;
+}
+
+ast::AstNode* deserializeAstNodeTree(
+    ast::AstArena& arena, CachePayloadReader& reader)
+{
+    return deserializeAstNodeTreeImpl(arena, reader, std::nullopt);
+}
+
+ast::AstNode* deserializeAstNodeTree(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    FileId relocatedFileId)
+{
+    return deserializeAstNodeTreeImpl(arena, reader, relocatedFileId);
 }
 
 // NSC305-C01. GenericParameterSyntax + LifetimeParameterSyntax + LifetimeOutlivesConstraint (no
@@ -851,7 +932,10 @@ static bool deserializeAstNodeDeclarationMetadata(
 
 // NSC305-C01. Inverse of serializeGenericParameter (allocates the constantType into `arena`).
 [[maybe_unused]] static bool deserializeGenericParameter(
-    ast::AstArena& arena, CachePayloadReader& reader, ast::GenericParameterSyntax& parameter)
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    ast::GenericParameterSyntax& parameter,
+    std::optional<FileId> relocatedFileId)
 {
     std::uint8_t kind = 0;
     std::uint8_t hasConstantType = 0;
@@ -861,17 +945,21 @@ static bool deserializeAstNodeDeclarationMetadata(
     parameter.kind = static_cast<ast::GenericParameterSyntaxKind>(kind);
     if (hasConstantType != 0U)
     {
-        parameter.constantType = deserializeTypeSyntaxTree(arena, reader);
+        parameter.constantType = deserializeTypeSyntaxTree(
+            arena, reader, relocatedFileId);
         if (parameter.constantType == nullptr) return false;
     }
-    if (!readSourceRange(reader, range)) return false;
+    if (!readSourceRange(reader, range, relocatedFileId)) return false;
     parameter.range = range;
     return true;
 }
 
 // NSC305-C01. Inverse of serializeGenericConstraint (allocates TypeSyntax references into `arena`).
 [[maybe_unused]] static bool deserializeGenericConstraint(
-    ast::AstArena& arena, CachePayloadReader& reader, ast::GenericConstraintClause& clause)
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    ast::GenericConstraintClause& clause,
+    std::optional<FileId> relocatedFileId)
 {
     std::uint8_t requiresClass = 0;
     std::uint8_t requiresValueType = 0;
@@ -888,7 +976,8 @@ static bool deserializeAstNodeDeclarationMetadata(
     SourceRange parameterRange;
     SourceRange clauseRange;
     std::uint32_t constraintCount = 0;
-    if (!reader.string(clause.parameterName) || !readSourceRange(reader, parameterRange) ||
+    if (!reader.string(clause.parameterName) ||
+        !readSourceRange(reader, parameterRange, relocatedFileId) ||
         !reader.byte(requiresClass) ||
         !reader.byte(requiresValueType) || !reader.byte(requiresDefaultConstructor) ||
         !reader.byte(requiresCopy) || !reader.byte(requiresMove) ||
@@ -908,29 +997,34 @@ static bool deserializeAstNodeDeclarationMetadata(
     clause.requiresRefLike = requiresRefLike != 0U;
     if (hasEquality != 0U)
     {
-        clause.equalityConstraint = deserializeTypeSyntaxTree(arena, reader);
+        clause.equalityConstraint = deserializeTypeSyntaxTree(
+            arena, reader, relocatedFileId);
         if (clause.equalityConstraint == nullptr) return false;
     }
     if (!reader.byte(hasProjection)) return false;
     if (hasProjection != 0U)
     {
-        clause.associatedProjection = deserializeTypeSyntaxTree(arena, reader);
+        clause.associatedProjection = deserializeTypeSyntaxTree(
+            arena, reader, relocatedFileId);
         if (clause.associatedProjection == nullptr) return false;
     }
     if (!reader.u32(constraintCount)) return false;
     clause.typeConstraints.clear();
     for (std::uint32_t index = 0; index < constraintCount; ++index)
     {
-        ast::TypeSyntax* constraint = deserializeTypeSyntaxTree(arena, reader);
+        ast::TypeSyntax* constraint = deserializeTypeSyntaxTree(
+            arena, reader, relocatedFileId);
         if (constraint == nullptr) return false;
         clause.typeConstraints.push_back(constraint);
     }
-    if (!readSourceRange(reader, clauseRange) || !reader.byte(hasSubstituted))
+    if (!readSourceRange(reader, clauseRange, relocatedFileId) ||
+        !reader.byte(hasSubstituted))
         return false;
     clause.range = clauseRange;
     if (hasSubstituted != 0U)
     {
-        clause.substitutedArgument = deserializeTypeSyntaxTree(arena, reader);
+        clause.substitutedArgument = deserializeTypeSyntaxTree(
+            arena, reader, relocatedFileId);
         if (clause.substitutedArgument == nullptr) return false;
     }
     return true;

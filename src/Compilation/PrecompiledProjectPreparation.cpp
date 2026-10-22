@@ -3,11 +3,13 @@
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Compilation/PrecompiledProductCache.h"
+#include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 
 #include "../Driver/Internal/DriverInternal.h"
 
 #include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -97,6 +99,80 @@ void storePrecompiledSourceProducts(
     std::string ignoredError;
     (void)cache.store(
         cacheKey, publicSource, templateSource, ignoredError);
+}
+
+// A present sidecar is accepted only after binding it to the already loaded NSMETA bytes.
+bool readPublishedPrecompiledProducts(
+    const LoadedMetadata& entry,
+    const LibraryMetadataRepository& repository,
+    std::optional<PrecompiledProductSidecar>& products,
+    std::string& error)
+{
+    products.reset();
+    if (entry.productSidecarPath.empty()) return true;
+    const LibraryMetadataRepositoryEntry* metadataFile =
+        repository.load(entry.metadataPath, error);
+    if (metadataFile == nullptr) return false;
+    PrecompiledProductSidecar decoded;
+    if (!PrecompiledProductSidecarCodec::read(
+            entry.productSidecarPath, metadataFile->bytes(), decoded, error))
+    {
+        error = "cannot restore precompiled products for module '" +
+            entry.metadata->moduleName + "': " + error;
+        return false;
+    }
+    products = std::move(decoded);
+    return true;
+}
+
+// Selects published products before any local cache lookup or metadata-to-source reconstruction.
+bool materializeModuleProducts(
+    const LoadedMetadata& entry,
+    const LibraryMetadataRepository& repository,
+    const std::filesystem::path& cacheRoot,
+    std::string_view productCacheKey,
+    std::string& publicSource,
+    std::string& templateSource,
+    std::string& publicSyntax,
+    std::string& templateSyntax,
+    std::string& error)
+{
+    std::optional<PrecompiledProductSidecar> publishedProducts;
+    if (!readPublishedPrecompiledProducts(
+            entry, repository, publishedProducts, error))
+    {
+        return false;
+    }
+    if (publishedProducts.has_value())
+    {
+        publicSource = std::move(publishedProducts->publicApiSource);
+        templateSource = std::move(publishedProducts->publicTemplateSource);
+        publicSyntax = std::move(publishedProducts->publicApiSyntax);
+        templateSyntax = std::move(publishedProducts->publicTemplateSyntax);
+        return true;
+    }
+    if (restorePrecompiledSourceProducts(
+            cacheRoot, productCacheKey, publicSource, templateSource))
+    {
+        return true;
+    }
+    const interop::LibraryMetadata& metadata = *entry.metadata;
+    if (!driver::buildPrecompiledPublicSource(metadata, publicSource, error))
+    {
+        error = "cannot materialize public API for module '" +
+            metadata.moduleName + "': " + error;
+        return false;
+    }
+    if (!driver::buildPrecompiledGenericTemplateSource(
+            metadata, templateSource, error))
+    {
+        error = "cannot materialize public templates for module '" +
+            metadata.moduleName + "': " + error;
+        return false;
+    }
+    storePrecompiledSourceProducts(
+        cacheRoot, productCacheKey, publicSource, templateSource);
+    return true;
 }
 
 std::vector<frontend::PrecompiledMemberIdentity> memberIdentities(
@@ -202,24 +278,20 @@ bool materializeModules(
         const std::string productCacheKey = precompiledProductCacheKey(entry, repository);
         std::string publicSource;
         std::string templateSource;
-        if (!restorePrecompiledSourceProducts(
-                cacheRoot, productCacheKey, publicSource, templateSource))
+        std::string publicSyntax;
+        std::string templateSyntax;
+        if (!materializeModuleProducts(
+                entry,
+                repository,
+                cacheRoot,
+                productCacheKey,
+                publicSource,
+                templateSource,
+                publicSyntax,
+                templateSyntax,
+                error))
         {
-            if (!driver::buildPrecompiledPublicSource(metadata, publicSource, error))
-            {
-                error = "cannot materialize public API for module '" +
-                    metadata.moduleName + "': " + error;
-                return false;
-            }
-            if (!driver::buildPrecompiledGenericTemplateSource(
-                    metadata, templateSource, error))
-            {
-                error = "cannot materialize public templates for module '" +
-                    metadata.moduleName + "': " + error;
-                return false;
-            }
-            storePrecompiledSourceProducts(
-                cacheRoot, productCacheKey, publicSource, templateSource);
+            return false;
         }
         modules.push_back({
             entry.ownerProjectFile,
@@ -228,6 +300,8 @@ bool materializeModules(
             productCacheKey,
             std::move(publicSource),
             std::move(templateSource),
+            std::move(publicSyntax),
+            std::move(templateSyntax),
             memberIdentities(metadata),
             namespaceIdentities(metadata),
             genericSpecializations(metadata, concreteMemberNames),

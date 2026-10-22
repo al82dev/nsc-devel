@@ -20,4 +20,11 @@ bool deserializeSyntaxProductUnit(
     std::vector<lexer::Token>& tokens,
     std::unique_ptr<ast::AstArena>& arena,
     ast::AstNode*& syntaxTree);
+// Restores a producer payload while rebinding its ranges to the consumer SourceFile.
+bool deserializeRelocatableSyntaxProductUnit(
+    const source::SourceFile& sourceFile,
+    std::string_view payload,
+    std::vector<lexer::Token>& tokens,
+    std::unique_ptr<ast::AstArena>& arena,
+    ast::AstNode*& syntaxTree);
 }
