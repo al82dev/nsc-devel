@@ -1,4 +1,5 @@
 #include "nativesharp/Compilation/LibraryMetadataRepository.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 
 #include <algorithm>
 #include <cctype>
@@ -31,6 +32,31 @@ const LibraryMetadataRepositoryEntry* LibraryMetadataRepository::load(
         iterator->second = std::make_unique<LibraryMetadataRepositoryEntry>(canonical);
     }
     return iterator->second->load(error) ? iterator->second.get() : nullptr;
+}
+
+const interop::LibraryMetadata* LibraryMetadataRepository::decode(
+    const std::filesystem::path& path,
+    const Decoder& decoder,
+    std::string& error) const
+{
+    const LibraryMetadataRepositoryEntry* entry = load(path, error);
+    if (entry == nullptr) return nullptr;
+    if (entry->decodeAttempted_)
+    {
+        error = entry->decodeError_;
+        return entry->decodedMetadata_.get();
+    }
+    entry->decodeAttempted_ = true;
+    interop::LibraryMetadata metadata;
+    if (!decoder(entry->bytes(), metadata, error))
+    {
+        entry->decodeError_ = error;
+        return nullptr;
+    }
+    entry->decodedMetadata_ =
+        std::make_shared<const interop::LibraryMetadata>(std::move(metadata));
+    error.clear();
+    return entry->decodedMetadata_.get();
 }
 
 const LibraryMetadataRepositoryEntry* LibraryMetadataRepository::find(

@@ -10,7 +10,7 @@ LibraryMetadataRepositoryEntry::LibraryMetadataRepositoryEntry(std::filesystem::
 {
 }
 
-bool LibraryMetadataRepositoryEntry::load(std::string& error)
+bool LibraryMetadataRepositoryEntry::load(std::string& error) const
 {
     if (loadAttempted_)
     {

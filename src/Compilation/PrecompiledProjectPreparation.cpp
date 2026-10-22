@@ -29,8 +29,18 @@ bool readMetadata(
     interop::LibraryMetadata& metadata,
     std::string& error)
 {
-    const LibraryMetadataRepositoryEntry* file = repository.load(path, error);
-    return file != nullptr && codec.read(file->bytes(), metadata, error);
+    const interop::LibraryMetadata* decoded = repository.decode(
+        path,
+        [&codec](
+            std::span<const std::uint8_t> bytes,
+            interop::LibraryMetadata& result,
+            std::string& decodeError) {
+            return codec.read(bytes, result, decodeError);
+        },
+        error);
+    if (decoded == nullptr) return false;
+    metadata = *decoded;
+    return true;
 }
 
 std::string precompiledProductCacheKey(

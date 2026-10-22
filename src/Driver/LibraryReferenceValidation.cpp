@@ -33,14 +33,22 @@ bool loadLibraryReferenceMetadata(const compilation::LibraryReference &reference
         return false;
     }
     std::string metadataError;
-    const compilation::LibraryMetadataRepositoryEntry *file =
-        repository.load(reference.metadataPath, metadataError);
-    if (file == nullptr || !metadataCodec.read(file->bytes(), metadata, metadataError))
+    const interop::LibraryMetadata *decoded = repository.decode(
+        reference.metadataPath,
+        [&metadataCodec](std::span<const std::uint8_t> bytes,
+                         interop::LibraryMetadata &result,
+                         std::string &decodeError)
+        {
+            return metadataCodec.read(bytes, result, decodeError);
+        },
+        metadataError);
+    if (decoded == nullptr)
     {
         error =
             "cannot read metadata for precompiled library '" + reference.libraryPath.string() + "': " + metadataError;
         return false;
     }
+    metadata = *decoded;
     if (!metadataCodec.verifyCurrentCompiler(metadata, metadataError))
     {
         error =
