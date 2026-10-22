@@ -67,6 +67,7 @@ OopLlvmImplementation::OopLlvmImplementation(
                   : staticFieldDeclarations),
           moduleName_(moduleName)
 {
+        initializeKnownSimdTypeOrdinals();
         for (const std::size_t ordinal : functionOrdinals)
         {
             if (ordinal < functionDefinitions_.size()) functionDefinitions_[ordinal] = true;

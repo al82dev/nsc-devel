@@ -258,85 +258,91 @@ bool OopLlvmImplementation::requiresOwnedDestruction(std::string_view typeKey) c
             isClassReferenceType(nameLookup_, typeKey) || isDelegateReferenceType(nameLookup_, typeKey);
     }
 
+std::optional<std::size_t> OopLlvmImplementation::resolveKnownSimdTypeOrdinal(
+        std::string_view fullyQualifiedName) const noexcept
+{
+        for (const std::size_t ordinal : nameLookup_.typeOrdinalsForName(fullyQualifiedName))
+        {
+            if (ordinal >= nameLookup_.namedTypes().size()) continue;
+            const frontend::NamedTypeDeclaration& type = nameLookup_.namedTypes()[ordinal];
+            if (type.kind == frontend::NamedTypeDeclarationKind::Struct &&
+                type.identity.fullyQualifiedNameView() == fullyQualifiedName)
+            {
+                return ordinal;
+            }
+        }
+        return std::nullopt;
+    }
+
+void OopLlvmImplementation::initializeKnownSimdTypeOrdinals()
+{
+        float32x2TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Float32x2");
+        float32x3TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Float32x3");
+        float32x4TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Float32x4");
+        int32x4TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Int32x4");
+        int64x2TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Int64x2");
+        float32x8TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Float32x8");
+        float64x4TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Float64x4");
+        int32x8TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Int32x8");
+        int64x4TypeOrdinal_ = resolveKnownSimdTypeOrdinal(
+            "NativeSharp.Core.Numerics.Int64x4");
+    }
+
+std::optional<std::size_t> OopLlvmImplementation::simdTypeOrdinal(
+        std::string_view typeKey) const noexcept
+{
+        if (!typeKey.starts_with("type:")) return std::nullopt;
+        return nameLookup_.typeOrdinalForIdentity(typeKey.substr(5));
+    }
+
 bool OopLlvmImplementation::isFloat32x4TypeKey(std::string_view typeKey) const noexcept
 {
-        if (!typeKey.starts_with("type:")) return false;
-        const std::string_view identityKey = typeKey.substr(5);
-        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
-        {
-            if (type.identity.key() != identityKey) continue;
-            return type.kind == frontend::NamedTypeDeclarationKind::Struct &&
-                type.identity.fullyQualifiedName() == "NativeSharp.Core.Numerics.Float32x4";
-        }
-        return false;
+        const std::optional<std::size_t> ordinal = simdTypeOrdinal(typeKey);
+        return ordinal.has_value() && ordinal == float32x4TypeOrdinal_;
     }
 
 unsigned OopLlvmImplementation::compactFloatVectorLaneCount(std::string_view typeKey) const noexcept
 {
-        if (!typeKey.starts_with("type:")) return 0U;
-        const std::string_view identityKey = typeKey.substr(5);
-        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
-        {
-            if (type.identity.key() != identityKey ||
-                type.kind != frontend::NamedTypeDeclarationKind::Struct)
-                continue;
-            const std::string name = type.identity.fullyQualifiedName();
-            if (name == "NativeSharp.Core.Numerics.Float32x2") return 2U;
-            if (name == "NativeSharp.Core.Numerics.Float32x3") return 3U;
-            if (name == "NativeSharp.Core.Numerics.Float32x4") return 4U;
-            return 0U;
-        }
+        const std::optional<std::size_t> ordinal = simdTypeOrdinal(typeKey);
+        if (!ordinal.has_value()) return 0U;
+        if (ordinal == float32x2TypeOrdinal_) return 2U;
+        if (ordinal == float32x3TypeOrdinal_) return 3U;
+        if (ordinal == float32x4TypeOrdinal_) return 4U;
         return 0U;
     }
 
 unsigned OopLlvmImplementation::integerSimd128LaneBits(std::string_view typeKey) const noexcept
 {
-        if (!typeKey.starts_with("type:")) return 0U;
-        const std::string_view identityKey = typeKey.substr(5);
-        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
-        {
-            if (type.identity.key() != identityKey ||
-                type.kind != frontend::NamedTypeDeclarationKind::Struct)
-                continue;
-            const std::string name = type.identity.fullyQualifiedName();
-            if (name == "NativeSharp.Core.Numerics.Int32x4") return 32U;
-            if (name == "NativeSharp.Core.Numerics.Int64x2") return 64U;
-            return 0U;
-        }
+        const std::optional<std::size_t> ordinal = simdTypeOrdinal(typeKey);
+        if (!ordinal.has_value()) return 0U;
+        if (ordinal == int32x4TypeOrdinal_) return 32U;
+        if (ordinal == int64x2TypeOrdinal_) return 64U;
         return 0U;
     }
 
 unsigned OopLlvmImplementation::floatingSimd256LaneBits(std::string_view typeKey) const noexcept
 {
-        if (!typeKey.starts_with("type:")) return 0U;
-        const std::string_view identityKey = typeKey.substr(5);
-        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
-        {
-            if (type.identity.key() != identityKey ||
-                type.kind != frontend::NamedTypeDeclarationKind::Struct)
-                continue;
-            const std::string name = type.identity.fullyQualifiedName();
-            if (name == "NativeSharp.Core.Numerics.Float32x8") return 32U;
-            if (name == "NativeSharp.Core.Numerics.Float64x4") return 64U;
-            return 0U;
-        }
+        const std::optional<std::size_t> ordinal = simdTypeOrdinal(typeKey);
+        if (!ordinal.has_value()) return 0U;
+        if (ordinal == float32x8TypeOrdinal_) return 32U;
+        if (ordinal == float64x4TypeOrdinal_) return 64U;
         return 0U;
     }
 
 unsigned OopLlvmImplementation::integerSimd256LaneBits(std::string_view typeKey) const noexcept
 {
-        if (!typeKey.starts_with("type:")) return 0U;
-        const std::string_view identityKey = typeKey.substr(5);
-        for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
-        {
-            if (type.identity.key() != identityKey ||
-                type.kind != frontend::NamedTypeDeclarationKind::Struct)
-                continue;
-            const std::string name = type.identity.fullyQualifiedName();
-            if (name == "NativeSharp.Core.Numerics.Int32x8") return 32U;
-            if (name == "NativeSharp.Core.Numerics.Int64x4") return 64U;
-            return 0U;
-        }
+        const std::optional<std::size_t> ordinal = simdTypeOrdinal(typeKey);
+        if (!ordinal.has_value()) return 0U;
+        if (ordinal == int32x8TypeOrdinal_) return 32U;
+        if (ordinal == int64x4TypeOrdinal_) return 64U;
         return 0U;
     }
 

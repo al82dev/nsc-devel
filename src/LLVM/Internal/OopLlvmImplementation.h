@@ -2790,6 +2790,13 @@ private:
     // the three call sites that already live in this file.
     bool requiresOwnedDestruction(std::string_view typeKey) const noexcept;
 
+    std::optional<std::size_t> resolveKnownSimdTypeOrdinal(
+        std::string_view fullyQualifiedName) const noexcept;
+
+    void initializeKnownSimdTypeOrdinals();
+
+    std::optional<std::size_t> simdTypeOrdinal(std::string_view typeKey) const noexcept;
+
     bool isFloat32x4TypeKey(std::string_view typeKey) const noexcept;
 
     unsigned compactFloatVectorLaneCount(std::string_view typeKey) const noexcept;
@@ -2964,6 +2971,15 @@ private:
     inline static std::mutex loweringTraceMutex_;
     std::string moduleName_;
     std::optional<std::size_t> invalidFunctionOrdinal_;
+    std::optional<std::size_t> float32x2TypeOrdinal_;
+    std::optional<std::size_t> float32x3TypeOrdinal_;
+    std::optional<std::size_t> float32x4TypeOrdinal_;
+    std::optional<std::size_t> int32x4TypeOrdinal_;
+    std::optional<std::size_t> int64x2TypeOrdinal_;
+    std::optional<std::size_t> float32x8TypeOrdinal_;
+    std::optional<std::size_t> float64x4TypeOrdinal_;
+    std::optional<std::size_t> int32x8TypeOrdinal_;
+    std::optional<std::size_t> int64x4TypeOrdinal_;
     LLVMContextRef context_ = nullptr;
     LLVMModuleRef module_ = nullptr;
     LLVMBuilderRef builder_ = nullptr;
