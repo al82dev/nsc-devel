@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `9 / 48`
+**Progreso:** `10 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -13,7 +13,7 @@
 | T1.7 | Conservar publicación atómica, cuarentena, poda y razones de hit o miss | TERMINADO |
 | T2.1 | Conectar `setMirCacheRoot` desde la entrada real de compilación | TERMINADO |
 | T2.2 | Calcular la llave MIR antes del lowering | TERMINADO |
-| T2.3 | Incluir HIR, tipos, ABI, compilador, target y opciones en la llave MIR | PENDIENTE |
+| T2.3 | Incluir HIR, tipos, ABI, compilador, target y opciones en la llave MIR | TERMINADO |
 | T2.4 | Consultar la caché antes de construir cada callable MIR | PENDIENTE |
 | T2.5 | Instalar la función MIR restaurada en vez de descartarla | PENDIENTE |
 | T2.6 | Reenlazar referencias, cleanups, excepciones, async frames y ordinales restaurados | PENDIENTE |

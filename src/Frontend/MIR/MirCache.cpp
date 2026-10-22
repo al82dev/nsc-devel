@@ -3,17 +3,28 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include "MirConstantEvaluator.h"
+#include "HirCacheIdentity.h"
 #include "../Cache/CachePayloadReader.h"
 #include "../Cache/CachePayloadWriter.h"
 #include "MirVerifier.h"
 
 #include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Basic/Version.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
+#include "nativesharp/Frontend/ProjectDestructionModelDumper.h"
+#include "nativesharp/Frontend/ProjectInterfaceModelDumper.h"
+#include "nativesharp/Frontend/ProjectMemberModelDumper.h"
+#include "nativesharp/Frontend/ProjectNameLookupDumper.h"
+#include "nativesharp/Frontend/ProjectObjectLayoutModelDumper.h"
+#include "nativesharp/Frontend/ProjectOopHirModelDumper.h"
+#include "nativesharp/Frontend/ProjectVirtualDispatchModelDumper.h"
+#include "nativesharp/Target/TargetInfo.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <limits>
+#include <sstream>
 #include <string_view>
 #include <span>
 #include <unordered_map>
@@ -58,22 +69,114 @@ std::string normalizeMirNodeStream(const ProjectOopMirNode* node)
     return basic::sha256Hex(basic::sha256(bytes));
 }
 
+std::string digestCacheIdentity(std::string_view material)
+{
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
+void appendObjectFieldIdentity(std::string& out, const ObjectFieldLayout& field)
+{
+    internal::CachePayloadWriter::u64(out, field.memberOrdinal);
+    internal::CachePayloadWriter::u64(out, field.offset);
+    internal::CachePayloadWriter::u64(out, field.size);
+    internal::CachePayloadWriter::u64(out, field.alignment);
+    internal::CachePayloadWriter::string(out, field.typeKey);
+    internal::CachePayloadWriter::byte(out, field.bitOffset.has_value() ? 1U : 0U);
+    internal::CachePayloadWriter::u64(out, field.bitOffset.value_or(0U));
+    internal::CachePayloadWriter::byte(out, field.bitWidth.has_value() ? 1U : 0U);
+    internal::CachePayloadWriter::u64(out, field.bitWidth.value_or(0U));
+}
+
+void appendPhysicalLayoutIdentity(
+    std::string& out,
+    std::span<const ProjectOopMirStructLayout> structLayouts,
+    std::span<const ProjectOopMirClassLayout> classLayouts)
+{
+    internal::CachePayloadWriter::u64(out, structLayouts.size());
+    for (const ProjectOopMirStructLayout& layout : structLayouts)
+    {
+        internal::CachePayloadWriter::u64(out, layout.typeOrdinal);
+        internal::CachePayloadWriter::string(out, layout.typeKey);
+        internal::CachePayloadWriter::u64(out, layout.size);
+        internal::CachePayloadWriter::u64(out, layout.alignment);
+        internal::CachePayloadWriter::byte(out, layout.isUnion ? 1U : 0U);
+        internal::CachePayloadWriter::u64(out, layout.pack);
+        internal::CachePayloadWriter::u64(out, layout.minimumAlignment);
+        internal::CachePayloadWriter::byte(out, layout.hasExplicitFieldOffsets ? 1U : 0U);
+        internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(layout.abiPassing));
+        internal::CachePayloadWriter::byte(out, layout.isImported ? 1U : 0U);
+        internal::CachePayloadWriter::byte(out, layout.requiresDrop ? 1U : 0U);
+        internal::CachePayloadWriter::string(out, layout.dropGlueEntryName);
+        internal::CachePayloadWriter::u64(out, layout.fields.size());
+        for (const ObjectFieldLayout& field : layout.fields)
+            appendObjectFieldIdentity(out, field);
+    }
+    internal::CachePayloadWriter::u64(out, classLayouts.size());
+    for (const ProjectOopMirClassLayout& layout : classLayouts)
+    {
+        internal::CachePayloadWriter::u64(out, layout.typeOrdinal);
+        internal::CachePayloadWriter::string(out, layout.typeKey);
+        internal::CachePayloadWriter::u64(out, layout.size);
+        internal::CachePayloadWriter::u64(out, layout.alignment);
+        internal::CachePayloadWriter::u64(out, layout.headerSize);
+        internal::CachePayloadWriter::byte(out, layout.baseTypeOrdinal.has_value() ? 1U : 0U);
+        internal::CachePayloadWriter::u64(out, layout.baseTypeOrdinal.value_or(0U));
+        internal::CachePayloadWriter::u64(out, layout.baseSubobjectSize);
+        internal::CachePayloadWriter::u64(out, layout.referenceSize);
+        internal::CachePayloadWriter::u64(out, layout.referenceAlignment);
+        internal::CachePayloadWriter::u64(out, layout.fields.size());
+        for (const ObjectFieldLayout& field : layout.fields)
+            appendObjectFieldIdentity(out, field);
+    }
+}
+
+void appendTargetIdentity(std::string& out)
+{
+    const target::TargetInfo target = target::TargetInfo::WindowsX64();
+    internal::CachePayloadWriter::string(out, target.architectureName());
+    internal::CachePayloadWriter::string(out, target.operatingSystemName());
+    internal::CachePayloadWriter::string(out, target.objectFormatName());
+    internal::CachePayloadWriter::string(out, target.llvmTriple());
+    internal::CachePayloadWriter::string(out, target.abiName());
+    internal::CachePayloadWriter::string(out, target.cpuBaselineName());
+    internal::CachePayloadWriter::string(out, target.llvmCpuName());
+    internal::CachePayloadWriter::string(out, target.llvmFeatureString());
+}
+
+std::string dumpMirSemanticIdentity(
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectVirtualDispatchModel& virtualDispatchModel,
+    const ProjectInterfaceModel& interfaceModel,
+    const ProjectDestructionModel& destructionModel)
+{
+    std::ostringstream output;
+    ProjectNameLookupDumper{}.dump(nameLookup, output);
+    ProjectMemberModelDumper{}.dump(memberModel, nameLookup, output);
+    ProjectObjectLayoutModelDumper{}.dump(
+        objectLayoutModel, memberModel, nameLookup, output);
+    ProjectVirtualDispatchModelDumper{}.dump(
+        virtualDispatchModel, memberModel, nameLookup, output);
+    ProjectInterfaceModelDumper::dump(interfaceModel, output);
+    ProjectDestructionModelDumper::dump(
+        destructionModel, nameLookup, memberModel, output);
+    return output.str();
+}
+
 std::string preLowerMirCacheKey(
+    std::string_view compilationIdentity,
     const ProjectOopHirFunction& function,
     std::size_t functionOrdinal)
 {
     std::string material;
-    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v1");
+    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v2");
+    internal::CachePayloadWriter::string(material, compilationIdentity);
     internal::CachePayloadWriter::u64(material, functionOrdinal);
-    internal::CachePayloadWriter::u64(material, function.memberOrdinal);
-    internal::CachePayloadWriter::byte(
-        material, function.namespaceFunctionOrdinal.has_value() ? 1U : 0U);
-    internal::CachePayloadWriter::u64(
-        material, function.namespaceFunctionOrdinal.value_or(0U));
-    internal::CachePayloadWriter::string(material, function.mangledName);
-    const std::span<const std::uint8_t> bytes{
-        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
-    return basic::sha256Hex(basic::sha256(bytes));
+    internal::CachePayloadWriter::string(material, serializeHirCacheIdentity(function));
+    return digestCacheIdentity(material);
 }
 
 // NSC305-C04. Relocatable codec for a MIR node tree (the C4 cache payload). The syntax pointer is
@@ -1121,17 +1224,40 @@ void ProjectOopMirModel::setMirCacheRoot(std::filesystem::path root)
 }
 
 // Calculates one stable slot key while HIR is still the input and before any callable is lowered.
-// T2.3 extends the material with the complete semantic, ABI, compiler and target identity before
-// T2.4 is allowed to consume these keys for cache lookup.
+// The global digest covers compiler, target, options and semantic/ABI models; the per-slot digest
+// adds the exhaustive HIR function identity. T2.4 may therefore consume only pre-lowering inputs.
 void ProjectOopMirModel::calculateMirCacheKeys(const ProjectOopHirModel& hirModel)
 {
     mirCacheKeys_.clear();
     if (!mirCache_.enabled()) return;
+    std::string compilationIdentity;
+    internal::CachePayloadWriter::string(
+        compilationIdentity, "nsc-mir-compilation-identity-v1");
+    internal::CachePayloadWriter::string(compilationIdentity, kCompilerBuildId);
+    appendTargetIdentity(compilationIdentity);
+    internal::CachePayloadWriter::u32(
+        compilationIdentity, static_cast<std::uint32_t>(panicProfile_));
+    internal::CachePayloadWriter::string(compilationIdentity, panicHandler_);
+    internal::CachePayloadWriter::string(
+        compilationIdentity, ProjectOopHirModelDumper::dump(hirModel));
+    if (nameLookup_ != nullptr && memberModel_ != nullptr &&
+        objectLayoutModel_ != nullptr && virtualDispatchModel_ != nullptr &&
+        interfaceModel_ != nullptr && destructionModel_ != nullptr)
+    {
+        internal::CachePayloadWriter::string(
+            compilationIdentity,
+            dumpMirSemanticIdentity(
+                *nameLookup_, *memberModel_, *objectLayoutModel_, *virtualDispatchModel_,
+                *interfaceModel_, *destructionModel_));
+    }
+    appendPhysicalLayoutIdentity(compilationIdentity, structLayouts_, classLayouts_);
+    const std::string compilationDigest = digestCacheIdentity(compilationIdentity);
     const std::span<const ProjectOopHirFunction> hirFunctions = hirModel.functions();
     mirCacheKeys_.reserve(hirFunctions.size());
     for (std::size_t index = 0; index < hirFunctions.size(); ++index)
     {
-        mirCacheKeys_.push_back(preLowerMirCacheKey(hirFunctions[index], index));
+        mirCacheKeys_.push_back(
+            preLowerMirCacheKey(compilationDigest, hirFunctions[index], index));
     }
 }
 

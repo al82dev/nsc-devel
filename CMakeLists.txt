@@ -602,6 +602,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/HIR/HirLoweringSupport.cpp
     src/Frontend/MIR/Internal/MirNodeMachine.cpp
     src/Frontend/MIR/MirCache.cpp
+    src/Frontend/MIR/HirCacheIdentity.cpp
     src/Frontend/MIR/MirNodeKindNames.cpp
     src/HIR/Internal/IterativeHirLowering.cpp
     src/LLVM/Internal/IdentityWriter.cpp

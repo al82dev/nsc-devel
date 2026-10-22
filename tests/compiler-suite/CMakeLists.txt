@@ -720,6 +720,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/HIR/HirLoweringSupport.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/Internal/MirNodeMachine.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirCache.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/HirCacheIdentity.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/MIR/MirNodeKindNames.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/HIR/Internal/IterativeHirLowering.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Internal/IdentityWriter.cpp"
