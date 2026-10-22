@@ -342,9 +342,12 @@ const frontend::NamedTypeDeclaration* OopLlvmImplementation::debugNamedType(std:
 {
         if (!typeKey.starts_with("type:")) return nullptr;
         const std::string_view key = typeKey.substr(5);
+        const std::optional<std::size_t> ordinal = nameLookup_.typeOrdinalForIdentity(key);
+        if (ordinal.has_value()) return nameLookup_.typeForOrdinal(*ordinal);
+        if (nameLookup_.hasTypeIndex()) return nullptr;
         for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
         {
-            if (type.identity.key() == key) return &type;
+            if (type.identity.keyView() == key) return &type;
         }
         return nullptr;
     }
@@ -862,14 +865,29 @@ LLVMMetadataRef OopLlvmImplementation::debugEnumType(
         std::vector<LLVMMetadataRef> enumerators;
         if (memberModel_ != nullptr)
         {
-            for (const frontend::ClassMemberSymbol& member : memberModel_->members())
+            const std::size_t typeOrdinal =
+                static_cast<std::size_t>(&named - nameLookup_.namedTypes().data());
+            const auto appendEnumerator = [&](const frontend::ClassMemberSymbol& member)
             {
-                if (!member.isEnumConstant || member.declaringTypeOrdinal !=
-                    static_cast<std::size_t>(&named - nameLookup_.namedTypes().data())) continue;
+                if (!member.isEnumConstant || member.declaringTypeOrdinal != typeOrdinal) return;
                 LLVMMetadataRef enumerator = LLVMDIBuilderCreateEnumerator(
                     debugBuilder_, member.name.data(), member.name.size(),
                     member.enumConstantValue, enumInfo.isSigned ? 0 : 1);
                 if (enumerator != nullptr) enumerators.push_back(enumerator);
+            };
+            if (memberModel_->hasMembersDeclaredByTypeIndex())
+            {
+                for (const std::size_t memberOrdinal :
+                     memberModel_->membersDeclaredByType(typeOrdinal))
+                {
+                    if (memberOrdinal < memberModel_->members().size())
+                        appendEnumerator(memberModel_->members()[memberOrdinal]);
+                }
+            }
+            else
+            {
+                for (const frontend::ClassMemberSymbol& member : memberModel_->members())
+                    appendEnumerator(member);
             }
         }
         const std::string name = debugNamedDisplayName(named);
