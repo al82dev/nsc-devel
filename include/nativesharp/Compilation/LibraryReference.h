@@ -13,6 +13,6 @@ struct LibraryReference final
     std::filesystem::path metadataPath;
     std::filesystem::path runtimePath;
     // Optional acceleration product; absence preserves the three-part library contract above.
-    std::filesystem::path productSidecarPath;
+    std::filesystem::path productSidecarPath{};
 };
 }
