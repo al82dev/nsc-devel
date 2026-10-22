@@ -12,6 +12,8 @@
 #include "nativesharp/Frontend/NamedTypeDeclaration.h"
 #include "nativesharp/Frontend/ObjectFieldLayout.h"
 #include "nativesharp/Frontend/ProjectOopMirFunction.h"
+#include "nativesharp/Frontend/ProjectOopMirClassLayout.h"
+#include "nativesharp/Frontend/ProjectOopMirStructLayout.h"
 #include "nativesharp/Frontend/StructValueLayout.h"
 #include "nativesharp/Frontend/VirtualMethodInfo.h"
 
@@ -294,10 +296,42 @@ void ProjectCompilationIndexes::rebuildMirFunctions(
     }
 }
 
+void ProjectCompilationIndexes::rebuildMirLayouts(
+    std::span<const ProjectOopMirStructLayout> structLayouts,
+    std::span<const ProjectOopMirClassLayout> classLayouts,
+    std::size_t typeCount)
+{
+    mirStructLayoutsByType_.assign(typeCount, nullptr);
+    mirStructLayoutsByTypeKey_.clear();
+    mirStructLayoutsByTypeKey_.reserve(structLayouts.size());
+    for (const ProjectOopMirStructLayout& layout : structLayouts)
+    {
+        if (layout.typeOrdinal >= mirStructLayoutsByType_.size())
+            mirStructLayoutsByType_.resize(layout.typeOrdinal + 1U, nullptr);
+        mirStructLayoutsByType_[layout.typeOrdinal] = &layout;
+        mirStructLayoutsByTypeKey_.try_emplace(layout.typeKey, &layout);
+    }
+
+    mirClassLayoutsByType_.assign(typeCount, nullptr);
+    mirClassLayoutsByTypeKey_.clear();
+    mirClassLayoutsByTypeKey_.reserve(classLayouts.size());
+    for (const ProjectOopMirClassLayout& layout : classLayouts)
+    {
+        if (layout.typeOrdinal >= mirClassLayoutsByType_.size())
+            mirClassLayoutsByType_.resize(layout.typeOrdinal + 1U, nullptr);
+        mirClassLayoutsByType_[layout.typeOrdinal] = &layout;
+        mirClassLayoutsByTypeKey_.try_emplace(layout.typeKey, &layout);
+    }
+}
+
 void ProjectCompilationIndexes::clearMirFunctions() noexcept
 {
     mirFunctionsByMember_.clear();
     mirFunctionsByNamespaceFunction_.clear();
+    mirStructLayoutsByType_.clear();
+    mirStructLayoutsByTypeKey_.clear();
+    mirClassLayoutsByType_.clear();
+    mirClassLayoutsByTypeKey_.clear();
     mirAsyncLocalsByFunction_.clear();
     mirAsyncParametersByFunction_.clear();
 }
@@ -499,6 +533,34 @@ const ProjectOopMirFunction* ProjectCompilationIndexes::mirFunctionForNamespaceF
 {
     return functionOrdinal < mirFunctionsByNamespaceFunction_.size()
         ? mirFunctionsByNamespaceFunction_[functionOrdinal] : nullptr;
+}
+
+const ProjectOopMirStructLayout* ProjectCompilationIndexes::mirStructLayoutForType(
+    std::size_t typeOrdinal) const noexcept
+{
+    return typeOrdinal < mirStructLayoutsByType_.size()
+        ? mirStructLayoutsByType_[typeOrdinal] : nullptr;
+}
+
+const ProjectOopMirStructLayout* ProjectCompilationIndexes::mirStructLayoutForTypeKey(
+    std::string_view typeKey) const noexcept
+{
+    const auto iterator = mirStructLayoutsByTypeKey_.find(typeKey);
+    return iterator == mirStructLayoutsByTypeKey_.end() ? nullptr : iterator->second;
+}
+
+const ProjectOopMirClassLayout* ProjectCompilationIndexes::mirClassLayoutForType(
+    std::size_t typeOrdinal) const noexcept
+{
+    return typeOrdinal < mirClassLayoutsByType_.size()
+        ? mirClassLayoutsByType_[typeOrdinal] : nullptr;
+}
+
+const ProjectOopMirClassLayout* ProjectCompilationIndexes::mirClassLayoutForTypeKey(
+    std::string_view typeKey) const noexcept
+{
+    const auto iterator = mirClassLayoutsByTypeKey_.find(typeKey);
+    return iterator == mirClassLayoutsByTypeKey_.end() ? nullptr : iterator->second;
 }
 
 const ProjectCompilationIndexes::MirAsyncFrameSlot*

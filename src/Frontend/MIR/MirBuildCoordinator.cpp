@@ -707,6 +707,8 @@ bool ProjectOopMirModel::build(
     {
         indexes_->rebuildMirFunctions(
             functions_, memberModel.members().size(), functionByNamespaceFunction_.size());
+        indexes_->rebuildMirLayouts(
+            structLayouts_, classLayouts_, nameLookup.namedTypes().size());
     }
     built_ = true;
     // NSC305-C04. Persist the built MIR functions (no-op when the cache is disabled).
@@ -762,6 +764,42 @@ std::span<const ProjectOopMirStructLayout> ProjectOopMirModel::structLayouts() c
 std::span<const ProjectOopMirClassLayout> ProjectOopMirModel::classLayouts() const noexcept
 {
     return classLayouts_;
+}
+
+const ProjectOopMirStructLayout* ProjectOopMirModel::structLayoutForType(
+    std::size_t typeOrdinal) const noexcept
+{
+    if (built_ && indexes_ != nullptr) return indexes_->mirStructLayoutForType(typeOrdinal);
+    for (const ProjectOopMirStructLayout& layout : structLayouts_)
+        if (layout.typeOrdinal == typeOrdinal) return &layout;
+    return nullptr;
+}
+
+const ProjectOopMirStructLayout* ProjectOopMirModel::structLayoutForTypeKey(
+    std::string_view typeKey) const noexcept
+{
+    if (built_ && indexes_ != nullptr) return indexes_->mirStructLayoutForTypeKey(typeKey);
+    for (const ProjectOopMirStructLayout& layout : structLayouts_)
+        if (layout.typeKey == typeKey) return &layout;
+    return nullptr;
+}
+
+const ProjectOopMirClassLayout* ProjectOopMirModel::classLayoutForType(
+    std::size_t typeOrdinal) const noexcept
+{
+    if (built_ && indexes_ != nullptr) return indexes_->mirClassLayoutForType(typeOrdinal);
+    for (const ProjectOopMirClassLayout& layout : classLayouts_)
+        if (layout.typeOrdinal == typeOrdinal) return &layout;
+    return nullptr;
+}
+
+const ProjectOopMirClassLayout* ProjectOopMirModel::classLayoutForTypeKey(
+    std::string_view typeKey) const noexcept
+{
+    if (built_ && indexes_ != nullptr) return indexes_->mirClassLayoutForTypeKey(typeKey);
+    for (const ProjectOopMirClassLayout& layout : classLayouts_)
+        if (layout.typeKey == typeKey) return &layout;
+    return nullptr;
 }
 
 std::span<const ProjectOopMirDispatchTable> ProjectOopMirModel::dispatchTables() const noexcept

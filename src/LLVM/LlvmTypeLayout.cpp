@@ -5,21 +5,13 @@ namespace nativesharp::llvm_backend
 const frontend::ProjectOopMirStructLayout* findStructLayout(
     const frontend::ProjectOopMirModel& mirModel, std::string_view typeKey) noexcept
 {
-    for (const frontend::ProjectOopMirStructLayout& layout : mirModel.structLayouts())
-    {
-        if (layout.typeKey == typeKey) return &layout;
-    }
-    return nullptr;
+    return mirModel.structLayoutForTypeKey(typeKey);
 }
 
 const frontend::ProjectOopMirClassLayout* findClassLayout(
     const frontend::ProjectOopMirModel& mirModel, std::string_view typeKey) noexcept
 {
-    for (const frontend::ProjectOopMirClassLayout& layout : mirModel.classLayouts())
-    {
-        if (layout.typeKey == typeKey) return &layout;
-    }
-    return nullptr;
+    return mirModel.classLayoutForTypeKey(typeKey);
 }
 
 const frontend::builtins::IntegerTypeInfo* findEnumUnderlyingInfo(

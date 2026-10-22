@@ -153,6 +153,14 @@ public:
     std::span<const ProjectOopMirStaticField> staticFields() const noexcept;
     std::span<const ProjectOopMirStructLayout> structLayouts() const noexcept;
     std::span<const ProjectOopMirClassLayout> classLayouts() const noexcept;
+    const ProjectOopMirStructLayout* structLayoutForType(
+        std::size_t typeOrdinal) const noexcept;
+    const ProjectOopMirStructLayout* structLayoutForTypeKey(
+        std::string_view typeKey) const noexcept;
+    const ProjectOopMirClassLayout* classLayoutForType(
+        std::size_t typeOrdinal) const noexcept;
+    const ProjectOopMirClassLayout* classLayoutForTypeKey(
+        std::string_view typeKey) const noexcept;
     std::span<const ProjectOopMirDispatchTable> dispatchTables() const noexcept;
     std::span<const ProjectOopMirGenericSpecialization> genericSpecializations() const noexcept;
     std::span<const ProjectOopMirInterfaceBinding> interfaceBindings() const noexcept;
