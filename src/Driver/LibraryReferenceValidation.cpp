@@ -1,5 +1,7 @@
 #include "Internal/DriverInternal.h"
 
+#include <memory>
+
 namespace nativesharp::driver
 {
 using target::BuiltinLayoutKind;
@@ -23,7 +25,8 @@ void appendExternalImport(std::vector<linker::ExternalImportModule> &modules, co
 bool loadLibraryReferenceMetadata(const compilation::LibraryReference &reference,
                                    const compilation::LibraryMetadataRepository &repository,
                                   interop::LibraryMetadataCodec &metadataCodec,
-                                  linker::CoffArchiveVerifier &archiveVerifier, interop::LibraryMetadata &metadata,
+                                   linker::CoffArchiveVerifier &archiveVerifier,
+                                   std::shared_ptr<const interop::LibraryMetadata> &metadata,
                                   std::string &error)
 {
     if (!archiveVerifier.verify(reference.libraryPath))
@@ -33,7 +36,7 @@ bool loadLibraryReferenceMetadata(const compilation::LibraryReference &reference
         return false;
     }
     std::string metadataError;
-    const interop::LibraryMetadata *decoded = repository.decode(
+    std::shared_ptr<const interop::LibraryMetadata> decoded = repository.decode(
         reference.metadataPath,
         [&metadataCodec](std::span<const std::uint8_t> bytes,
                          interop::LibraryMetadata &result,
@@ -48,7 +51,6 @@ bool loadLibraryReferenceMetadata(const compilation::LibraryReference &reference
             "cannot read metadata for precompiled library '" + reference.libraryPath.string() + "': " + metadataError;
         return false;
     }
-    metadata = *decoded;
     if (!repository.verify(
             reference.metadataPath,
             [&metadataCodec](
@@ -63,11 +65,12 @@ bool loadLibraryReferenceMetadata(const compilation::LibraryReference &reference
             "incompatible metadata for precompiled library '" + reference.libraryPath.string() + "': " + metadataError;
         return false;
     }
-    if (metadata.moduleName.empty())
+    if (decoded->moduleName.empty())
     {
         error = "precompiled library metadata has an empty module identity: '" + reference.metadataPath.string() + "'";
         return false;
     }
+    metadata = std::move(decoded);
     return true;
 }
 
@@ -177,32 +180,32 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
     if (validatedReferences.contains(libraryKey))
         return true;
     linker::CoffArchiveVerifier archiveVerifier;
-    interop::LibraryMetadata metadata;
+    std::shared_ptr<const interop::LibraryMetadata> metadata;
     if (!loadLibraryReferenceMetadata(
             reference, repository, metadataCodec, archiveVerifier, metadata, error))
         return false;
     if (inheritedImports != nullptr)
-        for (const interop::LibraryMetadataPlatformImport &importRecord : metadata.platformImports)
+        for (const interop::LibraryMetadataPlatformImport &importRecord : metadata->platformImports)
             appendExternalImport(*inheritedImports, importRecord.dllName, importRecord.symbolName);
     std::vector<std::string> nativeSymbols;
-    if (!validateLibraryReferenceSymbols(reference, archiveVerifier, metadata, publishedNativeMethods, nativeSymbols,
+    if (!validateLibraryReferenceSymbols(reference, archiveVerifier, *metadata, publishedNativeMethods, nativeSymbols,
                                          error))
         return false;
-    const auto owner = moduleOwners.find(metadata.moduleName);
+    const auto owner = moduleOwners.find(metadata->moduleName);
     if (owner != moduleOwners.end() && foldedPathKey(owner->second) != foldedPathKey(reference.metadataPath))
     {
-        error = "duplicate module name '" + metadata.moduleName + "' in precompiled library '" +
+        error = "duplicate module name '" + metadata->moduleName + "' in precompiled library '" +
                 reference.libraryPath.string() + "' and '" + owner->second.string() + "'";
         return false;
     }
     if (owner == moduleOwners.end())
-        moduleOwners.emplace(metadata.moduleName, reference.libraryPath);
+        moduleOwners.emplace(metadata->moduleName, reference.libraryPath);
     const std::string runtimeName =
         reference.runtimePath.empty() ? std::string() : foldedName(reference.runtimePath.filename().string());
-    for (const interop::LibraryMetadataExport &exportRecord : metadata.exports)
+    for (const interop::LibraryMetadataExport &exportRecord : metadata->exports)
         publishedExports[exportRecord.cAbiName].push_back(
-            {metadata.moduleName, runtimeName, exportRecord.returnTypeKey, exportRecord.parameterTypeKeys});
-    if (!validateLibraryReferenceRuntime(reference, metadata, nativeSymbols, runtimeNames, runtimeByModule, error))
+            {metadata->moduleName, runtimeName, exportRecord.returnTypeKey, exportRecord.parameterTypeKeys});
+    if (!validateLibraryReferenceRuntime(reference, *metadata, nativeSymbols, runtimeNames, runtimeByModule, error))
         return false;
     validatedReferences.insert(libraryKey);
     if (!linkedLibraries.contains(libraryKey))

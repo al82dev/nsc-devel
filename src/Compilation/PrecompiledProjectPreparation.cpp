@@ -6,6 +6,7 @@
 
 #include "../Driver/Internal/DriverInternal.h"
 
+#include <memory>
 #include <span>
 #include <string_view>
 
@@ -22,14 +23,13 @@ void appendCacheIdentityField(std::string& material, std::string_view field)
     material.append(field);
 }
 
-bool readMetadata(
+std::shared_ptr<const interop::LibraryMetadata> readMetadata(
     const LibraryMetadataRepository& repository,
     interop::LibraryMetadataCodec& codec,
     const std::filesystem::path& path,
-    interop::LibraryMetadata& metadata,
     std::string& error)
 {
-    const interop::LibraryMetadata* decoded = repository.decode(
+    std::shared_ptr<const interop::LibraryMetadata> decoded = repository.decode(
         path,
         [&codec](
             std::span<const std::uint8_t> bytes,
@@ -38,7 +38,7 @@ bool readMetadata(
             return codec.read(bytes, result, decodeError);
         },
         error);
-    if (decoded == nullptr) return false;
+    if (decoded == nullptr) return {};
     if (!repository.verify(
             path,
             [&codec](const interop::LibraryMetadata& candidate, std::string& verificationError) {
@@ -46,10 +46,9 @@ bool readMetadata(
             },
             error))
     {
-        return false;
+        return {};
     }
-    metadata = *decoded;
-    return true;
+    return decoded;
 }
 
 std::string precompiledProductCacheKey(
@@ -62,7 +61,7 @@ std::string precompiledProductCacheKey(
     std::string material;
     appendCacheIdentityField(material, "nsc-precompiled-products-v1");
     appendCacheIdentityField(material, kCompilerBuildId);
-    appendCacheIdentityField(material, entry.metadata.moduleName);
+    appendCacheIdentityField(material, entry.metadata->moduleName);
     appendCacheIdentityField(material, std::to_string(file->bytes().size()));
     appendCacheIdentityField(material, basic::sha256Hex(file->contentDigest()));
     const std::span<const std::uint8_t> bytes{
@@ -192,7 +191,7 @@ bool materializeModules(
     modules.reserve(loaded.size());
     for (LoadedMetadata& entry : loaded)
     {
-        interop::LibraryMetadata& metadata = entry.metadata;
+        const interop::LibraryMetadata& metadata = *entry.metadata;
         std::unordered_set<std::string_view> concreteMemberNames;
         concreteMemberNames.reserve(metadata.members.size());
         for (const interop::LibraryMetadataMember& member : metadata.members)
@@ -253,14 +252,15 @@ bool loadExplicitMetadata(
     {
         for (const LibraryReference& reference : project.libraryReferences())
         {
-            interop::LibraryMetadata metadata;
-            if (!readMetadata(repository, codec, reference.metadataPath, metadata, error))
+            std::shared_ptr<const interop::LibraryMetadata> metadata =
+                readMetadata(repository, codec, reference.metadataPath, error);
+            if (metadata == nullptr)
             {
                 error = "cannot import precompiled metadata '" +
                     reference.metadataPath.generic_string() + "': " + error;
                 return false;
             }
-            const auto sourceProject = sourceProjects.find(metadata.moduleName);
+            const auto sourceProject = sourceProjects.find(metadata->moduleName);
             if (sourceProject != sourceProjects.end())
             {
                 sourceReplacements.push_back({
@@ -269,15 +269,15 @@ bool loadExplicitMetadata(
                     sourceProject->second});
                 continue;
             }
-            const auto existing = loadedByModule.find(metadata.moduleName);
+            const auto existing = loadedByModule.find(metadata->moduleName);
             if (existing != loadedByModule.end())
             {
                 const LoadedMetadata& prior = loaded[existing->second];
-                if (prior.metadata.abiFingerprint != metadata.abiFingerprint ||
+                if (prior.metadata->abiFingerprint != metadata->abiFingerprint ||
                     driver::foldedPathKey(prior.metadataPath) !=
                         driver::foldedPathKey(reference.metadataPath))
                 {
-                    error = "precompiled module '" + metadata.moduleName +
+                    error = "precompiled module '" + metadata->moduleName +
                         "' was explicitly referenced with incompatible artifacts '" +
                         prior.metadataPath.generic_string() + "' and '" +
                         reference.metadataPath.generic_string() + "'";
@@ -285,7 +285,7 @@ bool loadExplicitMetadata(
                 }
                 continue;
             }
-            loadedByModule.emplace(metadata.moduleName, loaded.size());
+            loadedByModule.emplace(metadata->moduleName, loaded.size());
             loaded.push_back({
                 project.projectFile(),
                 reference.metadataPath,
@@ -361,24 +361,25 @@ bool loadBinaryDependency(
     const LibraryReference& resolved,
     const LibraryMetadataRepository& repository,
     interop::LibraryMetadataCodec& codec,
-    interop::LibraryMetadata& childMetadata,
+    std::shared_ptr<const interop::LibraryMetadata>& childMetadata,
     std::string& error)
 {
-    if (!readMetadata(repository, codec, resolved.metadataPath, childMetadata, error))
+    childMetadata = readMetadata(repository, codec, resolved.metadataPath, error);
+    if (childMetadata == nullptr)
     {
         error = "cannot import transitive metadata '" +
             resolved.metadataPath.generic_string() + "' required by module '" +
             parentModule + "': " + error;
         return false;
     }
-    if (childMetadata.moduleName != dependency.moduleName)
+    if (childMetadata->moduleName != dependency.moduleName)
     {
         error = "binary closure expected module '" + dependency.moduleName +
             "' but metadata '" + resolved.metadataPath.generic_string() +
-            "' identifies '" + childMetadata.moduleName + "'";
+            "' identifies '" + childMetadata->moduleName + "'";
         return false;
     }
-    if (childMetadata.abiFingerprint != dependency.abiFingerprint)
+    if (childMetadata->abiFingerprint != dependency.abiFingerprint)
     {
         error = "binary closure ABI fingerprint mismatch for module '" +
             dependency.moduleName + "' required by '" + parentModule + "'";
@@ -413,7 +414,7 @@ bool reuseAvailableBinaryDependency(
     if (loadedDependency == loadedByModule.end()) return true;
     handled = true;
     const LoadedMetadata& prior = loaded[loadedDependency->second];
-    if (prior.metadata.abiFingerprint == dependency.abiFingerprint) return true;
+    if (prior.metadata->abiFingerprint == dependency.abiFingerprint) return true;
     error = "binary closure ABI fingerprint mismatch for explicitly "
         "loaded module '" + dependency.moduleName +
         "' required by '" + parentModule + "'";
@@ -423,23 +424,23 @@ bool reuseAvailableBinaryDependency(
 bool appendResolvedBinaryDependency(
     const std::filesystem::path& parentOwner,
     LibraryReference resolved,
-    interop::LibraryMetadata childMetadata,
+    std::shared_ptr<const interop::LibraryMetadata> childMetadata,
     std::vector<LoadedMetadata>& loaded,
     std::unordered_map<std::string, std::size_t>& loadedByModule,
     std::unordered_map<std::string, std::vector<LibraryReference>>& discoveredByOwner,
     std::string& error)
 {
-    const auto existing = loadedByModule.find(childMetadata.moduleName);
+    const auto existing = loadedByModule.find(childMetadata->moduleName);
     if (existing != loadedByModule.end() &&
-        loaded[existing->second].metadata.abiFingerprint !=
-            childMetadata.abiFingerprint)
+        loaded[existing->second].metadata->abiFingerprint !=
+            childMetadata->abiFingerprint)
     {
         error = "binary closure selects incompatible versions of module '" +
-            childMetadata.moduleName + "'";
+            childMetadata->moduleName + "'";
         return false;
     }
     if (existing != loadedByModule.end()) return true;
-    loadedByModule.emplace(childMetadata.moduleName, loaded.size());
+    loadedByModule.emplace(childMetadata->moduleName, loaded.size());
     loaded.push_back({
         parentOwner,
         resolved.metadataPath,
@@ -491,7 +492,7 @@ bool expandBinaryDependency(
     {
         return false;
     }
-    interop::LibraryMetadata childMetadata;
+    std::shared_ptr<const interop::LibraryMetadata> childMetadata;
     if (!loadBinaryDependency(
             dependency,
             parentModule,
@@ -529,9 +530,9 @@ bool expandBinaryClosure(
     {
         const std::filesystem::path parentOwner = loaded[cursor].ownerProjectFile;
         const std::filesystem::path parentMetadataPath = loaded[cursor].metadataPath;
-        const std::string parentModule = loaded[cursor].metadata.moduleName;
+        const std::string parentModule = loaded[cursor].metadata->moduleName;
         const std::vector<interop::LibraryMetadataBinaryDependency> dependencies =
-            loaded[cursor].metadata.binaryDependencies;
+            loaded[cursor].metadata->binaryDependencies;
         for (const interop::LibraryMetadataBinaryDependency& dependency : dependencies)
         {
             if (!expandBinaryDependency(

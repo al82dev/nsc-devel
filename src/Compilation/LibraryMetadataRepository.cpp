@@ -34,29 +34,29 @@ const LibraryMetadataRepositoryEntry* LibraryMetadataRepository::load(
     return iterator->second->load(error) ? iterator->second.get() : nullptr;
 }
 
-const interop::LibraryMetadata* LibraryMetadataRepository::decode(
+std::shared_ptr<const interop::LibraryMetadata> LibraryMetadataRepository::decode(
     const std::filesystem::path& path,
     const Decoder& decoder,
     std::string& error) const
 {
     const LibraryMetadataRepositoryEntry* entry = load(path, error);
-    if (entry == nullptr) return nullptr;
+    if (entry == nullptr) return {};
     if (entry->decodeAttempted_)
     {
         error = entry->decodeError_;
-        return entry->decodedMetadata_.get();
+        return entry->decodedMetadata_;
     }
     entry->decodeAttempted_ = true;
     interop::LibraryMetadata metadata;
     if (!decoder(entry->bytes(), metadata, error))
     {
         entry->decodeError_ = error;
-        return nullptr;
+        return {};
     }
     entry->decodedMetadata_ =
         std::make_shared<const interop::LibraryMetadata>(std::move(metadata));
     error.clear();
-    return entry->decodedMetadata_.get();
+    return entry->decodedMetadata_;
 }
 
 bool LibraryMetadataRepository::verify(

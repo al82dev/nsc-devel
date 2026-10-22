@@ -399,17 +399,17 @@ bool validatePrecompiledExternalTypeClosure(
 {
     std::unordered_map<std::string, const interop::LibraryMetadata *> modules;
     for (const LoadedPrecompiledMetadata &entry : loaded)
-        modules.emplace(entry.metadata.moduleName, &entry.metadata);
+        modules.emplace(entry.metadata->moduleName, entry.metadata.get());
 
     std::set<std::string> failures;
     for (const LoadedPrecompiledMetadata &entry : loaded)
     {
-        for (const std::string &typeKey : entry.metadata.externalTypeKeys)
+        for (const std::string &typeKey : entry.metadata->externalTypeKeys)
         {
             const std::optional<std::string> owner = metadataTypeModule(typeKey);
             if (!owner.has_value())
             {
-                failures.insert("module '" + entry.metadata.moduleName + "' records malformed external type '" +
+                failures.insert("module '" + entry.metadata->moduleName + "' records malformed external type '" +
                                 typeKey + "'");
                 continue;
             }
@@ -420,13 +420,13 @@ bool validatePrecompiledExternalTypeClosure(
                 // declaration is validated by ordinary name binding after metadata is parsed.
                 if (sourceProjects.contains(*owner))
                     continue;
-                failures.insert("module '" + entry.metadata.moduleName + "' requires external type '" + typeKey +
+                failures.insert("module '" + entry.metadata->moduleName + "' requires external type '" + typeKey +
                                 "', but LibraryReference module '" + *owner + "' is not present");
                 continue;
             }
             if (!metadataProvidesType(*provider->second, typeKey))
             {
-                failures.insert("module '" + entry.metadata.moduleName + "' requires external type '" + typeKey +
+                failures.insert("module '" + entry.metadata->moduleName + "' requires external type '" + typeKey +
                                 "', but provider module '" + *owner + "' does not declare it");
             }
         }

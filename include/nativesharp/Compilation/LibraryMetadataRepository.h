@@ -27,7 +27,7 @@ public:
     const LibraryMetadataRepositoryEntry* load(
         const std::filesystem::path& path,
         std::string& error) const;
-    const interop::LibraryMetadata* decode(
+    std::shared_ptr<const interop::LibraryMetadata> decode(
         const std::filesystem::path& path,
         const Decoder& decoder,
         std::string& error) const;

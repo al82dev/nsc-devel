@@ -36,6 +36,7 @@
 #include <functional>
 #include <iomanip>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <set>
 #include <span>
@@ -754,9 +755,9 @@ bool appendBinaryDependencies(
     for (const compilation::LibraryReference& reference :
          compilation.projectGraph()->rootProject()->libraryReferences())
     {
-        LibraryMetadata dependencyMetadata;
         std::string dependencyError;
-        const LibraryMetadata* decoded = compilation.libraryMetadataRepository().decode(
+        std::shared_ptr<const LibraryMetadata> decoded =
+            compilation.libraryMetadataRepository().decode(
             reference.metadataPath,
             [&codec](
                 std::span<const std::uint8_t> bytes,
@@ -771,7 +772,6 @@ bool appendBinaryDependencies(
                 reference.metadataPath.generic_string() + "': " + dependencyError;
             return false;
         }
-        dependencyMetadata = *decoded;
         if (!compilation.libraryMetadataRepository().verify(
                 reference.metadataPath,
                 [&codec](const LibraryMetadata& candidate, std::string& verificationError) {
@@ -783,6 +783,7 @@ bool appendBinaryDependencies(
                 reference.metadataPath.generic_string() + "': " + dependencyError;
             return false;
         }
+        const LibraryMetadata& dependencyMetadata = *decoded;
         LibraryMetadataBinaryDependency dependency;
         dependency.moduleName = dependencyMetadata.moduleName;
         dependency.libraryFileName = reference.libraryPath.filename().generic_string();
