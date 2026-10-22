@@ -121,7 +121,9 @@ bool CompilationBundleCache::lookup(
     std::error_code fileError;
     const bool present = std::filesystem::is_regular_file(
         result.manifestPath, fileError);
-    if (fileError)
+    if (fileError &&
+        fileError != std::errc::no_such_file_or_directory &&
+        fileError != std::errc::not_a_directory)
     {
         error = "cannot inspect compilation bundle manifest '" +
             result.manifestPath.generic_string() + "': " + fileError.message();
