@@ -5,12 +5,81 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdlib>
 #include <map>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#endif
 
 namespace nativesharp::linker
 {
 namespace
 {
+constexpr auto kCanonicalImportLibraryNames = std::to_array<std::string_view>({
+    "KERNEL32.import.lib",
+    "KERNELBASE.import.lib",
+    "SHELL32.import.lib",
+    "UCRTBASE.import.lib"});
+
+std::filesystem::path currentExecutablePath()
+{
+#ifdef _WIN32
+    std::wstring buffer(32768, L'\0');
+    const DWORD length = GetModuleFileNameW(
+        nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (length != 0 && length < buffer.size())
+    {
+        buffer.resize(length);
+        return std::filesystem::path(buffer);
+    }
+#endif
+    return {};
+}
+
+std::filesystem::path canonicalImportLibraryDirectory()
+{
+#ifdef _WIN32
+    char* overridePath = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(
+            &overridePath, &length,
+            "NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY") == 0 &&
+        overridePath != nullptr)
+    {
+        std::filesystem::path result(overridePath);
+        std::free(overridePath);
+        if (!result.empty()) return result;
+    }
+#else
+    if (const char* overridePath =
+            std::getenv("NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY"))
+    {
+        if (*overridePath != '\0') return std::filesystem::path(overridePath);
+    }
+#endif
+    const std::filesystem::path executable = currentExecutablePath();
+    if (!executable.empty())
+    {
+        const std::filesystem::path relative = executable.parent_path().parent_path() /
+            "sdk" / "win64" / "import-libraries";
+        std::error_code filesystemError;
+        bool complete = true;
+        for (const std::string_view name : kCanonicalImportLibraryNames)
+        {
+            if (!std::filesystem::is_regular_file(relative / name, filesystemError))
+            {
+                complete = false;
+                break;
+            }
+        }
+        if (complete) return relative;
+    }
+    return std::filesystem::path(NSC_DEFAULT_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY);
+}
+
 std::string upperAscii(std::string_view text)
 {
     std::string result(text);
@@ -303,6 +372,28 @@ bool createCanonicalWindowsImportLibraries(
     const std::vector<PlannedLibrary> planned =
         planWindowsImportLibraries(std::span<const ExternalImportModule>{});
     return materializeWindowsImportLibraries(linker, directory, planned, libraries, error);
+}
+
+bool findCanonicalWindowsImportLibraries(
+    std::vector<std::filesystem::path>& libraries,
+    std::string& error)
+{
+    libraries.clear();
+    error.clear();
+    const std::filesystem::path directory = canonicalImportLibraryDirectory();
+    for (const std::string_view name : kCanonicalImportLibraryNames)
+    {
+        const std::filesystem::path library = directory / name;
+        std::error_code filesystemError;
+        if (!std::filesystem::is_regular_file(library, filesystemError))
+        {
+            error = "canonical Windows import library is missing: " + library.string();
+            libraries.clear();
+            return false;
+        }
+        libraries.push_back(library);
+    }
+    return true;
 }
 
 bool createWindowsImportLibraries(

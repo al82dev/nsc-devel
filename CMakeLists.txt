@@ -923,7 +923,8 @@ add_library(nsc_linker STATIC
 target_include_directories(nsc_linker PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(nsc_linker PUBLIC nsc_runtime nsc_llvm)
 target_compile_definitions(nsc_linker PRIVATE
-    NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY="${CMAKE_INSTALL_PREFIX}/lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib")
+    NSC_DEFAULT_WINDOWS_RUNTIME_LIBRARY="${CMAKE_INSTALL_PREFIX}/lib/nativesharp/runtime/NativeSharp.Runtime.Win32.lib"
+    NSC_DEFAULT_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY="${CMAKE_INSTALL_PREFIX}/sdk/win64/import-libraries")
 target_compile_features(nsc_linker PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_linker)
 

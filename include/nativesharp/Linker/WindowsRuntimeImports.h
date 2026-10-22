@@ -26,6 +26,10 @@ bool createCanonicalWindowsImportLibraries(
     std::vector<std::filesystem::path>& libraries,
     std::string& error);
 
+bool findCanonicalWindowsImportLibraries(
+    std::vector<std::filesystem::path>& libraries,
+    std::string& error);
+
 // THE single source of truth for the Windows runtime's import surface, and the single place that
 // materializes import libraries for a link.
 //
