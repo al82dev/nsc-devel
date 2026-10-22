@@ -81,6 +81,20 @@ Parser::Parser(
     buildComprehensionDelimiterIndex();
 }
 
+Parser::Parser(
+    std::span<const lexer::Token> tokens,
+    ast::AstArena& arena,
+    diagnostics::DiagnosticEngine& diagnostics,
+    const Parser& knownTypeNameParent)
+    : tokens_(tokens),
+      arena_(arena),
+      diagnostics_(diagnostics),
+      knownTypeNameParent_(&knownTypeNameParent)
+{
+    buildConditionalQuestionIndex();
+    buildComprehensionDelimiterIndex();
+}
+
 // Returns the logical token at the cursor, including a pending '=' split from a generic closer.
 // The lexer contract guarantees an EOF token, so the returned reference remains in tokens_.
 const lexer::Token& Parser::current() const noexcept

@@ -59,8 +59,16 @@ bool Parser::canStartType(const lexer::Token& token) const noexcept
 
 bool Parser::isKnownTypeName(std::string_view name) const noexcept
 {
-    return knownTypeNames_.contains(name) ||
-        (sharedKnownTypeNames_ != nullptr && sharedKnownTypeNames_->contains(name));
+    for (const Parser* parser = this; parser != nullptr; parser = parser->knownTypeNameParent_)
+    {
+        if (parser->knownTypeNames_.contains(name) ||
+            (parser->sharedKnownTypeNames_ != nullptr &&
+                parser->sharedKnownTypeNames_->contains(name)))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool Parser::canStartTypeAt(std::size_t tokenIndex) const noexcept

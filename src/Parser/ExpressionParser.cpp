@@ -1803,7 +1803,6 @@ ast::AstNode* Parser::parseInterpolationFragment(
     const lexer::Token& token,
     const language::InterpolationPart& part,
     std::string_view label,
-    const std::vector<std::string>& knownTypes,
     bool requireEnd)
 {
     const std::uint32_t tokenOffset = token.range().begin().offset();
@@ -1818,7 +1817,7 @@ ast::AstNode* Parser::parseInterpolationFragment(
         token.range().begin().fileId(), std::string(label), std::move(fragment));
     lexer::Lexer fragmentLexer(fragmentSource, diagnostics_);
     const std::vector<lexer::Token> fragmentTokens = fragmentLexer.lexAll();
-    Parser fragmentParser(fragmentTokens, arena_, diagnostics_, knownTypes);
+    Parser fragmentParser(fragmentTokens, arena_, diagnostics_, *this);
     ast::AstNode* hole = fragmentParser.parseExpression();
     if (requireEnd && !fragmentParser.at(TokenKind::EndOfFile))
         diagnostics_.report(
@@ -1834,17 +1833,11 @@ void Parser::appendInterpolationHoles(
     const lexer::Token& token,
     const std::vector<language::InterpolationPart>& parts)
 {
-    std::vector<std::string> knownTypes;
-    knownTypes.reserve(knownTypeNames_.size() +
-        (sharedKnownTypeNames_ != nullptr ? sharedKnownTypeNames_->size() : 0U));
-    if (sharedKnownTypeNames_ != nullptr)
-        for (const std::string& name : *sharedKnownTypeNames_) knownTypes.push_back(name);
-    for (const std::string& name : knownTypeNames_) knownTypes.push_back(name);
     for (const language::InterpolationPart& part : parts)
     {
         if (part.kind != language::InterpolationPartKind::Hole) continue;
         node->addChild(parseInterpolationFragment(
-            token, part, "<interpolation-hole>", knownTypes, false));
+            token, part, "<interpolation-hole>", false));
     }
 }
 
@@ -1891,12 +1884,6 @@ ast::AstNode* Parser::lowerRuntimeInterpolation(
     const lexer::Token& token,
     const std::vector<language::InterpolationPart>& parts)
 {
-    std::vector<std::string> knownTypes;
-    knownTypes.reserve(knownTypeNames_.size() +
-        (sharedKnownTypeNames_ != nullptr ? sharedKnownTypeNames_->size() : 0U));
-    if (sharedKnownTypeNames_ != nullptr)
-        for (const std::string& name : *sharedKnownTypeNames_) knownTypes.push_back(name);
-    for (const std::string& name : knownTypeNames_) knownTypes.push_back(name);
     ast::AstNode* result = makeInterpolationStringLiteral(token, "");
     for (const language::InterpolationPart& part : parts)
     {
@@ -1909,7 +1896,7 @@ ast::AstNode* Parser::lowerRuntimeInterpolation(
         else
         {
             ast::AstNode* hole = parseInterpolationFragment(
-                token, part, "<runtime-interpolation>", knownTypes, true);
+                token, part, "<runtime-interpolation>", true);
             piece = formatRuntimeInterpolationHole(token, part, hole);
         }
         result = makeBinaryExpression(TokenKind::Plus, result, piece);

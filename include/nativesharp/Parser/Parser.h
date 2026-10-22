@@ -45,6 +45,12 @@ public:
     ast::AstNode* parseCompilationUnit();
 
 private:
+    Parser(
+        std::span<const lexer::Token> tokens,
+        ast::AstArena& arena,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const Parser& knownTypeNameParent);
+
     const lexer::Token& current() const noexcept;
     const lexer::Token& peek(std::size_t distance = 1) const noexcept;
     bool at(lexer::TokenKind kind) const noexcept;
@@ -1638,7 +1644,6 @@ private:
         const lexer::Token& token,
         const language::InterpolationPart& part,
         std::string_view label,
-        const std::vector<std::string>& knownTypes,
         bool requireEnd);
     void appendInterpolationHoles(
         ast::AstNode* node,
@@ -1686,5 +1691,6 @@ private:
     bool parsingExtensionBody_ = false;
     KnownTypeNameSet knownTypeNames_;
     const KnownTypeNameSet* sharedKnownTypeNames_ = nullptr;
+    const Parser* knownTypeNameParent_ = nullptr;
 };
 }
