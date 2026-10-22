@@ -4,9 +4,8 @@
 
 namespace nativesharp::driver
 {
-bool configurePrecompiledModules(
+std::optional<compilation::CompilationInputManifest> loadCompilationInputManifest(
     const std::filesystem::path& projectFile,
-    frontend::ProjectCompilation& compilation,
     std::string& error)
 {
     const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
@@ -28,10 +27,19 @@ bool configurePrecompiledModules(
         });
     if (!graph.has_value())
     {
-        return false;
+        return std::nullopt;
     }
+    return compilation::CompilationInputManifest(
+        std::move(*graph), std::move(loadOptions));
+}
+
+bool configurePrecompiledModules(
+    compilation::CompilationInputManifest& manifest,
+    frontend::ProjectCompilation& compilation,
+    std::string& error)
+{
     return compilation::preparePrecompiledProject(
-        std::move(*graph), loadOptions, compilation, error);
+        manifest.releaseProjectGraph(), manifest.loadOptions(), compilation, error);
 }
 
 void configureObjectGeneratorProgress(

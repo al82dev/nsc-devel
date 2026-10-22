@@ -69,14 +69,17 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
     return objectBundle;
 }
 
-bool prepareExecutableProject(std::string_view inputPath, frontend::ProjectCompilation &compilation,
-                              const frontend::ProjectOopMirFunction *&entryFunction, std::ostream &error)
+bool prepareExecutableProject(std::string_view inputPath,
+                              compilation::CompilationInputManifest &manifest,
+                              frontend::ProjectCompilation &compilation,
+                              const frontend::ProjectOopMirFunction *&entryFunction,
+                              std::ostream &error)
 {
     configureProjectExecution(compilation);
     std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError); }))
+            [&] { return configurePrecompiledModules(manifest, compilation, loadError); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return false;
@@ -275,9 +278,17 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
                                                    const std::vector<std::filesystem::path> &extraLinkLibraries,
                                                    std::ostream &output, std::ostream &error)
 {
+    std::string loadError;
+    std::optional<compilation::CompilationInputManifest> manifest =
+        loadCompilationInputManifest(std::filesystem::path(inputPath), loadError);
+    if (!manifest.has_value())
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     frontend::ProjectCompilation compilation;
     const frontend::ProjectOopMirFunction *entryFunction = nullptr;
-    if (!prepareExecutableProject(inputPath, compilation, entryFunction, error))
+    if (!prepareExecutableProject(inputPath, *manifest, compilation, entryFunction, error))
         return ExitCode::CompilationError;
     std::string codeGenerationError;
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
@@ -304,7 +315,9 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     return ExitCode::Success;
 }
 
-bool prepareStaticLibraryProject(std::string_view inputPath, frontend::ProjectCompilation &compilation,
+bool prepareStaticLibraryProject(std::string_view inputPath,
+                                 compilation::CompilationInputManifest &manifest,
+                                 frontend::ProjectCompilation &compilation,
                                  std::vector<std::filesystem::path> &referencedLibraries,
                                  std::vector<std::filesystem::path> &runtimeLibraries,
                                  std::vector<linker::ExternalImportModule> &inheritedImports, std::ostream &error)
@@ -313,7 +326,7 @@ bool prepareStaticLibraryProject(std::string_view inputPath, frontend::ProjectCo
     std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError); }))
+            [&] { return configurePrecompiledModules(manifest, compilation, loadError); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return false;
@@ -455,12 +468,20 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
                                                       llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
                                                       std::ostream &output, std::ostream &error)
 {
+    std::string loadError;
+    std::optional<compilation::CompilationInputManifest> manifest =
+        loadCompilationInputManifest(std::filesystem::path(inputPath), loadError);
+    if (!manifest.has_value())
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     frontend::ProjectCompilation compilation;
     std::vector<std::filesystem::path> referencedLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     std::vector<linker::ExternalImportModule> inheritedImports;
-    if (!prepareStaticLibraryProject(inputPath, compilation, referencedLibraries, runtimeLibraries, inheritedImports,
-                                     error))
+    if (!prepareStaticLibraryProject(inputPath, *manifest, compilation, referencedLibraries,
+                                     runtimeLibraries, inheritedImports, error))
         return ExitCode::CompilationError;
 
     std::string codeGenerationError;
@@ -482,14 +503,16 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     return ExitCode::Success;
 }
 
-bool prepareDynamicLibraryProject(std::string_view inputPath, frontend::ProjectCompilation &compilation,
+bool prepareDynamicLibraryProject(std::string_view inputPath,
+                                  compilation::CompilationInputManifest &manifest,
+                                  frontend::ProjectCompilation &compilation,
                                   std::ostream &error)
 {
     configureProjectExecution(compilation);
     std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError); }))
+            [&] { return configurePrecompiledModules(manifest, compilation, loadError); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return false;
@@ -851,8 +874,16 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
                                                        const std::vector<std::filesystem::path> &extraLinkLibraries,
                                                        std::ostream &output, std::ostream &error)
 {
+    std::string loadError;
+    std::optional<compilation::CompilationInputManifest> manifest =
+        loadCompilationInputManifest(std::filesystem::path(inputPath), loadError);
+    if (!manifest.has_value())
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     frontend::ProjectCompilation compilation;
-    if (!prepareDynamicLibraryProject(inputPath, compilation, error))
+    if (!prepareDynamicLibraryProject(inputPath, *manifest, compilation, error))
         return ExitCode::CompilationError;
 
     std::vector<std::string> exportSymbols;

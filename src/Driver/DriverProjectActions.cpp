@@ -422,12 +422,19 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
     if (const std::optional<ExitCode> basic = runBasicProjectAction(action, path, output, error))
         return *basic;
 
+    std::string loadError;
+    std::optional<compilation::CompilationInputManifest> manifest =
+        loadCompilationInputManifest(std::filesystem::path(path), loadError);
+    if (!manifest.has_value())
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     frontend::ProjectCompilation projectCompilation;
     configureProjectExecution(projectCompilation);
-    std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(std::filesystem::path(path), projectCompilation, loadError); }))
+            [&] { return configurePrecompiledModules(*manifest, projectCompilation, loadError); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -455,13 +462,15 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
     return ExitCode::Success;
 }
 
-bool prepareOopCodeCompilation(std::string_view inputPath, frontend::ProjectCompilation &compilation,
+bool prepareOopCodeCompilation(std::string_view inputPath,
+                               compilation::CompilationInputManifest &manifest,
+                               frontend::ProjectCompilation &compilation,
                                std::string &loadError, std::ostream &error)
 {
     configureProjectExecution(compilation);
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError); }))
+            [&] { return configurePrecompiledModules(manifest, compilation, loadError); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return false;
@@ -593,9 +602,16 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath, std::st
                                              const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
                                              std::ostream &output, std::ostream &error)
 {
-    frontend::ProjectCompilation compilation;
     std::string loadError;
-    if (!prepareOopCodeCompilation(inputPath, compilation, loadError, error))
+    std::optional<compilation::CompilationInputManifest> manifest =
+        loadCompilationInputManifest(std::filesystem::path(inputPath), loadError);
+    if (!manifest.has_value())
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
+    frontend::ProjectCompilation compilation;
+    if (!prepareOopCodeCompilation(inputPath, *manifest, compilation, loadError, error))
         return ExitCode::CompilationError;
 
     std::unique_ptr<llvm_backend::LlvmModule> module;

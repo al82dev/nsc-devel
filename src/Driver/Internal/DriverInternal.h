@@ -74,8 +74,10 @@ bool writeVerifiedLibraryMetadata(const frontend::ProjectCompilation &compilatio
                                   const std::filesystem::path &destination, std::string &error,
                                   interop::LibraryMetadata *writtenModel = nullptr);
 
-bool configurePrecompiledModules(const std::filesystem::path &projectFile, frontend::ProjectCompilation &compilation,
-                                 std::string &error);
+std::optional<compilation::CompilationInputManifest> loadCompilationInputManifest(
+    const std::filesystem::path &projectFile, std::string &error);
+bool configurePrecompiledModules(compilation::CompilationInputManifest &manifest,
+                                 frontend::ProjectCompilation &compilation, std::string &error);
 void configureObjectGeneratorProgress(llvm_backend::ProjectOopObjectGenerator &generator);
 void appendExternalImport(std::vector<linker::ExternalImportModule> &modules, const std::string &dllName,
                           const std::string &symbol);

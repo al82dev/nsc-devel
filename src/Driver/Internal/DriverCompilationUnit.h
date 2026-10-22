@@ -52,6 +52,7 @@
 #include "nativesharp/Compilation/ProjectDumper.h"
 #include "nativesharp/Compilation/ProjectGraphDumper.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
+#include "nativesharp/Compilation/CompilationInputManifest.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Diagnostics/DiagnosticRenderer.h"
 #include "nativesharp/Dominance/DominanceDumper.h"

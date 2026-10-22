@@ -7,12 +7,19 @@ using target::BuiltinLayoutKind;
 ExitCode Driver::runProjectHostHeaderGeneration(std::string_view inputPath, std::string_view outputPath,
                                                 std::ostream &output, std::ostream &error)
 {
+    std::string loadError;
+    std::optional<compilation::CompilationInputManifest> manifest =
+        loadCompilationInputManifest(std::filesystem::path(inputPath), loadError);
+    if (!manifest.has_value())
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     frontend::ProjectCompilation compilation;
     configureProjectExecution(compilation);
-    std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError); }))
+            [&] { return configurePrecompiledModules(*manifest, compilation, loadError); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -62,12 +69,19 @@ ExitCode Driver::runProjectHostHeaderGeneration(std::string_view inputPath, std:
 ExitCode Driver::runProjectLibraryMetadataGeneration(std::string_view inputPath, std::string_view outputPath,
                                                      std::ostream &output, std::ostream &error)
 {
+    std::string loadError;
+    std::optional<compilation::CompilationInputManifest> manifest =
+        loadCompilationInputManifest(std::filesystem::path(inputPath), loadError);
+    if (!manifest.has_value())
+    {
+        error << "nsc: error: " << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
     frontend::ProjectCompilation compilation;
     configureProjectExecution(compilation);
-    std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(std::filesystem::path(inputPath), compilation, loadError); }))
+            [&] { return configurePrecompiledModules(*manifest, compilation, loadError); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
