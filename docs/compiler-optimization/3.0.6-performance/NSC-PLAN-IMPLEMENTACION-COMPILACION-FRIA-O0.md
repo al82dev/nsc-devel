@@ -28,7 +28,7 @@
 | T3.4 | Construir una sola vez el índice inmutable de nombres conocidos y compartirlo entre todos los parsers del corpus | TERMINADO |
 | T3.5 | Eliminar las dos materializaciones completas de `knownTypeNames_` en `ExpressionParser` | TERMINADO |
 | T3.6 | Convertir `AstArena` en asignación por bloques conservando destrucción tipada y estabilidad de punteros | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
-| T3.7 | Detectar antes de `ComptimeEngine` las fuentes que no contienen ninguna forma comptime | PENDIENTE |
+| T3.7 | Detectar antes de `ComptimeEngine` las fuentes que no contienen ninguna forma comptime | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
 | T3.8 | Transferir sin copia la fuente sin comptime a `SourceManager` y crear `ComptimeCache` sólo cuando alguna unidad la necesita | PENDIENTE |
 | T4.1 | Definir un sidecar determinista de productos precompilados ligado al digest de NSMETA y al build-id, sin cambiar NSMETA | PENDIENTE |
 | T4.2 | Emitir en el productor las superficies pública y de templates que hoy se regeneran desde NSMETA en cada consumidor | PENDIENTE |

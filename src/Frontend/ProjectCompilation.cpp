@@ -178,6 +178,13 @@ bool isMetadataBackedVirtualSource(const std::filesystem::path& path)
         sourcePath.ends_with(".nsmeta.public-templates.ns");
 }
 
+bool sourceMayRequireComptime(std::string_view source) noexcept
+{
+    return source.find('#') != std::string_view::npos ||
+        source.find("comptime") != std::string_view::npos ||
+        source.find("__nsc_macro_") != std::string_view::npos;
+}
+
 std::size_t visibleSourceCount(
     const std::vector<std::unique_ptr<ProjectSyntaxUnit>>& units,
     const source::SourceManager& sourceManager)
@@ -1118,6 +1125,11 @@ bool ProjectCompilation::readSyntaxSources(
             {
                 sourceReads[index].buffer = source::SourceManager::readFileBuffer(
                     sourceReads[index].path, sourceReads[index].error);
+            }
+            if (sourceReads[index].buffer.has_value())
+            {
+                sourceReads[index].requiresComptime =
+                    sourceMayRequireComptime(*sourceReads[index].buffer);
             }
             reportSourceProgress(
                 progressSink_,

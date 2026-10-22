@@ -18,5 +18,6 @@ struct ProjectSyntaxSourceRead final
     std::optional<std::string> buffer;
     std::optional<ComptimeResult> comptime;
     std::string error;
+    bool requiresComptime = false;
 };
 }
