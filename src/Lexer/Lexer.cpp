@@ -4,11 +4,12 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Lexer/Keyword.h"
 
+#include <algorithm>
+#include <array>
 #include <charconv>
 #include <cctype>
 #include <cstdlib>
 #include <string_view>
-#include <unordered_map>
 
 namespace nativesharp::lexer
 {
@@ -52,153 +53,121 @@ int hexValue(char value) noexcept
 
 namespace
 {
-TokenKind keywordKindPart1(std::string_view text) noexcept
+struct KeywordEntry final
 {
-    static const std::unordered_map<std::string_view, TokenKind> keywords = {
-        {"void", TokenKind::KwVoid},
-        {"bool", TokenKind::KwBool},
-        {"sbyte", TokenKind::KwSByte},
-        {"byte", TokenKind::KwByte},
-        {"char", TokenKind::KwChar},
-        {"short", TokenKind::KwShort},
-        {"ushort", TokenKind::KwUShort},
-        {"int", TokenKind::KwInt},
-        {"uint", TokenKind::KwUInt},
-        {"long", TokenKind::KwLong},
-        {"ulong", TokenKind::KwULong},
-        {"nint", TokenKind::KwNInt},
-        {"nuint", TokenKind::KwNUInt},
-        {"i8", TokenKind::KwSByte},
-        {"u8", TokenKind::KwByte},
-        {"i16", TokenKind::KwShort},
-        {"u16", TokenKind::KwUShort},
-        {"i32", TokenKind::KwInt},
-        {"u32", TokenKind::KwUInt},
-        {"i64", TokenKind::KwLong},
-        {"u64", TokenKind::KwULong},
-        {"isize", TokenKind::KwNInt},
-        {"usize", TokenKind::KwNUInt},
-        {"i128", TokenKind::KwInt128},
-        {"u128", TokenKind::KwUInt128},
-        {"float", TokenKind::KwFloat},
-        {"double", TokenKind::KwDouble},
-        {"string", TokenKind::KwString},
-        {"const", TokenKind::KwConst},
-        {"static", TokenKind::KwStatic},
-        {"readonly", TokenKind::KwReadonly},
-        {"volatile", TokenKind::KwVolatile},
-        {"inline", TokenKind::KwInline},
-        {"forceinline", TokenKind::KwForceInline}
-    };
+    std::string_view text;
+    TokenKind kind = TokenKind::Identifier;
+};
 
-    const auto iterator = keywords.find(text);
-    return iterator == keywords.end() ? TokenKind::Identifier : iterator->second;
-}
-
-TokenKind keywordKindPart2(std::string_view text) noexcept
-{
-    static const std::unordered_map<std::string_view, TokenKind> keywords = {
-        {"noinline", TokenKind::KwNoInline},
-        {"noheap", TokenKind::KwNoHeap},
-        {"public", TokenKind::KwPublic},
-        {"internal", TokenKind::KwInternal},
-        {"protected", TokenKind::KwProtected},
-        {"private", TokenKind::KwPrivate},
-        {"if", TokenKind::KwIf},
-        {"else", TokenKind::KwElse},
-        {"while", TokenKind::KwWhile},
-        {"do", TokenKind::KwDo},
-        {"for", TokenKind::KwFor},
-        {"switch", TokenKind::KwSwitch},
-        {"case", TokenKind::KwCase},
-        {"break", TokenKind::KwBreak},
-        {"continue", TokenKind::KwContinue},
-        {"return", TokenKind::KwReturn},
-        {"try", TokenKind::KwTry},
-        {"catch", TokenKind::KwCatch},
-        {"finally", TokenKind::KwFinally},
-        {"throw", TokenKind::KwThrow},
-        {"struct", TokenKind::KwStruct},
-        {"class", TokenKind::KwClass},
-        {"interface", TokenKind::KwInterface},
-        {"enum", TokenKind::KwEnum},
-        {"namespace", TokenKind::KwNamespace},
-        {"using", TokenKind::KwUsing},
-        {"new", TokenKind::KwNew},
-        {"delete", TokenKind::KwDelete},
-        {"destroy", TokenKind::KwDestroy},
-        {"stackalloc", TokenKind::KwStackalloc},
-        {"sizeof", TokenKind::KwSizeof},
-        {"alignof", TokenKind::KwAlignof},
-        {"offsetof", TokenKind::KwOffsetof},
-        {"static_assert", TokenKind::KwStaticAssert}
-    };
-
-    const auto iterator = keywords.find(text);
-    return iterator == keywords.end() ? TokenKind::Identifier : iterator->second;
-}
-
-TokenKind keywordKindPart3(std::string_view text) noexcept
-{
-    static const std::unordered_map<std::string_view, TokenKind> keywords = {
-        {"default", TokenKind::KwDefault},
-        {"extern", TokenKind::KwExtern},
-        {"export", TokenKind::KwExport},
-        {"vectorcall", TokenKind::KwVectorCall},
-        {"true", TokenKind::KwTrue},
-        {"false", TokenKind::KwFalse},
-        {"null", TokenKind::KwNull},
-        {"this", TokenKind::KwThis},
-        {"base", TokenKind::KwBase},
-        {"virtual", TokenKind::KwVirtual},
-        {"override", TokenKind::KwOverride},
-        {"abstract", TokenKind::KwAbstract},
-        {"sealed", TokenKind::KwSealed},
-        {"get", TokenKind::KwGet},
-        {"set", TokenKind::KwSet},
-        {"operator", TokenKind::KwOperator},
-        {"implicit", TokenKind::KwImplicit},
-        {"explicit", TokenKind::KwExplicit},
-        {"is", TokenKind::KwIs},
-        {"as", TokenKind::KwAs},
-        {"delegate", TokenKind::KwDelegate},
-        {"event", TokenKind::KwEvent},
-        {"raii", TokenKind::KwRaii},
-        {"move", TokenKind::KwMove},
-        {"owned", TokenKind::KwOwned},
-        {"borrowed", TokenKind::KwBorrowed},
-        {"var", TokenKind::KwVar},
-        {"foreach", TokenKind::KwForeach},
-        {"in", TokenKind::KwIn}
-    };
-
-    const auto iterator = keywords.find(text);
-    return iterator == keywords.end() ? TokenKind::Identifier : iterator->second;
-}
+constexpr std::array<KeywordEntry, 97> keywords{{
+    {"abstract", TokenKind::KwAbstract},
+    {"alignof", TokenKind::KwAlignof},
+    {"as", TokenKind::KwAs},
+    {"base", TokenKind::KwBase},
+    {"bool", TokenKind::KwBool},
+    {"borrowed", TokenKind::KwBorrowed},
+    {"break", TokenKind::KwBreak},
+    {"byte", TokenKind::KwByte},
+    {"case", TokenKind::KwCase},
+    {"catch", TokenKind::KwCatch},
+    {"char", TokenKind::KwChar},
+    {"class", TokenKind::KwClass},
+    {"const", TokenKind::KwConst},
+    {"continue", TokenKind::KwContinue},
+    {"default", TokenKind::KwDefault},
+    {"delegate", TokenKind::KwDelegate},
+    {"delete", TokenKind::KwDelete},
+    {"destroy", TokenKind::KwDestroy},
+    {"do", TokenKind::KwDo},
+    {"double", TokenKind::KwDouble},
+    {"else", TokenKind::KwElse},
+    {"enum", TokenKind::KwEnum},
+    {"event", TokenKind::KwEvent},
+    {"explicit", TokenKind::KwExplicit},
+    {"export", TokenKind::KwExport},
+    {"extern", TokenKind::KwExtern},
+    {"false", TokenKind::KwFalse},
+    {"finally", TokenKind::KwFinally},
+    {"float", TokenKind::KwFloat},
+    {"for", TokenKind::KwFor},
+    {"forceinline", TokenKind::KwForceInline},
+    {"foreach", TokenKind::KwForeach},
+    {"get", TokenKind::KwGet},
+    {"i128", TokenKind::KwInt128},
+    {"i16", TokenKind::KwShort},
+    {"i32", TokenKind::KwInt},
+    {"i64", TokenKind::KwLong},
+    {"i8", TokenKind::KwSByte},
+    {"if", TokenKind::KwIf},
+    {"implicit", TokenKind::KwImplicit},
+    {"in", TokenKind::KwIn},
+    {"inline", TokenKind::KwInline},
+    {"int", TokenKind::KwInt},
+    {"interface", TokenKind::KwInterface},
+    {"internal", TokenKind::KwInternal},
+    {"is", TokenKind::KwIs},
+    {"isize", TokenKind::KwNInt},
+    {"long", TokenKind::KwLong},
+    {"move", TokenKind::KwMove},
+    {"namespace", TokenKind::KwNamespace},
+    {"new", TokenKind::KwNew},
+    {"nint", TokenKind::KwNInt},
+    {"noheap", TokenKind::KwNoHeap},
+    {"noinline", TokenKind::KwNoInline},
+    {"nuint", TokenKind::KwNUInt},
+    {"null", TokenKind::KwNull},
+    {"offsetof", TokenKind::KwOffsetof},
+    {"operator", TokenKind::KwOperator},
+    {"override", TokenKind::KwOverride},
+    {"owned", TokenKind::KwOwned},
+    {"private", TokenKind::KwPrivate},
+    {"protected", TokenKind::KwProtected},
+    {"public", TokenKind::KwPublic},
+    {"raii", TokenKind::KwRaii},
+    {"readonly", TokenKind::KwReadonly},
+    {"return", TokenKind::KwReturn},
+    {"sbyte", TokenKind::KwSByte},
+    {"sealed", TokenKind::KwSealed},
+    {"set", TokenKind::KwSet},
+    {"short", TokenKind::KwShort},
+    {"sizeof", TokenKind::KwSizeof},
+    {"stackalloc", TokenKind::KwStackalloc},
+    {"static", TokenKind::KwStatic},
+    {"static_assert", TokenKind::KwStaticAssert},
+    {"string", TokenKind::KwString},
+    {"struct", TokenKind::KwStruct},
+    {"switch", TokenKind::KwSwitch},
+    {"this", TokenKind::KwThis},
+    {"throw", TokenKind::KwThrow},
+    {"true", TokenKind::KwTrue},
+    {"try", TokenKind::KwTry},
+    {"u128", TokenKind::KwUInt128},
+    {"u16", TokenKind::KwUShort},
+    {"u32", TokenKind::KwUInt},
+    {"u64", TokenKind::KwULong},
+    {"u8", TokenKind::KwByte},
+    {"uint", TokenKind::KwUInt},
+    {"ulong", TokenKind::KwULong},
+    {"ushort", TokenKind::KwUShort},
+    {"using", TokenKind::KwUsing},
+    {"usize", TokenKind::KwNUInt},
+    {"var", TokenKind::KwVar},
+    {"vectorcall", TokenKind::KwVectorCall},
+    {"virtual", TokenKind::KwVirtual},
+    {"void", TokenKind::KwVoid},
+    {"volatile", TokenKind::KwVolatile},
+    {"while", TokenKind::KwWhile},
+}};
 
 }
 
 TokenKind keywordKind(std::string_view text) noexcept
 {
-    const TokenKind part1 = keywordKindPart1(text);
-    if (part1 != TokenKind::Identifier)
-    {
-        return part1;
-    }
-
-    const TokenKind part2 = keywordKindPart2(text);
-    if (part2 != TokenKind::Identifier)
-    {
-        return part2;
-    }
-
-    const TokenKind part3 = keywordKindPart3(text);
-    if (part3 != TokenKind::Identifier)
-    {
-        return part3;
-    }
-
-    return TokenKind::Identifier;
+    const auto iterator = std::lower_bound(
+        keywords.begin(), keywords.end(), text,
+        [](const KeywordEntry& entry, std::string_view value) { return entry.text < value; });
+    return iterator != keywords.end() && iterator->text == text
+        ? iterator->kind : TokenKind::Identifier;
 }
 
 Lexer::Lexer(
