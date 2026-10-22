@@ -20,6 +20,7 @@
 #include "nativesharp/Frontend/VirtualMethodInfo.h"
 
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 namespace nativesharp::frontend
@@ -385,9 +386,12 @@ void ProjectCompilationIndexes::rebuildMirLayouts(
     mirStructLayoutsByTypeKey_.reserve(structLayouts.size());
     for (const ProjectOopMirStructLayout& layout : structLayouts)
     {
-        if (layout.typeOrdinal >= mirStructLayoutsByType_.size())
-            mirStructLayoutsByType_.resize(layout.typeOrdinal + 1U, nullptr);
-        mirStructLayoutsByType_[layout.typeOrdinal] = &layout;
+        if (layout.typeOrdinal != (std::numeric_limits<std::size_t>::max)())
+        {
+            if (layout.typeOrdinal >= mirStructLayoutsByType_.size())
+                mirStructLayoutsByType_.resize(layout.typeOrdinal + 1U, nullptr);
+            mirStructLayoutsByType_[layout.typeOrdinal] = &layout;
+        }
         mirStructLayoutsByTypeKey_.try_emplace(layout.typeKey, &layout);
     }
 
@@ -396,9 +400,12 @@ void ProjectCompilationIndexes::rebuildMirLayouts(
     mirClassLayoutsByTypeKey_.reserve(classLayouts.size());
     for (const ProjectOopMirClassLayout& layout : classLayouts)
     {
-        if (layout.typeOrdinal >= mirClassLayoutsByType_.size())
-            mirClassLayoutsByType_.resize(layout.typeOrdinal + 1U, nullptr);
-        mirClassLayoutsByType_[layout.typeOrdinal] = &layout;
+        if (layout.typeOrdinal != (std::numeric_limits<std::size_t>::max)())
+        {
+            if (layout.typeOrdinal >= mirClassLayoutsByType_.size())
+                mirClassLayoutsByType_.resize(layout.typeOrdinal + 1U, nullptr);
+            mirClassLayoutsByType_[layout.typeOrdinal] = &layout;
+        }
         mirClassLayoutsByTypeKey_.try_emplace(layout.typeKey, &layout);
     }
     mirLayoutIndexesBuilt_ = true;

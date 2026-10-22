@@ -32,7 +32,13 @@ ProjectOopMirModel::MirNodeMachine::structLayoutForTypeKey(
     std::string_view typeKey) const noexcept
 {
     if (model_.indexes_ != nullptr && model_.indexes_->hasMirLayoutIndexes())
-        return model_.indexes_->mirStructLayoutForTypeKey(typeKey);
+    {
+        if (const ProjectOopMirStructLayout* layout =
+                model_.indexes_->mirStructLayoutForTypeKey(typeKey))
+        {
+            return layout;
+        }
+    }
     for (const ProjectOopMirStructLayout& layout : structLayouts_)
         if (layout.typeKey == typeKey) return &layout;
     return nullptr;
