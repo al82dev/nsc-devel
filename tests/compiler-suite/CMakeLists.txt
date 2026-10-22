@@ -745,6 +745,8 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectSourceSet.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectLoader.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectDumper.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/LibraryMetadataRepositoryEntry.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/LibraryMetadataRepository.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectGraph.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectGraphLoader.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectGraphDumper.cpp"

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Basic/CompilationEvent.h"
+#include "nativesharp/Compilation/LibraryMetadataRepository.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
@@ -102,6 +103,8 @@ public:
     std::span<const CompilationStage> completedStages() const noexcept;
 
     const compilation::ProjectGraph* projectGraph() const noexcept;
+    compilation::LibraryMetadataRepository& libraryMetadataRepository() noexcept;
+    const compilation::LibraryMetadataRepository& libraryMetadataRepository() const noexcept;
     const source::SourceManager& sourceManager() const noexcept;
     diagnostics::DiagnosticEngine& diagnostics() noexcept;
     const diagnostics::DiagnosticEngine& diagnostics() const noexcept;
@@ -210,6 +213,7 @@ private:
     std::unique_ptr<ProjectMetaprogrammingModel> metaprogrammingModel_;
     std::unique_ptr<ProjectOopHirModel> oopHirModel_;
     std::unique_ptr<ProjectOopMirModel> oopMirModel_;
+    compilation::LibraryMetadataRepository libraryMetadataRepository_;
     std::function<bool()> cancellationCheck_;
     SourceBufferProvider sourceBufferProvider_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;

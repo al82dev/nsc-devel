@@ -1723,6 +1723,16 @@ const compilation::ProjectGraph* ProjectCompilation::projectGraph() const noexce
     return projectGraph_.has_value() ? &*projectGraph_ : nullptr;
 }
 
+compilation::LibraryMetadataRepository& ProjectCompilation::libraryMetadataRepository() noexcept
+{
+    return libraryMetadataRepository_;
+}
+
+const compilation::LibraryMetadataRepository& ProjectCompilation::libraryMetadataRepository() const noexcept
+{
+    return libraryMetadataRepository_;
+}
+
 const source::SourceManager& ProjectCompilation::sourceManager() const noexcept
 {
     return sourceManager_;
