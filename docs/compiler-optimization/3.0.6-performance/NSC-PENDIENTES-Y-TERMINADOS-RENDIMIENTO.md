@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `12 / 48`
+**Progreso:** `13 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -16,7 +16,7 @@
 | T2.3 | Incluir HIR, tipos, ABI, compilador, target y opciones en la llave MIR | TERMINADO |
 | T2.4 | Consultar la caché antes de construir cada callable MIR | TERMINADO |
 | T2.5 | Instalar la función MIR restaurada en vez de descartarla | TERMINADO |
-| T2.6 | Reenlazar referencias, cleanups, excepciones, async frames y ordinales restaurados | PENDIENTE |
+| T2.6 | Reenlazar referencias, cleanups, excepciones, async frames y ordinales restaurados | TERMINADO |
 | T2.7 | Construir y publicar solamente los misses MIR | PENDIENTE |
 | T3.1 | Definir la identidad estable de cada módulo precompilado | PENDIENTE |
 | T3.2 | Crear una raíz persistente para productos de módulos precompilados | PENDIENTE |

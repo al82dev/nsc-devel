@@ -181,8 +181,23 @@ std::string preLowerMirCacheKey(
 
 // NSC305-C04. Relocatable codec for a MIR node tree (the C4 cache payload). The syntax pointer is
 // re-linked on restore; all scalars, strings, optionals, vectors and children round-trip.
-void appendMirNodeCoreFields(std::string& out, const ProjectOopMirNode& node)
+void appendMirSyntaxReference(
+    std::string& out,
+    const ProjectOopMirNode& node,
+    const std::unordered_map<const ast::AstNode*, std::size_t>& syntaxIndices)
 {
+    const auto found = syntaxIndices.find(node.syntax);
+    internal::CachePayloadWriter::byte(out, found != syntaxIndices.end() ? 1U : 0U);
+    if (found != syntaxIndices.end())
+        internal::CachePayloadWriter::u64(out, found->second);
+}
+
+void appendMirNodeCoreFields(
+    std::string& out,
+    const ProjectOopMirNode& node,
+    const std::unordered_map<const ast::AstNode*, std::size_t>& syntaxIndices)
+{
+    appendMirSyntaxReference(out, node, syntaxIndices);
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.kind));
     internal::CachePayloadWriter::string(out, node.typeKey);
     internal::CachePayloadWriter::string(out, node.elementTypeKey);
@@ -344,18 +359,26 @@ void appendMirNodeVectors(std::string& out, const ProjectOopMirNode& node)
 }
 
 // Serializes one node's scalar/string/flag fields (children recurse iteratively below).
-void appendMirNodeFields(std::string& out, const ProjectOopMirNode& node)
+void appendMirNodeFields(
+    std::string& out,
+    const ProjectOopMirNode& node,
+    const std::unordered_map<const ast::AstNode*, std::size_t>& syntaxIndices)
 {
-    appendMirNodeCoreFields(out, node);
+    appendMirNodeCoreFields(out, node, syntaxIndices);
     appendMirNodeShapeFields(out, node);
     appendMirNodeFlags(out, node);
     appendMirNodeOptionals(out, node);
     appendMirNodeVectors(out, node);
 }
 
-[[maybe_unused]] std::string serializeMirNodeTree(const ProjectOopMirNode* body)
+std::string serializeMirNodeTree(
+    const ProjectOopMirNode* body,
+    std::span<const ast::AstNode* const> syntaxTable)
 {
     std::string out;
+    std::unordered_map<const ast::AstNode*, std::size_t> syntaxIndices;
+    for (std::size_t index = 0; index < syntaxTable.size(); ++index)
+        syntaxIndices.emplace(syntaxTable[index], index);
     // Iterative pre-order: each node writes its fields + a child-count marker; the marker's
     // sentinel distinguishes a node from a null child.
     std::vector<const ProjectOopMirNode*> work;
@@ -370,7 +393,7 @@ void appendMirNodeFields(std::string& out, const ProjectOopMirNode& node)
             continue;
         }
         internal::CachePayloadWriter::u32(out, 0xFFFFFFFFu); // node marker
-        appendMirNodeFields(out, *node);
+        appendMirNodeFields(out, *node, syntaxIndices);
         internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node->children.size()));
         for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
             work.push_back(it->get());
@@ -379,9 +402,36 @@ void appendMirNodeFields(std::string& out, const ProjectOopMirNode& node)
     return out;
 }
 
-bool readMirNodeCoreFields(internal::CachePayloadReader& reader, ProjectOopMirNode& node)
+[[maybe_unused]] std::string serializeMirNodeTree(const ProjectOopMirNode* body)
+{
+    return serializeMirNodeTree(body, {});
+}
+
+bool readMirSyntaxReference(
+    internal::CachePayloadReader& reader,
+    ProjectOopMirNode& node,
+    std::span<const ast::AstNode* const> syntaxTable)
+{
+    std::uint8_t present = 0;
+    if (!reader.byte(present)) return false;
+    if (present == 0U)
+    {
+        node.syntax = nullptr;
+        return true;
+    }
+    std::uint64_t index = 0;
+    if (!reader.u64(index) || index >= syntaxTable.size()) return false;
+    node.syntax = syntaxTable[static_cast<std::size_t>(index)];
+    return node.syntax != nullptr;
+}
+
+bool readMirNodeCoreFields(
+    internal::CachePayloadReader& reader,
+    ProjectOopMirNode& node,
+    std::span<const ast::AstNode* const> syntaxTable)
 {
     std::uint32_t u32 = 0;
+    if (!readMirSyntaxReference(reader, node, syntaxTable)) return false;
     if (!reader.u32(u32)) return false;
     node.kind = static_cast<ProjectOopMirNodeKind>(u32);
     if (!reader.string(node.typeKey) || !reader.string(node.elementTypeKey) ||
@@ -593,9 +643,13 @@ bool readMirNodeVectors(internal::CachePayloadReader& reader, ProjectOopMirNode&
 }
 
 // Reads one node's scalar/string/flag/optional/vector fields (symmetric to appendMirNodeFields).
-bool readMirNodeFields(internal::CachePayloadReader& reader, ProjectOopMirNode& node)
+bool readMirNodeFields(
+    internal::CachePayloadReader& reader,
+    ProjectOopMirNode& node,
+    std::span<const ast::AstNode* const> syntaxTable)
 {
-    if (!readMirNodeCoreFields(reader, node) || !readMirNodeShapeFields(reader, node))
+    if (!readMirNodeCoreFields(reader, node, syntaxTable) ||
+        !readMirNodeShapeFields(reader, node))
         return false;
     std::uint32_t flags = 0;
     if (!reader.u32(flags)) return false;
@@ -606,7 +660,8 @@ bool readMirNodeFields(internal::CachePayloadReader& reader, ProjectOopMirNode& 
 
 bool readMirNodeRecord(
     internal::CachePayloadReader& reader,
-    std::unique_ptr<ProjectOopMirNode>& out)
+    std::unique_ptr<ProjectOopMirNode>& out,
+    std::span<const ast::AstNode* const> syntaxTable)
 {
     std::uint32_t marker = 0;
     if (!reader.u32(marker)) return false;
@@ -617,7 +672,7 @@ bool readMirNodeRecord(
     }
     if (marker != 0xFFFFFFFFu) return false;
     auto node = std::make_unique<ProjectOopMirNode>();
-    if (!readMirNodeFields(reader, *node)) return false;
+    if (!readMirNodeFields(reader, *node, syntaxTable)) return false;
     std::uint32_t childCount = 0;
     if (!reader.u32(childCount)) return false;
     node->children.resize(childCount);
@@ -639,10 +694,13 @@ void discardMirNodeTree(std::unique_ptr<ProjectOopMirNode>& root)
     }
 }
 
-bool readMirNode(internal::CachePayloadReader& reader, std::unique_ptr<ProjectOopMirNode>& out)
+bool readMirNode(
+    internal::CachePayloadReader& reader,
+    std::unique_ptr<ProjectOopMirNode>& out,
+    std::span<const ast::AstNode* const> syntaxTable)
 {
     std::unique_ptr<ProjectOopMirNode> root;
-    if (!readMirNodeRecord(reader, root)) return false;
+    if (!readMirNodeRecord(reader, root, syntaxTable)) return false;
     if (root == nullptr)
     {
         out.reset();
@@ -659,7 +717,7 @@ bool readMirNode(internal::CachePayloadReader& reader, std::unique_ptr<ProjectOo
             continue;
         }
         std::unique_ptr<ProjectOopMirNode>& child = node->children[childIndex++];
-        if (!readMirNodeRecord(reader, child))
+        if (!readMirNodeRecord(reader, child, syntaxTable))
         {
             discardMirNodeTree(root);
             return false;
@@ -670,11 +728,23 @@ bool readMirNode(internal::CachePayloadReader& reader, std::unique_ptr<ProjectOo
     return true;
 }
 
+bool restoreMirNodeTree(
+    std::string_view bytes,
+    std::unique_ptr<ProjectOopMirNode>& body,
+    std::span<const ast::AstNode* const> syntaxTable)
+{
+    internal::CachePayloadReader reader(bytes);
+    if (!readMirNode(reader, body, syntaxTable)) return false;
+    if (body == nullptr) return reader.remaining().empty();
+    std::uint32_t endMarker = 0;
+    return reader.u32(endMarker) && endMarker == 0xFFFFFFFEu &&
+        reader.remaining().empty();
+}
+
 [[maybe_unused]] bool restoreMirNodeTree(
     std::string_view bytes, std::unique_ptr<ProjectOopMirNode>& body)
 {
-    internal::CachePayloadReader reader(bytes);
-    return readMirNode(reader, body);
+    return restoreMirNodeTree(bytes, body, {});
 }
 
 // NSC305-C04. Pre-order index of a node inside a MIR body (SIZE_MAX when absent); the C4 payload
@@ -733,6 +803,10 @@ void appendMirFunctionIdentity(std::string& out, const ProjectOopMirFunction& fu
     internal::CachePayloadWriter::string(out, function.debugDisplayName);
     internal::CachePayloadWriter::u64(
         out, function.memberOrdinal ? static_cast<std::uint64_t>(function.memberOrdinal) : 0U);
+    internal::CachePayloadWriter::byte(
+        out, function.namespaceFunctionOrdinal.has_value() ? 1U : 0U);
+    if (function.namespaceFunctionOrdinal.has_value())
+        internal::CachePayloadWriter::u64(out, *function.namespaceFunctionOrdinal);
     internal::CachePayloadWriter::u64(out, function.declaringTypeOrdinal);
     internal::CachePayloadWriter::u64(out, function.closureLayoutSize);
     internal::CachePayloadWriter::u64(out, function.closureLayoutAlignment);
@@ -788,6 +862,16 @@ void appendMirFunctionAbi(std::string& out, const ProjectOopMirFunction& functio
     }
     internal::CachePayloadWriter::sizeVector(out, function.abi.parameterPhysicalOrdinals);
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.abi.physicalParameterCount));
+    std::vector<std::uint32_t> passKinds;
+    passKinds.reserve(function.parameterPassKinds.size());
+    for (const ParameterPassKind kind : function.parameterPassKinds)
+        passKinds.push_back(static_cast<std::uint32_t>(kind));
+    internal::CachePayloadWriter::u32Vector(out, passKinds);
+    std::vector<std::uint32_t> ownerships;
+    ownerships.reserve(function.parameterOwnerships.size());
+    for (const sema::OwnershipKind ownership : function.parameterOwnerships)
+        ownerships.push_back(static_cast<std::uint32_t>(ownership));
+    internal::CachePayloadWriter::u32Vector(out, ownerships);
 }
 
 template <typename Tuples>
@@ -871,6 +955,22 @@ void appendMirFunctionExceptionFlow(std::string& out, const ProjectOopMirFunctio
     }
 }
 
+std::string serializeMirFunctionCore(
+    const ProjectOopMirFunction& function,
+    const ProjectOopHirFunction& source)
+{
+    std::string out;
+    appendMirFunctionIdentity(out, function);
+    appendMirFunctionFlags(out, function);
+    appendMirFunctionAbi(out, function);
+    appendMirFunctionCaptures(out, function);
+    appendMirFunctionCleanupRegions(out, function);
+    appendMirFunctionExceptionFlow(out, function);
+    const std::vector<const ast::AstNode*> syntaxTable = collectHirSyntaxTable(source);
+    out += serializeMirNodeTree(function.body.get(), syntaxTable);
+    return out;
+}
+
 [[maybe_unused]] std::string serializeMirFunctionCore(const ProjectOopMirFunction& function)
 {
     std::string out;
@@ -902,6 +1002,17 @@ bool readMirFunctionIdentity(
         !reader.string(function.debugDisplayName) || !reader.u64(u64))
         return false;
     function.memberOrdinal = static_cast<std::size_t>(u64);
+    std::uint8_t namespacePresent = 0;
+    if (!reader.byte(namespacePresent)) return false;
+    if (namespacePresent != 0U)
+    {
+        if (!reader.u64(u64)) return false;
+        function.namespaceFunctionOrdinal = static_cast<std::size_t>(u64);
+    }
+    else
+    {
+        function.namespaceFunctionOrdinal.reset();
+    }
     if (!reader.u64(function.declaringTypeOrdinal) || !reader.u64(function.closureLayoutSize) ||
         !reader.u64(function.closureLayoutAlignment) || !reader.u64(function.asyncFrameSize) ||
         !reader.u32(u32))
@@ -970,6 +1081,24 @@ bool readMirFunctionEffects(
     return true;
 }
 
+template <typename Value>
+bool readMirEnumVector(
+    internal::CachePayloadReader& reader,
+    std::vector<Value>& values)
+{
+    std::uint32_t count = 0;
+    if (!reader.u32(count)) return false;
+    values.clear();
+    values.reserve(count);
+    for (std::uint32_t index = 0; index < count; ++index)
+    {
+        std::uint32_t value = 0;
+        if (!reader.u32(value)) return false;
+        values.push_back(static_cast<Value>(value));
+    }
+    return true;
+}
+
 bool readMirFunctionAbi(
     internal::CachePayloadReader& reader,
     ProjectOopMirFunction& function)
@@ -1005,7 +1134,8 @@ bool readMirFunctionAbi(
     if (!readMirSizeVector(reader, function.abi.parameterPhysicalOrdinals)) return false;
     if (!reader.u32(u32)) return false;
     function.abi.physicalParameterCount = u32;
-    return true;
+    return readMirEnumVector(reader, function.parameterPassKinds) &&
+        readMirEnumVector(reader, function.parameterOwnerships);
 }
 
 template <typename Tuples>
@@ -1187,8 +1317,10 @@ bool readMirFunctionExceptionFlow(
     return true;
 }
 
-[[maybe_unused]] bool restoreMirFunctionCore(
-    std::string_view bytes, ProjectOopMirFunction& function)
+bool restoreMirFunctionCoreWithSyntax(
+    std::string_view bytes,
+    ProjectOopMirFunction& function,
+    std::span<const ast::AstNode* const> syntaxTable)
 {
     internal::CachePayloadReader reader(bytes);
     if (!readMirFunctionIdentity(reader, function) ||
@@ -1203,14 +1335,39 @@ bool readMirFunctionExceptionFlow(
     if (!readMirFunctionCleanupRegions(reader, function, regionActionIndices) ||
         !readMirFunctionExceptionFlow(reader, function, exitNodeIndices))
         return false;
-    if (!restoreMirNodeTree(reader.remaining(), function.body)) return false;
+    if (!restoreMirNodeTree(reader.remaining(), function.body, syntaxTable)) return false;
     for (std::size_t i = 0; i < function.cleanupRegions.size(); ++i)
+    {
         function.cleanupRegions[i].action =
             nodeByPreorderIndex(function.body.get(), regionActionIndices[i]);
+        if (regionActionIndices[i] != std::numeric_limits<std::size_t>::max() &&
+            function.cleanupRegions[i].action == nullptr)
+            return false;
+    }
     for (std::size_t i = 0; i < function.exceptionFlow.nonlocalExits.size(); ++i)
+    {
         function.exceptionFlow.nonlocalExits[i].node =
             nodeByPreorderIndex(function.body.get(), exitNodeIndices[i]);
+        if (exitNodeIndices[i] != std::numeric_limits<std::size_t>::max() &&
+            function.exceptionFlow.nonlocalExits[i].node == nullptr)
+            return false;
+    }
     return true;
+}
+
+bool restoreMirFunctionCore(
+    std::string_view bytes,
+    ProjectOopMirFunction& function,
+    const ProjectOopHirFunction& source)
+{
+    const std::vector<const ast::AstNode*> syntaxTable = collectHirSyntaxTable(source);
+    return restoreMirFunctionCoreWithSyntax(bytes, function, syntaxTable);
+}
+
+[[maybe_unused]] bool restoreMirFunctionCore(
+    std::string_view bytes, ProjectOopMirFunction& function)
+{
+    return restoreMirFunctionCoreWithSyntax(bytes, function, {});
 }
 
 // NSC-LIMIT-009. Solo se llama sobre claves de identidad, de modo que delega en el codificador
@@ -1281,8 +1438,10 @@ void ProjectOopMirModel::lookupMirCachePayloads()
 void ProjectOopMirModel::installRestoredMirFunctions(
     std::vector<std::optional<ProjectOopMirFunction>>& loweredFunctions)
 {
+    if (hirModel_ == nullptr) return;
+    const std::span<const ProjectOopHirFunction> hirFunctions = hirModel_->functions();
     const std::size_t count = std::min(
-        loweredFunctions.size(), mirCachePayloads_.size());
+        std::min(loweredFunctions.size(), mirCachePayloads_.size()), hirFunctions.size());
     for (std::size_t index = 0; index < count; ++index)
     {
         if (!mirCachePayloads_[index].has_value() ||
@@ -1292,8 +1451,9 @@ void ProjectOopMirModel::installRestoredMirFunctions(
         }
         ProjectOopMirFunction restored;
         const std::string& payload = *mirCachePayloads_[index];
-        if (!restoreMirFunctionCore(payload, restored) ||
-            serializeMirFunctionCore(*loweredFunctions[index]) != payload)
+        if (!restoreMirFunctionCore(payload, restored, hirFunctions[index]) ||
+            serializeMirFunctionCore(
+                *loweredFunctions[index], hirFunctions[index]) != payload)
         {
             mirCache_.quarantine(mirCacheKeys_[index]);
             mirCachePayloads_[index].reset();
@@ -1305,12 +1465,15 @@ void ProjectOopMirModel::installRestoredMirFunctions(
 
 void ProjectOopMirModel::storeMirFunctions()
 {
-    if (!mirCache_.enabled()) return;
-    for (const ProjectOopMirFunction& function : functions_)
+    if (!mirCache_.enabled() || hirModel_ == nullptr) return;
+    const std::span<const ProjectOopHirFunction> hirFunctions = hirModel_->functions();
+    const std::size_t count = std::min(functions_.size(), hirFunctions.size());
+    for (std::size_t index = 0; index < count; ++index)
     {
+        const ProjectOopMirFunction& function = functions_[index];
         const std::string implementationFingerprint =
             mirImplementationFingerprint(function.body.get());
-        const std::string payload = serializeMirFunctionCore(function);
+        const std::string payload = serializeMirFunctionCore(function, hirFunctions[index]);
         std::string error;
         (void)mirCache_.store(implementationFingerprint, payload, error);
     }
@@ -1318,9 +1481,12 @@ void ProjectOopMirModel::storeMirFunctions()
 
 void ProjectOopMirModel::restoreMirFunctions()
 {
-    if (!mirCache_.enabled()) return;
-    for (const ProjectOopMirFunction& function : functions_)
+    if (!mirCache_.enabled() || hirModel_ == nullptr) return;
+    const std::span<const ProjectOopHirFunction> hirFunctions = hirModel_->functions();
+    const std::size_t count = std::min(functions_.size(), hirFunctions.size());
+    for (std::size_t index = 0; index < count; ++index)
     {
+        const ProjectOopMirFunction& function = functions_[index];
         const std::string implementationFingerprint =
             mirImplementationFingerprint(function.body.get());
         std::string payload;
@@ -1328,7 +1494,7 @@ void ProjectOopMirModel::restoreMirFunctions()
         std::string error;
         if (!mirCache_.restore(implementationFingerprint, payload, hit, error) || !hit) continue;
         ProjectOopMirFunction restored;
-        if (restoreMirFunctionCore(payload, restored))
+        if (restoreMirFunctionCore(payload, restored, hirFunctions[index]))
         {
             // The payload round-trips; the caller decides whether to swap the built function.
             (void)restored;

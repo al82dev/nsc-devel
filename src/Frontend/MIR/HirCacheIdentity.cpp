@@ -7,6 +7,7 @@
 #include <bit>
 #include <cstdint>
 #include <type_traits>
+#include <unordered_set>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -229,5 +230,37 @@ std::string serializeHirCacheIdentity(const ProjectOopHirFunction& function)
     appendFunctionVectors(out, function);
     appendNodeTree(out, function.body.get());
     return out;
+}
+
+std::vector<const ast::AstNode*> collectHirSyntaxTable(
+    const ProjectOopHirFunction& function)
+{
+    std::vector<const ast::AstNode*> result;
+    std::unordered_set<const ast::AstNode*> seen;
+    std::vector<const ProjectOopHirNode*> hirWork;
+    if (function.body != nullptr) hirWork.push_back(function.body.get());
+    while (!hirWork.empty())
+    {
+        const ProjectOopHirNode* node = hirWork.back();
+        hirWork.pop_back();
+        std::vector<const ast::AstNode*> astWork;
+        if (node->syntax != nullptr) astWork.push_back(node->syntax);
+        while (!astWork.empty())
+        {
+            const ast::AstNode* syntax = astWork.back();
+            astWork.pop_back();
+            if (syntax == nullptr || !seen.insert(syntax).second) continue;
+            result.push_back(syntax);
+            for (auto child = syntax->children().rbegin();
+                 child != syntax->children().rend(); ++child)
+                astWork.push_back(*child);
+            astWork.push_back(syntax->third());
+            astWork.push_back(syntax->second());
+            astWork.push_back(syntax->first());
+        }
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            hirWork.push_back(child->get());
+    }
+    return result;
 }
 } // namespace nativesharp::frontend
