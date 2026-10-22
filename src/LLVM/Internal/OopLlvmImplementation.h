@@ -75,6 +75,8 @@ private:
 
     void dispose() noexcept;
 
+    void reserveDeclarationStorage();
+
     bool initializeDebugInformation(std::string& error);
 
     LLVMMetadataRef debugFile(SourceLocation location);

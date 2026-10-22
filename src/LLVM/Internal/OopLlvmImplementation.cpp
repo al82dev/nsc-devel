@@ -82,6 +82,32 @@ OopLlvmImplementation::OopLlvmImplementation(
             functionDeclarations_[ordinal] = functionDeclarations_[ordinal] || functionDefinitions_[ordinal];
     }
 
+void OopLlvmImplementation::reserveDeclarationStorage()
+{
+        const std::size_t functionCount = mirModel_.functions().size();
+        const std::size_t staticFieldCount = mirModel_.staticFields().size();
+        const std::size_t structLayoutCount = mirModel_.structLayouts().size();
+        const std::size_t dispatchTableCount = mirModel_.dispatchTables().size();
+
+        functions_.reserve(functionCount);
+        callbackGuardThunks_.reserve(functionCount);
+        closureContextDestroyFunctions_.reserve(functionCount);
+        definedRuntimeBoundImports_.reserve(functionCount);
+
+        staticFieldGlobals_.reserve(staticFieldCount);
+        staticFieldInfo_.reserve(staticFieldCount);
+        staticFieldAccessorFunctions_.reserve(staticFieldCount);
+
+        valueDropEntries_.reserve(structLayoutCount);
+        descriptorGlobals_.reserve(dispatchTableCount);
+        descriptorAccessorFunctions_.reserve(dispatchTableCount);
+        interfaceMapGlobals_.reserve(dispatchTableCount);
+        destructionFunctions_.reserve(dispatchTableCount);
+        objectDestructionFunctions_.reserve(dispatchTableCount);
+        vtableGlobals_.reserve(dispatchTableCount);
+        runtimeDescriptorAccessorTypes_.reserve(dispatchTableCount);
+    }
+
 bool OopLlvmImplementation::lower(std::string& error)
 {
         error.clear();
@@ -91,6 +117,7 @@ bool OopLlvmImplementation::lower(std::string& error)
                 std::to_string(*invalidFunctionOrdinal_);
             return false;
         }
+        reserveDeclarationStorage();
         context_ = LLVMContextCreate();
         module_ = LLVMModuleCreateWithNameInContext(moduleName_.c_str(), context_);
         builder_ = LLVMCreateBuilderInContext(context_);

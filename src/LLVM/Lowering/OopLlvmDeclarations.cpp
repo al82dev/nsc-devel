@@ -29,6 +29,9 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 return nullptr;
             }
             std::vector<LLVMTypeRef> parameters;
+            parameters.reserve(
+                function.parameterTypeKeys.size() + (function.isStatic ? 0U : 1U) +
+                (sretReturn ? 1U : 0U));
             if (!function.isStatic)
             {
                 parameters.push_back(LLVMPointerTypeInContext(context_, 0));
