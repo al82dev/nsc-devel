@@ -2,8 +2,6 @@
 
 #include <algorithm>
 #include <fstream>
-#include <iterator>
-#include <vector>
 
 namespace nativesharp::basic {
 namespace {
@@ -93,33 +91,45 @@ Sha256Digest sha256Digest(const std::array<std::uint32_t, 8> &state) {
   }
   return digest;
 }
-} // namespace
 
-Sha256Digest sha256(std::span<const std::uint8_t> input) {
-  std::array<std::uint32_t, 8> state = {
-      0x6a09e667U, 0xbb67ae85U, 0x3c6ef372U, 0xa54ff53aU,
-      0x510e527fU, 0x9b05688cU, 0x1f83d9abU, 0x5be0cd19U};
-  const std::size_t fullByteCount = input.size() - input.size() % 64U;
-  for (std::size_t offset = 0; offset < fullByteCount; offset += 64U) {
+std::array<std::uint32_t, 8> initialSha256State() {
+  return {0x6a09e667U, 0xbb67ae85U, 0x3c6ef372U, 0xa54ff53aU,
+          0x510e527fU, 0x9b05688cU, 0x1f83d9abU, 0x5be0cd19U};
+}
+
+void compressSha256Bytes(
+    std::span<const std::uint8_t> input,
+    std::array<std::uint32_t, 8> &state) {
+  for (std::size_t offset = 0; offset < input.size(); offset += 64U) {
     const std::span<const std::uint8_t, 64> block(input.data() + offset, 64U);
     compressSha256Block(sha256Words(block), state);
   }
+}
 
-  const std::size_t remaining = input.size() - fullByteCount;
-  const std::size_t finalSize = remaining < 56U ? 64U : 128U;
+Sha256Digest finishSha256(
+    std::span<const std::uint8_t> remaining,
+    std::uint64_t totalByteCount,
+    std::array<std::uint32_t, 8> &state) {
+  const std::size_t finalSize = remaining.size() < 56U ? 64U : 128U;
   std::array<std::uint8_t, 128> tail{};
-  std::copy(input.begin() + fullByteCount, input.end(), tail.begin());
-  tail[remaining] = 0x80U;
-  const std::uint64_t bitLength = static_cast<std::uint64_t>(input.size()) * 8ULL;
+  std::copy(remaining.begin(), remaining.end(), tail.begin());
+  tail[remaining.size()] = 0x80U;
+  const std::uint64_t bitLength = totalByteCount * 8ULL;
   for (unsigned byte = 0; byte < 8U; ++byte) {
     tail[finalSize - 1U - byte] =
         static_cast<std::uint8_t>((bitLength >> (byte * 8U)) & 0xffU);
   }
-  for (std::size_t offset = 0; offset < finalSize; offset += 64U) {
-    const std::span<const std::uint8_t, 64> block(tail.data() + offset, 64U);
-    compressSha256Block(sha256Words(block), state);
-  }
+  compressSha256Bytes(std::span<const std::uint8_t>(tail.data(), finalSize), state);
   return sha256Digest(state);
+}
+} // namespace
+
+Sha256Digest sha256(std::span<const std::uint8_t> input) {
+  std::array<std::uint32_t, 8> state = initialSha256State();
+  const std::size_t fullByteCount = input.size() - input.size() % 64U;
+  compressSha256Bytes(input.first(fullByteCount), state);
+  return finishSha256(
+      input.subspan(fullByteCount), static_cast<std::uint64_t>(input.size()), state);
 }
 
 bool sha256File(const std::filesystem::path &path, Sha256Digest &digest,
@@ -131,19 +141,32 @@ bool sha256File(const std::filesystem::path &path, Sha256Digest &digest,
     return false;
   }
 
-  std::vector<std::uint8_t> bytes;
-  for (std::istreambuf_iterator<char> iterator(stream), end; iterator != end;
-       ++iterator) {
-    bytes.push_back(
-        static_cast<std::uint8_t>(static_cast<unsigned char>(*iterator)));
-  }
-  if (stream.bad()) {
-    error = "cannot read file for SHA-256: '" + path.string() + "'";
-    return false;
+  constexpr std::size_t BufferSize = 64U * 1024U;
+  std::array<std::uint8_t, BufferSize> buffer{};
+  std::array<std::uint32_t, 8> state = initialSha256State();
+  std::uintmax_t totalSize = 0;
+  std::size_t finalOffset = 0;
+  std::size_t finalSize = 0;
+  while (true) {
+    stream.read(reinterpret_cast<char *>(buffer.data()),
+                static_cast<std::streamsize>(buffer.size()));
+    const std::size_t readSize = static_cast<std::size_t>(stream.gcount());
+    totalSize += readSize;
+    const std::size_t fullByteCount = readSize - readSize % 64U;
+    compressSha256Bytes(std::span<const std::uint8_t>(buffer.data(), fullByteCount), state);
+    finalOffset = fullByteCount;
+    finalSize = readSize - fullByteCount;
+    if (stream.bad() || (stream.fail() && !stream.eof())) {
+      error = "cannot read file for SHA-256: '" + path.string() + "'";
+      return false;
+    }
+    if (stream.eof()) break;
   }
 
-  size = static_cast<std::uintmax_t>(bytes.size());
-  digest = sha256(bytes);
+  digest = finishSha256(
+      std::span<const std::uint8_t>(buffer.data() + finalOffset, finalSize),
+      static_cast<std::uint64_t>(totalSize), state);
+  size = totalSize;
   return true;
 }
 
