@@ -340,7 +340,7 @@ std::span<const std::size_t> ProjectCompilationIndexes::memberOrdinalsForSignatu
         return {};
     }
     const MemberSignatureIndex& index = memberOrdinalsBySignature_[typeOrdinal];
-    const auto iterator = index.find(std::string(signature));
+    const auto iterator = index.find(signature);
     return iterator == index.end()
         ? std::span<const std::size_t>{} : std::span<const std::size_t>(iterator->second);
 }
@@ -386,14 +386,14 @@ const GenericTemplateRecord* ProjectCompilationIndexes::genericTemplateForOrdina
 const GenericTemplateRecord* ProjectCompilationIndexes::genericTemplateForCanonicalKey(
     std::string_view canonicalKey) const noexcept
 {
-    const auto iterator = genericTemplateByCanonicalKey_.find(std::string(canonicalKey));
+    const auto iterator = genericTemplateByCanonicalKey_.find(canonicalKey);
     return iterator == genericTemplateByCanonicalKey_.end() ? nullptr : iterator->second;
 }
 
 std::span<const std::size_t> ProjectCompilationIndexes::genericTemplateOrdinalsForName(
     std::string_view name) const noexcept
 {
-    const auto iterator = genericTemplateOrdinalsByName_.find(std::string(name));
+    const auto iterator = genericTemplateOrdinalsByName_.find(name);
     return iterator == genericTemplateOrdinalsByName_.end()
         ? std::span<const std::size_t>{} : std::span<const std::size_t>(iterator->second);
 }
@@ -415,14 +415,14 @@ const GenericSpecializationRecord* ProjectCompilationIndexes::genericSpecializat
 const GenericSpecializationRecord* ProjectCompilationIndexes::genericSpecializationForKey(
     std::string_view key) const noexcept
 {
-    const auto iterator = genericSpecializationByKey_.find(std::string(key));
+    const auto iterator = genericSpecializationByKey_.find(key);
     return iterator == genericSpecializationByKey_.end() ? nullptr : iterator->second;
 }
 
 const GenericSpecializationRecord* ProjectCompilationIndexes::genericSpecializationForName(
     std::string_view name) const noexcept
 {
-    const auto iterator = genericSpecializationByName_.find(std::string(name));
+    const auto iterator = genericSpecializationByName_.find(name);
     return iterator == genericSpecializationByName_.end() ? nullptr : iterator->second;
 }
 

@@ -118,8 +118,14 @@ private:
 
     using MirAsyncFrameSlot = std::tuple<std::size_t, std::uint64_t, std::string>;
     using MirAsyncFrameIndex = std::unordered_multimap<std::size_t, const MirAsyncFrameSlot*>;
-    using MemberSignatureIndex =
-        std::unordered_map<std::string, std::vector<std::size_t>>;
+    template <typename Value>
+    using StringIndex = std::unordered_map<
+        std::string,
+        Value,
+        TransparentStringHash,
+        std::equal_to<>>;
+
+    using MemberSignatureIndex = StringIndex<std::vector<std::size_t>>;
     using TypeIdentityIndex = std::unordered_map<
         std::string,
         std::size_t,
@@ -142,13 +148,13 @@ private:
     std::vector<const StructValueLayout*> structLayoutsByType_;
     std::vector<const ObjectFieldLayout*> fieldLayoutsByMember_;
     std::vector<const GenericTemplateRecord*> genericTemplatesByOrdinal_;
-    std::unordered_map<std::string, const GenericTemplateRecord*> genericTemplateByCanonicalKey_;
-    std::unordered_map<std::string, std::vector<std::size_t>> genericTemplateOrdinalsByName_;
+    StringIndex<const GenericTemplateRecord*> genericTemplateByCanonicalKey_;
+    StringIndex<std::vector<std::size_t>> genericTemplateOrdinalsByName_;
     std::vector<const GenericSpecializationRecord*> genericSpecializationsByOrdinal_;
     std::unordered_map<const ast::AstNode*, const GenericSpecializationRecord*>
         genericSpecializationBySyntax_;
-    std::unordered_map<std::string, const GenericSpecializationRecord*> genericSpecializationByKey_;
-    std::unordered_map<std::string, const GenericSpecializationRecord*> genericSpecializationByName_;
+    StringIndex<const GenericSpecializationRecord*> genericSpecializationByKey_;
+    StringIndex<const GenericSpecializationRecord*> genericSpecializationByName_;
     std::unordered_set<std::string> bodyTypeDemandKeys_;
     std::unordered_set<std::string> genericTypeDemandKeys_;
     std::unordered_map<const ast::AstNode*, const MethodLocalSymbol*> hirLocalBySyntax_;
