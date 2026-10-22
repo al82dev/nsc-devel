@@ -35,6 +35,12 @@ public:
         const LibraryMetadataRepository& metadataRepository,
         std::string& error);
     std::string_view identity() const noexcept;
+    void setBundleProductKind(std::string productKind);
+    std::string_view bundleProductKind() const noexcept;
+    void setBundleOutputPath(std::filesystem::path outputPath);
+    void addRequiredBundleOutput(std::filesystem::path outputPath);
+    const std::filesystem::path& bundleOutputDirectory() const noexcept;
+    const std::vector<std::string>& requiredBundleOutputNames() const noexcept;
     void setBundleLookup(CompilationBundleLookup lookup);
     const CompilationBundleLookup& bundleLookup() const noexcept;
 
@@ -48,6 +54,9 @@ private:
     std::vector<std::filesystem::path> inputFiles_;
     std::vector<std::pair<std::string, std::string>> identityFields_;
     std::string identity_;
+    std::string bundleProductKind_;
+    std::filesystem::path bundleOutputDirectory_;
+    std::vector<std::string> requiredBundleOutputNames_;
     CompilationBundleLookup bundleLookup_;
 };
 }

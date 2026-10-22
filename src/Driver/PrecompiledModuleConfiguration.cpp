@@ -72,10 +72,28 @@ void addCompilationProductIdentity(
     const std::filesystem::path& outputPath)
 {
     manifest.addIdentityField("product", std::string(productKind));
+    manifest.setBundleProductKind(std::string(productKind));
     if (!outputPath.empty())
     {
         manifest.addIdentityField(
             "output-name", outputPath.filename().generic_string());
+        manifest.setBundleOutputPath(outputPath);
+        if (productKind == "static-library" || productKind == "dynamic-library")
+        {
+            std::filesystem::path header = outputPath;
+            header.replace_extension(".h");
+            manifest.addRequiredBundleOutput(std::move(header));
+            std::filesystem::path metadata = outputPath;
+            metadata.replace_extension(".nsmeta");
+            manifest.addRequiredBundleOutput(std::move(metadata));
+        }
+        if (productKind == "dynamic-library")
+        {
+            std::filesystem::path importLibrary = outputPath;
+            importLibrary.replace_extension(".lib");
+            if (importLibrary == outputPath) importLibrary += ".import.lib";
+            manifest.addRequiredBundleOutput(std::move(importLibrary));
+        }
     }
 }
 
@@ -110,6 +128,15 @@ void addCompilationCodegenIdentity(
     {
         manifest.addIdentityField(
             "debug-source-root", manifest.rootDirectory().generic_string());
+        if ((manifest.bundleProductKind() == "executable" ||
+             manifest.bundleProductKind() == "dynamic-library") &&
+            !manifest.requiredBundleOutputNames().empty())
+        {
+            std::filesystem::path pdb =
+                manifest.requiredBundleOutputNames().front();
+            pdb.replace_extension(".pdb");
+            manifest.addRequiredBundleOutput(std::move(pdb));
+        }
     }
 }
 
@@ -123,6 +150,11 @@ void addCompilationLinkIdentity(
         "incremental-link", incrementalLink ? "true" : "false");
     manifest.addIdentityField(
         "subsystem", std::string(subsystemDisplayName(subsystem)));
+    if (incrementalLink && !manifest.requiredBundleOutputNames().empty())
+    {
+        manifest.addRequiredBundleOutput(
+            manifest.requiredBundleOutputNames().front() + ".nslinc");
+    }
     for (std::size_t index = 0; index < extraLinkLibraries.size(); ++index)
     {
         manifest.addInputFile(extraLinkLibraries[index]);
@@ -163,6 +195,17 @@ bool configurePrecompiledModules(
     }
     compilation::CompilationBundleLookup lookup;
     if (!bundleCache.lookup(manifest.identity(), lookup, error))
+    {
+        return false;
+    }
+    bool hit = false;
+    if (!bundleCache.verify(
+            manifest.identity(),
+            manifest.bundleOutputDirectory(),
+            manifest.requiredBundleOutputNames(),
+            lookup,
+            hit,
+            error))
     {
         return false;
     }

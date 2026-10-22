@@ -184,6 +184,46 @@ std::string_view CompilationInputManifest::identity() const noexcept
     return identity_;
 }
 
+void CompilationInputManifest::setBundleProductKind(std::string productKind)
+{
+    bundleProductKind_ = std::move(productKind);
+}
+
+std::string_view CompilationInputManifest::bundleProductKind() const noexcept
+{
+    return bundleProductKind_;
+}
+
+void CompilationInputManifest::setBundleOutputPath(std::filesystem::path outputPath)
+{
+    bundleOutputDirectory_ = outputPath.parent_path();
+    addRequiredBundleOutput(std::move(outputPath));
+}
+
+void CompilationInputManifest::addRequiredBundleOutput(
+    std::filesystem::path outputPath)
+{
+    const std::string name = outputPath.filename().generic_string();
+    if (name.empty() || std::ranges::find(requiredBundleOutputNames_, name) !=
+            requiredBundleOutputNames_.end())
+    {
+        return;
+    }
+    requiredBundleOutputNames_.push_back(name);
+}
+
+const std::filesystem::path&
+CompilationInputManifest::bundleOutputDirectory() const noexcept
+{
+    return bundleOutputDirectory_;
+}
+
+const std::vector<std::string>&
+CompilationInputManifest::requiredBundleOutputNames() const noexcept
+{
+    return requiredBundleOutputNames_;
+}
+
 void CompilationInputManifest::setBundleLookup(CompilationBundleLookup lookup)
 {
     bundleLookup_ = std::move(lookup);
