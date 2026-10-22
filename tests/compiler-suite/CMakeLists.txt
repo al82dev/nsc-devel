@@ -737,6 +737,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCostExplorer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectOopMirModelDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCompilation.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCompilationIndexes.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/ProjectCompilationDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/SimpleXmlParser.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/SdkManifest.cpp"

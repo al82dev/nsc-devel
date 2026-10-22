@@ -1657,6 +1657,7 @@ bool ProjectCompilation::compileSyntaxCore(
     {
         return false;
     }
+    indexes_.clear();
     if (!ensureProjectGraph(projectFile, loadError))
     {
         return false;
@@ -1735,6 +1736,16 @@ compilation::LibraryMetadataRepository& ProjectCompilation::libraryMetadataRepos
 const compilation::LibraryMetadataRepository& ProjectCompilation::libraryMetadataRepository() const noexcept
 {
     return libraryMetadataRepository_;
+}
+
+ProjectCompilationIndexes& ProjectCompilation::indexes() noexcept
+{
+    return indexes_;
+}
+
+const ProjectCompilationIndexes& ProjectCompilation::indexes() const noexcept
+{
+    return indexes_;
 }
 
 const source::SourceManager& ProjectCompilation::sourceManager() const noexcept

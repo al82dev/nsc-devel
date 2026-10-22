@@ -621,6 +621,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectCostExplorer.cpp
     src/Frontend/ProjectOopMirModelDumper.cpp
     src/Frontend/ProjectCompilation.cpp
+    src/Frontend/ProjectCompilationIndexes.cpp
     src/Frontend/ProjectCompilationDumper.cpp)
 
 target_include_directories(nsc_frontend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

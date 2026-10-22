@@ -6,6 +6,7 @@
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
@@ -105,6 +106,8 @@ public:
     const compilation::ProjectGraph* projectGraph() const noexcept;
     compilation::LibraryMetadataRepository& libraryMetadataRepository() noexcept;
     const compilation::LibraryMetadataRepository& libraryMetadataRepository() const noexcept;
+    ProjectCompilationIndexes& indexes() noexcept;
+    const ProjectCompilationIndexes& indexes() const noexcept;
     const source::SourceManager& sourceManager() const noexcept;
     diagnostics::DiagnosticEngine& diagnostics() noexcept;
     const diagnostics::DiagnosticEngine& diagnostics() const noexcept;
@@ -214,6 +217,7 @@ private:
     std::unique_ptr<ProjectOopHirModel> oopHirModel_;
     std::unique_ptr<ProjectOopMirModel> oopMirModel_;
     compilation::LibraryMetadataRepository libraryMetadataRepository_;
+    ProjectCompilationIndexes indexes_;
     std::function<bool()> cancellationCheck_;
     SourceBufferProvider sourceBufferProvider_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;
