@@ -109,6 +109,9 @@ public:
         std::string_view key) const noexcept;
     const GenericSpecializationRecord* genericSpecializationForName(
         std::string_view name) const noexcept;
+    bool hasHirOwnerIndexes() const noexcept;
+    std::span<const std::size_t> hirLocalOrdinalsForMember(
+        std::size_t memberOrdinal) const noexcept;
     const MethodLocalSymbol* hirLocalForSyntax(const ast::AstNode* syntax) const noexcept;
     const MethodLambdaBinding* hirLambdaForSyntax(const ast::AstNode* syntax) const noexcept;
     const MethodLambdaValueBinding* hirLambdaValueForSyntax(const ast::AstNode* syntax) const noexcept;
@@ -202,6 +205,8 @@ private:
     StringIndex<const GenericSpecializationRecord*> genericSpecializationByName_;
     std::unordered_set<std::string> bodyTypeDemandKeys_;
     std::unordered_set<std::string> genericTypeDemandKeys_;
+    bool hirOwnerIndexesBuilt_ = false;
+    std::vector<std::vector<std::size_t>> hirLocalOrdinalsByMember_;
     std::unordered_map<const ast::AstNode*, const MethodLocalSymbol*> hirLocalBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodLambdaBinding*> hirLambdaBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodLambdaValueBinding*> hirLambdaValueBySyntax_;

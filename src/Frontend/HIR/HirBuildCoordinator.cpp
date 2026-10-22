@@ -1025,12 +1025,22 @@ void ProjectOopHirModel::initializeRegularFunction(
         function.parameterPassKinds.push_back(parameter.passKind);
         function.parameterOwnerships.push_back(parameter.ownership);
     }
-    for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
-         ++localOrdinal)
+    const ProjectOopHirModel* indexSource = lookupSource_ == nullptr ? this : lookupSource_;
+    if (indexSource->indexes_ != nullptr && indexSource->indexes_->hasHirOwnerIndexes())
     {
-        const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
-        if (local.methodMemberOrdinal == memberOrdinal && !local.lambdaOrdinal.has_value())
-            function.localOrdinals.push_back(localOrdinal);
+        const std::span<const std::size_t> localOrdinals =
+            indexSource->indexes_->hirLocalOrdinalsForMember(memberOrdinal);
+        function.localOrdinals.assign(localOrdinals.begin(), localOrdinals.end());
+    }
+    else
+    {
+        for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
+             ++localOrdinal)
+        {
+            const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
+            if (local.methodMemberOrdinal == memberOrdinal && !local.lambdaOrdinal.has_value())
+                function.localOrdinals.push_back(localOrdinal);
+        }
     }
 }
 
@@ -1689,12 +1699,22 @@ bool ProjectOopHirModel::buildNamespaceFunction(
     }
 
     const std::size_t callableOrdinal = memberModel_->members().size() + functionOrdinal;
-    for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
-         ++localOrdinal)
+    const ProjectOopHirModel* indexSource = lookupSource_ == nullptr ? this : lookupSource_;
+    if (indexSource->indexes_ != nullptr && indexSource->indexes_->hasHirOwnerIndexes())
     {
-        const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
-        if (local.methodMemberOrdinal == callableOrdinal && !local.lambdaOrdinal.has_value())
-            function.localOrdinals.push_back(localOrdinal);
+        const std::span<const std::size_t> localOrdinals =
+            indexSource->indexes_->hirLocalOrdinalsForMember(callableOrdinal);
+        function.localOrdinals.assign(localOrdinals.begin(), localOrdinals.end());
+    }
+    else
+    {
+        for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
+             ++localOrdinal)
+        {
+            const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
+            if (local.methodMemberOrdinal == callableOrdinal && !local.lambdaOrdinal.has_value())
+                function.localOrdinals.push_back(localOrdinal);
+        }
     }
     std::vector<std::unique_ptr<ProjectOopHirNode>> cleanupNodes;
     if (!appendNamespaceFunctionParameterCleanups(
