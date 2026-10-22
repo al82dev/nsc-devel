@@ -1116,7 +1116,8 @@ foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
         LIST_DIRECTORIES false
         RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/lib"
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.ns"
-        "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.nsproj")
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.nsproj"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.nsproducts")
     list(APPEND NSC_INSTALLATION_LIBRARY_FILES ${_nsc_library_files})
 endforeach()
 set(NSC_INSTALLATION_EXPECTED_PATHS
@@ -1194,7 +1195,8 @@ foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
         DESTINATION lib
         FILES_MATCHING
         PATTERN "*.ns"
-        PATTERN "*.nsproj")
+        PATTERN "*.nsproj"
+        PATTERN "*.nsproducts")
 endforeach()
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/sdk/win64/nativesharp-runtime.nsimports"
     DESTINATION sdk/win64)

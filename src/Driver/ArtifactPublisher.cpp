@@ -1,5 +1,7 @@
 #include "ArtifactPublisher.h"
 
+#include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
+
 #include <system_error>
 
 namespace nativesharp::driver
@@ -102,11 +104,22 @@ bool ArtifactPublisher::prepareStaticLibrary(
     publication.destination = destination;
     publication.headerDestination = companionPath(destination, ".h");
     publication.metadataDestination = companionPath(destination, ".nsmeta");
-    return transaction_.add(publication.destination, publication.stage, error) &&
-        transaction_.add(
-            publication.headerDestination, publication.headerStage, error) &&
-        transaction_.add(
-            publication.metadataDestination, publication.metadataStage, error);
+    publication.productSidecarDestination =
+        compilation::precompiledProductSidecarPath(publication.metadataDestination);
+    if (!transaction_.add(publication.destination, publication.stage, error) ||
+        !transaction_.add(
+            publication.headerDestination, publication.headerStage, error) ||
+        !transaction_.add(
+            publication.metadataDestination, publication.metadataStage, error))
+    {
+        return false;
+    }
+    publication.productSidecarStage =
+        compilation::precompiledProductSidecarPath(publication.metadataStage);
+    return transaction_.addStaged(
+        publication.productSidecarDestination,
+        publication.productSidecarStage,
+        error);
 }
 
 bool ArtifactPublisher::prepareDynamicLibrary(
@@ -120,12 +133,21 @@ bool ArtifactPublisher::prepareDynamicLibrary(
     publication.importLibraryDestination = importLibraryPath(destination);
     publication.headerDestination = companionPath(destination, ".h");
     publication.metadataDestination = companionPath(destination, ".nsmeta");
+    publication.productSidecarDestination =
+        compilation::precompiledProductSidecarPath(publication.metadataDestination);
     if (publishPdb) publication.pdbDestination = companionPath(destination, ".pdb");
     if (!transaction_.add(publication.destination, publication.stage, error) ||
         !transaction_.add(publication.importLibraryDestination,
             publication.importLibraryStage, error) ||
         !transaction_.add(publication.headerDestination, publication.headerStage, error) ||
         !transaction_.add(publication.metadataDestination, publication.metadataStage, error))
+        return false;
+    publication.productSidecarStage =
+        compilation::precompiledProductSidecarPath(publication.metadataStage);
+    if (!transaction_.addStaged(
+            publication.productSidecarDestination,
+            publication.productSidecarStage,
+            error))
         return false;
     if (publishPdb) publication.pdbStage = companionPath(publication.stage, ".pdb");
     return true;
