@@ -1403,7 +1403,7 @@ bool ProjectCompilation::restorePublishedPrecompiledSyntaxUnit(
             *sourceFile, payload, tokens, arena, tree))
     {
         loadError = "cannot restore precompiled " + std::string(productName) +
-            " syntax product for module '" + unit.moduleName() + "'";
+            " syntax product for module '" + std::string(unit.moduleName()) + "'";
         return false;
     }
     unit.tokens_ = std::move(tokens);
