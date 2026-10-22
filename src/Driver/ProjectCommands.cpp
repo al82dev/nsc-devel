@@ -1033,7 +1033,11 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
     return true;
 }
 
-bool loadPlanFromLock(const fs::path& project, RestorePlan& plan, std::string& error)
+bool loadPlanFromLock(
+    const fs::path& project,
+    RestorePlan& plan,
+    std::size_t& verified,
+    std::string& error)
 {
     Json root;
     const fs::path lockPath = project.parent_path() / "NativeSharp.lock.json";
@@ -1067,8 +1071,23 @@ bool loadPlanFromLock(const fs::path& project, RestorePlan& plan, std::string& e
         }
         plan.packages.push_back(std::move(package));
     }
-    std::size_t verified = 0;
+    verified = 0;
     return verifyPlan(plan, verified, error);
+}
+
+bool lockMatchesPackageRequests(const Sidecar& sidecar, const RestorePlan& plan)
+{
+    std::vector<std::pair<std::string, std::string>> requested;
+    std::vector<std::pair<std::string, std::string>> locked;
+    requested.reserve(sidecar.packages.size());
+    locked.reserve(plan.packages.size());
+    for (const PackageRequest& package : sidecar.packages)
+        requested.emplace_back(package.id, package.version);
+    for (const RestoredPackage& package : plan.packages)
+        locked.emplace_back(package.request.id, package.request.version);
+    std::ranges::sort(requested);
+    std::ranges::sort(locked);
+    return requested == locked;
 }
 
 } // namespace
@@ -1238,12 +1257,27 @@ ExitCode restoreBuildPlan(
 {
     if (options.noRestore || options.precompiledOnly || !sidecar.build.restoreBeforeBuild)
     {
-        if (!sidecar.packages.empty() && !loadPlanFromLock(project, plan, message))
+        std::size_t verified = 0;
+        if (!sidecar.packages.empty() &&
+            !loadPlanFromLock(project, plan, verified, message))
             return result.failure(error,
                 std::string(options.precompiledOnly ? "--precompiled-only" : "--no-restore") +
                 " requires an existing verified lock/store closure: " + message,
                 ExitCode::CompilationError);
         plan.root = project.parent_path() / "obj" / "nativesharp" / "packages";
+        return ExitCode::Success;
+    }
+    RestorePlan lockedPlan;
+    std::size_t verified = 0;
+    std::string lockError;
+    if (!sidecar.packages.empty() &&
+        loadPlanFromLock(project, lockedPlan, verified, lockError) &&
+        lockMatchesPackageRequests(sidecar, lockedPlan))
+    {
+        plan = std::move(lockedPlan);
+        if (!json)
+            output << localizeCompilerMessage(
+                "Restore is current: " + std::to_string(verified) + " artifact(s)") << '\n';
         return ExitCode::Success;
     }
     RestoreOptions restoreOptions;
