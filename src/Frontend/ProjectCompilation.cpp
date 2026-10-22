@@ -116,6 +116,18 @@ std::string templateParseSourceDigest(std::string_view source)
     return basic::sha256Hex(basic::sha256(bytes));
 }
 
+std::string precompiledSyntaxCacheKey(
+    std::string_view productCacheKey,
+    std::size_t sourceOrdinal)
+{
+    if (productCacheKey.empty()) return {};
+    std::string material;
+    appendTemplateParseCacheKeyField(material, "nsc-precompiled-syntax-v1");
+    appendTemplateParseCacheKeyField(material, productCacheKey);
+    appendTemplateParseCacheKeyField(material, std::to_string(sourceOrdinal));
+    return templateParseSourceDigest(material);
+}
+
 // Reads and validates the stable identity of one syntax unit. A mismatch is a cache miss because
 // installing the tree into a different ordinal or FileId would change lookup and diagnostics.
 bool readTemplateParseUnitIdentity(
@@ -660,6 +672,7 @@ bool ProjectCompilation::compileProjectGenerics(
     {
         return false;
     }
+    publishPrecompiledSyntaxProducts();
     publishTemplateParseProduct();
     return true;
 }
@@ -1278,6 +1291,41 @@ bool ProjectCompilation::materializePrecompiledUnit(
         module.moduleName,
         fileId,
         isPrecompiled));
+    precompiledSyntaxCacheKeysByUnit_.resize(units_.size());
+    precompiledSyntaxCacheHitsByUnit_.resize(units_.size());
+    std::string& syntaxCacheKey = precompiledSyntaxCacheKeysByUnit_.back();
+    syntaxCacheKey = precompiledSyntaxCacheKey(module.productCacheKey, sourceOrdinal);
+    precompiledSyntaxCacheHitsByUnit_.back() =
+        restorePrecompiledSyntaxUnit(*units_.back(), syntaxCacheKey);
+    return true;
+}
+
+bool ProjectCompilation::restorePrecompiledSyntaxUnit(
+    ProjectSyntaxUnit& unit,
+    std::string_view cacheKey)
+{
+    if (precompiledProductCacheRoot_.empty() || cacheKey.empty()) return false;
+    TemplateParseCache cache;
+    cache.setRoot(precompiledProductCacheRoot_ / "syntax");
+    std::string payload;
+    bool hit = false;
+    std::string ignoredError;
+    if (!cache.restore(cacheKey, payload, hit, ignoredError) || !hit) return false;
+    const source::SourceFile* sourceFile = sourceManager_.getFile(unit.fileId());
+    std::vector<lexer::Token> tokens;
+    std::unique_ptr<ast::AstArena> arena;
+    ast::AstNode* tree = nullptr;
+    if (sourceFile == nullptr || !internal::deserializeSyntaxProductUnit(
+            *sourceFile, payload, tokens, arena, tree))
+    {
+        cache.quarantine(cacheKey);
+        return false;
+    }
+    unit.tokens_ = std::move(tokens);
+    unit.arena_ = std::move(arena);
+    unit.syntaxTree_ = tree;
+    unit.lexicallyValid_ = true;
+    unit.syntaxValid_ = true;
     return true;
 }
 
@@ -1475,6 +1523,33 @@ void ProjectCompilation::publishTemplateParseProduct()
     (void)cache.store(templateParseCacheKey_, payload, ignoredError);
 }
 
+void ProjectCompilation::publishPrecompiledSyntaxProducts()
+{
+    if (precompiledProductCacheRoot_.empty()) return;
+    TemplateParseCache cache;
+    cache.setRoot(precompiledProductCacheRoot_ / "syntax");
+    const std::size_t count = std::min(
+        units_.size(), precompiledSyntaxCacheKeysByUnit_.size());
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        const std::string& key = precompiledSyntaxCacheKeysByUnit_[index];
+        if (key.empty() || (index < precompiledSyntaxCacheHitsByUnit_.size() &&
+            precompiledSyntaxCacheHitsByUnit_[index]))
+        {
+            continue;
+        }
+        const ProjectSyntaxUnit& unit = *units_[index];
+        if (!unit.isLexicallyValid() || !unit.isSyntaxValid() ||
+            unit.syntaxTree() == nullptr)
+        {
+            continue;
+        }
+        const std::string payload = internal::serializeSyntaxProductUnit(unit);
+        std::string ignoredError;
+        (void)cache.store(key, payload, ignoredError);
+    }
+}
+
 bool ProjectCompilation::lexSyntaxUnits(
     driver::CompilationWorkerPool& syntaxWorkers,
     bool& lexicalOk,
@@ -1488,6 +1563,7 @@ bool ProjectCompilation::lexSyntaxUnits(
     for (std::size_t index = 0; index < units_.size(); ++index)
     {
         localDiagnostics.emplace_back(diagnostics_.errorLimit());
+        if (units_[index]->isLexicallyValid()) continue;
         syntaxWorkers.submit([&, index](std::size_t)
         {
             const source::SourceFile* sourceFile = sourceManager_.getFile(units_[index]->fileId());
@@ -1535,7 +1611,7 @@ bool ProjectCompilation::parseSyntaxUnits(
     for (std::size_t index = 0; index < units_.size(); ++index)
     {
         localDiagnostics.emplace_back(diagnostics_.errorLimit());
-        if (!units_[index]->isLexicallyValid()) continue;
+        if (!units_[index]->isLexicallyValid() || units_[index]->isSyntaxValid()) continue;
         syntaxWorkers.submit([&, index](std::size_t)
         {
             units_[index]->parse(localDiagnostics[index], knownTypeNames);

@@ -159,6 +159,9 @@ private:
         bool isPrecompiled,
         std::string_view productName,
         std::string& loadError);
+    bool restorePrecompiledSyntaxUnit(
+        ProjectSyntaxUnit& unit,
+        std::string_view cacheKey);
     bool materializePrecompiledModule(
         const PrecompiledSyntaxModule& module,
         std::set<std::string>& materializedMetadata,
@@ -171,6 +174,7 @@ private:
     bool calculateTemplateParseCacheKey(std::string& loadError);
     bool restoreTemplateParseProduct(std::string& loadError);
     void publishTemplateParseProduct();
+    void publishPrecompiledSyntaxProducts();
     bool lexSyntaxUnits(
         driver::CompilationWorkerPool& syntaxWorkers,
         bool& lexicalOk,
@@ -216,6 +220,8 @@ private:
     compilation::ProjectLoadOptions projectLoadOptions_;
     std::filesystem::path templateCacheRoot_;
     std::filesystem::path precompiledProductCacheRoot_;
+    std::vector<std::string> precompiledSyntaxCacheKeysByUnit_;
+    std::vector<bool> precompiledSyntaxCacheHitsByUnit_;
     std::string templateParseCacheKey_;
     bool templateParseCacheHit_ = false;
     std::size_t compilationJobs_ = 1;
