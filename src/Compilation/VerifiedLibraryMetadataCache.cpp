@@ -3,6 +3,7 @@
 #include "nativesharp/Basic/ArtifactTransaction.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <fstream>
 #include <system_error>
@@ -14,6 +15,7 @@ namespace
 {
 constexpr std::string_view kCacheMagic = "NSCNSMETA1\n";
 constexpr std::uintmax_t kMaximumMetadataBytes = 100ULL + 128ULL * 1024ULL * 1024ULL;
+std::atomic<std::uint64_t> quarantineOrdinal{0};
 
 bool validKey(std::string_view key)
 {
@@ -52,6 +54,7 @@ bool VerifiedLibraryMetadataCache::restore(
     if (filesystemError || size > kCacheMagic.size() + 65U + kMaximumMetadataBytes)
     {
         error = "verified NSMETA cache entry has invalid size";
+        quarantine(key);
         return false;
     }
     std::ifstream stream(source, std::ios::binary);
@@ -59,12 +62,14 @@ bool VerifiedLibraryMetadataCache::restore(
     if (!stream.read(stored.data(), static_cast<std::streamsize>(stored.size())))
     {
         error = "cannot read verified NSMETA cache entry";
+        quarantine(key);
         return false;
     }
     const std::string prefix = std::string(kCacheMagic) + std::string(key) + "\n";
     if (!stored.starts_with(prefix))
     {
         error = "verified NSMETA cache entry header mismatch";
+        quarantine(key);
         return false;
     }
     payload.assign(stored.begin() + static_cast<std::ptrdiff_t>(prefix.size()), stored.end());
@@ -93,5 +98,25 @@ bool VerifiedLibraryMetadataCache::store(
     stored.insert(stored.end(), prefix.begin(), prefix.end());
     stored.insert(stored.end(), payload.begin(), payload.end());
     return basic::writeFileTransactionally(destination, stored, error);
+}
+
+void VerifiedLibraryMetadataCache::quarantine(std::string_view key) const noexcept
+{
+    if (root_.empty() || !validKey(key)) return;
+    const std::filesystem::path source = cachePath(root_, key);
+    std::error_code filesystemError;
+    if (!std::filesystem::is_regular_file(source, filesystemError)) return;
+    const std::filesystem::path quarantineRoot = root_ / "quarantine";
+    std::filesystem::create_directories(quarantineRoot, filesystemError);
+    if (filesystemError) return;
+    const std::string suffix = std::to_string(
+        quarantineOrdinal.fetch_add(1, std::memory_order_relaxed));
+    const std::filesystem::path destination =
+        quarantineRoot / (std::string(key) + "." + suffix + ".nsmeta-model");
+    filesystemError.clear();
+    std::filesystem::rename(source, destination, filesystemError);
+    if (!filesystemError) return;
+    filesystemError.clear();
+    std::filesystem::remove(source, filesystemError);
 }
 }

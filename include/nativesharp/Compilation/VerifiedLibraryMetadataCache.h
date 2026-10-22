@@ -24,6 +24,7 @@ public:
         std::string_view key,
         std::span<const std::uint8_t> payload,
         std::string& error) const;
+    void quarantine(std::string_view key) const noexcept;
 
 private:
     std::filesystem::path root_;

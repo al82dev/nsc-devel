@@ -11,10 +11,22 @@ namespace nativesharp::compilation
 {
 namespace
 {
+std::string verifiedCacheContract()
+{
+    std::string material = "nsc-verified-nsmeta-verification-contract-v1\n";
+    material += kCompilerBuildId;
+    material.push_back('\n');
+    material += std::to_string(interop::kMetadataFormatMajor);
+    material.push_back('.');
+    material += std::to_string(interop::kMetadataFormatMinor);
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
 std::string verifiedCacheKey(const LibraryMetadataRepositoryEntry& entry)
 {
-    std::string material = "nsc-verified-nsmeta-model-v1\n";
-    material += kCompilerBuildId;
+    std::string material = verifiedCacheContract();
     material.push_back('\n');
     material += std::to_string(entry.bytes().size());
     material.push_back('\n');
@@ -74,17 +86,26 @@ std::shared_ptr<const interop::LibraryMetadata> LibraryMetadataRepository::decod
     std::vector<std::uint8_t> restoredBytes;
     bool restored = false;
     std::string ignoredCacheError;
-    if (verifiedCache_.restore(
-            entry->persistentCacheKey_, restoredBytes, restored, ignoredCacheError) &&
+    const bool cacheReadable = verifiedCache_.restore(
+        entry->persistentCacheKey_, restoredBytes, restored, ignoredCacheError);
+    const bool restoredContentMatches =
         restored && restoredBytes.size() == entry->bytes().size() &&
-        basic::sha256(restoredBytes) == entry->contentDigest())
+        basic::sha256(restoredBytes) == entry->contentDigest();
+    if (cacheReadable && restoredContentMatches)
     {
         entry->restoredVerified_ = true;
     }
-    const std::span<const std::uint8_t> decodeBytes =
-        entry->restoredVerified_ ? std::span<const std::uint8_t>(restoredBytes) : entry->bytes();
+    else if (restored)
+    {
+        verifiedCache_.quarantine(entry->persistentCacheKey_);
+    }
     interop::LibraryMetadata metadata;
-    if (!decoder(decodeBytes, metadata, error))
+    if (entry->restoredVerified_ && !decoder(restoredBytes, metadata, ignoredCacheError))
+    {
+        verifiedCache_.quarantine(entry->persistentCacheKey_);
+        entry->restoredVerified_ = false;
+    }
+    if (!entry->restoredVerified_ && !decoder(entry->bytes(), metadata, error))
     {
         entry->decodeError_ = error;
         return {};
