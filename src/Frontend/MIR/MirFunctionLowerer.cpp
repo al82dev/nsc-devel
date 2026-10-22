@@ -883,6 +883,8 @@ bool ProjectOopMirModel::lowerFunctions(
                 structLayouts_, panicProfile_, loweringErrors[index]);
     }
 
+    installRestoredMirFunctions(loweredFunctions);
+
     functions_.reserve(hirFunctions.size());
     for (std::size_t index = 0; index < hirFunctions.size(); ++index)
     {

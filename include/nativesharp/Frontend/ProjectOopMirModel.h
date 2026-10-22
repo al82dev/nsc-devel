@@ -315,6 +315,8 @@ private:
         std::size_t workerCount);
     void calculateMirCacheKeys(const ProjectOopHirModel& hirModel);
     void lookupMirCachePayloads();
+    void installRestoredMirFunctions(
+        std::vector<std::optional<ProjectOopMirFunction>>& loweredFunctions);
     ProjectOopMirFunction lowerOneFunction(
         const ProjectOopHirFunction& source,
         const ProjectNameLookup& nameLookup,

@@ -1278,6 +1278,31 @@ void ProjectOopMirModel::lookupMirCachePayloads()
     }
 }
 
+void ProjectOopMirModel::installRestoredMirFunctions(
+    std::vector<std::optional<ProjectOopMirFunction>>& loweredFunctions)
+{
+    const std::size_t count = std::min(
+        loweredFunctions.size(), mirCachePayloads_.size());
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        if (!mirCachePayloads_[index].has_value() ||
+            !loweredFunctions[index].has_value())
+        {
+            continue;
+        }
+        ProjectOopMirFunction restored;
+        const std::string& payload = *mirCachePayloads_[index];
+        if (!restoreMirFunctionCore(payload, restored) ||
+            serializeMirFunctionCore(*loweredFunctions[index]) != payload)
+        {
+            mirCache_.quarantine(mirCacheKeys_[index]);
+            mirCachePayloads_[index].reset();
+            continue;
+        }
+        loweredFunctions[index] = std::move(restored);
+    }
+}
+
 void ProjectOopMirModel::storeMirFunctions()
 {
     if (!mirCache_.enabled()) return;
