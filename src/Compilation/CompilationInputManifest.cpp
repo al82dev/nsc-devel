@@ -356,6 +356,10 @@ void CompilationInputManifest::collectGraphInputs(const ProjectGraph& graph)
             {
                 inputFiles_.push_back(reference.runtimePath);
             }
+            if (!reference.productSidecarPath.empty())
+            {
+                inputFiles_.push_back(reference.productSidecarPath);
+            }
         }
         for (const SdkManifest& sdk : project.sdkReferences())
         {

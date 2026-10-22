@@ -3,6 +3,7 @@
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
 #include "nativesharp/Compilation/PrecompiledProductCache.h"
+#include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 
 #include "../Driver/Internal/DriverInternal.h"
 
@@ -229,7 +230,8 @@ bool materializeModules(
             std::move(templateSource),
             memberIdentities(metadata),
             namespaceIdentities(metadata),
-            genericSpecializations(metadata, concreteMemberNames)});
+            genericSpecializations(metadata, concreteMemberNames),
+            entry.productSidecarPath});
     }
     return true;
 }
@@ -289,7 +291,8 @@ bool loadExplicitMetadata(
             loaded.push_back({
                 project.projectFile(),
                 reference.metadataPath,
-                std::move(metadata)});
+                std::move(metadata),
+                reference.productSidecarPath});
         }
     }
     return true;
@@ -330,7 +333,9 @@ bool resolveBinaryReference(
             root / dependency.metadataFileName,
             dependency.runtimeFileName.empty()
                 ? std::filesystem::path{}
-                : root / dependency.runtimeFileName};
+                : root / dependency.runtimeFileName,
+            availablePrecompiledProductSidecarPath(
+                root / dependency.metadataFileName)};
         std::error_code fileError;
         const bool hasLibrary =
             std::filesystem::is_regular_file(candidate.libraryPath, fileError);
@@ -444,7 +449,8 @@ bool appendResolvedBinaryDependency(
     loaded.push_back({
         parentOwner,
         resolved.metadataPath,
-        std::move(childMetadata)});
+        std::move(childMetadata),
+        resolved.productSidecarPath});
     discoveredByOwner[driver::foldedPathKey(parentOwner)].push_back(
         std::move(resolved));
     return true;

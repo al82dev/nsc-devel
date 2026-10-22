@@ -6,6 +6,7 @@
 #include "Internal/SourceIncludeRule.h"
 
 #include "nativesharp/Compilation/GlobPattern.h"
+#include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 #include "nativesharp/Compilation/SimpleXmlParser.h"
 #include "nativesharp/Compilation/SdkManifest.h"
 
@@ -1081,6 +1082,8 @@ std::optional<std::vector<LibraryReference>> loadLibraryReferences(
         if (!loadRuntimeArtifact(
                 reference, projectDirectory, descriptor, options, runtime, error))
             return std::nullopt;
+        const std::filesystem::path productSidecar =
+            availablePrecompiledProductSidecarPath(metadata);
         const std::string key = pathKey(library);
         if (std::find(libraryReferenceKeys.begin(), libraryReferenceKeys.end(), key) !=
             libraryReferenceKeys.end())
@@ -1089,7 +1092,8 @@ std::optional<std::vector<LibraryReference>> loadLibraryReferences(
             return std::nullopt;
         }
         libraryReferenceKeys.push_back(key);
-        libraryReferences.push_back(LibraryReference{library, metadata, runtime});
+        libraryReferences.push_back(LibraryReference{
+            library, metadata, runtime, productSidecar});
     }
     std::sort(
         libraryReferences.begin(),

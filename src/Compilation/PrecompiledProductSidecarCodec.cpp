@@ -1,4 +1,5 @@
 #include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
+#include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 
 #include "../Frontend/Cache/CachePayloadReader.h"
 #include "../Frontend/Cache/CachePayloadWriter.h"
@@ -48,9 +49,7 @@ void encodeBody(
 std::filesystem::path PrecompiledProductSidecarCodec::pathForMetadata(
     const std::filesystem::path& metadataPath)
 {
-    std::filesystem::path path = metadataPath;
-    path.replace_extension(".nsproducts");
-    return path;
+    return precompiledProductSidecarPath(metadataPath);
 }
 
 bool PrecompiledProductSidecarCodec::write(

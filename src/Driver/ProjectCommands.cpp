@@ -24,6 +24,7 @@
 
 #include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
 
@@ -367,6 +368,38 @@ bool appendArtifact(RestoredPackage& package, std::string type, const fs::path& 
     return true;
 }
 
+bool appendOptionalProductSidecar(
+    RestoredPackage& package,
+    const fs::path& metadata,
+    const fs::path& destinationBase,
+    std::string& error)
+{
+    const fs::path sidecar =
+        compilation::precompiledProductSidecarPath(metadata);
+    const fs::path source = package.sourceRoot / sidecar;
+    std::error_code fileError;
+    if (!fs::is_regular_file(source, fileError))
+    {
+        if (!fileError || fileError == std::errc::no_such_file_or_directory)
+            return true;
+        error = "cannot inspect package product sidecar '" +
+            source.string() + "': " + fileError.message();
+        return false;
+    }
+    const fs::path destination = destinationBase / sidecar.filename();
+    if (std::ranges::any_of(
+            package.artifacts,
+            [&](const Artifact& artifact)
+            {
+                return artifact.relativeDestination == destination;
+            }))
+    {
+        return true;
+    }
+    return appendArtifact(
+        package, "precompiled-products", sidecar, destinationBase, error);
+}
+
 std::optional<fs::path> packageManifest(const fs::path& root)
 {
     for (const char* name : {"NativeSharp.package.json", "package.json", ".nspackage.json"})
@@ -426,11 +459,16 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
         const Json* libraries = member(root, "libraries");
         if (libraries == nullptr || libraries->array() == nullptr || libraries->array()->empty())
         { error = "package manifest must contain at least one library"; return false; }
+        std::vector<fs::path> metadataArtifacts;
+        metadataArtifacts.reserve(libraries->array()->size());
         for (const Json& library : *libraries->array())
         {
+            const fs::path metadataArtifact =
+                stringMember(library, "metadata");
             if (!appendArtifact(package, "library", stringMember(library, "library"), destinationBase, error) ||
-                !appendArtifact(package, "metadata", stringMember(library, "metadata"), destinationBase, error))
+                !appendArtifact(package, "metadata", metadataArtifact, destinationBase, error))
                 return false;
+            metadataArtifacts.push_back(metadataArtifact);
             const std::string runtime = stringMember(library, "runtime");
             if (!runtime.empty() && !appendArtifact(package, "runtime", runtime, destinationBase, error)) return false;
         }
@@ -443,6 +481,12 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
                     !appendArtifact(package, "file", *value.string(), destinationBase, error))
                     return false;
             }
+        }
+        for (const fs::path& metadataArtifact : metadataArtifacts)
+        {
+            if (!appendOptionalProductSidecar(
+                    package, metadataArtifact, destinationBase, error))
+                return false;
         }
     }
     else
@@ -464,6 +508,8 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
         { error = "convention package requires exactly one .lib, one .nsmeta, and at most one .dll"; return false; }
         if (!appendArtifact(package, "library", libraries.front(), destinationBase, error) ||
             !appendArtifact(package, "metadata", metadata.front(), destinationBase, error)) return false;
+        if (!appendOptionalProductSidecar(
+                package, metadata.front(), destinationBase, error)) return false;
         if (!runtimes.empty() && !appendArtifact(package, "runtime", runtimes.front(), destinationBase, error))
             return false;
     }
@@ -1081,6 +1127,8 @@ std::vector<DependencyProvenance> dependencyProvenance(
         {
             std::vector<fs::path> artifacts = {reference.libraryPath, reference.metadataPath};
             if (!reference.runtimePath.empty()) artifacts.push_back(reference.runtimePath);
+            if (!reference.productSidecarPath.empty())
+                artifacts.push_back(reference.productSidecarPath);
             records.push_back(DependencyProvenance{
                 "library-reference", reference.metadataPath.stem().string(),
                 reference.libraryPath,

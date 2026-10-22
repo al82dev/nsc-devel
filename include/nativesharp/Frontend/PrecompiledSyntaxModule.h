@@ -21,5 +21,6 @@ struct PrecompiledSyntaxModule final
     std::vector<PrecompiledMemberIdentity> members;
     std::vector<PrecompiledNamespaceFunctionIdentity> namespaceFunctions;
     std::vector<PrecompiledGenericSpecialization> genericSpecializations;
+    std::filesystem::path productSidecarPath;
 };
 }
