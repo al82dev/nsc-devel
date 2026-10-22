@@ -1341,7 +1341,8 @@ bool ProjectCompilation::materializePrecompiledTemplateUnit(
     if (module.templateSourceText.empty()) return true;
     return materializePrecompiledUnit(
         module, projectOrdinal, 1U, ".public-templates.ns",
-        module.templateSourceText, false, "templates", loadError);
+        module.templateSourceText, module.publicTemplateSyntaxProduct,
+        false, "templates", loadError);
 }
 
 bool ProjectCompilation::materializePrecompiledUnit(
@@ -1350,6 +1351,7 @@ bool ProjectCompilation::materializePrecompiledUnit(
     std::size_t sourceOrdinal,
     std::string_view displaySuffix,
     const std::string& sourceText,
+    std::string_view publishedSyntaxProduct,
     bool isPrecompiled,
     std::string_view productName,
     std::string& loadError)
@@ -1374,8 +1376,41 @@ bool ProjectCompilation::materializePrecompiledUnit(
     precompiledSyntaxCacheHitsByUnit_.resize(units_.size());
     std::string& syntaxCacheKey = precompiledSyntaxCacheKeysByUnit_.back();
     syntaxCacheKey = precompiledSyntaxCacheKey(module.productCacheKey, sourceOrdinal);
-    precompiledSyntaxCacheHitsByUnit_.back() =
+    const bool hasPublishedSyntax = !module.productSidecarPath.empty();
+    if (hasPublishedSyntax && !restorePublishedPrecompiledSyntaxUnit(
+            *units_.back(), publishedSyntaxProduct, productName, loadError))
+    {
+        return false;
+    }
+    precompiledSyntaxCacheHitsByUnit_.back() = hasPublishedSyntax ||
         restorePrecompiledSyntaxUnit(*units_.back(), syntaxCacheKey);
+    return true;
+}
+
+// Installs a producer-owned syntax product only after all ranges bind to this compilation's file.
+bool ProjectCompilation::restorePublishedPrecompiledSyntaxUnit(
+    ProjectSyntaxUnit& unit,
+    std::string_view payload,
+    std::string_view productName,
+    std::string& loadError)
+{
+    const source::SourceFile* sourceFile = sourceManager_.getFile(unit.fileId());
+    std::vector<lexer::Token> tokens;
+    std::unique_ptr<ast::AstArena> arena;
+    ast::AstNode* tree = nullptr;
+    if (sourceFile == nullptr ||
+        !internal::deserializeRelocatableSyntaxProductUnit(
+            *sourceFile, payload, tokens, arena, tree))
+    {
+        loadError = "cannot restore precompiled " + std::string(productName) +
+            " syntax product for module '" + unit.moduleName() + "'";
+        return false;
+    }
+    unit.tokens_ = std::move(tokens);
+    unit.arena_ = std::move(arena);
+    unit.syntaxTree_ = tree;
+    unit.lexicallyValid_ = true;
+    unit.syntaxValid_ = true;
     return true;
 }
 
@@ -1434,7 +1469,7 @@ bool ProjectCompilation::materializePrecompiledModule(
     }
     if (!materializePrecompiledUnit(
             module, *projectOrdinal, 0U, ".public-api.ns", module.sourceText,
-            true, "API", loadError))
+            module.publicApiSyntaxProduct, true, "API", loadError))
     {
         return false;
     }

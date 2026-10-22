@@ -8,6 +8,8 @@
 #include "nativesharp/Basic/Version.h"
 
 #include <cstdint>
+#include <fstream>
+#include <limits>
 #include <utility>
 
 namespace nativesharp::compilation
@@ -67,6 +69,38 @@ bool PrecompiledProductSidecarCodec::write(
         return false;
     }
     return true;
+}
+
+bool PrecompiledProductSidecarCodec::read(
+    const std::filesystem::path& sidecarPath,
+    std::span<const std::uint8_t> metadataBytes,
+    PrecompiledProductSidecar& sidecar,
+    std::string& error)
+{
+    std::ifstream stream(sidecarPath, std::ios::binary | std::ios::ate);
+    if (!stream)
+    {
+        error = "cannot open precompiled product sidecar '" + sidecarPath.string() + "'";
+        return false;
+    }
+    const std::streampos end = stream.tellg();
+    if (end < 0 || static_cast<std::uintmax_t>(end) >
+            static_cast<std::uintmax_t>(std::numeric_limits<std::size_t>::max()) ||
+        static_cast<std::uintmax_t>(end) >
+            static_cast<std::uintmax_t>(std::numeric_limits<std::streamsize>::max()))
+    {
+        error = "precompiled product sidecar has invalid size";
+        return false;
+    }
+    std::string bytes(static_cast<std::size_t>(end), '\0');
+    stream.seekg(0, std::ios::beg);
+    stream.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    if (!stream && !bytes.empty())
+    {
+        error = "failed while reading precompiled product sidecar";
+        return false;
+    }
+    return decode(bytes, metadataBytes, sidecar, error);
 }
 
 std::string PrecompiledProductSidecarCodec::encode(

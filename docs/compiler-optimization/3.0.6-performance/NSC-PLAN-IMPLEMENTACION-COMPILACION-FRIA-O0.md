@@ -34,7 +34,7 @@
 | T4.2 | Emitir en el productor las superficies pública y de templates que hoy se regeneran desde NSMETA en cada consumidor | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
 | T4.3 | Emitir en el productor tokens y AST serializados de ambas superficies para no ejecutar lexer ni parser en frío | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
 | T4.4 | Transportar la ruta del sidecar por `LibraryReference`, cierre binario y paquete sin cambiar el contrato de la biblioteca | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
-| T4.5 | Validar digest/build-id y restaurar el producto antes de ejecutar `PublicSurfaceBuilder`, lexer o parser | PENDIENTE |
+| T4.5 | Validar digest/build-id y restaurar el producto antes de ejecutar `PublicSurfaceBuilder`, lexer o parser | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
 | T4.6 | Conservar como fallback exacto la generación vigente cuando el sidecar no exista o no sea válido | PENDIENTE |
 | T4.7 | Incluir el sidecar en los artefactos de biblioteca y en las reglas CMake de distribución, sin tocar NSC Builder 3 | PENDIENTE |
 | T5.1 | Resolver `resolveTypeIdentifier` sobre candidatos por nombre, no recorriendo todos los tipos | PENDIENTE |
