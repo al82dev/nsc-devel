@@ -1264,8 +1264,6 @@ std::vector<std::size_t> ProjectMethodBodyModel::stage38OperatorCandidates(
             for (const std::size_t functionOrdinal : functionOrdinals)
             {
                 if (functionOrdinal >= namespaceFunctionModel_->functions().size()) continue;
-                const NamespaceFunctionSymbol& function =
-                    namespaceFunctionModel_->functions()[functionOrdinal];
                 const std::size_t adapterOrdinal = namespaceCallableBase_ + functionOrdinal;
                 if (seen.contains(adapterOrdinal)) continue;
                 seen.insert(adapterOrdinal);
