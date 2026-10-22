@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `6 / 60`
+**Progreso:** `7 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -10,7 +10,7 @@
 | T1.4 | Convertir `sha256(span)` en cálculo por bloques sin construir una copia acolchada de toda la entrada | TERMINADO |
 | T1.5 | Convertir `sha256File` en lectura bufferizada por bloques, sin `istreambuf_iterator` ni vector completo | TERMINADO |
 | T1.6 | Leer el PE de salida por tamaño y bloques en `PeExecutableVerifier`, no byte por byte | TERMINADO |
-| T1.7 | Leer archivos y salida capturada de NSLink por tamaño y bloques en `LldLinker` | PENDIENTE |
+| T1.7 | Leer archivos y salida capturada de NSLink por tamaño y bloques en `LldLinker` | TERMINADO |
 | T1.8 | Compartir bytes y SHA-256 de fuentes entre `CompilationInputManifest` y `SourceManager`, evitando la segunda lectura | PENDIENTE |
 | T1.9 | Reutilizar los digests del manifiesto en `dependencyProvenance` y en la identidad del bundle, evitando volver a hashear las mismas entradas | PENDIENTE |
 | T2.1 | Calcular una vez `TypeIdentity::fullyQualifiedName` y `TypeIdentity::key` al construir la identidad | PENDIENTE |

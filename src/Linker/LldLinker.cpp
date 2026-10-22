@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <system_error>
 #include <vector>
@@ -25,9 +26,32 @@ std::string readText(const std::filesystem::path& path)
     {
         return {};
     }
-    return std::string(
-        std::istreambuf_iterator<char>(stream),
-        std::istreambuf_iterator<char>());
+    stream.seekg(0, std::ios::end);
+    const std::streamoff fileSize = stream.tellg();
+    if (fileSize < 0 || static_cast<std::uintmax_t>(fileSize) >
+            std::numeric_limits<std::size_t>::max())
+    {
+        return {};
+    }
+    stream.seekg(0, std::ios::beg);
+    if (!stream) return {};
+
+    std::string text(static_cast<std::size_t>(fileSize), '\0');
+    constexpr std::size_t ReadBlockSize = 64U * 1024U;
+    std::size_t offset = 0;
+    while (offset < text.size())
+    {
+        const std::size_t blockSize = std::min(ReadBlockSize, text.size() - offset);
+        stream.read(text.data() + offset, static_cast<std::streamsize>(blockSize));
+        const std::size_t readSize = static_cast<std::size_t>(stream.gcount());
+        offset += readSize;
+        if (readSize != blockSize)
+        {
+            text.resize(offset);
+            break;
+        }
+    }
+    return text;
 }
 
 std::string trimTrailingWhitespace(std::string text)
