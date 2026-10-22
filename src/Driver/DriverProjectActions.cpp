@@ -38,7 +38,11 @@ std::optional<ExitCode> runBasicProjectAction(std::string_view action, std::stri
     compilation::ProjectGraphLoader loader(
         jobs != nullptr ? jobs->effectiveJobs() : 1,
         [&projectLoader, loadOptions](const std::filesystem::path &projectPath, std::string &loadError)
-        { return projectLoader.load(projectPath, loadOptions, loadError); });
+        { return projectLoader.load(projectPath, loadOptions, loadError); },
+        {},
+        activeExecutionScope != nullptr
+            ? &activeExecutionScope->compilationLifetime.workerPool()
+            : nullptr);
     std::string loadError;
     const std::optional<compilation::ProjectGraph> graph = loader.load(std::filesystem::path(path), loadError);
     if (!graph.has_value())

@@ -8,6 +8,11 @@
 #include <optional>
 #include <string>
 
+namespace nativesharp::driver
+{
+class CompilationWorkerPool;
+}
+
 namespace nativesharp::compilation
 {
 class ProjectGraphLoader final
@@ -20,11 +25,17 @@ public:
         std::size_t workerCount = 1,
         ProjectLoadFunction projectLoader = {},
         ProjectLoadOptions options = {});
+    ProjectGraphLoader(
+        std::size_t workerCount,
+        ProjectLoadFunction projectLoader,
+        ProjectLoadOptions options,
+        driver::CompilationWorkerPool* workerPool);
 
     std::optional<ProjectGraph> load(const std::filesystem::path& rootProjectFile, std::string& error) const;
 
 private:
     std::size_t workerCount_;
     ProjectLoadFunction projectLoader_;
+    driver::CompilationWorkerPool* workerPool_ = nullptr;
 };
 }

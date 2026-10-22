@@ -633,6 +633,25 @@ bool ProjectOopMirModel::build(
     std::string& error,
     std::size_t workerCount)
 {
+    return build(
+        nameLookup, memberModel, objectLayoutModel, virtualDispatchModel,
+        interfaceModel, destructionModel, hirModel, namespaceFunctionModel,
+        error, workerCount, nullptr);
+}
+
+bool ProjectOopMirModel::build(
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectVirtualDispatchModel& virtualDispatchModel,
+    const ProjectInterfaceModel& interfaceModel,
+    const ProjectDestructionModel& destructionModel,
+    const ProjectOopHirModel& hirModel,
+    const ProjectNamespaceFunctionModel& namespaceFunctionModel,
+    std::string& error,
+    std::size_t workerCount,
+    driver::CompilationWorkerPool* workerPool)
+{
     if (!initializeBuild(
             nameLookup,
             memberModel,
@@ -671,7 +690,8 @@ bool ProjectOopMirModel::build(
             destructionModel,
             hirModel,
             error,
-            workerCount))
+            workerCount,
+            workerPool))
     {
         return false;
     }

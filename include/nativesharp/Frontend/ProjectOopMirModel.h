@@ -41,6 +41,11 @@
 #include "nativesharp/Frontend/ProjectOopMirGenericSpecialization.h"
 #include "nativesharp/Frontend/ProjectOopMirInterfaceBinding.h"
 
+namespace nativesharp::driver
+{
+class CompilationWorkerPool;
+}
+
 namespace nativesharp::frontend
 {
 class ProjectCompilationIndexes;
@@ -130,6 +135,18 @@ public:
         const ProjectNamespaceFunctionModel& namespaceFunctionModel,
         std::string& error,
         std::size_t workerCount = 1);
+    bool build(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ProjectVirtualDispatchModel& virtualDispatchModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectDestructionModel& destructionModel,
+        const ProjectOopHirModel& hirModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel,
+        std::string& error,
+        std::size_t workerCount,
+        driver::CompilationWorkerPool* workerPool);
 
     std::span<const ProjectOopMirFunction> functions() const noexcept;
     std::span<const ProjectOopMirFieldInitializer> fieldInitializers() const noexcept;
@@ -324,6 +341,17 @@ private:
         const ProjectOopHirModel& hirModel,
         std::string& error,
         std::size_t workerCount);
+    bool lowerFunctions(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ProjectVirtualDispatchModel& virtualDispatchModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectDestructionModel& destructionModel,
+        const ProjectOopHirModel& hirModel,
+        std::string& error,
+        std::size_t workerCount,
+        driver::CompilationWorkerPool* workerPool);
     void calculateMirCacheKeys(const ProjectOopHirModel& hirModel);
     void lookupMirCachePayloads();
     void installRestoredMirFunctions(

@@ -33,6 +33,9 @@ public:
         std::function<void(std::string_view, std::chrono::nanoseconds)>;
 
     explicit ProjectCallableWaveScheduler(std::size_t workerCount) noexcept;
+    ProjectCallableWaveScheduler(
+        std::size_t workerCount,
+        driver::CompilationWorkerPool* workerPool) noexcept;
     ~ProjectCallableWaveScheduler();
 
     ProjectCallableWaveScheduler(const ProjectCallableWaveScheduler&) = delete;
@@ -62,7 +65,8 @@ private:
         const TimingSink& timingSink);
 
     std::size_t workerCount_ = 1;
-    std::unique_ptr<driver::CompilationWorkerPool> pool_;
+    std::unique_ptr<driver::CompilationWorkerPool> ownedPool_;
+    driver::CompilationWorkerPool* pool_ = nullptr;
     std::exception_ptr poolInitializationFailure_;
     std::atomic_bool running_ = false;
 };

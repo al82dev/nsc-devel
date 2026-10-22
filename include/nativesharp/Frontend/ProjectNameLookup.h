@@ -81,6 +81,12 @@ public:
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics,
         std::size_t workerCount = 1);
+    bool build(
+        const compilation::ProjectGraph& graph,
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::size_t workerCount,
+        driver::CompilationWorkerPool* workerPool);
 
     std::span<const std::unique_ptr<ModuleDeclarationSpace>> modules() const noexcept;
     std::span<const NamedTypeDeclaration> namedTypes() const noexcept;

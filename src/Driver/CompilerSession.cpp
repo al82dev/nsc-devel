@@ -52,6 +52,7 @@ ExitCode parseAndConfigureInvocation(std::span<const std::string_view> arguments
         jobPolicy.setRequestedJobs(*invocation.requestedJobs);
     if (invocation.reservedCores.has_value())
         jobPolicy.setReservedCores(*invocation.reservedCores);
+    executionScope.compilationLifetime.setWorkerCount(jobPolicy.effectiveJobs());
     return result;
 }
 

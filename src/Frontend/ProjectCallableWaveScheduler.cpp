@@ -214,14 +214,23 @@ bool runParallelWave(
 
 ProjectCallableWaveScheduler::ProjectCallableWaveScheduler(
     std::size_t workerCount) noexcept
-    : workerCount_(std::max<std::size_t>(1, workerCount))
+    : ProjectCallableWaveScheduler(workerCount, nullptr)
 {
-    if (workerCount_ > 1 &&
+}
+
+ProjectCallableWaveScheduler::ProjectCallableWaveScheduler(
+    std::size_t workerCount,
+    driver::CompilationWorkerPool* workerPool) noexcept
+    : workerCount_(std::max<std::size_t>(1, workerCount)),
+      pool_(workerPool)
+{
+    if (pool_ == nullptr && workerCount_ > 1 &&
         driver::currentCompilationWorkerIndex() == driver::kNoCompilationWorker)
     {
         try
         {
-            pool_ = std::make_unique<driver::CompilationWorkerPool>(workerCount_);
+            ownedPool_ = std::make_unique<driver::CompilationWorkerPool>(workerCount_);
+            pool_ = ownedPool_.get();
         }
         catch (...)
         {

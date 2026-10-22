@@ -60,7 +60,8 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
                                return objectGenerator.generate(
                                    *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
                                    compilation.sourceManager(), debugInformation, optimizationLevel,
-                                   effectiveCompilationJobs(), debugPrefixMaps, linkTimeOptimization, error);
+                                   effectiveCompilationJobs(), debugPrefixMaps, linkTimeOptimization, error,
+                                   &compilation.lifetime().workerPool());
                            });
     if (objectBundle == nullptr)
         return nullptr;

@@ -33,6 +33,11 @@ namespace nativesharp::language
 struct InterpolationPart;
 }
 
+namespace nativesharp::driver
+{
+class CompilationWorkerPool;
+}
+
 namespace nativesharp::frontend
 {
 class ProjectGenericConstraintModel;
@@ -95,6 +100,20 @@ public:
         std::size_t workerCount = 1,
         const ProjectNamespaceFunctionModel* namespaceFunctionModel = nullptr,
         const ProjectMetaprogrammingModel* metaprogrammingModel = nullptr);
+    bool build(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectMethodBodyModel& methodBodyModel,
+        const ProjectConstructionModel& constructionModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        std::string& error,
+        const ProjectGenericConstraintModel* genericConstraintModel,
+        std::size_t workerCount,
+        const ProjectNamespaceFunctionModel* namespaceFunctionModel,
+        const ProjectMetaprogrammingModel* metaprogrammingModel,
+        driver::CompilationWorkerPool* workerPool);
 
     std::span<const ProjectOopHirFunction> functions() const noexcept;
     std::span<const ProjectOopHirFieldInitializer> fieldInitializers() const noexcept;
@@ -4276,6 +4295,7 @@ private:
     const ProjectMetaprogrammingModel* metaprogrammingModel_ = nullptr;
     const ProjectOopHirModel* lookupSource_ = nullptr;
     ProjectCompilationIndexes* indexes_ = nullptr;
+    driver::CompilationWorkerPool* workerPool_ = nullptr;
     std::vector<ProjectOopHirFunction> functions_;
     std::vector<ProjectOopHirFieldInitializer> fieldInitializers_;
     std::vector<std::optional<std::size_t>> functionByMember_;

@@ -30,6 +30,11 @@ namespace nativesharp::source
 class SourceManager;
 }
 
+namespace nativesharp::driver
+{
+class CompilationWorkerPool;
+}
+
 namespace nativesharp::llvm_backend
 {
 struct ColdLlvmPreambleTelemetry;
@@ -51,6 +56,17 @@ public:
         std::size_t workerCount,
         std::span<const DebugPrefixMap> debugPrefixMaps,
         std::string& error) const;
+    std::unique_ptr<ProjectOopObjectBundle> generate(
+        const frontend::ProjectNameLookup& nameLookup,
+        const frontend::ProjectMemberModel& memberModel,
+        const frontend::ProjectOopMirModel& mirModel,
+        const source::SourceManager& sourceManager,
+        DebugInformationKind debugInformation,
+        LlvmOptimizationLevel optimizationLevel,
+        std::size_t workerCount,
+        std::span<const DebugPrefixMap> debugPrefixMaps,
+        std::string& error,
+        driver::CompilationWorkerPool* workerPool) const;
 
     std::unique_ptr<ProjectOopObjectBundle> generate(
         const frontend::ProjectNameLookup& nameLookup,
@@ -63,6 +79,18 @@ public:
         std::span<const DebugPrefixMap> debugPrefixMaps,
         LinkTimeOptimizationMode linkTimeOptimization,
         std::string& error) const;
+    std::unique_ptr<ProjectOopObjectBundle> generate(
+        const frontend::ProjectNameLookup& nameLookup,
+        const frontend::ProjectMemberModel& memberModel,
+        const frontend::ProjectOopMirModel& mirModel,
+        const source::SourceManager& sourceManager,
+        DebugInformationKind debugInformation,
+        LlvmOptimizationLevel optimizationLevel,
+        std::size_t workerCount,
+        std::span<const DebugPrefixMap> debugPrefixMaps,
+        LinkTimeOptimizationMode linkTimeOptimization,
+        std::string& error,
+        driver::CompilationWorkerPool* workerPool) const;
 
 private:
     bool finishCodeUnitBundle(
@@ -103,6 +131,29 @@ private:
         ProjectOopObjectBundle& result,
         ColdLlvmPreambleTelemetry& preambleTelemetry,
         std::string& error) const;
+    bool generateCodeUnits(
+        const frontend::ProjectNameLookup& nameLookup,
+        const frontend::ProjectMemberModel& memberModel,
+        const frontend::ProjectOopMirModel& mirModel,
+        const source::SourceManager& sourceManager,
+        DebugInformationKind debugInformation,
+        LlvmOptimizationLevel optimizationLevel,
+        std::size_t workerCount,
+        std::span<const DebugPrefixMap> debugPrefixMaps,
+        LinkTimeOptimizationMode linkTimeOptimization,
+        const CompilationArtifactCache* cache,
+        const ProjectOopFunctionReachabilityAnalysis& functionAnalysis,
+        std::span<const std::uint8_t> reachableDefinitions,
+        std::span<const std::size_t> coordinatorFunctionDeclarations,
+        ProjectOopCodePartition& partition,
+        const std::string& partitionPlanKey,
+        std::string& partitionPlanPayload,
+        bool requiresWholeModuleRequiredInlining,
+        bool usePartitions,
+        ProjectOopObjectBundle& result,
+        ColdLlvmPreambleTelemetry& preambleTelemetry,
+        std::string& error,
+        driver::CompilationWorkerPool* workerPool) const;
 
     std::function<void(const basic::CompilationEvent&)> progressSink_;
 };

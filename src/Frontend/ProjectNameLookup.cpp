@@ -94,13 +94,29 @@ bool ProjectNameLookup::build(
     diagnostics::DiagnosticEngine& diagnostics,
     std::size_t workerCount)
 {
+    return build(graph, units, diagnostics, workerCount, nullptr);
+}
+
+bool ProjectNameLookup::build(
+    const compilation::ProjectGraph& graph,
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::size_t workerCount,
+    driver::CompilationWorkerPool* workerPool)
+{
     if (built_ || !modules_.empty() || !pendingTypes_.empty() || !namedTypes_.empty() ||
         !namespaceFunctions_.empty() || !namespaceStates_.empty() || !bindings_.empty())
         return false;
 
     initializeModules(graph);
     buildVisibility(graph);
-    driver::CompilationWorkerPool workers(workerCount);
+    std::unique_ptr<driver::CompilationWorkerPool> ownedWorkers;
+    if (workerPool == nullptr)
+    {
+        ownedWorkers = std::make_unique<driver::CompilationWorkerPool>(workerCount);
+        workerPool = ownedWorkers.get();
+    }
+    driver::CompilationWorkerPool& workers = *workerPool;
     collectDeclarationIndexes(graph, units, workers);
     finalizePredeclarations(diagnostics);
     finalizeReexports(units, diagnostics);

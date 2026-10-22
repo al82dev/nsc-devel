@@ -5,6 +5,7 @@
 #include "nativesharp/Basic/CompilationEvent.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Driver/CompilationTelemetry.h"
+#include "nativesharp/Frontend/ProjectCompilationLifetime.h"
 #include "nativesharp/LLVM/LlvmOptimizationBudgetTracker.h"
 
 #include <chrono>
@@ -45,6 +46,7 @@ struct DriverExecutionScope final
     llvm_backend::LlvmOptimizationBudgetTracker o2Budget;
     compilation::ProjectLoader projectLoader;
     compilation::ProjectLoadOptions projectLoadOptions;
+    frontend::ProjectCompilationLifetime compilationLifetime;
     bool reportTiming = false;
     bool reportProgress = false;
     ProgressFormat progressFormat = ProgressFormat::Text;

@@ -49,7 +49,11 @@ std::optional<compilation::CompilationInputManifest> loadCompilationInputManifes
             std::string& loadError)
         {
             return projectLoader.load(path, loadOptions, loadError);
-        });
+        },
+        {},
+        activeExecutionScope != nullptr
+            ? &activeExecutionScope->compilationLifetime.workerPool()
+            : nullptr);
     std::optional<compilation::ProjectGraph> graph = measureDriverPhase(
         "project-graph",
         [&]

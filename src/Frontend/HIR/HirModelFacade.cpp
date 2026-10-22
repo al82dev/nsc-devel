@@ -51,6 +51,28 @@ bool ProjectOopHirModel::build(
     const ProjectNamespaceFunctionModel* namespaceFunctionModel,
     const ProjectMetaprogrammingModel* metaprogrammingModel)
 {
+    return build(
+        nameLookup, memberModel, inheritanceModel, interfaceModel, methodBodyModel,
+        constructionModel, objectLayoutModel, error, genericConstraintModel,
+        workerCount, namespaceFunctionModel, metaprogrammingModel, nullptr);
+}
+
+bool ProjectOopHirModel::build(
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    const ProjectInheritanceModel& inheritanceModel,
+    const ProjectInterfaceModel& interfaceModel,
+    const ProjectMethodBodyModel& methodBodyModel,
+    const ProjectConstructionModel& constructionModel,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    std::string& error,
+    const ProjectGenericConstraintModel* genericConstraintModel,
+    std::size_t workerCount,
+    const ProjectNamespaceFunctionModel* namespaceFunctionModel,
+    const ProjectMetaprogrammingModel* metaprogrammingModel,
+    driver::CompilationWorkerPool* workerPool)
+{
+    workerPool_ = workerPool;
     return buildImpl(
         nameLookup,
         memberModel,

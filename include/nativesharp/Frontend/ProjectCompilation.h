@@ -52,6 +52,7 @@ public:
     using SourceBufferProvider =
         std::function<std::optional<std::string>(const std::filesystem::path&)>;
 
+    void setLifetime(ProjectCompilationLifetime& lifetime) noexcept;
     void setCompilationJobs(std::size_t jobs) noexcept;
     void setProjectLoadOptions(compilation::ProjectLoadOptions options);
     void setTemplateCacheRoot(std::filesystem::path root);
@@ -200,7 +201,8 @@ private:
     diagnostics::DiagnosticEngine diagnostics_;
     std::vector<std::unique_ptr<ProjectSyntaxUnit>> units_;
     std::vector<ProjectComptimeRecord> comptimeRecords_;
-    ProjectCompilationLifetime lifetime_;
+    ProjectCompilationLifetime ownedLifetime_;
+    ProjectCompilationLifetime* lifetime_ = &ownedLifetime_;
     std::unique_ptr<ProjectNameLookup> nameLookup_;
     std::unique_ptr<ProjectGenericModel> genericModel_;
     std::unique_ptr<ProjectMemberModel> memberModel_;

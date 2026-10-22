@@ -752,7 +752,13 @@ bool ProjectOopHirModel::buildRegularFunctionsInParallel(
 {
     using internal::RegularFunctionResult;
     std::vector<RegularFunctionResult> results(memberModel_->members().size());
-    driver::CompilationWorkerPool workers(workerCount);
+    std::unique_ptr<driver::CompilationWorkerPool> ownedWorkers;
+    if (workerPool_ == nullptr)
+    {
+        ownedWorkers = std::make_unique<driver::CompilationWorkerPool>(workerCount);
+    }
+    driver::CompilationWorkerPool& workers =
+        workerPool_ != nullptr ? *workerPool_ : *ownedWorkers;
     for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel_->members().size();
          ++memberOrdinal)
     {

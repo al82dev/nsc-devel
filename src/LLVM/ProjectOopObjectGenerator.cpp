@@ -586,7 +586,8 @@ bool executeCodeUnits(
     const FloatingPointState& floatingPointState,
     const std::function<void(std::size_t)>& processModule,
     const std::vector<std::string>& moduleErrors,
-    std::string& error)
+    std::string& error,
+    driver::CompilationWorkerPool* workerPool)
 {
     const auto initializeWorkerFloatingPoint = [floatingPointState](std::size_t) {
         initializeFloatingPointStateForWorker(floatingPointState);
@@ -596,23 +597,30 @@ bool executeCodeUnits(
         processModule(0);
         return true;
     }
-    driver::CompilationWorkerPool workers(workerCount, initializeWorkerFloatingPoint);
+    std::unique_ptr<driver::CompilationWorkerPool> ownedWorkers;
+    if (workerPool == nullptr)
+    {
+        ownedWorkers = std::make_unique<driver::CompilationWorkerPool>(
+            workerCount, initializeWorkerFloatingPoint);
+        workerPool = ownedWorkers.get();
+    }
     std::atomic_bool moduleFailure = false;
     for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
     {
-        workers.submit([&, ordinal](std::size_t) {
+        workerPool->submit([&, ordinal](std::size_t) {
             if (moduleFailure.load(std::memory_order_acquire)) return;
+            initializeWorkerFloatingPoint(ordinal);
             processModule(ordinal);
             if (!moduleErrors[ordinal].empty())
             {
                 moduleFailure.store(true, std::memory_order_release);
-                workers.requestCancellation();
+                workerPool->requestCancellation();
             }
         });
     }
     try
     {
-        workers.wait();
+        workerPool->wait();
     }
     catch (const std::exception& exception)
     {
@@ -841,6 +849,39 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     ColdLlvmPreambleTelemetry& preambleTelemetry,
     std::string& error) const
 {
+    return generateCodeUnits(
+        nameLookup, memberModel, mirModel, sourceManager, debugInformation,
+        optimizationLevel, workerCount, debugPrefixMaps, linkTimeOptimization,
+        cache, functionAnalysis, reachableDefinitions, coordinatorFunctionDeclarations,
+        partition, partitionPlanKey, partitionPlanPayload,
+        requiresWholeModuleRequiredInlining, usePartitions, result,
+        preambleTelemetry, error, nullptr);
+}
+
+bool ProjectOopObjectGenerator::generateCodeUnits(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel& memberModel,
+    const frontend::ProjectOopMirModel& mirModel,
+    const source::SourceManager& sourceManager,
+    DebugInformationKind debugInformation,
+    LlvmOptimizationLevel optimizationLevel,
+    std::size_t workerCount,
+    std::span<const DebugPrefixMap> debugPrefixMaps,
+    LinkTimeOptimizationMode linkTimeOptimization,
+    const CompilationArtifactCache* cache,
+    const ProjectOopFunctionReachabilityAnalysis& functionAnalysis,
+    std::span<const std::uint8_t> reachableDefinitions,
+    std::span<const std::size_t> coordinatorFunctionDeclarations,
+    ProjectOopCodePartition& partition,
+    const std::string& partitionPlanKey,
+    std::string& partitionPlanPayload,
+    bool requiresWholeModuleRequiredInlining,
+    bool usePartitions,
+    ProjectOopObjectBundle& result,
+    ColdLlvmPreambleTelemetry& preambleTelemetry,
+    std::string& error,
+    driver::CompilationWorkerPool* workerPool) const
+{
     const std::size_t moduleCount = result.objectFiles_.size();
     std::vector<std::string> moduleTexts(moduleCount);
     std::vector<std::string> moduleErrors(moduleCount);
@@ -889,7 +930,7 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     const PhaseClock workerWallClock;
     if (!executeCodeUnits(
             workerCount, moduleCount, usePartitions, workerFloatingPointState,
-            processModule, moduleErrors, error)) return false;
+            processModule, moduleErrors, error, workerPool)) return false;
     preambleTelemetry.workerWallMicros = workerWallClock.elapsedMicros();
     for (const CodeUnitTelemetry& telemetry : codeUnitTelemetry)
         preambleTelemetry.staticFieldMaskMicros += telemetry.staticFieldMaskMicros;
@@ -910,9 +951,26 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     std::span<const DebugPrefixMap> debugPrefixMaps,
     std::string& error) const
 {
+    return generate(
+        nameLookup, memberModel, mirModel, sourceManager, debugInformation,
+        optimizationLevel, workerCount, debugPrefixMaps, error, nullptr);
+}
+
+std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel& memberModel,
+    const frontend::ProjectOopMirModel& mirModel,
+    const source::SourceManager& sourceManager,
+    DebugInformationKind debugInformation,
+    LlvmOptimizationLevel optimizationLevel,
+    std::size_t workerCount,
+    std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::string& error,
+    driver::CompilationWorkerPool* workerPool) const
+{
     return generate(nameLookup, memberModel, mirModel, sourceManager, debugInformation,
         optimizationLevel, workerCount, debugPrefixMaps,
-        LinkTimeOptimizationMode::None, error);
+        LinkTimeOptimizationMode::None, error, workerPool);
 }
 
 std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
@@ -926,6 +984,25 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     std::span<const DebugPrefixMap> debugPrefixMaps,
     LinkTimeOptimizationMode linkTimeOptimization,
     std::string& error) const
+{
+    return generate(
+        nameLookup, memberModel, mirModel, sourceManager, debugInformation,
+        optimizationLevel, workerCount, debugPrefixMaps,
+        linkTimeOptimization, error, nullptr);
+}
+
+std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel& memberModel,
+    const frontend::ProjectOopMirModel& mirModel,
+    const source::SourceManager& sourceManager,
+    DebugInformationKind debugInformation,
+    LlvmOptimizationLevel optimizationLevel,
+    std::size_t workerCount,
+    std::span<const DebugPrefixMap> debugPrefixMaps,
+    LinkTimeOptimizationMode linkTimeOptimization,
+    std::string& error,
+    driver::CompilationWorkerPool* workerPool) const
 {
     error.clear();
     workerCount = std::max<std::size_t>(1, workerCount);
@@ -992,7 +1069,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             optimizationLevel, workerCount, debugPrefixMaps, linkTimeOptimization, cache,
             functionAnalysis, reachableDefinitions, coordinatorFunctionDeclarations, partition,
             partitionPlanKey, partitionPlanPayload, requiresWholeModuleRequiredInlining,
-            usePartitions, *result, preambleTelemetry, error)) return nullptr;
+            usePartitions, *result, preambleTelemetry, error, workerPool)) return nullptr;
     return result;
 }
 }

@@ -29,10 +29,16 @@
 
 namespace nativesharp::frontend
 {
+void ProjectCompilation::setLifetime(ProjectCompilationLifetime& lifetime) noexcept
+{
+    lifetime_ = &lifetime;
+    lifetime_->setWorkerCount(compilationJobs_);
+}
+
 void ProjectCompilation::setCompilationJobs(std::size_t jobs) noexcept
 {
     compilationJobs_ = std::max<std::size_t>(1, jobs);
-    lifetime_.setWorkerCount(compilationJobs_);
+    lifetime_->setWorkerCount(compilationJobs_);
 }
 
 void ProjectCompilation::setProjectLoadOptions(compilation::ProjectLoadOptions options)
@@ -46,7 +52,7 @@ void ProjectCompilation::setTemplateCacheRoot(std::filesystem::path root)
     precompiledProductCacheRoot_ = templateCacheRoot_.empty()
         ? std::filesystem::path{}
         : templateCacheRoot_ / "precompiled-products";
-    lifetime_.metadataRepository().setCacheRoot(
+    lifetime_->metadataRepository().setCacheRoot(
         templateCacheRoot_.empty()
             ? std::filesystem::path{}
             : templateCacheRoot_ / "verified-nsmeta-models");
@@ -629,8 +635,13 @@ bool ProjectCompilation::compileProjectNames(
     if (cancellationRequested(loadError, "names")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "names");
-    nameLookup_ = std::make_unique<ProjectNameLookup>(lifetime_.indexes());
-    if (!nameLookup_->build(*projectGraph_, units_, diagnostics_, compilationJobs_)) return false;
+    nameLookup_ = std::make_unique<ProjectNameLookup>(lifetime_->indexes());
+    if (!nameLookup_->build(
+            *projectGraph_, units_, diagnostics_, compilationJobs_,
+            &lifetime_->workerPool()))
+    {
+        return false;
+    }
     return enterStage(CompilationStage::Binding, loadError);
 }
 
@@ -646,7 +657,7 @@ bool ProjectCompilation::compileProjectGenerics(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "generics");
     genericModel_ = std::make_unique<ProjectGenericModel>(
-        lifetime_.indexes(),
+        lifetime_->indexes(),
         projectLoadOptions_.genericInstantiationDepth.value_or(
             ProjectGenericModel::DefaultMaximumInstantiationDepth),
         projectLoadOptions_.genericInstantiationCount.value_or(
@@ -694,7 +705,7 @@ bool ProjectCompilation::compileProjectMembers(
     if (cancellationRequested(loadError, "members")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "members");
-    memberModel_ = std::make_unique<ProjectMemberModel>(lifetime_.indexes());
+    memberModel_ = std::make_unique<ProjectMemberModel>(lifetime_->indexes());
     if (!memberModel_->build(*nameLookup_, units_, diagnostics_, genericModel_.get())) return false;
     if (!memberModel_->buildModuleInitializationPlan(*projectGraph_, loadError)) return false;
 
@@ -833,6 +844,7 @@ bool ProjectCompilation::compileProjectMethodBodies(
     }
     ProjectMethodBodyBuildOptions methodBodyOptions;
     methodBodyOptions.workerCount = compilationJobs_;
+    methodBodyOptions.workerPool = &lifetime_->workerPool();
     methodBodyOptions.cancellationCheck = cancellationCheck_;
     methodBodyOptions.phaseTimingSink = phaseTimingSink_;
     methodBodyOptions.executionError = &loadError;
@@ -872,7 +884,7 @@ bool ProjectCompilation::compileProjectVirtualDispatch(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "virtual-dispatch");
     virtualDispatchModel_ =
-        std::make_unique<ProjectVirtualDispatchModel>(lifetime_.indexes());
+        std::make_unique<ProjectVirtualDispatchModel>(lifetime_->indexes());
     return virtualDispatchModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
 }
@@ -922,7 +934,7 @@ bool ProjectCompilation::compileProjectObjectLayouts(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "layout");
     objectLayoutModel_ =
-        std::make_unique<ProjectObjectLayoutModel>(lifetime_.indexes());
+        std::make_unique<ProjectObjectLayoutModel>(lifetime_->indexes());
     if (!objectLayoutModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *constructionModel_, diagnostics_))
         return false;
@@ -948,11 +960,12 @@ bool ProjectCompilation::compileProjectOopHir(
     if (cancellationRequested(loadError, "oop-hir")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-hir");
-    oopHirModel_ = std::make_unique<ProjectOopHirModel>(lifetime_.indexes());
+    oopHirModel_ = std::make_unique<ProjectOopHirModel>(lifetime_->indexes());
     if (oopHirModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
             *constructionModel_, *objectLayoutModel_, loadError, genericConstraintModel_.get(),
-            compilationJobs_, namespaceFunctionModel_.get(), metaprogrammingModel_.get()))
+            compilationJobs_, namespaceFunctionModel_.get(),
+            metaprogrammingModel_.get(), &lifetime_->workerPool()))
     {
         return true;
     }
@@ -993,7 +1006,7 @@ bool ProjectCompilation::compileProjectOopMir(
     if (cancellationRequested(loadError, "oop-mir")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-mir");
-    oopMirModel_ = std::make_unique<ProjectOopMirModel>(lifetime_.indexes());
+    oopMirModel_ = std::make_unique<ProjectOopMirModel>(lifetime_->indexes());
     if (!templateCacheRoot_.empty())
     {
         oopMirModel_->setMirCacheRoot(templateCacheRoot_ / "mir");
@@ -1005,7 +1018,8 @@ bool ProjectCompilation::compileProjectOopMir(
     }
     if (!oopMirModel_->build(
         *nameLookup_, *memberModel_, *objectLayoutModel_, *virtualDispatchModel_, *interfaceModel_,
-        *destructionModel_, *oopHirModel_, *namespaceFunctionModel_, loadError, compilationJobs_))
+        *destructionModel_, *oopHirModel_, *namespaceFunctionModel_, loadError,
+        compilationJobs_, &lifetime_->workerPool()))
         return false;
     if (!enterStage(CompilationStage::Mir, loadError)) return false;
     return enterStage(CompilationStage::Monomorphization, loadError);
@@ -1313,7 +1327,7 @@ bool ProjectCompilation::restorePrecompiledSyntaxUnit(
     std::string_view cacheKey)
 {
     if (precompiledProductCacheRoot_.empty() || cacheKey.empty()) return false;
-    TemplateParseCache& cache = lifetime_.precompiledSyntaxCache();
+    TemplateParseCache& cache = lifetime_->precompiledSyntaxCache();
     cache.setRoot(precompiledProductCacheRoot_ / "syntax");
     std::string payload;
     bool hit = false;
@@ -1430,7 +1444,7 @@ bool ProjectCompilation::restoreTemplateParseProduct(std::string& loadError)
 {
     templateParseCacheHit_ = false;
     if (templateCacheRoot_.empty() || templateParseCacheKey_.empty()) return true;
-    TemplateParseCache& cache = lifetime_.templateParseCache();
+    TemplateParseCache& cache = lifetime_->templateParseCache();
     cache.setRoot(templateCacheRoot_);
     std::string payload;
     bool hit = false;
@@ -1525,7 +1539,7 @@ void ProjectCompilation::publishTemplateParseProduct()
             payload,
             internal::serializeSyntaxProductUnit(*unit));
     }
-    TemplateParseCache& cache = lifetime_.templateParseCache();
+    TemplateParseCache& cache = lifetime_->templateParseCache();
     cache.setRoot(templateCacheRoot_);
     std::string ignoredError;
     (void)cache.store(templateParseCacheKey_, payload, ignoredError);
@@ -1534,7 +1548,7 @@ void ProjectCompilation::publishTemplateParseProduct()
 void ProjectCompilation::publishPrecompiledSyntaxProducts()
 {
     if (precompiledProductCacheRoot_.empty()) return;
-    TemplateParseCache& cache = lifetime_.precompiledSyntaxCache();
+    TemplateParseCache& cache = lifetime_->precompiledSyntaxCache();
     cache.setRoot(precompiledProductCacheRoot_ / "syntax");
     const std::size_t count = std::min(
         units_.size(), precompiledSyntaxCacheKeysByUnit_.size());
@@ -1661,7 +1675,7 @@ bool ProjectCompilation::compileSyntaxCore(
     {
         return false;
     }
-    lifetime_.indexes().clear();
+    lifetime_->indexes().clear();
     if (!ensureProjectGraph(projectFile, loadError))
     {
         return false;
@@ -1672,7 +1686,7 @@ bool ProjectCompilation::compileSyntaxCore(
         return false;
     }
     comptimeRecords_.clear();
-    driver::CompilationWorkerPool syntaxWorkers(compilationJobs_);
+    driver::CompilationWorkerPool& syntaxWorkers = lifetime_->workerPool();
     std::vector<ProjectSyntaxSourceRead> sourceReads = collectSyntaxSourceReads();
 
     if (!readSyntaxSources(sourceReads, syntaxWorkers, loadError))
@@ -1734,32 +1748,32 @@ const compilation::ProjectGraph* ProjectCompilation::projectGraph() const noexce
 
 compilation::LibraryMetadataRepository& ProjectCompilation::libraryMetadataRepository() noexcept
 {
-    return lifetime_.metadataRepository();
+    return lifetime_->metadataRepository();
 }
 
 const compilation::LibraryMetadataRepository& ProjectCompilation::libraryMetadataRepository() const noexcept
 {
-    return lifetime_.metadataRepository();
+    return lifetime_->metadataRepository();
 }
 
 ProjectCompilationLifetime& ProjectCompilation::lifetime() noexcept
 {
-    return lifetime_;
+    return *lifetime_;
 }
 
 const ProjectCompilationLifetime& ProjectCompilation::lifetime() const noexcept
 {
-    return lifetime_;
+    return *lifetime_;
 }
 
 ProjectCompilationIndexes& ProjectCompilation::indexes() noexcept
 {
-    return lifetime_.indexes();
+    return lifetime_->indexes();
 }
 
 const ProjectCompilationIndexes& ProjectCompilation::indexes() const noexcept
 {
-    return lifetime_.indexes();
+    return lifetime_->indexes();
 }
 
 const source::SourceManager& ProjectCompilation::sourceManager() const noexcept

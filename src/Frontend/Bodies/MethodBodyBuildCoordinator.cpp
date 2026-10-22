@@ -379,7 +379,7 @@ bool ProjectMethodBodyModel::analyzeCallableWaves(
 {
     std::size_t workCursor = 0;
     std::size_t waveOrdinal = 0;
-    ProjectCallableWaveScheduler waveScheduler(options.workerCount);
+    ProjectCallableWaveScheduler waveScheduler(options.workerCount, options.workerPool);
     callableAnalysisStatistics_.requestedWorkers = waveScheduler.requestedWorkerCount();
     callableAnalysisStatistics_.effectiveWorkers = waveScheduler.effectiveWorkerCount();
     while (workCursor < callableWorklist.size())

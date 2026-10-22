@@ -37,6 +37,8 @@ void appendCodeUnitTelemetry(std::ostream &output, const llvm_backend::ProjectOo
 void configureProjectExecution(frontend::ProjectCompilation &compilation)
 {
     const CompilationJobPolicy *const jobs = activeCompilationJobPolicy();
+    if (activeExecutionScope != nullptr)
+        compilation.setLifetime(activeExecutionScope->compilationLifetime);
     compilation.setCompilationJobs(jobs != nullptr ? jobs->effectiveJobs() : 1);
     compilation.setProjectLoadOptions(activeProjectLoadOptions());
     const llvm_backend::CompilationArtifactCache *const artifactCache =
