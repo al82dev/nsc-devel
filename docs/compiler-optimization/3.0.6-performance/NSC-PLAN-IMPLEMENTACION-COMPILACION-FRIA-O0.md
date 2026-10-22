@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `13 / 60`
+**Progreso:** `14 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -17,7 +17,7 @@
 | T2.2 | Exponer vistas internas de las identidades calculadas y migrar los índices sin cambiar las firmas públicas existentes | TERMINADO |
 | T2.3 | Hacer heterogéneas las búsquedas por `string_view` en los índices de tipos, evitando `std::string` temporal por consulta | TERMINADO |
 | T2.4 | Hacer heterogéneas las búsquedas de firmas, templates y especializaciones | TERMINADO |
-| T2.5 | Reservar capacidad exacta o acotada en los mapas y buckets de `ProjectCompilationIndexes` antes de poblarlos | PENDIENTE |
+| T2.5 | Reservar capacidad exacta o acotada en los mapas y buckets de `ProjectCompilationIndexes` antes de poblarlos | TERMINADO |
 | T2.6 | Añadir el índice global de miembros por nombre requerido por los consumidores que hoy recorren `members()` completo | PENDIENTE |
 | T2.7 | Añadir índices MIR de layouts de struct y clase por ordinal y por `typeKey` | PENDIENTE |
 | T2.8 | Añadir índices MIR de funciones por nombre físico y por lambda, además de los índices por miembro ya existentes | PENDIENTE |

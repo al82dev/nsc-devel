@@ -71,6 +71,7 @@ void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaratio
     clearHirBindings();
     typesByOrdinal_.reserve(types.size());
     typeOrdinalByIdentity_.reserve(types.size());
+    typeOrdinalsByName_.reserve(types.size() * 2U);
     for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
     {
         const NamedTypeDeclaration& type = types[ordinal];
@@ -98,6 +99,8 @@ void ProjectCompilationIndexes::rebuildGenerics(
     genericSpecializationByKey_.clear();
     genericSpecializationByName_.clear();
     genericTemplatesByOrdinal_.reserve(templates.size());
+    genericTemplateByCanonicalKey_.reserve(templates.size());
+    genericTemplateOrdinalsByName_.reserve(templates.size());
     for (std::size_t ordinal = 0; ordinal < templates.size(); ++ordinal)
     {
         const GenericTemplateRecord& record = templates[ordinal];
@@ -106,6 +109,9 @@ void ProjectCompilationIndexes::rebuildGenerics(
         genericTemplateOrdinalsByName_[record.name].push_back(ordinal);
     }
     genericSpecializationsByOrdinal_.reserve(specializations.size());
+    genericSpecializationBySyntax_.reserve(specializations.size());
+    genericSpecializationByKey_.reserve(specializations.size());
+    genericSpecializationByName_.reserve(specializations.size());
     for (const GenericSpecializationRecord& record : specializations)
     {
         genericSpecializationsByOrdinal_.push_back(&record);
@@ -152,11 +158,21 @@ void ProjectCompilationIndexes::rebuildMembers(std::span<const ClassMemberSymbol
     clearHirBindings();
     membersByOrdinal_.reserve(members.size());
     std::size_t typeCount = typesByOrdinal_.size();
+    std::vector<std::size_t> memberCountsByType(typeCount, 0U);
     for (const ClassMemberSymbol& member : members)
     {
         typeCount = std::max(typeCount, member.declaringTypeOrdinal + 1U);
+        if (member.declaringTypeOrdinal >= memberCountsByType.size())
+        {
+            memberCountsByType.resize(member.declaringTypeOrdinal + 1U, 0U);
+        }
+        ++memberCountsByType[member.declaringTypeOrdinal];
     }
     memberOrdinalsBySignature_.resize(typeCount);
+    for (std::size_t typeOrdinal = 0; typeOrdinal < memberCountsByType.size(); ++typeOrdinal)
+    {
+        memberOrdinalsBySignature_[typeOrdinal].reserve(memberCountsByType[typeOrdinal]);
+    }
     for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
     {
         const ClassMemberSymbol& member = members[ordinal];
@@ -246,6 +262,8 @@ void ProjectCompilationIndexes::rebuildMirFunctions(
     clearMirFunctions();
     mirFunctionsByMember_.assign(memberCount, nullptr);
     mirFunctionsByNamespaceFunction_.assign(namespaceFunctionCount, nullptr);
+    mirAsyncLocalsByFunction_.reserve(functions.size());
+    mirAsyncParametersByFunction_.reserve(functions.size());
     for (const ProjectOopMirFunction& function : functions)
     {
         if (function.namespaceFunctionOrdinal.has_value())
@@ -261,9 +279,11 @@ void ProjectCompilationIndexes::rebuildMirFunctions(
             mirFunctionsByMember_[function.memberOrdinal] = &function;
         }
         MirAsyncFrameIndex& locals = mirAsyncLocalsByFunction_[&function];
+        locals.reserve(function.asyncFrameLocals.size());
         for (const MirAsyncFrameSlot& slot : function.asyncFrameLocals)
             locals.emplace(std::get<0>(slot), &slot);
         MirAsyncFrameIndex& parameters = mirAsyncParametersByFunction_[&function];
+        parameters.reserve(function.asyncFrameParameters.size());
         for (const MirAsyncFrameSlot& slot : function.asyncFrameParameters)
             parameters.emplace(std::get<0>(slot), &slot);
     }
