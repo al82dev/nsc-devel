@@ -6,7 +6,7 @@
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
-#include "nativesharp/Frontend/ProjectCompilationIndexes.h"
+#include "nativesharp/Frontend/ProjectCompilationLifetime.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
@@ -106,6 +106,8 @@ public:
     const compilation::ProjectGraph* projectGraph() const noexcept;
     compilation::LibraryMetadataRepository& libraryMetadataRepository() noexcept;
     const compilation::LibraryMetadataRepository& libraryMetadataRepository() const noexcept;
+    ProjectCompilationLifetime& lifetime() noexcept;
+    const ProjectCompilationLifetime& lifetime() const noexcept;
     ProjectCompilationIndexes& indexes() noexcept;
     const ProjectCompilationIndexes& indexes() const noexcept;
     const source::SourceManager& sourceManager() const noexcept;
@@ -198,7 +200,7 @@ private:
     diagnostics::DiagnosticEngine diagnostics_;
     std::vector<std::unique_ptr<ProjectSyntaxUnit>> units_;
     std::vector<ProjectComptimeRecord> comptimeRecords_;
-    ProjectCompilationIndexes indexes_;
+    ProjectCompilationLifetime lifetime_;
     std::unique_ptr<ProjectNameLookup> nameLookup_;
     std::unique_ptr<ProjectGenericModel> genericModel_;
     std::unique_ptr<ProjectMemberModel> memberModel_;
@@ -217,7 +219,6 @@ private:
     std::unique_ptr<ProjectMetaprogrammingModel> metaprogrammingModel_;
     std::unique_ptr<ProjectOopHirModel> oopHirModel_;
     std::unique_ptr<ProjectOopMirModel> oopMirModel_;
-    compilation::LibraryMetadataRepository libraryMetadataRepository_;
     std::function<bool()> cancellationCheck_;
     SourceBufferProvider sourceBufferProvider_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;

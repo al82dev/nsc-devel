@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `42 / 48`
+**Progreso:** `43 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -46,7 +46,7 @@
 | T6.5 | Restaurar artefactos válidos y omitir las fases ya resueltas | TERMINADO |
 | T6.6 | Publicar el bundle solamente después de una compilación exitosa | TERMINADO |
 | T6.7 | Registrar invalidación, corrupción y razón exacta de miss | TERMINADO |
-| T7.1 | Crear un propietario de vida de compilación para pool, scheduler, cachés e índices | PENDIENTE |
+| T7.1 | Crear un propietario de vida de compilación para pool, scheduler, cachés e índices | TERMINADO |
 | T7.2 | Compartir el mismo pool entre grafo, sintaxis, nombres, HIR, MIR y LLVM | PENDIENTE |
 | T7.3 | Eliminar pools internos redundantes por fase | PENDIENTE |
 | T7.4 | Reutilizar productos inmutables sin copiarlos ni reconstruirlos | PENDIENTE |
