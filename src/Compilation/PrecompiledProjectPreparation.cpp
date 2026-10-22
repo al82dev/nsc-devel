@@ -73,6 +73,36 @@ bool buildPrecompiledPublicSource(
     return true;
 }
 
+bool restorePrecompiledTemplateSource(
+    const std::filesystem::path& cacheRoot,
+    std::string_view cacheKey,
+    std::string& source)
+{
+    if (cacheRoot.empty() || cacheKey.empty()) return false;
+    frontend::TemplateParseCache cache;
+    cache.setRoot(cacheRoot / "public-templates");
+    bool hit = false;
+    std::string ignoredError;
+    return cache.restore(cacheKey, source, hit, ignoredError) && hit;
+}
+
+bool buildPrecompiledTemplateSource(
+    const interop::LibraryMetadata& metadata,
+    const std::filesystem::path& cacheRoot,
+    std::string_view cacheKey,
+    std::string& source,
+    std::string& error)
+{
+    if (restorePrecompiledTemplateSource(cacheRoot, cacheKey, source)) return true;
+    if (!driver::buildPrecompiledGenericTemplateSource(metadata, source, error)) return false;
+    if (cacheRoot.empty() || cacheKey.empty()) return true;
+    frontend::TemplateParseCache cache;
+    cache.setRoot(cacheRoot / "public-templates");
+    std::string ignoredError;
+    (void)cache.store(cacheKey, source, ignoredError);
+    return true;
+}
+
 std::vector<frontend::PrecompiledMemberIdentity> memberIdentities(
     const interop::LibraryMetadata& metadata)
 {
@@ -182,8 +212,8 @@ bool materializeModules(
             return false;
         }
         std::string templateSource;
-        if (!driver::buildPrecompiledGenericTemplateSource(
-                metadata, templateSource, error))
+        if (!buildPrecompiledTemplateSource(
+                metadata, cacheRoot, productCacheKey, templateSource, error))
         {
             error = "cannot materialize public templates for module '" +
                 metadata.moduleName + "': " + error;
