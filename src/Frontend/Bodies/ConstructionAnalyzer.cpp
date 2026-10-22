@@ -215,12 +215,13 @@ bool ProjectMethodBodyModel::aggregateSupportsSynthesizedMemberVisit(
         return false;
     }
 
-    // Destructors do not participate in ordinary name lookup and therefore are not required
-    // to appear in the per-type lookup bucket. Walk the authoritative symbol vector and
-    // filter by owner so Clone cannot miss lifetime-only members.
-    for (const ClassMemberSymbol& member : memberModel_->members())
+    // Destructors do not participate in ordinary name lookup. The physical per-type index is
+    // authoritative for every collected member, including destructors, so Clone cannot miss
+    // lifetime-only members without scanning unrelated owners.
+    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
     {
-        if (member.declaringTypeOrdinal != *typeOrdinal) continue;
+        if (memberOrdinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
         if (member.kind == ClassMemberKind::Destructor && memberName == "Clone")
         {
             reason = "field '" + (path.empty() ? std::string("<self>") : path) +

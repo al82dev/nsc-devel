@@ -4881,11 +4881,11 @@ bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
     }
     const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(typeKey);
     if (!typeOrdinal.has_value()) return true;
-    for (const ClassMemberSymbol& member : memberModel_->members())
+    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
     {
-        if (member.kind != ClassMemberKind::Field ||
-            member.declaringTypeOrdinal != *typeOrdinal)
-            continue;
+        if (memberOrdinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Field) continue;
         if (!callTypeIsSend(member.declaredTypeKey)) return false;
     }
     return true;
@@ -4902,11 +4902,11 @@ bool ProjectMethodBodyModel::callTypeIsSync(const std::string& typeKey) const
     }
     const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(typeKey);
     if (!typeOrdinal.has_value()) return true;
-    for (const ClassMemberSymbol& member : memberModel_->members())
+    for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
     {
-        if (member.kind != ClassMemberKind::Field ||
-            member.declaringTypeOrdinal != *typeOrdinal)
-            continue;
+        if (memberOrdinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.kind != ClassMemberKind::Field) continue;
         if (!callTypeIsSync(member.declaredTypeKey)) return false;
     }
     return true;
