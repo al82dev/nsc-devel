@@ -468,7 +468,7 @@ void Parser::PatternIterationParser::finishNamedPayloadChild(Work work)
 void Parser::PatternIterationParser::finishNamedPayload(Work work)
 {
     parser_.expect(TokenKind::RightParen, "')' after variant/positional payload pattern");
-    work.pattern.kind = parser_.knownTypeNames_.contains(work.pattern.name)
+    work.pattern.kind = parser_.isKnownTypeName(work.pattern.name)
         ? PatternKind::Positional
         : PatternKind::Variant;
     work.pattern.range = parser_.tokenRangeFrom(work.begin);

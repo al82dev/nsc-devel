@@ -1625,6 +1625,8 @@ bool ProjectCompilation::parseSyntaxUnits(
 {
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-parse");
     const std::vector<std::string> knownTypeNames = collectParserKnownTypeNames(units_);
+    const parser::KnownTypeNameSet knownTypeNameIndex =
+        parser::buildKnownTypeNameSet(knownTypeNames);
     const std::size_t progressTotal = visibleSourceCount(units_, sourceManager_);
     std::atomic_size_t completed = 0;
     bool syntaxOk = lexicalOk;
@@ -1636,7 +1638,7 @@ bool ProjectCompilation::parseSyntaxUnits(
         if (!units_[index]->isLexicallyValid() || units_[index]->isSyntaxValid()) continue;
         syntaxWorkers.submit([&, index](std::size_t)
         {
-            units_[index]->parse(localDiagnostics[index], knownTypeNames);
+            units_[index]->parse(localDiagnostics[index], knownTypeNameIndex);
             const std::filesystem::path sourcePath(sourceManager_.getPath(
                 SourceLocation(units_[index]->fileId(), 0U)));
             if (!isMetadataBackedVirtualSource(sourcePath))

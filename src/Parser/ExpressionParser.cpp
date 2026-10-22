@@ -1835,7 +1835,10 @@ void Parser::appendInterpolationHoles(
     const std::vector<language::InterpolationPart>& parts)
 {
     std::vector<std::string> knownTypes;
-    knownTypes.reserve(knownTypeNames_.size());
+    knownTypes.reserve(knownTypeNames_.size() +
+        (sharedKnownTypeNames_ != nullptr ? sharedKnownTypeNames_->size() : 0U));
+    if (sharedKnownTypeNames_ != nullptr)
+        for (const std::string& name : *sharedKnownTypeNames_) knownTypes.push_back(name);
     for (const std::string& name : knownTypeNames_) knownTypes.push_back(name);
     for (const language::InterpolationPart& part : parts)
     {
@@ -1889,7 +1892,10 @@ ast::AstNode* Parser::lowerRuntimeInterpolation(
     const std::vector<language::InterpolationPart>& parts)
 {
     std::vector<std::string> knownTypes;
-    knownTypes.reserve(knownTypeNames_.size());
+    knownTypes.reserve(knownTypeNames_.size() +
+        (sharedKnownTypeNames_ != nullptr ? sharedKnownTypeNames_->size() : 0U));
+    if (sharedKnownTypeNames_ != nullptr)
+        for (const std::string& name : *sharedKnownTypeNames_) knownTypes.push_back(name);
     for (const std::string& name : knownTypeNames_) knownTypes.push_back(name);
     ast::AstNode* result = makeInterpolationStringLiteral(token, "");
     for (const language::InterpolationPart& part : parts)

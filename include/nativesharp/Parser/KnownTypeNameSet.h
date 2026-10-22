@@ -4,6 +4,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <span>
 #include <unordered_set>
 
 namespace nativesharp::parser
@@ -20,4 +21,7 @@ using KnownTypeNameSet = std::unordered_set<
     std::string,
     KnownTypeNameHash,
     std::equal_to<>>;
+
+KnownTypeNameSet buildKnownTypeNameSet(
+    std::span<const std::string> knownTypeNames = {});
 }

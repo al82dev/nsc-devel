@@ -19,21 +19,7 @@ std::size_t KnownTypeNameHash::operator()(const std::string& value) const noexce
     return (*this)(std::string_view(value));
 }
 
-namespace
-{
-using lexer::TokenKind;
-}
-
-// Seeds the parser cursor and the nominal names required to disambiguate declarations from
-// expressions. The supplied token span and referenced services must outlive the parser.
-Parser::Parser(
-    std::span<const lexer::Token> tokens,
-    ast::AstArena& arena,
-    diagnostics::DiagnosticEngine& diagnostics,
-    std::span<const std::string> knownTypeNames)
-    : tokens_(tokens),
-      arena_(arena),
-      diagnostics_(diagnostics)
+KnownTypeNameSet buildKnownTypeNameSet(std::span<const std::string> knownTypeNames)
 {
     static constexpr std::array<std::string_view, 19> builtinNames = {
         "void", "bool", "byte", "char", "short", "ushort", "int", "uint", "long", "ulong",
@@ -52,18 +38,45 @@ Parser::Parser(
         "Iterator",
         // NS304-T07-F01: `AsyncIterator<T,E>` is the opaque async-stream iterator surface.
         "AsyncIterator"};
-
-    for (const std::string_view name : builtinNames)
-    {
-        knownTypeNames_.insert(std::string(name));
-    }
+    KnownTypeNameSet result;
+    result.reserve(builtinNames.size() + knownTypeNames.size());
+    for (const std::string_view name : builtinNames) result.emplace(name);
     for (const std::string& name : knownTypeNames)
-    {
-        if (!name.empty())
-        {
-            knownTypeNames_.insert(name);
-        }
-    }
+        if (!name.empty()) result.insert(name);
+    return result;
+}
+
+namespace
+{
+using lexer::TokenKind;
+}
+
+// Seeds the parser cursor and the nominal names required to disambiguate declarations from
+// expressions. The supplied token span and referenced services must outlive the parser.
+Parser::Parser(
+    std::span<const lexer::Token> tokens,
+    ast::AstArena& arena,
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::span<const std::string> knownTypeNames)
+    : tokens_(tokens),
+      arena_(arena),
+      diagnostics_(diagnostics),
+      knownTypeNames_(buildKnownTypeNameSet(knownTypeNames))
+{
+    buildConditionalQuestionIndex();
+    buildComprehensionDelimiterIndex();
+}
+
+Parser::Parser(
+    std::span<const lexer::Token> tokens,
+    ast::AstArena& arena,
+    diagnostics::DiagnosticEngine& diagnostics,
+    const KnownTypeNameSet& sharedKnownTypeNames)
+    : tokens_(tokens),
+      arena_(arena),
+      diagnostics_(diagnostics),
+      sharedKnownTypeNames_(&sharedKnownTypeNames)
+{
     buildConditionalQuestionIndex();
     buildComprehensionDelimiterIndex();
 }

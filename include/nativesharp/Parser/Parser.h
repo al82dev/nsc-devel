@@ -36,6 +36,11 @@ public:
         ast::AstArena& arena,
         diagnostics::DiagnosticEngine& diagnostics,
         std::span<const std::string> knownTypeNames = {});
+    Parser(
+        std::span<const lexer::Token> tokens,
+        ast::AstArena& arena,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const KnownTypeNameSet& sharedKnownTypeNames);
 
     ast::AstNode* parseCompilationUnit();
 
@@ -54,6 +59,7 @@ private:
     SourceRange tokenRangeFrom(std::size_t beginIndex) const noexcept;
 
     bool canStartType(const lexer::Token& token) const noexcept;
+    bool isKnownTypeName(std::string_view name) const noexcept;
     bool isAccessibilityModifier(lexer::TokenKind kind) const noexcept;
     bool isInvalidMemberObjectType(const ast::TypeSyntax* type) const noexcept;
     bool isMemberOperatorToken(lexer::TokenKind kind) const noexcept;
@@ -1679,5 +1685,6 @@ private:
     std::size_t nextComprehensionTemporary_ = 0;
     bool parsingExtensionBody_ = false;
     KnownTypeNameSet knownTypeNames_;
+    const KnownTypeNameSet* sharedKnownTypeNames_ = nullptr;
 };
 }

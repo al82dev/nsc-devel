@@ -4,6 +4,7 @@
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Basic/FileId.h"
 #include "nativesharp/Lexer/Token.h"
+#include "nativesharp/Parser/KnownTypeNameSet.h"
 
 #include <cstddef>
 #include <memory>
@@ -40,6 +41,9 @@ public:
     bool parse(
         diagnostics::DiagnosticEngine& diagnostics,
         std::span<const std::string> knownTypeNames = {});
+    bool parse(
+        diagnostics::DiagnosticEngine& diagnostics,
+        const parser::KnownTypeNameSet& sharedKnownTypeNames);
     bool parse(const source::SourceFile& sourceFile, diagnostics::DiagnosticEngine& diagnostics);
 
     std::size_t projectOrdinal() const noexcept;

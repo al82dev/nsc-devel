@@ -57,6 +57,22 @@ bool ProjectSyntaxUnit::parse(
 }
 
 bool ProjectSyntaxUnit::parse(
+    diagnostics::DiagnosticEngine& diagnostics,
+    const parser::KnownTypeNameSet& sharedKnownTypeNames)
+{
+    if (!lexicallyValid_ || tokens_.empty() || syntaxTree_ != nullptr)
+    {
+        return false;
+    }
+
+    const std::size_t errorsBefore = diagnostics.errorCount();
+    parser::Parser parser(tokens_, *arena_, diagnostics, sharedKnownTypeNames);
+    syntaxTree_ = parser.parseCompilationUnit();
+    syntaxValid_ = syntaxTree_ != nullptr && diagnostics.errorCount() == errorsBefore;
+    return syntaxValid_;
+}
+
+bool ProjectSyntaxUnit::parse(
     const source::SourceFile& sourceFile,
     diagnostics::DiagnosticEngine& diagnostics)
 {

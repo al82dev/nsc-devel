@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `21 / 60`
+**Progreso:** `22 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -25,7 +25,7 @@
 | T3.1 | Sustituir las tres tablas `unordered_map` de keywords y sus tres consultas por un único despacho estático sin asignaciones | TERMINADO |
 | T3.2 | Reservar el vector de tokens con una estimación derivada del tamaño de la fuente | TERMINADO |
 | T3.3 | Consultar `knownTypeNames_` con `string_view`, sin construir un `std::string` por identificador | TERMINADO |
-| T3.4 | Construir una sola vez el índice inmutable de nombres conocidos y compartirlo entre todos los parsers del corpus | PENDIENTE |
+| T3.4 | Construir una sola vez el índice inmutable de nombres conocidos y compartirlo entre todos los parsers del corpus | TERMINADO |
 | T3.5 | Eliminar las dos materializaciones completas de `knownTypeNames_` en `ExpressionParser` | PENDIENTE |
 | T3.6 | Convertir `AstArena` en asignación por bloques conservando destrucción tipada y estabilidad de punteros | PENDIENTE |
 | T3.7 | Detectar antes de `ComptimeEngine` las fuentes que no contienen ninguna forma comptime | PENDIENTE |

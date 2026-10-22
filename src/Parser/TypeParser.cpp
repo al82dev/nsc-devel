@@ -54,7 +54,13 @@ bool Parser::canStartType(const lexer::Token& token) const noexcept
         return true;
     }
 
-    return token.kind() == TokenKind::Identifier && knownTypeNames_.contains(token.lexeme());
+    return token.kind() == TokenKind::Identifier && isKnownTypeName(token.lexeme());
+}
+
+bool Parser::isKnownTypeName(std::string_view name) const noexcept
+{
+    return knownTypeNames_.contains(name) ||
+        (sharedKnownTypeNames_ != nullptr && sharedKnownTypeNames_->contains(name));
 }
 
 bool Parser::canStartTypeAt(std::size_t tokenIndex) const noexcept
@@ -366,8 +372,8 @@ bool Parser::scanNamedTypeIdentityAt(
         cursor += 2U;
     }
     if (!builtin && qualified)
-        return moduleQualified || knownTypeNames_.contains(candidate);
-    return builtin || portableSimd || knownTypeNames_.contains(candidate);
+        return moduleQualified || isKnownTypeName(candidate);
+    return builtin || portableSimd || isKnownTypeName(candidate);
 }
 
 bool Parser::scanGenericTypeArgumentsAt(std::size_t& cursor) const noexcept
