@@ -46,6 +46,10 @@ public:
         CompilationBundleLookup& lookup,
         bool& hit,
         std::string& error) const;
+    bool restore(
+        const CompilationBundleLookup& lookup,
+        bool& restored,
+        std::string& error) const;
 
 private:
     std::filesystem::path root_;

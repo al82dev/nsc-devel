@@ -213,6 +213,15 @@ bool configurePrecompiledModules(
     return true;
 }
 
+bool restoreCompilationBundle(
+    const compilation::CompilationInputManifest& manifest,
+    bool& restored,
+    std::string& error)
+{
+    compilation::CompilationBundleCache bundleCache;
+    return bundleCache.restore(manifest.bundleLookup(), restored, error);
+}
+
 void configureObjectGeneratorProgress(
     llvm_backend::ProjectOopObjectGenerator& generator)
 {

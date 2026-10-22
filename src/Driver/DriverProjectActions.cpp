@@ -466,7 +466,8 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
 bool prepareOopCodeCompilation(std::string_view inputPath,
                                compilation::CompilationInputManifest &manifest,
                                frontend::ProjectCompilation &compilation,
-                               std::string &loadError, std::ostream &error)
+                               bool &restored, std::string &loadError,
+                               std::ostream &error)
 {
     configureProjectExecution(compilation);
     if (!measureDriverPhase(
@@ -476,6 +477,13 @@ bool prepareOopCodeCompilation(std::string_view inputPath,
         error << "nsc: error: " << loadError << '\n';
         return false;
     }
+    if (!restoreCompilationBundle(manifest, restored, loadError))
+    {
+        error << "nsc: error: compilation bundle restore failed: "
+              << loadError << '\n';
+        return false;
+    }
+    if (restored) return true;
     if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
@@ -617,8 +625,11 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath, std::st
         *manifest, optimizationLevel, debugInformation,
         debugPrefixMaps, llvm_backend::LinkTimeOptimizationMode::None);
     frontend::ProjectCompilation compilation;
-    if (!prepareOopCodeCompilation(inputPath, *manifest, compilation, loadError, error))
+    bool restored = false;
+    if (!prepareOopCodeCompilation(
+            inputPath, *manifest, compilation, restored, loadError, error))
         return ExitCode::CompilationError;
+    if (restored) return ExitCode::Success;
 
     std::unique_ptr<llvm_backend::LlvmModule> module;
     std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;

@@ -73,7 +73,7 @@ bool prepareExecutableProject(std::string_view inputPath,
                               compilation::CompilationInputManifest &manifest,
                               frontend::ProjectCompilation &compilation,
                               const frontend::ProjectOopMirFunction *&entryFunction,
-                              std::ostream &error)
+                               bool &restored, std::ostream &error)
 {
     configureProjectExecution(compilation);
     std::string loadError;
@@ -84,6 +84,13 @@ bool prepareExecutableProject(std::string_view inputPath,
         error << "nsc: error: " << loadError << '\n';
         return false;
     }
+    if (!restoreCompilationBundle(manifest, restored, loadError))
+    {
+        error << "nsc: error: compilation bundle restore failed: "
+              << loadError << '\n';
+        return false;
+    }
+    if (restored) return true;
     if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
@@ -295,8 +302,11 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
         *manifest, incrementalLink, subsystem, extraLinkLibraries);
     frontend::ProjectCompilation compilation;
     const frontend::ProjectOopMirFunction *entryFunction = nullptr;
-    if (!prepareExecutableProject(inputPath, *manifest, compilation, entryFunction, error))
+    bool restored = false;
+    if (!prepareExecutableProject(
+            inputPath, *manifest, compilation, entryFunction, restored, error))
         return ExitCode::CompilationError;
+    if (restored) return ExitCode::Success;
     std::string codeGenerationError;
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
         compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError);
@@ -327,7 +337,8 @@ bool prepareStaticLibraryProject(std::string_view inputPath,
                                  frontend::ProjectCompilation &compilation,
                                  std::vector<std::filesystem::path> &referencedLibraries,
                                  std::vector<std::filesystem::path> &runtimeLibraries,
-                                 std::vector<linker::ExternalImportModule> &inheritedImports, std::ostream &error)
+                                 std::vector<linker::ExternalImportModule> &inheritedImports,
+                                 bool &restored, std::ostream &error)
 {
     configureProjectExecution(compilation);
     std::string loadError;
@@ -338,6 +349,13 @@ bool prepareStaticLibraryProject(std::string_view inputPath,
         error << "nsc: error: " << loadError << '\n';
         return false;
     }
+    if (!restoreCompilationBundle(manifest, restored, loadError))
+    {
+        error << "nsc: error: compilation bundle restore failed: "
+              << loadError << '\n';
+        return false;
+    }
+    if (restored) return true;
     if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
@@ -492,9 +510,11 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     std::vector<std::filesystem::path> referencedLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     std::vector<linker::ExternalImportModule> inheritedImports;
+    bool restored = false;
     if (!prepareStaticLibraryProject(inputPath, *manifest, compilation, referencedLibraries,
-                                     runtimeLibraries, inheritedImports, error))
+                                     runtimeLibraries, inheritedImports, restored, error))
         return ExitCode::CompilationError;
+    if (restored) return ExitCode::Success;
 
     std::string codeGenerationError;
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
@@ -518,7 +538,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
 bool prepareDynamicLibraryProject(std::string_view inputPath,
                                   compilation::CompilationInputManifest &manifest,
                                   frontend::ProjectCompilation &compilation,
-                                  std::ostream &error)
+                                  bool &restored, std::ostream &error)
 {
     configureProjectExecution(compilation);
     std::string loadError;
@@ -529,6 +549,13 @@ bool prepareDynamicLibraryProject(std::string_view inputPath,
         error << "nsc: error: " << loadError << '\n';
         return false;
     }
+    if (!restoreCompilationBundle(manifest, restored, loadError))
+    {
+        error << "nsc: error: compilation bundle restore failed: "
+              << loadError << '\n';
+        return false;
+    }
+    if (restored) return true;
     if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
@@ -903,8 +930,11 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         *manifest, false, linker::WindowsExecutableSubsystem::Console,
         extraLinkLibraries);
     frontend::ProjectCompilation compilation;
-    if (!prepareDynamicLibraryProject(inputPath, *manifest, compilation, error))
+    bool restored = false;
+    if (!prepareDynamicLibraryProject(
+            inputPath, *manifest, compilation, restored, error))
         return ExitCode::CompilationError;
+    if (restored) return ExitCode::Success;
 
     std::vector<std::string> exportSymbols;
     if (!collectDynamicLibraryExports(compilation, exportSymbols, error))

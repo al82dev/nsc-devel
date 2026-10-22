@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `39 / 48`
+**Progreso:** `40 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -43,7 +43,7 @@
 | T6.2 | Incluir todas las entradas relevantes en la identidad de compilación | TERMINADO |
 | T6.3 | Consultar el bundle existente antes de construir el frontend | TERMINADO |
 | T6.4 | Verificar todos los artefactos solicitados antes de aceptar un hit | TERMINADO |
-| T6.5 | Restaurar artefactos válidos y omitir las fases ya resueltas | PENDIENTE |
+| T6.5 | Restaurar artefactos válidos y omitir las fases ya resueltas | TERMINADO |
 | T6.6 | Publicar el bundle solamente después de una compilación exitosa | PENDIENTE |
 | T6.7 | Registrar invalidación, corrupción y razón exacta de miss | PENDIENTE |
 | T7.1 | Crear un propietario de vida de compilación para pool, scheduler, cachés e índices | PENDIENTE |

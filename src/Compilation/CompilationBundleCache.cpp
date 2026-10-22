@@ -1,5 +1,6 @@
 #include "nativesharp/Compilation/CompilationBundleCache.h"
 
+#include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
 
 #include <charconv>
@@ -184,6 +185,27 @@ bool CompilationBundleCache::verify(
     }
     lookup.kind = CompilationBundleLookupKind::Verified;
     hit = true;
+    return true;
+}
+
+bool CompilationBundleCache::restore(
+    const CompilationBundleLookup& lookup,
+    bool& restored,
+    std::string& error) const
+{
+    restored = false;
+    if (lookup.kind != CompilationBundleLookupKind::Verified) return true;
+    basic::ArtifactTransaction transaction;
+    for (const CompilationBundleArtifact& artifact : lookup.artifacts)
+    {
+        if (!transaction.addStaged(
+                artifact.destinationPath, artifact.cachedPath, error))
+        {
+            return false;
+        }
+    }
+    if (!transaction.commit(error)) return false;
+    restored = true;
     return true;
 }
 }

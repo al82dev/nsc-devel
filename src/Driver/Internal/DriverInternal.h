@@ -91,6 +91,10 @@ void addCompilationLinkIdentity(
     std::span<const std::filesystem::path> extraLinkLibraries);
 bool configurePrecompiledModules(compilation::CompilationInputManifest &manifest,
                                  frontend::ProjectCompilation &compilation, std::string &error);
+bool restoreCompilationBundle(
+    const compilation::CompilationInputManifest &manifest,
+    bool &restored,
+    std::string &error);
 void configureObjectGeneratorProgress(llvm_backend::ProjectOopObjectGenerator &generator);
 void appendExternalImport(std::vector<linker::ExternalImportModule> &modules, const std::string &dllName,
                           const std::string &symbol);

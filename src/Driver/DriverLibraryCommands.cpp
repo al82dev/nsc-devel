@@ -26,6 +26,14 @@ ExitCode Driver::runProjectHostHeaderGeneration(std::string_view inputPath, std:
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
+    bool restored = false;
+    if (!restoreCompilationBundle(*manifest, restored, loadError))
+    {
+        error << "nsc: error: compilation bundle restore failed: "
+              << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (restored) return ExitCode::Success;
     if (!compilation.compileProjectObjectLayouts(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
@@ -90,6 +98,14 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(std::string_view inputPath,
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
+    bool restored = false;
+    if (!restoreCompilationBundle(*manifest, restored, loadError))
+    {
+        error << "nsc: error: compilation bundle restore failed: "
+              << loadError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (restored) return ExitCode::Success;
     if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
     {
         if (!loadError.empty())
