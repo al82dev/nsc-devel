@@ -59,6 +59,28 @@ const interop::LibraryMetadata* LibraryMetadataRepository::decode(
     return entry->decodedMetadata_.get();
 }
 
+bool LibraryMetadataRepository::verify(
+    const std::filesystem::path& path,
+    const Verifier& verifier,
+    std::string& error) const
+{
+    const LibraryMetadataRepositoryEntry* entry = find(path);
+    if (entry == nullptr || entry->decodedMetadata_ == nullptr)
+    {
+        error = entry == nullptr ? std::string{} : entry->decodeError_;
+        return false;
+    }
+    if (entry->verificationAttempted_)
+    {
+        error = entry->verificationError_;
+        return entry->verified_;
+    }
+    entry->verificationAttempted_ = true;
+    entry->verified_ = verifier(*entry->decodedMetadata_, error);
+    entry->verificationError_ = error;
+    return entry->verified_;
+}
+
 const LibraryMetadataRepositoryEntry* LibraryMetadataRepository::find(
     const std::filesystem::path& path) const
 {

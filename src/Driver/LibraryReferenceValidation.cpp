@@ -49,7 +49,15 @@ bool loadLibraryReferenceMetadata(const compilation::LibraryReference &reference
         return false;
     }
     metadata = *decoded;
-    if (!metadataCodec.verifyCurrentCompiler(metadata, metadataError))
+    if (!repository.verify(
+            reference.metadataPath,
+            [&metadataCodec](
+                const interop::LibraryMetadata &candidate,
+                std::string &verificationError)
+            {
+                return metadataCodec.verifyCurrentCompiler(candidate, verificationError);
+            },
+            metadataError))
     {
         error =
             "incompatible metadata for precompiled library '" + reference.libraryPath.string() + "': " + metadataError;

@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `24 / 48`
+**Progreso:** `25 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -28,7 +28,7 @@
 | T4.1 | Crear un repositorio de NSMETA por compilación | TERMINADO |
 | T4.2 | Leer y calcular una sola vez el hash de cada NSMETA sin cambios | TERMINADO |
 | T4.3 | Decodificar una sola vez cada payload NSMETA | TERMINADO |
-| T4.4 | Ejecutar una sola vez `verifyCurrentCompiler` por identidad NSMETA | PENDIENTE |
+| T4.4 | Ejecutar una sola vez `verifyCurrentCompiler` por identidad NSMETA | TERMINADO |
 | T4.5 | Compartir el mismo modelo NSMETA entre todos sus consumidores | PENDIENTE |
 | T4.6 | Persistir y restaurar el modelo NSMETA verificado | PENDIENTE |
 | T4.7 | Invalidar NSMETA por contenido o contrato sin cambiar diagnósticos | PENDIENTE |

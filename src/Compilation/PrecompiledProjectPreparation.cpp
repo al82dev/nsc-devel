@@ -39,6 +39,15 @@ bool readMetadata(
         },
         error);
     if (decoded == nullptr) return false;
+    if (!repository.verify(
+            path,
+            [&codec](const interop::LibraryMetadata& candidate, std::string& verificationError) {
+                return codec.verifyCurrentCompiler(candidate, verificationError);
+            },
+            error))
+    {
+        return false;
+    }
     metadata = *decoded;
     return true;
 }
@@ -245,8 +254,7 @@ bool loadExplicitMetadata(
         for (const LibraryReference& reference : project.libraryReferences())
         {
             interop::LibraryMetadata metadata;
-            if (!readMetadata(repository, codec, reference.metadataPath, metadata, error) ||
-                !codec.verifyCurrentCompiler(metadata, error))
+            if (!readMetadata(repository, codec, reference.metadataPath, metadata, error))
             {
                 error = "cannot import precompiled metadata '" +
                     reference.metadataPath.generic_string() + "': " + error;
@@ -356,8 +364,7 @@ bool loadBinaryDependency(
     interop::LibraryMetadata& childMetadata,
     std::string& error)
 {
-    if (!readMetadata(repository, codec, resolved.metadataPath, childMetadata, error) ||
-        !codec.verifyCurrentCompiler(childMetadata, error))
+    if (!readMetadata(repository, codec, resolved.metadataPath, childMetadata, error))
     {
         error = "cannot import transitive metadata '" +
             resolved.metadataPath.generic_string() + "' required by module '" +

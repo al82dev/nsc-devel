@@ -19,6 +19,9 @@ public:
         std::span<const std::uint8_t>,
         interop::LibraryMetadata&,
         std::string&)>;
+    using Verifier = std::function<bool(
+        const interop::LibraryMetadata&,
+        std::string&)>;
 
     LibraryMetadataRepositoryEntry& entryFor(const std::filesystem::path& path);
     const LibraryMetadataRepositoryEntry* load(
@@ -27,6 +30,10 @@ public:
     const interop::LibraryMetadata* decode(
         const std::filesystem::path& path,
         const Decoder& decoder,
+        std::string& error) const;
+    bool verify(
+        const std::filesystem::path& path,
+        const Verifier& verifier,
         std::string& error) const;
     const LibraryMetadataRepositoryEntry* find(const std::filesystem::path& path) const;
     std::size_t size() const noexcept;

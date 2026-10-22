@@ -772,7 +772,12 @@ bool appendBinaryDependencies(
             return false;
         }
         dependencyMetadata = *decoded;
-        if (!codec.verifyCurrentCompiler(dependencyMetadata, dependencyError))
+        if (!compilation.libraryMetadataRepository().verify(
+                reference.metadataPath,
+                [&codec](const LibraryMetadata& candidate, std::string& verificationError) {
+                    return codec.verifyCurrentCompiler(candidate, verificationError);
+                },
+                dependencyError))
         {
             error = "cannot record binary dependency '" +
                 reference.metadataPath.generic_string() + "': " + dependencyError;
