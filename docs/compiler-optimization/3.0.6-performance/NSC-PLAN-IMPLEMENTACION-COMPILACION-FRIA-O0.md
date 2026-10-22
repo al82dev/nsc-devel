@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `23 / 60`
+**Progreso:** `24 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -35,7 +35,7 @@
 | T4.3 | Emitir en el productor tokens y AST serializados de ambas superficies para no ejecutar lexer ni parser en frío | TERMINADO |
 | T4.4 | Transportar la ruta del sidecar por `LibraryReference`, cierre binario y paquete sin cambiar el contrato de la biblioteca | TERMINADO |
 | T4.5 | Validar digest/build-id y restaurar el producto antes de ejecutar `PublicSurfaceBuilder`, lexer o parser | TERMINADO |
-| T4.6 | Conservar como fallback exacto la generación vigente cuando el sidecar no exista o no sea válido | PENDIENTE |
+| T4.6 | Conservar como fallback exacto la generación vigente cuando el sidecar no exista o no sea válido | TERMINADO |
 | T4.7 | Incluir el sidecar en los artefactos de biblioteca y en las reglas CMake de distribución, sin tocar NSC Builder 3 | PENDIENTE |
 | T5.1 | Resolver `resolveTypeIdentifier` sobre candidatos por nombre, no recorriendo todos los tipos | PENDIENTE |
 | T5.2 | Resolver una vez los tipos Core conocidos usados por excepciones, `IDisposable`, spans, delegates y conversiones | PENDIENTE |
