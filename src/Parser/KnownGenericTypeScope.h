@@ -1,9 +1,9 @@
 #pragma once
 
 #include "nativesharp/AST/AstNode.h"
+#include "nativesharp/Parser/KnownTypeNameSet.h"
 
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 namespace nativesharp::parser
@@ -17,7 +17,7 @@ class KnownGenericTypeScope final
 {
 public:
     KnownGenericTypeScope(
-        std::unordered_set<std::string>& knownTypeNames,
+        KnownTypeNameSet& knownTypeNames,
         const ast::AstNode* declaration);
 
     ~KnownGenericTypeScope();
@@ -26,7 +26,7 @@ public:
     KnownGenericTypeScope& operator=(const KnownGenericTypeScope&) = delete;
 
 private:
-    std::unordered_set<std::string>& knownTypeNames_;
+    KnownTypeNameSet& knownTypeNames_;
     std::vector<std::string> inserted_;
 };
 }

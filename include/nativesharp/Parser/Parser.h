@@ -5,6 +5,7 @@
 #include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Lexer/Token.h"
+#include "nativesharp/Parser/KnownTypeNameSet.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -1677,6 +1678,6 @@ private:
     std::vector<ComprehensionContext> comprehensionContexts_;
     std::size_t nextComprehensionTemporary_ = 0;
     bool parsingExtensionBody_ = false;
-    std::unordered_set<std::string> knownTypeNames_;
+    KnownTypeNameSet knownTypeNames_;
 };
 }

@@ -54,7 +54,7 @@ bool Parser::canStartType(const lexer::Token& token) const noexcept
         return true;
     }
 
-    return token.kind() == TokenKind::Identifier && knownTypeNames_.contains(std::string(token.lexeme()));
+    return token.kind() == TokenKind::Identifier && knownTypeNames_.contains(token.lexeme());
 }
 
 bool Parser::canStartTypeAt(std::size_t tokenIndex) const noexcept

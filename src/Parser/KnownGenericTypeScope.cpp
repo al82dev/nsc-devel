@@ -3,7 +3,7 @@
 namespace nativesharp::parser
 {
 KnownGenericTypeScope::KnownGenericTypeScope(
-    std::unordered_set<std::string>& knownTypeNames,
+    KnownTypeNameSet& knownTypeNames,
     const ast::AstNode* declaration)
     : knownTypeNames_(knownTypeNames)
 {
