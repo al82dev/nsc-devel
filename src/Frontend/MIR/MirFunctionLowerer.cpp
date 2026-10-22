@@ -858,11 +858,13 @@ bool ProjectOopMirModel::lowerFunctions(
     const std::span<const ProjectOopHirFunction> hirFunctions = hirModel.functions();
     std::vector<std::optional<ProjectOopMirFunction>> loweredFunctions(hirFunctions.size());
     std::vector<std::string> loweringErrors(hirFunctions.size());
+    installRestoredMirFunctions(loweredFunctions);
     if (workerCount > 1 && hirFunctions.size() > 1)
     {
         driver::CompilationWorkerPool workers(workerCount);
         for (std::size_t index = 0; index < hirFunctions.size(); ++index)
         {
+            if (loweredFunctions[index].has_value()) continue;
             workers.submit([&, index](std::size_t) {
                 ProjectOopMirModel lowerer;
                 configureFunctionLowerer(
@@ -878,12 +880,13 @@ bool ProjectOopMirModel::lowerFunctions(
     else
     {
         for (std::size_t index = 0; index < hirFunctions.size(); ++index)
+        {
+            if (loweredFunctions[index].has_value()) continue;
             loweredFunctions[index] = lowerOneFunction(
                 hirFunctions[index], nameLookup, objectLayoutModel,
                 structLayouts_, panicProfile_, loweringErrors[index]);
+        }
     }
-
-    installRestoredMirFunctions(loweredFunctions);
 
     functions_.reserve(hirFunctions.size());
     for (std::size_t index = 0; index < hirFunctions.size(); ++index)

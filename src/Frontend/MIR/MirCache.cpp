@@ -1370,6 +1370,88 @@ bool restoreMirFunctionCore(
     return restoreMirFunctionCoreWithSyntax(bytes, function, {});
 }
 
+bool matchesHirFunctionCore(
+    const ProjectOopMirFunction& function,
+    const ProjectOopHirFunction& source)
+{
+    return function.memberOrdinal == source.memberOrdinal &&
+        function.namespaceFunctionOrdinal == source.namespaceFunctionOrdinal &&
+        function.declaringTypeOrdinal == source.declaringTypeOrdinal &&
+        function.genericSpecializationKey == source.genericSpecializationKey &&
+        function.mangledName == source.mangledName &&
+        function.debugDisplayName == source.debugDisplayName &&
+        function.returnTypeKey == source.returnTypeKey &&
+        function.errorTypeKey == source.errorTypeKey &&
+        function.frameStorage == source.frameStorage &&
+        function.returnOwnership == source.returnOwnership &&
+        function.inliningPolicy == source.inliningPolicy &&
+        function.effects.bits() == source.effects.bits();
+}
+
+bool matchesHirFunctionFlags(
+    const ProjectOopMirFunction& function,
+    const ProjectOopHirFunction& source)
+{
+    return function.constructor == source.constructor &&
+        function.destructor == source.destructor &&
+        function.isStatic == source.isStatic &&
+        function.referenceReturn == source.referenceReturn &&
+        function.isNoHeap == source.isNoHeap &&
+        function.isExportedC == source.isExportedC &&
+        function.isImportedC == source.isImportedC &&
+        function.isVariadic == source.isVariadic &&
+        function.isImportedNative == source.isImportedNative &&
+        function.isTransportedInlineBody == source.isTransportedInlineBody &&
+        function.isSyntheticImplicitConstructor ==
+            source.isSyntheticImplicitConstructor &&
+        function.importRequiresRuntimeBinding == source.importRequiresRuntimeBinding &&
+        function.isLambda == source.isLambda &&
+        function.hasClosureEnvironment == source.hasClosureEnvironment &&
+        function.capturesThisCell == source.capturesThisCell &&
+        function.isGeneratorConstructor == source.isGeneratorConstructor;
+}
+
+bool matchesHirFunctionNames(
+    const ProjectOopMirFunction& function,
+    const ProjectOopHirFunction& source)
+{
+    return function.importDllName == source.importDllName &&
+        function.cAbiName == source.cAbiName &&
+        function.lambdaOrdinal == source.lambdaOrdinal &&
+        function.captureTypeKeys == source.captureTypeKeys &&
+        function.captureNames == source.captureNames &&
+        function.parameterNames == source.parameterNames &&
+        function.parameterTypeKeys == source.parameterTypeKeys &&
+        function.generatorParameterTypeKeys == source.generatorParameterTypeKeys;
+}
+
+bool matchesHirFunctionCaptures(
+    const ProjectOopMirFunction& function,
+    const ProjectOopHirFunction& source)
+{
+    return function.captureSourceKinds == source.captureSourceKinds &&
+        function.captureModes == source.captureModes &&
+        function.captureOwnsValues == source.captureOwnsValues &&
+        function.callableTrait == source.callableTrait &&
+        function.closureLayoutSize == source.closureLayoutSize &&
+        function.closureLayoutAlignment == source.closureLayoutAlignment &&
+        function.capturedLocalOrdinals == source.capturedLocalOrdinals &&
+        function.capturedParameterOrdinals == source.capturedParameterOrdinals &&
+        function.parameterPassKinds == source.parameterPassKinds &&
+        function.parameterOwnerships == source.parameterOwnerships &&
+        function.localOrdinals == source.localOrdinals;
+}
+
+bool matchesHirFunctionIdentity(
+    const ProjectOopMirFunction& function,
+    const ProjectOopHirFunction& source)
+{
+    return matchesHirFunctionCore(function, source) &&
+        matchesHirFunctionFlags(function, source) &&
+        matchesHirFunctionNames(function, source) &&
+        matchesHirFunctionCaptures(function, source);
+}
+
 // NSC-LIMIT-009. Solo se llama sobre claves de identidad, de modo que delega en el codificador
 // que conserva el `+`. Antes aplastaba `+` y `.` al mismo `_` y el descriptor, la vtable y el mapa
 // de interfaces de `N.Outer+Item` chocaban con los de `N.Outer.Item`.
@@ -1441,19 +1523,15 @@ void ProjectOopMirModel::installRestoredMirFunctions(
     if (hirModel_ == nullptr) return;
     const std::span<const ProjectOopHirFunction> hirFunctions = hirModel_->functions();
     const std::size_t count = std::min(
-        std::min(loweredFunctions.size(), mirCachePayloads_.size()), hirFunctions.size());
+        std::min(loweredFunctions.size(), mirCachePayloads_.size()),
+        std::min(hirFunctions.size(), mirCacheKeys_.size()));
     for (std::size_t index = 0; index < count; ++index)
     {
-        if (!mirCachePayloads_[index].has_value() ||
-            !loweredFunctions[index].has_value())
-        {
-            continue;
-        }
+        if (!mirCachePayloads_[index].has_value()) continue;
         ProjectOopMirFunction restored;
         const std::string& payload = *mirCachePayloads_[index];
         if (!restoreMirFunctionCore(payload, restored, hirFunctions[index]) ||
-            serializeMirFunctionCore(
-                *loweredFunctions[index], hirFunctions[index]) != payload)
+            !matchesHirFunctionIdentity(restored, hirFunctions[index]))
         {
             mirCache_.quarantine(mirCacheKeys_[index]);
             mirCachePayloads_[index].reset();
@@ -1467,15 +1545,15 @@ void ProjectOopMirModel::storeMirFunctions()
 {
     if (!mirCache_.enabled() || hirModel_ == nullptr) return;
     const std::span<const ProjectOopHirFunction> hirFunctions = hirModel_->functions();
-    const std::size_t count = std::min(functions_.size(), hirFunctions.size());
+    const std::size_t count = std::min(
+        std::min(functions_.size(), hirFunctions.size()), mirCacheKeys_.size());
     for (std::size_t index = 0; index < count; ++index)
     {
-        const ProjectOopMirFunction& function = functions_[index];
-        const std::string implementationFingerprint =
-            mirImplementationFingerprint(function.body.get());
-        const std::string payload = serializeMirFunctionCore(function, hirFunctions[index]);
+        if (index < mirCachePayloads_.size() && mirCachePayloads_[index].has_value()) continue;
+        const std::string payload =
+            serializeMirFunctionCore(functions_[index], hirFunctions[index]);
         std::string error;
-        (void)mirCache_.store(implementationFingerprint, payload, error);
+        (void)mirCache_.store(mirCacheKeys_[index], payload, error);
     }
 }
 
@@ -1483,22 +1561,22 @@ void ProjectOopMirModel::restoreMirFunctions()
 {
     if (!mirCache_.enabled() || hirModel_ == nullptr) return;
     const std::span<const ProjectOopHirFunction> hirFunctions = hirModel_->functions();
-    const std::size_t count = std::min(functions_.size(), hirFunctions.size());
+    const std::size_t count = std::min(
+        std::min(functions_.size(), hirFunctions.size()), mirCacheKeys_.size());
     for (std::size_t index = 0; index < count; ++index)
     {
-        const ProjectOopMirFunction& function = functions_[index];
-        const std::string implementationFingerprint =
-            mirImplementationFingerprint(function.body.get());
         std::string payload;
         bool hit = false;
         std::string error;
-        if (!mirCache_.restore(implementationFingerprint, payload, hit, error) || !hit) continue;
+        if (!mirCache_.restore(mirCacheKeys_[index], payload, hit, error) || !hit) continue;
         ProjectOopMirFunction restored;
-        if (restoreMirFunctionCore(payload, restored, hirFunctions[index]))
+        if (restoreMirFunctionCore(payload, restored, hirFunctions[index]) &&
+            matchesHirFunctionIdentity(restored, hirFunctions[index]))
         {
-            // The payload round-trips; the caller decides whether to swap the built function.
-            (void)restored;
+            functions_[index] = std::move(restored);
+            continue;
         }
+        mirCache_.quarantine(mirCacheKeys_[index]);
     }
 }
 
