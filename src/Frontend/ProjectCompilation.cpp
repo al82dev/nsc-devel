@@ -945,7 +945,7 @@ bool ProjectCompilation::compileProjectOopHir(
     if (cancellationRequested(loadError, "oop-hir")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-hir");
-    oopHirModel_ = std::make_unique<ProjectOopHirModel>();
+    oopHirModel_ = std::make_unique<ProjectOopHirModel>(indexes_);
     if (oopHirModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
             *constructionModel_, *objectLayoutModel_, loadError, genericConstraintModel_.get(),

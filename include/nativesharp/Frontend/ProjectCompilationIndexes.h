@@ -21,6 +21,10 @@ struct ClassObjectLayout;
 struct ClassVirtualTable;
 struct GenericSpecializationRecord;
 struct GenericTemplateRecord;
+struct MethodCleanupRegion;
+struct MethodLambdaBinding;
+struct MethodLambdaValueBinding;
+struct MethodLocalSymbol;
 struct NamedTypeDeclaration;
 struct ObjectFieldLayout;
 struct StructValueLayout;
@@ -46,6 +50,11 @@ public:
     void rebuildGenerics(
         std::span<const GenericTemplateRecord> templates,
         std::span<const GenericSpecializationRecord> specializations);
+    void rebuildHirBindings(
+        std::span<const MethodLocalSymbol> locals,
+        std::span<const MethodLambdaBinding> lambdas,
+        std::span<const MethodLambdaValueBinding> lambdaValues,
+        std::span<const MethodCleanupRegion> cleanupRegions);
     bool registerBodyTypeDemand(std::string key);
     void clearBodyTypeDemands() noexcept;
     void registerGenericTypeDemand(std::string key);
@@ -75,6 +84,10 @@ public:
         std::string_view key) const noexcept;
     const GenericSpecializationRecord* genericSpecializationForName(
         std::string_view name) const noexcept;
+    const MethodLocalSymbol* hirLocalForSyntax(const ast::AstNode* syntax) const noexcept;
+    const MethodLambdaBinding* hirLambdaForSyntax(const ast::AstNode* syntax) const noexcept;
+    const MethodLambdaValueBinding* hirLambdaValueForSyntax(const ast::AstNode* syntax) const noexcept;
+    const MethodCleanupRegion* hirCleanupRegionForSyntax(const ast::AstNode* syntax) const noexcept;
 
 private:
     using MemberSignatureIndex =
@@ -100,5 +113,11 @@ private:
     std::unordered_map<std::string, const GenericSpecializationRecord*> genericSpecializationByName_;
     std::unordered_set<std::string> bodyTypeDemandKeys_;
     std::unordered_set<std::string> genericTypeDemandKeys_;
+    std::unordered_map<const ast::AstNode*, const MethodLocalSymbol*> hirLocalBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodLambdaBinding*> hirLambdaBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodLambdaValueBinding*> hirLambdaValueBySyntax_;
+    std::unordered_map<const ast::AstNode*, const MethodCleanupRegion*> hirCleanupRegionBySyntax_;
+
+    void clearHirBindings() noexcept;
 };
 }

@@ -37,6 +37,7 @@ namespace nativesharp::frontend
 {
 class ProjectGenericConstraintModel;
 class ProjectMetaprogrammingModel;
+class ProjectCompilationIndexes;
 struct HirTuplePatternFrame;
 struct ProjectOopHirModelTestAccess;
 namespace internal
@@ -77,6 +78,8 @@ enum class LoopBlockAdvance : std::uint8_t;
 class ProjectOopHirModel final
 {
 public:
+    ProjectOopHirModel() = default;
+    explicit ProjectOopHirModel(ProjectCompilationIndexes& indexes) noexcept;
     ~ProjectOopHirModel();
 
     bool build(
@@ -4272,6 +4275,7 @@ private:
     const ProjectGenericConstraintModel* genericConstraintModel_ = nullptr;
     const ProjectMetaprogrammingModel* metaprogrammingModel_ = nullptr;
     const ProjectOopHirModel* lookupSource_ = nullptr;
+    ProjectCompilationIndexes* indexes_ = nullptr;
     std::vector<ProjectOopHirFunction> functions_;
     std::vector<ProjectOopHirFieldInitializer> fieldInitializers_;
     std::vector<std::optional<std::size_t>> functionByMember_;

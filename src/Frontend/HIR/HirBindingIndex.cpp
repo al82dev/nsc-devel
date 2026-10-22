@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 
 namespace nativesharp::frontend
 {
@@ -50,6 +51,8 @@ const MethodRuntimeTypeBinding* ProjectOopHirModel::runtimeTypeBinding(
 
 const MethodLambdaBinding* ProjectOopHirModel::lambdaBinding(const ast::AstNode* syntax) const noexcept
 {
+    const ProjectOopHirModel* source = lookupSource_ == nullptr ? this : lookupSource_;
+    if (source->indexes_ != nullptr) return source->indexes_->hirLambdaForSyntax(syntax);
     const auto& index = lookupSource_ == nullptr ? lambdaBindingBySyntax_ : lookupSource_->lambdaBindingBySyntax_;
     const auto found = index.find(syntax);
     return found == index.end() ? nullptr : found->second;
@@ -57,6 +60,8 @@ const MethodLambdaBinding* ProjectOopHirModel::lambdaBinding(const ast::AstNode*
 
 const MethodLambdaValueBinding* ProjectOopHirModel::lambdaValueBinding(const ast::AstNode* syntax) const noexcept
 {
+    const ProjectOopHirModel* source = lookupSource_ == nullptr ? this : lookupSource_;
+    if (source->indexes_ != nullptr) return source->indexes_->hirLambdaValueForSyntax(syntax);
     const auto& index = lookupSource_ == nullptr ? lambdaValueBindingBySyntax_ : lookupSource_->lambdaValueBindingBySyntax_;
     const auto found = index.find(syntax);
     return found == index.end() ? nullptr : found->second;
@@ -130,6 +135,8 @@ const MethodExceptionBinding* ProjectOopHirModel::exceptionBinding(const ast::As
 
 const MethodCleanupRegion* ProjectOopHirModel::cleanupRegion(const ast::AstNode* syntax) const noexcept
 {
+    const ProjectOopHirModel* source = lookupSource_ == nullptr ? this : lookupSource_;
+    if (source->indexes_ != nullptr) return source->indexes_->hirCleanupRegionForSyntax(syntax);
     const auto& index = lookupSource_ == nullptr ? cleanupRegionBySyntax_ : lookupSource_->cleanupRegionBySyntax_;
     const auto found = index.find(syntax);
     return found == index.end() ? nullptr : found->second;
@@ -172,6 +179,8 @@ const ObjectConstructionBinding* ProjectOopHirModel::constructionBinding(const a
 
 const MethodLocalSymbol* ProjectOopHirModel::localSymbol(const ast::AstNode* syntax) const noexcept
 {
+    const ProjectOopHirModel* source = lookupSource_ == nullptr ? this : lookupSource_;
+    if (source->indexes_ != nullptr) return source->indexes_->hirLocalForSyntax(syntax);
     const auto& index = lookupSource_ == nullptr ? localBySyntax_ : lookupSource_->localBySyntax_;
     const auto found = index.find(syntax);
     return found == index.end() ? nullptr : found->second;

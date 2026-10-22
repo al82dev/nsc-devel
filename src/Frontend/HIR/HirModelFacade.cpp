@@ -5,6 +5,11 @@
 
 namespace nativesharp::frontend
 {
+ProjectOopHirModel::ProjectOopHirModel(ProjectCompilationIndexes& indexes) noexcept
+    : indexes_(&indexes)
+{
+}
+
 ProjectOopHirNode::~ProjectOopHirNode()
 {
     std::vector<std::unique_ptr<ProjectOopHirNode>> pending;

@@ -1,6 +1,7 @@
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "HirLoweringSupport.h"
 #include "Internal/RegularFunctionResult.h"
 #include "Internal/StackClassLocalUseFrame.h"
@@ -708,6 +709,14 @@ void ProjectOopHirModel::indexBuildBindings(
     const ProjectConstructionModel& constructionModel)
 {
     if (lookupSource_ != nullptr) return;
+    if (indexes_ != nullptr)
+    {
+        indexes_->rebuildHirBindings(
+            methodBodyModel.locals(),
+            methodBodyModel.lambdaBindings(),
+            methodBodyModel.lambdaValueBindings(),
+            methodBodyModel.cleanupRegions());
+    }
     indexValuesBySyntax(nameBindingBySyntax_, methodBodyModel.nameBindings());
     indexValuesBySyntax(expressionTypeBySyntax_, methodBodyModel.expressionTypes());
     indexValuesBySyntax(callBySyntax_, methodBodyModel.calls());
@@ -715,8 +724,11 @@ void ProjectOopHirModel::indexBuildBindings(
     indexValuesBySyntax(switchBindingBySyntax_, methodBodyModel.switchBindings());
     indexValuesBySyntax(runtimeTypeBindingBySyntax_, methodBodyModel.runtimeTypeBindings());
     indexValuesBySyntax(delegateBindingBySyntax_, methodBodyModel.delegateBindings());
-    indexValuesBySyntax(lambdaBindingBySyntax_, methodBodyModel.lambdaBindings());
-    indexValuesBySyntax(lambdaValueBindingBySyntax_, methodBodyModel.lambdaValueBindings());
+    if (indexes_ == nullptr)
+    {
+        indexValuesBySyntax(lambdaBindingBySyntax_, methodBodyModel.lambdaBindings());
+        indexValuesBySyntax(lambdaValueBindingBySyntax_, methodBodyModel.lambdaValueBindings());
+    }
     indexValuesBySyntax(eventBindingBySyntax_, methodBodyModel.eventBindings());
     indexValuesBySyntax(coreBindingBySyntax_, methodBodyModel.coreBindings());
     indexValuesBySyntax(optionalCarrierBindingBySyntax_, methodBodyModel.optionalCarrierBindings());
@@ -724,13 +736,14 @@ void ProjectOopHirModel::indexBuildBindings(
         resultPropagationBindingBySyntax_, methodBodyModel.resultPropagationBindings());
     indexValuesBySyntax(rangeSliceBindingBySyntax_, methodBodyModel.rangeSliceBindings());
     indexValuesBySyntax(exceptionBindingBySyntax_, methodBodyModel.exceptionBindings());
-    indexValuesBySyntax(cleanupRegionBySyntax_, methodBodyModel.cleanupRegions());
+    if (indexes_ == nullptr)
+        indexValuesBySyntax(cleanupRegionBySyntax_, methodBodyModel.cleanupRegions());
     indexValuesBySyntax(usingBindingBySyntax_, methodBodyModel.usingBindings());
     indexValuesBySyntax(moveBindingBySyntax_, methodBodyModel.moveBindings());
     indexValuesBySyntax(borrowBindingBySyntax_, methodBodyModel.borrowBindings());
     indexValuesBySyntax(structuredExitBySyntax_, methodBodyModel.structuredExits());
     indexValuesBySyntax(constructionBySyntax_, constructionModel.constructions());
-    indexValuesBySyntax(localBySyntax_, methodBodyModel.locals());
+    if (indexes_ == nullptr) indexValuesBySyntax(localBySyntax_, methodBodyModel.locals());
 }
 
 bool ProjectOopHirModel::buildRegularFunctionsInParallel(

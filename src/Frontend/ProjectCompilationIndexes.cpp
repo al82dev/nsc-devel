@@ -5,6 +5,10 @@
 #include "nativesharp/Frontend/ClassVirtualTable.h"
 #include "nativesharp/Frontend/GenericSpecializationRecord.h"
 #include "nativesharp/Frontend/GenericTemplateRecord.h"
+#include "nativesharp/Frontend/MethodCleanupRegion.h"
+#include "nativesharp/Frontend/MethodLambdaBinding.h"
+#include "nativesharp/Frontend/MethodLambdaValueBinding.h"
+#include "nativesharp/Frontend/MethodLocalSymbol.h"
 #include "nativesharp/Frontend/NamedTypeDeclaration.h"
 #include "nativesharp/Frontend/ObjectFieldLayout.h"
 #include "nativesharp/Frontend/StructValueLayout.h"
@@ -36,6 +40,7 @@ void ProjectCompilationIndexes::clear() noexcept
     genericSpecializationByName_.clear();
     bodyTypeDemandKeys_.clear();
     genericTypeDemandKeys_.clear();
+    clearHirBindings();
 }
 
 void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaration> types)
@@ -50,6 +55,7 @@ void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaratio
     classLayoutsByType_.clear();
     structLayoutsByType_.clear();
     fieldLayoutsByMember_.clear();
+    clearHirBindings();
     typesByOrdinal_.reserve(types.size());
     typeOrdinalByIdentity_.reserve(types.size());
     for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
@@ -129,6 +135,7 @@ void ProjectCompilationIndexes::rebuildMembers(std::span<const ClassMemberSymbol
     classLayoutsByType_.clear();
     structLayoutsByType_.clear();
     fieldLayoutsByMember_.clear();
+    clearHirBindings();
     membersByOrdinal_.reserve(members.size());
     std::size_t typeCount = typesByOrdinal_.size();
     for (const ClassMemberSymbol& member : members)
@@ -151,6 +158,7 @@ void ProjectCompilationIndexes::rebuildLayouts(
     std::size_t memberCount,
     std::size_t typeCount)
 {
+    clearHirBindings();
     classLayoutsByType_.assign(typeCount, nullptr);
     structLayoutsByType_.assign(typeCount, nullptr);
     fieldLayoutsByMember_.assign(memberCount, nullptr);
@@ -184,6 +192,35 @@ void ProjectCompilationIndexes::rebuildLayouts(
         for (const ObjectFieldLayout& field : layout.fields) registerField(field);
     }
     for (const ObjectFieldLayout& field : promotedFields) registerField(field);
+}
+
+void ProjectCompilationIndexes::rebuildHirBindings(
+    std::span<const MethodLocalSymbol> locals,
+    std::span<const MethodLambdaBinding> lambdas,
+    std::span<const MethodLambdaValueBinding> lambdaValues,
+    std::span<const MethodCleanupRegion> cleanupRegions)
+{
+    clearHirBindings();
+    hirLocalBySyntax_.reserve(locals.size());
+    for (const MethodLocalSymbol& local : locals)
+        if (local.syntax != nullptr) hirLocalBySyntax_.try_emplace(local.syntax, &local);
+    hirLambdaBySyntax_.reserve(lambdas.size());
+    for (const MethodLambdaBinding& lambda : lambdas)
+        if (lambda.syntax != nullptr) hirLambdaBySyntax_.try_emplace(lambda.syntax, &lambda);
+    hirLambdaValueBySyntax_.reserve(lambdaValues.size());
+    for (const MethodLambdaValueBinding& value : lambdaValues)
+        if (value.syntax != nullptr) hirLambdaValueBySyntax_.try_emplace(value.syntax, &value);
+    hirCleanupRegionBySyntax_.reserve(cleanupRegions.size());
+    for (const MethodCleanupRegion& region : cleanupRegions)
+        if (region.syntax != nullptr) hirCleanupRegionBySyntax_.try_emplace(region.syntax, &region);
+}
+
+void ProjectCompilationIndexes::clearHirBindings() noexcept
+{
+    hirLocalBySyntax_.clear();
+    hirLambdaBySyntax_.clear();
+    hirLambdaValueBySyntax_.clear();
+    hirCleanupRegionBySyntax_.clear();
 }
 
 void ProjectCompilationIndexes::rebuildDispatch(
@@ -333,5 +370,33 @@ const GenericSpecializationRecord* ProjectCompilationIndexes::genericSpecializat
 {
     const auto iterator = genericSpecializationByName_.find(std::string(name));
     return iterator == genericSpecializationByName_.end() ? nullptr : iterator->second;
+}
+
+const MethodLocalSymbol* ProjectCompilationIndexes::hirLocalForSyntax(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto iterator = hirLocalBySyntax_.find(syntax);
+    return iterator == hirLocalBySyntax_.end() ? nullptr : iterator->second;
+}
+
+const MethodLambdaBinding* ProjectCompilationIndexes::hirLambdaForSyntax(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto iterator = hirLambdaBySyntax_.find(syntax);
+    return iterator == hirLambdaBySyntax_.end() ? nullptr : iterator->second;
+}
+
+const MethodLambdaValueBinding* ProjectCompilationIndexes::hirLambdaValueForSyntax(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto iterator = hirLambdaValueBySyntax_.find(syntax);
+    return iterator == hirLambdaValueBySyntax_.end() ? nullptr : iterator->second;
+}
+
+const MethodCleanupRegion* ProjectCompilationIndexes::hirCleanupRegionForSyntax(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto iterator = hirCleanupRegionBySyntax_.find(syntax);
+    return iterator == hirCleanupRegionBySyntax_.end() ? nullptr : iterator->second;
 }
 }
