@@ -633,10 +633,11 @@ bool ProjectOopMirModel::build(
     std::string& error,
     std::size_t workerCount)
 {
+    driver::CompilationWorkerPool workerPool(workerCount);
     return build(
         nameLookup, memberModel, objectLayoutModel, virtualDispatchModel,
         interfaceModel, destructionModel, hirModel, namespaceFunctionModel,
-        error, workerCount, nullptr);
+        error, workerCount, &workerPool);
 }
 
 bool ProjectOopMirModel::build(

@@ -580,7 +580,7 @@ void composeModuleCacheKeys(
 }
 
 bool executeCodeUnits(
-    std::size_t workerCount,
+    std::size_t,
     std::size_t moduleCount,
     bool usePartitions,
     const FloatingPointState& floatingPointState,
@@ -596,13 +596,6 @@ bool executeCodeUnits(
     {
         processModule(0);
         return true;
-    }
-    std::unique_ptr<driver::CompilationWorkerPool> ownedWorkers;
-    if (workerPool == nullptr)
-    {
-        ownedWorkers = std::make_unique<driver::CompilationWorkerPool>(
-            workerCount, initializeWorkerFloatingPoint);
-        workerPool = ownedWorkers.get();
     }
     std::atomic_bool moduleFailure = false;
     for (std::size_t ordinal = 0; ordinal < moduleCount; ++ordinal)
@@ -849,13 +842,14 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     ColdLlvmPreambleTelemetry& preambleTelemetry,
     std::string& error) const
 {
+    driver::CompilationWorkerPool workerPool(workerCount);
     return generateCodeUnits(
         nameLookup, memberModel, mirModel, sourceManager, debugInformation,
         optimizationLevel, workerCount, debugPrefixMaps, linkTimeOptimization,
         cache, functionAnalysis, reachableDefinitions, coordinatorFunctionDeclarations,
         partition, partitionPlanKey, partitionPlanPayload,
         requiresWholeModuleRequiredInlining, usePartitions, result,
-        preambleTelemetry, error, nullptr);
+        preambleTelemetry, error, &workerPool);
 }
 
 bool ProjectOopObjectGenerator::generateCodeUnits(
@@ -951,9 +945,10 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     std::span<const DebugPrefixMap> debugPrefixMaps,
     std::string& error) const
 {
+    driver::CompilationWorkerPool workerPool(workerCount);
     return generate(
         nameLookup, memberModel, mirModel, sourceManager, debugInformation,
-        optimizationLevel, workerCount, debugPrefixMaps, error, nullptr);
+        optimizationLevel, workerCount, debugPrefixMaps, error, &workerPool);
 }
 
 std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
@@ -985,10 +980,11 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     LinkTimeOptimizationMode linkTimeOptimization,
     std::string& error) const
 {
+    driver::CompilationWorkerPool workerPool(workerCount);
     return generate(
         nameLookup, memberModel, mirModel, sourceManager, debugInformation,
         optimizationLevel, workerCount, debugPrefixMaps,
-        linkTimeOptimization, error, nullptr);
+        linkTimeOptimization, error, &workerPool);
 }
 
 std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(

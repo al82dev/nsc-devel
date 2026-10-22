@@ -855,9 +855,10 @@ bool ProjectOopMirModel::lowerFunctions(
     std::string& error,
     std::size_t workerCount)
 {
+    driver::CompilationWorkerPool workerPool(workerCount);
     return lowerFunctions(
         nameLookup, memberModel, objectLayoutModel, virtualDispatchModel,
-        interfaceModel, destructionModel, hirModel, error, workerCount, nullptr);
+        interfaceModel, destructionModel, hirModel, error, workerCount, &workerPool);
 }
 
 bool ProjectOopMirModel::lowerFunctions(
@@ -878,13 +879,6 @@ bool ProjectOopMirModel::lowerFunctions(
     installRestoredMirFunctions(loweredFunctions);
     if (workerCount > 1 && hirFunctions.size() > 1)
     {
-        std::unique_ptr<driver::CompilationWorkerPool> ownedWorkers;
-        if (workerPool == nullptr)
-        {
-            ownedWorkers =
-                std::make_unique<driver::CompilationWorkerPool>(workerCount);
-            workerPool = ownedWorkers.get();
-        }
         driver::CompilationWorkerPool& workers = *workerPool;
         for (std::size_t index = 0; index < hirFunctions.size(); ++index)
         {

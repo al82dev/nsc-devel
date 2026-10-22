@@ -250,6 +250,8 @@ ProjectGraphLoader::ProjectGraphLoader(
     : ProjectGraphLoader(
           workerCount, std::move(projectLoader), std::move(options), nullptr)
 {
+    ownedWorkerPool_ = std::make_shared<driver::CompilationWorkerPool>(workerCount_);
+    workerPool_ = ownedWorkerPool_.get();
 }
 
 ProjectGraphLoader::ProjectGraphLoader(
@@ -281,13 +283,7 @@ std::optional<ProjectGraph> ProjectGraphLoader::load(
     std::vector<std::filesystem::path> frontier = {root};
     std::map<std::string, Project> projects;
     std::map<std::string, std::filesystem::path> moduleOwners;
-    std::unique_ptr<driver::CompilationWorkerPool> ownedPool;
-    if (workerPool_ == nullptr)
-    {
-        ownedPool = std::make_unique<driver::CompilationWorkerPool>(workerCount_);
-    }
-    driver::CompilationWorkerPool& pool =
-        workerPool_ != nullptr ? *workerPool_ : *ownedPool;
+    driver::CompilationWorkerPool& pool = *workerPool_;
 
     while (!frontier.empty())
     {

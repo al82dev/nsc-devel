@@ -1,5 +1,7 @@
 #include "HirLoweringSupport.h"
 
+#include "nativesharp/Driver/CompilationWorkerPool.h"
+
 // Public model facade extracted by H01B1. The build implementation lives in
 // HirBuildCoordinator.cpp; lowering components are split by the remaining H01 slices.
 
@@ -51,10 +53,11 @@ bool ProjectOopHirModel::build(
     const ProjectNamespaceFunctionModel* namespaceFunctionModel,
     const ProjectMetaprogrammingModel* metaprogrammingModel)
 {
+    driver::CompilationWorkerPool workerPool(workerCount);
     return build(
         nameLookup, memberModel, inheritanceModel, interfaceModel, methodBodyModel,
         constructionModel, objectLayoutModel, error, genericConstraintModel,
-        workerCount, namespaceFunctionModel, metaprogrammingModel, nullptr);
+        workerCount, namespaceFunctionModel, metaprogrammingModel, &workerPool);
 }
 
 bool ProjectOopHirModel::build(

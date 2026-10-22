@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -36,6 +37,7 @@ public:
 private:
     std::size_t workerCount_;
     ProjectLoadFunction projectLoader_;
+    std::shared_ptr<driver::CompilationWorkerPool> ownedWorkerPool_;
     driver::CompilationWorkerPool* workerPool_ = nullptr;
 };
 }
