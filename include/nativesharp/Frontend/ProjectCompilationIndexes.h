@@ -112,6 +112,9 @@ public:
     bool hasHirOwnerIndexes() const noexcept;
     std::span<const std::size_t> hirLocalOrdinalsForMember(
         std::size_t memberOrdinal) const noexcept;
+    bool hasHirLambdaIndexes() const noexcept;
+    std::span<const std::size_t> hirLocalOrdinalsForLambda(
+        std::size_t lambdaOrdinal) const noexcept;
     const MethodLocalSymbol* hirLocalForSyntax(const ast::AstNode* syntax) const noexcept;
     const MethodLambdaBinding* hirLambdaForSyntax(const ast::AstNode* syntax) const noexcept;
     const MethodLambdaValueBinding* hirLambdaValueForSyntax(const ast::AstNode* syntax) const noexcept;
@@ -207,6 +210,8 @@ private:
     std::unordered_set<std::string> genericTypeDemandKeys_;
     bool hirOwnerIndexesBuilt_ = false;
     std::vector<std::vector<std::size_t>> hirLocalOrdinalsByMember_;
+    bool hirLambdaIndexesBuilt_ = false;
+    std::vector<std::vector<std::size_t>> hirLocalOrdinalsByLambda_;
     std::unordered_map<const ast::AstNode*, const MethodLocalSymbol*> hirLocalBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodLambdaBinding*> hirLambdaBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodLambdaValueBinding*> hirLambdaValueBySyntax_;

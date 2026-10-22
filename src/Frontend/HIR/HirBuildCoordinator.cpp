@@ -1839,13 +1839,23 @@ bool ProjectOopHirModel::buildLambdaFunction(
         function.captureModes.push_back(capture.mode);
         function.captureOwnsValues.push_back(capture.ownsCapturedValue);
     }
-    for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
-         ++localOrdinal)
+    const ProjectOopHirModel* indexSource = lookupSource_ == nullptr ? this : lookupSource_;
+    if (indexSource->indexes_ != nullptr && indexSource->indexes_->hasHirLambdaIndexes())
     {
-        const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
-        if (local.lambdaOrdinal == lambda.lambdaOrdinal &&
-            !local.lambdaParameterOrdinal.has_value())
-            function.localOrdinals.push_back(localOrdinal);
+        const std::span<const std::size_t> localOrdinals =
+            indexSource->indexes_->hirLocalOrdinalsForLambda(lambda.lambdaOrdinal);
+        function.localOrdinals.assign(localOrdinals.begin(), localOrdinals.end());
+    }
+    else
+    {
+        for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
+             ++localOrdinal)
+        {
+            const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
+            if (local.lambdaOrdinal == lambda.lambdaOrdinal &&
+                !local.lambdaParameterOrdinal.has_value())
+                function.localOrdinals.push_back(localOrdinal);
+        }
     }
     currentLambda_ = &lambda;
     if (lambda.blockBody)

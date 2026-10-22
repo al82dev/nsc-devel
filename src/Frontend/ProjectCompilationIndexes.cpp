@@ -274,10 +274,20 @@ void ProjectCompilationIndexes::rebuildHirBindings(
     {
         const MethodLocalSymbol& local = locals[localOrdinal];
         if (local.syntax != nullptr) hirLocalBySyntax_.try_emplace(local.syntax, &local);
-        if (local.lambdaOrdinal.has_value()) continue;
-        if (local.methodMemberOrdinal >= hirLocalOrdinalsByMember_.size())
-            hirLocalOrdinalsByMember_.resize(local.methodMemberOrdinal + 1U);
-        hirLocalOrdinalsByMember_[local.methodMemberOrdinal].push_back(localOrdinal);
+        if (local.lambdaOrdinal.has_value())
+        {
+            if (local.lambdaParameterOrdinal.has_value()) continue;
+            const std::size_t lambdaOrdinal = *local.lambdaOrdinal;
+            if (lambdaOrdinal >= hirLocalOrdinalsByLambda_.size())
+                hirLocalOrdinalsByLambda_.resize(lambdaOrdinal + 1U);
+            hirLocalOrdinalsByLambda_[lambdaOrdinal].push_back(localOrdinal);
+        }
+        else
+        {
+            if (local.methodMemberOrdinal >= hirLocalOrdinalsByMember_.size())
+                hirLocalOrdinalsByMember_.resize(local.methodMemberOrdinal + 1U);
+            hirLocalOrdinalsByMember_[local.methodMemberOrdinal].push_back(localOrdinal);
+        }
     }
     hirLambdaBySyntax_.reserve(lambdas.size());
     for (const MethodLambdaBinding& lambda : lambdas)
@@ -289,12 +299,15 @@ void ProjectCompilationIndexes::rebuildHirBindings(
     for (const MethodCleanupRegion& region : cleanupRegions)
         if (region.syntax != nullptr) hirCleanupRegionBySyntax_.try_emplace(region.syntax, &region);
     hirOwnerIndexesBuilt_ = true;
+    hirLambdaIndexesBuilt_ = true;
 }
 
 void ProjectCompilationIndexes::clearHirBindings() noexcept
 {
     hirOwnerIndexesBuilt_ = false;
     hirLocalOrdinalsByMember_.clear();
+    hirLambdaIndexesBuilt_ = false;
+    hirLocalOrdinalsByLambda_.clear();
     hirLocalBySyntax_.clear();
     hirLambdaBySyntax_.clear();
     hirLambdaValueBySyntax_.clear();
@@ -595,6 +608,19 @@ std::span<const std::size_t> ProjectCompilationIndexes::hirLocalOrdinalsForMembe
 {
     return memberOrdinal < hirLocalOrdinalsByMember_.size()
         ? std::span<const std::size_t>(hirLocalOrdinalsByMember_[memberOrdinal])
+        : std::span<const std::size_t>();
+}
+
+bool ProjectCompilationIndexes::hasHirLambdaIndexes() const noexcept
+{
+    return hirLambdaIndexesBuilt_;
+}
+
+std::span<const std::size_t> ProjectCompilationIndexes::hirLocalOrdinalsForLambda(
+    std::size_t lambdaOrdinal) const noexcept
+{
+    return lambdaOrdinal < hirLocalOrdinalsByLambda_.size()
+        ? std::span<const std::size_t>(hirLocalOrdinalsByLambda_[lambdaOrdinal])
         : std::span<const std::size_t>();
 }
 
