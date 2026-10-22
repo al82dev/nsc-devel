@@ -787,7 +787,8 @@ void ProjectMethodBodyModel::recordEventAssignmentBinding(
     // NS304-T09-F08: un event con accessors custom invoca add_/remove_ en vez de la storage.
     const std::string accessorName =
         (binding.kind == MethodEventOperationKind::Add ? "add_" : "remove_") + event.name;
-    for (const std::size_t ordinal : memberModel_->findMembers(accessorName))
+    for (const std::size_t ordinal :
+         memberModel_->findMembers(event.declaringTypeOrdinal, accessorName))
     {
         if (ordinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& candidate = memberModel_->members()[ordinal];
@@ -2569,9 +2570,22 @@ std::vector<std::size_t> ProjectMethodBodyModel::memberCandidatesForType(
     std::vector<std::size_t> defaults;
     if (interfaceModel_ != nullptr)
     {
-        for (const ClassInterfaceTablePlan& plan : interfaceModel_->tablePlans())
+        std::vector<std::size_t> fallbackPlanOrdinals;
+        std::span<const std::size_t> planOrdinals =
+            interfaceModel_->tablePlanOrdinalsForClass(typeOrdinal);
+        if (!interfaceModel_->hasTablePlanOrdinalsByClassIndex())
         {
-            if (plan.classTypeOrdinal != typeOrdinal) continue;
+            for (std::size_t ordinal = 0; ordinal < interfaceModel_->tablePlans().size(); ++ordinal)
+            {
+                if (interfaceModel_->tablePlans()[ordinal].classTypeOrdinal == typeOrdinal)
+                    fallbackPlanOrdinals.push_back(ordinal);
+            }
+            planOrdinals = fallbackPlanOrdinals;
+        }
+        for (const std::size_t planOrdinal : planOrdinals)
+        {
+            if (planOrdinal >= interfaceModel_->tablePlans().size()) continue;
+            const ClassInterfaceTablePlan& plan = interfaceModel_->tablePlans()[planOrdinal];
             for (const std::optional<std::size_t> implementation :
                  plan.implementationMemberOrdinals)
             {
@@ -2645,8 +2659,9 @@ std::optional<std::size_t> ProjectMethodBodyModel::resolveTypeIdentifier(
 
     const NamedTypeDeclaration& contextType = nameLookup_->namedTypes()[context->declaringTypeOrdinal];
     std::optional<std::size_t> fallback;
-    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
+    for (const std::size_t ordinal : nameLookup_->typeOrdinalsForName(name))
     {
+        if (ordinal >= nameLookup_->namedTypes().size()) continue;
         const NamedTypeDeclaration& candidate = nameLookup_->namedTypes()[ordinal];
         if ((candidate.kind != NamedTypeDeclarationKind::Class &&
              candidate.kind != NamedTypeDeclarationKind::Struct &&

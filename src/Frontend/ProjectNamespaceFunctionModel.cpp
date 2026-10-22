@@ -331,12 +331,26 @@ void ProjectNamespaceFunctionModel::resetBuildState()
     states_.clear();
     stateByName_.clear();
     functionsByName_.clear();
+    extensionFunctionsByName_.clear();
+    extensionFunctionIndexBuilt_ = false;
     referenceBindings_.clear();
     referenceBindingBySyntax_.clear();
     extensionBindings_.clear();
     extensionBindingBySyntax_.clear();
     completionScopes_.clear();
     built_ = false;
+}
+
+void ProjectNamespaceFunctionModel::buildExtensionFunctionIndex()
+{
+    extensionFunctionsByName_.clear();
+    for (std::size_t ordinal = 0; ordinal < functions_.size(); ++ordinal)
+    {
+        const NamespaceFunctionSymbol& function = functions_[ordinal];
+        if (function.isExtension)
+            extensionFunctionsByName_[function.name].push_back(ordinal);
+    }
+    extensionFunctionIndexBuilt_ = true;
 }
 
 void ProjectNamespaceFunctionModel::configureNamespaceFunctionOperator(
@@ -1594,6 +1608,7 @@ bool ProjectNamespaceFunctionModel::build(
         genericModel,
         symbolByIdentity,
         exportedCByName);
+    buildExtensionFunctionIndex();
     collectNamespaceStates(nameLookup, memberModel, diagnostics);
     bindNamespaceReferences(nameLookup, units);
     built_ = diagnostics.errorCount() == initialErrorCount;
@@ -1669,6 +1684,20 @@ std::span<const std::size_t> ProjectNamespaceFunctionModel::findFunctions(
     const auto found = functionsByName_.find(nameLookupKey(projectOrdinal, namespaceName, name));
     if (found == functionsByName_.end()) return {};
     return found->second;
+}
+
+std::span<const std::size_t> ProjectNamespaceFunctionModel::extensionFunctionsNamed(
+    std::string_view name) const noexcept
+{
+    const auto found = extensionFunctionsByName_.find(name);
+    return found == extensionFunctionsByName_.end()
+        ? std::span<const std::size_t>{}
+        : std::span<const std::size_t>(found->second);
+}
+
+bool ProjectNamespaceFunctionModel::hasExtensionFunctionIndex() const noexcept
+{
+    return extensionFunctionIndexBuilt_;
 }
 
 const NamespaceFunctionReferenceBinding* ProjectNamespaceFunctionModel::referenceBinding(

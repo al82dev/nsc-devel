@@ -96,6 +96,7 @@ public:
     const NamedTypeDeclaration* typeForOrdinal(std::size_t ordinal) const noexcept;
     std::optional<std::size_t> typeOrdinalForIdentity(std::string_view identity) const;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
+    bool hasTypeIndex() const noexcept;
     // NS304-T08-F05: trait-impl parts whose target is an external type (the module owns the trait,
     // not the type). The member model registers their methods on the external target.
     std::span<const NamedTypeDeclarationPart> externalTraitImplParts() const noexcept;

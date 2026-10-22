@@ -105,6 +105,8 @@ private:
         const ProjectOopHirNode* node,
         ProjectOopMirNode* result,
         std::string& error);
+    const ProjectOopMirStructLayout* structLayoutForTypeKey(
+        std::string_view typeKey) const noexcept;
     int lowerGroup01(
         const ProjectOopHirNode* node,
         ProjectOopMirNode* result,

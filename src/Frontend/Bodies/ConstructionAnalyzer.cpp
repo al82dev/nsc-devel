@@ -40,26 +40,16 @@ using method_body_detail::pointerContract;
 
 bool ProjectMethodBodyModel::aggregateIsUnion(std::string_view typeKey) const noexcept
 {
-    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
-    const std::string_view identity = typeKey.substr(5);
-    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
-    {
-        if (type.identity.key() != identity || type.syntax == nullptr) continue;
-        return type.syntax->auxiliaryText().find("union") != std::string::npos;
-    }
-    return false;
+    const NamedTypeDeclaration* type = namedTypeForTypeKey(typeKey);
+    return type != nullptr && type->syntax != nullptr &&
+        type->syntax->auxiliaryText().find("union") != std::string::npos;
 }
 
 bool ProjectMethodBodyModel::aggregateRequiresActiveMember(std::string_view typeKey) const noexcept
 {
-    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
-    const std::string_view identity = typeKey.substr(5);
-    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
-    {
-        if (type.identity.key() != identity || type.syntax == nullptr) continue;
-        return type.syntax->auxiliaryText().find("active-member-safe") != std::string::npos;
-    }
-    return false;
+    const NamedTypeDeclaration* type = namedTypeForTypeKey(typeKey);
+    return type != nullptr && type->syntax != nullptr &&
+        type->syntax->auxiliaryText().find("active-member-safe") != std::string::npos;
 }
 
 bool ProjectMethodBodyModel::aggregateAllowsSynthesizedMember(
@@ -73,11 +63,10 @@ bool ProjectMethodBodyModel::aggregateAllowsSynthesizedMember(
     {
         return memberName != "Clone";
     }
-    const std::string_view identity = typeKey.substr(5);
-    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+    const NamedTypeDeclaration* type = namedTypeForTypeKey(typeKey);
+    if (type != nullptr && type->syntax != nullptr)
     {
-        if (type.identity.key() != identity || type.syntax == nullptr) continue;
-        const std::string* metadata = &type.syntax->auxiliaryText();
+        const std::string* metadata = &type->syntax->auxiliaryText();
         // Stage 44 replaces a closed generic declaration's auxiliary text with its canonical
         // specialization key. The specialization catalog retains the originating template AST;
         // derive policy belongs to that source declaration and must be read from there.
@@ -226,12 +215,25 @@ bool ProjectMethodBodyModel::aggregateSupportsSynthesizedMemberVisit(
         return false;
     }
 
-    // Destructors do not participate in ordinary name lookup and therefore are not required
-    // to appear in the per-type lookup bucket. Walk the authoritative symbol vector and
-    // filter by owner so Clone cannot miss lifetime-only members.
-    for (const ClassMemberSymbol& member : memberModel_->members())
+    // Destructors do not participate in ordinary name lookup. The declaring-owner index is
+    // authoritative for collected members and promoted aliases, so Clone cannot miss
+    // lifetime-only members without scanning unrelated owners.
+    std::vector<std::size_t> fallbackMemberOrdinals;
+    std::span<const std::size_t> memberOrdinals =
+        memberModel_->membersDeclaredByType(*typeOrdinal);
+    if (!memberModel_->hasMembersDeclaredByTypeIndex())
     {
-        if (member.declaringTypeOrdinal != *typeOrdinal) continue;
+        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+        {
+            if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
+                fallbackMemberOrdinals.push_back(ordinal);
+        }
+        memberOrdinals = fallbackMemberOrdinals;
+    }
+    for (const std::size_t memberOrdinal : memberOrdinals)
+    {
+        if (memberOrdinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
         if (member.kind == ClassMemberKind::Destructor && memberName == "Clone")
         {
             reason = "field '" + (path.empty() ? std::string("<self>") : path) +
@@ -294,14 +296,9 @@ bool ProjectMethodBodyModel::aggregateTupleSupportsSynthesizedMember(
 // lee, que es la razon de haberla puesto ahi y no en un AstNodeKind nuevo.
 bool ProjectMethodBodyModel::aggregateIsBorrowedView(std::string_view typeKey) const noexcept
 {
-    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
-    const std::string_view identity = typeKey.substr(5);
-    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
-    {
-        if (type.identity.key() != identity || type.syntax == nullptr) continue;
-        return type.syntax->auxiliaryText().find("borrowedview") != std::string::npos;
-    }
-    return false;
+    const NamedTypeDeclaration* type = namedTypeForTypeKey(typeKey);
+    return type != nullptr && type->syntax != nullptr &&
+        type->syntax->auxiliaryText().find("borrowedview") != std::string::npos;
 }
 
 std::optional<std::vector<std::string>> ProjectMethodBodyModel::aggregateElementTypeKeys(
@@ -325,15 +322,9 @@ std::optional<std::vector<std::string>> ProjectMethodBodyModel::aggregateElement
     if (!typeKeyHasDefinedDefaultStorage(typeKey)) return std::nullopt;
     const std::optional<std::size_t> typeOrdinal = inheritanceModel_->typeOrdinalForTypeKey(typeKey);
     if (!typeOrdinal.has_value()) return std::nullopt;
-    bool isUnion = false;
-    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
-    {
-        if (type.identity.key() != typeKey.substr(5) || type.syntax == nullptr) continue;
-        // Same marker ProjectObjectLayoutModel reads (see parseStructLayoutOptions there); the
-        // markers are comma-joined, so a substring test is what identifies the union flag.
-        isUnion = type.syntax->auxiliaryText().find("union") != std::string::npos;
-        break;
-    }
+    // Same marker ProjectObjectLayoutModel reads (see parseStructLayoutOptions there); the
+    // markers are comma-joined, so a substring test is what identifies the union flag.
+    const bool isUnion = aggregateIsUnion(typeKey);
     std::vector<std::string> elements;
     for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
     {
@@ -372,13 +363,7 @@ std::optional<std::vector<std::string>> ProjectMethodBodyModel::aggregateElement
         return std::nullopt;
     const std::optional<std::size_t> typeOrdinal = inheritanceModel_->typeOrdinalForTypeKey(typeKey);
     if (!typeOrdinal.has_value()) return std::nullopt;
-    bool isUnion = false;
-    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
-    {
-        if (type.identity.key() != typeKey.substr(5) || type.syntax == nullptr) continue;
-        isUnion = type.syntax->auxiliaryText().find("union") != std::string::npos;
-        break;
-    }
+    const bool isUnion = aggregateIsUnion(typeKey);
     std::vector<std::string> names;
     for (const std::size_t memberOrdinal : memberModel_->membersOfType(*typeOrdinal))
     {

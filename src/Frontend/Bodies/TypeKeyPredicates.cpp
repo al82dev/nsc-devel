@@ -54,13 +54,18 @@ using method_body_detail::Stage37ConstantKind;
 using method_body_detail::Stage37ConstantValue;
 using method_body_detail::writeMethodBodyTrace;
 
-bool ProjectMethodBodyModel::isEnumTypeKey(std::string_view typeKey) const noexcept
+const NamedTypeDeclaration* ProjectMethodBodyModel::namedTypeForTypeKey(
+    std::string_view typeKey) const noexcept
 {
-    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return nullptr;
     const std::optional<std::size_t> ordinal =
         nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
-    const NamedTypeDeclaration* type = ordinal.has_value()
-        ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+    return ordinal.has_value() ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+}
+
+bool ProjectMethodBodyModel::isEnumTypeKey(std::string_view typeKey) const noexcept
+{
+    const NamedTypeDeclaration* type = namedTypeForTypeKey(typeKey);
     return type != nullptr && type->kind == NamedTypeDeclarationKind::Enum;
 }
 
@@ -100,9 +105,22 @@ bool ProjectMethodBodyModel::elementTypeHasTrivialLifetime(std::string_view type
         if (kind != NamedTypeDeclarationKind::Struct) return true;
     }
 
-    for (const ClassMemberSymbol& member : memberModel_->members())
+    std::vector<std::size_t> fallbackMemberOrdinals;
+    std::span<const std::size_t> memberOrdinals =
+        memberModel_->membersDeclaredByType(*typeOrdinal);
+    if (!memberModel_->hasMembersDeclaredByTypeIndex())
     {
-        if (member.declaringTypeOrdinal != *typeOrdinal) continue;
+        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+        {
+            if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
+                fallbackMemberOrdinals.push_back(ordinal);
+        }
+        memberOrdinals = fallbackMemberOrdinals;
+    }
+    for (const std::size_t memberOrdinal : memberOrdinals)
+    {
+        if (memberOrdinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
         if (member.kind == ClassMemberKind::Destructor) return false;
         if (member.kind == ClassMemberKind::Field && !member.isStatic &&
             member.declaredOwnership == sema::OwnershipKind::Owned)

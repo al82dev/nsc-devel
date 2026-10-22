@@ -7,6 +7,7 @@
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 
 #include "../Driver/Internal/DriverInternal.h"
+#include "../Frontend/Cache/SyntaxProductCacheCodec.h"
 
 #include <memory>
 #include <optional>
@@ -101,28 +102,43 @@ void storePrecompiledSourceProducts(
         cacheKey, publicSource, templateSource, ignoredError);
 }
 
-// A present sidecar is accepted only after binding it to the already loaded NSMETA bytes.
-bool readPublishedPrecompiledProducts(
-    const LoadedMetadata& entry,
-    const LibraryMetadataRepository& repository,
-    std::optional<PrecompiledProductSidecar>& products,
-    std::string& error)
+bool publishedSyntaxProductIsValid(
+    std::string_view sourceText,
+    std::string_view syntaxProduct)
 {
-    products.reset();
-    if (entry.productSidecarPath.empty()) return true;
+    if (syntaxProduct.empty()) return sourceText.empty();
+    source::SourceFile sourceFile(
+        FileId{1U}, std::filesystem::path{}, std::string(sourceText));
+    std::vector<lexer::Token> tokens;
+    std::unique_ptr<ast::AstArena> arena;
+    ast::AstNode* syntaxTree = nullptr;
+    return frontend::internal::deserializeRelocatableSyntaxProductUnit(
+        sourceFile, syntaxProduct, tokens, arena, syntaxTree);
+}
+
+// Rejects the complete publication on any mismatch so the existing generation path stays atomic.
+std::optional<PrecompiledProductSidecar> readPublishedPrecompiledProducts(
+    const LoadedMetadata& entry,
+    const LibraryMetadataRepository& repository)
+{
+    if (entry.productSidecarPath.empty()) return std::nullopt;
+    std::string ignoredError;
     const LibraryMetadataRepositoryEntry* metadataFile =
-        repository.load(entry.metadataPath, error);
-    if (metadataFile == nullptr) return false;
+        repository.load(entry.metadataPath, ignoredError);
+    if (metadataFile == nullptr) return std::nullopt;
     PrecompiledProductSidecar decoded;
     if (!PrecompiledProductSidecarCodec::read(
-            entry.productSidecarPath, metadataFile->bytes(), decoded, error))
+            entry.productSidecarPath, metadataFile->bytes(), decoded, ignoredError))
     {
-        error = "cannot restore precompiled products for module '" +
-            entry.metadata->moduleName + "': " + error;
-        return false;
+        return std::nullopt;
     }
-    products = std::move(decoded);
-    return true;
+    if (!publishedSyntaxProductIsValid(decoded.publicApiSource, decoded.publicApiSyntax) ||
+        !publishedSyntaxProductIsValid(
+            decoded.publicTemplateSource, decoded.publicTemplateSyntax))
+    {
+        return std::nullopt;
+    }
+    return decoded;
 }
 
 // Selects published products before any local cache lookup or metadata-to-source reconstruction.
@@ -135,20 +151,19 @@ bool materializeModuleProducts(
     std::string& templateSource,
     std::string& publicSyntax,
     std::string& templateSyntax,
+    bool& restoredPublishedProducts,
     std::string& error)
 {
-    std::optional<PrecompiledProductSidecar> publishedProducts;
-    if (!readPublishedPrecompiledProducts(
-            entry, repository, publishedProducts, error))
-    {
-        return false;
-    }
+    restoredPublishedProducts = false;
+    std::optional<PrecompiledProductSidecar> publishedProducts =
+        readPublishedPrecompiledProducts(entry, repository);
     if (publishedProducts.has_value())
     {
         publicSource = std::move(publishedProducts->publicApiSource);
         templateSource = std::move(publishedProducts->publicTemplateSource);
         publicSyntax = std::move(publishedProducts->publicApiSyntax);
         templateSyntax = std::move(publishedProducts->publicTemplateSyntax);
+        restoredPublishedProducts = true;
         return true;
     }
     if (restorePrecompiledSourceProducts(
@@ -280,6 +295,7 @@ bool materializeModules(
         std::string templateSource;
         std::string publicSyntax;
         std::string templateSyntax;
+        bool restoredPublishedProducts = false;
         if (!materializeModuleProducts(
                 entry,
                 repository,
@@ -289,6 +305,7 @@ bool materializeModules(
                 templateSource,
                 publicSyntax,
                 templateSyntax,
+                restoredPublishedProducts,
                 error))
         {
             return false;
@@ -305,7 +322,9 @@ bool materializeModules(
             memberIdentities(metadata),
             namespaceIdentities(metadata),
             genericSpecializations(metadata, concreteMemberNames),
-            entry.productSidecarPath});
+            restoredPublishedProducts
+                ? entry.productSidecarPath
+                : std::filesystem::path{}});
     }
     return true;
 }

@@ -49,6 +49,9 @@ public:
     std::span<const TraitOperatorWitness> operatorWitnessesOfType(
         std::size_t typeOrdinal) const noexcept;
     std::span<const ClassInterfaceTablePlan> tablePlans() const noexcept;
+    std::span<const std::size_t> tablePlanOrdinalsForClass(
+        std::size_t classTypeOrdinal) const noexcept;
+    bool hasTablePlanOrdinalsByClassIndex() const noexcept;
     const ClassInterfaceTablePlan* tablePlan(
         std::size_t classTypeOrdinal,
         std::size_t interfaceTypeOrdinal) const noexcept;
@@ -223,6 +226,8 @@ private:
     std::vector<std::vector<std::size_t>> interfacesByClass_;
     std::vector<std::vector<TraitOperatorWitness>> operatorWitnessesByType_;
     std::vector<ClassInterfaceTablePlan> tablePlans_;
+    std::vector<std::vector<std::size_t>> tablePlanOrdinalsByClass_;
+    bool tablePlanOrdinalsByClassIndexBuilt_ = false;
     std::vector<TraitObjectContract> traitObjectContracts_;
     bool built_ = false;
 };

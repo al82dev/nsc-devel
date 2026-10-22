@@ -586,24 +586,30 @@ bool ProjectOopHirModel::initializeEnumToStringCallFrame(
     {
         const std::string_view identity =
             std::string_view(frame.core->elementTypeKey).substr(5);
-        for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size();
-             ++ordinal)
-        {
-            if (nameLookup_->namedTypes()[ordinal].identity.key() == identity)
-            {
-                enumOrdinal = ordinal;
-                break;
-            }
-        }
+        enumOrdinal = nameLookup_->typeOrdinalForIdentity(identity);
     }
     if (!enumOrdinal.has_value())
     {
         error = "ID 129 enum ToString() cannot find the enum type";
         return false;
     }
-    for (const ClassMemberSymbol& member : memberModel_->members())
+    std::vector<std::size_t> fallbackMemberOrdinals;
+    std::span<const std::size_t> memberOrdinals =
+        memberModel_->membersDeclaredByType(*enumOrdinal);
+    if (!memberModel_->hasMembersDeclaredByTypeIndex())
     {
-        if (member.isEnumConstant && member.declaringTypeOrdinal == *enumOrdinal)
+        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+        {
+            if (memberModel_->members()[ordinal].declaringTypeOrdinal == *enumOrdinal)
+                fallbackMemberOrdinals.push_back(ordinal);
+        }
+        memberOrdinals = fallbackMemberOrdinals;
+    }
+    for (const std::size_t memberOrdinal : memberOrdinals)
+    {
+        if (memberOrdinal >= memberModel_->members().size()) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.isEnumConstant)
             call.enumerators.emplace_back(member.enumConstantValue, member.name);
     }
     frame.enumToStringCall.emplace(std::move(call));

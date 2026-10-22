@@ -38,6 +38,8 @@ std::size_t ProjectCompilationIndexes::TransparentStringHash::operator()(
 
 void ProjectCompilationIndexes::clear() noexcept
 {
+    typeIndexBuilt_ = false;
+    layoutIndexesBuilt_ = false;
     typesByOrdinal_.clear();
     typeOrdinalByIdentity_.clear();
     typeOrdinalsByName_.clear();
@@ -64,6 +66,8 @@ void ProjectCompilationIndexes::clear() noexcept
 
 void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaration> types)
 {
+    typeIndexBuilt_ = false;
+    layoutIndexesBuilt_ = false;
     typesByOrdinal_.clear();
     typeOrdinalByIdentity_.clear();
     typeOrdinalsByName_.clear();
@@ -93,6 +97,7 @@ void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaratio
             typeOrdinalsByName_[std::string(qualifiedName)].push_back(ordinal);
         }
     }
+    typeIndexBuilt_ = true;
 }
 
 void ProjectCompilationIndexes::rebuildGenerics(
@@ -156,6 +161,7 @@ void ProjectCompilationIndexes::clearGenericTypeDemands() noexcept
 
 void ProjectCompilationIndexes::rebuildMembers(std::span<const ClassMemberSymbol> members)
 {
+    layoutIndexesBuilt_ = false;
     membersByOrdinal_.clear();
     memberOrdinalsByName_.clear();
     memberOrdinalsBySignature_.clear();
@@ -200,6 +206,7 @@ void ProjectCompilationIndexes::rebuildLayouts(
     std::size_t memberCount,
     std::size_t typeCount)
 {
+    layoutIndexesBuilt_ = false;
     clearHirBindings();
     classLayoutsByType_.assign(typeCount, nullptr);
     structLayoutsByType_.assign(typeCount, nullptr);
@@ -242,6 +249,22 @@ void ProjectCompilationIndexes::rebuildLayouts(
         if (allocationPlansByConstruction_[plan.constructionOrdinal] == nullptr)
             allocationPlansByConstruction_[plan.constructionOrdinal] = &plan;
     }
+    layoutIndexesBuilt_ = true;
+}
+
+bool ProjectCompilationIndexes::hasTypeIndex() const noexcept
+{
+    return typeIndexBuilt_;
+}
+
+bool ProjectCompilationIndexes::hasLayoutIndexes() const noexcept
+{
+    return layoutIndexesBuilt_;
+}
+
+bool ProjectCompilationIndexes::hasMirLayoutIndexes() const noexcept
+{
+    return mirLayoutIndexesBuilt_;
 }
 
 void ProjectCompilationIndexes::rebuildHirBindings(
@@ -252,8 +275,25 @@ void ProjectCompilationIndexes::rebuildHirBindings(
 {
     clearHirBindings();
     hirLocalBySyntax_.reserve(locals.size());
-    for (const MethodLocalSymbol& local : locals)
+    for (std::size_t localOrdinal = 0; localOrdinal < locals.size(); ++localOrdinal)
+    {
+        const MethodLocalSymbol& local = locals[localOrdinal];
         if (local.syntax != nullptr) hirLocalBySyntax_.try_emplace(local.syntax, &local);
+        if (local.lambdaOrdinal.has_value())
+        {
+            if (local.lambdaParameterOrdinal.has_value()) continue;
+            const std::size_t lambdaOrdinal = *local.lambdaOrdinal;
+            if (lambdaOrdinal >= hirLocalOrdinalsByLambda_.size())
+                hirLocalOrdinalsByLambda_.resize(lambdaOrdinal + 1U);
+            hirLocalOrdinalsByLambda_[lambdaOrdinal].push_back(localOrdinal);
+        }
+        else
+        {
+            if (local.methodMemberOrdinal >= hirLocalOrdinalsByMember_.size())
+                hirLocalOrdinalsByMember_.resize(local.methodMemberOrdinal + 1U);
+            hirLocalOrdinalsByMember_[local.methodMemberOrdinal].push_back(localOrdinal);
+        }
+    }
     hirLambdaBySyntax_.reserve(lambdas.size());
     for (const MethodLambdaBinding& lambda : lambdas)
         if (lambda.syntax != nullptr) hirLambdaBySyntax_.try_emplace(lambda.syntax, &lambda);
@@ -261,12 +301,27 @@ void ProjectCompilationIndexes::rebuildHirBindings(
     for (const MethodLambdaValueBinding& value : lambdaValues)
         if (value.syntax != nullptr) hirLambdaValueBySyntax_.try_emplace(value.syntax, &value);
     hirCleanupRegionBySyntax_.reserve(cleanupRegions.size());
-    for (const MethodCleanupRegion& region : cleanupRegions)
+    for (std::size_t cleanupOrdinal = 0; cleanupOrdinal < cleanupRegions.size(); ++cleanupOrdinal)
+    {
+        const MethodCleanupRegion& region = cleanupRegions[cleanupOrdinal];
         if (region.syntax != nullptr) hirCleanupRegionBySyntax_.try_emplace(region.syntax, &region);
+        if (region.methodMemberOrdinal >= hirCleanupRegionOrdinalsByMember_.size())
+            hirCleanupRegionOrdinalsByMember_.resize(region.methodMemberOrdinal + 1U);
+        hirCleanupRegionOrdinalsByMember_[region.methodMemberOrdinal].push_back(cleanupOrdinal);
+    }
+    hirOwnerIndexesBuilt_ = true;
+    hirLambdaIndexesBuilt_ = true;
+    hirCleanupOwnerIndexBuilt_ = true;
 }
 
 void ProjectCompilationIndexes::clearHirBindings() noexcept
 {
+    hirOwnerIndexesBuilt_ = false;
+    hirLocalOrdinalsByMember_.clear();
+    hirLambdaIndexesBuilt_ = false;
+    hirLocalOrdinalsByLambda_.clear();
+    hirCleanupOwnerIndexBuilt_ = false;
+    hirCleanupRegionOrdinalsByMember_.clear();
     hirLocalBySyntax_.clear();
     hirLambdaBySyntax_.clear();
     hirLambdaValueBySyntax_.clear();
@@ -324,6 +379,7 @@ void ProjectCompilationIndexes::rebuildMirLayouts(
     std::span<const ProjectOopMirClassLayout> classLayouts,
     std::size_t typeCount)
 {
+    mirLayoutIndexesBuilt_ = false;
     mirStructLayoutsByType_.assign(typeCount, nullptr);
     mirStructLayoutsByTypeKey_.clear();
     mirStructLayoutsByTypeKey_.reserve(structLayouts.size());
@@ -345,6 +401,7 @@ void ProjectCompilationIndexes::rebuildMirLayouts(
         mirClassLayoutsByType_[layout.typeOrdinal] = &layout;
         mirClassLayoutsByTypeKey_.try_emplace(layout.typeKey, &layout);
     }
+    mirLayoutIndexesBuilt_ = true;
 }
 
 void ProjectCompilationIndexes::rebuildMirInterfaces(
@@ -372,6 +429,7 @@ void ProjectCompilationIndexes::rebuildMirInterfaces(
 
 void ProjectCompilationIndexes::clearMirFunctions() noexcept
 {
+    mirLayoutIndexesBuilt_ = false;
     mirFunctionsByMember_.clear();
     mirFunctionsByNamespaceFunction_.clear();
     mirFunctionsByMangledName_.clear();
@@ -555,6 +613,45 @@ const MethodLocalSymbol* ProjectCompilationIndexes::hirLocalForSyntax(
 {
     const auto iterator = hirLocalBySyntax_.find(syntax);
     return iterator == hirLocalBySyntax_.end() ? nullptr : iterator->second;
+}
+
+bool ProjectCompilationIndexes::hasHirOwnerIndexes() const noexcept
+{
+    return hirOwnerIndexesBuilt_;
+}
+
+std::span<const std::size_t> ProjectCompilationIndexes::hirLocalOrdinalsForMember(
+    std::size_t memberOrdinal) const noexcept
+{
+    return memberOrdinal < hirLocalOrdinalsByMember_.size()
+        ? std::span<const std::size_t>(hirLocalOrdinalsByMember_[memberOrdinal])
+        : std::span<const std::size_t>();
+}
+
+bool ProjectCompilationIndexes::hasHirLambdaIndexes() const noexcept
+{
+    return hirLambdaIndexesBuilt_;
+}
+
+std::span<const std::size_t> ProjectCompilationIndexes::hirLocalOrdinalsForLambda(
+    std::size_t lambdaOrdinal) const noexcept
+{
+    return lambdaOrdinal < hirLocalOrdinalsByLambda_.size()
+        ? std::span<const std::size_t>(hirLocalOrdinalsByLambda_[lambdaOrdinal])
+        : std::span<const std::size_t>();
+}
+
+bool ProjectCompilationIndexes::hasHirCleanupOwnerIndex() const noexcept
+{
+    return hirCleanupOwnerIndexBuilt_;
+}
+
+std::span<const std::size_t> ProjectCompilationIndexes::hirCleanupRegionOrdinalsForMember(
+    std::size_t memberOrdinal) const noexcept
+{
+    return memberOrdinal < hirCleanupRegionOrdinalsByMember_.size()
+        ? std::span<const std::size_t>(hirCleanupRegionOrdinalsByMember_[memberOrdinal])
+        : std::span<const std::size_t>();
 }
 
 const MethodLambdaBinding* ProjectCompilationIndexes::hirLambdaForSyntax(

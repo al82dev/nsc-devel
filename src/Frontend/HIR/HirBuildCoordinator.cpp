@@ -28,6 +28,7 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -753,39 +754,47 @@ bool ProjectOopHirModel::buildRegularFunctionsInParallel(
     using internal::RegularFunctionResult;
     std::vector<RegularFunctionResult> results(memberModel_->members().size());
     driver::CompilationWorkerPool& workers = *workerPool_;
+    const auto buildMember = [this, &results](std::size_t memberOrdinal)
+    {
+        ProjectOopHirModel worker;
+        RegularFunctionResult& result = results[memberOrdinal];
+        result.success = worker.buildImpl(
+            *nameLookup_,
+            *memberModel_,
+            *inheritanceModel_,
+            *interfaceModel_,
+            *methodBodyModel_,
+            *constructionModel_,
+            *objectLayoutModel_,
+            result.error,
+            genericConstraintModel_,
+            1,
+            namespaceFunctionModel_,
+            metaprogrammingModel_,
+            memberOrdinal,
+            this);
+        result.errorRange = worker.lastErrorRange();
+        if (result.success && !worker.functions_.empty())
+            result.functions = std::move(worker.functions_);
+    };
     for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel_->members().size();
          ++memberOrdinal)
     {
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-        if ((member.kind != ClassMemberKind::Method &&
-             member.kind != ClassMemberKind::Constructor &&
-             member.kind != ClassMemberKind::Destructor) || member.isAbstract)
+        if (regularFunctionShouldBeSkipped(memberOrdinal, member))
         {
             results[memberOrdinal].success = true;
             continue;
         }
-        workers.submit([&, memberOrdinal](std::size_t) {
-            ProjectOopHirModel worker;
-            RegularFunctionResult& result = results[memberOrdinal];
-            result.success = worker.buildImpl(
-                *nameLookup_,
-                *memberModel_,
-                *inheritanceModel_,
-                *interfaceModel_,
-                *methodBodyModel_,
-                *constructionModel_,
-                *objectLayoutModel_,
-                result.error,
-                genericConstraintModel_,
-                1,
-                namespaceFunctionModel_,
-                metaprogrammingModel_,
-                memberOrdinal,
-                this);
-            result.errorRange = worker.lastErrorRange();
-            if (result.success && !worker.functions_.empty())
-                result.functions = std::move(worker.functions_);
-        });
+        const bool declarationOnly = member.isImportedC ||
+            (member.isPrecompiled && member.kind != ClassMemberKind::Destructor);
+        if (declarationOnly)
+            buildMember(memberOrdinal);
+        else
+            workers.submit([&buildMember, memberOrdinal](std::size_t)
+            {
+                buildMember(memberOrdinal);
+            });
     }
     workers.wait();
     return mergeParallelRegularFunctions(results, error);
@@ -931,7 +940,7 @@ bool ProjectOopHirModel::appendPrecompiledRegularFunction(
         imported.parameterPassKinds.push_back(parameter.passKind);
         imported.parameterOwnerships.push_back(parameter.ownership);
     }
-    functionByMember_[memberOrdinal] = functions_.size();
+    if (!functionByMember_.empty()) functionByMember_[memberOrdinal] = functions_.size();
     functions_.push_back(std::move(imported));
     return true;
 }
@@ -973,7 +982,7 @@ void ProjectOopHirModel::appendImportedCRegularFunction(
         imported.parameterPassKinds.push_back(parameter.passKind);
         imported.parameterOwnerships.push_back(parameter.ownership);
     }
-    functionByMember_[memberOrdinal] = functions_.size();
+    if (!functionByMember_.empty()) functionByMember_[memberOrdinal] = functions_.size();
     functions_.push_back(std::move(imported));
 }
 
@@ -1025,12 +1034,22 @@ void ProjectOopHirModel::initializeRegularFunction(
         function.parameterPassKinds.push_back(parameter.passKind);
         function.parameterOwnerships.push_back(parameter.ownership);
     }
-    for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
-         ++localOrdinal)
+    const ProjectOopHirModel* indexSource = lookupSource_ == nullptr ? this : lookupSource_;
+    if (indexSource->indexes_ != nullptr && indexSource->indexes_->hasHirOwnerIndexes())
     {
-        const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
-        if (local.methodMemberOrdinal == memberOrdinal && !local.lambdaOrdinal.has_value())
-            function.localOrdinals.push_back(localOrdinal);
+        const std::span<const std::size_t> localOrdinals =
+            indexSource->indexes_->hirLocalOrdinalsForMember(memberOrdinal);
+        function.localOrdinals.assign(localOrdinals.begin(), localOrdinals.end());
+    }
+    else
+    {
+        for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
+             ++localOrdinal)
+        {
+            const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
+            if (local.methodMemberOrdinal == memberOrdinal && !local.lambdaOrdinal.has_value())
+                function.localOrdinals.push_back(localOrdinal);
+        }
     }
 }
 
@@ -1041,9 +1060,21 @@ bool ProjectOopHirModel::appendRegularFunctionParameterCleanups(
     std::string& error)
 {
     activeHirCleanupRegions_.clear();
-    for (std::size_t cleanupOrdinal = 0;
-         cleanupOrdinal < methodBodyModel_->cleanupRegions().size();
-         ++cleanupOrdinal)
+    const ProjectOopHirModel* indexSource = lookupSource_ == nullptr ? this : lookupSource_;
+    std::vector<std::size_t> fallbackOrdinals;
+    std::span<const std::size_t> cleanupOrdinals;
+    if (indexSource->indexes_ != nullptr && indexSource->indexes_->hasHirCleanupOwnerIndex())
+    {
+        cleanupOrdinals = indexSource->indexes_->hirCleanupRegionOrdinalsForMember(
+            function.memberOrdinal);
+    }
+    else
+    {
+        fallbackOrdinals.resize(methodBodyModel_->cleanupRegions().size());
+        std::iota(fallbackOrdinals.begin(), fallbackOrdinals.end(), 0U);
+        cleanupOrdinals = fallbackOrdinals;
+    }
+    for (const std::size_t cleanupOrdinal : cleanupOrdinals)
     {
         const MethodCleanupRegion& region = methodBodyModel_->cleanupRegions()[cleanupOrdinal];
         if (region.methodMemberOrdinal != function.memberOrdinal ||
@@ -1374,9 +1405,22 @@ void ProjectOopHirModel::promoteEligibleStackClassLocals(
             nameLookup_->namedTypes()[targetTypeOrdinal].isPrecompiled)
             continue;
         bool hasNontrivialLifetimeMember = false;
-        for (const ClassMemberSymbol& targetMember : memberModel_->members())
+        std::vector<std::size_t> fallbackMemberOrdinals;
+        std::span<const std::size_t> memberOrdinals =
+            memberModel_->membersDeclaredByType(targetTypeOrdinal);
+        if (!memberModel_->hasMembersDeclaredByTypeIndex())
         {
-            if (targetMember.declaringTypeOrdinal != targetTypeOrdinal) continue;
+            for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+            {
+                if (memberModel_->members()[ordinal].declaringTypeOrdinal == targetTypeOrdinal)
+                    fallbackMemberOrdinals.push_back(ordinal);
+            }
+            memberOrdinals = fallbackMemberOrdinals;
+        }
+        for (const std::size_t memberOrdinal : memberOrdinals)
+        {
+            if (memberOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& targetMember = memberModel_->members()[memberOrdinal];
             if (targetMember.kind == ClassMemberKind::Destructor ||
                 (targetMember.kind == ClassMemberKind::Field && !targetMember.isStatic &&
                  targetMember.declaredOwnership == sema::OwnershipKind::Owned))
@@ -1489,7 +1533,8 @@ bool ProjectOopHirModel::appendRegularCoroutineFunctions(
             drop = std::move(split.second);
         }
     }
-    functionByMember_[function.memberOrdinal] = functions_.size();
+    if (!functionByMember_.empty())
+        functionByMember_[function.memberOrdinal] = functions_.size();
     functions_.push_back(std::move(function));
     if (poll) functions_.push_back(std::move(*poll));
     if (moveNext) functions_.push_back(std::move(*moveNext));
@@ -1600,9 +1645,20 @@ bool ProjectOopHirModel::appendNamespaceFunctionParameterCleanups(
     std::string& error)
 {
     activeHirCleanupRegions_.clear();
-    for (std::size_t cleanupOrdinal = 0;
-         cleanupOrdinal < methodBodyModel_->cleanupRegions().size();
-         ++cleanupOrdinal)
+    const ProjectOopHirModel* indexSource = lookupSource_ == nullptr ? this : lookupSource_;
+    std::vector<std::size_t> fallbackOrdinals;
+    std::span<const std::size_t> cleanupOrdinals;
+    if (indexSource->indexes_ != nullptr && indexSource->indexes_->hasHirCleanupOwnerIndex())
+    {
+        cleanupOrdinals = indexSource->indexes_->hirCleanupRegionOrdinalsForMember(callableOrdinal);
+    }
+    else
+    {
+        fallbackOrdinals.resize(methodBodyModel_->cleanupRegions().size());
+        std::iota(fallbackOrdinals.begin(), fallbackOrdinals.end(), 0U);
+        cleanupOrdinals = fallbackOrdinals;
+    }
+    for (const std::size_t cleanupOrdinal : cleanupOrdinals)
     {
         const MethodCleanupRegion& region = methodBodyModel_->cleanupRegions()[cleanupOrdinal];
         if (region.methodMemberOrdinal != callableOrdinal ||
@@ -1676,12 +1732,22 @@ bool ProjectOopHirModel::buildNamespaceFunction(
     }
 
     const std::size_t callableOrdinal = memberModel_->members().size() + functionOrdinal;
-    for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
-         ++localOrdinal)
+    const ProjectOopHirModel* indexSource = lookupSource_ == nullptr ? this : lookupSource_;
+    if (indexSource->indexes_ != nullptr && indexSource->indexes_->hasHirOwnerIndexes())
     {
-        const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
-        if (local.methodMemberOrdinal == callableOrdinal && !local.lambdaOrdinal.has_value())
-            function.localOrdinals.push_back(localOrdinal);
+        const std::span<const std::size_t> localOrdinals =
+            indexSource->indexes_->hirLocalOrdinalsForMember(callableOrdinal);
+        function.localOrdinals.assign(localOrdinals.begin(), localOrdinals.end());
+    }
+    else
+    {
+        for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
+             ++localOrdinal)
+        {
+            const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
+            if (local.methodMemberOrdinal == callableOrdinal && !local.lambdaOrdinal.has_value())
+                function.localOrdinals.push_back(localOrdinal);
+        }
     }
     std::vector<std::unique_ptr<ProjectOopHirNode>> cleanupNodes;
     if (!appendNamespaceFunctionParameterCleanups(
@@ -1806,13 +1872,23 @@ bool ProjectOopHirModel::buildLambdaFunction(
         function.captureModes.push_back(capture.mode);
         function.captureOwnsValues.push_back(capture.ownsCapturedValue);
     }
-    for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
-         ++localOrdinal)
+    const ProjectOopHirModel* indexSource = lookupSource_ == nullptr ? this : lookupSource_;
+    if (indexSource->indexes_ != nullptr && indexSource->indexes_->hasHirLambdaIndexes())
     {
-        const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
-        if (local.lambdaOrdinal == lambda.lambdaOrdinal &&
-            !local.lambdaParameterOrdinal.has_value())
-            function.localOrdinals.push_back(localOrdinal);
+        const std::span<const std::size_t> localOrdinals =
+            indexSource->indexes_->hirLocalOrdinalsForLambda(lambda.lambdaOrdinal);
+        function.localOrdinals.assign(localOrdinals.begin(), localOrdinals.end());
+    }
+    else
+    {
+        for (std::size_t localOrdinal = 0; localOrdinal < methodBodyModel_->locals().size();
+             ++localOrdinal)
+        {
+            const MethodLocalSymbol& local = methodBodyModel_->locals()[localOrdinal];
+            if (local.lambdaOrdinal == lambda.lambdaOrdinal &&
+                !local.lambdaParameterOrdinal.has_value())
+                function.localOrdinals.push_back(localOrdinal);
+        }
     }
     currentLambda_ = &lambda;
     if (lambda.blockBody)
@@ -1821,6 +1897,10 @@ bool ProjectOopHirModel::buildLambdaFunction(
         lowerExpressionLambdaBody(function, lambda, error);
     currentLambda_ = nullptr;
     if (function.body == nullptr || !error.empty()) return false;
+    if (lambda.lambdaOrdinal >= functionByLambda_.size())
+        functionByLambda_.resize(lambda.lambdaOrdinal + 1U);
+    if (!functionByLambda_[lambda.lambdaOrdinal].has_value())
+        functionByLambda_[lambda.lambdaOrdinal] = functions_.size();
     functions_.push_back(std::move(function));
     return true;
 }
@@ -1848,14 +1928,10 @@ bool ProjectOopHirModel::markLambdaClosureCells(std::string& error)
         ProjectOopHirFunction* creator = nullptr;
         if (lambda.parentLambdaOrdinal.has_value())
         {
-            for (ProjectOopHirFunction& candidate : functions_)
-            {
-                if (candidate.isLambda && candidate.lambdaOrdinal == lambda.parentLambdaOrdinal)
-                {
-                    creator = &candidate;
-                    break;
-                }
-            }
+            const std::size_t parentOrdinal = *lambda.parentLambdaOrdinal;
+            if (parentOrdinal < functionByLambda_.size() &&
+                functionByLambda_[parentOrdinal].has_value())
+                creator = &functions_[*functionByLambda_[parentOrdinal]];
         }
         else if (lambda.ownerMemberOrdinal < functionByMember_.size() &&
                  functionByMember_[lambda.ownerMemberOrdinal].has_value())
@@ -2078,9 +2154,12 @@ bool ProjectOopHirModel::buildImpl(
             error))
         return false;
     indexBuildBindings(methodBodyModel, constructionModel);
-    functionByMember_.resize(memberModel.members().size());
-    if (namespaceFunctionModel_ != nullptr)
-        functionByNamespaceFunction_.resize(namespaceFunctionModel_->functions().size());
+    if (!memberFilter.has_value())
+    {
+        functionByMember_.resize(memberModel.members().size());
+        if (namespaceFunctionModel_ != nullptr)
+            functionByNamespaceFunction_.resize(namespaceFunctionModel_->functions().size());
+    }
     const bool regularFunctionsBuiltInParallel = workerCount > 1 && !memberFilter.has_value();
     if (regularFunctionsBuiltInParallel &&
         !buildRegularFunctionsInParallel(workerCount, error))
@@ -2095,6 +2174,7 @@ bool ProjectOopHirModel::buildImpl(
         built_ = true;
         return true;
     }
+    functionByLambda_.resize(methodBodyModel.lambdaBindings().size());
     if (!buildLambdaFunctions(error) || !markLambdaClosureCells(error)) return false;
 
     if (!buildFieldInitializers(error)) return false;

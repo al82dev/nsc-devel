@@ -149,6 +149,11 @@ std::span<const std::size_t> ProjectNameLookup::typeOrdinalsForName(
     return indexes_->typeOrdinalsForName(name);
 }
 
+bool ProjectNameLookup::hasTypeIndex() const noexcept
+{
+    return indexes_->hasTypeIndex();
+}
+
 std::span<const NamedTypeDeclarationPart> ProjectNameLookup::externalTraitImplParts() const noexcept
 {
     return externalTraitImplParts_;

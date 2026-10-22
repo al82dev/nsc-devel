@@ -61,15 +61,11 @@ std::optional<std::size_t> ProjectMethodBodyModel::delegateTypeOrdinalForTypeKey
 {
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return std::nullopt;
     const std::string_view key = typeKey.substr(5);
-    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
-    {
-        const NamedTypeDeclaration& type = nameLookup_->namedTypes()[ordinal];
-        if (type.identity.key() == key && type.kind == NamedTypeDeclarationKind::Delegate)
-        {
-            return ordinal;
-        }
-    }
-    return std::nullopt;
+    const std::optional<std::size_t> ordinal = nameLookup_->typeOrdinalForIdentity(key);
+    const NamedTypeDeclaration* type = ordinal.has_value()
+        ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+    return type != nullptr && type->kind == NamedTypeDeclarationKind::Delegate
+        ? ordinal : std::nullopt;
 }
 
 bool ProjectMethodBodyModel::isDelegateTypeKey(std::string_view typeKey) const noexcept

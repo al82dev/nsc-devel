@@ -14,6 +14,8 @@ struct DynamicLibraryPublication final
     std::filesystem::path headerStage;
     std::filesystem::path metadataDestination;
     std::filesystem::path metadataStage;
+    std::filesystem::path productSidecarDestination;
+    std::filesystem::path productSidecarStage;
     std::filesystem::path pdbDestination;
     std::filesystem::path pdbStage;
 };

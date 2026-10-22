@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `23 / 60`
+**Progreso:** `39 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -27,30 +27,30 @@
 | T3.3 | Consultar `knownTypeNames_` con `string_view`, sin construir un `std::string` por identificador | TERMINADO |
 | T3.4 | Construir una sola vez el índice inmutable de nombres conocidos y compartirlo entre todos los parsers del corpus | TERMINADO |
 | T3.5 | Eliminar las dos materializaciones completas de `knownTypeNames_` en `ExpressionParser` | TERMINADO |
-| T3.6 | Convertir `AstArena` en asignación por bloques conservando destrucción tipada y estabilidad de punteros | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
-| T3.7 | Detectar antes de `ComptimeEngine` las fuentes que no contienen ninguna forma comptime | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
-| T3.8 | Transferir sin copia la fuente sin comptime a `SourceManager` y crear `ComptimeCache` sólo cuando alguna unidad la necesita | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
-| T4.1 | Definir un sidecar determinista de productos precompilados ligado al digest de NSMETA y al build-id, sin cambiar NSMETA | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
-| T4.2 | Emitir en el productor las superficies pública y de templates que hoy se regeneran desde NSMETA en cada consumidor | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
-| T4.3 | Emitir en el productor tokens y AST serializados de ambas superficies para no ejecutar lexer ni parser en frío | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
-| T4.4 | Transportar la ruta del sidecar por `LibraryReference`, cierre binario y paquete sin cambiar el contrato de la biblioteca | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
-| T4.5 | Validar digest/build-id y restaurar el producto antes de ejecutar `PublicSurfaceBuilder`, lexer o parser | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
-| T4.6 | Conservar como fallback exacto la generación vigente cuando el sidecar no exista o no sea válido | PENDIENTE |
-| T4.7 | Incluir el sidecar en los artefactos de biblioteca y en las reglas CMake de distribución, sin tocar NSC Builder 3 | PENDIENTE |
-| T5.1 | Resolver `resolveTypeIdentifier` sobre candidatos por nombre, no recorriendo todos los tipos | PENDIENTE |
-| T5.2 | Resolver una vez los tipos Core conocidos usados por excepciones, `IDisposable`, spans, delegates y conversiones | PENDIENTE |
-| T5.3 | Sustituir los recorridos globales restantes de tipos en los analizadores de cuerpos por los índices de identidad/nombre | PENDIENTE |
-| T5.4 | Sustituir los recorridos globales de miembros en `CallAnalyzer` y `ConstructionAnalyzer` por candidatos indexados | PENDIENTE |
-| T5.5 | Sustituir búsquedas lineales de accessors, predicados de tipo y core calls HIR por índices de miembros | PENDIENTE |
-| T5.6 | Eliminar los fallbacks lineales restantes de tipos, structs, clases y campos en `ProjectObjectLayoutModel` | PENDIENTE |
-| T5.7 | Agrupar en `ProjectCompilationIndexes` los locales HIR por miembro propietario | PENDIENTE |
-| T5.8 | Agrupar en `ProjectCompilationIndexes` los locales HIR por lambda propietaria | PENDIENTE |
-| T5.9 | Agrupar en `ProjectCompilationIndexes` las regiones de cleanup por miembro propietario | PENDIENTE |
-| T5.10 | Programar workers HIR sólo para miembros realmente bajables, filtrando abstractos, precompilados y diferidos antes del submit | PENDIENTE |
-| T5.11 | Evitar que cada worker HIR de un solo miembro redimensione tablas globales del tamaño de todo el proyecto | PENDIENTE |
-| T5.12 | Resolver el creador de cada closure directamente, sin recorrer todas las funciones HIR por lambda | PENDIENTE |
-| T5.13 | Sustituir las búsquedas lineales de layouts en `MirNodeMachine` por los índices MIR | PENDIENTE |
-| T5.14 | Usar índices directos en MIR para planes de asignación, interfaces, slots e inicializadores estáticos | PENDIENTE |
+| T3.6 | Convertir `AstArena` en asignación por bloques conservando destrucción tipada y estabilidad de punteros | TERMINADO |
+| T3.7 | Detectar antes de `ComptimeEngine` las fuentes que no contienen ninguna forma comptime | TERMINADO |
+| T3.8 | Transferir sin copia la fuente sin comptime a `SourceManager` y crear `ComptimeCache` sólo cuando alguna unidad la necesita | TERMINADO |
+| T4.1 | Definir un sidecar determinista de productos precompilados ligado al digest de NSMETA y al build-id, sin cambiar NSMETA | TERMINADO |
+| T4.2 | Emitir en el productor las superficies pública y de templates que hoy se regeneran desde NSMETA en cada consumidor | TERMINADO |
+| T4.3 | Emitir en el productor tokens y AST serializados de ambas superficies para no ejecutar lexer ni parser en frío | TERMINADO |
+| T4.4 | Transportar la ruta del sidecar por `LibraryReference`, cierre binario y paquete sin cambiar el contrato de la biblioteca | TERMINADO |
+| T4.5 | Validar digest/build-id y restaurar el producto antes de ejecutar `PublicSurfaceBuilder`, lexer o parser | TERMINADO |
+| T4.6 | Conservar como fallback exacto la generación vigente cuando el sidecar no exista o no sea válido | TERMINADO |
+| T4.7 | Incluir el sidecar en los artefactos de biblioteca y en las reglas CMake de distribución, sin tocar NSC Builder 3 | TERMINADO |
+| T5.1 | Resolver `resolveTypeIdentifier` sobre candidatos por nombre, no recorriendo todos los tipos | TERMINADO |
+| T5.2 | Resolver una vez los tipos Core conocidos usados por excepciones, `IDisposable`, spans, delegates y conversiones | TERMINADO |
+| T5.3 | Sustituir los recorridos globales restantes de tipos en los analizadores de cuerpos por los índices de identidad/nombre | TERMINADO |
+| T5.4 | Sustituir los recorridos globales de miembros en `CallAnalyzer` y `ConstructionAnalyzer` por candidatos indexados | TERMINADO |
+| T5.5 | Sustituir búsquedas lineales de accessors, predicados de tipo y core calls HIR por índices de miembros | TERMINADO |
+| T5.6 | Eliminar los fallbacks lineales restantes de tipos, structs, clases y campos en `ProjectObjectLayoutModel` | TERMINADO |
+| T5.7 | Agrupar en `ProjectCompilationIndexes` los locales HIR por miembro propietario | TERMINADO |
+| T5.8 | Agrupar en `ProjectCompilationIndexes` los locales HIR por lambda propietaria | TERMINADO |
+| T5.9 | Agrupar en `ProjectCompilationIndexes` las regiones de cleanup por miembro propietario | TERMINADO |
+| T5.10 | Programar workers HIR sólo para miembros realmente bajables, filtrando abstractos, precompilados y diferidos antes del submit | TERMINADO |
+| T5.11 | Evitar que cada worker HIR de un solo miembro redimensione tablas globales del tamaño de todo el proyecto | TERMINADO |
+| T5.12 | Resolver el creador de cada closure directamente, sin recorrer todas las funciones HIR por lambda | TERMINADO |
+| T5.13 | Sustituir las búsquedas lineales de layouts en `MirNodeMachine` por los índices MIR | TERMINADO |
+| T5.14 | Usar índices directos en MIR para planes de asignación, interfaces, slots e inicializadores estáticos | TERMINADO |
 | T6.1 | Eliminar las comprobaciones duplicadas de builtin y pointer-like en la cadena de `llvmType` | PENDIENTE |
 | T6.2 | Memoizar por lowerer los `LLVMTypeRef` exitosos por `typeKey`, sin cachear errores ni cambiar diagnósticos | PENDIENTE |
 | T6.3 | Resolver una vez los ordinales SIMD usados por los cinco clasificadores que hoy recorren todos los tipos | PENDIENTE |

@@ -2,6 +2,7 @@
 #include "Internal/DriverInternal.h"
 
 #include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
+#include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 
 namespace nativesharp::driver
 {
@@ -109,7 +110,14 @@ void addCompilationProductIdentity(
             manifest.addRequiredBundleOutput(std::move(header));
             std::filesystem::path metadata = outputPath;
             metadata.replace_extension(".nsmeta");
-            manifest.addRequiredBundleOutput(std::move(metadata));
+            manifest.addRequiredBundleOutput(metadata);
+            manifest.addRequiredBundleOutput(
+                compilation::precompiledProductSidecarPath(metadata));
+        }
+        if (productKind == "library-metadata")
+        {
+            manifest.addRequiredBundleOutput(
+                compilation::precompiledProductSidecarPath(outputPath));
         }
         if (productKind == "dynamic-library")
         {

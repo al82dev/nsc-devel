@@ -164,12 +164,9 @@ ProjectMethodBodyModel::resolveOptionalCarrier(std::string_view typeKey) const
         return std::nullopt;
     }
 
-    const std::span<const GenericTemplateRecord> templates = genericModel_->templates();
-    const auto source = std::ranges::find_if(templates, [&](const GenericTemplateRecord& candidate)
-    {
-        return candidate.canonicalKey == specialization->templateKey;
-    });
-    if (source == templates.end() || source->namespaceName != "NativeSharp.Core" ||
+    const GenericTemplateRecord* source =
+        genericModel_->templateForCanonicalKey(specialization->templateKey);
+    if (source == nullptr || source->namespaceName != "NativeSharp.Core" ||
         !source->ownerName.empty() || source->name != "Optional" ||
         source->parameters.size() != 1U)
     {
@@ -187,11 +184,23 @@ ProjectMethodBodyModel::resolveOptionalCarrier(std::string_view typeKey) const
     std::optional<std::size_t> hasValueMemberOrdinal;
     std::optional<std::size_t> uncheckedValueMemberOrdinal;
     const std::span<const ClassMemberSymbol> members = memberModel_->members();
-    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+    std::vector<std::size_t> fallbackMemberOrdinals;
+    std::span<const std::size_t> memberOrdinals =
+        memberModel_->membersDeclaredByType(*typeOrdinal);
+    if (!memberModel_->hasMembersDeclaredByTypeIndex())
     {
+        for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+        {
+            if (members[ordinal].declaringTypeOrdinal == *typeOrdinal)
+                fallbackMemberOrdinals.push_back(ordinal);
+        }
+        memberOrdinals = fallbackMemberOrdinals;
+    }
+    for (const std::size_t ordinal : memberOrdinals)
+    {
+        if (ordinal >= members.size()) continue;
         const ClassMemberSymbol& member = members[ordinal];
-        if (member.declaringTypeOrdinal != *typeOrdinal ||
-            member.kind != ClassMemberKind::Method || member.isStatic ||
+        if (member.kind != ClassMemberKind::Method || member.isStatic ||
             member.accessibility != ClassMemberAccessibility::Public ||
             !member.parameters.empty())
         {

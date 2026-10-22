@@ -78,6 +78,9 @@ public:
     void clearBodyTypeDemands() noexcept;
     void registerGenericTypeDemand(std::string key);
     void clearGenericTypeDemands() noexcept;
+    bool hasTypeIndex() const noexcept;
+    bool hasLayoutIndexes() const noexcept;
+    bool hasMirLayoutIndexes() const noexcept;
     const NamedTypeDeclaration* typeForOrdinal(std::size_t ordinal) const noexcept;
     std::optional<std::size_t> typeOrdinalForIdentity(std::string_view identity) const;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
@@ -107,6 +110,15 @@ public:
         std::string_view key) const noexcept;
     const GenericSpecializationRecord* genericSpecializationForName(
         std::string_view name) const noexcept;
+    bool hasHirOwnerIndexes() const noexcept;
+    std::span<const std::size_t> hirLocalOrdinalsForMember(
+        std::size_t memberOrdinal) const noexcept;
+    bool hasHirLambdaIndexes() const noexcept;
+    std::span<const std::size_t> hirLocalOrdinalsForLambda(
+        std::size_t lambdaOrdinal) const noexcept;
+    bool hasHirCleanupOwnerIndex() const noexcept;
+    std::span<const std::size_t> hirCleanupRegionOrdinalsForMember(
+        std::size_t memberOrdinal) const noexcept;
     const MethodLocalSymbol* hirLocalForSyntax(const ast::AstNode* syntax) const noexcept;
     const MethodLambdaBinding* hirLambdaForSyntax(const ast::AstNode* syntax) const noexcept;
     const MethodLambdaValueBinding* hirLambdaValueForSyntax(const ast::AstNode* syntax) const noexcept;
@@ -179,6 +191,7 @@ private:
     std::vector<const NamedTypeDeclaration*> typesByOrdinal_;
     TypeIdentityIndex typeOrdinalByIdentity_;
     TypeNameIndex typeOrdinalsByName_;
+    bool typeIndexBuilt_ = false;
     std::vector<const ClassMemberSymbol*> membersByOrdinal_;
     StringIndex<std::vector<std::size_t>> memberOrdinalsByName_;
     std::vector<MemberSignatureIndex> memberOrdinalsBySignature_;
@@ -188,6 +201,7 @@ private:
     std::vector<const StructValueLayout*> structLayoutsByType_;
     std::vector<const ObjectFieldLayout*> fieldLayoutsByMember_;
     std::vector<const ObjectAllocationPlan*> allocationPlansByConstruction_;
+    bool layoutIndexesBuilt_ = false;
     std::vector<const GenericTemplateRecord*> genericTemplatesByOrdinal_;
     StringIndex<const GenericTemplateRecord*> genericTemplateByCanonicalKey_;
     StringIndex<std::vector<std::size_t>> genericTemplateOrdinalsByName_;
@@ -198,6 +212,12 @@ private:
     StringIndex<const GenericSpecializationRecord*> genericSpecializationByName_;
     std::unordered_set<std::string> bodyTypeDemandKeys_;
     std::unordered_set<std::string> genericTypeDemandKeys_;
+    bool hirOwnerIndexesBuilt_ = false;
+    std::vector<std::vector<std::size_t>> hirLocalOrdinalsByMember_;
+    bool hirLambdaIndexesBuilt_ = false;
+    std::vector<std::vector<std::size_t>> hirLocalOrdinalsByLambda_;
+    bool hirCleanupOwnerIndexBuilt_ = false;
+    std::vector<std::vector<std::size_t>> hirCleanupRegionOrdinalsByMember_;
     std::unordered_map<const ast::AstNode*, const MethodLocalSymbol*> hirLocalBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodLambdaBinding*> hirLambdaBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodLambdaValueBinding*> hirLambdaValueBySyntax_;
@@ -210,6 +230,7 @@ private:
     StringIndex<const ProjectOopMirStructLayout*> mirStructLayoutsByTypeKey_;
     std::vector<const ProjectOopMirClassLayout*> mirClassLayoutsByType_;
     StringIndex<const ProjectOopMirClassLayout*> mirClassLayoutsByTypeKey_;
+    bool mirLayoutIndexesBuilt_ = false;
     std::vector<std::unordered_map<std::size_t, const ProjectOopMirInterfaceBinding*>>
         mirInterfaceBindingsByImplementingType_;
     std::unordered_map<std::size_t, MirInterfaceSlot> mirInterfaceSlotsByMember_;

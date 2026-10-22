@@ -841,6 +841,7 @@ void ProjectOopMirModel::configureFunctionLowerer(
     lowerer.interfaceModel_ = &interfaceModel;
     lowerer.destructionModel_ = &destructionModel;
     lowerer.hirModel_ = &hirModel;
+    lowerer.indexes_ = indexes_;
 }
 
 bool ProjectOopMirModel::lowerFunctions(

@@ -4300,6 +4300,7 @@ private:
     std::vector<ProjectOopHirFieldInitializer> fieldInitializers_;
     std::vector<std::optional<std::size_t>> functionByMember_;
     std::vector<std::optional<std::size_t>> functionByNamespaceFunction_;
+    std::vector<std::optional<std::size_t>> functionByLambda_;
     std::unordered_map<const ast::AstNode*, const MethodNameBinding*> nameBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodExpressionTypeBinding*> expressionTypeBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodCallBinding*> callBySyntax_;

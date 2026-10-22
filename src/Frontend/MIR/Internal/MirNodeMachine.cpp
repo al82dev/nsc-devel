@@ -1,4 +1,5 @@
 #include "MirNodeMachine.h"
+#include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -24,6 +25,17 @@ std::uint64_t stableTypeId(std::string_view value) noexcept
     }
     return hash;
 }
+}
+
+const ProjectOopMirStructLayout*
+ProjectOopMirModel::MirNodeMachine::structLayoutForTypeKey(
+    std::string_view typeKey) const noexcept
+{
+    if (model_.indexes_ != nullptr && model_.indexes_->hasMirLayoutIndexes())
+        return model_.indexes_->mirStructLayoutForTypeKey(typeKey);
+    for (const ProjectOopMirStructLayout& layout : structLayouts_)
+        if (layout.typeKey == typeKey) return &layout;
+    return nullptr;
 }
 
 void ProjectOopMirModel::MirNodeMachine::copyIdentity(
@@ -1589,15 +1601,8 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup16(
                 error = "future field address requires a field index and a future type key";
                 return -1;
             }
-            const ProjectOopMirStructLayout* layout = nullptr;
-            for (const ProjectOopMirStructLayout& candidate : structLayouts_)
-            {
-                if (candidate.typeKey == node->elementTypeKey)
-                {
-                    layout = &candidate;
-                    break;
-                }
-            }
+            const ProjectOopMirStructLayout* layout =
+                structLayoutForTypeKey(node->elementTypeKey);
             if (layout == nullptr || *node->memberOrdinal >= layout->fields.size())
             {
                 error = "future field address has no field layout for '" + node->elementTypeKey +
@@ -1622,15 +1627,7 @@ int ProjectOopMirModel::MirNodeMachine::lowerAwaitFuture(
     ProjectOopMirNode* result,
     std::string& error)
 {
-    const ProjectOopMirStructLayout* layout = nullptr;
-    for (const ProjectOopMirStructLayout& candidate : structLayouts_)
-    {
-        if (candidate.typeKey == node->elementTypeKey)
-        {
-            layout = &candidate;
-            break;
-        }
-    }
+    const ProjectOopMirStructLayout* layout = structLayoutForTypeKey(node->elementTypeKey);
     if (layout == nullptr || layout->fields.size() < 3)
     {
         error = "await future has no result field layout for '" + node->elementTypeKey + "'";

@@ -72,6 +72,8 @@ public:
 
     std::span<const GenericTemplateRecord> templates() const noexcept;
     std::span<const GenericSpecializationRecord> specializations() const noexcept;
+    const GenericTemplateRecord* templateForCanonicalKey(
+        std::string_view canonicalKey) const noexcept;
     const GenericSpecializationRecord* specializationForSyntax(
         const ast::AstNode* syntax) const noexcept;
     const GenericSpecializationRecord* specializationForTypeKey(

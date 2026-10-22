@@ -76,6 +76,17 @@ bool ProjectOopMirModel::MirVerifier::appendInterfaceBinding(
         source.interfaceMemberOrdinals,
         source.implementationMemberOrdinals,
         source.calleeNames});
+    const std::size_t bindingIndex = model_.interfaceBindings_.size() - 1U;
+    if (table.typeOrdinal >= model_.interfaceBindingIndexByImplementingType_.size())
+        model_.interfaceBindingIndexByImplementingType_.resize(table.typeOrdinal + 1U);
+    model_.interfaceBindingIndexByImplementingType_[table.typeOrdinal].try_emplace(
+        source.interfaceTypeOrdinal, bindingIndex);
+    for (std::size_t slot = 0; slot < source.interfaceMemberOrdinals.size(); ++slot)
+    {
+        model_.interfaceSlotIndexByMember_.try_emplace(
+            source.interfaceMemberOrdinals[slot],
+            std::pair{source.stableInterfaceTypeId, slot});
+    }
     return true;
 }
 
