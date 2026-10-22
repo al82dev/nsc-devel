@@ -79,6 +79,7 @@ public:
     std::span<const std::size_t> findMembers(
         std::size_t typeOrdinal,
         std::string_view name) const noexcept;
+    std::span<const std::size_t> findMembers(std::string_view name) const noexcept;
     std::span<const std::size_t> findMembersBySignature(
         std::size_t typeOrdinal,
         std::string_view signature) const noexcept;

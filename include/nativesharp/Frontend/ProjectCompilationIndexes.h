@@ -71,6 +71,8 @@ public:
     std::optional<std::size_t> typeOrdinalForIdentity(std::string_view identity) const;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
     const ClassMemberSymbol* memberForOrdinal(std::size_t ordinal) const noexcept;
+    std::span<const std::size_t> memberOrdinalsForName(
+        std::string_view name) const noexcept;
     std::span<const std::size_t> memberOrdinalsForSignature(
         std::size_t typeOrdinal,
         std::string_view signature) const noexcept;
@@ -141,6 +143,7 @@ private:
     TypeIdentityIndex typeOrdinalByIdentity_;
     TypeNameIndex typeOrdinalsByName_;
     std::vector<const ClassMemberSymbol*> membersByOrdinal_;
+    StringIndex<std::vector<std::size_t>> memberOrdinalsByName_;
     std::vector<MemberSignatureIndex> memberOrdinalsBySignature_;
     std::vector<const VirtualMethodInfo*> virtualMethodsByMember_;
     std::vector<const ClassVirtualTable*> virtualTablesByType_;

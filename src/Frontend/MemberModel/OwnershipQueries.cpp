@@ -249,6 +249,12 @@ std::span<const std::size_t> ProjectMemberModel::findMembers(
         : std::span<const std::size_t>(empty);
 }
 
+std::span<const std::size_t> ProjectMemberModel::findMembers(
+    std::string_view name) const noexcept
+{
+    return indexes_->memberOrdinalsForName(name);
+}
+
 std::span<const std::size_t> ProjectMemberModel::findMembersBySignature(
     std::size_t typeOrdinal,
     std::string_view signature) const noexcept

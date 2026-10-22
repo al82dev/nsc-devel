@@ -38,6 +38,7 @@ void ProjectCompilationIndexes::clear() noexcept
     typeOrdinalByIdentity_.clear();
     typeOrdinalsByName_.clear();
     membersByOrdinal_.clear();
+    memberOrdinalsByName_.clear();
     memberOrdinalsBySignature_.clear();
     virtualMethodsByMember_.clear();
     virtualTablesByType_.clear();
@@ -62,6 +63,7 @@ void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaratio
     typeOrdinalByIdentity_.clear();
     typeOrdinalsByName_.clear();
     membersByOrdinal_.clear();
+    memberOrdinalsByName_.clear();
     memberOrdinalsBySignature_.clear();
     virtualMethodsByMember_.clear();
     virtualTablesByType_.clear();
@@ -149,6 +151,7 @@ void ProjectCompilationIndexes::clearGenericTypeDemands() noexcept
 void ProjectCompilationIndexes::rebuildMembers(std::span<const ClassMemberSymbol> members)
 {
     membersByOrdinal_.clear();
+    memberOrdinalsByName_.clear();
     memberOrdinalsBySignature_.clear();
     virtualMethodsByMember_.clear();
     virtualTablesByType_.clear();
@@ -157,6 +160,7 @@ void ProjectCompilationIndexes::rebuildMembers(std::span<const ClassMemberSymbol
     fieldLayoutsByMember_.clear();
     clearHirBindings();
     membersByOrdinal_.reserve(members.size());
+    memberOrdinalsByName_.reserve(members.size());
     std::size_t typeCount = typesByOrdinal_.size();
     std::vector<std::size_t> memberCountsByType(typeCount, 0U);
     for (const ClassMemberSymbol& member : members)
@@ -177,6 +181,7 @@ void ProjectCompilationIndexes::rebuildMembers(std::span<const ClassMemberSymbol
     {
         const ClassMemberSymbol& member = members[ordinal];
         membersByOrdinal_.push_back(&member);
+        memberOrdinalsByName_[member.name].push_back(ordinal);
         memberOrdinalsBySignature_[member.declaringTypeOrdinal][member.signatureKey].push_back(ordinal);
     }
 }
@@ -349,6 +354,14 @@ const ClassMemberSymbol* ProjectCompilationIndexes::memberForOrdinal(
     std::size_t ordinal) const noexcept
 {
     return ordinal < membersByOrdinal_.size() ? membersByOrdinal_[ordinal] : nullptr;
+}
+
+std::span<const std::size_t> ProjectCompilationIndexes::memberOrdinalsForName(
+    std::string_view name) const noexcept
+{
+    const auto iterator = memberOrdinalsByName_.find(name);
+    return iterator == memberOrdinalsByName_.end()
+        ? std::span<const std::size_t>{} : std::span<const std::size_t>(iterator->second);
 }
 
 std::span<const std::size_t> ProjectCompilationIndexes::memberOrdinalsForSignature(

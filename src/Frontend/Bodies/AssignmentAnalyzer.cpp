@@ -787,10 +787,11 @@ void ProjectMethodBodyModel::recordEventAssignmentBinding(
     // NS304-T09-F08: un event con accessors custom invoca add_/remove_ en vez de la storage.
     const std::string accessorName =
         (binding.kind == MethodEventOperationKind::Add ? "add_" : "remove_") + event.name;
-    for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+    for (const std::size_t ordinal : memberModel_->findMembers(accessorName))
     {
+        if (ordinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& candidate = memberModel_->members()[ordinal];
-        if (candidate.name == accessorName && candidate.kind == ClassMemberKind::Method)
+        if (candidate.kind == ClassMemberKind::Method)
         {
             binding.customAccessorMemberOrdinal = ordinal;
             break;

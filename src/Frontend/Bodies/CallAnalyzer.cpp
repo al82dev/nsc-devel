@@ -2229,13 +2229,12 @@ void ProjectMethodBodyModel::bindAtomicOperation(
     std::optional<std::size_t> valueFieldOrdinal;
     if (atomicWrapper && memberModel_ != nullptr)
     {
-        for (std::size_t candidateOrdinal = 0;
-             candidateOrdinal < memberModel_->members().size(); ++candidateOrdinal)
+        for (const std::size_t candidateOrdinal : memberModel_->findMembers("value_"))
         {
+            if (candidateOrdinal >= memberModel_->members().size()) continue;
             const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
             if (candidate.kind == ClassMemberKind::Field &&
-                candidate.declaringTypeOrdinal == selectedMember.declaringTypeOrdinal &&
-                candidate.name == "value_")
+                candidate.declaringTypeOrdinal == selectedMember.declaringTypeOrdinal)
             {
                 valueFieldOrdinal = candidateOrdinal;
                 break;
@@ -2441,23 +2440,21 @@ void ProjectMethodBodyModel::recognizeCoreMutexMonitorOperations(
         {
             std::optional<std::size_t> lockFieldOrdinal;
             std::optional<std::size_t> cvFieldOrdinal;
-            for (std::size_t candidateOrdinal = 0;
-                candidateOrdinal < memberModel_->members().size(); ++candidateOrdinal)
+            for (const std::size_t candidateOrdinal : memberModel_->findMembers("lock_"))
             {
+                if (candidateOrdinal >= memberModel_->members().size()) continue;
                 const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
-                if (candidate.kind != ClassMemberKind::Field ||
-                    candidate.declaringTypeOrdinal != selectedMember.declaringTypeOrdinal)
-                {
-                    continue;
-                }
-                if (candidate.name == "lock_")
-                {
+                if (candidate.kind == ClassMemberKind::Field &&
+                    candidate.declaringTypeOrdinal == selectedMember.declaringTypeOrdinal)
                     lockFieldOrdinal = candidateOrdinal;
-                }
-                else if (candidate.name == "cv_")
-                {
+            }
+            for (const std::size_t candidateOrdinal : memberModel_->findMembers("cv_"))
+            {
+                if (candidateOrdinal >= memberModel_->members().size()) continue;
+                const ClassMemberSymbol& candidate = memberModel_->members()[candidateOrdinal];
+                if (candidate.kind == ClassMemberKind::Field &&
+                    candidate.declaringTypeOrdinal == selectedMember.declaringTypeOrdinal)
                     cvFieldOrdinal = candidateOrdinal;
-                }
             }
             const bool needsBoth = *monitorKind == MethodCoreOperationKind::MonitorWait;
             const bool needsLockOnly = *monitorKind == MethodCoreOperationKind::MonitorEnter ||
