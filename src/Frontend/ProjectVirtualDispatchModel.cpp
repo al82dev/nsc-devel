@@ -9,6 +9,17 @@
 
 namespace nativesharp::frontend
 {
+ProjectVirtualDispatchModel::ProjectVirtualDispatchModel() noexcept
+    : indexes_(&ownedIndexes_)
+{
+}
+
+ProjectVirtualDispatchModel::ProjectVirtualDispatchModel(
+    ProjectCompilationIndexes& indexes) noexcept
+    : indexes_(&indexes)
+{
+}
+
 bool ProjectVirtualDispatchModel::build(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
@@ -39,6 +50,8 @@ bool ProjectVirtualDispatchModel::build(
             ok = false;
         }
     }
+    indexes_->rebuildDispatch(
+        virtualMethods_, classTables_, memberModel.members().size(), nameLookup.namedTypes().size());
     built_ = true;
     return ok && !diagnostics.hasErrors();
 }
@@ -55,6 +68,10 @@ std::span<const ClassVirtualTable> ProjectVirtualDispatchModel::classTables() co
 
 const VirtualMethodInfo* ProjectVirtualDispatchModel::virtualMethod(std::size_t memberOrdinal) const noexcept
 {
+    if (built_)
+    {
+        return indexes_->virtualMethodForMember(memberOrdinal);
+    }
     if (memberOrdinal >= virtualInfoByMember_.size() || !virtualInfoByMember_[memberOrdinal].has_value())
     {
         return nullptr;
@@ -65,6 +82,10 @@ const VirtualMethodInfo* ProjectVirtualDispatchModel::virtualMethod(std::size_t 
 
 const ClassVirtualTable* ProjectVirtualDispatchModel::classTable(std::size_t typeOrdinal) const noexcept
 {
+    if (built_)
+    {
+        return indexes_->virtualTableForType(typeOrdinal);
+    }
     if (typeOrdinal >= tableByType_.size() || !tableByType_[typeOrdinal].has_value())
     {
         return nullptr;
@@ -495,14 +516,15 @@ std::optional<std::size_t> ProjectVirtualDispatchModel::inheritedMethodWithSigna
     std::optional<std::size_t> current = inheritanceModel_->baseTypeOrdinal(typeOrdinal);
     while (current.has_value())
     {
-        for (const std::size_t memberOrdinal : memberModel_->membersOfType(*current))
+        for (const std::size_t memberOrdinal :
+             memberModel_->findMembersBySignature(*current, method.signatureKey))
         {
             if (memberOrdinal >= memberModel_->members().size())
             {
                 continue;
             }
             const ClassMemberSymbol& candidate = memberModel_->members()[memberOrdinal];
-            if (candidate.kind == ClassMemberKind::Method && candidate.signatureKey == method.signatureKey)
+            if (candidate.kind == ClassMemberKind::Method)
             {
                 return memberOrdinal;
             }

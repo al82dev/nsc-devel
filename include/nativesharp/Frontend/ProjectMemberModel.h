@@ -14,6 +14,7 @@
 #include "nativesharp/Basic/FileId.h"
 #include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Frontend/InliningPolicy.h"
 #include "nativesharp/Language/OwnershipSemantics.h"
@@ -53,6 +54,9 @@ const char* parameterPassKindKeyword(ParameterPassKind kind) noexcept;
 class ProjectMemberModel final
 {
 public:
+    ProjectMemberModel() noexcept;
+    explicit ProjectMemberModel(ProjectCompilationIndexes& indexes) noexcept;
+
     bool build(
         const ProjectNameLookup& nameLookup,
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
@@ -75,6 +79,9 @@ public:
     std::span<const std::size_t> findMembers(
         std::size_t typeOrdinal,
         std::string_view name) const noexcept;
+    std::span<const std::size_t> findMembersBySignature(
+        std::size_t typeOrdinal,
+        std::string_view signature) const noexcept;
     std::optional<std::size_t> typeOrdinalForTypeKey(
         std::string_view typeKey) const noexcept;
     bool isBuilt() const noexcept;
@@ -514,6 +521,8 @@ private:
         diagnostics::DiagnosticEngine& diagnostics,
         std::string message) const;
 
+    ProjectCompilationIndexes ownedIndexes_;
+    ProjectCompilationIndexes* indexes_ = nullptr;
     const ProjectNameLookup* nameLookup_ = nullptr;
     const ProjectGenericModel* genericModel_ = nullptr;
     std::vector<ClassMemberSymbol> members_;

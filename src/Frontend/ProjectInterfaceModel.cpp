@@ -1278,14 +1278,15 @@ std::optional<std::size_t> ProjectInterfaceModel::findImplementation(
     std::optional<std::size_t> current = classTypeOrdinal;
     while (current.has_value())
     {
-        for (const std::size_t memberOrdinal : memberModel_->membersOfType(*current))
+        for (const std::size_t memberOrdinal :
+             memberModel_->findMembersBySignature(*current, interfaceMethod.signatureKey))
         {
             if (memberOrdinal >= memberModel_->members().size())
             {
                 continue;
             }
             const ClassMemberSymbol& candidate = memberModel_->members()[memberOrdinal];
-            if (candidate.kind != ClassMemberKind::Method || candidate.signatureKey != interfaceMethod.signatureKey)
+            if (candidate.kind != ClassMemberKind::Method)
             {
                 continue;
             }
@@ -1311,12 +1312,12 @@ std::optional<std::size_t> ProjectInterfaceModel::findStaticImplementation(
     std::optional<std::size_t> current = classTypeOrdinal;
     while (current.has_value())
     {
-        for (const std::size_t memberOrdinal : memberModel_->membersOfType(*current))
+        for (const std::size_t memberOrdinal :
+             memberModel_->findMembersBySignature(*current, requirement.signatureKey))
         {
             if (memberOrdinal >= memberModel_->members().size()) continue;
             const ClassMemberSymbol& candidate = memberModel_->members()[memberOrdinal];
-            if (candidate.kind != ClassMemberKind::Method ||
-                candidate.signatureKey != requirement.signatureKey)
+            if (candidate.kind != ClassMemberKind::Method)
                 continue;
             if (!candidate.isStatic ||
                 candidate.accessibility != ClassMemberAccessibility::Public ||

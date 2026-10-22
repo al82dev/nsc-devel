@@ -692,7 +692,7 @@ bool ProjectCompilation::compileProjectMembers(
     if (cancellationRequested(loadError, "members")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "members");
-    memberModel_ = std::make_unique<ProjectMemberModel>();
+    memberModel_ = std::make_unique<ProjectMemberModel>(indexes_);
     if (!memberModel_->build(*nameLookup_, units_, diagnostics_, genericModel_.get())) return false;
     if (!memberModel_->buildModuleInitializationPlan(*projectGraph_, loadError)) return false;
 
@@ -869,7 +869,7 @@ bool ProjectCompilation::compileProjectVirtualDispatch(
     if (cancellationRequested(loadError, "virtual-dispatch")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "virtual-dispatch");
-    virtualDispatchModel_ = std::make_unique<ProjectVirtualDispatchModel>();
+    virtualDispatchModel_ = std::make_unique<ProjectVirtualDispatchModel>(indexes_);
     return virtualDispatchModel_->build(
         *nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
 }

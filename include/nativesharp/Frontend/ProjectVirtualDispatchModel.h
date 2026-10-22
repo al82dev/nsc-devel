@@ -23,6 +23,9 @@ namespace nativesharp::frontend
 class ProjectVirtualDispatchModel final
 {
 public:
+    ProjectVirtualDispatchModel() noexcept;
+    explicit ProjectVirtualDispatchModel(ProjectCompilationIndexes& indexes) noexcept;
+
     bool build(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
@@ -90,6 +93,8 @@ private:
         std::size_t typeOrdinal,
         const ClassMemberSymbol& method) const noexcept;
 
+    ProjectCompilationIndexes ownedIndexes_;
+    ProjectCompilationIndexes* indexes_ = nullptr;
     const ProjectNameLookup* nameLookup_ = nullptr;
     const ProjectMemberModel* memberModel_ = nullptr;
     const ProjectInheritanceModel* inheritanceModel_ = nullptr;

@@ -38,6 +38,16 @@
 
 namespace nativesharp::frontend
 {
+ProjectMemberModel::ProjectMemberModel() noexcept
+    : indexes_(&ownedIndexes_)
+{
+}
+
+ProjectMemberModel::ProjectMemberModel(ProjectCompilationIndexes& indexes) noexcept
+    : indexes_(&indexes)
+{
+}
+
 std::size_t ProjectMemberModel::TransparentStringHash::operator()(std::string_view value) const noexcept
         {
             return std::hash<std::string_view>{}(value);
@@ -72,6 +82,7 @@ bool ProjectMemberModel::build(
     validateRawUnions(nameLookup, diagnostics);
     collectAnonymousMemberPromotions(nameLookup, diagnostics);
     buildMemberNameIndex();
+    indexes_->rebuildMembers(members_);
 
     validateCAbiExportNames(diagnostics);
     validateImportedCIdentities(diagnostics);
