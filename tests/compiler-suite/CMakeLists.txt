@@ -431,6 +431,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LanguageService/Internal/MemberCompletionAnalysis.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LanguageService/Internal/MemberCompletionResolver.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/PrecompiledProductCache.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/PrecompiledProductSidecarCodec.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/PrecompiledProjectPreparation.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/PrecompiledSurface/ContractMaterialization.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/PrecompiledSurface/MetadataSourceMapping.cpp"

@@ -30,7 +30,7 @@
 | T3.6 | Convertir `AstArena` en asignación por bloques conservando destrucción tipada y estabilidad de punteros | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
 | T3.7 | Detectar antes de `ComptimeEngine` las fuentes que no contienen ninguna forma comptime | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
 | T3.8 | Transferir sin copia la fuente sin comptime a `SourceManager` y crear `ComptimeCache` sólo cuando alguna unidad la necesita | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
-| T4.1 | Definir un sidecar determinista de productos precompilados ligado al digest de NSMETA y al build-id, sin cambiar NSMETA | PENDIENTE |
+| T4.1 | Definir un sidecar determinista de productos precompilados ligado al digest de NSMETA y al build-id, sin cambiar NSMETA | PENDIENTE — IMPLEMENTADO, VALIDACIÓN DEL USUARIO PENDIENTE |
 | T4.2 | Emitir en el productor las superficies pública y de templates que hoy se regeneran desde NSMETA en cada consumidor | PENDIENTE |
 | T4.3 | Emitir en el productor tokens y AST serializados de ambas superficies para no ejecutar lexer ni parser en frío | PENDIENTE |
 | T4.4 | Transportar la ruta del sidecar por `LibraryReference`, cierre binario y paquete sin cambiar el contrato de la biblioteca | PENDIENTE |
