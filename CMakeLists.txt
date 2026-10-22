@@ -935,6 +935,27 @@ if(WIN32)
         "/libpath:${NSC_VS2026_CRT_LIBRARY_DIR}")
     target_compile_features(nsc_windows_runtime_imports PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_windows_runtime_imports)
+
+    set(NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY
+        "${CMAKE_CURRENT_BINARY_DIR}/sdk/win64/import-libraries")
+    set(NSC_WINDOWS_RUNTIME_IMPORT_LIBRARIES
+        "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}/KERNEL32.import.lib"
+        "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}/KERNELBASE.import.lib"
+        "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}/SHELL32.import.lib"
+        "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}/UCRTBASE.import.lib")
+    add_custom_command(
+        OUTPUT ${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARIES}
+        COMMAND "${CMAKE_COMMAND}" -E make_directory
+            "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "NSC_LINKER=${NSC_NSLINK_EXECUTABLE}"
+            $<TARGET_FILE:nsc_windows_runtime_imports>
+            "${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY}"
+        DEPENDS nsc_windows_runtime_imports
+        COMMENT "Generating canonical NativeSharp Windows import libraries"
+        VERBATIM)
+    add_custom_target(nsc_windows_runtime_import_libraries ALL
+        DEPENDS ${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARIES})
 endif()
 
 add_library(nsc_driver STATIC
@@ -1002,6 +1023,7 @@ add_executable(nsc
     src/nsc/main.cpp)
 target_link_libraries(nsc PRIVATE nsc_driver)
 if(WIN32)
+    add_dependencies(nsc nsc_windows_runtime_import_libraries)
     target_link_options(nsc PRIVATE "/libpath:${NSC_VS2026_CRT_LIBRARY_DIR}")
 endif()
 target_compile_features(nsc PRIVATE cxx_std_20)
@@ -1150,6 +1172,13 @@ set(NSC_INSTALLATION_EXPECTED_PATHS
 if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "bin/LLVM-C.dll")
 endif()
+if(WIN32)
+    list(APPEND NSC_INSTALLATION_EXPECTED_PATHS
+        "sdk/win64/import-libraries/KERNEL32.import.lib"
+        "sdk/win64/import-libraries/KERNELBASE.import.lib"
+        "sdk/win64/import-libraries/SHELL32.import.lib"
+        "sdk/win64/import-libraries/UCRTBASE.import.lib")
+endif()
 foreach(_nsc_install_file IN LISTS NSC_INSTALLATION_LIBRARY_FILES)
     list(APPEND NSC_INSTALLATION_EXPECTED_PATHS "lib/${_nsc_install_file}")
 endforeach()
@@ -1210,6 +1239,10 @@ foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
 endforeach()
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/sdk/win64/nativesharp-runtime.nsimports"
     DESTINATION sdk/win64)
+if(WIN32)
+    install(FILES ${NSC_WINDOWS_RUNTIME_IMPORT_LIBRARIES}
+        DESTINATION sdk/win64/import-libraries)
+endif()
 install(FILES "${NSC_TOOLCHAIN_CONTRACT}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_COMPATIBILITY_POLICY}" DESTINATION share/nativesharp/toolchain)
 install(FILES "${NSC_MIGRATION_BASELINE}" DESTINATION share/nativesharp/toolchain)
