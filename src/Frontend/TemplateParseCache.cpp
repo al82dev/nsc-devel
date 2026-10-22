@@ -62,6 +62,72 @@ void quarantineInvalidEntry(
     std::filesystem::rename(payload, quarantinedPayload, filesystemError);
 }
 
+bool locateTemplateEntry(
+    const std::filesystem::path& root,
+    std::string_view key,
+    const std::filesystem::path& payload,
+    const std::filesystem::path& metadata,
+    TemplateParseCacheLookupReason& reason)
+{
+    std::error_code filesystemError;
+    const bool metadataExists = std::filesystem::exists(metadata, filesystemError);
+    if (filesystemError)
+    {
+        reason = TemplateParseCacheLookupReason::Unavailable;
+        return false;
+    }
+    const bool payloadExists = std::filesystem::exists(payload, filesystemError);
+    if (filesystemError)
+    {
+        reason = TemplateParseCacheLookupReason::Unavailable;
+        return false;
+    }
+    if (!metadataExists && !payloadExists)
+    {
+        reason = TemplateParseCacheLookupReason::Cold;
+        return false;
+    }
+    if (metadataExists && payloadExists) return true;
+    reason = TemplateParseCacheLookupReason::IncompletePublication;
+    quarantineInvalidEntry(root, key, payload, metadata);
+    return false;
+}
+
+TemplateParseCacheLookupReason readTemplateEntry(
+    const std::filesystem::path& root,
+    std::string_view key,
+    const std::filesystem::path& payloadFile,
+    const std::filesystem::path& metadataFile,
+    std::string& payload)
+{
+    internal::CacheMetadata metadata;
+    if (!templateEntryStore.readMetadata(metadataFile, metadata) || metadata.key != key)
+    {
+        quarantineInvalidEntry(root, key, payloadFile, metadataFile);
+        return TemplateParseCacheLookupReason::Corruption;
+    }
+    std::error_code filesystemError;
+    const std::uintmax_t size = std::filesystem::file_size(payloadFile, filesystemError);
+    if (filesystemError || size != metadata.size)
+    {
+        quarantineInvalidEntry(root, key, payloadFile, metadataFile);
+        return TemplateParseCacheLookupReason::Corruption;
+    }
+    std::ifstream stream(payloadFile, std::ios::binary);
+    payload.resize(static_cast<std::size_t>(size));
+    if (!stream.read(payload.data(), static_cast<std::streamsize>(size)))
+    {
+        quarantineInvalidEntry(root, key, payloadFile, metadataFile);
+        return TemplateParseCacheLookupReason::Corruption;
+    }
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size()};
+    const std::string digest = basic::sha256Hex(basic::sha256(bytes));
+    if (digest == metadata.digest) return TemplateParseCacheLookupReason::Hit;
+    quarantineInvalidEntry(root, key, payloadFile, metadataFile);
+    return TemplateParseCacheLookupReason::Corruption;
+}
+
 using internal::CacheMetadata;
 using internal::TemplateParseCacheEntry;
 
@@ -105,54 +171,68 @@ const std::filesystem::path& TemplateParseCache::root() const noexcept
     return root_;
 }
 
+const char* templateParseCacheLookupReasonName(
+    TemplateParseCacheLookupReason reason) noexcept
+{
+    switch (reason)
+    {
+        case TemplateParseCacheLookupReason::Hit: return "hit";
+        case TemplateParseCacheLookupReason::Disabled: return "disabled";
+        case TemplateParseCacheLookupReason::InvalidKey: return "invalid-key";
+        case TemplateParseCacheLookupReason::Cold: return "cold";
+        case TemplateParseCacheLookupReason::IncompletePublication:
+            return "incomplete-publication";
+        case TemplateParseCacheLookupReason::Corruption: return "corruption";
+        case TemplateParseCacheLookupReason::Unavailable: return "unavailable";
+    }
+    return "unavailable";
+}
+
 bool TemplateParseCache::restore(
     std::string_view key,
     std::string& payload,
     bool& hit,
+    std::string& error) const
+{
+    TemplateParseCacheLookupReason ignoredReason =
+        TemplateParseCacheLookupReason::Cold;
+    return restore(key, payload, hit, ignoredReason, error);
+}
+
+bool TemplateParseCache::restore(
+    std::string_view key,
+    std::string& payload,
+    bool& hit,
+    TemplateParseCacheLookupReason& reason,
     std::string& /*error*/) const
 {
     hit = false;
     payload.clear();
-    if (!enabled() || !internal::CacheEntryStore::validKey(key)) return true;
+    if (!enabled())
+    {
+        reason = TemplateParseCacheLookupReason::Disabled;
+        return true;
+    }
+    if (!internal::CacheEntryStore::validKey(key))
+    {
+        reason = TemplateParseCacheLookupReason::InvalidKey;
+        return true;
+    }
 
     const std::filesystem::path payloadFile = payloadPath(root_, key);
     const std::filesystem::path metadataFile = metadataPath(root_, key);
-    CacheMetadata metadata;
-    if (!templateEntryStore.readMetadata(metadataFile, metadata))
-    {
-        // Missing entry is a valid cold miss, not an error.
-        return true;
-    }
-    if (metadata.key != key)
-    {
-        quarantineInvalidEntry(root_, key, payloadFile, metadataFile);
-        return true;
-    }
-
-    std::error_code filesystemError;
-    const std::uintmax_t size = std::filesystem::file_size(payloadFile, filesystemError);
-    if (filesystemError || size != metadata.size)
-    {
-        quarantineInvalidEntry(root_, key, payloadFile, metadataFile);
-        return true;
-    }
-    std::ifstream stream(payloadFile, std::ios::binary);
-    payload.resize(static_cast<std::size_t>(size));
-    if (!stream.read(payload.data(), static_cast<std::streamsize>(size)))
-    {
-        quarantineInvalidEntry(root_, key, payloadFile, metadataFile);
-        return true;
-    }
-    const std::span<const std::uint8_t> bytes{
-        reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size()};
-    const std::string digest = basic::sha256Hex(basic::sha256(bytes));
-    if (digest != metadata.digest)
-    {
-        quarantineInvalidEntry(root_, key, payloadFile, metadataFile);
-        return true;
-    }
-    hit = true;
+    if (!locateTemplateEntry(root_, key, payloadFile, metadataFile, reason)) return true;
+    reason = readTemplateEntry(root_, key, payloadFile, metadataFile, payload);
+    hit = reason == TemplateParseCacheLookupReason::Hit;
+    if (!hit) payload.clear();
     return true;
+}
+
+void TemplateParseCache::quarantine(std::string_view key) const noexcept
+{
+    if (!enabled() || !internal::CacheEntryStore::validKey(key)) return;
+    quarantineInvalidEntry(
+        root_, key, payloadPath(root_, key), metadataPath(root_, key));
 }
 
 bool TemplateParseCache::store(

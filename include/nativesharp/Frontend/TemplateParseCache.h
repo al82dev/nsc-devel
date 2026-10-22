@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/TemplateParseCacheLookupReason.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -25,6 +27,15 @@ public:
         std::string& payload,
         bool& hit,
         std::string& error) const;
+
+    bool restore(
+        std::string_view key,
+        std::string& payload,
+        bool& hit,
+        TemplateParseCacheLookupReason& reason,
+        std::string& error) const;
+
+    void quarantine(std::string_view key) const noexcept;
 
     // Stores `payload` under `key` (atomic publication).
     bool store(

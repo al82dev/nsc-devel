@@ -1362,13 +1362,20 @@ bool ProjectCompilation::restoreTemplateParseProduct(std::string& loadError)
     cache.setRoot(templateCacheRoot_);
     std::string payload;
     bool hit = false;
-    if (!cache.restore(templateParseCacheKey_, payload, hit, loadError) || !hit) return true;
+    TemplateParseCacheLookupReason lookupReason = TemplateParseCacheLookupReason::Cold;
+    if (!cache.restore(
+            templateParseCacheKey_, payload, hit, lookupReason, loadError) ||
+        lookupReason != TemplateParseCacheLookupReason::Hit)
+    {
+        return true;
+    }
     internal::CachePayloadReader reader(payload);
     std::string schema;
     std::uint64_t unitCount = 0;
     if (!reader.string(schema) || schema != templateParseProductSchema ||
         !reader.u64(unitCount) || unitCount != units_.size())
     {
+        cache.quarantine(templateParseCacheKey_);
         return true;
     }
     std::vector<std::string> unitPayloads;
@@ -1379,11 +1386,16 @@ bool ProjectCompilation::restoreTemplateParseProduct(std::string& loadError)
         if (!readTemplateParseUnitIdentity(reader, *unit) ||
             !reader.string(unitPayload))
         {
+            cache.quarantine(templateParseCacheKey_);
             return true;
         }
         unitPayloads.push_back(std::move(unitPayload));
     }
-    if (!reader.remaining().empty()) return true;
+    if (!reader.remaining().empty())
+    {
+        cache.quarantine(templateParseCacheKey_);
+        return true;
+    }
     std::vector<std::vector<lexer::Token>> tokens(units_.size());
     std::vector<std::unique_ptr<ast::AstArena>> arenas(units_.size());
     std::vector<ast::AstNode*> trees(units_.size(), nullptr);
@@ -1393,6 +1405,7 @@ bool ProjectCompilation::restoreTemplateParseProduct(std::string& loadError)
         if (sourceFile == nullptr || !internal::deserializeSyntaxProductUnit(
                 *sourceFile, unitPayloads[index], tokens[index], arenas[index], trees[index]))
         {
+            cache.quarantine(templateParseCacheKey_);
             return true;
         }
     }
