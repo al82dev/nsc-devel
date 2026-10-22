@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <exception>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -23,12 +25,46 @@ public:
     template <typename T, typename... Args>
     T* make(Args&&... args)
     {
-        std::unique_ptr<T> object = std::make_unique<T>(std::forward<Args>(args)...);
-        entries_.push_back(Entry{object.get(), &destroy<T>});
-        return object.release();
+        T* const object = std::construct_at(
+            static_cast<T*>(allocate(sizeof(T), alignof(T))),
+            std::forward<Args>(args)...);
+        try
+        {
+            entries_.push_back(Entry{object, &destroy<T>});
+        }
+        catch (...)
+        {
+            try
+            {
+                std::destroy_at(object);
+            }
+            catch (...)
+            {
+                std::terminate();
+            }
+            throw;
+        }
+        return object;
     }
 
 private:
+    struct Block final
+    {
+        Block(std::size_t capacity, std::size_t alignment);
+        Block(const Block&) = delete;
+        Block& operator=(const Block&) = delete;
+        Block(Block&& other) noexcept;
+        Block& operator=(Block&& other) noexcept;
+        ~Block() noexcept;
+
+        void* allocate(std::size_t size, std::size_t alignment) noexcept;
+
+        std::byte* data = nullptr;
+        std::size_t capacity = 0;
+        std::size_t used = 0;
+        std::size_t alignment = 0;
+    };
+
     struct Entry
     {
         void* pointer = nullptr;
@@ -38,9 +74,12 @@ private:
     template <typename T>
     static void destroy(void* pointer)
     {
-        delete static_cast<T*>(pointer);
+        std::destroy_at(static_cast<T*>(pointer));
     }
 
+    void* allocate(std::size_t size, std::size_t alignment);
+
+    std::vector<Block> blocks_;
     std::vector<Entry> entries_;
 };
 }
