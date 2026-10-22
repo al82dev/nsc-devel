@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <string_view>
 
 namespace nativesharp::llvm_backend
@@ -40,7 +41,7 @@ public:
 
 private:
     std::mutex mutex_;
-    std::ofstream output_;
+    std::optional<std::ofstream> output_;
     const ColdLlvmPreambleTelemetry& preamble_;
 };
 }

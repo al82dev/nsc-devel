@@ -1,10 +1,10 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `0 / 60`
+**Progreso:** `1 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
-| T1.1 | Evitar que `ColdLlvmTrace` y `tracePhase` abran, escriban y hagan `flush` de archivos cuando no se pidió instrumentación | PENDIENTE |
+| T1.1 | Evitar que `ColdLlvmTrace` y `tracePhase` abran, escriban y hagan `flush` de archivos cuando no se pidió instrumentación | TERMINADO |
 | T1.2 | Mantener un solo flujo bufferizado cuando la instrumentación LLVM sí está habilitada, sin reabrir el archivo por fase | PENDIENTE |
 | T1.3 | Eliminar la serialización de `combinedExecutableIrText`; `createWindowsImportLibraries` ya ignora ese texto | PENDIENTE |
 | T1.4 | Convertir `sha256(span)` en cálculo por bloques sin construir una copia acolchada de toda la entrada | PENDIENTE |

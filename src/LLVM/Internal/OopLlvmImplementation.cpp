@@ -1,5 +1,6 @@
 #include "OopLlvmImplementation.h"
 #include "DropCase.h"
+#include "LlvmInstrumentationSwitches.h"
 #include "LlvmExpressionFrame.h"
 #include "MatchValuePop.h"
 #include "../Lowering/OopLlvmSupport.h"
@@ -165,6 +166,7 @@ LLVMModuleRef OopLlvmImplementation::releaseModule() noexcept
 template <typename Callback>
     bool OopLlvmImplementation::tracePhase(std::string_view phase, Callback&& callback)
 {
+        if constexpr (!kLoweringPhaseTraceEnabled) return callback();
         // INSTRUMENTATION CODE: NSC305-L06G. File-backed because the real compiler is launched
         // by a GUI. Remove only after the remaining coordinator cost has a measured owner.
         const auto started = std::chrono::steady_clock::now();

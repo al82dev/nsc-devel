@@ -1,4 +1,5 @@
 #include "ColdLlvmTrace.h"
+#include "LlvmInstrumentationSwitches.h"
 
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/DebugInformationKind.h"
@@ -19,12 +20,14 @@ ColdLlvmTrace::ColdLlvmTrace(
     bool preLlvmCache,
     CachePruneTelemetry pruneTelemetry,
     const ColdLlvmPreambleTelemetry& preamble)
-    : output_(R"(A:\temp\nsc-llvm-code-unit-timing.log)",
-          std::ios::binary | std::ios::trunc),
-      preamble_(preamble)
+    : preamble_(preamble)
 {
-    if (!output_) return;
-    output_ << "NSC305-L06 LLVM CODE UNIT INSTRUMENTATION version=4\n"
+    if constexpr (!kColdLlvmTraceEnabled) return;
+    output_.emplace(
+        R"(A:\temp\nsc-llvm-code-unit-timing.log)",
+        std::ios::binary | std::ios::trunc);
+    if (!*output_) return;
+    *output_ << "NSC305-L06 LLVM CODE UNIT INSTRUMENTATION version=4\n"
             << "codegen-id=" << codegenIdentity
             << " project=" << projectFingerprint
             << " debug=" << debugInformationKindName(debugInformation)
@@ -38,14 +41,15 @@ ColdLlvmTrace::ColdLlvmTrace(
             << " prune-bytes=" << pruneTelemetry.inspectedBytes
             << " prune-evicted-entries=" << pruneTelemetry.evictedEntries
             << " prune-evicted-bytes=" << pruneTelemetry.evictedBytes << '\n';
-    output_.flush();
+    output_->flush();
 }
 
 ColdLlvmTrace::~ColdLlvmTrace()
 {
+    if constexpr (!kColdLlvmTraceEnabled) return;
     const std::lock_guard<std::mutex> lock(mutex_);
-    if (!output_) return;
-    output_ << "preamble"
+    if (!output_ || !*output_) return;
+    *output_ << "preamble"
             << " reachability-us=" << preamble_.reachabilityMicros
             << " partition-key-us=" << preamble_.partitionKeyMicros
             << " partition-restore-us=" << preamble_.partitionRestoreMicros
@@ -57,7 +61,7 @@ ColdLlvmTrace::~ColdLlvmTrace()
             << " static-field-mask-us=" << preamble_.staticFieldMaskMicros
             << " worker-wall-us=" << preamble_.workerWallMicros
             << " plan-store-us=" << preamble_.planStoreMicros << '\n';
-    output_.flush();
+    output_->flush();
 }
 
 void ColdLlvmTrace::record(
@@ -66,12 +70,13 @@ void ColdLlvmTrace::record(
     bool miss,
     std::string_view error)
 {
+    if constexpr (!kColdLlvmTraceEnabled) return;
     const std::lock_guard<std::mutex> lock(mutex_);
-    if (!output_) return;
+    if (!output_ || !*output_) return;
     std::string oneLineError(error);
     std::ranges::replace(oneLineError, '\r', ' ');
     std::ranges::replace(oneLineError, '\n', ' ');
-    output_ << "code-unit " << telemetry.name
+    *output_ << "code-unit " << telemetry.name
             << " hit=" << (hit ? 1 : 0)
             << " miss=" << (miss ? 1 : 0)
             << " miss-reason=" << cacheMissReasonName(telemetry.missReason)
@@ -87,8 +92,8 @@ void ColdLlvmTrace::record(
             << " emission-us=" << telemetry.emissionMicros
             << " verification-us=" << telemetry.verificationMicros
             << " store-us=" << telemetry.storeMicros;
-    if (!oneLineError.empty()) output_ << " error=" << oneLineError;
-    output_ << '\n';
-    output_.flush();
+    if (!oneLineError.empty()) *output_ << " error=" << oneLineError;
+    *output_ << '\n';
+    output_->flush();
 }
 }
