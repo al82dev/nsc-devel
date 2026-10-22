@@ -290,8 +290,7 @@ auto kernel32PlatformSymbols()
         "MoveFileA"});
 }
 
-std::vector<PlannedLibrary> planWindowsImportLibraries(
-    std::span<const ExternalImportModule> externalImports)
+std::vector<PlannedLibrary> planCanonicalWindowsImportLibraries()
 {
     std::vector<PlannedLibrary> planned;
     std::map<std::string, std::size_t> byUpperName;
@@ -327,6 +326,14 @@ std::vector<PlannedLibrary> planWindowsImportLibraries(
     addSymbols(planned, byUpperName, "KERNELBASE.dll", kernelbaseSymbols);
     addSymbols(planned, byUpperName, "SHELL32.dll", shell32Symbols);
     addSymbols(planned, byUpperName, "ucrtbase.dll", ucrtSymbols);
+    return planned;
+}
+
+std::vector<PlannedLibrary> planExternalWindowsImportLibraries(
+    std::span<const ExternalImportModule> externalImports)
+{
+    std::vector<PlannedLibrary> planned;
+    std::map<std::string, std::size_t> byUpperName;
     for (const ExternalImportModule& module : externalImports)
     {
         if (module.dllName.empty() || module.symbols.empty()) continue;
@@ -369,8 +376,7 @@ bool createCanonicalWindowsImportLibraries(
     std::string& error)
 {
     libraries.clear();
-    const std::vector<PlannedLibrary> planned =
-        planWindowsImportLibraries(std::span<const ExternalImportModule>{});
+    const std::vector<PlannedLibrary> planned = planCanonicalWindowsImportLibraries();
     return materializeWindowsImportLibraries(linker, directory, planned, libraries, error);
 }
 
@@ -404,7 +410,6 @@ bool createWindowsImportLibraries(
     std::vector<std::filesystem::path>& libraries,
     std::string& error)
 {
-    libraries.clear();
     (void)combinedIrText; // Kept in the API for compatibility; precompiled archives require a stable closure.
     // The canonical runtime tables. The KERNEL32 list's per-stage comments are the project's
     // import history and moved here verbatim from the (formerly duplicated) builder copies.
@@ -418,11 +423,15 @@ bool createWindowsImportLibraries(
     // entradas y tumbaron el build de LAS DOS PASADAS de all.bat. Con std::to_array la cuenta
     // la lleva el compilador y ese fallo ya no se puede escribir.
     //
-    // Merge: runtime tables first, then the project's external imports. A DLL is matched
+    // HISTORICAL: merge runtime tables first, then the project's external imports. A DLL is matched
     // case-insensitively ("user32.dll" == "USER32.DLL"); symbols are deduplicated so a project
     // may freely re-declare something the runtime already imports (GetTickCount64, say) without
     // producing a duplicate .def entry. New DLLs keep the canonical spelling the project wrote.
-    const std::vector<PlannedLibrary> planned = planWindowsImportLibraries(externalImports);
+    // CURRENT: the runtime closure comes from the toolchain SDK. Only explicit project imports
+    // are materialized in the build directory, including additions to a canonical runtime DLL.
+    if (!findCanonicalWindowsImportLibraries(libraries, error)) return false;
+    const std::vector<PlannedLibrary> planned =
+        planExternalWindowsImportLibraries(externalImports);
     return materializeWindowsImportLibraries(linker, directory, planned, libraries, error);
 }
 }

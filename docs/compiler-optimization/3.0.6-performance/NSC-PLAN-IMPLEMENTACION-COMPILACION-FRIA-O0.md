@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `57 / 60`
+**Progreso:** `58 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -61,6 +61,6 @@
 | T7.1 | Generar como artefactos del toolchain las import libraries canónicas de KERNEL32, KERNELBASE, SHELL32 y ucrtbase | TERMINADO |
 | T7.2 | Incluir esas import libraries en CMake, paquete e instalación del compilador sin tocar NSC Builder 3 | TERMINADO |
 | T7.3 | Hacer que `WindowsExecutableBuilder` use las import libraries canónicas en lugar de lanzar NSLink cuatro veces | TERMINADO |
-| T7.4 | Limitar `createImportLibrary` durante el build a DLL externas declaradas por el proyecto | PENDIENTE |
+| T7.4 | Limitar `createImportLibrary` durante el build a DLL externas declaradas por el proyecto | TERMINADO |
 | T7.5 | Consultar primero el lock/store ya verificado y resolver/hashear el paquete fuente sólo cuando falte o difiera un artefacto | PENDIENTE |
 | T7.6 | Compartir los digests verificados del restore con el manifiesto de compilación y la procedencia de dependencias | PENDIENTE |

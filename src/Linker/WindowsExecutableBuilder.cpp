@@ -364,16 +364,10 @@ bool discoverExecutableImports(
     // Import libraries -- runtime surface plus the project's external `extern C from` imports
     // -- come from the ONE shared table (see WindowsRuntimeImports.h for the history of why a
     // single source of truth replaced the duplicated arrays that used to live right here).
-    if (externalImports.empty())
-    {
-        if (!findCanonicalWindowsImportLibraries(importLibraries, error)) return false;
-    }
-    else if (!createWindowsImportLibraries(
-                 *linker, temporaryDirectory, programText,
-                 externalImports, importLibraries, error))
-    {
+    if (!createWindowsImportLibraries(
+            *linker, temporaryDirectory, programText,
+            externalImports, importLibraries, error))
         return false;
-    }
     importLibraries.insert(
         importLibraries.end(), extraLinkLibraries.begin(), extraLinkLibraries.end());
     if (independentRuntime) importLibraries.push_back(runtimeLibrary);
