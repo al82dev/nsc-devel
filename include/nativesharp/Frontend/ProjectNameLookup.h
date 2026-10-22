@@ -19,6 +19,7 @@
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/NamespaceSymbol.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "nativesharp/Frontend/QualifiedNameTier.h"
 
 #include <cstddef>
@@ -72,6 +73,9 @@ struct ProjectOopHirModelTestAccess;
 class ProjectNameLookup final
 {
 public:
+    ProjectNameLookup();
+    explicit ProjectNameLookup(ProjectCompilationIndexes& indexes) noexcept;
+
     bool build(
         const compilation::ProjectGraph& graph,
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
@@ -83,6 +87,9 @@ public:
     std::span<const NamespaceFunctionDeclaration> namespaceFunctions() const noexcept;
     std::span<const NamespaceStateDeclaration> namespaceStates() const noexcept;
     std::span<const TypeNameBinding> bindings() const noexcept;
+    const NamedTypeDeclaration* typeForOrdinal(std::size_t ordinal) const noexcept;
+    std::optional<std::size_t> typeOrdinalForIdentity(std::string_view identity) const;
+    std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
     // NS304-T08-F05: trait-impl parts whose target is an external type (the module owns the trait,
     // not the type). The member model registers their methods on the external target.
     std::span<const NamedTypeDeclarationPart> externalTraitImplParts() const noexcept;
@@ -526,6 +533,8 @@ private:
     std::unordered_map<const ast::TypeSyntax*, std::size_t> bindingBySyntax_;
     std::vector<ExpressionTypeNameBinding> expressionTypeBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> expressionTypeBindingBySyntax_;
+    std::unique_ptr<ProjectCompilationIndexes> ownedIndexes_;
+    ProjectCompilationIndexes* indexes_ = nullptr;
     bool built_ = false;
 };
 

@@ -26,15 +26,12 @@ const frontend::builtins::IntegerTypeInfo* findEnumUnderlyingInfo(
     const frontend::ProjectNameLookup& nameLookup, std::string_view typeKey)
 {
     if (!typeKey.starts_with("type:")) return nullptr;
-    const std::string_view key = typeKey.substr(5);
-    for (const frontend::NamedTypeDeclaration& type : nameLookup.namedTypes())
-    {
-        if (type.identity.key() != key ||
-            type.kind != frontend::NamedTypeDeclarationKind::Enum)
-            continue;
-        return frontend::builtins::findIntegerType(frontend::enumUnderlyingTypeKey(type.syntax));
-    }
-    return nullptr;
+    const std::optional<std::size_t> ordinal =
+        nameLookup.typeOrdinalForIdentity(typeKey.substr(5));
+    const frontend::NamedTypeDeclaration* type = ordinal.has_value()
+        ? nameLookup.typeForOrdinal(*ordinal) : nullptr;
+    if (type == nullptr || type->kind != frontend::NamedTypeDeclarationKind::Enum) return nullptr;
+    return frontend::builtins::findIntegerType(frontend::enumUnderlyingTypeKey(type->syntax));
 }
 
 bool isEnumTypeKey(

@@ -57,13 +57,11 @@ using method_body_detail::writeMethodBodyTrace;
 bool ProjectMethodBodyModel::isEnumTypeKey(std::string_view typeKey) const noexcept
 {
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
-    const std::string_view key = typeKey.substr(5);
-    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
-    {
-        if (type.identity.key() != key) continue;
-        return type.kind == NamedTypeDeclarationKind::Enum;
-    }
-    return false;
+    const std::optional<std::size_t> ordinal =
+        nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+    const NamedTypeDeclaration* type = ordinal.has_value()
+        ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+    return type != nullptr && type->kind == NamedTypeDeclarationKind::Enum;
 }
 
 // CC1 fases 4B/4C -- ver la declaracion para el criterio.
@@ -92,16 +90,8 @@ bool ProjectMethodBodyModel::elementTypeHasTrivialLifetime(std::string_view type
     if (memberModel_ == nullptr || nameLookup_ == nullptr) return true;
     if (!typeKey.starts_with("type:")) return true;
 
-    const std::string_view identity = typeKey.substr(5);
-    std::optional<std::size_t> typeOrdinal;
-    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
-    {
-        if (nameLookup_->namedTypes()[ordinal].identity.key() == identity)
-        {
-            typeOrdinal = ordinal;
-            break;
-        }
-    }
+    const std::optional<std::size_t> typeOrdinal =
+        nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
     if (!typeOrdinal.has_value()) return true;
     if (*typeOrdinal < nameLookup_->namedTypes().size())
     {
@@ -129,14 +119,12 @@ bool ProjectMethodBodyModel::isExternCDelegateTypeKey(std::string_view typeKey) 
             language::parseFunctionTypeIdentity(typeKey))
         return functionType->carrier == language::FunctionCarrier::Pointer;
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
-    const std::string_view key = typeKey.substr(5);
-    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
-    {
-        if (type.identity.key() != key) continue;
-        return type.kind == NamedTypeDeclarationKind::Delegate && type.syntax != nullptr &&
-            type.syntax->hasModifier(lexer::TokenKind::KwExtern);
-    }
-    return false;
+    const std::optional<std::size_t> ordinal =
+        nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+    const NamedTypeDeclaration* type = ordinal.has_value()
+        ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+    return type != nullptr && type->kind == NamedTypeDeclarationKind::Delegate &&
+        type->syntax != nullptr && type->syntax->hasModifier(lexer::TokenKind::KwExtern);
 }
 
 bool ProjectMethodBodyModel::isRawPointerTypeKey(std::string_view typeKey) noexcept

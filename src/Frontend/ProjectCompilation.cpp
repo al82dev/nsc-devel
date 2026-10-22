@@ -628,7 +628,7 @@ bool ProjectCompilation::compileProjectNames(
     if (cancellationRequested(loadError, "names")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "names");
-    nameLookup_ = std::make_unique<ProjectNameLookup>();
+    nameLookup_ = std::make_unique<ProjectNameLookup>(indexes_);
     if (!nameLookup_->build(*projectGraph_, units_, diagnostics_, compilationJobs_)) return false;
     return enterStage(CompilationStage::Binding, loadError);
 }

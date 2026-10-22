@@ -44,15 +44,11 @@ bool ProjectMethodBodyModel::typeKeyHasDefinedDefaultStorage(std::string_view ty
     {
         return false;
     }
-    const std::string_view identity = typeKey.substr(5);
-    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
-    {
-        if (type.identity.key() == identity)
-        {
-            return type.kind == NamedTypeDeclarationKind::Struct;
-        }
-    }
-    return false;
+    const std::optional<std::size_t> ordinal =
+        nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+    const NamedTypeDeclaration* type = ordinal.has_value()
+        ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+    return type != nullptr && type->kind == NamedTypeDeclarationKind::Struct;
 }
 
 // NSC-LIMIT-004: la clave nombra un struct y nada mas. Misma busqueda que aggregateIsUnion,
@@ -61,13 +57,11 @@ bool ProjectMethodBodyModel::typeKeyIsStruct(std::string_view typeKey) const noe
 {
     if (ProjectTypeConversion::isTuple(typeKey)) return true;
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
-    const std::string_view identity = typeKey.substr(5);
-    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
-    {
-        if (type.identity.key() != identity) continue;
-        return type.kind == NamedTypeDeclarationKind::Struct;
-    }
-    return false;
+    const std::optional<std::size_t> ordinal =
+        nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+    const NamedTypeDeclaration* type = ordinal.has_value()
+        ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+    return type != nullptr && type->kind == NamedTypeDeclarationKind::Struct;
 }
 
 // C8: does this type key name a union? Reads the same layout marker the parser wrote onto the

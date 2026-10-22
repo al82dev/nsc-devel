@@ -29,6 +29,17 @@
 
 namespace nativesharp::frontend
 {
+ProjectNameLookup::ProjectNameLookup()
+    : ownedIndexes_(std::make_unique<ProjectCompilationIndexes>()),
+      indexes_(ownedIndexes_.get())
+{
+}
+
+ProjectNameLookup::ProjectNameLookup(ProjectCompilationIndexes& indexes) noexcept
+    : indexes_(&indexes)
+{
+}
+
 ModuleDeclarationSpace::ModuleDeclarationSpace(
     std::size_t projectOrdinal,
     std::string moduleName)
@@ -93,6 +104,7 @@ bool ProjectNameLookup::build(
     collectDeclarationIndexes(graph, units, workers);
     finalizePredeclarations(diagnostics);
     finalizeReexports(units, diagnostics);
+    indexes_->rebuildTypes(namedTypes_);
     finalizeNamespaceDeclarations();
     collectBindingIndexes(units, diagnostics, workers);
     built_ = true;
@@ -107,6 +119,23 @@ std::span<const std::unique_ptr<ModuleDeclarationSpace>> ProjectNameLookup::modu
 std::span<const NamedTypeDeclaration> ProjectNameLookup::namedTypes() const noexcept
 {
     return namedTypes_;
+}
+
+const NamedTypeDeclaration* ProjectNameLookup::typeForOrdinal(std::size_t ordinal) const noexcept
+{
+    return indexes_->typeForOrdinal(ordinal);
+}
+
+std::optional<std::size_t> ProjectNameLookup::typeOrdinalForIdentity(
+    std::string_view identity) const
+{
+    return indexes_->typeOrdinalForIdentity(identity);
+}
+
+std::span<const std::size_t> ProjectNameLookup::typeOrdinalsForName(
+    std::string_view name) const
+{
+    return indexes_->typeOrdinalsForName(name);
 }
 
 std::span<const NamedTypeDeclarationPart> ProjectNameLookup::externalTraitImplParts() const noexcept

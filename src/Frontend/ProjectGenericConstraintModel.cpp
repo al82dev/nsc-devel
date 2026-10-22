@@ -66,15 +66,11 @@ const NamedTypeDeclaration* declarationForTypeKey(
     std::size_t& ordinalOut)
 {
     if (!typeKey.starts_with("type:")) return nullptr;
-    const std::string_view identity = typeKey.substr(5);
-    const std::span<const NamedTypeDeclaration> types = nameLookup.namedTypes();
-    for (std::size_t index = 0; index < types.size(); ++index)
-    {
-        if (types[index].identity.key() != identity) continue;
-        ordinalOut = index;
-        return &types[index];
-    }
-    return nullptr;
+    const std::optional<std::size_t> ordinal =
+        nameLookup.typeOrdinalForIdentity(typeKey.substr(5));
+    if (!ordinal.has_value()) return nullptr;
+    ordinalOut = *ordinal;
+    return nameLookup.typeForOrdinal(*ordinal);
 }
 
 // QUE ES UN TIPO REFERENCIA en este lenguaje, que es lo que `where T : class` promete.

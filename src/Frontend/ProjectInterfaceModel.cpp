@@ -331,15 +331,7 @@ std::optional<std::size_t> ProjectInterfaceModel::typeOrdinalForTypeKey(
     {
         return std::nullopt;
     }
-    const std::string_view identity = typeKey.substr(5);
-    for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
-    {
-        if (nameLookup_->namedTypes()[ordinal].identity.key() == identity)
-        {
-            return ordinal;
-        }
-    }
-    return std::nullopt;
+    return nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
 }
 
 std::string ProjectInterfaceModel::typeKeyForOrdinal(std::size_t typeOrdinal) const

@@ -99,12 +99,9 @@ const NamedTypeDeclaration* namedTypeForKey(
     const ProjectNameLookup& nameLookup) noexcept
 {
     if (!typeKey.starts_with("type:")) return nullptr;
-    const std::string_view key = typeKey.substr(5);
-    for (const NamedTypeDeclaration& type : nameLookup.namedTypes())
-    {
-        if (type.identity.key() == key) return &type;
-    }
-    return nullptr;
+    const std::optional<std::size_t> ordinal =
+        nameLookup.typeOrdinalForIdentity(typeKey.substr(5));
+    return ordinal.has_value() ? nameLookup.typeForOrdinal(*ordinal) : nullptr;
 }
 
 // SHR-013 "vistas y tiempo de vida": el tipo se declaro `borrowed struct`. Lee la MISMA marca

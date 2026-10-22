@@ -198,6 +198,7 @@ private:
     diagnostics::DiagnosticEngine diagnostics_;
     std::vector<std::unique_ptr<ProjectSyntaxUnit>> units_;
     std::vector<ProjectComptimeRecord> comptimeRecords_;
+    ProjectCompilationIndexes indexes_;
     std::unique_ptr<ProjectNameLookup> nameLookup_;
     std::unique_ptr<ProjectGenericModel> genericModel_;
     std::unique_ptr<ProjectMemberModel> memberModel_;
@@ -217,7 +218,6 @@ private:
     std::unique_ptr<ProjectOopHirModel> oopHirModel_;
     std::unique_ptr<ProjectOopMirModel> oopMirModel_;
     compilation::LibraryMetadataRepository libraryMetadataRepository_;
-    ProjectCompilationIndexes indexes_;
     std::function<bool()> cancellationCheck_;
     SourceBufferProvider sourceBufferProvider_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;

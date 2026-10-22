@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `29 / 48`
+**Progreso:** `30 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -33,7 +33,7 @@
 | T4.6 | Persistir y restaurar el modelo NSMETA verificado | TERMINADO |
 | T4.7 | Invalidar NSMETA por contenido o contrato sin cambiar diagnósticos | TERMINADO |
 | T5.1 | Asignar un propietario único a los índices reutilizables | TERMINADO |
-| T5.2 | Compartir el índice de tipos por identidad, nombre y ordinal | PENDIENTE |
+| T5.2 | Compartir el índice de tipos por identidad, nombre y ordinal | TERMINADO |
 | T5.3 | Compartir índices de miembros, firmas y dispatch | PENDIENTE |
 | T5.4 | Compartir índices de layouts de structs, clases y campos | PENDIENTE |
 | T5.5 | Compartir índices de templates, demandas y especializaciones | PENDIENTE |

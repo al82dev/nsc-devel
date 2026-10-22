@@ -17,26 +17,23 @@ bool isDelegateReferenceType(
             language::parseFunctionTypeIdentity(typeKey))
         return functionType->carrier == language::FunctionCarrier::Reference;
     if (!typeKey.starts_with("type:")) return false;
-    const std::string_view key = typeKey.substr(5);
-    for (const frontend::NamedTypeDeclaration& type : nameLookup.namedTypes())
-    {
-        if (type.identity.key() == key)
-            return type.kind == frontend::NamedTypeDeclarationKind::Delegate;
-    }
-    return false;
+    const std::optional<std::size_t> ordinal =
+        nameLookup.typeOrdinalForIdentity(typeKey.substr(5));
+    const frontend::NamedTypeDeclaration* type = ordinal.has_value()
+        ? nameLookup.typeForOrdinal(*ordinal) : nullptr;
+    return type != nullptr && type->kind == frontend::NamedTypeDeclarationKind::Delegate;
 }
 
 bool isClassReferenceType(
     const frontend::ProjectNameLookup& nameLookup, std::string_view typeKey) noexcept
 {
     if (!typeKey.starts_with("type:")) return false;
-    const std::string_view key = typeKey.substr(5);
-    for (const frontend::NamedTypeDeclaration& type : nameLookup.namedTypes())
-    {
-        if (type.identity.key() == key)
-            return type.kind == frontend::NamedTypeDeclarationKind::Class ||
-                type.kind == frontend::NamedTypeDeclarationKind::Interface;
-    }
-    return false;
+    const std::optional<std::size_t> ordinal =
+        nameLookup.typeOrdinalForIdentity(typeKey.substr(5));
+    const frontend::NamedTypeDeclaration* type = ordinal.has_value()
+        ? nameLookup.typeForOrdinal(*ordinal) : nullptr;
+    return type != nullptr &&
+        (type->kind == frontend::NamedTypeDeclarationKind::Class ||
+         type->kind == frontend::NamedTypeDeclarationKind::Interface);
 }
 } // namespace nativesharp::llvm_backend
