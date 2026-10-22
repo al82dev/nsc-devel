@@ -1,5 +1,6 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "Cache/CachePayloadReader.h"
+#include "Cache/CachePayloadWriter.h"
 #include "Cache/SyntaxProductCacheCodec.h"
 #include "Internal/ProjectPhaseTimer.h"
 #include "nativesharp/Frontend/ComptimeEngine.h"
@@ -646,8 +647,13 @@ bool ProjectCompilation::compileProjectGenerics(
             module.genericSpecializations.begin(),
             module.genericSpecializations.end());
     }
-    return genericModel_->build(
-        *projectGraph_, units_, precompiledSpecializations, diagnostics_);
+    if (!genericModel_->build(
+            *projectGraph_, units_, precompiledSpecializations, diagnostics_))
+    {
+        return false;
+    }
+    publishTemplateParseProduct();
+    return true;
 }
 
 bool ProjectCompilation::compileProjectMembers(
@@ -1400,6 +1406,44 @@ bool ProjectCompilation::restoreTemplateParseProduct(std::string& loadError)
     }
     templateParseCacheHit_ = true;
     return true;
+}
+
+// Publishes the syntax corpus only after the generic pass has completed successfully. At that point
+// every unit is valid and the per-template records consumed by a warm hit have also been stored.
+// Cache I/O is opportunistic and never changes compiler success or diagnostics.
+void ProjectCompilation::publishTemplateParseProduct()
+{
+    if (templateParseCacheHit_ || templateCacheRoot_.empty() ||
+        templateParseCacheKey_.empty())
+    {
+        return;
+    }
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units_)
+    {
+        if (unit == nullptr || !unit->isLexicallyValid() ||
+            !unit->isSyntaxValid() || unit->syntaxTree() == nullptr)
+        {
+            return;
+        }
+    }
+    std::string payload;
+    internal::CachePayloadWriter::string(payload, templateParseProductSchema);
+    internal::CachePayloadWriter::u64(payload, units_.size());
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units_)
+    {
+        internal::CachePayloadWriter::u64(payload, unit->projectOrdinal());
+        internal::CachePayloadWriter::u64(payload, unit->sourceOrdinal());
+        internal::CachePayloadWriter::string(payload, unit->moduleName());
+        internal::CachePayloadWriter::u32(payload, unit->fileId().value());
+        internal::CachePayloadWriter::byte(payload, unit->isPrecompiled() ? 1U : 0U);
+        internal::CachePayloadWriter::string(
+            payload,
+            internal::serializeSyntaxProductUnit(*unit));
+    }
+    TemplateParseCache cache;
+    cache.setRoot(templateCacheRoot_);
+    std::string ignoredError;
+    (void)cache.store(templateParseCacheKey_, payload, ignoredError);
 }
 
 bool ProjectCompilation::lexSyntaxUnits(

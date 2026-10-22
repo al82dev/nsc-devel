@@ -160,6 +160,7 @@ private:
     bool materializePrecompiledSyntax(std::string& loadError);
     bool calculateTemplateParseCacheKey(std::string& loadError);
     bool restoreTemplateParseProduct(std::string& loadError);
+    void publishTemplateParseProduct();
     bool lexSyntaxUnits(
         driver::CompilationWorkerPool& syntaxWorkers,
         bool& lexicalOk,
