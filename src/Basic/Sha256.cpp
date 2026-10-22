@@ -26,28 +26,15 @@ constexpr std::array<std::uint32_t, 64> Sha256Constants = {
     0x682e6ff3U, 0x748f82eeU, 0x78a5636fU, 0x84c87814U, 0x8cc70208U,
     0x90befffaU, 0xa4506cebU, 0xbef9a3f7U, 0xc67178f2U};
 
-std::vector<std::uint8_t> padSha256Input(std::span<const std::uint8_t> input) {
-  const std::uint64_t bitLength = static_cast<std::uint64_t>(input.size()) * 8ULL;
-  const std::size_t paddedSize = ((input.size() + 9U + 63U) / 64U) * 64U;
-  std::vector<std::uint8_t> padded(paddedSize, 0);
-  std::copy(input.begin(), input.end(), padded.begin());
-  padded[input.size()] = 0x80U;
-  for (unsigned byte = 0; byte < 8U; ++byte) {
-    padded[paddedSize - 1U - byte] =
-        static_cast<std::uint8_t>((bitLength >> (byte * 8U)) & 0xffU);
-  }
-  return padded;
-}
-
 std::array<std::uint32_t, 64> sha256Words(
-    const std::vector<std::uint8_t> &padded, std::size_t block) {
+    std::span<const std::uint8_t, 64> block) {
   std::array<std::uint32_t, 64> words{};
   for (std::size_t index = 0; index < 16U; ++index) {
-    const std::size_t offset = block + index * 4U;
-    words[index] = (static_cast<std::uint32_t>(padded[offset]) << 24U) |
-                   (static_cast<std::uint32_t>(padded[offset + 1U]) << 16U) |
-                   (static_cast<std::uint32_t>(padded[offset + 2U]) << 8U) |
-                   static_cast<std::uint32_t>(padded[offset + 3U]);
+    const std::size_t offset = index * 4U;
+    words[index] = (static_cast<std::uint32_t>(block[offset]) << 24U) |
+                   (static_cast<std::uint32_t>(block[offset + 1U]) << 16U) |
+                   (static_cast<std::uint32_t>(block[offset + 2U]) << 8U) |
+                   static_cast<std::uint32_t>(block[offset + 3U]);
   }
   for (std::size_t index = 16; index < words.size(); ++index) {
     const std::uint32_t x = words[index - 15U];
@@ -112,9 +99,25 @@ Sha256Digest sha256(std::span<const std::uint8_t> input) {
   std::array<std::uint32_t, 8> state = {
       0x6a09e667U, 0xbb67ae85U, 0x3c6ef372U, 0xa54ff53aU,
       0x510e527fU, 0x9b05688cU, 0x1f83d9abU, 0x5be0cd19U};
-  const std::vector<std::uint8_t> padded = padSha256Input(input);
-  for (std::size_t block = 0; block < padded.size(); block += 64U) {
-    compressSha256Block(sha256Words(padded, block), state);
+  const std::size_t fullByteCount = input.size() - input.size() % 64U;
+  for (std::size_t offset = 0; offset < fullByteCount; offset += 64U) {
+    const std::span<const std::uint8_t, 64> block(input.data() + offset, 64U);
+    compressSha256Block(sha256Words(block), state);
+  }
+
+  const std::size_t remaining = input.size() - fullByteCount;
+  const std::size_t finalSize = remaining < 56U ? 64U : 128U;
+  std::array<std::uint8_t, 128> tail{};
+  std::copy(input.begin() + fullByteCount, input.end(), tail.begin());
+  tail[remaining] = 0x80U;
+  const std::uint64_t bitLength = static_cast<std::uint64_t>(input.size()) * 8ULL;
+  for (unsigned byte = 0; byte < 8U; ++byte) {
+    tail[finalSize - 1U - byte] =
+        static_cast<std::uint8_t>((bitLength >> (byte * 8U)) & 0xffU);
+  }
+  for (std::size_t offset = 0; offset < finalSize; offset += 64U) {
+    const std::span<const std::uint8_t, 64> block(tail.data() + offset, 64U);
+    compressSha256Block(sha256Words(block), state);
   }
   return sha256Digest(state);
 }
