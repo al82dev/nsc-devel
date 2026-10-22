@@ -10,14 +10,8 @@ using namespace llvm_api;
 
 LLVMTypeRef OopLlvmImplementation::llvmType(std::string_view typeKey, std::string& error) const
 {
-        // NSC305-L03. The builtin carriers live in mapBuiltinLlvmType (moved out as a pure move).
-        if (LLVMTypeRef builtin = mapBuiltinLlvmType(context_, typeKey))
-            return builtin;
-        // NSC305-L03. Pointer-like keys (ref/refmut/string/native-array/reference) map to `ptr`.
-        if (LLVMTypeRef pointerLike = mapPointerLikeLlvmType(context_, nameLookup_, typeKey))
-            return pointerLike;
-        return mapLlvmType(context_, nameLookup_, mirModel_, typeKey, error);
-    }
+    return mapLlvmType(context_, nameLookup_, mirModel_, typeKey, error);
+}
 
 bool OopLlvmImplementation::ensureAllocatorDescriptorSidecar(std::string& error)
 {
