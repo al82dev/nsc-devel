@@ -143,11 +143,10 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCVariadicPromotion(
     }
     else if (isEnumTypeKey(sourceTypeKey))
     {
-        const std::string_view identity = sourceTypeKey.substr(5);
-        for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
+        const NamedTypeDeclaration* type = namedTypeForTypeKey(sourceTypeKey);
+        if (type != nullptr)
         {
-            if (type.identity.key() != identity) continue;
-            const std::string_view underlying = enumUnderlyingTypeKey(type.syntax);
+            const std::string_view underlying = enumUnderlyingTypeKey(type->syntax);
             const builtins::IntegerTypeInfo* integer = builtins::findIntegerType(underlying);
             if (integer == nullptr)
             {
@@ -166,7 +165,6 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCVariadicPromotion(
             // representation already has the width of int or wider. Keeping the named enum key
             // here would make the call-site type depend on a NativeSharp-only identity.
             kind = ProjectConversionKind::IntegralPromotion;
-            break;
         }
     }
     else if (sourceTypeKey != "builtin:double" &&
@@ -282,14 +280,8 @@ bool ProjectMethodBodyModel::typeKeyIsOwnable(std::string_view typeKey) const no
 bool ProjectMethodBodyModel::isAnyDelegateTypeKey(std::string_view typeKey) const noexcept
 {
     if (language::isFunctionTypeIdentity(typeKey)) return true;
-    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
-    const std::string_view key = typeKey.substr(5);
-    for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
-    {
-        if (type.identity.key() != key) continue;
-        return type.kind == NamedTypeDeclarationKind::Delegate;
-    }
-    return false;
+    const NamedTypeDeclaration* type = namedTypeForTypeKey(typeKey);
+    return type != nullptr && type->kind == NamedTypeDeclarationKind::Delegate;
 }
 
 }

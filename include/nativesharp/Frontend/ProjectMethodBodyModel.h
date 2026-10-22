@@ -4887,6 +4887,7 @@ private:
     // True only for a "type:" key that actually names an enum. Structs, classes and delegates
     // share that prefix, so the prefix alone answers nothing. Mirrors the identical predicate the
     // LLVM lowerer keeps for mapping an enum key to i32.
+    const NamedTypeDeclaration* namedTypeForTypeKey(std::string_view typeKey) const noexcept;
     bool isEnumTypeKey(std::string_view typeKey) const noexcept;
     // CC1 fases 4B/4C. "Este tipo puede vivir en memoria cruda?" -- es decir, salir de ambito o
     // liberarse sin que nadie tenga que llamar a nada. Un tipo con destructor, o con un campo

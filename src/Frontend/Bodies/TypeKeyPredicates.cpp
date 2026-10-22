@@ -54,13 +54,18 @@ using method_body_detail::Stage37ConstantKind;
 using method_body_detail::Stage37ConstantValue;
 using method_body_detail::writeMethodBodyTrace;
 
-bool ProjectMethodBodyModel::isEnumTypeKey(std::string_view typeKey) const noexcept
+const NamedTypeDeclaration* ProjectMethodBodyModel::namedTypeForTypeKey(
+    std::string_view typeKey) const noexcept
 {
-    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return nullptr;
     const std::optional<std::size_t> ordinal =
         nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
-    const NamedTypeDeclaration* type = ordinal.has_value()
-        ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+    return ordinal.has_value() ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+}
+
+bool ProjectMethodBodyModel::isEnumTypeKey(std::string_view typeKey) const noexcept
+{
+    const NamedTypeDeclaration* type = namedTypeForTypeKey(typeKey);
     return type != nullptr && type->kind == NamedTypeDeclarationKind::Enum;
 }
 
