@@ -86,6 +86,7 @@ TypeIdentity::TypeIdentity(
       arity_(arity)
 {
     validate();
+    initializeNames();
 }
 
 const std::string& TypeIdentity::moduleName() const noexcept
@@ -125,36 +126,43 @@ const std::string& TypeIdentity::validationError() const noexcept
 
 std::string TypeIdentity::fullyQualifiedName() const
 {
-    std::string result;
-    for (const std::string& segment : namespaceSegments_)
-    {
-        if (!result.empty())
-        {
-            result.push_back('.');
-        }
-        result += segment;
-    }
-    bool firstContainingType = true;
-    for (const TypeNameSegment& segment : containingTypes_)
-    {
-        if (!result.empty())
-        {
-            result.push_back(firstContainingType ? '.' : '+');
-        }
-        appendTypeSegment(result, segment);
-        firstContainingType = false;
-    }
-    if (!result.empty())
-    {
-        result.push_back(containingTypes_.empty() ? '.' : '+');
-    }
-    appendTypeSegment(result, TypeNameSegment{name_, arity_});
-    return result;
+    return fullyQualifiedName_;
 }
 
 std::string TypeIdentity::key() const
 {
-    return moduleName_ + "::" + fullyQualifiedName();
+    return key_;
+}
+
+void TypeIdentity::initializeNames()
+{
+    for (const std::string& segment : namespaceSegments_)
+    {
+        if (!fullyQualifiedName_.empty())
+        {
+            fullyQualifiedName_.push_back('.');
+        }
+        fullyQualifiedName_ += segment;
+    }
+    bool firstContainingType = true;
+    for (const TypeNameSegment& segment : containingTypes_)
+    {
+        if (!fullyQualifiedName_.empty())
+        {
+            fullyQualifiedName_.push_back(firstContainingType ? '.' : '+');
+        }
+        appendTypeSegment(fullyQualifiedName_, segment);
+        firstContainingType = false;
+    }
+    if (!fullyQualifiedName_.empty())
+    {
+        fullyQualifiedName_.push_back(containingTypes_.empty() ? '.' : '+');
+    }
+    appendTypeSegment(fullyQualifiedName_, TypeNameSegment{name_, arity_});
+    key_.reserve(moduleName_.size() + 2U + fullyQualifiedName_.size());
+    key_ = moduleName_;
+    key_ += "::";
+    key_ += fullyQualifiedName_;
 }
 
 bool TypeIdentity::operator==(const TypeIdentity& other) const noexcept

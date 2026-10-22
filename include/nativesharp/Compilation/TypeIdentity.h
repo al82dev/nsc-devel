@@ -111,6 +111,7 @@ public:
 private:
     static bool isIdentifier(std::string_view value) noexcept;
     static void appendTypeSegment(std::string& output, const TypeNameSegment& segment);
+    void initializeNames();
     void validate();
 
     std::string moduleName_;
@@ -119,5 +120,7 @@ private:
     std::string name_;
     std::uint32_t arity_;
     std::string validationError_;
+    std::string fullyQualifiedName_;
+    std::string key_;
 };
 }
