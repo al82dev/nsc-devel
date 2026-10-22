@@ -11,6 +11,20 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
+namespace
+{
+std::ofstream& loweringTraceOutput()
+{
+    static std::ofstream output = [] {
+        std::ofstream stream(R"(A:\temp\nsc-llvm-lowering-phases.log)",
+            std::ios::binary | std::ios::trunc);
+        if (stream) stream << "NSC305-L06G LLVM LOWERING PHASE INSTRUMENTATION version=1\n";
+        return stream;
+    }();
+    return output;
+}
+}
+
 OopLlvmImplementation::OopLlvmImplementation(
         const frontend::ProjectNameLookup& nameLookup,
         const frontend::ProjectMemberModel* memberModel,
@@ -174,14 +188,8 @@ template <typename Callback>
         const std::uint64_t elapsed = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - started).count());
-        std::call_once(loweringTraceReset_, [] {
-            std::ofstream clear(R"(A:\temp\nsc-llvm-lowering-phases.log)",
-                std::ios::binary | std::ios::trunc);
-            if (clear) clear << "NSC305-L06G LLVM LOWERING PHASE INSTRUMENTATION version=1\n";
-        });
         const std::lock_guard<std::mutex> lock(loweringTraceMutex_);
-        std::ofstream output(R"(A:\temp\nsc-llvm-lowering-phases.log)",
-            std::ios::binary | std::ios::app);
+        std::ofstream& output = loweringTraceOutput();
         if (output)
             output << "module=" << moduleName_ << " phase=" << phase
                    << " us=" << elapsed << " ok=" << (result ? 1 : 0) << '\n';

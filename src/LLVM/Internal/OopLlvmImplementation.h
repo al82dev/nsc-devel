@@ -2961,7 +2961,6 @@ private:
     bool restrictFunctionDeclarations_ = false;
     std::vector<std::uint8_t> ownedStaticFieldDeclarations_;
     std::span<const std::uint8_t> staticFieldDeclarations_;
-    inline static std::once_flag loweringTraceReset_;
     inline static std::mutex loweringTraceMutex_;
     std::string moduleName_;
     std::optional<std::size_t> invalidFunctionOrdinal_;
