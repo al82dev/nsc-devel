@@ -5,6 +5,7 @@
 #include "Internal/BuildResult.h"
 #include "Internal/CommandOutput.h"
 #include "Internal/CommonArguments.h"
+#include "Internal/CompilationInputManifestFactory.h"
 #include "Internal/DependencyProvenance.h"
 #include "Internal/EnvironmentOverride.h"
 #include "Internal/ExplainTopic.h"
@@ -1024,18 +1025,31 @@ bool loadPlanFromLock(const fs::path& project, RestorePlan& plan, std::string& e
     return verifyPlan(plan, verified, error);
 }
 
-std::string fingerprintFiles(std::vector<fs::path> files)
+} // namespace
+
+std::string fingerprintFiles(
+    const compilation::CompilationInputManifest& manifest,
+    std::vector<std::filesystem::path> files)
 {
-    std::ranges::sort(files, {}, [](const fs::path& path) { return pathText(path); });
+    std::ranges::sort(
+        files,
+        {},
+        [](const std::filesystem::path& path)
+        {
+            return pathText(path);
+        });
     std::string material;
-    for (const fs::path& file : files)
+    for (const std::filesystem::path& file : files)
     {
         basic::Sha256Digest digest{};
+        std::string digestText;
         std::uintmax_t size = 0;
         std::string ignored;
-        material += pathText(fs::absolute(file).lexically_normal());
+        material += pathText(std::filesystem::absolute(file).lexically_normal());
         material.push_back('\0');
-        if (basic::sha256File(file, digest, size, ignored)) material += basic::sha256Hex(digest);
+        if (manifest.inputDigest(file, digestText, size)) material += digestText;
+        else if (basic::sha256File(file, digest, size, ignored))
+            material += basic::sha256Hex(digest);
         else material += "missing";
         material.push_back('\n');
     }
@@ -1043,9 +1057,13 @@ std::string fingerprintFiles(std::vector<fs::path> files)
         reinterpret_cast<const std::uint8_t*>(material.data()), material.size())));
 }
 
+namespace
+{
+
 std::vector<DependencyProvenance> dependencyProvenance(
     const compilation::ProjectGraph& graph,
-    const RestorePlan& plan)
+    const RestorePlan& plan,
+    const compilation::CompilationInputManifest& manifest)
 {
     std::vector<DependencyProvenance> records;
     const compilation::Project* root = graph.rootProject();
@@ -1057,14 +1075,16 @@ std::vector<DependencyProvenance> dependencyProvenance(
         records.push_back(DependencyProvenance{
             root != nullptr && project.projectFile() == root->projectFile()
                 ? "source" : "project-reference",
-            project.moduleName(), project.projectFile(), fingerprintFiles(std::move(inputs))});
+            project.moduleName(), project.projectFile(),
+            fingerprintFiles(manifest, std::move(inputs))});
         for (const compilation::LibraryReference& reference : project.libraryReferences())
         {
             std::vector<fs::path> artifacts = {reference.libraryPath, reference.metadataPath};
             if (!reference.runtimePath.empty()) artifacts.push_back(reference.runtimePath);
             records.push_back(DependencyProvenance{
                 "library-reference", reference.metadataPath.stem().string(),
-                reference.libraryPath, fingerprintFiles(std::move(artifacts))});
+                reference.libraryPath,
+                fingerprintFiles(manifest, std::move(artifacts))});
         }
     }
     for (const RestoredPackage& package : plan.packages)
@@ -1228,6 +1248,7 @@ ExitCode loadBuildClosure(
 void updateRootDependencyProvenance(
     const fs::path& project,
     const compilation::Project& loaded,
+    const compilation::CompilationInputManifest& manifest,
     std::vector<DependencyProvenance>& provenance)
 {
     for (DependencyProvenance& record : provenance)
@@ -1237,7 +1258,7 @@ void updateRootDependencyProvenance(
         std::vector<fs::path> rootInputs = {project};
         for (const compilation::ProjectSource& source : loaded.sourceSet().sources())
             rootInputs.push_back(source.absolutePath);
-        record.fingerprint = fingerprintFiles(std::move(rootInputs));
+        record.fingerprint = fingerprintFiles(manifest, std::move(rootInputs));
     }
 }
 
@@ -1305,6 +1326,7 @@ ExitCode invokeNestedCompiler(
     const BuildOptions& options,
     bool json,
     const DriverExecutor& executor,
+    compilation::CompilationInputManifest& manifest,
     const std::vector<std::string_view>& views,
     std::ostream& output,
     std::ostream& error,
@@ -1321,14 +1343,15 @@ ExitCode invokeNestedCompiler(
     {
         ProgressJsonForwardingBuffer progressBuffer(output, compilerOutputText);
         std::ostream progressOutput(&progressBuffer);
-        const ExitCode code = executor(views, progressOutput, nestedError);
+        const ExitCode code = executor(
+            views, progressOutput, nestedError, &manifest);
         progressBuffer.finish();
         return code;
     }
     std::ostream& nestedOutput = json
         ? static_cast<std::ostream&>(compilerOutput)
         : output;
-    const ExitCode code = executor(views, nestedOutput, nestedError);
+    const ExitCode code = executor(views, nestedOutput, nestedError, &manifest);
     if (json) compilerOutputText = compilerOutput.str();
     return code;
 }
@@ -1347,6 +1370,7 @@ ExitCode executeConfiguredBuild(
     const std::optional<std::size_t>& compilerJobs,
     const fs::path& generated,
     const compilation::Project& loaded,
+    compilation::CompilationInputManifest& manifest,
     const std::vector<DependencyProvenance>& provenance,
     CommandOutput& result,
     std::ostream& output,
@@ -1375,7 +1399,7 @@ ExitCode executeConfiguredBuild(
     std::string compilerOutputText;
     std::ostringstream compilerOutput;
     std::ostringstream compilerError;
-    const ExitCode code = invokeNestedCompiler(options, json, executor, views,
+    const ExitCode code = invokeNestedCompiler(options, json, executor, manifest, views,
         output, error, compilerOutputText, compilerOutput, compilerError);
     if (code != ExitCode::Success)
     {
@@ -1452,8 +1476,14 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
         projectLoadOptions, compilerJobs, result, loader, loaded, graph, message, error);
     if (closure != ExitCode::Success) return closure;
 
-    std::vector<DependencyProvenance> provenance = dependencyProvenance(*graph, plan);
-    updateRootDependencyProvenance(project, *loaded, provenance);
+    compilation::CompilationInputManifest manifest = createCompilationInputManifest(
+        std::move(*graph), std::move(projectLoadOptions));
+    compilation::LibraryMetadataRepository metadataRepository;
+    if (!manifest.calculateIdentity(metadataRepository, message))
+        return result.failure(error, message, ExitCode::CompilationError);
+    std::vector<DependencyProvenance> provenance =
+        dependencyProvenance(manifest.projectGraph(), plan, manifest);
+    updateRootDependencyProvenance(project, *loaded, manifest, provenance);
     if (options.dependencyReport && !json)
         printDependencyProvenance(output, provenance);
     return executeConfiguredBuild(
@@ -1470,6 +1500,7 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const DriverExecut
         compilerJobs,
         generated,
         *loaded,
+        manifest,
         provenance,
         result,
         output,
@@ -1744,7 +1775,7 @@ ExitCode runExplain(std::span<const std::string_view> raw, std::ostream& output,
             return result.failure(error,
                                   "optimization contract is a versioned text manifest; omit --output-format=json");
         constexpr std::array<std::string_view, 1> nested = {"--print-optimization-contract"};
-        return executor(nested, output, error);
+        return executor(nested, output, error, nullptr);
     }
     if (topic == "costs")
     {
@@ -1758,7 +1789,7 @@ ExitCode runExplain(std::span<const std::string_view> raw, std::ostream& output,
         const std::string action = parsed.json ? "--explain-project-costs-json" : "--explain-project-costs";
         const std::string projectText = project.string();
         const std::array<std::string_view, 2> nested = {action, projectText};
-        return executor(nested, output, error);
+        return executor(nested, output, error, nullptr);
     }
     if (parsed.values.size() != 2U)
         return result.failure(error, "topic '" + std::string(topic) + "' does not accept a project argument");

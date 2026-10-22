@@ -31,6 +31,9 @@ bool configurePrecompiledModules(
     compilation::CompilationInputManifest& manifest,
     frontend::ProjectCompilation& compilation,
     std::string& error);
+std::string fingerprintFiles(
+    const compilation::CompilationInputManifest& manifest,
+    std::vector<std::filesystem::path> files);
 }
 
 namespace nativesharp::compilation
@@ -72,11 +75,18 @@ private:
         CompilationInputManifest& manifest,
         frontend::ProjectCompilation& compilation,
         std::string& error);
+    friend std::string driver::fingerprintFiles(
+        const CompilationInputManifest& manifest,
+        std::vector<std::filesystem::path> files);
 
     // Returns the exact source bytes used to calculate the manifest identity. The cache is
     // immutable after identity calculation, so syntax workers may query it concurrently.
     std::optional<std::string> sourceBuffer(
         const std::filesystem::path& path) const;
+    bool inputDigest(
+        const std::filesystem::path& path,
+        std::string& digest,
+        std::uintmax_t& size) const;
     void collectGraphInputs(const ProjectGraph& graph);
     void canonicalizeInputOrder();
 
@@ -86,6 +96,8 @@ private:
     std::vector<std::filesystem::path> inputFiles_;
     std::unordered_set<std::string> sourceInputKeys_;
     std::unordered_map<std::string, std::string> sourceBuffers_;
+    std::unordered_map<std::string, std::string> inputDigests_;
+    std::unordered_map<std::string, std::uintmax_t> inputSizes_;
     std::vector<std::pair<std::string, std::string>> identityFields_;
     std::string identity_;
     std::string bundleProductKind_;

@@ -145,6 +145,15 @@ ExitCode Driver::run(
     std::ostream& output,
     std::ostream& error) const
 {
+    return runWithManifest(arguments, output, error, nullptr);
+}
+
+ExitCode Driver::runWithManifest(
+    std::span<const std::string_view> arguments,
+    std::ostream& output,
+    std::ostream& error,
+    compilation::CompilationInputManifest* preparedInputManifest) const
+{
     CompilerConsoleArguments consoleArguments =
         parseCompilerConsoleArguments(arguments, activeCompilerLanguage());
     CompilerLanguageScope languageScope(consoleArguments.language);
@@ -163,11 +172,14 @@ ExitCode Driver::run(
             error,
             [this](std::span<const std::string_view> nested,
                    std::ostream& nestedOutput,
-                   std::ostream& nestedError) {
-                return run(nested, nestedOutput, nestedError);
+                   std::ostream& nestedError,
+                   compilation::CompilationInputManifest* nestedManifest) {
+                return runWithManifest(
+                    nested, nestedOutput, nestedError, nestedManifest);
             });
     }
-    return runCompilerSession(*this, arguments, output, error);
+    return runCompilerSession(
+        *this, arguments, output, error, preparedInputManifest);
 }
 
 ExitCode Driver::printCodeGeneration(

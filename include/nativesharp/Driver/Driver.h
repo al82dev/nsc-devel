@@ -13,6 +13,11 @@
 #include <string_view>
 #include <vector>
 
+namespace nativesharp::compilation
+{
+class CompilationInputManifest;
+}
+
 namespace nativesharp::driver
 {
 class CompilerActionDispatcher;
@@ -28,6 +33,11 @@ public:
 private:
     friend class CompilerActionDispatcher;
 
+    ExitCode runWithManifest(
+        std::span<const std::string_view> arguments,
+        std::ostream& output,
+        std::ostream& error,
+        compilation::CompilationInputManifest* preparedInputManifest) const;
     static void printHelp(std::ostream& output);
     static void printVersion(std::ostream& output);
     static void printCompilerIdentity(std::ostream& output);

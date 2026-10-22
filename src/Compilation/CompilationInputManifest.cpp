@@ -48,14 +48,27 @@ bool appendInputIdentity(
     const std::filesystem::path& rootDirectory,
     const std::filesystem::path& path,
     const std::unordered_set<std::string>& sourceInputKeys,
-    std::unordered_map<std::string, std::string>& sourceBuffers,
+    const std::unordered_map<std::string, std::string>& inputDigests,
+    const std::unordered_map<std::string, std::uintmax_t>& inputSizes,
+    std::unordered_map<std::string, std::string>& newSourceBuffers,
+    std::unordered_map<std::string, std::string>& newInputDigests,
+    std::unordered_map<std::string, std::uintmax_t>& newInputSizes,
     const LibraryMetadataRepository& metadataRepository,
     std::string& error)
 {
-    basic::Sha256Digest digest{};
-    std::uintmax_t size = 0;
     const std::string pathKey = inputPathKey(path);
-    if (sourceInputKeys.contains(pathKey))
+    const auto cachedDigest = inputDigests.find(pathKey);
+    const auto cachedSize = inputSizes.find(pathKey);
+    const bool cached =
+        cachedDigest != inputDigests.end() && cachedSize != inputSizes.end();
+    std::string digestText;
+    std::uintmax_t size = 0;
+    if (cached)
+    {
+        digestText = cachedDigest->second;
+        size = cachedSize->second;
+    }
+    else if (sourceInputKeys.contains(pathKey))
     {
         std::optional<std::string> buffer =
             source::SourceManager::readFileBuffer(path, error);
@@ -65,22 +78,32 @@ bool appendInputIdentity(
         }
         const std::span<const std::uint8_t> bytes{
             reinterpret_cast<const std::uint8_t*>(buffer->data()), buffer->size()};
-        digest = basic::sha256(bytes);
+        digestText = basic::sha256Hex(basic::sha256(bytes));
         size = buffer->size();
-        sourceBuffers.insert_or_assign(pathKey, std::move(*buffer));
+        newSourceBuffers.insert_or_assign(pathKey, std::move(*buffer));
     }
     else if (const LibraryMetadataRepositoryEntry* entry = metadataRepository.find(path))
     {
-        digest = entry->contentDigest();
+        digestText = basic::sha256Hex(entry->contentDigest());
         size = entry->bytes().size();
     }
-    else if (!basic::sha256File(path, digest, size, error))
+    else
     {
-        return false;
+        basic::Sha256Digest digest{};
+        if (!basic::sha256File(path, digest, size, error))
+        {
+            return false;
+        }
+        digestText = basic::sha256Hex(digest);
+    }
+    if (!cached)
+    {
+        newInputDigests.insert_or_assign(pathKey, digestText);
+        newInputSizes.insert_or_assign(pathKey, size);
     }
     appendIdentityField(material, logicalInputPath(rootDirectory, path));
     appendIdentityField(material, std::to_string(size));
-    appendIdentityField(material, basic::sha256Hex(digest));
+    appendIdentityField(material, digestText);
     return true;
 }
 }
@@ -184,6 +207,10 @@ bool CompilationInputManifest::calculateIdentity(
     }
     std::unordered_map<std::string, std::string> sourceBuffers;
     sourceBuffers.reserve(sourceInputKeys_.size());
+    std::unordered_map<std::string, std::string> inputDigests;
+    std::unordered_map<std::string, std::uintmax_t> inputSizes;
+    inputDigests.reserve(inputFiles_.size());
+    inputSizes.reserve(inputFiles_.size());
     for (const std::filesystem::path& path : inputFiles_)
     {
         if (!appendInputIdentity(
@@ -191,19 +218,24 @@ bool CompilationInputManifest::calculateIdentity(
                 rootDirectory_,
                 path,
                 sourceInputKeys_,
+                inputDigests_,
+                inputSizes_,
                 sourceBuffers,
+                inputDigests,
+                inputSizes,
                 metadataRepository,
                 error))
         {
             identity_.clear();
-            sourceBuffers_.clear();
             return false;
         }
     }
     const std::span<const std::uint8_t> bytes{
         reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
     identity_ = basic::sha256Hex(basic::sha256(bytes));
-    sourceBuffers_ = std::move(sourceBuffers);
+    sourceBuffers_.merge(sourceBuffers);
+    inputDigests_.merge(inputDigests);
+    inputSizes_.merge(inputSizes);
     return true;
 }
 
@@ -216,6 +248,23 @@ std::optional<std::string> CompilationInputManifest::sourceBuffer(
         return std::nullopt;
     }
     return position->second;
+}
+
+bool CompilationInputManifest::inputDigest(
+    const std::filesystem::path& path,
+    std::string& digest,
+    std::uintmax_t& size) const
+{
+    const std::string key = inputPathKey(path);
+    const auto digestPosition = inputDigests_.find(key);
+    const auto sizePosition = inputSizes_.find(key);
+    if (digestPosition == inputDigests_.end() || sizePosition == inputSizes_.end())
+    {
+        return false;
+    }
+    digest = digestPosition->second;
+    size = sizePosition->second;
+    return true;
 }
 
 std::string_view CompilationInputManifest::identity() const noexcept

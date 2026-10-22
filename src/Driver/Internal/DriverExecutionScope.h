@@ -17,6 +17,11 @@
 #include <string_view>
 #include <vector>
 
+namespace nativesharp::compilation
+{
+class CompilationInputManifest;
+}
+
 namespace nativesharp::driver
 {
 struct DriverExecutionScope final
@@ -46,6 +51,7 @@ struct DriverExecutionScope final
     llvm_backend::LlvmOptimizationBudgetTracker o2Budget;
     compilation::ProjectLoader projectLoader;
     compilation::ProjectLoadOptions projectLoadOptions;
+    compilation::CompilationInputManifest* preparedInputManifest = nullptr;
     frontend::ProjectCompilationLifetime compilationLifetime;
     bool reportTiming = false;
     bool reportProgress = false;

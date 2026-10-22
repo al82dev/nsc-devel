@@ -150,9 +150,11 @@ ExitCode executeCompilerSession(const Driver &driver, std::span<const std::strin
 }
 
 ExitCode runCompilerSession(const Driver &driver, std::span<const std::string_view> arguments, std::ostream &output,
-                            std::ostream &error)
+                            std::ostream &error,
+                            compilation::CompilationInputManifest *preparedInputManifest)
 {
     DriverExecutionScope executionScope(output, error);
+    executionScope.preparedInputManifest = preparedInputManifest;
     llvm_backend::LlvmOptimizationBudgetScope optimizationBudgetScope(executionScope.o2Budget);
     CompilationJobPolicy jobPolicy;
     CompilationJobPolicyScope jobPolicyScope(jobPolicy);

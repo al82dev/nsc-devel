@@ -113,5 +113,6 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
 void removePackagedFiles(std::span<const std::filesystem::path> copiedFiles);
 
 ExitCode runCompilerSession(const Driver &driver, std::span<const std::string_view> arguments, std::ostream &output,
-                            std::ostream &error);
+                            std::ostream &error,
+                            compilation::CompilationInputManifest *preparedInputManifest);
 } // namespace nativesharp::driver

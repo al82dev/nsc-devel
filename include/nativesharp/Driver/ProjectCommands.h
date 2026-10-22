@@ -7,10 +7,18 @@
 #include <span>
 #include <string_view>
 
+namespace nativesharp::compilation
+{
+class CompilationInputManifest;
+}
+
 namespace nativesharp::driver
 {
 using DriverExecutor = std::function<ExitCode(
-    std::span<const std::string_view>, std::ostream&, std::ostream&)>;
+    std::span<const std::string_view>,
+    std::ostream&,
+    std::ostream&,
+    compilation::CompilationInputManifest*)>;
 
 bool isProjectCommand(std::string_view command) noexcept;
 

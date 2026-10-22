@@ -1,3 +1,4 @@
+#include "Internal/CompilationInputManifestFactory.h"
 #include "Internal/DriverInternal.h"
 
 #include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
@@ -39,6 +40,17 @@ std::optional<compilation::CompilationInputManifest> loadCompilationInputManifes
     const std::filesystem::path& projectFile,
     std::string& error)
 {
+    if (activeExecutionScope != nullptr &&
+        activeExecutionScope->preparedInputManifest != nullptr &&
+        foldedPathKey(
+            activeExecutionScope->preparedInputManifest->projectGraph().rootProjectFile()) ==
+            foldedPathKey(projectFile))
+    {
+        compilation::CompilationInputManifest manifest =
+            std::move(*activeExecutionScope->preparedInputManifest);
+        activeExecutionScope->preparedInputManifest = nullptr;
+        return manifest;
+    }
     const CompilationJobPolicy* const jobs = activeCompilationJobPolicy();
     compilation::ProjectLoader& projectLoader = activeProjectLoader();
     const compilation::ProjectLoadOptions loadOptions = activeProjectLoadOptions();
@@ -64,8 +76,16 @@ std::optional<compilation::CompilationInputManifest> loadCompilationInputManifes
     {
         return std::nullopt;
     }
-    compilation::CompilationInputManifest manifest(
+    return createCompilationInputManifest(
         std::move(*graph), std::move(loadOptions));
+}
+
+compilation::CompilationInputManifest createCompilationInputManifest(
+    compilation::ProjectGraph graph,
+    compilation::ProjectLoadOptions loadOptions)
+{
+    compilation::CompilationInputManifest manifest(
+        std::move(graph), std::move(loadOptions));
     addCommonCompilationIdentity(manifest);
     return manifest;
 }
