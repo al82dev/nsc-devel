@@ -39,6 +39,7 @@ public:
         std::string& error) const;
     const LibraryMetadataRepositoryEntry* find(const std::filesystem::path& path) const;
     std::size_t size() const noexcept;
+    void clear() noexcept;
 
 private:
     static std::filesystem::path canonicalPath(const std::filesystem::path& path);

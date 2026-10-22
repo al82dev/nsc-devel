@@ -93,6 +93,12 @@ bool CompilationGraphScheduler::run(CompilationWorkerPool& pool, std::string& er
     return true;
 }
 
+void CompilationGraphScheduler::clear() noexcept
+{
+    nodes_.clear();
+    submissionOrder_.clear();
+}
+
 std::span<const std::size_t> CompilationGraphScheduler::submissionOrder() const noexcept
 {
     return submissionOrder_;

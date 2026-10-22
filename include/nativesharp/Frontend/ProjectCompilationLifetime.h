@@ -16,6 +16,7 @@ namespace nativesharp::frontend
 class ProjectCompilationLifetime final
 {
 public:
+    void reset() noexcept;
     void setWorkerCount(std::size_t workerCount) noexcept;
     driver::CompilationWorkerPool& workerPool();
     driver::CompilationGraphScheduler& scheduler() noexcept;

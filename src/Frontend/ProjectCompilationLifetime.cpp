@@ -4,6 +4,29 @@
 
 namespace nativesharp::frontend
 {
+void ProjectCompilationLifetime::reset() noexcept
+{
+    if (workerPool_ != nullptr)
+    {
+        workerPool_->requestCancellation();
+        try
+        {
+            workerPool_->wait();
+        }
+        catch (...)
+        {
+        }
+        workerPool_.reset();
+    }
+    scheduler_.clear();
+    indexes_.clear();
+    metadataRepository_.clear();
+    metadataRepository_.setCacheRoot({});
+    templateParseCache_.setRoot({});
+    precompiledSyntaxCache_.setRoot({});
+    workerCount_ = 1;
+}
+
 void ProjectCompilationLifetime::setWorkerCount(std::size_t workerCount) noexcept
 {
     const std::size_t normalized = std::max<std::size_t>(1, workerCount);

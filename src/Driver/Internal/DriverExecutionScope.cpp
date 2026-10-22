@@ -14,6 +14,7 @@ DriverExecutionScope::DriverExecutionScope(std::ostream &destination, std::ostre
 
 DriverExecutionScope::~DriverExecutionScope()
 {
+    compilationLifetime.reset();
     if (o2Budget.invocations() != 0)
     {
         if (reportTiming)

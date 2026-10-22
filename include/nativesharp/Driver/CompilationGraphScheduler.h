@@ -19,6 +19,7 @@ public:
     std::size_t addTask(
         std::string stableKey, std::span<const std::size_t> dependencies, Work work);
     bool run(CompilationWorkerPool& pool, std::string& error);
+    void clear() noexcept;
 
     std::span<const std::size_t> submissionOrder() const noexcept;
     std::size_t taskCount() const noexcept;

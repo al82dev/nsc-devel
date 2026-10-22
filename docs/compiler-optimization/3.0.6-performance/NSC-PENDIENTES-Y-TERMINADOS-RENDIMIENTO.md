@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `47 / 48`
+**Progreso:** `48 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -51,4 +51,4 @@
 | T7.3 | Eliminar pools internos redundantes por fase | TERMINADO |
 | T7.4 | Reutilizar productos inmutables sin copiarlos ni reconstruirlos | TERMINADO |
 | T7.5 | Conservar orden, barreras, cancelación y estado floating-point deterministas | TERMINADO |
-| T7.6 | Reiniciar el estado al terminar sin contaminar compilaciones posteriores | PENDIENTE |
+| T7.6 | Reiniciar el estado al terminar sin contaminar compilaciones posteriores | TERMINADO |

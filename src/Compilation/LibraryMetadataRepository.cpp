@@ -163,6 +163,11 @@ std::size_t LibraryMetadataRepository::size() const noexcept
     return entries_.size();
 }
 
+void LibraryMetadataRepository::clear() noexcept
+{
+    entries_.clear();
+}
+
 std::filesystem::path LibraryMetadataRepository::canonicalPath(
     const std::filesystem::path& path)
 {
