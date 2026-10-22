@@ -41,7 +41,36 @@ std::string computeTemplateSourceFingerprint(
 }
 
 // NSC305-C01. The C1 cache schema version (bump on any format change).
-static constexpr std::string_view templateCacheSchema = "nsc-c1-template-v1";
+static constexpr std::string_view templateCacheSchema = "nsc-c1-template-v2";
+
+// Writes both FileIds and offsets so a restored tree preserves diagnostic and dump locations
+// exactly. The enclosing syntax-product codec validates unit identity before accepting the tree.
+static void writeSourceRange(std::string& out, SourceRange range)
+{
+    internal::CachePayloadWriter::u32(out, range.begin().fileId().value());
+    internal::CachePayloadWriter::u32(out, range.begin().offset());
+    internal::CachePayloadWriter::u32(out, range.end().fileId().value());
+    internal::CachePayloadWriter::u32(out, range.end().offset());
+}
+
+// Reads the exact SourceRange representation emitted by writeSourceRange. Invalid source ranges
+// remain representable because parser nodes can use them as explicit absence sentinels.
+static bool readSourceRange(CachePayloadReader& reader, SourceRange& range)
+{
+    std::uint32_t beginFile = 0;
+    std::uint32_t beginOffset = 0;
+    std::uint32_t endFile = 0;
+    std::uint32_t endOffset = 0;
+    if (!reader.u32(beginFile) || !reader.u32(beginOffset) ||
+        !reader.u32(endFile) || !reader.u32(endOffset))
+    {
+        return false;
+    }
+    range = SourceRange{
+        SourceLocation{FileId{beginFile}, beginOffset},
+        SourceLocation{FileId{endFile}, endOffset}};
+    return true;
+}
 
 // NSC305-C01. The full C1 cache key: SHA-256 of (source fingerprint + schema version).
 std::string templateCacheKey(std::string_view sourceFingerprint)
@@ -124,8 +153,7 @@ bool deserializeTemplateRecord(std::string_view bytes, GenericTemplateRecord& re
 [[maybe_unused]] std::string serializeTypeSyntaxScalars(const ast::TypeSyntax& type)
 {
     std::string out;
-    internal::CachePayloadWriter::u32(out, type.range().begin().offset());
-    internal::CachePayloadWriter::u32(out, type.range().end().offset());
+    writeSourceRange(out, type.range());
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(type.baseTokenKind()));
     internal::CachePayloadWriter::string(out, type.baseName());
     internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(type.ownershipQualifier()));
@@ -157,16 +185,15 @@ bool deserializeTemplateRecord(std::string_view bytes, GenericTemplateRecord& re
     return out;
 }
 
-// NSC305-C01. Deserializes the scalar/string fields written by serializeTypeSyntaxScalars. The
-// SourceRange's FileId is left default (invalid); the caller restores it from the owning unit.
+// NSC305-C01. Deserializes the scalar/string fields written by serializeTypeSyntaxScalars,
+// including the exact SourceRange and FileId.
 static bool readTypeSyntaxHeader(
     CachePayloadReader& reader,
-    std::uint32_t& begin,
-    std::uint32_t& end,
+    SourceRange& range,
     std::uint32_t& tokenKind,
     std::string& baseName)
 {
-    return reader.u32(begin) && reader.u32(end) && reader.u32(tokenKind) &&
+    return readSourceRange(reader, range) && reader.u32(tokenKind) &&
         reader.string(baseName);
 }
 
@@ -285,7 +312,8 @@ static void applyTypeSyntaxOrigin(
     std::string_view bytes, ast::TypeSyntax& type)
 {
     CachePayloadReader reader(bytes);
-    std::uint32_t begin = 0, end = 0, tokenKind = 0;
+    SourceRange range;
+    std::uint32_t tokenKind = 0;
     std::string baseName, lifetimeName, opaqueResultTraitName, functionLifetimeName;
     std::uint8_t ownership = 0, reference = 0, dynamicTrait = 0, opaqueResult = 0;
     std::uint8_t explicitTrait = 0, pointeeConst = 0, tuple = 0, function = 0, pack = 0;
@@ -294,7 +322,7 @@ static void applyTypeSyntaxOrigin(
     std::vector<std::string> tupleNames;
     std::uint64_t project = 0;
     std::string originNamespace;
-    if (!readTypeSyntaxHeader(reader, begin, end, tokenKind, baseName) ||
+    if (!readTypeSyntaxHeader(reader, range, tokenKind, baseName) ||
         !readTypeSyntaxQualifiers(reader, ownership, reference, lifetimeName, dynamicTrait,
             opaqueResult, opaqueResultTraitName, explicitTrait, pointeeConst, tuple, function,
             pack) ||
@@ -302,7 +330,7 @@ static void applyTypeSyntaxOrigin(
             nullable, functionLifetimeName, tupleNames) ||
         !readTypeSyntaxOrigin(reader, hasProject, project, hasNamespace, originNamespace))
         return false;
-    type.setRange(SourceRange{SourceLocation{FileId{}, begin}, SourceLocation{FileId{}, end}});
+    type.setRange(range);
     type.setBaseTokenKind(static_cast<lexer::TokenKind>(tokenKind));
     type.setBaseName(std::move(baseName));
     applyTypeSyntaxQualifiers(type, ownership, reference, std::move(lifetimeName), dynamicTrait,
@@ -316,9 +344,8 @@ static void applyTypeSyntaxOrigin(
     return true;
 }
 
-// NSC305-C01. Recursive (tree) serialization of a TypeSyntax: the scalar fields plus the ordered
-// type arguments and the function return/error types. Modifiers (arrayCount expressions) and
-// constExpression are the AstNode layer.
+// NSC305-C01. Recursive serialization of a TypeSyntax: scalar fields, ordered type arguments,
+// function types, modifiers and const-expression carriers.
 [[maybe_unused]] std::string serializeTypeSyntaxTree(const ast::TypeSyntax* type)
 {
     if (type == nullptr) return {};
@@ -332,12 +359,29 @@ static void applyTypeSyntaxOrigin(
     internal::CachePayloadWriter::byte(out, hasError ? 1U : 0U);
     if (hasReturn) out += serializeTypeSyntaxTree(type->functionReturnType());
     if (hasError) out += serializeTypeSyntaxTree(type->functionErrorType());
+    internal::CachePayloadWriter::u32(
+        out,
+        static_cast<std::uint32_t>(type->modifiers().size()));
+    for (const ast::TypeModifierSyntax& modifier : type->modifiers())
+    {
+        internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(modifier.kind));
+        writeSourceRange(out, modifier.range);
+        internal::CachePayloadWriter::u64(out, modifier.arrayRank);
+        internal::CachePayloadWriter::byte(
+            out,
+            static_cast<std::uint8_t>(modifier.pointerNullability));
+        internal::CachePayloadWriter::byte(out, modifier.pointerHasProvenance ? 1U : 0U);
+        internal::CachePayloadWriter::u64(out, modifier.pointerKnownAlignment);
+        internal::CachePayloadWriter::u32(out, modifier.pointerAddressSpace);
+        internal::CachePayloadWriter::byte(out, modifier.arrayCount != nullptr ? 1U : 0U);
+        if (modifier.arrayCount != nullptr) out += serializeAstNodeTree(modifier.arrayCount);
+    }
+    internal::CachePayloadWriter::byte(out, type->constExpression() != nullptr ? 1U : 0U);
+    if (type->constExpression() != nullptr) out += serializeAstNodeTree(type->constExpression());
     return out;
 }
 
-// NSC305-C01. Recursive deserialization of a TypeSyntax tree into `arena` (inverse of
-// serializeTypeSyntaxTree). The SourceRange's FileId is left default (invalid); the caller restores
-// it from the owning unit.
+// NSC305-C01. Recursive deserialization of a complete TypeSyntax tree into `arena`.
 static ast::TypeSyntax* deserializeTypeSyntaxTree(ast::AstArena& arena, CachePayloadReader& reader);
 
 static bool deserializeTypeSyntaxArguments(
@@ -383,15 +427,75 @@ static bool deserializeTypeSyntaxFunctionTypes(
     return true;
 }
 
+// Restores ordered type modifiers, including fixed-array expressions and pointer guarantees. The
+// fields are semantic inputs for later binding and lowering, so none may be reconstructed by guess.
+static bool deserializeTypeSyntaxModifiers(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    ast::TypeSyntax& type)
+{
+    std::uint32_t modifierCount = 0;
+    if (!reader.u32(modifierCount)) return false;
+    for (std::uint32_t index = 0; index < modifierCount; ++index)
+    {
+        ast::TypeModifierSyntax modifier;
+        std::uint8_t kind = 0;
+        std::uint8_t nullability = 0;
+        std::uint8_t provenance = 0;
+        std::uint8_t hasArrayCount = 0;
+        std::uint64_t arrayRank = 0;
+        std::uint64_t alignment = 0;
+        std::uint32_t addressSpace = 0;
+        if (!reader.byte(kind) || !readSourceRange(reader, modifier.range) ||
+            !reader.u64(arrayRank) || !reader.byte(nullability) ||
+            !reader.byte(provenance) || !reader.u64(alignment) ||
+            !reader.u32(addressSpace) || !reader.byte(hasArrayCount))
+        {
+            return false;
+        }
+        modifier.kind = static_cast<ast::TypeModifierSyntaxKind>(kind);
+        modifier.arrayRank = static_cast<std::size_t>(arrayRank);
+        modifier.pointerNullability =
+            static_cast<ast::PointerNullabilitySyntaxKind>(nullability);
+        modifier.pointerHasProvenance = provenance != 0U;
+        modifier.pointerKnownAlignment = static_cast<std::size_t>(alignment);
+        modifier.pointerAddressSpace = addressSpace;
+        if (hasArrayCount != 0U)
+        {
+            modifier.arrayCount = deserializeAstNodeTree(arena, reader);
+            if (modifier.arrayCount == nullptr) return false;
+        }
+        type.addModifier(modifier);
+    }
+    return true;
+}
+
+// Restores the optional expression carried by a const-generic type argument after all ordinary
+// type children, matching the serialized field order exactly.
+static bool deserializeTypeSyntaxConstExpression(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    ast::TypeSyntax& type)
+{
+    std::uint8_t hasConstExpression = 0;
+    if (!reader.byte(hasConstExpression)) return false;
+    if (hasConstExpression == 0U) return true;
+    ast::AstNode* expression = deserializeAstNodeTree(arena, reader);
+    if (expression == nullptr) return false;
+    type.setConstExpression(expression);
+    return true;
+}
+
 [[maybe_unused]] static ast::TypeSyntax* deserializeTypeSyntaxTree(
     ast::AstArena& arena, CachePayloadReader& reader)
 {
-    std::uint32_t begin = 0, end = 0, tokenKind = 0;
+    SourceRange range;
+    std::uint32_t tokenKind = 0;
     std::string baseName;
-    if (!readTypeSyntaxHeader(reader, begin, end, tokenKind, baseName))
+    if (!readTypeSyntaxHeader(reader, range, tokenKind, baseName))
         return nullptr;
     ast::TypeSyntax* type = arena.make<ast::TypeSyntax>(
-        SourceRange{SourceLocation{FileId{}, begin}, SourceLocation{FileId{}, end}},
+        range,
         static_cast<lexer::TokenKind>(tokenKind), std::move(baseName));
     std::string lifetimeName, opaqueResultTraitName, functionLifetimeName;
     std::uint8_t ownership = 0, reference = 0, dynamicTrait = 0, opaqueResult = 0;
@@ -415,7 +519,9 @@ static bool deserializeTypeSyntaxFunctionTypes(
         std::move(functionLifetimeName));
     applyTypeSyntaxOrigin(*type, hasProject, project, hasNamespace, std::move(originNamespace));
     if (!deserializeTypeSyntaxArguments(arena, reader, *type, tuple != 0U, tupleNames) ||
-        !deserializeTypeSyntaxFunctionTypes(arena, reader, *type))
+        !deserializeTypeSyntaxFunctionTypes(arena, reader, *type) ||
+        !deserializeTypeSyntaxModifiers(arena, reader, *type) ||
+        !deserializeTypeSyntaxConstExpression(arena, reader, *type))
         return nullptr;
     return type;
 }
@@ -426,8 +532,7 @@ static bool deserializeTypeSyntaxFunctionTypes(
 {
     std::string out;
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.kind()));
-    internal::CachePayloadWriter::u32(out, node.range().begin().offset());
-    internal::CachePayloadWriter::u32(out, node.range().end().offset());
+    writeSourceRange(out, node.range());
     internal::CachePayloadWriter::string(out, node.text());
     internal::CachePayloadWriter::string(out, node.auxiliaryText());
     internal::CachePayloadWriter::string(out, node.argumentName());
@@ -436,7 +541,6 @@ static bool deserializeTypeSyntaxFunctionTypes(
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.modifiers().size()));
     for (const lexer::TokenKind modifier : node.modifiers())
         internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(modifier));
-    internal::CachePayloadWriter::stringVector(out, node.genericParameters());
     internal::CachePayloadWriter::string(out, node.lifetimeName());
     internal::CachePayloadWriter::byte(out, node.flag() ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, node.isReference() ? 1U : 0U);
@@ -457,12 +561,11 @@ static bool deserializeTypeSyntaxFunctionTypes(
     ast::AstArena& arena, CachePayloadReader& reader)
 {
     std::uint32_t kind = 0;
-    std::uint32_t begin = 0;
-    std::uint32_t end = 0;
-    if (!reader.u32(kind) || !reader.u32(begin) || !reader.u32(end)) return nullptr;
+    SourceRange range;
+    if (!reader.u32(kind) || !readSourceRange(reader, range)) return nullptr;
     ast::AstNode* node = arena.make<ast::AstNode>(
         static_cast<ast::AstNodeKind>(kind),
-        SourceRange{SourceLocation{FileId{}, begin}, SourceLocation{FileId{}, end}});
+        range);
     std::string text;
     std::string auxiliaryText;
     std::string argumentName;
@@ -478,7 +581,6 @@ static bool deserializeTypeSyntaxFunctionTypes(
     std::uint8_t ffiUnwind = 0;
     std::uint64_t integerValue = 0;
     std::uint64_t floatingBits = 0;
-    std::vector<std::string> genericParameters;
     if (!reader.string(text) || !reader.string(auxiliaryText) ||
         !reader.string(argumentName) || !reader.string(allocatorFailureProfile) ||
         !reader.u32(tokenKind) || !reader.u32(modifierCount))
@@ -494,13 +596,11 @@ static bool deserializeTypeSyntaxFunctionTypes(
         if (!reader.u32(modifier)) return nullptr;
         node->addModifier(static_cast<lexer::TokenKind>(modifier));
     }
-    if (!reader.stringVector(genericParameters) || !reader.string(lifetimeName) ||
+    if (!reader.string(lifetimeName) ||
         !reader.byte(flag) || !reader.byte(reference) || !reader.byte(variadic) ||
         !reader.byte(unsafe) || !reader.byte(floatingPointMode) || !reader.byte(ffiUnwind) ||
         !reader.u64(integerValue) || !reader.u64(floatingBits))
         return nullptr;
-    for (const std::string& parameter : genericParameters)
-        node->addGenericParameter(parameter);
     node->setLifetimeName(std::move(lifetimeName));
     node->setFlag(flag != 0U);
     node->setReference(reference != 0U);
@@ -515,9 +615,101 @@ static bool deserializeTypeSyntaxFunctionTypes(
     return node;
 }
 
-// NSC305-C01. Recursive (tree) serialization of an AstNode: scalars + the typeSyntax/throwsType/
-// typeSyntaxes graph + first/second/third + children. Nested generic parameter/constraint/lifetime
-// structs are the next layer.
+static std::string serializeGenericParameter(const ast::GenericParameterSyntax& parameter);
+static std::string serializeGenericConstraint(const ast::GenericConstraintClause& clause);
+static bool deserializeGenericParameter(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    ast::GenericParameterSyntax& parameter);
+static bool deserializeGenericConstraint(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    ast::GenericConstraintClause& clause);
+
+// Serializes declaration metadata that is neither a child node nor a TypeSyntax slot. These lists
+// preserve source order because generic binding and lifetime diagnostics observe that order.
+static void serializeAstNodeDeclarationMetadata(std::string& out, const ast::AstNode& node)
+{
+    internal::CachePayloadWriter::u32(
+        out,
+        static_cast<std::uint32_t>(node.genericParameterSyntaxes().size()));
+    for (const ast::GenericParameterSyntax& parameter : node.genericParameterSyntaxes())
+        out += serializeGenericParameter(parameter);
+    internal::CachePayloadWriter::u32(
+        out,
+        static_cast<std::uint32_t>(node.lifetimeParameters().size()));
+    for (const ast::LifetimeParameterSyntax& parameter : node.lifetimeParameters())
+    {
+        internal::CachePayloadWriter::string(out, parameter.name);
+        writeSourceRange(out, parameter.range);
+    }
+    internal::CachePayloadWriter::u32(
+        out,
+        static_cast<std::uint32_t>(node.lifetimeOutlivesConstraints().size()));
+    for (const ast::LifetimeOutlivesConstraint& constraint : node.lifetimeOutlivesConstraints())
+    {
+        internal::CachePayloadWriter::string(out, constraint.longer);
+        internal::CachePayloadWriter::string(out, constraint.shorter);
+        writeSourceRange(out, constraint.range);
+    }
+    internal::CachePayloadWriter::u32(
+        out,
+        static_cast<std::uint32_t>(node.genericConstraints().size()));
+    for (const ast::GenericConstraintClause& constraint : node.genericConstraints())
+        out += serializeGenericConstraint(constraint);
+}
+
+// Restores generic and lifetime metadata in the same deterministic order used by the parser.
+static bool deserializeAstNodeDeclarationMetadata(
+    ast::AstArena& arena,
+    CachePayloadReader& reader,
+    ast::AstNode& node)
+{
+    std::uint32_t genericParameterCount = 0;
+    if (!reader.u32(genericParameterCount)) return false;
+    for (std::uint32_t index = 0; index < genericParameterCount; ++index)
+    {
+        ast::GenericParameterSyntax parameter;
+        if (!deserializeGenericParameter(arena, reader, parameter)) return false;
+        node.addGenericParameter(std::move(parameter));
+    }
+    std::uint32_t lifetimeParameterCount = 0;
+    if (!reader.u32(lifetimeParameterCount)) return false;
+    for (std::uint32_t index = 0; index < lifetimeParameterCount; ++index)
+    {
+        ast::LifetimeParameterSyntax parameter;
+        if (!reader.string(parameter.name) ||
+            !readSourceRange(reader, parameter.range))
+        {
+            return false;
+        }
+        node.addLifetimeParameter(std::move(parameter));
+    }
+    std::uint32_t outlivesCount = 0;
+    if (!reader.u32(outlivesCount)) return false;
+    for (std::uint32_t index = 0; index < outlivesCount; ++index)
+    {
+        ast::LifetimeOutlivesConstraint constraint;
+        if (!reader.string(constraint.longer) || !reader.string(constraint.shorter) ||
+            !readSourceRange(reader, constraint.range))
+        {
+            return false;
+        }
+        node.addLifetimeOutlivesConstraint(std::move(constraint));
+    }
+    std::uint32_t genericConstraintCount = 0;
+    if (!reader.u32(genericConstraintCount)) return false;
+    for (std::uint32_t index = 0; index < genericConstraintCount; ++index)
+    {
+        ast::GenericConstraintClause constraint;
+        if (!deserializeGenericConstraint(arena, reader, constraint)) return false;
+        node.addGenericConstraint(std::move(constraint));
+    }
+    return true;
+}
+
+// NSC305-C01. Recursive serialization of a complete AstNode, including declaration metadata,
+// type syntax slots and every ordered child relationship.
 [[maybe_unused]] std::string serializeAstNodeTree(const ast::AstNode* node)
 {
     if (node == nullptr) return {};
@@ -531,6 +723,7 @@ static bool deserializeTypeSyntaxFunctionTypes(
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node->typeSyntaxes().size()));
     for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
         out += serializeTypeSyntaxTree(syntax);
+    serializeAstNodeDeclarationMetadata(out, *node);
     const ast::AstNode* first = node->first();
     const ast::AstNode* second = node->second();
     const ast::AstNode* third = node->third();
@@ -575,6 +768,7 @@ static bool deserializeTypeSyntaxFunctionTypes(
         if (type == nullptr) return nullptr;
         node->addTypeSyntax(type);
     }
+    if (!deserializeAstNodeDeclarationMetadata(arena, reader, *node)) return nullptr;
     std::uint8_t hasFirst = 0;
     std::uint8_t hasSecond = 0;
     std::uint8_t hasThird = 0;
@@ -610,7 +804,8 @@ static bool deserializeTypeSyntaxFunctionTypes(
 
 // NSC305-C01. GenericParameterSyntax + LifetimeParameterSyntax + LifetimeOutlivesConstraint (no
 // TypeSyntax recursion in the parameter; constantType is serialized as a full tree).
-[[maybe_unused]] std::string serializeGenericParameter(const ast::GenericParameterSyntax& parameter)
+[[maybe_unused]] static std::string serializeGenericParameter(
+    const ast::GenericParameterSyntax& parameter)
 {
     std::string out;
     internal::CachePayloadWriter::string(out, parameter.name);
@@ -618,18 +813,17 @@ static bool deserializeTypeSyntaxFunctionTypes(
     internal::CachePayloadWriter::byte(out, parameter.constantType != nullptr ? 1U : 0U);
     if (parameter.constantType != nullptr)
         out += serializeTypeSyntaxTree(parameter.constantType);
-    internal::CachePayloadWriter::u32(out, parameter.range.begin().offset());
-    internal::CachePayloadWriter::u32(out, parameter.range.end().offset());
+    writeSourceRange(out, parameter.range);
     return out;
 }
 
 // NSC305-C01. GenericConstraintClause (the source `where` clause; TypeSyntax references as trees).
-[[maybe_unused]] std::string serializeGenericConstraint(const ast::GenericConstraintClause& clause)
+[[maybe_unused]] static std::string serializeGenericConstraint(
+    const ast::GenericConstraintClause& clause)
 {
     std::string out;
     internal::CachePayloadWriter::string(out, clause.parameterName);
-    internal::CachePayloadWriter::u32(out, clause.parameterRange.begin().offset());
-    internal::CachePayloadWriter::u32(out, clause.parameterRange.end().offset());
+    writeSourceRange(out, clause.parameterRange);
     internal::CachePayloadWriter::byte(out, clause.requiresClass ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, clause.requiresValueType ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, clause.requiresDefaultConstructor ? 1U : 0U);
@@ -648,8 +842,7 @@ static bool deserializeTypeSyntaxFunctionTypes(
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(clause.typeConstraints.size()));
     for (const ast::TypeSyntax* constraint : clause.typeConstraints)
         out += serializeTypeSyntaxTree(constraint);
-    internal::CachePayloadWriter::u32(out, clause.range.begin().offset());
-    internal::CachePayloadWriter::u32(out, clause.range.end().offset());
+    writeSourceRange(out, clause.range);
     internal::CachePayloadWriter::byte(out, clause.substitutedArgument != nullptr ? 1U : 0U);
     if (clause.substitutedArgument != nullptr)
         out += serializeTypeSyntaxTree(clause.substitutedArgument);
@@ -662,8 +855,7 @@ static bool deserializeTypeSyntaxFunctionTypes(
 {
     std::uint8_t kind = 0;
     std::uint8_t hasConstantType = 0;
-    std::uint32_t begin = 0;
-    std::uint32_t end = 0;
+    SourceRange range;
     if (!reader.string(parameter.name) || !reader.byte(kind) || !reader.byte(hasConstantType))
         return false;
     parameter.kind = static_cast<ast::GenericParameterSyntaxKind>(kind);
@@ -672,9 +864,8 @@ static bool deserializeTypeSyntaxFunctionTypes(
         parameter.constantType = deserializeTypeSyntaxTree(arena, reader);
         if (parameter.constantType == nullptr) return false;
     }
-    if (!reader.u32(begin) || !reader.u32(end)) return false;
-    parameter.range =
-        SourceRange{SourceLocation{FileId{}, begin}, SourceLocation{FileId{}, end}};
+    if (!readSourceRange(reader, range)) return false;
+    parameter.range = range;
     return true;
 }
 
@@ -694,21 +885,18 @@ static bool deserializeTypeSyntaxFunctionTypes(
     std::uint8_t hasEquality = 0;
     std::uint8_t hasProjection = 0;
     std::uint8_t hasSubstituted = 0;
-    std::uint32_t parameterBegin = 0;
-    std::uint32_t parameterEnd = 0;
-    std::uint32_t clauseBegin = 0;
-    std::uint32_t clauseEnd = 0;
+    SourceRange parameterRange;
+    SourceRange clauseRange;
     std::uint32_t constraintCount = 0;
-    if (!reader.string(clause.parameterName) || !reader.u32(parameterBegin) ||
-        !reader.u32(parameterEnd) || !reader.byte(requiresClass) ||
+    if (!reader.string(clause.parameterName) || !readSourceRange(reader, parameterRange) ||
+        !reader.byte(requiresClass) ||
         !reader.byte(requiresValueType) || !reader.byte(requiresDefaultConstructor) ||
         !reader.byte(requiresCopy) || !reader.byte(requiresMove) ||
         !reader.byte(requiresTrackedLifetime) || !reader.byte(requiresUnmanaged) ||
         !reader.byte(requiresNotNull) || !reader.byte(requiresRefLike) ||
-        !reader.byte(hasEquality) || !reader.byte(hasProjection) || !reader.u32(constraintCount))
+        !reader.byte(hasEquality))
         return false;
-    clause.parameterRange =
-        SourceRange{SourceLocation{FileId{}, parameterBegin}, SourceLocation{FileId{}, parameterEnd}};
+    clause.parameterRange = parameterRange;
     clause.requiresClass = requiresClass != 0U;
     clause.requiresValueType = requiresValueType != 0U;
     clause.requiresDefaultConstructor = requiresDefaultConstructor != 0U;
@@ -723,11 +911,13 @@ static bool deserializeTypeSyntaxFunctionTypes(
         clause.equalityConstraint = deserializeTypeSyntaxTree(arena, reader);
         if (clause.equalityConstraint == nullptr) return false;
     }
+    if (!reader.byte(hasProjection)) return false;
     if (hasProjection != 0U)
     {
         clause.associatedProjection = deserializeTypeSyntaxTree(arena, reader);
         if (clause.associatedProjection == nullptr) return false;
     }
+    if (!reader.u32(constraintCount)) return false;
     clause.typeConstraints.clear();
     for (std::uint32_t index = 0; index < constraintCount; ++index)
     {
@@ -735,9 +925,9 @@ static bool deserializeTypeSyntaxFunctionTypes(
         if (constraint == nullptr) return false;
         clause.typeConstraints.push_back(constraint);
     }
-    if (!reader.u32(clauseBegin) || !reader.u32(clauseEnd) || !reader.byte(hasSubstituted))
+    if (!readSourceRange(reader, clauseRange) || !reader.byte(hasSubstituted))
         return false;
-    clause.range = SourceRange{SourceLocation{FileId{}, clauseBegin}, SourceLocation{FileId{}, clauseEnd}};
+    clause.range = clauseRange;
     if (hasSubstituted != 0U)
     {
         clause.substitutedArgument = deserializeTypeSyntaxTree(arena, reader);

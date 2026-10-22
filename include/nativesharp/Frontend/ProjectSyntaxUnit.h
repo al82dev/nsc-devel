@@ -26,6 +26,8 @@ namespace nativesharp::frontend
 {
 class ProjectSyntaxUnit final
 {
+    friend class ProjectCompilation;
+
 public:
     ProjectSyntaxUnit(
         std::size_t projectOrdinal,

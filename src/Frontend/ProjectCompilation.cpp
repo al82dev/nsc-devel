@@ -1,6 +1,9 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
+#include "Cache/CachePayloadReader.h"
+#include "Cache/SyntaxProductCacheCodec.h"
 #include "Internal/ProjectPhaseTimer.h"
 #include "nativesharp/Frontend/ComptimeEngine.h"
+#include "nativesharp/Frontend/TemplateParseCache.h"
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
@@ -83,6 +86,8 @@ using lexer::TokenKind;
 
 using internal::ProjectPhaseTimer;
 
+constexpr std::string_view templateParseProductSchema = "nsc-template-parse-product-v1";
+
 // Appends one length-delimited field to the cache identity. Length framing prevents different
 // sequences of module names, ordinals or digests from producing the same unhashed material.
 void appendTemplateParseCacheKeyField(std::string& material, std::string_view value)
@@ -100,6 +105,25 @@ std::string templateParseSourceDigest(std::string_view source)
     const std::span<const std::uint8_t> bytes{
         reinterpret_cast<const std::uint8_t*>(source.data()), source.size()};
     return basic::sha256Hex(basic::sha256(bytes));
+}
+
+// Reads and validates the stable identity of one syntax unit. A mismatch is a cache miss because
+// installing the tree into a different ordinal or FileId would change lookup and diagnostics.
+bool readTemplateParseUnitIdentity(
+    internal::CachePayloadReader& reader,
+    const ProjectSyntaxUnit& unit)
+{
+    std::uint64_t projectOrdinal = 0;
+    std::uint64_t sourceOrdinal = 0;
+    std::string moduleName;
+    std::uint32_t fileId = 0;
+    std::uint8_t precompiled = 0;
+    return reader.u64(projectOrdinal) && reader.u64(sourceOrdinal) &&
+        reader.string(moduleName) && reader.u32(fileId) && reader.byte(precompiled) &&
+        projectOrdinal == unit.projectOrdinal() &&
+        sourceOrdinal == unit.sourceOrdinal() &&
+        moduleName == unit.moduleName() && fileId == unit.fileId().value() &&
+        (precompiled != 0U) == unit.isPrecompiled();
 }
 
 void reportSourceProgress(
@@ -1321,6 +1345,63 @@ bool ProjectCompilation::calculateTemplateParseCacheKey(std::string& loadError)
     return true;
 }
 
+// Restores a complete parsed corpus only after validating every unit and decoding all products into
+// detached arenas. This commit deliberately performs the lookup after normal parsing; T1.5 moves
+// the decision in front of lexer/parser and uses templateParseCacheHit_ to skip their work.
+bool ProjectCompilation::restoreTemplateParseProduct(std::string& loadError)
+{
+    templateParseCacheHit_ = false;
+    if (templateCacheRoot_.empty() || templateParseCacheKey_.empty()) return true;
+    TemplateParseCache cache;
+    cache.setRoot(templateCacheRoot_);
+    std::string payload;
+    bool hit = false;
+    if (!cache.restore(templateParseCacheKey_, payload, hit, loadError) || !hit) return true;
+    internal::CachePayloadReader reader(payload);
+    std::string schema;
+    std::uint64_t unitCount = 0;
+    if (!reader.string(schema) || schema != templateParseProductSchema ||
+        !reader.u64(unitCount) || unitCount != units_.size())
+    {
+        return true;
+    }
+    std::vector<std::string> unitPayloads;
+    unitPayloads.reserve(units_.size());
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units_)
+    {
+        std::string unitPayload;
+        if (!readTemplateParseUnitIdentity(reader, *unit) ||
+            !reader.string(unitPayload))
+        {
+            return true;
+        }
+        unitPayloads.push_back(std::move(unitPayload));
+    }
+    if (!reader.remaining().empty()) return true;
+    std::vector<std::vector<lexer::Token>> tokens(units_.size());
+    std::vector<std::unique_ptr<ast::AstArena>> arenas(units_.size());
+    std::vector<ast::AstNode*> trees(units_.size(), nullptr);
+    for (std::size_t index = 0; index < units_.size(); ++index)
+    {
+        const source::SourceFile* sourceFile = sourceManager_.getFile(units_[index]->fileId());
+        if (sourceFile == nullptr || !internal::deserializeSyntaxProductUnit(
+                *sourceFile, unitPayloads[index], tokens[index], arenas[index], trees[index]))
+        {
+            return true;
+        }
+    }
+    for (std::size_t index = 0; index < units_.size(); ++index)
+    {
+        units_[index]->tokens_ = std::move(tokens[index]);
+        units_[index]->arena_ = std::move(arenas[index]);
+        units_[index]->syntaxTree_ = trees[index];
+        units_[index]->lexicallyValid_ = true;
+        units_[index]->syntaxValid_ = true;
+    }
+    templateParseCacheHit_ = true;
+    return true;
+}
+
 bool ProjectCompilation::lexSyntaxUnits(
     driver::CompilationWorkerPool& syntaxWorkers,
     bool& lexicalOk,
@@ -1461,7 +1542,11 @@ bool ProjectCompilation::compileSyntaxCore(
     {
         return false;
     }
-    return parseSyntaxUnits(syntaxWorkers, lexicalOk, loadError);
+    if (!parseSyntaxUnits(syntaxWorkers, lexicalOk, loadError))
+    {
+        return false;
+    }
+    return restoreTemplateParseProduct(loadError);
 }
 
 bool ProjectCompilation::enterStage(CompilationStage stage, std::string& error)

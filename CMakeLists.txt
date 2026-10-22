@@ -455,6 +455,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/GenericTelemetry.cpp
     src/Frontend/ProjectGenericModelDumper.cpp
     src/Frontend/TemplateParseCache.cpp
+    src/Frontend/Cache/SyntaxProductCacheCodec.cpp
     src/Frontend/ProjectOpaqueResultModel.cpp
     src/Frontend/ProjectNameLookup.cpp
     src/Frontend/NameLookup/ProjectSetup.cpp
