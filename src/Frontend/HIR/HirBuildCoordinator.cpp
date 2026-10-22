@@ -1897,6 +1897,10 @@ bool ProjectOopHirModel::buildLambdaFunction(
         lowerExpressionLambdaBody(function, lambda, error);
     currentLambda_ = nullptr;
     if (function.body == nullptr || !error.empty()) return false;
+    if (lambda.lambdaOrdinal >= functionByLambda_.size())
+        functionByLambda_.resize(lambda.lambdaOrdinal + 1U);
+    if (!functionByLambda_[lambda.lambdaOrdinal].has_value())
+        functionByLambda_[lambda.lambdaOrdinal] = functions_.size();
     functions_.push_back(std::move(function));
     return true;
 }
@@ -1924,14 +1928,10 @@ bool ProjectOopHirModel::markLambdaClosureCells(std::string& error)
         ProjectOopHirFunction* creator = nullptr;
         if (lambda.parentLambdaOrdinal.has_value())
         {
-            for (ProjectOopHirFunction& candidate : functions_)
-            {
-                if (candidate.isLambda && candidate.lambdaOrdinal == lambda.parentLambdaOrdinal)
-                {
-                    creator = &candidate;
-                    break;
-                }
-            }
+            const std::size_t parentOrdinal = *lambda.parentLambdaOrdinal;
+            if (parentOrdinal < functionByLambda_.size() &&
+                functionByLambda_[parentOrdinal].has_value())
+                creator = &functions_[*functionByLambda_[parentOrdinal]];
         }
         else if (lambda.ownerMemberOrdinal < functionByMember_.size() &&
                  functionByMember_[lambda.ownerMemberOrdinal].has_value())
@@ -2174,6 +2174,7 @@ bool ProjectOopHirModel::buildImpl(
         built_ = true;
         return true;
     }
+    functionByLambda_.resize(methodBodyModel.lambdaBindings().size());
     if (!buildLambdaFunctions(error) || !markLambdaClosureCells(error)) return false;
 
     if (!buildFieldInitializers(error)) return false;
