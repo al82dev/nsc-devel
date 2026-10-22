@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de rendimiento
 
-**Progreso:** `32 / 48`
+**Progreso:** `33 / 48`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -36,7 +36,7 @@
 | T5.2 | Compartir el índice de tipos por identidad, nombre y ordinal | TERMINADO |
 | T5.3 | Compartir índices de miembros, firmas y dispatch | TERMINADO |
 | T5.4 | Compartir índices de layouts de structs, clases y campos | TERMINADO |
-| T5.5 | Compartir índices de templates, demandas y especializaciones | PENDIENTE |
+| T5.5 | Compartir índices de templates, demandas y especializaciones | TERMINADO |
 | T5.6 | Compartir índices HIR de locales, lambdas y cleanups | PENDIENTE |
 | T5.7 | Compartir índices MIR de funciones, miembros y async frames | PENDIENTE |
 | T6.1 | Construir el manifiesto de entradas antes de `ProjectCompilation` | PENDIENTE |

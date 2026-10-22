@@ -3,12 +3,15 @@
 #include "nativesharp/Frontend/ClassMemberSymbol.h"
 #include "nativesharp/Frontend/ClassObjectLayout.h"
 #include "nativesharp/Frontend/ClassVirtualTable.h"
+#include "nativesharp/Frontend/GenericSpecializationRecord.h"
+#include "nativesharp/Frontend/GenericTemplateRecord.h"
 #include "nativesharp/Frontend/NamedTypeDeclaration.h"
 #include "nativesharp/Frontend/ObjectFieldLayout.h"
 #include "nativesharp/Frontend/StructValueLayout.h"
 #include "nativesharp/Frontend/VirtualMethodInfo.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace nativesharp::frontend
 {
@@ -24,11 +27,29 @@ void ProjectCompilationIndexes::clear() noexcept
     classLayoutsByType_.clear();
     structLayoutsByType_.clear();
     fieldLayoutsByMember_.clear();
+    genericTemplatesByOrdinal_.clear();
+    genericTemplateByCanonicalKey_.clear();
+    genericTemplateOrdinalsByName_.clear();
+    genericSpecializationsByOrdinal_.clear();
+    genericSpecializationBySyntax_.clear();
+    genericSpecializationByKey_.clear();
+    genericSpecializationByName_.clear();
+    bodyTypeDemandKeys_.clear();
+    genericTypeDemandKeys_.clear();
 }
 
 void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaration> types)
 {
-    clear();
+    typesByOrdinal_.clear();
+    typeOrdinalByIdentity_.clear();
+    typeOrdinalsByName_.clear();
+    membersByOrdinal_.clear();
+    memberOrdinalsBySignature_.clear();
+    virtualMethodsByMember_.clear();
+    virtualTablesByType_.clear();
+    classLayoutsByType_.clear();
+    structLayoutsByType_.clear();
+    fieldLayoutsByMember_.clear();
     typesByOrdinal_.reserve(types.size());
     typeOrdinalByIdentity_.reserve(types.size());
     for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
@@ -43,6 +64,60 @@ void ProjectCompilationIndexes::rebuildTypes(std::span<const NamedTypeDeclaratio
             typeOrdinalsByName_[qualifiedName].push_back(ordinal);
         }
     }
+}
+
+void ProjectCompilationIndexes::rebuildGenerics(
+    std::span<const GenericTemplateRecord> templates,
+    std::span<const GenericSpecializationRecord> specializations)
+{
+    genericTemplatesByOrdinal_.clear();
+    genericTemplateByCanonicalKey_.clear();
+    genericTemplateOrdinalsByName_.clear();
+    genericSpecializationsByOrdinal_.clear();
+    genericSpecializationBySyntax_.clear();
+    genericSpecializationByKey_.clear();
+    genericSpecializationByName_.clear();
+    genericTemplatesByOrdinal_.reserve(templates.size());
+    for (std::size_t ordinal = 0; ordinal < templates.size(); ++ordinal)
+    {
+        const GenericTemplateRecord& record = templates[ordinal];
+        genericTemplatesByOrdinal_.push_back(&record);
+        genericTemplateByCanonicalKey_.try_emplace(record.canonicalKey, &record);
+        genericTemplateOrdinalsByName_[record.name].push_back(ordinal);
+    }
+    genericSpecializationsByOrdinal_.reserve(specializations.size());
+    for (const GenericSpecializationRecord& record : specializations)
+    {
+        genericSpecializationsByOrdinal_.push_back(&record);
+        if (record.specializedSyntax != nullptr)
+        {
+            genericSpecializationBySyntax_.try_emplace(record.specializedSyntax, &record);
+        }
+        genericSpecializationByKey_.try_emplace(record.specializationKey, &record);
+        genericSpecializationByName_.try_emplace(record.specializedName, &record);
+    }
+    clearBodyTypeDemands();
+    clearGenericTypeDemands();
+}
+
+bool ProjectCompilationIndexes::registerBodyTypeDemand(std::string key)
+{
+    return bodyTypeDemandKeys_.insert(std::move(key)).second;
+}
+
+void ProjectCompilationIndexes::clearBodyTypeDemands() noexcept
+{
+    bodyTypeDemandKeys_.clear();
+}
+
+void ProjectCompilationIndexes::registerGenericTypeDemand(std::string key)
+{
+    genericTypeDemandKeys_.insert(std::move(key));
+}
+
+void ProjectCompilationIndexes::clearGenericTypeDemands() noexcept
+{
+    genericTypeDemandKeys_.clear();
 }
 
 void ProjectCompilationIndexes::rebuildMembers(std::span<const ClassMemberSymbol> members)
@@ -209,5 +284,54 @@ const ObjectFieldLayout* ProjectCompilationIndexes::fieldLayoutForMember(
 {
     return memberOrdinal < fieldLayoutsByMember_.size()
         ? fieldLayoutsByMember_[memberOrdinal] : nullptr;
+}
+
+const GenericTemplateRecord* ProjectCompilationIndexes::genericTemplateForOrdinal(
+    std::size_t ordinal) const noexcept
+{
+    return ordinal < genericTemplatesByOrdinal_.size() ? genericTemplatesByOrdinal_[ordinal] : nullptr;
+}
+
+const GenericTemplateRecord* ProjectCompilationIndexes::genericTemplateForCanonicalKey(
+    std::string_view canonicalKey) const noexcept
+{
+    const auto iterator = genericTemplateByCanonicalKey_.find(std::string(canonicalKey));
+    return iterator == genericTemplateByCanonicalKey_.end() ? nullptr : iterator->second;
+}
+
+std::span<const std::size_t> ProjectCompilationIndexes::genericTemplateOrdinalsForName(
+    std::string_view name) const noexcept
+{
+    const auto iterator = genericTemplateOrdinalsByName_.find(std::string(name));
+    return iterator == genericTemplateOrdinalsByName_.end()
+        ? std::span<const std::size_t>{} : std::span<const std::size_t>(iterator->second);
+}
+
+const GenericSpecializationRecord* ProjectCompilationIndexes::genericSpecializationForOrdinal(
+    std::size_t ordinal) const noexcept
+{
+    return ordinal < genericSpecializationsByOrdinal_.size()
+        ? genericSpecializationsByOrdinal_[ordinal] : nullptr;
+}
+
+const GenericSpecializationRecord* ProjectCompilationIndexes::genericSpecializationForSyntax(
+    const ast::AstNode* syntax) const noexcept
+{
+    const auto iterator = genericSpecializationBySyntax_.find(syntax);
+    return iterator == genericSpecializationBySyntax_.end() ? nullptr : iterator->second;
+}
+
+const GenericSpecializationRecord* ProjectCompilationIndexes::genericSpecializationForKey(
+    std::string_view key) const noexcept
+{
+    const auto iterator = genericSpecializationByKey_.find(std::string(key));
+    return iterator == genericSpecializationByKey_.end() ? nullptr : iterator->second;
+}
+
+const GenericSpecializationRecord* ProjectCompilationIndexes::genericSpecializationForName(
+    std::string_view name) const noexcept
+{
+    const auto iterator = genericSpecializationByName_.find(std::string(name));
+    return iterator == genericSpecializationByName_.end() ? nullptr : iterator->second;
 }
 }

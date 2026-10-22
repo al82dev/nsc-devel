@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/GenericInstantiationReport.h"
 #include "nativesharp/Frontend/GenericSpecializationRecord.h"
 #include "nativesharp/Frontend/GenericTelemetry.h"
+#include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "nativesharp/Frontend/GenericTemplateAccessibility.h"
 #include "nativesharp/Frontend/GenericTemplateExternalTypeReference.h"
 #include "nativesharp/Frontend/GenericTemplateKind.h"
@@ -56,6 +57,10 @@ public:
     static constexpr std::size_t DefaultMaximumPackExpansionCount = 1024;
 
     explicit ProjectGenericModel(
+        std::size_t maximumInstantiationDepth = DefaultMaximumInstantiationDepth,
+        std::size_t maximumInstantiationCount = DefaultMaximumInstantiationCount) noexcept;
+    ProjectGenericModel(
+        ProjectCompilationIndexes& indexes,
         std::size_t maximumInstantiationDepth = DefaultMaximumInstantiationDepth,
         std::size_t maximumInstantiationCount = DefaultMaximumInstantiationCount) noexcept;
 
@@ -1553,6 +1558,8 @@ private:
     bool projectVisible(std::size_t from, std::size_t target) const noexcept;
     bool templateVisible(std::size_t from, const GenericTemplateRecord& target) const noexcept;
 
+    ProjectCompilationIndexes ownedIndexes_;
+    ProjectCompilationIndexes* indexes_ = nullptr;
     std::vector<TemplateState> templateStates_;
     // NSC305-G01. O(1) lookups that replace the linear `stateForSyntax` scan and the
     // imported-specialization seed `find_if`. Populated after template collection (and, for
@@ -1587,10 +1594,6 @@ private:
     };
     SpecializationPlanner specializationPlanner_;
     std::unordered_map<const ast::AstNode*, std::size_t> specializationBySyntax_;
-    // NSC305-G-series. specializedName -> specialization ordinal, built once at the end of build()
-    // (after every materialization and rollback) so `specializationForTypeKey` is O(1). `emplace`
-    // keeps the first entry for a duplicated name, matching the previous forward scan.
-    std::unordered_map<std::string, std::size_t> specializationBySpecializedName_;
     std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentityBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOriginBySyntax_;
     std::unordered_map<const ast::AstNode*, ast::TypeSyntax*> inferredCallReturnTypes_;
@@ -1609,7 +1612,6 @@ private:
     std::size_t parallelismWorkers_ = 1;
     // NSC305-G09. O(1) dedup of body-type demands by stableKey (the "deduplicate demands by
     // SpecializationKey" wave step); cleared after each wave is processed.
-    std::unordered_set<std::string> bodyTypeDemandKeys_;
     // Available before the ordinary member/body model. Only an unambiguous common return for a
     // non-generic callable name is retained; this lets an unnamed `some Trait` identity provide
     // evidence to generic inference without writing semantic state onto CallExpression AST nodes.

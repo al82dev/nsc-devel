@@ -145,7 +145,7 @@ void ProjectGenericModel::collectBodyTypeSpecializationDemand(
         std::string stableKey = std::to_string(unit.projectOrdinal()) + "|" + namespaceName + "|" +
             std::string(templateName) + "|" + typeSpelling(elementType) + "|" +
             std::to_string(node->range().begin().offset());
-        const bool duplicated = !bodyTypeDemandKeys_.insert(stableKey).second;
+        const bool duplicated = !indexes_->registerBodyTypeDemand(stableKey);
         if (telemetry_.enabled) telemetry_.noteDemand(duplicated);
         // NSC305-G09: deduplicate demands by stableKey (skip the duplicate).
         if (duplicated) continue;
@@ -207,7 +207,7 @@ bool ProjectGenericModel::materializeBodyTypeSpecializationDemands(
     {
         std::vector<BodyTypeSpecializationDemand> wave;
         wave.swap(bodyTypeSpecializationDemands_);
-        bodyTypeDemandKeys_.clear();
+        indexes_->clearBodyTypeDemands();
 #if 0 // INSTRUMENTATION CODE
         ++waveIndex;
         const GenericWorkProgress progress(
@@ -252,6 +252,9 @@ void ProjectGenericModel::collectTypeSpecializationDemand(
     TemplateState& state,
     const std::string& namespaceName)
 {
+    std::string stableKey = std::to_string(unit.projectOrdinal()) + "|" + namespaceName + "|" +
+        std::to_string(target->range().begin().offset());
+    indexes_->registerGenericTypeDemand(stableKey);
     typeSpecializationDemands_.push_back(GenericTypeDemand{
         &unit,
         &state,
@@ -268,8 +271,7 @@ void ProjectGenericModel::collectTypeSpecializationDemand(
             activePackSubstitutions_,
             activeAssociatedProjections_},
         currentLogicalDepth_ + 1U,
-        std::to_string(unit.projectOrdinal()) + "|" + namespaceName + "|" +
-            std::to_string(target->range().begin().offset())});
+        std::move(stableKey)});
 }
 
 void ProjectGenericModel::applyTypeDemandContext(const GenericTypeDemand& demand)
@@ -458,6 +460,7 @@ bool ProjectGenericModel::executeTypeDemandWaves(
     {
         std::vector<GenericTypeDemand> wave;
         wave.swap(typeSpecializationDemands_);
+        indexes_->clearGenericTypeDemands();
 #if 0 // INSTRUMENTATION CODE
         ++waveIndex;
         const GenericWorkProgress waveProgress(

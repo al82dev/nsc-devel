@@ -544,14 +544,10 @@ bool ProjectGenericModel::materializePendingDemandsForBuild(
 void ProjectGenericModel::finalizeBuildState()
 {
     telemetry_.maximumLogicalDepth = instantiationBudget_.maximumObservedDepth();
-    // NSC305-G-series. Materialization is complete and every rollback has happened, so the
-    // specializedName -> ordinal index is final. `emplace` keeps the first entry for a shared
-    // overload name, matching `specializationForTypeKey`'s previous forward scan.
-    for (std::size_t ordinal = 0; ordinal < specializations_.size(); ++ordinal)
-        specializationBySpecializedName_.emplace(specializations_[ordinal].specializedName, ordinal);
     // NSC305-C01. Persist the collected template records (the C1 metadata) when the cache is enabled.
     restoreTemplateRecords();
     storeTemplateRecords();
+    indexes_->rebuildGenerics(templateRecords_, specializations_);
     built_ = true;
 }
 
@@ -622,6 +618,10 @@ std::span<const GenericSpecializationRecord> ProjectGenericModel::specialization
 const GenericSpecializationRecord* ProjectGenericModel::specializationForSyntax(
     const ast::AstNode* syntax) const noexcept
 {
+    if (built_)
+    {
+        return indexes_->genericSpecializationForSyntax(syntax);
+    }
     const auto found = specializationBySyntax_.find(syntax);
     return found != specializationBySyntax_.end() && found->second < specializations_.size()
         ? &specializations_[found->second] : nullptr;
@@ -634,10 +634,11 @@ const GenericSpecializationRecord* ProjectGenericModel::specializationForTypeKey
     const std::size_t separator = typeKey.find_last_of(".+:");
     const std::string_view terminal = separator == std::string_view::npos
         ? typeKey : typeKey.substr(separator + 1U);
-    const auto found = specializationBySpecializedName_.find(std::string(terminal));
-    return found != specializationBySpecializedName_.end() &&
-            found->second < specializations_.size()
-        ? &specializations_[found->second] : nullptr;
+    if (built_)
+    {
+        return indexes_->genericSpecializationForName(terminal);
+    }
+    return nullptr;
 }
 
 std::string ProjectGenericModel::closedTypeKeyForTemplate(
@@ -645,12 +646,24 @@ std::string ProjectGenericModel::closedTypeKeyForTemplate(
     std::string_view elementTypeKey) const
 {
     const GenericTemplateRecord* templateRecord = nullptr;
-    for (const GenericTemplateRecord& record : templates())
+    if (built_)
     {
-        if (record.name == templateName)
+        const std::span<const std::size_t> ordinals =
+            indexes_->genericTemplateOrdinalsForName(templateName);
+        if (!ordinals.empty())
         {
-            templateRecord = &record;
-            break;
+            templateRecord = indexes_->genericTemplateForOrdinal(ordinals.front());
+        }
+    }
+    else
+    {
+        for (const GenericTemplateRecord& record : templates())
+        {
+            if (record.name == templateName)
+            {
+                templateRecord = &record;
+                break;
+            }
         }
     }
     if (templateRecord == nullptr) return {};

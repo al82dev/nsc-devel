@@ -49,7 +49,17 @@ namespace nativesharp::frontend
 ProjectGenericModel::ProjectGenericModel(
     std::size_t maximumInstantiationDepth,
     std::size_t maximumInstantiationCount) noexcept
-    : instantiationBudget_(maximumInstantiationDepth, maximumInstantiationCount)
+    : indexes_(&ownedIndexes_),
+      instantiationBudget_(maximumInstantiationDepth, maximumInstantiationCount)
+{
+}
+
+ProjectGenericModel::ProjectGenericModel(
+    ProjectCompilationIndexes& indexes,
+    std::size_t maximumInstantiationDepth,
+    std::size_t maximumInstantiationCount) noexcept
+    : indexes_(&indexes),
+      instantiationBudget_(maximumInstantiationDepth, maximumInstantiationCount)
 {
 }
 namespace internal

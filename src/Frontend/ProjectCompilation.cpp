@@ -645,6 +645,7 @@ bool ProjectCompilation::compileProjectGenerics(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "generics");
     genericModel_ = std::make_unique<ProjectGenericModel>(
+        indexes_,
         projectLoadOptions_.genericInstantiationDepth.value_or(
             ProjectGenericModel::DefaultMaximumInstantiationDepth),
         projectLoadOptions_.genericInstantiationCount.value_or(

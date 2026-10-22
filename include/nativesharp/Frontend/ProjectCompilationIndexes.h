@@ -6,13 +6,21 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
+namespace nativesharp::ast
+{
+class AstNode;
+}
 
 namespace nativesharp::frontend
 {
 struct ClassMemberSymbol;
 struct ClassObjectLayout;
 struct ClassVirtualTable;
+struct GenericSpecializationRecord;
+struct GenericTemplateRecord;
 struct NamedTypeDeclaration;
 struct ObjectFieldLayout;
 struct StructValueLayout;
@@ -35,6 +43,13 @@ public:
         std::span<const ObjectFieldLayout> promotedFields,
         std::size_t memberCount,
         std::size_t typeCount);
+    void rebuildGenerics(
+        std::span<const GenericTemplateRecord> templates,
+        std::span<const GenericSpecializationRecord> specializations);
+    bool registerBodyTypeDemand(std::string key);
+    void clearBodyTypeDemands() noexcept;
+    void registerGenericTypeDemand(std::string key);
+    void clearGenericTypeDemands() noexcept;
     const NamedTypeDeclaration* typeForOrdinal(std::size_t ordinal) const noexcept;
     std::optional<std::size_t> typeOrdinalForIdentity(std::string_view identity) const;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
@@ -47,6 +62,19 @@ public:
     const ClassObjectLayout* classLayoutForType(std::size_t typeOrdinal) const noexcept;
     const StructValueLayout* structLayoutForType(std::size_t typeOrdinal) const noexcept;
     const ObjectFieldLayout* fieldLayoutForMember(std::size_t memberOrdinal) const noexcept;
+    const GenericTemplateRecord* genericTemplateForOrdinal(std::size_t ordinal) const noexcept;
+    const GenericTemplateRecord* genericTemplateForCanonicalKey(
+        std::string_view canonicalKey) const noexcept;
+    std::span<const std::size_t> genericTemplateOrdinalsForName(
+        std::string_view name) const noexcept;
+    const GenericSpecializationRecord* genericSpecializationForOrdinal(
+        std::size_t ordinal) const noexcept;
+    const GenericSpecializationRecord* genericSpecializationForSyntax(
+        const ast::AstNode* syntax) const noexcept;
+    const GenericSpecializationRecord* genericSpecializationForKey(
+        std::string_view key) const noexcept;
+    const GenericSpecializationRecord* genericSpecializationForName(
+        std::string_view name) const noexcept;
 
 private:
     using MemberSignatureIndex =
@@ -62,5 +90,15 @@ private:
     std::vector<const ClassObjectLayout*> classLayoutsByType_;
     std::vector<const StructValueLayout*> structLayoutsByType_;
     std::vector<const ObjectFieldLayout*> fieldLayoutsByMember_;
+    std::vector<const GenericTemplateRecord*> genericTemplatesByOrdinal_;
+    std::unordered_map<std::string, const GenericTemplateRecord*> genericTemplateByCanonicalKey_;
+    std::unordered_map<std::string, std::vector<std::size_t>> genericTemplateOrdinalsByName_;
+    std::vector<const GenericSpecializationRecord*> genericSpecializationsByOrdinal_;
+    std::unordered_map<const ast::AstNode*, const GenericSpecializationRecord*>
+        genericSpecializationBySyntax_;
+    std::unordered_map<std::string, const GenericSpecializationRecord*> genericSpecializationByKey_;
+    std::unordered_map<std::string, const GenericSpecializationRecord*> genericSpecializationByName_;
+    std::unordered_set<std::string> bodyTypeDemandKeys_;
+    std::unordered_set<std::string> genericTypeDemandKeys_;
 };
 }
