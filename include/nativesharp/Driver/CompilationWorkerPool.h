@@ -59,6 +59,7 @@ private:
     std::size_t activeTasks_ = 0;
     std::size_t discardedTasks_ = 0;
     bool cancellationRequested_ = false;
+    bool barrierActive_ = false;
     bool stopping_ = false;
 };
 

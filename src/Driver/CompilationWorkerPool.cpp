@@ -66,6 +66,8 @@ std::size_t CompilationWorkerPool::submit(Task task)
     {
         const std::lock_guard lock(mutex_);
         if (stopping_) throw std::logic_error("compilation worker pool is stopping");
+        if (barrierActive_)
+            throw std::logic_error("compilation worker pool barrier is active");
         ordinal = nextOrdinal_++;
         if (cancellationRequested_)
         {
@@ -96,6 +98,9 @@ void CompilationWorkerPool::wait()
     std::exception_ptr failure;
     {
         std::unique_lock lock(mutex_);
+        if (barrierActive_)
+            throw std::logic_error("compilation worker pool barrier is already active");
+        barrierActive_ = true;
         idle_.wait(lock, [this] { return queue_.empty() && activeTasks_ == 0; });
         if (!failures_.empty())
         {
@@ -103,6 +108,7 @@ void CompilationWorkerPool::wait()
             failures_.clear();
         }
         cancellationRequested_ = false;
+        barrierActive_ = false;
     }
     if (failure != nullptr) std::rethrow_exception(failure);
 }

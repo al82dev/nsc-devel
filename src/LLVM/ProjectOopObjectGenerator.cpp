@@ -589,9 +589,6 @@ bool executeCodeUnits(
     std::string& error,
     driver::CompilationWorkerPool* workerPool)
 {
-    const auto initializeWorkerFloatingPoint = [floatingPointState](std::size_t) {
-        initializeFloatingPointStateForWorker(floatingPointState);
-    };
     if (!usePartitions)
     {
         processModule(0);
@@ -602,7 +599,8 @@ bool executeCodeUnits(
     {
         workerPool->submit([&, ordinal](std::size_t) {
             if (moduleFailure.load(std::memory_order_acquire)) return;
-            initializeWorkerFloatingPoint(ordinal);
+            FloatingPointModeScope floatingPointScope;
+            floatingPointScope.setState(floatingPointState);
             processModule(ordinal);
             if (!moduleErrors[ordinal].empty())
             {
