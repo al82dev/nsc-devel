@@ -296,10 +296,17 @@ void ProjectCompilationIndexes::rebuildHirBindings(
     for (const MethodLambdaValueBinding& value : lambdaValues)
         if (value.syntax != nullptr) hirLambdaValueBySyntax_.try_emplace(value.syntax, &value);
     hirCleanupRegionBySyntax_.reserve(cleanupRegions.size());
-    for (const MethodCleanupRegion& region : cleanupRegions)
+    for (std::size_t cleanupOrdinal = 0; cleanupOrdinal < cleanupRegions.size(); ++cleanupOrdinal)
+    {
+        const MethodCleanupRegion& region = cleanupRegions[cleanupOrdinal];
         if (region.syntax != nullptr) hirCleanupRegionBySyntax_.try_emplace(region.syntax, &region);
+        if (region.methodMemberOrdinal >= hirCleanupRegionOrdinalsByMember_.size())
+            hirCleanupRegionOrdinalsByMember_.resize(region.methodMemberOrdinal + 1U);
+        hirCleanupRegionOrdinalsByMember_[region.methodMemberOrdinal].push_back(cleanupOrdinal);
+    }
     hirOwnerIndexesBuilt_ = true;
     hirLambdaIndexesBuilt_ = true;
+    hirCleanupOwnerIndexBuilt_ = true;
 }
 
 void ProjectCompilationIndexes::clearHirBindings() noexcept
@@ -308,6 +315,8 @@ void ProjectCompilationIndexes::clearHirBindings() noexcept
     hirLocalOrdinalsByMember_.clear();
     hirLambdaIndexesBuilt_ = false;
     hirLocalOrdinalsByLambda_.clear();
+    hirCleanupOwnerIndexBuilt_ = false;
+    hirCleanupRegionOrdinalsByMember_.clear();
     hirLocalBySyntax_.clear();
     hirLambdaBySyntax_.clear();
     hirLambdaValueBySyntax_.clear();
@@ -621,6 +630,19 @@ std::span<const std::size_t> ProjectCompilationIndexes::hirLocalOrdinalsForLambd
 {
     return lambdaOrdinal < hirLocalOrdinalsByLambda_.size()
         ? std::span<const std::size_t>(hirLocalOrdinalsByLambda_[lambdaOrdinal])
+        : std::span<const std::size_t>();
+}
+
+bool ProjectCompilationIndexes::hasHirCleanupOwnerIndex() const noexcept
+{
+    return hirCleanupOwnerIndexBuilt_;
+}
+
+std::span<const std::size_t> ProjectCompilationIndexes::hirCleanupRegionOrdinalsForMember(
+    std::size_t memberOrdinal) const noexcept
+{
+    return memberOrdinal < hirCleanupRegionOrdinalsByMember_.size()
+        ? std::span<const std::size_t>(hirCleanupRegionOrdinalsByMember_[memberOrdinal])
         : std::span<const std::size_t>();
 }
 

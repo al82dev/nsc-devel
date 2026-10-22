@@ -115,6 +115,9 @@ public:
     bool hasHirLambdaIndexes() const noexcept;
     std::span<const std::size_t> hirLocalOrdinalsForLambda(
         std::size_t lambdaOrdinal) const noexcept;
+    bool hasHirCleanupOwnerIndex() const noexcept;
+    std::span<const std::size_t> hirCleanupRegionOrdinalsForMember(
+        std::size_t memberOrdinal) const noexcept;
     const MethodLocalSymbol* hirLocalForSyntax(const ast::AstNode* syntax) const noexcept;
     const MethodLambdaBinding* hirLambdaForSyntax(const ast::AstNode* syntax) const noexcept;
     const MethodLambdaValueBinding* hirLambdaValueForSyntax(const ast::AstNode* syntax) const noexcept;
@@ -212,6 +215,8 @@ private:
     std::vector<std::vector<std::size_t>> hirLocalOrdinalsByMember_;
     bool hirLambdaIndexesBuilt_ = false;
     std::vector<std::vector<std::size_t>> hirLocalOrdinalsByLambda_;
+    bool hirCleanupOwnerIndexBuilt_ = false;
+    std::vector<std::vector<std::size_t>> hirCleanupRegionOrdinalsByMember_;
     std::unordered_map<const ast::AstNode*, const MethodLocalSymbol*> hirLocalBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodLambdaBinding*> hirLambdaBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodLambdaValueBinding*> hirLambdaValueBySyntax_;

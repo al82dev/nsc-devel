@@ -28,6 +28,7 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -1051,9 +1052,21 @@ bool ProjectOopHirModel::appendRegularFunctionParameterCleanups(
     std::string& error)
 {
     activeHirCleanupRegions_.clear();
-    for (std::size_t cleanupOrdinal = 0;
-         cleanupOrdinal < methodBodyModel_->cleanupRegions().size();
-         ++cleanupOrdinal)
+    const ProjectOopHirModel* indexSource = lookupSource_ == nullptr ? this : lookupSource_;
+    std::vector<std::size_t> fallbackOrdinals;
+    std::span<const std::size_t> cleanupOrdinals;
+    if (indexSource->indexes_ != nullptr && indexSource->indexes_->hasHirCleanupOwnerIndex())
+    {
+        cleanupOrdinals = indexSource->indexes_->hirCleanupRegionOrdinalsForMember(
+            function.memberOrdinal);
+    }
+    else
+    {
+        fallbackOrdinals.resize(methodBodyModel_->cleanupRegions().size());
+        std::iota(fallbackOrdinals.begin(), fallbackOrdinals.end(), 0U);
+        cleanupOrdinals = fallbackOrdinals;
+    }
+    for (const std::size_t cleanupOrdinal : cleanupOrdinals)
     {
         const MethodCleanupRegion& region = methodBodyModel_->cleanupRegions()[cleanupOrdinal];
         if (region.methodMemberOrdinal != function.memberOrdinal ||
@@ -1623,9 +1636,20 @@ bool ProjectOopHirModel::appendNamespaceFunctionParameterCleanups(
     std::string& error)
 {
     activeHirCleanupRegions_.clear();
-    for (std::size_t cleanupOrdinal = 0;
-         cleanupOrdinal < methodBodyModel_->cleanupRegions().size();
-         ++cleanupOrdinal)
+    const ProjectOopHirModel* indexSource = lookupSource_ == nullptr ? this : lookupSource_;
+    std::vector<std::size_t> fallbackOrdinals;
+    std::span<const std::size_t> cleanupOrdinals;
+    if (indexSource->indexes_ != nullptr && indexSource->indexes_->hasHirCleanupOwnerIndex())
+    {
+        cleanupOrdinals = indexSource->indexes_->hirCleanupRegionOrdinalsForMember(callableOrdinal);
+    }
+    else
+    {
+        fallbackOrdinals.resize(methodBodyModel_->cleanupRegions().size());
+        std::iota(fallbackOrdinals.begin(), fallbackOrdinals.end(), 0U);
+        cleanupOrdinals = fallbackOrdinals;
+    }
+    for (const std::size_t cleanupOrdinal : cleanupOrdinals)
     {
         const MethodCleanupRegion& region = methodBodyModel_->cleanupRegions()[cleanupOrdinal];
         if (region.methodMemberOrdinal != callableOrdinal ||
