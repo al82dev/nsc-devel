@@ -754,39 +754,47 @@ bool ProjectOopHirModel::buildRegularFunctionsInParallel(
     using internal::RegularFunctionResult;
     std::vector<RegularFunctionResult> results(memberModel_->members().size());
     driver::CompilationWorkerPool& workers = *workerPool_;
+    const auto buildMember = [this, &results](std::size_t memberOrdinal)
+    {
+        ProjectOopHirModel worker;
+        RegularFunctionResult& result = results[memberOrdinal];
+        result.success = worker.buildImpl(
+            *nameLookup_,
+            *memberModel_,
+            *inheritanceModel_,
+            *interfaceModel_,
+            *methodBodyModel_,
+            *constructionModel_,
+            *objectLayoutModel_,
+            result.error,
+            genericConstraintModel_,
+            1,
+            namespaceFunctionModel_,
+            metaprogrammingModel_,
+            memberOrdinal,
+            this);
+        result.errorRange = worker.lastErrorRange();
+        if (result.success && !worker.functions_.empty())
+            result.functions = std::move(worker.functions_);
+    };
     for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel_->members().size();
          ++memberOrdinal)
     {
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-        if ((member.kind != ClassMemberKind::Method &&
-             member.kind != ClassMemberKind::Constructor &&
-             member.kind != ClassMemberKind::Destructor) || member.isAbstract)
+        if (regularFunctionShouldBeSkipped(memberOrdinal, member))
         {
             results[memberOrdinal].success = true;
             continue;
         }
-        workers.submit([&, memberOrdinal](std::size_t) {
-            ProjectOopHirModel worker;
-            RegularFunctionResult& result = results[memberOrdinal];
-            result.success = worker.buildImpl(
-                *nameLookup_,
-                *memberModel_,
-                *inheritanceModel_,
-                *interfaceModel_,
-                *methodBodyModel_,
-                *constructionModel_,
-                *objectLayoutModel_,
-                result.error,
-                genericConstraintModel_,
-                1,
-                namespaceFunctionModel_,
-                metaprogrammingModel_,
-                memberOrdinal,
-                this);
-            result.errorRange = worker.lastErrorRange();
-            if (result.success && !worker.functions_.empty())
-                result.functions = std::move(worker.functions_);
-        });
+        const bool declarationOnly = member.isImportedC ||
+            (member.isPrecompiled && member.kind != ClassMemberKind::Destructor);
+        if (declarationOnly)
+            buildMember(memberOrdinal);
+        else
+            workers.submit([&buildMember, memberOrdinal](std::size_t)
+            {
+                buildMember(memberOrdinal);
+            });
     }
     workers.wait();
     return mergeParallelRegularFunctions(results, error);

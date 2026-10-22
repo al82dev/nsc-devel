@@ -1,6 +1,6 @@
 # NSC — Pendientes y terminados de compilación fría O0
 
-**Progreso:** `34 / 60`
+**Progreso:** `35 / 60`
 
 | Ítem | Qué resuelve | Estado |
 |---|---|---|
@@ -46,7 +46,7 @@
 | T5.7 | Agrupar en `ProjectCompilationIndexes` los locales HIR por miembro propietario | TERMINADO |
 | T5.8 | Agrupar en `ProjectCompilationIndexes` los locales HIR por lambda propietaria | TERMINADO |
 | T5.9 | Agrupar en `ProjectCompilationIndexes` las regiones de cleanup por miembro propietario | TERMINADO |
-| T5.10 | Programar workers HIR sólo para miembros realmente bajables, filtrando abstractos, precompilados y diferidos antes del submit | PENDIENTE |
+| T5.10 | Programar workers HIR sólo para miembros realmente bajables, filtrando abstractos, precompilados y diferidos antes del submit | TERMINADO |
 | T5.11 | Evitar que cada worker HIR de un solo miembro redimensione tablas globales del tamaño de todo el proyecto | PENDIENTE |
 | T5.12 | Resolver el creador de cada closure directamente, sin recorrer todas las funciones HIR por lambda | PENDIENTE |
 | T5.13 | Sustituir las búsquedas lineales de layouts en `MirNodeMachine` por los índices MIR | PENDIENTE |
