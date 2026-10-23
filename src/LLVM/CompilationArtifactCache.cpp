@@ -250,6 +250,28 @@ void recordPrunePublication(
     index.markStale(ignored);
 }
 
+/// Turns the records of a valid prune-index snapshot into the entries a walk of the cache
+/// folders would have produced: same key, payload and metadata paths, publication and size.
+void appendIndexedEntries(
+    const std::filesystem::path& root,
+    const CachePruneIndexSnapshot& snapshot,
+    std::vector<CachePruneEntry>& entries,
+    std::uintmax_t& totalBytes)
+{
+    entries.reserve(entries.size() + snapshot.records.size());
+    for (const CachePruneIndexRecord& record : snapshot.records)
+    {
+        const bool plan = record.kind == 'p';
+        entries.push_back({
+            record.key,
+            plan ? codePartitionPayloadPath(root, record.key) : objectPath(root, record.key),
+            plan ? codePartitionMetadataPath(root, record.key) : metadataPath(root, record.key),
+            record.publication,
+            record.size});
+        totalBytes += record.size;
+    }
+}
+
 bool collectPrunableEntries(
     const std::filesystem::path& directory,
     std::string_view payloadExtension,
@@ -590,9 +612,17 @@ bool CompilationArtifactCache::prune(
     evictedBytes = 0;
     error.clear();
     if (!enabled()) return true;
+    // The prune index lists what a walk of objects/ and partitions/ would find. When it cannot
+    // be read or is not valid, the folders are walked as before.
+    const CachePruneIndex index(root_);
+    CachePruneIndexSnapshot snapshot;
+    std::string indexError;
+    if (!index.read(snapshot, indexError)) snapshot = CachePruneIndexSnapshot{};
     std::vector<CachePruneEntry> entries;
     std::uintmax_t totalBytes = 0;
-    if (!collectPrunableEntries(root_ / "objects", ".obj", entries, totalBytes, error) ||
+    if (snapshot.valid)
+        appendIndexedEntries(root_, snapshot, entries, totalBytes);
+    else if (!collectPrunableEntries(root_ / "objects", ".obj", entries, totalBytes, error) ||
         !collectPrunableEntries(root_ / "partitions", ".plan", entries, totalBytes, error))
         return false;
     lastPruneTelemetry_.inspectedEntries = entries.size();
@@ -612,6 +642,9 @@ bool CompilationArtifactCache::prune(
         if (filesystemError)
         {
             filesystemError.clear();
+            // An indexed entry that is gone (removed by hand or by another process) stops counting,
+            // as a walk of the folders would not have counted it.
+            if (snapshot.valid) totalBytes = entry.size > totalBytes ? 0 : totalBytes - entry.size;
             continue;
         }
         std::filesystem::remove(entry.metadata, filesystemError);
