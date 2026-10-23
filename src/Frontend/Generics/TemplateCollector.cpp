@@ -162,6 +162,7 @@ void ProjectGenericModel::collectDeclaredTypeIdentity(
     const std::string qualifiedTypeName = appendOwner(ownerName, node->text());
     std::string sourceName = qualifiedName(currentNamespace, qualifiedTypeName);
     std::replace(sourceName.begin(), sourceName.end(), '+', '.');
+    declaredTypeIdentitiesBySourceName_[sourceName].push_back(declaredTypeIdentities_.size());
     declaredTypeIdentities_.push_back(DeclaredTypeIdentity{
         unit.projectOrdinal(), currentNamespace, std::move(sourceName),
         std::string(unit.moduleName()) + "::" +

@@ -1599,6 +1599,13 @@ private:
     std::unordered_map<const ast::AstNode*, std::size_t> genericLambdaTemplateOrdinals_;
     std::unordered_map<const ast::AstNode*, std::string> genericLambdaCarrierKeys_;
     std::vector<DeclaredTypeIdentity> declaredTypeIdentities_;
+    // Positions in declaredTypeIdentities_ by sourceName, in vector order; appended together
+    // with the vector by collectDeclaredTypeIdentity, its only writer.
+    std::unordered_map<
+        std::string,
+        std::vector<std::size_t>,
+        basic::TransparentStringHash,
+        std::equal_to<>> declaredTypeIdentitiesBySourceName_;
     std::vector<GenericTemplateRecord> templateRecords_;
     std::vector<GenericSpecializationRecord> specializations_;
     // NSC305-G07. Deduplication and slot lifecycle for specialization demands. ensure*Specialization
