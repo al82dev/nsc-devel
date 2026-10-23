@@ -342,8 +342,17 @@ bool appendArtifact(RestoredPackage& package, std::string type, const fs::path& 
     }
     const fs::path source = (package.sourceRoot / relative).lexically_normal();
     std::error_code fileError;
-    const fs::path canonicalRoot = fs::weakly_canonical(package.sourceRoot, fileError);
-    if (fileError) { error = "cannot resolve package root: " + fileError.message(); return false; }
+    if (package.canonicalSourceRoot.empty())
+    {
+        package.canonicalSourceRoot = fs::weakly_canonical(package.sourceRoot, fileError);
+        if (fileError)
+        {
+            package.canonicalSourceRoot.clear();
+            error = "cannot resolve package root: " + fileError.message();
+            return false;
+        }
+    }
+    const fs::path& canonicalRoot = package.canonicalSourceRoot;
     const fs::path canonicalSource = fs::weakly_canonical(source, fileError);
     if (fileError || !fs::is_regular_file(canonicalSource))
     {
