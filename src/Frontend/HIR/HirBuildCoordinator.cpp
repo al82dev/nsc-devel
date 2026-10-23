@@ -2261,6 +2261,17 @@ bool ProjectOopHirModel::isReferenceType(std::string_view typeKey) const noexcep
         return false;
     }
     const std::string_view identity = typeKey.substr(5);
+    // The shared type index keeps the first type of an identity, as the scan below; the scan
+    // only runs for hand-assembled models that have no type index.
+    if (const std::optional<std::size_t> indexed = nameLookup_->typeOrdinalForIdentity(identity))
+    {
+        const NamedTypeDeclaration* type = nameLookup_->typeForOrdinal(*indexed);
+        return type != nullptr &&
+            (type->kind == NamedTypeDeclarationKind::Class ||
+             type->kind == NamedTypeDeclarationKind::Interface ||
+             type->kind == NamedTypeDeclarationKind::Delegate);
+    }
+    if (nameLookup_->hasTypeIndex()) return false;
     for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
     {
         const NamedTypeDeclaration& type = nameLookup_->namedTypes()[ordinal];
