@@ -195,6 +195,27 @@ bool normalizeTransitiveSourceOwnership(
     return true;
 }
 
+/// Sorts values by a string key computed once per value. The same std::ranges::sort runs over
+/// (key, value) pairs and compares only the keys, so the comparisons and therefore the resulting
+/// order (including the order of equal keys) are those of sorting the values with the key as
+/// projection, without recomputing the key in every comparison.
+template <typename Value, typename KeyFunction>
+void sortByPrecomputedKey(std::vector<Value>& values, KeyFunction key)
+{
+    std::vector<std::pair<std::string, Value>> keyed;
+    keyed.reserve(values.size());
+    for (Value& value : values)
+    {
+        std::string valueKey = key(value);
+        keyed.emplace_back(std::move(valueKey), std::move(value));
+    }
+    std::ranges::sort(keyed, {}, &std::pair<std::string, Value>::first);
+    for (std::size_t index = 0; index < keyed.size(); ++index)
+    {
+        values[index] = std::move(keyed[index].second);
+    }
+}
+
 void preferExactSourceModuleArtifacts(
     std::map<std::string, Project>& projects,
     const std::map<std::string, std::filesystem::path>& moduleOwners)
@@ -229,10 +250,10 @@ void preferExactSourceModuleArtifacts(
 
             if (referencedKeys.insert(sourceKey).second) projectReferences.push_back(source->second);
         }
-        std::ranges::sort(projectReferences, {}, [](const std::filesystem::path& path) {
+        sortByPrecomputedKey(projectReferences, [](const std::filesystem::path& path) {
             return pathKey(canonicalPath(path));
         });
-        std::ranges::sort(libraryReferences, {}, [](const LibraryReference& reference) {
+        sortByPrecomputedKey(libraryReferences, [](const LibraryReference& reference) {
             return pathKey(canonicalPath(reference.libraryPath));
         });
         rewired.emplace(
