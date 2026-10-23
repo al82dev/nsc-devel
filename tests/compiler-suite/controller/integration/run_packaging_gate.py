@@ -290,6 +290,14 @@ def run_deploy_batch(
     return completed.returncode == 0 and selected, "deploy wrapper ignored caller-selected paths"
 
 
+def load_builder_deploy(repository_root: Path) -> object:
+    """Import nsc_builder.deploy from the builder kept in the repository (nsc-builder/)."""
+    builder_root = str(repository_root / "nsc-builder")
+    if builder_root not in sys.path:
+        sys.path.insert(0, builder_root)
+    return importlib.import_module("nsc_builder.deploy")
+
+
 def stage_installation(installation_root: Path, case_root: Path) -> Path:
     prefix = case_root / "installation"
     shutil.copytree(installation_root, prefix)
