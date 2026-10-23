@@ -261,7 +261,7 @@ def check_deploy_variant(
     """Evaluate one deploy-plan variant; nothing is installed or executed."""
     plan, error = create_plan(deploy, config, build_mode)
     write_text(case_root / "plan.log", repr(plan.commands) if plan is not None else error)
-    if variant == 1:
+    if variant in {1, 2}:
         expected = [
             "--install", build_dir.resolve().as_posix(), "--config", build_mode,
             "--prefix", prefix.resolve().as_posix(),
