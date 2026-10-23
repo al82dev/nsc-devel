@@ -204,13 +204,11 @@ bool collectUniquePrecompiledDescriptors(
     std::string& error)
 {
     std::unordered_map<std::string, std::size_t> descriptorByPath;
+    // Folded project paths are computed once instead of once per descriptor and project.
+    const ProjectOrdinalByPath projectByPath = projectOrdinalsByPath(projects);
     for (const PrecompiledProjectDescriptor& descriptor : descriptors)
     {
-        const std::string ownerKey = foldedPath(descriptor.ownerProjectFile);
-        const auto owner = std::ranges::find_if(projects, [&](const Project& project) {
-            return foldedPath(project.projectFile()) == ownerKey;
-        });
-        if (owner == projects.end())
+        if (!projectByPath.contains(foldedPath(descriptor.ownerProjectFile)))
         {
             error = "precompiled metadata '" + descriptor.metadataPath.generic_string() +
                 "' names an unknown owner project '" +
