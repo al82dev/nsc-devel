@@ -2202,6 +2202,14 @@ bool ProjectOopHirModel::isStructValueType(std::string_view typeKey) const noexc
     if (ProjectTypeConversion::isTuple(typeKey)) return true;
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
     const std::string_view key = typeKey.substr(5);
+    // The shared type index keeps the first type of an identity, as the scan below; the scan
+    // only runs for hand-assembled models that have no type index.
+    if (const std::optional<std::size_t> ordinal = nameLookup_->typeOrdinalForIdentity(key))
+    {
+        const NamedTypeDeclaration* type = nameLookup_->typeForOrdinal(*ordinal);
+        return type != nullptr && type->kind == NamedTypeDeclarationKind::Struct;
+    }
+    if (nameLookup_->hasTypeIndex()) return false;
     for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
     {
         if (type.identity.key() == key) return type.kind == NamedTypeDeclarationKind::Struct;
