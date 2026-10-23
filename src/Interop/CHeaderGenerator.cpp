@@ -127,16 +127,31 @@ std::pair<std::string_view, std::size_t> splitPointerType(std::string_view typeK
     return {typeKey, pointerDepth};
 }
 
+/// Ordinal of the named type with this identity: the shared type index (it keeps the first type
+/// of an identity, as the scan), or the scan for hand-assembled models without a type index.
+std::optional<std::size_t> namedTypeOrdinalForIdentity(
+    const ProjectNameLookup& names,
+    std::string_view identity) noexcept
+{
+    const auto types = names.namedTypes();
+    if (const std::optional<std::size_t> indexed = names.typeOrdinalForIdentity(identity))
+        return *indexed < types.size() ? indexed : std::nullopt;
+    if (names.hasTypeIndex()) return std::nullopt;
+    for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
+    {
+        if (types[ordinal].identity.key() == identity) return ordinal;
+    }
+    return std::nullopt;
+}
+
 const NamedTypeDeclaration* namedTypeForCoreKey(
     std::string_view coreKey,
     const ProjectNameLookup& names) noexcept
 {
     if (!coreKey.starts_with("type:")) return nullptr;
     const std::string_view identityKey = coreKey.substr(5);
-    for (const NamedTypeDeclaration& type : names.namedTypes())
-    {
-        if (type.identity.key() == identityKey) return &type;
-    }
+    if (const std::optional<std::size_t> ordinal = namedTypeOrdinalForIdentity(names, identityKey))
+        return &names.namedTypes()[*ordinal];
     return nullptr;
 }
 
