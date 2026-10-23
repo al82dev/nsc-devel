@@ -700,7 +700,21 @@ bool ProjectCompilation::compileProjectGenerics(
             ProjectGenericModel::DefaultMaximumInstantiationDepth),
         projectLoadOptions_.genericInstantiationCount.value_or(
             ProjectGenericModel::DefaultMaximumInstantiationCount));
-    genericModel_->setTemplateCacheRoot(templateCacheRoot_);
+    // EN: The generic model's C1 record cache and C3 clone cache stay disconnected, exactly as
+    //     before 3.0.6. C3 persists a clone after its nested references were rewritten, keys it only
+    //     by the specialization key (self-references inside a restored clone keep the producer's
+    //     spelling), and its hit path in executeTypeDemand returns without rewriting the requesting
+    //     syntax; resolved argument identities are not persisted either. C1 rebinds every field on
+    //     a hit but keeps dependency lists computed by another compilation. Both therefore change
+    //     the specializations and metadata that a cold build produces.
+    // ES: La caché C1 de registros y la caché C3 de clones del modelo genérico siguen
+    //     desconectadas, igual que antes de 3.0.6. C3 persiste un clon después de reescribir sus
+    //     referencias anidadas, lo indexa sólo por la clave de especialización (las autorreferencias
+    //     del clon restaurado conservan la escritura del productor) y su ruta de hit en
+    //     executeTypeDemand regresa sin reescribir la sintaxis que lo pidió; tampoco persiste las
+    //     identidades resueltas de los argumentos. C1 reenlaza todos los campos en un hit, pero
+    //     conserva listas de dependencias calculadas por otra compilación. Por eso ambas cambian las
+    //     especializaciones y la metadata que produce una compilación en frío.
     // NSC305-P01. The generic telemetry is a no-op unless a phase timing sink is wired (which the
     // driver only does for `--time` / `--time-trace`). It forwards sub-phase and per-template
     // timings through the same channel as the parent `generics` timer and never touches
