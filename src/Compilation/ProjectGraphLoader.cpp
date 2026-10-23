@@ -207,6 +207,9 @@ void preferExactSourceModuleArtifacts(
         std::vector<LibraryReference> libraryReferences;
         libraryReferences.reserve(project.libraryReferences().size());
         const std::string projectKey = pathKey(canonicalPath(project.projectFile()));
+        std::unordered_set<std::string> referencedKeys;
+        for (const std::filesystem::path& path : projectReferences)
+            referencedKeys.insert(pathKey(canonicalPath(path)));
         for (const LibraryReference& reference : project.libraryReferences())
         {
             const std::string libraryStem = reference.libraryPath.stem().string();
@@ -224,11 +227,7 @@ void preferExactSourceModuleArtifacts(
                 continue;
             }
 
-            const bool alreadyReferenced = std::ranges::any_of(
-                projectReferences, [&](const std::filesystem::path& path) {
-                    return pathKey(canonicalPath(path)) == sourceKey;
-                });
-            if (!alreadyReferenced) projectReferences.push_back(source->second);
+            if (referencedKeys.insert(sourceKey).second) projectReferences.push_back(source->second);
         }
         std::ranges::sort(projectReferences, {}, [](const std::filesystem::path& path) {
             return pathKey(canonicalPath(path));
