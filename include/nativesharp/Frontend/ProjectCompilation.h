@@ -31,6 +31,7 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -210,6 +211,9 @@ private:
 
     std::optional<compilation::ProjectGraph> projectGraph_;
     std::vector<PrecompiledSyntaxModule> precompiledModules_;
+    // Canonical project file -> first project-graph ordinal with that file. Built once per
+    // compilation by materializePrecompiledSyntax; read by precompiledProjectOrdinal.
+    std::map<std::filesystem::path, std::size_t> precompiledProjectOrdinals_;
     source::SourceManager sourceManager_;
     diagnostics::DiagnosticEngine diagnostics_;
     std::vector<std::unique_ptr<ProjectSyntaxUnit>> units_;

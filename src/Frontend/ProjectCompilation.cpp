@@ -1341,20 +1341,13 @@ bool ProjectCompilation::executeSyntaxComptime(
 std::optional<std::size_t> ProjectCompilation::precompiledProjectOrdinal(
     const PrecompiledSyntaxModule& module) const
 {
-    for (std::size_t ordinal = 0; ordinal < projectGraph_->projects().size(); ++ordinal)
-    {
-        std::error_code leftError;
-        std::error_code rightError;
-        const std::filesystem::path left = std::filesystem::weakly_canonical(
-            projectGraph_->projects()[ordinal].projectFile(), leftError);
-        const std::filesystem::path right = std::filesystem::weakly_canonical(
-            module.metadataPath, rightError);
-        if (!leftError && !rightError && left == right)
-        {
-            return ordinal;
-        }
-    }
-    return std::nullopt;
+    std::error_code metadataError;
+    const std::filesystem::path canonicalMetadata =
+        std::filesystem::weakly_canonical(module.metadataPath, metadataError);
+    if (metadataError) return std::nullopt;
+    const auto found = precompiledProjectOrdinals_.find(canonicalMetadata);
+    if (found == precompiledProjectOrdinals_.end()) return std::nullopt;
+    return found->second;
 }
 
 bool ProjectCompilation::materializePrecompiledTemplateUnit(
@@ -1506,6 +1499,20 @@ bool ProjectCompilation::materializePrecompiledSyntax(std::string& loadError)
 {
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "precompiled-syntax");
     std::set<std::string> materializedMetadata;
+    // Each project file is canonicalized once here instead of once per precompiled module. The
+    // map compares paths like path::operator== and keeps the first ordinal of equal paths, which
+    // is the ordinal the former linear search returned; a failed canonicalization never matched.
+    precompiledProjectOrdinals_.clear();
+    if (!precompiledModules_.empty())
+    {
+        for (std::size_t ordinal = 0; ordinal < projectGraph_->projects().size(); ++ordinal)
+        {
+            std::error_code projectError;
+            const std::filesystem::path canonicalProject = std::filesystem::weakly_canonical(
+                projectGraph_->projects()[ordinal].projectFile(), projectError);
+            if (!projectError) precompiledProjectOrdinals_.try_emplace(canonicalProject, ordinal);
+        }
+    }
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
         if (!materializePrecompiledModule(module, materializedMetadata, loadError))
