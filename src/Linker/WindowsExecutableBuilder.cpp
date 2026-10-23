@@ -4,7 +4,10 @@
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 
 #include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/LLVM/CodegenIdentity.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
+#include "nativesharp/LLVM/CompilationArtifactCache.h"
+#include "nativesharp/LLVM/LinkTimeOptimizationMode.h"
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
@@ -116,7 +119,7 @@ std::string incrementalLinkKey(
     std::span<const std::filesystem::path> programObjects,
     std::string_view programLlvmText,
     std::string_view runtimeLlvmText,
-    std::string_view runtimeIdentity,
+    std::string_view runtimeKey,
     std::span<const std::filesystem::path> extraLibraries,
     std::span<const ExternalImportModule> externalImports,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
@@ -133,7 +136,7 @@ std::string incrementalLinkKey(
     material.push_back('\n');
     material.append(runtimeLlvmText);
     material.push_back('\n');
-    material.append(runtimeIdentity);
+    material.append(runtimeKey);
     material.push_back('\n');
     for (const auto& module : externalImports)
     {
@@ -246,6 +249,21 @@ bool executableRuntimeIdentity(
     }
     identity += "mode buildEntry\n";
     return appendFileIdentity(runtimeLibrary, identity, error);
+}
+
+/// Artifact-cache key of the executable runtime object. It is computed with the compiler's codegen
+/// identity even when no artifact cache is active, because the incremental link state records it
+/// too. inputObjectKey adds the LLVM version, the optimization pipeline and the floating-point policy.
+std::string executableRuntimeKey(
+    std::string_view runtimeIdentity,
+    llvm_backend::LlvmOptimizationLevel optimizationLevel)
+{
+    llvm_backend::CompilationArtifactCache keySource;
+    keySource.setCodegenIdentity(std::string(llvm_backend::kCodegenCacheIdentity));
+    return keySource.inputObjectKey(
+        runtimeIdentity, "windows-x64-msvc-runtime-exe",
+        llvm_backend::codeGenerationPolicyIdentity(llvm_backend::LinkTimeOptimizationMode::None),
+        optimizationLevel, llvm_backend::DebugInformationKind::None);
 }
 
 bool buildExecutableRuntime(
@@ -554,11 +572,12 @@ bool prepareIncrementalExecutable(
     const std::string runtimeText = runtimeModule.text();
     std::string runtimeIdentity;
     if (!executableRuntimeIdentity(runtimeLibrary, mainSymbol, runtimeIdentity, error)) return false;
+    const std::string runtimeKey = executableRuntimeKey(runtimeIdentity, optimizationLevel);
     std::vector<std::filesystem::path> runtimeAwareLibraries(
         extraLinkLibraries.begin(), extraLinkLibraries.end());
     if (!runtimeLibrary.empty()) runtimeAwareLibraries.push_back(runtimeLibrary);
     incrementalKey = incrementalLinkKey(
-        programObjects, programLlvmText, runtimeText, runtimeIdentity, runtimeAwareLibraries,
+        programObjects, programLlvmText, runtimeText, runtimeKey, runtimeAwareLibraries,
         externalImports, optimizationLevel, debugInformation, subsystem, mainSymbol, error);
     if (incrementalKey.empty()) return false;
     std::filesystem::path pdbPath = outputPath;
