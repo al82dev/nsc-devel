@@ -1,4 +1,5 @@
 #include "HirLoweringSupport.h"
+#include "../Internal/TypeIndexShadowCheck.h"
 #include "ExpressionStatementMachine/HirExpressionStatementMachineTypes.h"
 
 #include "nativesharp/Compilation/TypeIdentity.h"
@@ -477,6 +478,8 @@ bool ProjectOopHirModel::isEnumBinaryTypeKey(std::string_view typeKey) const noe
 {
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
     const std::string_view identity = typeKey.substr(5);
+    if constexpr (internal::kIndexShadowCheckEnabled)
+        internal::shadowCheckTypeIdentityIndex(*nameLookup_, identity, "ProjectOopHirModel::isEnumBinaryTypeKey");
     // Identities are unique in namedTypes() (parts are aggregated by identity), so the indexed
     // type is the only one the scan below can match; the scan only runs for hand-assembled
     // models that have no type index.

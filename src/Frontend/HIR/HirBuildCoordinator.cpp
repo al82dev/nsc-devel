@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "HirLoweringSupport.h"
+#include "../Internal/TypeIndexShadowCheck.h"
 #include "Internal/RegularFunctionResult.h"
 #include "Internal/StackClassLocalUseFrame.h"
 
@@ -2202,6 +2203,8 @@ bool ProjectOopHirModel::isStructValueType(std::string_view typeKey) const noexc
     if (ProjectTypeConversion::isTuple(typeKey)) return true;
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
     const std::string_view key = typeKey.substr(5);
+    if constexpr (internal::kIndexShadowCheckEnabled)
+        internal::shadowCheckTypeIdentityIndex(*nameLookup_, key, "ProjectOopHirModel::isStructValueType");
     // The shared type index keeps the first type of an identity, as the scan below; the scan
     // only runs for hand-assembled models that have no type index.
     if (const std::optional<std::size_t> ordinal = nameLookup_->typeOrdinalForIdentity(key))
@@ -2224,6 +2227,8 @@ bool ProjectOopHirModel::isClassReferenceType(std::string_view typeKey) const no
         return false;
     }
     const std::string_view identity = typeKey.substr(5);
+    if constexpr (internal::kIndexShadowCheckEnabled)
+        internal::shadowCheckTypeIdentityIndex(*nameLookup_, identity, "ProjectOopHirModel::isClassReferenceType");
     // The shared type index keeps the first type of an identity, as the scan below; the scan
     // only runs for hand-assembled models that have no type index.
     if (const std::optional<std::size_t> ordinal = nameLookup_->typeOrdinalForIdentity(identity))
@@ -2261,6 +2266,8 @@ bool ProjectOopHirModel::isReferenceType(std::string_view typeKey) const noexcep
         return false;
     }
     const std::string_view identity = typeKey.substr(5);
+    if constexpr (internal::kIndexShadowCheckEnabled)
+        internal::shadowCheckTypeIdentityIndex(*nameLookup_, identity, "ProjectOopHirModel::isReferenceType");
     // The shared type index keeps the first type of an identity, as the scan below; the scan
     // only runs for hand-assembled models that have no type index.
     if (const std::optional<std::size_t> indexed = nameLookup_->typeOrdinalForIdentity(identity))
