@@ -190,6 +190,13 @@ private:
     bool restoreTemplateParseProduct(std::string& loadError);
     void publishTemplateParseProduct();
     void publishPrecompiledSyntaxProducts();
+    bool precompiledSyntaxProductPending(std::size_t index) const noexcept;
+    void capturePristineSyntaxProducts();
+    std::string_view pristineSyntaxProduct(std::size_t index) const noexcept;
+    void releasePristineSyntaxProducts() noexcept;
+    bool produceSyntaxCorpus(
+        driver::CompilationWorkerPool& syntaxWorkers,
+        std::string& loadError);
     bool lexSyntaxUnits(
         driver::CompilationWorkerPool& syntaxWorkers,
         bool& lexicalOk,
@@ -241,6 +248,10 @@ private:
     std::vector<bool> precompiledSyntaxCacheHitsByUnit_;
     std::string templateParseCacheKey_;
     bool templateParseCacheHit_ = false;
+    // EN: Parse products serialized before the generic pass mutates the trees; indexed like units_.
+    // ES: Productos del parser serializados antes de que el pase genérico mute los árboles; mismo
+    //     índice que units_.
+    std::vector<std::string> pristineSyntaxProductsByUnit_;
     std::size_t compilationJobs_ = 1;
     CompilationStageTracker stageTracker_;
 };
