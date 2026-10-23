@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -79,15 +80,27 @@ private:
     bool collectAttributeDefinitions(
         std::span<const ProjectComptimeRecord> comptimeRecords,
         std::unordered_map<std::string, internal::ComptimeAttributeDefinition>& definitions);
-    bool findAttributeTarget(
+    // Declarations of one (project, source ordinal) as (start offset, ordinal), sorted, so the
+    // first one at or after a directive is a binary search. Built once per collectAttributeUses.
+    struct AttributeTargetCandidates final
+    {
+        std::vector<std::pair<std::size_t, std::size_t>> types;
+        std::vector<std::pair<std::size_t, std::size_t>> members;
+    };
+    using AttributeTargetIndex =
+        std::map<std::pair<std::size_t, std::size_t>, AttributeTargetCandidates>;
+    static AttributeTargetIndex buildAttributeTargetIndex(
         const ProjectNameLookup& names,
+        const ProjectMemberModel& members);
+    bool findAttributeTarget(
+        const AttributeTargetIndex& targets,
         const ProjectMemberModel& members,
         const ProjectComptimeRecord& record,
         const ComptimeAttributeDirective& directive,
         std::optional<std::size_t>& targetType,
         std::optional<std::size_t>& targetMember) const;
     bool appendAttributeUse(
-        const ProjectNameLookup& names,
+        const AttributeTargetIndex& targets,
         const ProjectMemberModel& members,
         const ProjectComptimeRecord& record,
         const ComptimeAttributeDirective& directive,
