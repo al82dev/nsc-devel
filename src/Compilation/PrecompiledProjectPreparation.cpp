@@ -625,6 +625,12 @@ bool expandBinaryClosure(
         discoveredByOwner,
     std::string& error)
 {
+    // Each known dependency may append one entry; reserving them avoids most reallocations
+    // of loaded while the closure grows.
+    std::size_t knownDependencies = 0;
+    for (const LoadedMetadata& entry : loaded)
+        knownDependencies += entry.metadata->binaryDependencies.size();
+    loaded.reserve(loaded.size() + knownDependencies);
     for (std::size_t cursor = 0; cursor < loaded.size(); ++cursor)
     {
         const std::filesystem::path parentOwner = loaded[cursor].ownerProjectFile;
