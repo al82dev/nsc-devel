@@ -1567,10 +1567,11 @@ bool verifyVersionedMemberContracts(
     return verifyParameterPackContracts(metadata, error);
 }
 
-template<typename Callable>
+// describeOwner returns the owner text of the error message; it runs only when the check fails.
+template<typename Callable, typename DescribeOwner>
 bool verifyLifetimeMetadata(
     const Callable& callable,
-    std::string_view owner,
+    const DescribeOwner& describeOwner,
     std::string& error)
 {
     std::unordered_set<std::string> declared;
@@ -1578,7 +1579,7 @@ bool verifyLifetimeMetadata(
     {
         if (lifetime.empty() || !declared.insert(lifetime).second)
         {
-            error = "metadata " + std::string(owner) +
+            error = "metadata " + describeOwner() +
                 " contains an empty or duplicate lifetime parameter";
             return false;
         }
@@ -1588,7 +1589,7 @@ bool verifyLifetimeMetadata(
         if (!declared.contains(longer) ||
             (shorter != "static" && !declared.contains(shorter)))
         {
-            error = "metadata " + std::string(owner) +
+            error = "metadata " + describeOwner() +
                 " contains an undeclared lifetime outlives edge";
             return false;
         }
@@ -1603,7 +1604,8 @@ bool verifyLifetimeMetadataContracts(
     if (metadata.formatMinor < 34) return true;
     for (const LibraryMetadataType& type : metadata.types)
     {
-        if (!verifyLifetimeMetadata(type, "type '" + type.identityKey + "'", error))
+        if (!verifyLifetimeMetadata(
+                type, [&type] { return "type '" + type.identityKey + "'"; }, error))
             return false;
         if (type.kind == LibraryMetadataTypeKind::Delegate &&
             (type.delegateParameterPassKinds.size() !=
@@ -1619,14 +1621,20 @@ bool verifyLifetimeMetadataContracts(
     for (const LibraryMetadataMember& member : metadata.members)
         if (!verifyLifetimeMetadata(
                 member,
-                "member '" + member.declaringTypeKey + "." + member.signatureKey + "'",
+                [&member]
+                {
+                    return "member '" + member.declaringTypeKey + "." + member.signatureKey + "'";
+                },
                 error))
             return false;
     for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
         if (!verifyLifetimeMetadata(
                 function,
-                "namespace function '" + function.namespaceName + "." +
-                    function.signatureKey + "'",
+                [&function]
+                {
+                    return "namespace function '" + function.namespaceName + "." +
+                        function.signatureKey + "'";
+                },
                 error))
             return false;
     return true;
