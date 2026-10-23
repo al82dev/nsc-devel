@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -2774,6 +2775,29 @@ void testAggregateCallableBoundary(TestContext& tests, const std::filesystem::pa
     }
 }
 
+/// EN: Returns true when both bundles have the same number of object files and each pair of
+///     object files, in order, has identical bytes. A missing or unreadable file compares unequal.
+///     Complexity: linear in the total object size.
+/// ES: Devuelve true si ambos paquetes tienen el mismo numero de objetos y cada par de objetos,
+///     en orden, tiene bytes identicos. Un archivo ausente o ilegible cuenta como distinto.
+///     Complejidad: lineal en el tamano total de los objetos.
+bool sameObjectFiles(
+    const nativesharp::llvm_backend::ProjectOopObjectBundle& left,
+    const nativesharp::llvm_backend::ProjectOopObjectBundle& right)
+{
+    if (left.objectFiles().size() != right.objectFiles().size()) return false;
+    for (std::size_t index = 0; index < left.objectFiles().size(); ++index)
+    {
+        std::ifstream leftStream(left.objectFiles()[index], std::ios::binary);
+        std::ifstream rightStream(right.objectFiles()[index], std::ios::binary);
+        if (!leftStream || !rightStream) return false;
+        const std::string leftBytes{std::istreambuf_iterator<char>(leftStream), {}};
+        const std::string rightBytes{std::istreambuf_iterator<char>(rightStream), {}};
+        if (leftBytes.empty() || leftBytes != rightBytes) return false;
+    }
+    return true;
+}
+
 void testPreciseIncrementalInvalidation(TestContext& tests, const std::filesystem::path& root)
 {
     const auto firstDirectory = root / "IncrementalFirst";
@@ -2900,15 +2924,21 @@ public class Work
     error.clear();
     const bool restoredPlanOk = cache.restoreCodePartitionPlan(
         planKey, restoredPlanPayload, restoredPlanHit, error);
-    tests.expect(restoredPlanOk && restoredPlanHit && !restoredPlanPayload.empty(),
-        "cold generation atomically publishes its private code-partition plan (" + error + ")");
+    // EN: Since the audit of 2026-10-22 the generator partitions with DeterministicIncremental, a
+    //     pure function of the MIR, so it no longer publishes a plan (a restored plan made an
+    //     incremental build differ from a clean build). ES: Desde la auditoria del 2026-10-22 el
+    //     generador parte con DeterministicIncremental, funcion pura del MIR, asi que ya no
+    //     publica un plan (un plan restaurado hacia que el build incremental difiriera del limpio).
+    tests.expect(restoredPlanOk && !restoredPlanHit && restoredPlanPayload.empty(),
+        "cold generation publishes no code-partition plan: the partition is a pure function of the MIR (" +
+            error + ")");
 
     nativesharp::llvm_backend::ProjectOopCodePartition restoredChangedPartition;
     changedError.clear();
     const bool restoredChangedOk = restoredChangedPartition.build(
         *changed.oopMirModel(), 4, changedError,
         nativesharp::llvm_backend::ProjectOopCodePartitionPolicy::CacheAwareBalanced,
-        restoredPlanPayload);
+        coldPlanPayload);
     bool restoredAssignments = restoredChangedOk;
     std::unordered_map<std::string, std::size_t> cacheAwareBuckets;
     for (std::size_t ordinal = 0; ordinal < firstFunctions.size(); ++ordinal)
@@ -2941,6 +2971,25 @@ public class Work
             changedError + ")");
     if (changedBundle == nullptr) return;
 
+    {
+        // EN: Strict equivalence: the incremental objects must equal a clean generation of the same
+        //     sources with an empty cache. ES: Equivalencia estricta: los objetos incrementales deben
+        //     ser iguales a una generacion limpia de las mismas fuentes con la cache vacia.
+        nativesharp::llvm_backend::CompilationArtifactCache cleanCache;
+        cleanCache.setRoot(root / "incremental-clean-object-cache");
+        cleanCache.setCodegenIdentity("precise-invalidation-test");
+        nativesharp::llvm_backend::CompilationArtifactCacheScope cleanScope(cleanCache);
+        changedError.clear();
+        auto cleanBundle = generator.generate(
+            *changed.nameLookup(), *changed.memberModel(), *changed.oopMirModel(),
+            changed.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 4, {}, changedError);
+        tests.expect(cleanBundle != nullptr && cleanBundle->cacheHitCount() == 0 &&
+                sameObjectFiles(*changedBundle, *cleanBundle),
+            "an incremental generation emits the same objects as a clean generation of the same sources (" +
+                changedError + ")");
+    }
+
     changedError.clear();
     auto repeatedBundle = generator.generate(
         *changed.nameLookup(), *changed.memberModel(), *changed.oopMirModel(),
@@ -2954,12 +3003,16 @@ public class Work
     std::size_t evictedEntries = 0;
     std::uintmax_t evictedBytes = 0;
     error.clear();
+    // EN: Generation no longer stores plans, so store one explicitly to keep the eviction of plan
+    //     entries covered. ES: La generacion ya no guarda planes; se guarda uno a mano para seguir
+    //     cubriendo el desalojo de entradas de plan.
+    const bool planStoreOk = cache.storeCodePartitionPlan(planKey, coldPlanPayload, error);
     const bool pruneOk = cache.prune(0, evictedEntries, evictedBytes, error);
     std::string prunedPlanPayload;
     bool prunedPlanHit = true;
     const bool prunedPlanRestoreOk = cache.restoreCodePartitionPlan(
         planKey, prunedPlanPayload, prunedPlanHit, error);
-    tests.expect(pruneOk && evictedEntries != 0U && evictedBytes != 0U &&
+    tests.expect(planStoreOk && pruneOk && evictedEntries != 0U && evictedBytes != 0U &&
             prunedPlanRestoreOk && !prunedPlanHit,
         "the artifact-cache byte budget evicts private partition plans with objects (" +
             error + ")");

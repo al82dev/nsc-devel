@@ -625,40 +625,38 @@ void processObjectCodeUnit(
     storePreOptimizationObject(cache, irKey, objectFile, telemetry, moduleError);
 }
 
+/// EN: Builds the code partition of one generation with the DeterministicIncremental policy, for
+///     every cache and LTO mode. The partition is a pure function of the MIR and `partitionCount`:
+///     no plan is restored from or stored in the artifact cache. A restored CacheAwareBalanced
+///     plan made the objects of an incremental build depend on earlier builds and differ from a
+///     clean build of the same sources (audit 2026-10-22, H3), and its key covered the whole
+///     function set, so adding one function redistributed every unit (H7).
+///     Preconditions: `mirModel` is built and `partition` is unused. Postconditions: on success
+///     `partition` is built and `telemetry.partitionBuildMicros` is set. Returns false with
+///     `error` when the partition cannot be built. Not thread safe for one `partition`.
+/// ES: Construye la particion de codigo de una generacion con la politica
+///     DeterministicIncremental, en todo modo de cache y de LTO. La particion es funcion pura del
+///     MIR y de `partitionCount`: no se restaura ni se guarda ningun plan en la cache de
+///     artefactos. Un plan CacheAwareBalanced restaurado hacia que los objetos de un build
+///     incremental dependieran de builds anteriores y difirieran del build limpio de las mismas
+///     fuentes (auditoria 2026-10-22, H3), y su clave cubria todo el conjunto de funciones, asi
+///     que agregar una funcion redistribuia todas las unidades (H7).
+///     Precondiciones: `mirModel` esta construido y `partition` no se ha usado. Postcondiciones:
+///     si tiene exito, `partition` queda construida y `telemetry.partitionBuildMicros` asignado.
+///     Devuelve false con `error` si la particion no se puede construir. No es seguro entre
+///     hilos para una misma `partition`.
 bool buildObjectPartition(
     const frontend::ProjectOopMirModel& mirModel,
     std::size_t partitionCount,
-    LinkTimeOptimizationMode linkTimeOptimization,
     std::span<const std::uint8_t> reachableDefinitions,
-    const CompilationArtifactCache* cache,
     ProjectOopCodePartition& partition,
-    std::string& partitionPlanKey,
-    std::string& partitionPlanPayload,
     ColdLlvmPreambleTelemetry& telemetry,
     std::string& error)
 {
-    bool partitionPlanHit = false;
-    if (cache != nullptr && cache->enabled())
-    {
-        const PhaseClock partitionKeyClock;
-        partitionPlanKey = ProjectOopCodePartition::persistentPlanKey(
-            mirModel, partitionCount, reachableDefinitions);
-        telemetry.partitionKeyMicros = partitionKeyClock.elapsedMicros();
-        const PhaseClock partitionRestoreClock;
-        const bool restored = cache->restoreCodePartitionPlan(
-            partitionPlanKey, partitionPlanPayload, partitionPlanHit, error);
-        telemetry.partitionRestoreMicros = partitionRestoreClock.elapsedMicros();
-        if (!restored) return false;
-    }
-    const ProjectOopCodePartitionPolicy policy = cache != nullptr && cache->enabled()
-        ? ProjectOopCodePartitionPolicy::CacheAwareBalanced
-        : linkTimeOptimization == LinkTimeOptimizationMode::Thin
-            ? ProjectOopCodePartitionPolicy::StableIncremental
-            : ProjectOopCodePartitionPolicy::Balanced;
     const PhaseClock partitionBuildClock;
     const bool built = partition.build(
-        mirModel, partitionCount, error, policy,
-        partitionPlanHit ? partitionPlanPayload : std::string_view{}, reachableDefinitions);
+        mirModel, partitionCount, error, ProjectOopCodePartitionPolicy::DeterministicIncremental,
+        std::string_view{}, reachableDefinitions);
     telemetry.partitionBuildMicros = partitionBuildClock.elapsedMicros();
     return built;
 }
@@ -985,7 +983,10 @@ bool ProjectOopObjectGenerator::finishCodeUnitBundle(
             moduleErrors, cacheHits, cacheMisses,
             result.cacheHitCount_, result.cacheMissCount_, error)) return false;
     if (usePartitions) recordPartitionCosts(partition, cacheHits, codeUnitTelemetry);
-    if (usePartitions && cache != nullptr && cache->enabled() &&
+    // EN: buildObjectPartition never computes a plan key, so no plan is stored; the store stays
+    //     for a future plan-based policy. ES: buildObjectPartition nunca calcula una clave de
+    //     plan, asi que no se guarda ningun plan; el guardado queda para una politica futura.
+    if (usePartitions && cache != nullptr && cache->enabled() && !partitionPlanKey.empty() &&
         !storePartitionPlan(
             partition, *cache, partitionPlanKey, partitionPlanPayload,
             preambleTelemetry, error)) return false;
@@ -1202,8 +1203,7 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     std::string partitionPlanKey;
     std::string partitionPlanPayload;
     if (!buildObjectPartition(
-            mirModel, partitionCount, linkTimeOptimization, reachableDefinitions, cache,
-            partition, partitionPlanKey, partitionPlanPayload, preambleTelemetry, error))
+            mirModel, partitionCount, reachableDefinitions, partition, preambleTelemetry, error))
         return nullptr;
     const PhaseClock coordinatorClosureClock;
     const std::vector<std::size_t> coordinatorFunctionDeclarations =

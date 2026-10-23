@@ -183,6 +183,30 @@ void assignStableCandidates(
     });
 }
 
+/// EN: Assigns `candidates` with the DeterministicIncremental policy: name-hash buckets when every
+///     bucket receives at least one function, otherwise the Balanced (LPT) assignment.
+///     Preconditions: `units` are empty units numbered 0..n-1 and `candidates` is not empty.
+///     Postconditions: every candidate belongs to exactly one unit and `units.size()` is
+///     unchanged. Never fails. Complexity: O(c log c) for c candidates plus O(c * n) on fallback.
+/// ES: Asigna `candidates` con la politica DeterministicIncremental: cubetas por hash del nombre
+///     si cada cubeta recibe al menos una funcion; si no, la asignacion Balanced (LPT).
+///     Precondiciones: `units` son unidades vacias numeradas 0..n-1 y `candidates` no esta vacio.
+///     Postcondiciones: cada candidata queda en exactamente una unidad y `units.size()` no
+///     cambia. Nunca falla. Complejidad: O(c log c) para c candidatas mas O(c * n) si cae a LPT.
+void assignDeterministicCandidates(
+    std::vector<PartitionCandidate>& candidates,
+    std::vector<ProjectOopCodeUnit>& units)
+{
+    std::vector<ProjectOopCodeUnit> hashedUnits = units;
+    assignStableCandidates(candidates, hashedUnits);
+    if (hashedUnits.size() == units.size())
+    {
+        units = std::move(hashedUnits);
+        return;
+    }
+    assignBalancedCandidates(candidates, units);
+}
+
 bool restoreCacheAwareCandidates(
     std::span<const PartitionCandidate> candidates,
     std::string_view cachedPlan,
@@ -427,6 +451,10 @@ bool ProjectOopCodePartition::build(
     if (policy == ProjectOopCodePartitionPolicy::StableIncremental)
     {
         assignStableCandidates(candidates, units_);
+    }
+    else if (policy == ProjectOopCodePartitionPolicy::DeterministicIncremental)
+    {
+        assignDeterministicCandidates(candidates, units_);
     }
     else if (policy == ProjectOopCodePartitionPolicy::CacheAwareBalanced)
     {
