@@ -143,11 +143,17 @@ bool normalizeTransitiveSourceOwnership(
 {
     // A source file has one semantic module owner even when broad globs in several referenced
     // projects discover it. Dependency-first graph order preserves the historical owner.
+    // The key of each source is computed once here and reused by the second pass.
     std::unordered_map<std::string, std::size_t> sourceOwner;
+    std::vector<std::vector<std::string>> sourceKeys(projects.size());
     for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
     {
+        sourceKeys[ordinal].reserve(projects[ordinal].sourceSet().sources().size());
         for (const ProjectSource& source : projects[ordinal].sourceSet().sources())
-            sourceOwner.try_emplace(pathKey(canonicalPath(source.absolutePath)), ordinal);
+        {
+            sourceKeys[ordinal].push_back(pathKey(canonicalPath(source.absolutePath)));
+            sourceOwner.try_emplace(sourceKeys[ordinal].back(), ordinal);
+        }
     }
 
     std::vector<Project> normalized;
@@ -156,10 +162,11 @@ bool normalizeTransitiveSourceOwnership(
     {
         const Project& project = projects[ordinal];
         ProjectSourceSet ownSources(project.sourceSet().projectDirectory());
-        for (const ProjectSource& source : project.sourceSet().sources())
+        const std::span<const ProjectSource> sources = project.sourceSet().sources();
+        for (std::size_t index = 0; index < sources.size(); ++index)
         {
-            const std::string sourceKey = pathKey(canonicalPath(source.absolutePath));
-            const auto owner = sourceOwner.find(sourceKey);
+            const ProjectSource& source = sources[index];
+            const auto owner = sourceOwner.find(sourceKeys[ordinal][index]);
             if (owner == sourceOwner.end() || owner->second != ordinal) continue;
             if (!ownSources.add(source.absolutePath, error)) return false;
         }
