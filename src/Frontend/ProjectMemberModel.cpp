@@ -48,16 +48,6 @@ ProjectMemberModel::ProjectMemberModel(ProjectCompilationIndexes& indexes) noexc
 {
 }
 
-std::size_t ProjectMemberModel::TransparentStringHash::operator()(std::string_view value) const noexcept
-        {
-            return std::hash<std::string_view>{}(value);
-        }
-
-std::size_t ProjectMemberModel::TransparentStringHash::operator()(const std::string& value) const noexcept
-        {
-            return (*this)(std::string_view(value));
-        }
-
 bool ProjectMemberModel::build(
     const ProjectNameLookup& nameLookup,
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,

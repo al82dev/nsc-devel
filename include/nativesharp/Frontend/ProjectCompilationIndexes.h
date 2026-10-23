@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Basic/TransparentStringHash.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -154,13 +156,7 @@ public:
         std::string_view typeKey) const noexcept;
 
 private:
-    struct TransparentStringHash final
-    {
-        using is_transparent = void;
-
-        std::size_t operator()(std::string_view value) const noexcept;
-        std::size_t operator()(const std::string& value) const noexcept;
-    };
+    using TransparentStringHash = basic::TransparentStringHash;
 
     using MirAsyncFrameSlot = std::tuple<std::size_t, std::uint64_t, std::string>;
     using MirAsyncFrameIndex = std::unordered_multimap<std::size_t, const MirAsyncFrameSlot*>;

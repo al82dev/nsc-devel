@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/AST/AstNode.h"
+#include "nativesharp/Basic/TransparentStringHash.h"
 #include "nativesharp/Frontend/ClassMemberKind.h"
 #include "nativesharp/Frontend/ClassMemberAccessibility.h"
 #include "nativesharp/Frontend/ParameterPassKind.h"
@@ -160,14 +161,7 @@ private:
         std::string& result,
         const ast::TypeSyntax* syntax);
 
-    struct TransparentStringHash final
-    {
-        using is_transparent = void;
-
-        std::size_t operator()(std::string_view value) const noexcept;
-
-        std::size_t operator()(const std::string& value) const noexcept;
-    };
+    using TransparentStringHash = basic::TransparentStringHash;
 
     using MemberNameIndex = std::unordered_map<
         std::string,
