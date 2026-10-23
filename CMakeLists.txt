@@ -848,7 +848,9 @@ add_library(nsc_llvm STATIC
     src/LLVM/FloatingPointMode.cpp
     src/LLVM/Internal/ArtifactCacheFilesystemPath.cpp
     src/LLVM/Internal/CacheEntryLock.cpp
+    src/LLVM/Internal/CachePruneIndex.cpp
     src/LLVM/Internal/CachePruneMeasurement.cpp
+    src/LLVM/Internal/CachePruneRecordTable.cpp
     src/LLVM/Internal/CodeUnitProgress.cpp
     src/LLVM/Internal/ColdLlvmTrace.cpp
     src/LLVM/Internal/ColdLlvmTraceScope.cpp
