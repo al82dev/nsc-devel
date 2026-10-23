@@ -41,8 +41,8 @@ int main()
     tests.expect(analyzeClosedMatch(domain, unreachable).unreachableArms ==
             std::vector<std::size_t>({1}),
         "an arm after an unguarded wildcard is unreachable");
-    const std::array<MatchArmCoverage, 4> redundantWildcard = {{{{"Idle"}, false, false},
-        {{"Ready"}, false, false}, {{"Failed"}, false, false}, {{}, true, false}}};
+    const std::array<MatchArmCoverage, 4> redundantWildcard = {{{{"Idle"}, false, false, {}},
+        {{"Ready"}, false, false, {}}, {{"Failed"}, false, false, {}}, {{}, true, false, {}}}};
     tests.expect(analyzeClosedMatch(domain, redundantWildcard).unreachableArms ==
             std::vector<std::size_t>({3}),
         "a wildcard after complete closed-domain coverage is unreachable");
