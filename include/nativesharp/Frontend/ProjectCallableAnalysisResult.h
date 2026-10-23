@@ -35,6 +35,9 @@ public:
     void addDiscoveredCallable(std::size_t callableOrdinal);
     void normalizeDiscoveredCallables();
     [[nodiscard]] std::span<const std::size_t> discoveredCallables() const noexcept;
+    // Frees the shard once ProjectCallableResultMerger has merged it; shard() must not be used
+    // afterwards.
+    void releaseShard() noexcept;
 
 private:
     std::size_t callableOrdinal_ = 0;

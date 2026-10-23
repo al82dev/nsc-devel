@@ -72,4 +72,9 @@ std::span<const std::size_t> ProjectCallableAnalysisResult::discoveredCallables(
 {
     return discoveredCallables_;
 }
+
+void ProjectCallableAnalysisResult::releaseShard() noexcept
+{
+    shard_.reset();
+}
 }
