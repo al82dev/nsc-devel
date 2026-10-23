@@ -438,6 +438,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/EnumUnderlyingType.cpp
     src/Frontend/Internal/IntegerExpression.cpp
     src/Frontend/Internal/ProjectPhaseTimer.cpp
+    src/Frontend/Internal/IndexShadowMismatch.cpp
     src/Frontend/Internal/SpecializationWaveTimer.cpp
     src/Frontend/Internal/EnumConstResolver.cpp
     src/Frontend/Cache/CacheEntryStore.cpp
