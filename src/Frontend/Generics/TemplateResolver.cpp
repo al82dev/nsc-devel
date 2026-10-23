@@ -131,7 +131,9 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
     // NSC305-G02. Bucket by terminal name; the original scan tested every catalog entry for
     // visibility, arity and candidate spelling. The bucket keeps source order, so the first-match
     // and ambiguity semantics are unchanged.
-    const std::string qualified = qualifiedName(namespaceName, writtenName);
+    // The namespace-qualified spelling is only compared for a visible candidate of an
+    // undotted name; it is built at that first comparison instead of for every query.
+    std::optional<std::string> qualified;
     const std::string_view terminalName = [&]() -> std::string_view
     {
         const std::size_t dot = writtenName.rfind('.');
@@ -160,7 +162,8 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
             }
             continue;
         }
-        if (candidate == qualified) return TypeResolution{TypeResolutionKind::Unique, state};
+        if (!qualified.has_value()) qualified = qualifiedName(namespaceName, writtenName);
+        if (candidate == *qualified) return TypeResolution{TypeResolutionKind::Unique, state};
         if (state->record.name == writtenName)
         {
             if (fallback != nullptr) return TypeResolution{TypeResolutionKind::Ambiguous, nullptr};
