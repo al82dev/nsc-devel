@@ -1976,7 +1976,13 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup21(
             if (node->typeKey.starts_with("type:"))
             {
                 const std::string_view identity(node->typeKey.data() + 5U, node->typeKey.size() - 5U);
-                for (std::size_t ordinal = 0; ordinal < model_.nameLookup_->namedTypes().size(); ++ordinal)
+                // The shared type index keeps the first type of an identity, as the scan; the
+                // scan only runs for hand-assembled models that have no type index.
+                spanTypeOrdinal = model_.nameLookup_->typeOrdinalForIdentity(identity);
+                for (std::size_t ordinal = 0;
+                     !spanTypeOrdinal.has_value() && !model_.nameLookup_->hasTypeIndex() &&
+                     ordinal < model_.nameLookup_->namedTypes().size();
+                     ++ordinal)
                 {
                     if (model_.nameLookup_->namedTypes()[ordinal].identity.key() == identity)
                     {
