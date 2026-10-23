@@ -116,6 +116,7 @@ std::string incrementalLinkKey(
     std::span<const std::filesystem::path> programObjects,
     std::string_view programLlvmText,
     std::string_view runtimeLlvmText,
+    std::string_view runtimeIdentity,
     std::span<const std::filesystem::path> extraLibraries,
     std::span<const ExternalImportModule> externalImports,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
@@ -131,6 +132,8 @@ std::string incrementalLinkKey(
     material.append(programLlvmText);
     material.push_back('\n');
     material.append(runtimeLlvmText);
+    material.push_back('\n');
+    material.append(runtimeIdentity);
     material.push_back('\n');
     for (const auto& module : externalImports)
     {
@@ -223,6 +226,26 @@ bool createExecutableTargetMachine(
 bool executableUsesIndependentRuntime(const std::filesystem::path& runtimeLibrary)
 {
     return !runtimeLibrary.empty();
+}
+
+/// Identity of the executable runtime object: a fixed format version, the entry symbol, which
+/// runtime builder entry point runs (`build` or `buildEntry`) and, for an independent runtime,
+/// the size and SHA-256 of the runtime library. Everything the runtime object is built from.
+bool executableRuntimeIdentity(
+    const std::filesystem::path& runtimeLibrary,
+    std::string_view mainSymbol,
+    std::string& identity,
+    std::string& error)
+{
+    identity = "NativeSharp.ExecutableRuntime.v1\n";
+    identity += "entry " + std::string(mainSymbol) + "\n";
+    if (!executableUsesIndependentRuntime(runtimeLibrary))
+    {
+        identity += "mode build\n";
+        return true;
+    }
+    identity += "mode buildEntry\n";
+    return appendFileIdentity(runtimeLibrary, identity, error);
 }
 
 bool buildExecutableRuntime(
@@ -529,12 +552,14 @@ bool prepareIncrementalExecutable(
     statePath = incrementalStatePath(outputPath);
     if (!incrementalLink) return true;
     const std::string runtimeText = runtimeModule.text();
+    std::string runtimeIdentity;
+    if (!executableRuntimeIdentity(runtimeLibrary, mainSymbol, runtimeIdentity, error)) return false;
     std::vector<std::filesystem::path> runtimeAwareLibraries(
         extraLinkLibraries.begin(), extraLinkLibraries.end());
     if (!runtimeLibrary.empty()) runtimeAwareLibraries.push_back(runtimeLibrary);
     incrementalKey = incrementalLinkKey(
-        programObjects, programLlvmText, runtimeText, runtimeAwareLibraries, externalImports,
-        optimizationLevel, debugInformation, subsystem, mainSymbol, error);
+        programObjects, programLlvmText, runtimeText, runtimeIdentity, runtimeAwareLibraries,
+        externalImports, optimizationLevel, debugInformation, subsystem, mainSymbol, error);
     if (incrementalKey.empty()) return false;
     std::filesystem::path pdbPath = outputPath;
     pdbPath.replace_extension(".pdb");
