@@ -100,6 +100,20 @@ void publishCompilationBundle(
 void configureObjectGeneratorProgress(llvm_backend::ProjectOopObjectGenerator &generator);
 void appendExternalImport(std::vector<linker::ExternalImportModule> &modules, const std::string &dllName,
                           const std::string &symbol);
+// Appends to a list of external import modules with the result of appendExternalImport (one
+// module per DLL, matched with foldedName; symbols in first-appearance order without duplicates),
+// using indexes that live while the list is built. Modules already in the list are indexed
+// first. The list must not change by other means while the builder appends to it.
+class ExternalImportListBuilder final
+{
+public:
+    explicit ExternalImportListBuilder(std::vector<linker::ExternalImportModule> &modules);
+    void append(const std::string &dllName, const std::string &symbol);
+
+private:
+    std::vector<linker::ExternalImportModule> &modules_;
+    std::unordered_map<std::string, std::size_t> moduleByFoldedName_;
+};
 bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compilation,
                                       std::vector<std::filesystem::path> &libraries,
                                       std::vector<std::filesystem::path> &runtimeLibraries, std::string &error,
