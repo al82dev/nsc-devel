@@ -1,6 +1,7 @@
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
+#include "../Internal/LlvmInstrumentationSwitches.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
 
@@ -75,6 +76,7 @@ bool OopLlvmImplementation::declareRuntimeAllocatorDebug(
         LLVMValueRef runtimeDeallocationFunction,
         std::string& error)
 {
+        if constexpr (!kRuntimeDebugTraceEnabled) return true;
         LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
         if (debugInformation_ == DebugInformationKind::Full)
         {
