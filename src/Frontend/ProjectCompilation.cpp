@@ -1042,10 +1042,6 @@ bool ProjectCompilation::compileProjectOopMir(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-mir");
     oopMirModel_ = std::make_unique<ProjectOopMirModel>(lifetime_->indexes());
-    if (!templateCacheRoot_.empty())
-    {
-        oopMirModel_->setMirCacheRoot(templateCacheRoot_ / "mir");
-    }
     if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr)
     {
         oopMirModel_->setPanicProfile(projectGraph_->rootProject()->panicProfile());
