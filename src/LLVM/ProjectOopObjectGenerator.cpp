@@ -8,7 +8,9 @@
 
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
+#include "nativesharp/Frontend/ProjectMemberModelDumper.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ProjectNameLookupDumper.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
@@ -34,6 +36,7 @@
 #include <fstream>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <system_error>
 #include <utility>
 
@@ -124,6 +127,42 @@ std::string combineLineTableCacheIdentity(
     combined += mirIdentity;
     combined += "source-size " + std::to_string(sourceIdentity.size()) + "\n";
     combined += sourceIdentity;
+    return combined;
+}
+
+/// Digest of the model data that full debug metadata reads besides the MIR and the source
+/// files: the dumps of the name lookup (type identities, ranges, imported types) and of the
+/// member model (members, signatures, parameters, ranges). It covers more than the metadata
+/// uses on purpose: a cache key may hold more than needed, never less.
+std::string fullDebugModelIdentity(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel& memberModel)
+{
+    std::ostringstream output;
+    frontend::ProjectNameLookupDumper{}.dump(nameLookup, output);
+    frontend::ProjectMemberModelDumper{}.dump(memberModel, nameLookup, output);
+    const std::string text = output.str();
+    const auto bytes = std::span(
+        reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
+/// Pre-LLVM cache identity of one code unit with full debug information: the MIR identity of
+/// the unit, the source identity used for line tables (every range, the path, size and
+/// content digest of each file holding one, so also each DIFile checksum, and the debug prefix
+/// maps that remap the paths) and the model digest of fullDebugModelIdentity.
+std::string combineFullDebugCacheIdentity(
+    std::string mirIdentity,
+    std::string_view sourceIdentity,
+    std::string_view modelIdentity)
+{
+    std::string combined = "NativeSharp.ProjectOopFullDebugObjectIdentity.v1\n";
+    combined += "mir-size " + std::to_string(mirIdentity.size()) + "\n";
+    combined += mirIdentity;
+    combined += "source-size " + std::to_string(sourceIdentity.size()) + "\n";
+    combined += sourceIdentity;
+    combined += "model-size " + std::to_string(modelIdentity.size()) + "\n";
+    combined += modelIdentity;
     return combined;
 }
 
@@ -745,8 +784,9 @@ void composeModuleCacheKeys(
     const PhaseClock identityIndexClock;
     const ProjectOopMirCacheIdentityIndex identityIndex(mirModel);
     telemetry.identityIndexBuildMicros = identityIndexClock.elapsedMicros();
+    // Line tables and full debug information both depend on the sources and their paths.
     std::string lineTableSourceIdentity;
-    if (debugInformation == DebugInformationKind::LineTablesOnly)
+    if (debugInformation != DebugInformationKind::None)
     {
         const PhaseClock lineTableIdentityClock;
         const std::vector<SourceRange> sourceRanges =
@@ -755,6 +795,9 @@ void composeModuleCacheKeys(
             sourceManager, debugPrefixMaps, sourceRanges);
         telemetry.lineTableIdentityMicros = lineTableIdentityClock.elapsedMicros();
     }
+    std::string debugModelIdentity;
+    if (debugInformation == DebugInformationKind::Full)
+        debugModelIdentity = fullDebugModelIdentity(nameLookup, memberModel);
     const std::vector<std::size_t> allFunctions =
         collectCacheFunctionOrdinals(mirModel, reachableDefinitions);
     const PhaseClock moduleKeyComposeClock;
@@ -782,6 +825,9 @@ void composeModuleCacheKeys(
         if (debugInformation == DebugInformationKind::LineTablesOnly)
             identity = combineLineTableCacheIdentity(
                 std::move(identity), lineTableSourceIdentity);
+        else if (debugInformation == DebugInformationKind::Full)
+            identity = combineFullDebugCacheIdentity(
+                std::move(identity), lineTableSourceIdentity, debugModelIdentity);
         cacheKeys[ordinal] = cache.inputObjectKey(
             identity, "windows-x64-msvc", codeGenerationPolicy,
             optimizationLevel, debugInformation);
@@ -1039,8 +1085,9 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     std::vector<CodeUnitTelemetry> codeUnitTelemetry(moduleCount);
     const FloatingPointState workerFloatingPointState = captureFloatingPointState();
     const std::string codeGenerationPolicy = codeGenerationPolicyIdentity(linkTimeOptimization);
+    // Full debug information uses the pre-LLVM cache too, with the identity of
+    // combineFullDebugCacheIdentity (sources, paths, prefix maps and model dumps).
     const bool usePreLlvmCache = cache != nullptr && cache->enabled() &&
-        debugInformation != DebugInformationKind::Full &&
         linkTimeOptimization != LinkTimeOptimizationMode::Thin;
     // Reuse by pre-optimization IR does not depend on the MIR identity, so it also covers full
     // debug information: lowering is still paid, optimization and emission are skipped on a hit.
