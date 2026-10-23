@@ -702,7 +702,7 @@ ExitCode executeRestore(const RestoreOptions& options, bool json, std::ostream& 
     }
     if (!options.locked && !atomicWrite(lockPath, plan.lock, message))
         return result.failure(error, message, ExitCode::InternalError);
-    if (completedPlan != nullptr) *completedPlan = plan;
+    if (completedPlan != nullptr) *completedPlan = std::move(plan);
     return result.success(output,
         copied == 0 ? "Restore is current: " + std::to_string(verified) + " artifact(s)" :
                       "Restored " + std::to_string(copied) + " artifact(s)",
