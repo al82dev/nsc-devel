@@ -271,6 +271,8 @@ def check_deploy_variant(
             and plan.commands[0][1][1:] == expected
             and plan.installed_compiler == prefix.resolve() / "bin" / "nsc.exe"
         ), "deploy plan ignored the selected build tree or prefix"
+    if variant == 3:
+        return plan is None and "cmake" in error, "missing CMake must fail before any command"
     return False, f"deploy plan variant {variant} is not checked yet"
 
 
