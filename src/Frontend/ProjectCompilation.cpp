@@ -48,14 +48,16 @@ void ProjectCompilation::setProjectLoadOptions(compilation::ProjectLoadOptions o
 
 void ProjectCompilation::setTemplateCacheRoot(std::filesystem::path root)
 {
-    templateCacheRoot_ = std::move(root);
-    precompiledProductCacheRoot_ = templateCacheRoot_.empty()
-        ? std::filesystem::path{}
-        : templateCacheRoot_ / "precompiled-products";
+    // The syntax/template caches cannot preserve the parser product before generic materialization,
+    // and persisting the materialized tree changes the input of the next compilation. Keep them
+    // disconnected until their payload represents the parser product without traversing mutable AST
+    // relationships. The verified NSMETA repository is independent and remains enabled.
+    templateCacheRoot_.clear();
+    precompiledProductCacheRoot_.clear();
     lifetime_->metadataRepository().setCacheRoot(
-        templateCacheRoot_.empty()
+        root.empty()
             ? std::filesystem::path{}
-            : templateCacheRoot_ / "verified-nsmeta-models");
+            : root / "verified-nsmeta-models");
 }
 
 const std::filesystem::path& ProjectCompilation::precompiledProductCacheRoot() const noexcept
@@ -698,7 +700,6 @@ bool ProjectCompilation::compileProjectGenerics(
             ProjectGenericModel::DefaultMaximumInstantiationDepth),
         projectLoadOptions_.genericInstantiationCount.value_or(
             ProjectGenericModel::DefaultMaximumInstantiationCount));
-    genericModel_->setTemplateCacheRoot(templateCacheRoot_);
     // NSC305-P01. The generic telemetry is a no-op unless a phase timing sink is wired (which the
     // driver only does for `--time` / `--time-trace`). It forwards sub-phase and per-template
     // timings through the same channel as the parent `generics` timer and never touches
@@ -725,8 +726,6 @@ bool ProjectCompilation::compileProjectGenerics(
     {
         return false;
     }
-    publishPrecompiledSyntaxProducts();
-    publishTemplateParseProduct();
     return true;
 }
 
