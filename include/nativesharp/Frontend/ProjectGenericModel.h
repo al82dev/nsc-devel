@@ -19,6 +19,7 @@
 #include "nativesharp/Basic/CompilationEvent.h"
 #endif // INSTRUMENTATION CODE
 #include "nativesharp/Basic/SourceRange.h"
+#include "nativesharp/Basic/TransparentStringHash.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Frontend/TemplateParseCache.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
@@ -1575,7 +1576,11 @@ private:
     // module-qualified spelling (`module::namespace.Outer.Inner`) to its type templates; the second
     // maps a terminal type name to its type templates. Both preserve source order and contain only
     // type templates (no methods), so a lookup examines homonyms instead of the whole catalog.
-    std::unordered_map<std::string, std::vector<TemplateState*>> typesByModuleQualified_;
+    std::unordered_map<
+        std::string,
+        std::vector<TemplateState*>,
+        basic::TransparentStringHash,
+        std::equal_to<>> typesByModuleQualified_;
     std::unordered_map<std::string, std::vector<TemplateState*>> typesByVisibleName_;
     // NSC305-G03. Method-only candidate bucket keyed by method name, in source order. Used by
     // `templatesNamedBy` and the owner-less `resolveMethodTemplate` path so a lookup examines

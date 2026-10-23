@@ -108,8 +108,9 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
             return TypeResolution{TypeResolutionKind::Missing, nullptr};
         }
 
-        const auto bucket = typesByModuleQualified_.find(
-            std::string(requestedModule) + "::" + std::string(requestedType));
+        // writtenName is exactly requestedModule + "::" + requestedType (the two parts are its
+        // text before and after the first "::"), so it is looked up as it is, without a copy.
+        const auto bucket = typesByModuleQualified_.find(writtenName);
         if (bucket == typesByModuleQualified_.end())
         {
             telemetry_.noteResolutionQuery(0);
