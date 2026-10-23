@@ -299,18 +299,10 @@ std::set<std::string> collectReachableHostTypes(const HostContext& context)
         const std::vector<std::string> snapshot(keys.begin(), keys.end());
         for (const std::string& key : snapshot)
         {
-            const NamedTypeDeclaration* type = nullptr;
-            std::size_t typeOrdinal = 0;
-            for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
-            {
-                if (types[ordinal].identity.key() == key)
-                {
-                    type = &types[ordinal];
-                    typeOrdinal = ordinal;
-                    break;
-                }
-            }
-            if (type == nullptr) continue;
+            const std::optional<std::size_t> found = namedTypeOrdinalForIdentity(context.names, key);
+            if (!found.has_value()) continue;
+            const NamedTypeDeclaration* type = &types[*found];
+            const std::size_t typeOrdinal = *found;
 
             if (type->kind == NamedTypeDeclarationKind::Struct)
             {
