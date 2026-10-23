@@ -33,9 +33,6 @@ std::vector<std::size_t> ProjectCallableWaveReducer::reduce(
             result.discoveredCallables().end());
         localDiagnostics.push_back(std::move(result.diagnostics()));
         ProjectCallableResultMerger::merge(destination, std::move(result));
-        // The merged state now lives in the destination model: free the shard before the next
-        // merge instead of keeping every shard of the wave alive until the reduction ends.
-        result.releaseShard();
     }
     diagnostics.mergeDeterministically(localDiagnostics);
 
