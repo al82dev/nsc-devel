@@ -15,9 +15,12 @@
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 #include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 
+#include "../LLVM/Internal/CacheVerifySwitch.h"
+
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 // <cstdlib> por getenv/_dupenv_s y free -- ver linkTemporaryRootOverride mas abajo.
 #include <cstdlib>
 #include <fstream>
@@ -464,6 +467,103 @@ bool linkAndVerifyExecutable(
     info = verifier.info();
     return true;
 }
+
+/// Builds, optimizes and emits the executable runtime object to runtimeObject (cache miss path).
+bool buildExecutableRuntimeObject(
+    const std::filesystem::path& runtimeLibrary,
+    std::string_view mainSymbol,
+    llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    const std::filesystem::path& runtimeObject,
+    std::string& error)
+{
+    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
+    if (!createExecutableTargetMachine(optimizationLevel, targetMachine, error)) return false;
+    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule;
+    if (!buildExecutableRuntime(runtimeLibrary, mainSymbol, runtimeModule, error)) return false;
+    if (!optimizeExecutableRuntime(*runtimeModule, *targetMachine, optimizationLevel, error)) return false;
+    std::string targetError;
+    if (!targetMachine->emit(
+            *runtimeModule, runtimeObject, llvm_backend::LlvmCodeGenFileType::Object, targetError))
+    {
+        error = "runtime object emission failed: " + targetError;
+        return false;
+    }
+    return verifyObject(runtimeObject, "runtime", error);
+}
+
+/// Restores the executable runtime object from the active artifact cache. A restored object that
+/// fails COFF verification counts as a miss; the rebuild then overwrites it.
+bool restoreExecutableRuntimeObject(
+    const llvm_backend::CompilationArtifactCache* cache,
+    std::string_view runtimeKey,
+    const std::filesystem::path& runtimeObject,
+    bool& hit,
+    std::string& error)
+{
+    hit = false;
+    if (cache == nullptr || !cache->enabled()) return true;
+    if (!cache->restoreObject(runtimeKey, runtimeObject, hit, error)) return false;
+    if (hit && !verifyObject(runtimeObject, "cached runtime", error))
+    {
+        hit = false;
+        error.clear();
+    }
+    return true;
+}
+
+/// Validation builds only (kCacheVerifyEnabled): rebuilds the runtime object next to the restored
+/// one and aborts when their contents differ, so a wrong cache hit cannot pass unnoticed.
+bool verifyRestoredRuntimeObject(
+    const std::filesystem::path& runtimeLibrary,
+    std::string_view mainSymbol,
+    llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    const std::filesystem::path& runtimeObject,
+    std::string& error)
+{
+    const std::filesystem::path rebuilt = runtimeObject.parent_path() / "runtime.verify.obj";
+    if (!buildExecutableRuntimeObject(runtimeLibrary, mainSymbol, optimizationLevel, rebuilt, error))
+        return false;
+    basic::Sha256Digest restoredDigest{};
+    basic::Sha256Digest rebuiltDigest{};
+    std::uintmax_t restoredSize = 0;
+    std::uintmax_t rebuiltSize = 0;
+    if (!basic::sha256File(runtimeObject, restoredDigest, restoredSize, error)) return false;
+    if (!basic::sha256File(rebuilt, rebuiltDigest, rebuiltSize, error)) return false;
+    if (restoredSize == rebuiltSize && restoredDigest == rebuiltDigest) return true;
+    std::fprintf(stderr, "nsc: cache verification failed: cached runtime object differs from a rebuild\n");
+    std::fflush(stderr);
+    std::abort();
+}
+
+/// Puts runtime.obj into a new temporary directory: restored from the artifact cache on a hit,
+/// otherwise built, optimized, emitted and then stored under runtimeKey.
+bool provideExecutableRuntimeObject(
+    const std::filesystem::path& runtimeLibrary,
+    std::string_view mainSymbol,
+    llvm_backend::LlvmOptimizationLevel optimizationLevel,
+    std::string_view runtimeKey,
+    std::unique_ptr<ScopedTemporaryDirectory>& temporaryDirectory,
+    std::filesystem::path& runtimeObject,
+    std::string& error)
+{
+    temporaryDirectory = createScopedTemporaryDirectory(error);
+    if (temporaryDirectory == nullptr) return false;
+    runtimeObject = temporaryDirectory->path() / "runtime.obj";
+    const llvm_backend::CompilationArtifactCache* const cache =
+        llvm_backend::activeCompilationArtifactCache();
+    bool hit = false;
+    if (!restoreExecutableRuntimeObject(cache, runtimeKey, runtimeObject, hit, error)) return false;
+    if (hit)
+    {
+        if (llvm_backend::kCacheVerifyEnabled)
+            return verifyRestoredRuntimeObject(
+                runtimeLibrary, mainSymbol, optimizationLevel, runtimeObject, error);
+        return true;
+    }
+    if (!buildExecutableRuntimeObject(runtimeLibrary, mainSymbol, optimizationLevel, runtimeObject, error))
+        return false;
+    return cache == nullptr || !cache->enabled() || cache->storeObject(runtimeKey, runtimeObject, error);
+}
 }
 
 bool WindowsExecutableBuilder::build(
@@ -554,6 +654,7 @@ bool validatePartitionedExecutableRequest(
 bool prepareIncrementalExecutable(
     std::span<const std::filesystem::path> programObjects,
     std::string_view programLlvmText,
+    std::string_view runtimeKey,
     std::span<const std::filesystem::path> extraLinkLibraries,
     const std::filesystem::path& runtimeLibrary,
     std::span<const ExternalImportModule> externalImports,
@@ -571,9 +672,6 @@ bool prepareIncrementalExecutable(
 {
     statePath = incrementalStatePath(outputPath);
     if (!incrementalLink) return true;
-    std::string runtimeIdentity;
-    if (!executableRuntimeIdentity(runtimeLibrary, mainSymbol, runtimeIdentity, error)) return false;
-    const std::string runtimeKey = executableRuntimeKey(runtimeIdentity, optimizationLevel);
     std::vector<std::filesystem::path> runtimeAwareLibraries(
         extraLinkLibraries.begin(), extraLinkLibraries.end());
     if (!runtimeLibrary.empty()) runtimeAwareLibraries.push_back(runtimeLibrary);
@@ -593,30 +691,6 @@ bool prepareIncrementalExecutable(
     reused = true;
     return true;
 }
-
-bool emitPartitionedRuntimeObject(
-    llvm_backend::LlvmModule& runtimeModule,
-    const llvm_backend::LlvmTargetMachine& targetMachine,
-    std::unique_ptr<ScopedTemporaryDirectory>& temporaryDirectory,
-    std::filesystem::path& runtimeObject,
-    std::string& error)
-{
-    std::string targetError;
-    temporaryDirectory = createScopedTemporaryDirectory(targetError);
-    if (temporaryDirectory == nullptr)
-    {
-        error = targetError;
-        return false;
-    }
-    runtimeObject = temporaryDirectory->path() / "runtime.obj";
-    if (!targetMachine.emit(
-            runtimeModule, runtimeObject, llvm_backend::LlvmCodeGenFileType::Object, targetError))
-    {
-        error = "runtime object emission failed: " + targetError;
-        return false;
-    }
-    return verifyObject(runtimeObject, "runtime", error);
-}
 }
 
 bool WindowsExecutableBuilder::buildObjects(
@@ -633,25 +707,23 @@ bool WindowsExecutableBuilder::buildObjects(
     if (!validatePartitionedExecutableRequest(
             programObjects, programObjectsVerified_, outputPath, mainSymbol, error)) return false;
     if (!verifyExecutableRuntimeLibrary(runtimeLibrary_, error)) return false;
+    std::string runtimeIdentity;
+    if (!executableRuntimeIdentity(runtimeLibrary_, mainSymbol, runtimeIdentity, error)) return false;
+    const std::string runtimeKey = executableRuntimeKey(runtimeIdentity, optimizationLevel);
     std::string incrementalKey;
     std::filesystem::path statePath;
     if (!prepareIncrementalExecutable(
-            programObjects, programLlvmText, extraLinkLibraries_, runtimeLibrary_,
+            programObjects, programLlvmText, runtimeKey, extraLinkLibraries_, runtimeLibrary_,
             externalImports_, optimizationLevel, debugInformation_, subsystem_, mainSymbol,
             outputPath, incrementalLink_, incrementalKey, statePath, info_,
             reusedIncrementalLink_, error)) return false;
     if (reusedIncrementalLink_) return true;
-    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
-    if (!createExecutableTargetMachine(optimizationLevel, targetMachine, error)) return false;
     const bool independentRuntime = executableUsesIndependentRuntime(runtimeLibrary_);
-    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule;
-    if (!buildExecutableRuntime(runtimeLibrary_, mainSymbol, runtimeModule, error)) return false;
-    if (!optimizeExecutableRuntime(
-            *runtimeModule, *targetMachine, optimizationLevel, error)) return false;
     std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory;
     std::filesystem::path runtimeObject;
-    if (!emitPartitionedRuntimeObject(
-            *runtimeModule, *targetMachine, temporaryDirectory, runtimeObject, error)) return false;
+    if (!provideExecutableRuntimeObject(
+            runtimeLibrary_, mainSymbol, optimizationLevel, runtimeKey, temporaryDirectory,
+            runtimeObject, error)) return false;
     std::unique_ptr<LldLinker> linker;
     std::vector<std::filesystem::path> importLibraries;
     // The import closure is canonical and external imports are explicit. The retained IR-text
