@@ -261,6 +261,16 @@ def check_deploy_variant(
     """Evaluate one deploy-plan variant; nothing is installed or executed."""
     plan, error = create_plan(deploy, config, build_mode)
     write_text(case_root / "plan.log", repr(plan.commands) if plan is not None else error)
+    if variant == 1:
+        expected = [
+            "--install", build_dir.resolve().as_posix(), "--config", build_mode,
+            "--prefix", prefix.resolve().as_posix(),
+        ]
+        return (
+            plan is not None
+            and plan.commands[0][1][1:] == expected
+            and plan.installed_compiler == prefix.resolve() / "bin" / "nsc.exe"
+        ), "deploy plan ignored the selected build tree or prefix"
     return False, f"deploy plan variant {variant} is not checked yet"
 
 
