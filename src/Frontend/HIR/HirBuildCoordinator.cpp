@@ -1598,10 +1598,16 @@ bool ProjectOopHirModel::buildRegularFunctionsSequentially(
     std::optional<std::size_t> memberFilter,
     std::string& error)
 {
+    // With a filter only that member is built (when it exists), as the loop below would do after
+    // skipping every other ordinal.
+    if (memberFilter.has_value())
+    {
+        return *memberFilter >= memberModel_->members().size() ||
+            buildRegularFunction(*memberFilter, error);
+    }
     for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel_->members().size();
          ++memberOrdinal)
     {
-        if (memberFilter.has_value() && *memberFilter != memberOrdinal) continue;
         if (!buildRegularFunction(memberOrdinal, error)) return false;
     }
     return true;
