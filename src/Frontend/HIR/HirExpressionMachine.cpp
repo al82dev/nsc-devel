@@ -477,6 +477,15 @@ bool ProjectOopHirModel::isEnumBinaryTypeKey(std::string_view typeKey) const noe
 {
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
     const std::string_view identity = typeKey.substr(5);
+    // Identities are unique in namedTypes() (parts are aggregated by identity), so the indexed
+    // type is the only one the scan below can match; the scan only runs for hand-assembled
+    // models that have no type index.
+    if (const std::optional<std::size_t> ordinal = nameLookup_->typeOrdinalForIdentity(identity))
+    {
+        const NamedTypeDeclaration* type = nameLookup_->typeForOrdinal(*ordinal);
+        return type != nullptr && isEnumTypeWithIdentity(identity, *type);
+    }
+    if (nameLookup_->hasTypeIndex()) return false;
     return std::any_of(
         nameLookup_->namedTypes().begin(),
         nameLookup_->namedTypes().end(),
