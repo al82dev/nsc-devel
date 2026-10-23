@@ -263,15 +263,21 @@ std::string executableRuntimeKey(
         optimizationLevel, llvm_backend::DebugInformationKind::None);
 }
 
+/// Verifies the independent runtime library when one is configured. Callers run it before any
+/// runtime work, so a cached runtime object or a reused link never skips the verification.
+bool verifyExecutableRuntimeLibrary(const std::filesystem::path& runtimeLibrary, std::string& error)
+{
+    return !executableUsesIndependentRuntime(runtimeLibrary) ||
+        verifyWindowsRuntimeLibrary(runtimeLibrary, error);
+}
+
 bool buildExecutableRuntime(
     const std::filesystem::path& runtimeLibrary,
     std::string_view mainSymbol,
-    bool& independentRuntime,
     std::unique_ptr<llvm_backend::LlvmModule>& runtimeModule,
     std::string& error)
 {
-    independentRuntime = executableUsesIndependentRuntime(runtimeLibrary);
-    if (independentRuntime && !verifyWindowsRuntimeLibrary(runtimeLibrary, error)) return false;
+    const bool independentRuntime = executableUsesIndependentRuntime(runtimeLibrary);
     runtime::WindowsRuntimeBuilder runtimeBuilder;
     std::string runtimeError;
     runtimeModule = independentRuntime
@@ -487,12 +493,12 @@ bool WindowsExecutableBuilder::build(
     info_ = {};
     error.clear();
     if (!validateExecutableRequest(outputPath, mainSymbol, error)) return false;
+    if (!verifyExecutableRuntimeLibrary(runtimeLibrary_, error)) return false;
     std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
     if (!createExecutableTargetMachine(optimizationLevel, targetMachine, error)) return false;
-    bool independentRuntime = false;
+    const bool independentRuntime = executableUsesIndependentRuntime(runtimeLibrary_);
     std::unique_ptr<llvm_backend::LlvmModule> runtimeModule;
-    if (!buildExecutableRuntime(
-            runtimeLibrary_, mainSymbol, independentRuntime, runtimeModule, error)) return false;
+    if (!buildExecutableRuntime(runtimeLibrary_, mainSymbol, runtimeModule, error)) return false;
     if (!optimizeExecutableModules(
             programModule, *runtimeModule, *targetMachine, optimizationLevel, error)) return false;
     std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory;
@@ -626,12 +632,12 @@ bool WindowsExecutableBuilder::buildObjects(
     error.clear();
     if (!validatePartitionedExecutableRequest(
             programObjects, programObjectsVerified_, outputPath, mainSymbol, error)) return false;
+    if (!verifyExecutableRuntimeLibrary(runtimeLibrary_, error)) return false;
     std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
     if (!createExecutableTargetMachine(optimizationLevel, targetMachine, error)) return false;
-    bool independentRuntime = false;
+    const bool independentRuntime = executableUsesIndependentRuntime(runtimeLibrary_);
     std::unique_ptr<llvm_backend::LlvmModule> runtimeModule;
-    if (!buildExecutableRuntime(
-            runtimeLibrary_, mainSymbol, independentRuntime, runtimeModule, error)) return false;
+    if (!buildExecutableRuntime(runtimeLibrary_, mainSymbol, runtimeModule, error)) return false;
     if (!optimizeExecutableRuntime(
             *runtimeModule, *targetMachine, optimizationLevel, error)) return false;
     std::string incrementalKey;
