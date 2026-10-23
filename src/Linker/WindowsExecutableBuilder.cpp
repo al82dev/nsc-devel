@@ -218,6 +218,13 @@ bool createExecutableTargetMachine(
     return false;
 }
 
+/// True when the executable links a prebuilt runtime library and only the entry module is built.
+/// Decided from the configured library alone, so a cached runtime object needs no runtime build.
+bool executableUsesIndependentRuntime(const std::filesystem::path& runtimeLibrary)
+{
+    return !runtimeLibrary.empty();
+}
+
 bool buildExecutableRuntime(
     const std::filesystem::path& runtimeLibrary,
     std::string_view mainSymbol,
@@ -225,7 +232,7 @@ bool buildExecutableRuntime(
     std::unique_ptr<llvm_backend::LlvmModule>& runtimeModule,
     std::string& error)
 {
-    independentRuntime = !runtimeLibrary.empty();
+    independentRuntime = executableUsesIndependentRuntime(runtimeLibrary);
     if (independentRuntime && !verifyWindowsRuntimeLibrary(runtimeLibrary, error)) return false;
     runtime::WindowsRuntimeBuilder runtimeBuilder;
     std::string runtimeError;
