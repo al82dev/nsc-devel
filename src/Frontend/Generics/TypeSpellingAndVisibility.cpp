@@ -417,17 +417,24 @@ void ProjectGenericModel::buildVisibility(const compilation::ProjectGraph& graph
     for (std::size_t start = 0; start < projects.size(); ++start)
     {
         std::vector<bool> reachable(projects.size(), false);
-        std::function<void(std::size_t)> visit = [&](std::size_t ordinal)
+        // Depth-first walk with an explicit stack of (project, next reference) frames: the same
+        // visit order as the former recursion, without std::function or native recursion.
+        std::vector<std::pair<std::size_t, std::size_t>> pending{{start, 0}};
+        while (!pending.empty())
         {
-            for (const std::string& referenceKey : referenceKeys[ordinal])
+            const std::size_t ordinal = pending.back().first;
+            const std::size_t next = pending.back().second;
+            if (next == referenceKeys[ordinal].size())
             {
-                const auto found = projectByPath.find(referenceKey);
-                if (found == projectByPath.end() || reachable[found->second]) continue;
-                reachable[found->second] = true;
-                visit(found->second);
+                pending.pop_back();
+                continue;
             }
-        };
-        visit(start);
+            ++pending.back().second;
+            const auto found = projectByPath.find(referenceKeys[ordinal][next]);
+            if (found == projectByPath.end() || reachable[found->second]) continue;
+            reachable[found->second] = true;
+            pending.emplace_back(found->second, 0);
+        }
         for (std::size_t ordinal = 0; ordinal < reachable.size(); ++ordinal)
             if (reachable[ordinal]) visibleProjects_[start].push_back(ordinal);
     }
