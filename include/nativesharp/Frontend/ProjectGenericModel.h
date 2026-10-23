@@ -1559,6 +1559,9 @@ private:
     const DeclaredTypeIdentity* resolveModuleQualifiedDeclaredTypeIdentity(
         std::string_view writtenName,
         std::size_t projectOrdinal) const;
+    // Validation builds only (index shadow checks): the positions recorded for sourceName must
+    // be those a scan of declaredTypeIdentities_ finds, in vector order.
+    void shadowCheckDeclaredTypeNameIndex(std::string_view sourceName, std::string_view function) const;
     static void appendTypeModifiers(std::string& identity, const ast::TypeSyntax* syntax);
     static std::string namespaceAppend(std::string_view prefix, std::string_view suffix);
     static std::string sanitize(std::string_view text);

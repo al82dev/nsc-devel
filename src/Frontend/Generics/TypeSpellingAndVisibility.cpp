@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../Internal/CloneDepthGuard.h"
+#include "../Internal/IndexShadowCheckSwitch.h"
+#include "../Internal/IndexShadowMismatch.h"
 #include "../Cache/CachePayloadReader.h"
 #include "../Internal/EnumConstResolver.h"
 #include "../Internal/SpecializationWaveTimer.h"
@@ -231,6 +233,8 @@ ProjectGenericModel::resolveModuleQualifiedDeclaredTypeIdentity(
 
     // Only the declarations whose source name is the requested type, in vector order; the
     // module prefix is built once instead of once per declaration.
+    if constexpr (internal::kIndexShadowCheckEnabled)
+        shadowCheckDeclaredTypeNameIndex(requestedType, "resolveModuleQualifiedDeclaredTypeIdentity");
     const auto candidates = declaredTypeIdentitiesBySourceName_.find(requestedType);
     if (candidates == declaredTypeIdentitiesBySourceName_.end()) return nullptr;
     const std::string modulePrefix = std::string(requestedModule) + "::";
@@ -298,6 +302,8 @@ const ProjectGenericModel::DeclaredTypeIdentity* ProjectGenericModel::resolveDec
         for (const std::string& spelling : rung.spellings)
         {
             // Only the declarations with this source name, in vector order.
+            if constexpr (internal::kIndexShadowCheckEnabled)
+                shadowCheckDeclaredTypeNameIndex(spelling, "resolveDeclaredTypeIdentity");
             const auto candidates = declaredTypeIdentitiesBySourceName_.find(spelling);
             if (candidates == declaredTypeIdentitiesBySourceName_.end()) continue;
             for (const std::size_t position : candidates->second)
@@ -337,6 +343,25 @@ const ProjectGenericModel::DeclaredTypeIdentity* ProjectGenericModel::resolveDec
         if (identities.size() > 1) return nullptr;
     }
     return nullptr;
+}
+
+void ProjectGenericModel::shadowCheckDeclaredTypeNameIndex(
+    std::string_view sourceName,
+    std::string_view function) const
+{
+    if constexpr (internal::kIndexShadowCheckEnabled)
+    {
+        std::vector<std::size_t> scanned;
+        for (std::size_t position = 0; position < declaredTypeIdentities_.size(); ++position)
+        {
+            if (declaredTypeIdentities_[position].sourceName == sourceName) scanned.push_back(position);
+        }
+        const auto indexed = declaredTypeIdentitiesBySourceName_.find(sourceName);
+        const bool same = indexed == declaredTypeIdentitiesBySourceName_.end()
+            ? scanned.empty()
+            : indexed->second == scanned;
+        if (!same) internal::reportIndexShadowMismatch(function, sourceName);
+    }
 }
 
 void ProjectGenericModel::appendTypeModifiers(
