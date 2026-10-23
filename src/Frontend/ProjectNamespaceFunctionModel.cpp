@@ -12,8 +12,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <map>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -1626,24 +1629,31 @@ bool ProjectNamespaceFunctionModel::bindPrecompiledEscapeSummaries(
         error = "precompiled namespace-function escape summaries require a completed model";
         return false;
     }
+    // Identities by (module, namespace, name, signature), built once instead of scanning every
+    // identity for each precompiled function. The tuple compares the four strings exactly and
+    // emplace keeps the first identity of a key, the one find_if returned.
+    using IdentityKey =
+        std::tuple<std::string_view, std::string_view, std::string_view, std::string_view>;
+    std::map<IdentityKey, const PrecompiledNamespaceFunctionIdentity*> identityIndex;
+    for (const PrecompiledNamespaceFunctionIdentity& identity : identities)
+    {
+        identityIndex.emplace(
+            IdentityKey(identity.moduleName, identity.namespaceName, identity.name, identity.signatureKey),
+            &identity);
+    }
     for (NamespaceFunctionSymbol& function : functions_)
     {
         if (!function.isPrecompiled) continue;
-        const auto match = std::ranges::find_if(identities, [&](const auto& identity)
-        {
-            return identity.moduleName == function.moduleName &&
-                identity.namespaceName == function.namespaceName &&
-                identity.name == function.name &&
-                identity.signatureKey == function.signatureKey;
-        });
-        if (match == identities.end())
+        const auto found = identityIndex.find(
+            IdentityKey(function.moduleName, function.namespaceName, function.name, function.signatureKey));
+        if (found == identityIndex.end())
         {
             error = "precompiled namespace function '" + function.moduleName + "::" +
                 function.namespaceName + "." + function.signatureKey +
                 "' has no escape contract in NSMETA";
             return false;
         }
-        function.parameterEscapeSummary = match->parameterEscapeSummary;
+        function.parameterEscapeSummary = found->second->parameterEscapeSummary;
         if (!function.parameterEscapeSummary.empty() &&
             function.parameterEscapeSummary.size() != function.parameters.size())
         {
