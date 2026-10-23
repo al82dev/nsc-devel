@@ -1295,19 +1295,25 @@ void PublicSurfaceBuilder::collectPublishedTypes()
 
 bool PublicSurfaceBuilder::collectPublishedMembers()
 {
+    // Declaring types by their "type:" key, built once instead of concatenating the key of
+    // every type for every member; emplace keeps the first type of a key, as find_if did.
+    std::unordered_map<std::string, const interop::LibraryMetadataType *> typesByKey;
+    typesByKey.reserve(metadata.types.size());
+    for (const interop::LibraryMetadataType &candidate : metadata.types)
+        typesByKey.emplace("type:" + candidate.identityKey, &candidate);
     for (const interop::LibraryMetadataMember &member : metadata.members)
     {
         if (!canMaterializePrecompiledDeclaration(metadata, member))
         {
             continue;
         }
-        const auto type = std::find_if(metadata.types.begin(), metadata.types.end(), [&](const auto &candidate)
-                                       { return "type:" + candidate.identityKey == member.declaringTypeKey; });
-        if (type == metadata.types.end())
+        const auto typeEntry = typesByKey.find(member.declaringTypeKey);
+        if (typeEntry == typesByKey.end())
         {
             error = "metadata member '" + member.name + "' refers to a declaring type that is not present";
             return false;
         }
+        const interop::LibraryMetadataType *type = typeEntry->second;
         const bool contractDependency = contractTypeIdentities.contains(type->identityKey);
         if (!isPubliclyReachableMetadataType(metadata, *type) && !contractDependency)
             continue;
@@ -1322,7 +1328,7 @@ bool PublicSurfaceBuilder::collectPublishedMembers()
                 continue;
         }
         PublishedType &group = published[type->identityKey];
-        group.type = &*type;
+        group.type = type;
         group.methods.push_back(&member);
         collectMaterializedContractTypes(metadata, member.declaredTypeKey, contractTypeIdentities);
         collectMaterializedContractTypes(metadata, member.declaredErrorTypeKey, contractTypeIdentities);
@@ -1348,16 +1354,20 @@ void PublicSurfaceBuilder::collectNamespaceContractTypes()
 
 bool PublicSurfaceBuilder::publishContractTypes()
 {
+    // Types by identity, built once; emplace keeps the first type of an identity, as find_if did.
+    std::unordered_map<std::string_view, const interop::LibraryMetadataType *> typesByIdentity;
+    typesByIdentity.reserve(metadata.types.size());
+    for (const interop::LibraryMetadataType &candidate : metadata.types)
+        typesByIdentity.emplace(candidate.identityKey, &candidate);
     for (const std::string &identity : contractTypeIdentities)
     {
-        const auto type = std::ranges::find_if(metadata.types, [&](const auto &candidate)
-                                               { return candidate.identityKey == identity; });
-        if (type == metadata.types.end())
+        const auto type = typesByIdentity.find(identity);
+        if (type == typesByIdentity.end())
         {
             error = "metadata contract refers to missing type '" + identity + "'";
             return false;
         }
-        published[identity].type = &*type;
+        published[identity].type = type->second;
     }
     return true;
 }
