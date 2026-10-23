@@ -19,6 +19,7 @@
 #include "nativesharp/LLVM/ProjectOopCodePartition.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 #include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
+#include "nativesharp/Source/SourceManager.h"
 
 #include "Internal/ColdLlvmPreambleTelemetry.h"
 #include "Internal/ColdLlvmTrace.h"
@@ -214,6 +215,24 @@ bool restorePreLlvmObject(
     return true;
 }
 
+/// Computes the SHA-256 hex checksum of every source file once, indexed by FileId value (index
+/// 0, the invalid id, stays empty): the digest createDebugFile otherwise computes once per file
+/// and per code unit. The code units only read the table, so it needs no synchronization.
+std::vector<std::string> computeSourceChecksums(const source::SourceManager& sourceManager)
+{
+    std::vector<std::string> checksums(1);
+    for (std::uint32_t value = 1;; ++value)
+    {
+        const source::SourceFile* file = sourceManager.getFile(FileId(value));
+        if (file == nullptr) break;
+        const std::string_view sourceBytes = file->buffer();
+        const auto bytes = std::span(
+            reinterpret_cast<const std::uint8_t*>(sourceBytes.data()), sourceBytes.size());
+        checksums.push_back(basic::sha256Hex(basic::sha256(bytes)));
+    }
+    return checksums;
+}
+
 std::unique_ptr<LlvmModule> lowerCodeUnit(
     std::size_t ordinal,
     bool usePartitions,
@@ -228,30 +247,37 @@ std::unique_ptr<LlvmModule> lowerCodeUnit(
     std::span<const std::uint8_t> selectedStaticFields,
     std::span<const std::size_t> coordinatorFunctionDeclarations,
     const ProjectOopCodePartition& partition,
+    std::span<const std::string> sourceChecksums,
     std::string& moduleError,
     CodeUnitTelemetry& telemetry)
 {
     ProjectOopLlvmLowerer lowerer;
     const PhaseClock lowering;
     std::unique_ptr<LlvmModule> module;
+    // The request keeps the module name as a view, so the unit name lives until lowering ends.
+    std::string unitModuleName;
+    ProjectOopLlvmLoweringRequest request;
     if (!usePartitions)
-        module = lowerer.lower(ProjectOopLlvmLoweringRequest::withDebug(
+        request = ProjectOopLlvmLoweringRequest::withDebug(
             nameLookup, memberModel, mirModel, sourceManager, debugInformation,
-            optimizationLevel, debugPrefixMaps, reachableDefinitions, selectedStaticFields));
+            optimizationLevel, debugPrefixMaps, reachableDefinitions, selectedStaticFields);
     else if (ordinal == 0)
-        module = lowerer.lower(ProjectOopLlvmLoweringRequest::partition(
+        request = ProjectOopLlvmLoweringRequest::partition(
             nameLookup, memberModel, mirModel, sourceManager, debugInformation,
             optimizationLevel, {}, true, "NativeSharp.OOP.globals", debugPrefixMaps,
-            coordinatorFunctionDeclarations, reachableDefinitions, selectedStaticFields));
+            coordinatorFunctionDeclarations, reachableDefinitions, selectedStaticFields);
     else
     {
         const ProjectOopCodeUnit& unit = partition.units()[ordinal - 1];
-        module = lowerer.lower(ProjectOopLlvmLoweringRequest::partition(
+        unitModuleName = "NativeSharp.OOP." + unit.stableKey;
+        request = ProjectOopLlvmLoweringRequest::partition(
             nameLookup, memberModel, mirModel, sourceManager, debugInformation,
             optimizationLevel, unit.functionOrdinals, false,
-            "NativeSharp.OOP." + unit.stableKey, debugPrefixMaps,
-            unit.declarationOrdinals, reachableDefinitions, selectedStaticFields));
+            unitModuleName, debugPrefixMaps,
+            unit.declarationOrdinals, reachableDefinitions, selectedStaticFields);
     }
+    request.setSourceChecksums(sourceChecksums);
+    module = lowerer.lower(request);
     telemetry.loweringMicros += lowering.elapsedMicros();
     if (module == nullptr || !lowerer.error().empty())
     {
@@ -574,6 +600,7 @@ void processObjectCodeUnit(
     std::span<const std::size_t> coordinatorFunctionDeclarations,
     const ProjectOopCodePartition& partition,
     const ProjectOopFunctionReachabilityAnalysis& functionAnalysis,
+    std::span<const std::string> sourceChecksums,
     const CompilationArtifactCache* cache,
     const std::string& codeGenerationPolicy,
     const std::filesystem::path& objectFile,
@@ -605,7 +632,8 @@ void processObjectCodeUnit(
     std::unique_ptr<LlvmModule> module = lowerCodeUnit(
         ordinal, usePartitions, nameLookup, memberModel, mirModel, sourceManager,
         debugInformation, optimizationLevel, debugPrefixMaps, reachableDefinitions,
-        selectedStaticFields, coordinatorFunctionDeclarations, partition, moduleError, telemetry);
+        selectedStaticFields, coordinatorFunctionDeclarations, partition, sourceChecksums,
+        moduleError, telemetry);
     if (module == nullptr) return;
     std::unique_ptr<LlvmTargetMachine> targetMachine = configureCodeUnitTarget(
         *module, optimizationLevel, moduleError, telemetry);
@@ -1039,6 +1067,12 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
         linkTimeOptimization == LinkTimeOptimizationMode::Thin;
     // Process one code unit end to end. The LLVM module and target machine are destroyed as soon
     // as its object is emitted instead of retaining every partition through three global waves.
+    // Every code unit that lowers with debug information hashed each source file it touches.
+    // With several units and no pre-LLVM cache (so every unit lowers), hash each file once
+    // here and share the read-only table instead; otherwise each unit computes as before.
+    std::vector<std::string> sourceChecksums;
+    if (usePartitions && debugInformation != DebugInformationKind::None && !usePreLlvmCache)
+        sourceChecksums = computeSourceChecksums(sourceManager);
     std::atomic_size_t completedModules = 0;
     std::mutex moduleProgressMutex;
     const auto processModule = [&](std::size_t ordinal) {
@@ -1047,7 +1081,8 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
             requiresWholeModuleRequiredInlining, nameLookup, memberModel, mirModel,
             sourceManager, debugInformation, optimizationLevel, debugPrefixMaps,
             reachableDefinitions, coordinatorFunctionDeclarations, partition,
-            functionAnalysis, cache, codeGenerationPolicy, result.objectFiles_[ordinal],
+            functionAnalysis, sourceChecksums, cache, codeGenerationPolicy,
+            result.objectFiles_[ordinal],
             moduleTexts[ordinal], moduleErrors[ordinal], cacheKeys[ordinal],
             cacheHits[ordinal], cacheMisses[ordinal], codeUnitTelemetry[ordinal],
             coldLlvmTrace, progressSink_, completedModules, moduleProgressMutex, moduleCount);

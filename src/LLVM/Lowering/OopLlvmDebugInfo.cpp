@@ -55,14 +55,14 @@ bool OopLlvmImplementation::initializeDebugInformation(std::string& error)
 LLVMMetadataRef OopLlvmImplementation::debugFile(SourceLocation location)
 {
         return createDebugFile(
-            debugBuilder_, sourceManager_, debugPrefixMaps_, debugFiles_,
+            debugBuilder_, sourceManager_, debugPrefixMaps_, sourceChecksums_, debugFiles_,
             debugCodeViewFileNumbers_, location);
     }
 
 unsigned OopLlvmImplementation::debugCodeViewFileNumber(SourceLocation location)
 {
         return debugCodeViewFileNumberFor(
-            debugBuilder_, sourceManager_, debugPrefixMaps_, debugFiles_,
+            debugBuilder_, sourceManager_, debugPrefixMaps_, sourceChecksums_, debugFiles_,
             debugCodeViewFileNumbers_, location);
     }
 

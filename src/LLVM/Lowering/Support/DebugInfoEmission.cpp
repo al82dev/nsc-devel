@@ -112,6 +112,7 @@ LLVMMetadataRef createDebugFile(
     LLVMDIBuilderRef debugBuilder,
     const source::SourceManager* sourceManager,
     std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const std::string> sourceChecksums,
     std::unordered_map<std::uint32_t, LLVMMetadataRef>& debugFiles,
     std::unordered_map<std::uint32_t, unsigned>& debugCodeViewFileNumbers,
     SourceLocation location)
@@ -131,10 +132,18 @@ LLVMMetadataRef createDebugFile(
     const std::string directory = separator == std::string::npos
         ? std::string()
         : normalized.substr(0, separator == 0 ? 1 : separator);
-    const std::string_view sourceBytes = sourceFile->buffer();
-    const auto bytes = std::span(
-        reinterpret_cast<const std::uint8_t*>(sourceBytes.data()), sourceBytes.size());
-    const std::string checksum = basic::sha256Hex(basic::sha256(bytes));
+    // A checksum computed once per compilation for all code units is used when present; it is
+    // the same sha256Hex(sha256(buffer)) computed here otherwise.
+    std::string checksum;
+    if (fileKey < sourceChecksums.size() && !sourceChecksums[fileKey].empty())
+        checksum = sourceChecksums[fileKey];
+    else
+    {
+        const std::string_view sourceBytes = sourceFile->buffer();
+        const auto bytes = std::span(
+            reinterpret_cast<const std::uint8_t*>(sourceBytes.data()), sourceBytes.size());
+        checksum = basic::sha256Hex(basic::sha256(bytes));
+    }
     LLVMMetadataRef file = LLVMDIBuilderCreateFileWithChecksum(
         debugBuilder, filename.data(), filename.size(), directory.data(), directory.size(),
         CSK_SHA256, checksum.data(), checksum.size(), nullptr, 0);
@@ -152,6 +161,7 @@ unsigned debugCodeViewFileNumberFor(
     LLVMDIBuilderRef debugBuilder,
     const source::SourceManager* sourceManager,
     std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const std::string> sourceChecksums,
     std::unordered_map<std::uint32_t, LLVMMetadataRef>& debugFiles,
     std::unordered_map<std::uint32_t, unsigned>& debugCodeViewFileNumbers,
     SourceLocation location)
@@ -159,7 +169,7 @@ unsigned debugCodeViewFileNumberFor(
     if (debugBuilder == nullptr || !location.isValid()) return 0;
     const std::uint32_t fileKey = location.fileId().value();
     if (debugFiles.find(fileKey) == debugFiles.end() &&
-        createDebugFile(debugBuilder, sourceManager, debugPrefixMaps, debugFiles,
+        createDebugFile(debugBuilder, sourceManager, debugPrefixMaps, sourceChecksums, debugFiles,
                         debugCodeViewFileNumbers, location) == nullptr)
         return 0;
     const auto found = debugCodeViewFileNumbers.find(fileKey);

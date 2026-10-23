@@ -76,6 +76,7 @@ LLVMMetadataRef createDebugFile(
     LLVMDIBuilderRef debugBuilder,
     const source::SourceManager* sourceManager,
     std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const std::string> sourceChecksums,
     std::unordered_map<std::uint32_t, LLVMMetadataRef>& debugFiles,
     std::unordered_map<std::uint32_t, unsigned>& debugCodeViewFileNumbers,
     SourceLocation location);
@@ -84,6 +85,7 @@ unsigned debugCodeViewFileNumberFor(
     LLVMDIBuilderRef debugBuilder,
     const source::SourceManager* sourceManager,
     std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const std::string> sourceChecksums,
     std::unordered_map<std::uint32_t, LLVMMetadataRef>& debugFiles,
     std::unordered_map<std::uint32_t, unsigned>& debugCodeViewFileNumbers,
     SourceLocation location);

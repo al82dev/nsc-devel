@@ -63,6 +63,13 @@ public:
         std::span<const std::uint8_t> staticFieldDeclarations = {},
         std::string_view moduleName = "NativeSharp.Stage34.OOP");
 
+    // Optional table of source checksums shared by every code unit (see
+    // ProjectOopLlvmLoweringRequest::setSourceChecksums). Call before lower.
+    void setSourceChecksums(std::span<const std::string> sourceChecksums) noexcept
+    {
+        sourceChecksums_ = sourceChecksums;
+    }
+
     bool lower(std::string& error);
 
     LLVMContextRef releaseContext() noexcept;
@@ -2961,6 +2968,7 @@ private:
     DebugInformationKind debugInformation_ = DebugInformationKind::None;
     LlvmOptimizationLevel optimizationLevel_ = LlvmOptimizationLevel::O0;
     std::vector<DebugPrefixMap> debugPrefixMaps_;
+    std::span<const std::string> sourceChecksums_;
     bool partitioned_ = false;
     bool ownsModuleGlobals_ = true;
     std::vector<std::uint8_t> ownedReachableDefinitions_;
