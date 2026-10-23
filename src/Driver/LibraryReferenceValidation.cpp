@@ -198,7 +198,7 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
                               std::unordered_map<std::string, std::vector<PrecompiledExportContract>> &publishedExports,
                               std::unordered_map<std::string, std::string> &publishedNativeMethods,
                               std::vector<std::filesystem::path> &libraries,
-                              std::vector<linker::ExternalImportModule> *inheritedImports, std::string &error)
+                              ExternalImportListBuilder *inheritedImports, std::string &error)
 {
     const std::string libraryKey = foldedPathKey(reference.libraryPath);
     if (validatedReferences.contains(libraryKey))
@@ -210,7 +210,7 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
         return false;
     if (inheritedImports != nullptr)
         for (const interop::LibraryMetadataPlatformImport &importRecord : metadata->platformImports)
-            appendExternalImport(*inheritedImports, importRecord.dllName, importRecord.symbolName);
+            inheritedImports->append(importRecord.dllName, importRecord.symbolName);
     std::vector<std::string> nativeSymbols;
     if (!validateLibraryReferenceSymbols(reference, archiveVerifier, *metadata, publishedNativeMethods, nativeSymbols,
                                          error))
@@ -256,12 +256,18 @@ bool validateProjectLibraryReferences(
         moduleOwners.emplace(project.moduleName(), project.projectFile());
     std::unordered_set<std::string> validatedReferences;
     interop::LibraryMetadataCodec metadataCodec;
+    // One builder for the whole inherited list, so its indexes span every reference.
+    std::optional<ExternalImportListBuilder> inheritedImportList;
+    if (inheritedImports != nullptr)
+        inheritedImportList.emplace(*inheritedImports);
+    ExternalImportListBuilder *const inheritedImportBuilder =
+        inheritedImportList.has_value() ? &*inheritedImportList : nullptr;
     for (const compilation::Project &project : compilation.projectGraph()->projects())
         for (const compilation::LibraryReference &reference : project.libraryReferences())
             if (!validateLibraryReference(reference, compilation.libraryMetadataRepository(), metadataCodec,
                                            linkedLibraries, validatedReferences, runtimeNames,
                                           runtimeByModule, moduleOwners, publishedExports, publishedNativeMethods,
-                                          libraries, inheritedImports, error))
+                                          libraries, inheritedImportBuilder, error))
                 return false;
     return true;
 }

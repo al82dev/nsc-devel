@@ -11,9 +11,10 @@ using target::BuiltinLayoutKind;
 std::vector<linker::ExternalImportModule> collectExternalImports(const frontend::ProjectOopMirModel &mirModel)
 {
     std::vector<linker::ExternalImportModule> modules;
+    ExternalImportListBuilder moduleList(modules);
     bool anyRuntimeBoundImport = false;
-    const auto addSymbol = [&modules](const std::string &dllName, const std::string &symbol)
-    { appendExternalImport(modules, dllName, symbol); };
+    const auto addSymbol = [&moduleList](const std::string &dllName, const std::string &symbol)
+    { moduleList.append(dllName, symbol); };
     for (const frontend::ProjectOopMirFunction &function : mirModel.functions())
     {
         if (!function.isImportedC || function.importDllName.empty())
@@ -195,9 +196,10 @@ bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
     builder.setDebugInformation(debugInformation);
     builder.setIncrementalLink(incrementalLink);
     std::vector<linker::ExternalImportModule> externalImports = collectExternalImports(*compilation.oopMirModel());
+    ExternalImportListBuilder externalImportList(externalImports);
     for (const linker::ExternalImportModule &module : inheritedImports)
         for (const std::string &symbol : module.symbols)
-            appendExternalImport(externalImports, module.dllName, symbol);
+            externalImportList.append(module.dllName, symbol);
     builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(linkLibraries);
     return true;
@@ -410,9 +412,10 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
     builder.setProgramObjectsVerified(true);
     builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     std::vector<linker::ExternalImportModule> externalImports = collectExternalImports(*compilation.oopMirModel());
+    ExternalImportListBuilder externalImportList(externalImports);
     for (const linker::ExternalImportModule &module : inheritedImports)
         for (const std::string &symbol : module.symbols)
-            appendExternalImport(externalImports, module.dllName, symbol);
+            externalImportList.append(module.dllName, symbol);
     builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(
         std::vector<std::filesystem::path>(referencedLibraries.begin(), referencedLibraries.end()));
@@ -795,9 +798,10 @@ bool prepareDynamicLibraryBuilder(const frontend::ProjectCompilation &compilatio
     builder.setProgramObjectsVerified(true);
     builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     std::vector<linker::ExternalImportModule> externalImports = collectExternalImports(*compilation.oopMirModel());
+    ExternalImportListBuilder externalImportList(externalImports);
     for (const linker::ExternalImportModule &module : inheritedImports)
         for (const std::string &symbol : module.symbols)
-            appendExternalImport(externalImports, module.dllName, symbol);
+            externalImportList.append(module.dllName, symbol);
     builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(linkLibraries);
     return true;
