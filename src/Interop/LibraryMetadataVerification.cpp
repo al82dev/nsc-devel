@@ -1498,10 +1498,11 @@ bool verifyNoHeapAndVariadicMemberMetadata(
     return true;
 }
 
-template<typename Callable>
+// describeOwner returns the owner text of the error message; it runs only when the check fails.
+template<typename Callable, typename DescribeOwner>
 bool verifyParameterPackMetadata(
     const Callable& callable,
-    std::string_view owner,
+    const DescribeOwner& describeOwner,
     std::string& error)
 {
     for (std::size_t index = 0; index < callable.parameters.size(); ++index)
@@ -1513,7 +1514,7 @@ bool verifyParameterPackMetadata(
             parameter.defaultValueKind != LibraryMetadataDefaultValueKind::None ||
             parameter.typeKey.find("ReadOnlySpan__g1__") == std::string::npos)
         {
-            error = "metadata " + std::string(owner) + " parameter '" +
+            error = "metadata " + describeOwner() + " parameter '" +
                 parameter.name + "' carries an invalid params ReadOnlySpan<T> contract";
             return false;
         }
@@ -1530,7 +1531,10 @@ bool verifyParameterPackContracts(
     {
         if (!verifyParameterPackMetadata(
                 member,
-                "member '" + member.declaringTypeKey + "." + member.signatureKey + "'",
+                [&member]
+                {
+                    return "member '" + member.declaringTypeKey + "." + member.signatureKey + "'";
+                },
                 error))
         {
             return false;
@@ -1540,8 +1544,11 @@ bool verifyParameterPackContracts(
     {
         if (!verifyParameterPackMetadata(
                 function,
-                "namespace function '" + function.namespaceName + "." +
-                    function.signatureKey + "'",
+                [&function]
+                {
+                    return "namespace function '" + function.namespaceName + "." +
+                        function.signatureKey + "'";
+                },
                 error))
         {
             return false;
