@@ -709,8 +709,10 @@ bool preparePrecompiledProject(
 ///     Returns false on the first failure. Effects: fills the compilation's metadata repository,
 ///     its precompiled modules (unless skipped) and its preloaded graph. Not thread safe for one
 ///     compilation. Complexity: linear in the referenced metadata plus materialization.
-///     Why the gate: on a verified bundle hit the materialized modules are never used, and their
-///     materialization dominated the hit path (audit 2026-10-22).
+///     Why the gate: on a verified bundle hit the materialized modules are never used, so building
+///     them is wasted work. Measured on NativeSharp.Math.Functions (O0, audit 2026-10-22) it was
+///     about 10-15% of `precompiled-metadata` on that path; loading and decoding the referenced
+///     metadata, still needed to compute the identity, is the larger remaining part.
 /// ES: Carga la metadata explicita, expande la clausura binaria, la aplica a `graph`, pregunta a
 ///     `gate` (si existe) si hace falta materializar, materializa los modulos precompilados salvo
 ///     que se omita, e instala el grafo en `compilation`.
@@ -721,7 +723,10 @@ bool preparePrecompiledProject(
 ///     precompilados (salvo omision) y el grafo precargado de la compilacion. No es seguro entre
 ///     hilos para una misma compilacion. Complejidad: lineal en la metadata mas la materializacion.
 ///     Motivo del gancho: en un acierto de bundle verificado los modulos materializados nunca se
-///     usan, y su materializacion dominaba esa ruta (auditoria 2026-10-22).
+///     usan, asi que construirlos es trabajo perdido. Medido en NativeSharp.Math.Functions (O0,
+///     auditoria 2026-10-22) era cerca del 10-15% de `precompiled-metadata` en esa ruta; cargar y
+///     decodificar la metadata referenciada, que sigue haciendo falta para la identidad, es la
+///     parte mayor que queda.
 bool preparePrecompiledProject(
     ProjectGraph graph,
     const ProjectLoadOptions& loadOptions,

@@ -28,7 +28,8 @@ INFERENCIA = conclusión razonada que todavía no se midió. NO VERIFICADO = no 
    - el **bundle de compilación**, que devuelve las salidas cuando la entrada es idéntica byte a byte;
    - la **caché de objetos LLVM por unidad de código**, indexada por identidad MIR;
    - la **caché del archivo estático**, cuando todos los objetos coinciden.
-2. **La caché LLVM sólo sobrevive a ediciones de cuerpo o de comentarios (HECHO).** Agregar un método
+2. **Con el compilador base, la caché LLVM sólo sobrevive a ediciones de cuerpo o de comentarios (HECHO).**
+   Agregar un método
    privado, un método público o un campo privado invalida el 100 % de las unidades en los cuatro niveles. Hay
    dos causas:
    - la identidad MIR incluye un digest común con *todas* las tablas del modelo;
@@ -41,19 +42,33 @@ INFERENCIA = conclusión razonada que todavía no se midió. NO VERIFICADO = no 
    - **Esto contradice la equivalencia estricta.**
    - **No lo cambié:** una prueba existente (`ProjectOopLoweringTests`) fija ese diseño, y las pruebas no se
      modifican sin autorización (sección 9).
+   - **Hay un prototipo compilado y medido de la política determinista (sección 8.6).** Con él:
+     - la equivalencia se cumple en todos los escenarios;
+     - agregar un método reutiliza 14 de 16 unidades (antes 0);
+     - pero falla exactamente esa verificación de la prueba.
 4. **El `.lib` cambiaba byte a byte entre dos builds de la misma entrada (HECHO).** Los nombres de los miembros
    del archivo COFF llevaban la ruta temporal `…\Temp\nativesharp-codegen-<reloj>-0\program-N.obj`.
    - **Corregido en esta rama.** Los miembros ahora son `program-N.obj`.
 5. **Un build sin cambios (acierto de bundle) pagaba la materialización completa de NSMETA de todas las
    referencias antes de consultar el bundle (HECHO).**
    - **Corregido en esta rama:** la consulta ocurre antes de materializar y un acierto verificado la omite.
+   - **Medido:** ahorra ~85 ms (−14 %) de `precompiled-metadata` en `Math.Functions` (sección 8.5). La parte
+     mayor del acierto sigue siendo decodificar el NSMETA de las referencias. El paso siguiente (L0b) está
+     diseñado.
 6. **Reutilización de objetos por IR previo a la optimización (implementada en esta rama).**
    - **Qué hace:** cuando falla la identidad MIR, se baja la unidad a LLVM IR (barato) y se busca un objeto
      compilado desde IR idéntico. Sólo se optimiza y emite si no existe.
    - **Por qué es sólido:** optimizar y emitir es una función determinista del IR, del target y del nivel, así
      que conserva la equivalencia estricta.
    - **Dónde ayuda:** es justo el costo que domina en O2/O3 (10.5 s de 18.4 s en `Math.Functions`).
-   - **Medición:** los resultados por nivel están en la sección 8.
+   - **Medición (sección 8.4).** Al insertar un campo estático privado en `Math.Functions`:
+     - con el compilador base, 0 de 16 unidades se reutilizan;
+     - con la rama, 15 de 16;
+     - la fase LLVM baja de 10.6 s a 1.3 s en O2 (de 10.9 a 1.3 s en O3, de 7.2 a 1.4 s en O1, de 2.9 a
+       1.4 s en O0);
+     - el total baja de ~18.4 a ~9.0 s en O2.
+   - **Salida.** Idéntica al build limpio en todos los escenarios, salvo `s2-body` de `Math.Functions`, que
+     también difiere con el compilador base: es H3, no un efecto de la rama.
 7. **Aun con LLVM perfecto, el piso de un build incremental lo fija el frontend completo (HECHO medido).**
    En `Math.Functions` son ~7–9 s de 11–19 s. La compilación incremental real exige reutilizar el frontend
    por declaración y por cuerpo. Eso queda diseñado en la sección 7, con los prerrequisitos que faltan.
@@ -232,7 +247,123 @@ instrumentación para separarlo.
 
 ## 4. Mediciones
 
-{{TABLES}}
+### 4.1 Build en frío por nivel (cadena completa, `nsc` instalado, ms)
+
+Fases agrupadas: `meta` = `precompiled-metadata`; `syntax` = read+comptime+precompiled+lex+parse; `decl` = names+members+inheritance+interfaces+generic-constraints; `oopsem` = virtual-dispatch+destruction+construction+layout; `nsmeta` = escritura `library-metadata`; `other` = total − fases (sección 3.6).
+
+
+**O0** — total de la cadena (33 paquetes: 32 compilan y `NativeForms` falla en ~0.2 s, H12): 78.1 s
+
+| Biblioteca | total | graph | meta | syntax | generics | decl | bodies | oopsem | hir | mir | llvm | lib | hdr | nsmeta | other | unidades |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Core | 395 | 26 | 5 | 14 | 30 | 9 | 24 | 1 | 4 | 7 | 75 | 45 | 4 | 32 | 118 | 8 |
+| System | 574 | 41 | 91 | 19 | 64 | 35 | 17 | 2 | 11 | 14 | 97 | 46 | 4 | 26 | 108 | 8 |
+| Logging | 713 | 40 | 121 | 22 | 77 | 55 | 16 | 2 | 14 | 14 | 123 | 49 | 5 | 27 | 149 | 8 |
+| Math.Matrices | 5798 | 83 | 388 | 65 | 1277 | 296 | 219 | 395 | 199 | 119 | 1201 | 133 | 5 | 255 | 1163 | 8 |
+| Math.Functions | 16271 | 107 | 645 | 140 | 3968 | 653 | 974 | 661 | 622 | 207 | 2958 | 324 | 5 | 1284 | 3724 | 8 |
+| Math.Core | 5899 | 37 | 1993 | 121 | 1176 | 291 | 8 | 9 | 1059 | 77 | 309 | 66 | 4 | 10 | 738 | 8 |
+
+**O1** — total de la cadena (33 paquetes: 32 compilan y `NativeForms` falla en ~0.2 s, H12): 79.5 s
+
+| Biblioteca | total | graph | meta | syntax | generics | decl | bodies | oopsem | hir | mir | llvm | lib | hdr | nsmeta | other | unidades |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Core | 510 | 27 | 5 | 14 | 67 | 9 | 11 | 1 | 4 | 7 | 169 | 47 | 4 | 31 | 115 | 15 |
+| System | 700 | 41 | 101 | 20 | 65 | 34 | 16 | 2 | 11 | 13 | 211 | 45 | 4 | 25 | 115 | 15 |
+| Logging | 870 | 37 | 119 | 22 | 76 | 54 | 16 | 2 | 15 | 14 | 319 | 49 | 5 | 27 | 114 | 15 |
+| Math.Matrices | 5917 | 85 | 382 | 64 | 1095 | 294 | 224 | 404 | 195 | 128 | 1858 | 131 | 5 | 265 | 786 | 15 |
+| Math.Functions | 19162 | 104 | 814 | 142 | 4156 | 657 | 953 | 617 | 620 | 206 | 7148 | 226 | 5 | 1331 | 2183 | 15 |
+| Math.Core | 3820 | 36 | 1021 | 116 | 607 | 296 | 7 | 10 | 1056 | 70 | 241 | 40 | 4 | 11 | 305 | 15 |
+
+**O2** — total de la cadena (33 paquetes: 32 compilan y `NativeForms` falla en ~0.2 s, H12): 90.1 s
+
+| Biblioteca | total | graph | meta | syntax | generics | decl | bodies | oopsem | hir | mir | llvm | lib | hdr | nsmeta | other | unidades |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Core | 509 | 27 | 5 | 14 | 30 | 9 | 11 | 1 | 4 | 7 | 225 | 47 | 4 | 32 | 93 | 15 |
+| System | 651 | 42 | 62 | 20 | 64 | 33 | 16 | 2 | 11 | 13 | 231 | 46 | 5 | 27 | 80 | 15 |
+| Logging | 748 | 38 | 92 | 26 | 83 | 54 | 16 | 2 | 14 | 14 | 241 | 48 | 4 | 26 | 89 | 15 |
+| Math.Matrices | 5377 | 82 | 278 | 63 | 522 | 303 | 214 | 392 | 182 | 111 | 2416 | 88 | 6 | 261 | 458 | 15 |
+| Math.Functions | 18421 | 105 | 476 | 144 | 1279 | 653 | 954 | 625 | 624 | 254 | 10516 | 223 | 5 | 1270 | 1294 | 15 |
+| Math.Core | 6216 | 34 | 1779 | 117 | 1823 | 291 | 8 | 10 | 1062 | 71 | 247 | 46 | 4 | 11 | 713 | 15 |
+
+**O3** — total de la cadena (33 paquetes: 32 compilan y `NativeForms` falla en ~0.2 s, H12): 86.2 s
+
+| Biblioteca | total | graph | meta | syntax | generics | decl | bodies | oopsem | hir | mir | llvm | lib | hdr | nsmeta | other | unidades |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Core | 509 | 28 | 5 | 15 | 31 | 9 | 11 | 1 | 4 | 7 | 207 | 43 | 4 | 31 | 113 | 15 |
+| System | 874 | 42 | 91 | 19 | 64 | 33 | 16 | 2 | 11 | 12 | 217 | 44 | 4 | 27 | 291 | 15 |
+| Logging | 916 | 39 | 230 | 22 | 77 | 53 | 16 | 2 | 14 | 14 | 249 | 45 | 4 | 27 | 124 | 15 |
+| Math.Matrices | 7210 | 170 | 656 | 64 | 1301 | 295 | 215 | 421 | 187 | 114 | 2487 | 126 | 4 | 258 | 912 | 15 |
+| Math.Functions | 19649 | 101 | 881 | 143 | 2038 | 649 | 998 | 620 | 618 | 206 | 10577 | 203 | 5 | 1329 | 1282 | 15 |
+| Math.Core | 3873 | 34 | 1031 | 121 | 600 | 306 | 8 | 10 | 1073 | 80 | 251 | 40 | 5 | 11 | 304 | 15 |
+
+### 4.2 Escenarios con el compilador base (`tc-base` = `991eead84`, host O3)
+
+Tiempos en ms (`timing total_ms`). Aciertos = objetos restaurados de la caché de artefactos / unidades de código + `globals`. `equivalente` = salida incremental idéntica a la del build limpio (`.nsmeta`, `.h` y digest del `.lib` sin la tabla `//`).
+
+
+
+| Nivel | Biblioteca | Escenario | incremental ms | referencia ms | aciertos LLVM / unidades+1 | bundle | equivalente |
+|---|---|---|---:|---:|---:|---|---|
+| O0 | Logging | s0-prime | 12512 | — | 0/9 | not-found |  |
+| O0 | Logging | s1-nochange | 1548 | 1015 | (bundle) | hit | sí |
+| O0 | Logging | s1b-touch | 126 | 652 | (bundle) | hit | sí |
+| O0 | Logging | s5-comment | 571 | 656 | 9/9 | not-found | sí |
+| O0 | Logging | s2-body | 577 | 647 | 8/9 | not-found | sí |
+| O0 | Logging | s3-private-method | 618 | 687 | 0/9 | not-found | sí |
+| O0 | Logging | s4-public-method | 652 | 712 | 0/9 | not-found | sí |
+| O0 | Logging | s6-private-field | 613 | 651 | 0/9 | not-found | sí |
+| O0 | Math.Functions | s0-prime | 11333 | — | 0/9 | not-found |  |
+| O0 | Math.Functions | s1-nochange | 991 | 16008 | (bundle) | hit | sí |
+| O0 | Math.Functions | s1b-touch | 3042 | 16373 | (bundle) | hit | sí |
+| O0 | Math.Functions | s5-comment | 9293 | 11817 | 9/9 | not-found | sí |
+| O0 | Math.Functions | s2-body | 10659 | 13002 | 8/9 | not-found | **NO** |
+| O0 | Math.Functions | s3-private-method | 16512 | 15906 | 0/9 | not-found | sí |
+| O0 | Math.Functions | s4-public-method | 11013 | 11476 | 0/9 | not-found | sí |
+| O1 | Logging | s0-prime | 869 | — | 0/16 | not-found |  |
+| O1 | Logging | s1-nochange | 172 | 748 | (bundle) | hit | sí |
+| O1 | Logging | s1b-touch | 125 | 758 | (bundle) | hit | sí |
+| O1 | Logging | s5-comment | 568 | 754 | 16/16 | not-found | sí |
+| O1 | Logging | s2-body | 581 | 746 | 15/16 | not-found | sí |
+| O1 | Logging | s3-private-method | 728 | 740 | 0/16 | not-found | sí |
+| O1 | Logging | s4-public-method | 686 | 743 | 0/16 | not-found | sí |
+| O1 | Logging | s6-private-field | 666 | 789 | 0/16 | not-found | sí |
+| O1 | Math.Functions | s0-prime | 15758 | — | 0/16 | not-found |  |
+| O1 | Math.Functions | s1-nochange | 904 | 14876 | (bundle) | hit | sí |
+| O1 | Math.Functions | s1b-touch | 2696 | 19524 | (bundle) | hit | sí |
+| O1 | Math.Functions | s5-comment | 12790 | 19500 | 16/16 | not-found | sí |
+| O1 | Math.Functions | s2-body | 10474 | 15158 | 15/16 | not-found | **NO** |
+| O1 | Math.Functions | s3-private-method | 15215 | 20572 | 0/16 | not-found | sí |
+| O1 | Math.Functions | s4-public-method | 19561 | 19391 | 0/16 | not-found | sí |
+| O2 | Logging | s0-prime | 907 | — | 0/16 | not-found |  |
+| O2 | Logging | s1-nochange | 167 | 769 | (bundle) | hit | sí |
+| O2 | Logging | s1b-touch | 121 | 765 | (bundle) | hit | sí |
+| O2 | Logging | s5-comment | 600 | 779 | 16/16 | not-found | sí |
+| O2 | Logging | s2-body | 565 | 773 | 15/16 | not-found | sí |
+| O2 | Logging | s3-private-method | 771 | 789 | 0/16 | not-found | sí |
+| O2 | Logging | s4-public-method | 721 | 818 | 0/16 | not-found | sí |
+| O2 | Logging | s6-private-field | 724 | 757 | 0/16 | not-found | sí |
+| O2 | Math.Functions | s0-prime | 19198 | — | 0/16 | not-found |  |
+| O2 | Math.Functions | s1-nochange | 902 | 22859 | (bundle) | hit | sí |
+| O2 | Math.Functions | s1b-touch | 2645 | 23215 | (bundle) | hit | sí |
+| O2 | Math.Functions | s5-comment | 12377 | 18529 | 16/16 | not-found | sí |
+| O2 | Math.Functions | s2-body | 11462 | 20891 | 15/16 | not-found | **NO** |
+| O2 | Math.Functions | s3-private-method | 26808 | 29414 | 0/16 | not-found | sí |
+| O2 | Math.Functions | s4-public-method | 19506 | 21162 | 0/16 | not-found | sí |
+| O3 | Logging | s0-prime | 902 | — | 0/16 | not-found |  |
+| O3 | Logging | s1-nochange | 170 | 839 | (bundle) | hit | sí |
+| O3 | Logging | s1b-touch | 170 | 773 | (bundle) | hit | sí |
+| O3 | Logging | s5-comment | 536 | 785 | 16/16 | not-found | sí |
+| O3 | Logging | s2-body | 598 | 918 | 15/16 | not-found | sí |
+| O3 | Logging | s3-private-method | 741 | 776 | 0/16 | not-found | sí |
+| O3 | Logging | s4-public-method | 757 | 895 | 0/16 | not-found | sí |
+| O3 | Logging | s6-private-field | 716 | 782 | 0/16 | not-found | sí |
+| O3 | Math.Functions | s0-prime | 20915 | — | 0/16 | not-found |  |
+| O3 | Math.Functions | s1-nochange | 923 | 22459 | (bundle) | hit | sí |
+| O3 | Math.Functions | s1b-touch | 2579 | 26090 | (bundle) | hit | sí |
+| O3 | Math.Functions | s5-comment | 9208 | 19197 | 16/16 | not-found | sí |
+| O3 | Math.Functions | s2-body | 16233 | 27591 | 15/16 | not-found | **NO** |
+| O3 | Math.Functions | s3-private-method | 25050 | 21043 | 0/16 | not-found | sí |
+| O3 | Math.Functions | s4-public-method | 20524 | 19708 | 0/16 | not-found | sí |
 
 ---
 
@@ -272,7 +403,7 @@ instrumentación para separarlo.
 
 | Id | Clasificación | Hallazgo | Evidencia |
 |---|---|---|---|
-| H1 | HECHO, corregido | El acierto de bundle materializaba todos los módulos precompilados antes de consultar el bundle | `configurePrecompiledModules`: `preparePrecompiledProject` antes de `calculateIdentity`; s1 en `Math.Functions` con `precompiled-metadata` 743 ms y pico de 108 MB |
+| H1 | HECHO, corregido (ganancia menor: −14 % de `precompiled-metadata`) | El acierto de bundle materializaba todos los módulos precompilados antes de consultar el bundle; lo dominante es decodificar el NSMETA | `configurePrecompiledModules`: `preparePrecompiledProject` antes de `calculateIdentity`; s1 en `Math.Functions`: 615 → 532 ms (8 rondas, sección 8.5) |
 | H2 | HECHO, corregido | El `.lib` difiere byte a byte entre builds idénticos: nombres de miembro con ruta temporal y reloj | `nsc_compare.py`: payloads idénticos, tabla `//` distinta (`nativesharp-codegen-2358…` contra `2361…`) |
 | H3 | HECHO, **no corregido (requiere autorización)** | La salida incremental depende del historial de la caché: el plan `CacheAwareBalanced` restaurado no coincide con el reparto de un build limpio | s2-body en `Math.Functions`: `equal False` en O0, O1, O2 y O3; objetos `program-1..8` con tamaños distintos y `program-0` (globals) idéntico |
 | H4 | HECHO | El número de unidades depende de los hilos de la máquina en O1–O3 (`partitionCount = workerCount`). El `.lib`, y en O1–O3 el código optimizado (inlining sólo dentro de una unidad), dependen de la máquina | `ProjectOopObjectGenerator::generate`; `code-units: 15` aquí |
@@ -311,9 +442,10 @@ instrumentación para separarlo.
 | Capa | Qué reutiliza | Clave | Estado |
 |---|---|---|---|
 | L0 | Salidas completas (bundle) | Identidad del manifiesto | Existía; el acierto ya no materializa NSMETA (**implementado**, H1) |
+| L0b | Acierto de bundle sin decodificar NSMETA | Lista de entradas resueltas + SHA-256 guardada en el bundle, validada rehasheando | Diseñado (8.5); requiere auditar la resolución de referencias |
 | L1 | Archivo `.lib` determinista | Nombres de miembro estables | **Implementado** (H2) |
 | L2 | Objeto por unidad desde IR idéntico | SHA-256 del IR previo a la optimización + target + nivel + pipeline + identidad de codegen + inlining obligatorio | **Implementado** |
-| L3 | Partición determinista y estable | Función pura del MIR: cubetas por hash del nombre decorado, con Balanced cuando alguna queda vacía | **Diseñado**; un prototipo sólo pasó la revisión de sintaxis local (no se compiló con `nsc` ni se midió) y **no se aplicó** por la prueba que fija `CacheAwareBalanced` (sección 9) |
+| L3 | Partición determinista y estable | Función pura del MIR: cubetas por hash del nombre decorado, con Balanced cuando alguna queda vacía | **Prototipo compilado y medido (8.6); no aplicado** por la prueba que fija `CacheAwareBalanced` (sección 9) |
 | L4 | Objeto por unidad sin bajar a IR | Identidad MIR **simbólica**: sin ordinales y con un digest común **por unidad** (sólo tipos, tablas y estáticos que la unidad referencia) | Diseñado; requiere auditar cada uso de ordinal en el lowering |
 | L5 | Frontend por declaración y por cuerpo | Ver 7.4 | Diseñado; prerrequisitos en 7.5 |
 | L6 | NSMETA de referencias decodificado | Snapshot binario mapeable, por SHA-256 del NSMETA | Diseñado |
@@ -411,7 +543,214 @@ Unidad de reutilización: **la declaración** (tipo o miembro) y **el cuerpo** (
 
 ## 8. Implementado en esta rama y resultados A/B
 
-{{AB}}
+### 8.1 Commits de la rama
+
+| Commit | Hipótesis | Archivos |
+|---|---|---|
+| `a7b592c90` | H2: nombres estables de los miembros del `.lib` (`program-N.obj`) | `src/Linker/LldLinker.cpp` + este documento |
+| `07b53c6d7` | L2: reutilizar objetos por IR previo a la optimización cuando falla la identidad MIR | `ProjectOopObjectGenerator.cpp`, `LlvmOptimizer.h`, `CodeUnitTelemetry.h`, `CodeUnitIrReuse.h` (nuevo), `DriverExecution.cpp` |
+| `275874387` | H1: consultar el bundle antes de materializar los módulos precompilados | `PrecompiledProjectPreparation.{h,cpp}`, `PrecompiledModuleConfiguration.cpp` |
+| (este commit) | Documento con resultados y corrección del comentario de motivo en `PrecompiledProjectPreparation.cpp` | este documento + comentario |
+
+- **Cómo se compiló.** Los tres cambios se compilaron y probaron juntos, en el estado final de la rama.
+- **Qué no se verificó.** No se compiló cada commit intermedio por separado (NO VERIFICADO).
+  - Los archivos de cada uno son disjuntos.
+  - Ninguno depende de los otros.
+
+### 8.2 Equivalencia (HECHO)
+
+- **Incremental contra limpio, por compilador.** Con `tc-base` y con `tc-new` la salida incremental es idéntica
+  a la del build limpio en **todos** los escenarios y niveles, salvo `s2-body` en `Math.Functions` (O0–O3).
+  - Esa excepción la tienen **los dos** compiladores: es H3 (plan de partición restaurado), no un efecto de
+    esta rama.
+  - En `tc-new` la comparación incluye el `.lib` byte a byte, gracias a H2.
+- **Base contra nueva (build limpio).** `nsc_crosscheck.py` / `nsc_idcheck.py` sobre los 52 pares
+  (2 bibliotecas × 4 niveles × escenarios).
+  - Los **objetos** de cada `.lib` son idénticos y en el mismo orden en los 52.
+  - El `.h` es idéntico tras sustituir la identidad de build del compilador
+    (`3.0.0+build.<fecha>.<id>`), que aparece en el comentario `Generated by nsc …`.
+  - El `.nsmeta` difiere en 49 bytes: la identidad de build y el digest de 32 bytes que la cubre. Ninguna
+    otra diferencia.
+  - Que dos builds de `nsc` distintos escriban identidades distintas es el comportamiento esperado.
+
+### 8.3 A/B por escenario (O0–O3)
+
+Las cachés de las dos corridas son independientes (`ab1-base`, `ab1-new`). Los tiempos de una sola corrida
+tienen ruido alto (sección 2.3). Los aciertos son exactos.
+
+| Nivel | Biblioteca | Escenario | base ms | nueva ms | aciertos base | aciertos nueva | equivalente base | equivalente nueva |
+|---|---|---|---:|---:|---:|---:|---|---|
+| O0 | Logging | s0-prime | 12512 | 856 | 0/9 | 0/9 | — | — |
+| O0 | Logging | s1-nochange | 1548 | 193 | bundle | bundle | sí | sí |
+| O0 | Logging | s1b-touch | 126 | 135 | bundle | bundle | sí | sí |
+| O0 | Logging | s5-comment | 571 | 817 | 9/9 | 9/9 | sí | sí |
+| O0 | Logging | s2-body | 577 | 725 | 8/9 | 8/9 | sí | sí |
+| O0 | Logging | s3-private-method | 618 | 678 | 0/9 | 0/9 | sí | sí |
+| O0 | Logging | s4-public-method | 652 | 917 | 0/9 | 0/9 | sí | sí |
+| O0 | Logging | s6-private-field | 613 | 1012 | 0/9 | **9/9** | sí | sí |
+| O0 | Math.Functions | s0-prime | 11333 | 16415 | 0/9 | 0/9 | — | — |
+| O0 | Math.Functions | s1-nochange | 991 | 3719 | bundle | bundle | sí | sí |
+| O0 | Math.Functions | s1b-touch | 3042 | 819 | bundle | bundle | sí | sí |
+| O0 | Math.Functions | s5-comment | 9293 | 9231 | 9/9 | 9/9 | sí | sí |
+| O0 | Math.Functions | s2-body | 10659 | 14698 | 8/9 | 8/9 | **NO** | **NO** |
+| O0 | Math.Functions | s3-private-method | 16512 | 11462 | 0/9 | 0/9 | sí | sí |
+| O0 | Math.Functions | s4-public-method | 11013 | 16677 | 0/9 | 0/9 | sí | sí |
+| O1 | Logging | s0-prime | 869 | 887 | 0/16 | 0/16 | — | — |
+| O1 | Logging | s1-nochange | 172 | 154 | bundle | bundle | sí | sí |
+| O1 | Logging | s1b-touch | 125 | 111 | bundle | bundle | sí | sí |
+| O1 | Logging | s5-comment | 568 | 571 | 16/16 | 16/16 | sí | sí |
+| O1 | Logging | s2-body | 581 | 584 | 15/16 | 15/16 | sí | sí |
+| O1 | Logging | s3-private-method | 728 | 738 | 0/16 | 0/16 | sí | sí |
+| O1 | Logging | s4-public-method | 686 | 733 | 0/16 | 0/16 | sí | sí |
+| O1 | Logging | s6-private-field | 666 | 565 | 0/16 | **16/16** | sí | sí |
+| O1 | Math.Functions | s0-prime | 15758 | 15734 | 0/16 | 0/16 | — | — |
+| O1 | Math.Functions | s1-nochange | 904 | 831 | bundle | bundle | sí | sí |
+| O1 | Math.Functions | s1b-touch | 2696 | 2841 | bundle | bundle | sí | sí |
+| O1 | Math.Functions | s5-comment | 12790 | 12116 | 16/16 | 16/16 | sí | sí |
+| O1 | Math.Functions | s2-body | 10474 | 10510 | 15/16 | 15/16 | **NO** | **NO** |
+| O1 | Math.Functions | s3-private-method | 15215 | 17330 | 0/16 | 0/16 | sí | sí |
+| O1 | Math.Functions | s4-public-method | 19561 | 19635 | 0/16 | 0/16 | sí | sí |
+| O2 | Logging | s0-prime | 907 | 1507 | 0/16 | 0/16 | — | — |
+| O2 | Logging | s1-nochange | 167 | 188 | bundle | bundle | sí | sí |
+| O2 | Logging | s1b-touch | 121 | 182 | bundle | bundle | sí | sí |
+| O2 | Logging | s5-comment | 600 | 683 | 16/16 | 16/16 | sí | sí |
+| O2 | Logging | s2-body | 565 | 589 | 15/16 | 15/16 | sí | sí |
+| O2 | Logging | s3-private-method | 771 | 934 | 0/16 | 0/16 | sí | sí |
+| O2 | Logging | s4-public-method | 721 | 789 | 0/16 | 0/16 | sí | sí |
+| O2 | Logging | s6-private-field | 724 | 641 | 0/16 | **16/16** | sí | sí |
+| O2 | Math.Functions | s0-prime | 19198 | 22560 | 0/16 | 0/16 | — | — |
+| O2 | Math.Functions | s1-nochange | 902 | 1455 | bundle | bundle | sí | sí |
+| O2 | Math.Functions | s1b-touch | 2645 | 862 | bundle | bundle | sí | sí |
+| O2 | Math.Functions | s5-comment | 12377 | 24613 | 16/16 | 16/16 | sí | sí |
+| O2 | Math.Functions | s2-body | 11462 | 14099 | 15/16 | 15/16 | **NO** | **NO** |
+| O2 | Math.Functions | s3-private-method | 26808 | 23771 | 0/16 | 0/16 | sí | sí |
+| O2 | Math.Functions | s4-public-method | 19506 | 18500 | 0/16 | 0/16 | sí | sí |
+| O3 | Logging | s0-prime | 902 | 1149 | 0/16 | 0/16 | — | — |
+| O3 | Logging | s1-nochange | 170 | 196 | bundle | bundle | sí | sí |
+| O3 | Logging | s1b-touch | 170 | 217 | bundle | bundle | sí | sí |
+| O3 | Logging | s5-comment | 536 | 1192 | 16/16 | 16/16 | sí | sí |
+| O3 | Logging | s2-body | 598 | 1428 | 15/16 | 15/16 | sí | sí |
+| O3 | Logging | s3-private-method | 741 | 1125 | 0/16 | 0/16 | sí | sí |
+| O3 | Logging | s4-public-method | 757 | 931 | 0/16 | 0/16 | sí | sí |
+| O3 | Logging | s6-private-field | 716 | 670 | 0/16 | **16/16** | sí | sí |
+| O3 | Math.Functions | s0-prime | 20915 | 25666 | 0/16 | 0/16 | — | — |
+| O3 | Math.Functions | s1-nochange | 923 | 832 | bundle | bundle | sí | sí |
+| O3 | Math.Functions | s1b-touch | 2579 | 2851 | bundle | bundle | sí | sí |
+| O3 | Math.Functions | s5-comment | 9208 | 13100 | 16/16 | 16/16 | sí | sí |
+| O3 | Math.Functions | s2-body | 16233 | 11736 | 15/16 | 15/16 | **NO** | **NO** |
+| O3 | Math.Functions | s3-private-method | 25050 | 19516 | 0/16 | 0/16 | sí | sí |
+| O3 | Math.Functions | s4-public-method | 20524 | 23797 | 0/16 | 0/16 | sí | sí |
+
+**Lectura:**
+
+- **`s6-private-field`.** Pasa de 0 aciertos a **9/9 (O0) y 16/16 (O1–O3)**. La identidad MIR falla en todas
+  las unidades, pero su IR no cambió, así que no se optimiza ni emite nada.
+- **`s3`/`s4`.** Siguen en 0 en ambos. Agregar un método cambia `persistentPlanKey`, `CacheAwareBalanced`
+  redistribuye todas las funciones y cambia el IR de cada unidad (H7). Ver 8.6.
+- **Comentario y cuerpo.** No cambian; ya acertaban por MIR.
+
+### 8.4 Repeticiones controladas: L2
+
+`nsc_irbench_mf.py` alterna los dos compiladores en cada ronda. Cada uno usa su caché caliente. Inserta un
+`private static float irBenchStaticN = (N+1).0f;` distinto en cada ronda en `Math.Functions`. La identidad MIR
+cambia (nombre y constante en el digest común); el reparto no cambia (no se agregan funciones).
+
+| Nivel | Ronda | base total / llvm (ms), aciertos | nueva total / llvm (ms), aciertos |
+|---|---|---|---|
+| O0 | 1 | 10932 / 2808, 0/9 | 9490 / 1337, 8/9 |
+| O0 | 2 | 11073 / 2959, 0/9 | 11666 / 1416, 8/9 |
+| O1 | 1 | 15074 / 7242, 0/16 | 9205 / 1368, 15/16 |
+| O1 | 2 | 16744 / 7100, 0/16 | 13005 / 1437, 15/16 |
+| O2 | 1 | 18490 / 10678, 0/16 | 9005 / 1344, 15/16 |
+| O2 | 2 | 18378 / 10632, 0/16 | 8879 / 1292, 15/16 |
+| O3 | 1 | 24058 / 10950, 0/16 | 12901 / 1331, 15/16 |
+| O3 | 2 | 23003 / 10662, 0/16 | 9030 / 1289, 15/16 |
+
+- **Ronda 0** (primera inserción). 0 aciertos en ambos: el campo estático nuevo agrega una función de
+  inicialización, eso cambia el plan y se repite H7.
+- **Fase `llvm-object-generation` con L2.** Baja de ~2.9/7.2/10.6/10.8 s a ~1.3–1.4 s en O0/O1/O2/O3.
+- **Lo que queda en la fase LLVM** (~1.3 s), según las líneas `code-unit` de O2:
+  - la unidad `globals`, que sí cambia;
+  - por cada unidad que acierta, el bajado a IR (~75 ms), la impresión y el hash (~70 ms), la copia (~40 ms)
+    y la verificación COFF (~8–19 ms);
+  - el preámbulo (alcanzabilidad e índice de identidad MIR), sin desglose (NO VERIFICADO).
+- **El total** baja ~9–10 s en O2/O3. El resto es el frontend completo (sección 7.4).
+
+`nsc_irbench.py`, mismo método en `Logging` con 2–7 campos de instancia nuevos por ronda (6 rondas por nivel,
+mediana de la fase LLVM):
+
+| Nivel | base | nueva |
+|---|---:|---:|
+| O0 | 160 ms (0 aciertos) | 126 ms (4–9/9) |
+| O2 | 255 ms (0 aciertos) | 160 ms (11–16/16) |
+| O3 | 253 ms (0 aciertos) | 160 ms (11–16/16) |
+
+En las rondas que llegan a 16/16, hasta las unidades de `Logger` aciertan: el número de campos `int`
+insertados dejó los mismos desplazamientos tras el relleno de alineación. Esto confirma que la clave de IR
+reutiliza exactamente cuando el código generado sería el mismo.
+
+### 8.5 Repeticiones controladas: H1 (acierto de bundle)
+
+`nsc_hitbench.py`, 8 rondas alternadas, `Math.Functions` O0 sin cambios:
+
+| | `precompiled-metadata` (mediana) | total mínimo | total mediana |
+|---|---:|---:|---:|
+| base | 615 ms | 892 ms | 1708 ms |
+| nueva | 532 ms | 808 ms | 1394 ms |
+
+- **H1 ahorra ~85 ms (−14 %)** de `precompiled-metadata`. Es estable en las 8 rondas: 608–623 ms contra
+  529–540 ms.
+- **La parte mayor del acierto sigue siendo cargar y decodificar el NSMETA** de las referencias para calcular la
+  identidad. Esta medición corrige la expectativa inicial: materializar no dominaba.
+- **El siguiente paso es L0b (diseño):** guardar en la entrada del bundle la lista completa de entradas
+  resueltas con su SHA-256, y validar el acierto rehasheando esos archivos sin decodificarlos. Antes hay que
+  auditar `resolveBinaryReference`: una referencia resuelta por búsqueda en varias raíces puede cambiar si
+  aparece un archivo nuevo en una raíz anterior.
+- **La varianza de 0.8–3.4 s del total** está fuera de las fases medidas: restauración de ~25 MB de salidas y
+  probablemente escaneo de antivirus (NO VERIFICADO).
+
+### 8.6 Prototipo de partición determinista (no aplicado; evidencia para la decisión 9.1)
+
+- **Qué es.** Un worktree aparte (`A:\nsc-devel-proto-partition`, desde `275874387`) con el parche
+  `proto-partition.patch`. El generador usa siempre una política `DeterministicIncremental`: cubetas por hash
+  del nombre decorado y Balanced si alguna queda vacía. No consulta ni guarda planes.
+- **Cómo se compiló.** Igual que las demás: clang-cl, Release, host O3.
+- **No está en la rama.**
+- **Escenarios** (`tc-proto`, cachés `p1`):
+
+| Nivel | Biblioteca | s2-body equivalente | s3-private-method aciertos | s4-public-method aciertos | s6-private-field aciertos |
+|---|---|---|---|---|---|
+| O0 | Math.Functions | **sí** (base y nueva: **NO**) | 7/9 (antes 0/9) | 7/9 (antes 0/9) | — |
+| O0 | Logging | sí | 7/9 (antes 0/9) | 7/9 (antes 0/9) | 9/9 |
+| O2 | Math.Functions | **sí** (base y nueva: **NO**) | 14/16 (antes 0/16) | 14/16 (antes 0/16) | — |
+| O2 | Logging | sí | 14/16 (antes 0/16) | 14/16 (antes 0/16) | 16/16 |
+
+- **En todos los escenarios de las dos bibliotecas, en O0 y O2, la salida incremental coincidió con la del
+  build limpio** (`equal True`), incluido el `.lib` byte a byte.
+- **Al agregar un método** sólo se recompilan la unidad que recibe la función nueva y `globals` (2 de 9 o de 16).
+- **Tiempo.** `Math.Functions` O2 con método privado: 14.4 s, contra 23–27 s en base y nueva. La reducción
+  viene casi entera de LLVM. El resto es el frontend.
+- **Lo que este prototipo NO resuelve:**
+  1. **H4.** El número de unidades sigue dependiendo de los hilos en O1–O3.
+  2. **Balance en frío.** Las cubetas por hash no balancean por costo. No se midió de forma controlada si un
+     build en frío O2/O3 se vuelve más lento; en esta corrida, `Math.Functions` O2 en frío dio 27.0 s, con
+     ruido alto.
+  3. **La prueba.** Ver la tabla siguiente.
+- **Pruebas sobre el prototipo** (`nsc_project_oop_lowering_tests`, enlazada como en la sección 10):
+
+| Ejecutable | `991eead84` | esta rama (`275874387`) | prototipo L3 |
+|---|---|---|---|
+| `nsc_project_oop_lowering_tests` | 603/629; 26 fallas de ambiente/fixtures | 603/629; **las mismas 26** | 602/629: las mismas 26 **más** *"cold generation atomically publishes its private code-partition plan"* |
+
+El prototipo rompe exactamente la verificación que fija el plan `CacheAwareBalanced` y ninguna otra. En
+particular siguen pasando:
+
+- *"one body edit invalidates exactly its code bucket while reusing coordinator and peers"*;
+- *"second equivalent generation restores every verified code unit"*;
+- la verificación del límite de 8 unidades en O0.
+
+
+
 
 ---
 
@@ -428,6 +767,9 @@ Unidad de reutilización: **la declaración** (tipo o miembro) y **el cuerpo** (
      - Agregar una función no mueve ninguna otra.
    - **Qué requiere.** Modificar o retirar esa expectativa de la prueba. Según los lineamientos, eso es un
      cambio funcional que sólo el usuario puede autorizar.
+   - **Evidencia del prototipo (8.6):**
+     - corrige H3 (equivalencia en `s2-body`) y H7 (14/16 en lugar de 0/16 al agregar un método);
+     - falla sólo *"cold generation atomically publishes its private code-partition plan"*.
    - **Además, desde H4:** para que el resultado no dependa de la máquina, el número de unidades en O1–O3 debe
      ser fijo o depender sólo del programa, no de los hilos. Eso cambia el código optimizado.
 2. **Nombres de miembro del `.lib` (H2).**
@@ -435,6 +777,8 @@ Unidad de reutilización: **la declaración** (tipo o miembro) y **el cuerpo** (
    - El contenido de cada objeto y el orden son idénticos.
    - Lo apliqué porque el valor anterior no era reproducible: cambiaba en cada build.
    - Si se requiere conservar el formato anterior, se revierte su commit sin afectar lo demás.
+   - **Evidencia** (sección 10): en la cadena completa O0, los objetos de las 32 bibliotecas son idénticos a los
+     del `nsc` instalado.
 3. **Pruebas que no enlazan (H13).** Corregir la línea de enlace en `CMakeLists.txt` está fuera de este alcance.
    Para ejecutarlas, las enlacé a mano con el mismo comando de ninja más `nsc_driver.lib nsc_basic.lib`
    (`nsc_relink_test.py`).
@@ -443,7 +787,48 @@ Unidad de reutilización: **la declaración** (tipo o miembro) y **el cuerpo** (
 
 ## 10. Pruebas y evidencia
 
-{{TESTS}}
+**Cómo se ejecutaron (HECHO):**
+
+- Las tres pruebas relacionadas con los archivos tocados no enlazan con el `CMakeLists.txt` actual, ni en
+  `991eead84` ni en esta rama (H13).
+- Se enlazaron con el mismo comando que genera ninja más `lib\nsc_driver.lib lib\nsc_basic.lib`
+  (`nsc_relink_test.py`), sin tocar el repositorio.
+- Se ejecutaron desde copias en `A:\temp\nsc-incremental-bench\tests-*`. Desde `A:\nsc-devel\build-incremental`
+  el ambiente niega la creación de directorios (sección 2.1). Eso tumbó la primera corrida con `0xC0000409`;
+  la causa es el ambiente, no el código.
+
+| Ejecutable | `991eead84` (`tests-base`) | esta rama (`tests-new`) |
+|---|---|---|
+| `nsc_compilation_artifact_cache_tests` | PASS 31 | PASS 31 |
+| `nsc_namespace_function_llvm_tests` | PASS 10 | PASS 10 |
+| `nsc_project_oop_lowering_tests` | 603/629 | 603/629 |
+
+- **Las 26 fallas de `nsc_project_oop_lowering_tests` son idénticas en texto y en orden en las dos
+  revisiones.** Dos son el SDK de import libraries ausente en `C:/Program Files (x86)/NativeSharp/sdk`. Las otras
+  24 son fixtures de agregados, enumeraciones y excepciones que no pasan por los archivos modificados.
+- **Pasan en las dos revisiones** las verificaciones de caché y partición:
+  - *"cold incremental build emits and stores every code unit"*;
+  - *"a body-only edit preserves the private code-partition topology key"*;
+  - *"cold generation atomically publishes its private code-partition plan"*;
+  - *"one body edit invalidates exactly its code bucket while reusing coordinator and peers"*;
+  - *"unchanged incremental rebuild restores every unit after the precise miss"*;
+  - *"the artifact-cache byte budget evicts private partition plans with objects"*;
+  - *"second equivalent generation restores every verified code unit from content cache"*;
+  - la verificación del tope de unidades en O0 y la de "full-debug optimized generation remains monolithic".
+- **No se ejecutó el resto de la batería (NO VERIFICADO).** Son 432 ejecutables de prueba: la suite del
+  compilador, los juegos y las demás unitarias.
+- **Validación funcional propia:**
+  - 52 pares base/nueva en build limpio, con objetos idénticos;
+  - 120 builds incrementales (60 escenarios × 2 compiladores) comparados contra su build limpio;
+  - la cadena completa de 33 bibliotecas con `tc-new` en O0, comparada con la del `nsc` instalado
+    (`nsc_chaincheck.py`).
+    - Las **32 bibliotecas que compilan** tienen objetos idénticos y el mismo orden.
+    - El `.h` es idéntico tras normalizar la identidad de build.
+    - El `.nsmeta` difiere sólo en el digest de identidad (31–32 bytes).
+    - `NativeForms` falla igual en ambos (H12).
+  - **La cadena completa con `tc-new` en O1–O3 no se corrió (NO VERIFICADO).** En esos niveles la equivalencia
+    está cubierta por los escenarios de `Logging` y `Math.Functions`.
+
 
 ---
 
@@ -460,6 +845,15 @@ Unidad de reutilización: **la declaración** (tipo o miembro) y **el cuerpo** (
 
 ## Apéndice A. Reproducción
 
+**Directorios creados en esta tarea.** Ninguno se ha borrado. Para borrarlos hace falta tu autorización.
+
+- `A:\nsc-devel\build-incremental` (build de la rama).
+- Worktree `A:\nsc-devel-baseline-991eead84` y su `build-baseline`.
+- Worktree `A:\nsc-devel-proto-partition` y su `build-proto`.
+- `A:\temp\nsc-incremental-bench` (banco, cachés y resultados).
+
+
+
 Scripts en `A:\temp\nsc-incremental-bench\`:
 
 | Script | Uso |
@@ -472,6 +866,10 @@ Scripts en `A:\temp\nsc-incremental-bench\`:
 | `nsc_scen_table.py` | tabla por fases de un `scenarios.json` |
 | `nsc_relink_test.py` | enlaza las pruebas con las bibliotecas faltantes (H13) |
 | `nsc_toolchain.py` | arma `tc-*` con layout instalado |
+| `nsc_irbench.py`, `nsc_irbench_mf.py` | rondas alternadas de inserción de campos (L2) |
+| `nsc_hitbench.py` | rondas alternadas sin cambios (H1) |
+| `nsc_crosscheck.py`, `nsc_idcheck.py`, `nsc_chaincheck.py` | equivalencia entre compiladores |
+| `msgs\proto-partition.patch` | parche del prototipo L3 (sección 8.6) |
 
 Ejemplo:
 
