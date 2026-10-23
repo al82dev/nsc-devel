@@ -61,14 +61,6 @@ bool ProjectNameLookup::typeIsVisibleTo(
         if (!nested && type.projectOrdinal < packageByProject_.size() &&
             accessingProjectOrdinal < packageByProject_.size())
         {
-            const auto fold = [](std::string value)
-            {
-                std::ranges::transform(value, value.begin(), [](unsigned char ch)
-                {
-                    return static_cast<char>(std::tolower(ch));
-                });
-                return value;
-            };
             // Package names were lower-cased once per project in initializeModules.
             if (type.accessibility == NamedTypeAccessibility::Package &&
                 foldedPackageByProject_[type.projectOrdinal] ==
@@ -80,10 +72,10 @@ bool ProjectNameLookup::typeIsVisibleTo(
                 type.projectOrdinal < friendsByProject_.size() &&
                 accessingProjectOrdinal < modules_.size())
             {
-                const std::string accessing = fold(modules_[accessingProjectOrdinal]->moduleName());
-                crosses = std::ranges::any_of(
-                    friendsByProject_[type.projectOrdinal],
-                    [&](const std::string& name) { return fold(name) == accessing; });
+                // Module and friend names were lower-cased once per project in initializeModules;
+                // the set holds exactly the folded friend names any_of compared against.
+                crosses = foldedFriendsByProject_[type.projectOrdinal].contains(
+                    foldedModuleByProject_[accessingProjectOrdinal]);
             }
         }
         if (!crosses)

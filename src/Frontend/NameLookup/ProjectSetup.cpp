@@ -96,6 +96,8 @@ void ProjectNameLookup::initializeModules(const compilation::ProjectGraph& graph
     packageByProject_.resize(projects.size());
     friendsByProject_.resize(projects.size());
     foldedPackageByProject_.resize(projects.size());
+    foldedModuleByProject_.resize(projects.size());
+    foldedFriendsByProject_.resize(projects.size());
     for (std::size_t projectOrdinal = 0; projectOrdinal < projects.size(); ++projectOrdinal)
     {
         modules_.push_back(std::make_unique<ModuleDeclarationSpace>(
@@ -106,6 +108,9 @@ void ProjectNameLookup::initializeModules(const compilation::ProjectGraph& graph
         friendsByProject_[projectOrdinal].assign(
             projects[projectOrdinal].friendModules().begin(),
             projects[projectOrdinal].friendModules().end());
+        foldedModuleByProject_[projectOrdinal] = foldedVisibilityName(modules_.back()->moduleName());
+        for (const std::string& friendModule : friendsByProject_[projectOrdinal])
+            foldedFriendsByProject_[projectOrdinal].insert(foldedVisibilityName(friendModule));
     }
 }
 
