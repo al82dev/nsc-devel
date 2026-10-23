@@ -137,7 +137,7 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
         const std::size_t dot = writtenName.rfind('.');
         return dot == std::string_view::npos ? writtenName : writtenName.substr(dot + 1U);
     }();
-    const auto bucket = typesByVisibleName_.find(std::string(terminalName));
+    const auto bucket = typesByVisibleName_.find(terminalName);
     if (bucket == typesByVisibleName_.end())
     {
         telemetry_.noteResolutionQuery(0);

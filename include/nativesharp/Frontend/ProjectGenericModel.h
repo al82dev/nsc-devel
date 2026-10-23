@@ -1581,7 +1581,11 @@ private:
         std::vector<TemplateState*>,
         basic::TransparentStringHash,
         std::equal_to<>> typesByModuleQualified_;
-    std::unordered_map<std::string, std::vector<TemplateState*>> typesByVisibleName_;
+    std::unordered_map<
+        std::string,
+        std::vector<TemplateState*>,
+        basic::TransparentStringHash,
+        std::equal_to<>> typesByVisibleName_;
     // NSC305-G03. Method-only candidate bucket keyed by method name, in source order. Used by
     // `templatesNamedBy` and the owner-less `resolveMethodTemplate` path so a lookup examines
     // homonymous methods instead of the whole catalog.
