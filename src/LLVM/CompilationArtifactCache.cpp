@@ -698,8 +698,10 @@ bool CompilationArtifactCache::prune(
         lastPruneTelemetry_.evictedEntries = evictedEntries;
         lastPruneTelemetry_.evictedBytes = evictedBytes;
     }
-    if (snapshot.valid && std::ranges::find(removed, true) != removed.end())
-        rewritePruneIndex(index, snapshot, entries, removed, false);
+    // After a walk the index is regenerated from what the walk found; otherwise it is rewritten
+    // only when entries left.
+    if (!snapshot.valid || std::ranges::find(removed, true) != removed.end())
+        rewritePruneIndex(index, snapshot, entries, removed, !snapshot.valid);
     return true;
 }
 
