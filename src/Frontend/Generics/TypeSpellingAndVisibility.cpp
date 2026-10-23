@@ -229,11 +229,16 @@ ProjectGenericModel::resolveModuleQualifiedDeclaredTypeIdentity(
         writtenName.size() - moduleSeparator - 2U);
     if (requestedModule.empty() || requestedType.empty()) return nullptr;
 
+    // Only the declarations whose source name is the requested type, in vector order; the
+    // module prefix is built once instead of once per declaration.
+    const auto candidates = declaredTypeIdentitiesBySourceName_.find(requestedType);
+    if (candidates == declaredTypeIdentitiesBySourceName_.end()) return nullptr;
+    const std::string modulePrefix = std::string(requestedModule) + "::";
     const DeclaredTypeIdentity* exact = nullptr;
-    for (const DeclaredTypeIdentity& declaration : declaredTypeIdentities_)
+    for (const std::size_t position : candidates->second)
     {
-        if (declaration.sourceName != requestedType ||
-            !declaration.identityKey.starts_with(std::string(requestedModule) + "::") ||
+        const DeclaredTypeIdentity& declaration = declaredTypeIdentities_[position];
+        if (!declaration.identityKey.starts_with(modulePrefix) ||
             (declaration.projectOrdinal != projectOrdinal && !declaration.isPublic))
             continue;
         if (exact != nullptr) return nullptr;
