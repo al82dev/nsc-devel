@@ -1144,20 +1144,26 @@ bool PublicSurfaceBuilder::emitNominalType(const interop::LibraryMetadataType &t
 std::vector<const interop::LibraryMetadataMember *> PublicSurfaceBuilder::orderedPublishedMethods(
     const interop::LibraryMetadataType &type, const std::vector<const interop::LibraryMetadataMember *> &methods)
 {
-    std::vector<const interop::LibraryMetadataMember *> orderedMethods = methods;
     const std::string declaringTypeKey = "type:" + type.identityKey;
     const auto dispatch =
         std::ranges::find_if(metadata.dispatchTables, [&](const interop::LibraryMetadataDispatch &candidate)
                              { return candidate.typeKey == declaringTypeKey; });
+    const interop::LibraryMetadataDispatch *dispatchTable =
+        dispatch == metadata.dispatchTables.end() ? nullptr : &*dispatch;
 
-    std::stable_sort(orderedMethods.begin(), orderedMethods.end(),
-                     [&](const auto *left, const auto *right)
-                     {
-                         return dispatchRank(type, declaringTypeKey,
-                                             dispatch == metadata.dispatchTables.end() ? nullptr : &*dispatch, left) <
-                                dispatchRank(type, declaringTypeKey,
-                                             dispatch == metadata.dispatchTables.end() ? nullptr : &*dispatch, right);
-                     });
+    // The rank of each method is computed once instead of twice per comparison. A stable sort
+    // of (rank, method) pairs that compares only the ranks keeps methods of equal rank in their
+    // original order, so the result is the one of stable-sorting the methods by rank.
+    std::vector<std::pair<std::size_t, const interop::LibraryMetadataMember *>> rankedMethods;
+    rankedMethods.reserve(methods.size());
+    for (const interop::LibraryMetadataMember *method : methods)
+        rankedMethods.emplace_back(dispatchRank(type, declaringTypeKey, dispatchTable, method), method);
+    std::stable_sort(rankedMethods.begin(), rankedMethods.end(),
+                     [](const auto &left, const auto &right) { return left.first < right.first; });
+    std::vector<const interop::LibraryMetadataMember *> orderedMethods;
+    orderedMethods.reserve(rankedMethods.size());
+    for (const auto &rankedMethod : rankedMethods)
+        orderedMethods.push_back(rankedMethod.second);
     return orderedMethods;
 }
 
