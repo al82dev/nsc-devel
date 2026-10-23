@@ -1,4 +1,5 @@
 #include "nativesharp/Driver/CompilationWorkerPool.h"
+#include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
@@ -253,29 +254,46 @@ void copyFunctionMetadata(
     function.localOrdinals = source.localOrdinals;
 }
 
-ProjectOopMirAbiPassing abiPassingForType(
+/// Struct layout of typeKey among the function-lowering layouts. When the shared MIR layout
+/// index is built it was built from exactly these layouts (importLayouts appends every layout
+/// before rebuildMirLayouts) and keeps the first layout of a key, so it answers like the scan;
+/// without it the scan runs as before.
+const ProjectOopMirStructLayout* functionStructLayout(
+    const ProjectCompilationIndexes* indexes,
     std::span<const ProjectOopMirStructLayout> layouts,
     std::string_view typeKey) noexcept
 {
+    if (indexes != nullptr && indexes->hasMirLayoutIndexes())
+        return indexes->mirStructLayoutForTypeKey(typeKey);
     for (const ProjectOopMirStructLayout& layout : layouts)
-        if (layout.typeKey == typeKey) return layout.abiPassing;
-    return ProjectOopMirAbiPassing::Direct;
+        if (layout.typeKey == typeKey) return &layout;
+    return nullptr;
+}
+
+ProjectOopMirAbiPassing abiPassingForType(
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::string_view typeKey) noexcept
+{
+    const ProjectOopMirStructLayout* layout = functionStructLayout(indexes, layouts, typeKey);
+    return layout != nullptr ? layout->abiPassing : ProjectOopMirAbiPassing::Direct;
 }
 
 void configureFunctionAbi(
     ProjectOopMirFunction& function,
+    const ProjectCompilationIndexes* indexes,
     std::span<const ProjectOopMirStructLayout> layouts)
 {
     function.abi.returnPassing = function.referenceReturn
         ? ProjectOopMirAbiPassing::Direct
-        : abiPassingForType(layouts, function.returnTypeKey);
+        : abiPassingForType(indexes, layouts, function.returnTypeKey);
     std::size_t physicalOrdinal = function.isStatic ? 0U : 1U;
     if (function.abi.returnPassing == ProjectOopMirAbiPassing::Indirect)
         function.abi.hiddenReturnParameterOrdinal = physicalOrdinal++;
     for (const std::string& parameterTypeKey : function.parameterTypeKeys)
     {
         function.abi.parameterPassing.push_back(
-            abiPassingForType(layouts, parameterTypeKey));
+            abiPassingForType(indexes, layouts, parameterTypeKey));
         function.abi.parameterPhysicalOrdinals.push_back(physicalOrdinal++);
     }
     function.abi.physicalParameterCount = physicalOrdinal;
@@ -804,7 +822,7 @@ ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(
 {
     ProjectOopMirFunction function;
     copyFunctionMetadata(function, source);
-    configureFunctionAbi(function, functionLayouts);
+    configureFunctionAbi(function, indexes_, functionLayouts);
     if (source.isImportedC || source.isImportedNative) return function;
     function.body = lowerNode(source.body.get(), error, functionLayouts);
     if (function.mangledName.ends_with("$poll") &&
