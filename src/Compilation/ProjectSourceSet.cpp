@@ -20,13 +20,18 @@ bool ProjectSourceSet::add(const std::filesystem::path& sourcePath, std::string&
     }
 
     std::error_code filesystemError;
-    const std::filesystem::path canonicalProject =
-        std::filesystem::weakly_canonical(projectDirectory_, filesystemError);
-    if (filesystemError || !std::filesystem::is_directory(canonicalProject))
+    if (!canonicalProjectDirectory_)
     {
-        error = "project directory does not exist: '" + projectDirectory_.string() + "'";
-        return false;
+        const std::filesystem::path resolvedProject =
+            std::filesystem::weakly_canonical(projectDirectory_, filesystemError);
+        if (filesystemError || !std::filesystem::is_directory(resolvedProject))
+        {
+            error = "project directory does not exist: '" + projectDirectory_.string() + "'";
+            return false;
+        }
+        canonicalProjectDirectory_ = resolvedProject;
     }
+    const std::filesystem::path& canonicalProject = *canonicalProjectDirectory_;
 
     const std::filesystem::path unresolved = sourcePath.is_absolute()
         ? sourcePath
