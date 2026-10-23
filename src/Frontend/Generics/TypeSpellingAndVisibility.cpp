@@ -408,15 +408,20 @@ void ProjectGenericModel::buildVisibility(const compilation::ProjectGraph& graph
     };
     for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
         projectByPath.emplace(pathKey(projects[ordinal].projectFile()), ordinal);
+    // The key of every reference is computed once; the walks of every start reuse it.
+    std::vector<std::vector<std::string>> referenceKeys(projects.size());
+    for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
+        for (const std::filesystem::path& reference : projects[ordinal].projectReferences())
+            referenceKeys[ordinal].push_back(pathKey(reference));
 
     for (std::size_t start = 0; start < projects.size(); ++start)
     {
         std::vector<bool> reachable(projects.size(), false);
         std::function<void(std::size_t)> visit = [&](std::size_t ordinal)
         {
-            for (const std::filesystem::path& reference : projects[ordinal].projectReferences())
+            for (const std::string& referenceKey : referenceKeys[ordinal])
             {
-                const auto found = projectByPath.find(pathKey(reference));
+                const auto found = projectByPath.find(referenceKey);
                 if (found == projectByPath.end() || reachable[found->second]) continue;
                 reachable[found->second] = true;
                 visit(found->second);
