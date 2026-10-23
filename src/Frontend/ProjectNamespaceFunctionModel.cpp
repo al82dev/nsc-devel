@@ -2,6 +2,8 @@
 #include "Internal/FunctionLookupEnvironment.h"
 #include "Internal/ProjectNamespaceFunctionWalkKind.h"
 #include "Internal/ProjectNamespaceFunctionWalkWork.h"
+#include "Internal/IndexShadowCheckSwitch.h"
+#include "Internal/IndexShadowMismatch.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
@@ -1646,6 +1648,20 @@ bool ProjectNamespaceFunctionModel::bindPrecompiledEscapeSummaries(
         if (!function.isPrecompiled) continue;
         const auto found = identityIndex.find(
             IdentityKey(function.moduleName, function.namespaceName, function.name, function.signatureKey));
+        if constexpr (internal::kIndexShadowCheckEnabled)
+        {
+            const auto scanned = std::ranges::find_if(identities, [&](const auto& identity)
+            {
+                return identity.moduleName == function.moduleName &&
+                    identity.namespaceName == function.namespaceName &&
+                    identity.name == function.name &&
+                    identity.signatureKey == function.signatureKey;
+            });
+            const PrecompiledNamespaceFunctionIdentity* scannedIdentity =
+                scanned == identities.end() ? nullptr : &*scanned;
+            if (scannedIdentity != (found == identityIndex.end() ? nullptr : found->second))
+                internal::reportIndexShadowMismatch("bindPrecompiledEscapeSummaries", function.signatureKey);
+        }
         if (found == identityIndex.end())
         {
             error = "precompiled namespace function '" + function.moduleName + "::" +

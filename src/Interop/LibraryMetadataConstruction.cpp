@@ -21,6 +21,8 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include "Internal/TemplateSourceReplacement.h"
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
 #include "Internal/TemplateSourcePiece.h"
 #include "Internal/ByteReader.h"
 #include "Internal/ByteWriter.h"
@@ -2364,6 +2366,22 @@ const frontend::ProjectOopMirFunction* resolveMemberPhysicalIdentity(
     if (function == nullptr || !function->isGeneratorConstructor)
     {
         const auto constructor = generatorConstructors.find(ordinal);
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        {
+            const frontend::ProjectOopMirFunction* scanned = nullptr;
+            for (const frontend::ProjectOopMirFunction& candidate :
+                 compilation.oopMirModel()->functions())
+            {
+                if (candidate.memberOrdinal != ordinal || !candidate.isGeneratorConstructor) continue;
+                scanned = &candidate;
+                break;
+            }
+            if (scanned != (constructor == generatorConstructors.end() ? nullptr : constructor->second))
+            {
+                frontend::internal::reportIndexShadowMismatch(
+                    "resolveMemberPhysicalIdentity", std::to_string(ordinal));
+            }
+        }
         if (constructor != generatorConstructors.end())
             record.mangledName = constructor->second->mangledName;
     }

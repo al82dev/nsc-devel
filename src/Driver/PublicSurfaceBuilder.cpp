@@ -1,5 +1,7 @@
 #include "PublicSurfaceBuilder.h"
 #include "PublicSurfaceEmitterSupport.h"
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
 
 #include <algorithm>
 #include <array>
@@ -1308,6 +1310,14 @@ bool PublicSurfaceBuilder::collectPublishedMembers()
             continue;
         }
         const auto typeEntry = typesByKey.find(member.declaringTypeKey);
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        {
+            const auto scanned = std::find_if(metadata.types.begin(), metadata.types.end(), [&](const auto &candidate)
+                                              { return "type:" + candidate.identityKey == member.declaringTypeKey; });
+            const interop::LibraryMetadataType *scannedType = scanned == metadata.types.end() ? nullptr : &*scanned;
+            if (scannedType != (typeEntry == typesByKey.end() ? nullptr : typeEntry->second))
+                frontend::internal::reportIndexShadowMismatch("collectPublishedMembers", member.declaringTypeKey);
+        }
         if (typeEntry == typesByKey.end())
         {
             error = "metadata member '" + member.name + "' refers to a declaring type that is not present";
@@ -1362,6 +1372,14 @@ bool PublicSurfaceBuilder::publishContractTypes()
     for (const std::string &identity : contractTypeIdentities)
     {
         const auto type = typesByIdentity.find(identity);
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        {
+            const auto scanned = std::ranges::find_if(metadata.types, [&](const auto &candidate)
+                                                      { return candidate.identityKey == identity; });
+            const interop::LibraryMetadataType *scannedType = scanned == metadata.types.end() ? nullptr : &*scanned;
+            if (scannedType != (type == typesByIdentity.end() ? nullptr : type->second))
+                frontend::internal::reportIndexShadowMismatch("publishContractTypes", identity);
+        }
         if (type == typesByIdentity.end())
         {
             error = "metadata contract refers to missing type '" + identity + "'";

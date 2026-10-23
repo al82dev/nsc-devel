@@ -3,6 +3,8 @@
 #include "../Internal/AnonymousMemberPromotionVisitState.h"
 #include "../Internal/EnumValue.h"
 #include "../Internal/EnumSuccessor.h"
+#include "../Internal/IndexShadowCheckSwitch.h"
+#include "../Internal/IndexShadowMismatch.h"
 
 #include "nativesharp/Language/AggregateSemantics.h"
 #include "nativesharp/Language/CallableSemantics.h"
@@ -381,6 +383,12 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
                 .first;
         }
         const std::string& declaringTypeKey = declaringTypeEntry->second;
+        if constexpr (internal::kIndexShadowCheckEnabled)
+        {
+            if (declaringTypeKey != canonicalize(
+                    "type:" + nameLookup_->namedTypes()[member.declaringTypeOrdinal].identity.key()))
+                internal::reportIndexShadowMismatch("bindPrecompiledPhysicalNames", declaringTypeKey);
+        }
         const std::string signatureKey = canonicalize(member.signatureKey);
         const PrecompiledMemberIdentityMatch match = identityIndex.find(
             member.kind, declaringTypeKey, member.name, signatureKey);

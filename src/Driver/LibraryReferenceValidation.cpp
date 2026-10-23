@@ -1,4 +1,6 @@
 #include "Internal/DriverInternal.h"
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
 
 #include <memory>
 
@@ -36,6 +38,25 @@ ExternalImportListBuilder::ExternalImportListBuilder(std::vector<linker::Externa
 
 void ExternalImportListBuilder::append(const std::string &dllName, const std::string &symbol)
 {
+    if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+    {
+        // The DLL index and the symbol sets must answer like appendExternalImport's scans.
+        const std::string foldedDll = foldedName(dllName);
+        const auto scannedModule = std::ranges::find_if(
+            modules_, [&](const auto &candidate) { return foldedName(candidate.dllName) == foldedDll; });
+        const auto indexedModule = moduleByFoldedName_.find(foldedDll);
+        const bool sameModule = indexedModule == moduleByFoldedName_.end()
+                                    ? scannedModule == modules_.end()
+                                    : scannedModule != modules_.end() &&
+                                          static_cast<std::size_t>(scannedModule - modules_.begin()) ==
+                                              indexedModule->second;
+        if (!sameModule)
+            frontend::internal::reportIndexShadowMismatch("ExternalImportListBuilder::append", dllName);
+        if (scannedModule != modules_.end() &&
+            (std::ranges::find(scannedModule->symbols, symbol) != scannedModule->symbols.end()) !=
+                symbolsByModule_[indexedModule->second].contains(symbol))
+            frontend::internal::reportIndexShadowMismatch("ExternalImportListBuilder::append", symbol);
+    }
     const auto [module, inserted] = moduleByFoldedName_.emplace(foldedName(dllName), modules_.size());
     if (inserted)
     {

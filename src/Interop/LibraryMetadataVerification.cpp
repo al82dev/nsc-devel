@@ -21,6 +21,8 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include "Internal/TemplateSourceReplacement.h"
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
 #include "Internal/TemplateSourcePiece.h"
 #include "Internal/ByteReader.h"
 #include "Internal/ByteWriter.h"
@@ -729,6 +731,41 @@ bool verifyMetadataDispatchContracts(
         }
     }
     const MetadataDispatchIndex dispatchIndex = buildMetadataDispatchIndex(metadata);
+    if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+    {
+        // Every key the scans could find must map to the first table of that key, and every
+        // signature to the ascending list of matching slots of its table.
+        for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
+        {
+            const LibraryMetadataDispatch* first = nullptr;
+            for (const LibraryMetadataDispatch& candidate : metadata.dispatchTables)
+            {
+                if (candidate.typeKey != dispatch.typeKey) continue;
+                first = &candidate;
+                break;
+            }
+            if (findMetadataDispatch(dispatchIndex, dispatch.typeKey) != first)
+                frontend::internal::reportIndexShadowMismatch("findMetadataDispatch", dispatch.typeKey);
+            const auto table = dispatchIndex.slotsBySignature.find(&dispatch);
+            if (table == dispatchIndex.slotsBySignature.end())
+                frontend::internal::reportIndexShadowMismatch("findMetadataDispatchSlot", dispatch.typeKey);
+            for (std::size_t slot = 0; slot < dispatch.slotSignatures.size(); ++slot)
+            {
+                std::vector<std::size_t> scanned;
+                for (std::size_t other = 0; other < dispatch.slotSignatures.size(); ++other)
+                {
+                    if (dispatch.slotSignatures[other] == dispatch.slotSignatures[slot])
+                        scanned.push_back(other);
+                }
+                const auto indexed = table->second.find(dispatch.slotSignatures[slot]);
+                if (indexed == table->second.end() || indexed->second != scanned)
+                {
+                    frontend::internal::reportIndexShadowMismatch(
+                        "findMetadataDispatchSlot", dispatch.slotSignatures[slot]);
+                }
+            }
+        }
+    }
     for (const LibraryMetadataMember& member : metadata.members)
         if (!verifyVirtualMemberDispatch(dispatchIndex, member, typesByKey, error)) return false;
     return true;
