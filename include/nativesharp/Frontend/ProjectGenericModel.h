@@ -149,6 +149,11 @@ private:
         // records se copian uno a uno y en orden. La validacion de constraints necesita ir de una
         // especializacion a su plantilla, y este es el enlace.
         std::size_t ordinal = 0;
+        // Type templates only: qualifiedName(namespaceName, qualifiedTypeName), computed once in
+        // buildTemplateIndexes together with the bucket keys that are built from the same fields.
+        // Last member, so the positional initializers of the members above keep their meaning
+        // (they pass {} for it).
+        std::string qualifiedTypeSpelling;
     };
 
     // A lightweight predeclaration used only while the generic pass is choosing a cache key.

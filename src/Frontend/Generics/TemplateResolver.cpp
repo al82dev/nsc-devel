@@ -151,8 +151,9 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
     {
         if (!templateVisible(unit.projectOrdinal(), state->record)) continue;
         if (arity != sinFiltro && !genericArityAccepts(state->record, arity)) continue;
-        const std::string candidate =
-            qualifiedName(state->record.namespaceName, state->record.qualifiedTypeName);
+        // Built once per type template in buildTemplateIndexes (the buckets only hold type
+        // templates, and their records do not change after the buckets are built).
+        const std::string& candidate = state->qualifiedTypeSpelling;
         if (writtenName.find('.') != std::string_view::npos)
         {
             if (candidate == writtenName)

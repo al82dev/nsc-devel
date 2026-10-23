@@ -167,7 +167,7 @@ bool ProjectGenericModel::tryRestoreTemplateRecord(
     record.c1CacheKey = key;
     telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
     templateStates_.push_back(
-        TemplateState{std::move(record), &unit, node, parent, templateStates_.size()});
+        TemplateState{std::move(record), &unit, node, parent, templateStates_.size(), {}});
     return true;
 }
 

@@ -353,9 +353,9 @@ void ProjectGenericModel::buildTemplateIndexes()
         stateByCanonicalKey_.emplace(state.record.canonicalKey, &state);
         if (state.record.kind != GenericTemplateKind::Method)
         {
-            typesByModuleQualified_[
-                state.record.moduleName + "::" +
-                qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName)]
+            state.qualifiedTypeSpelling =
+                qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName);
+            typesByModuleQualified_[state.record.moduleName + "::" + state.qualifiedTypeSpelling]
                 .push_back(&state);
             typesByVisibleName_[state.record.name].push_back(&state);
         }

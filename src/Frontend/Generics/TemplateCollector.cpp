@@ -214,7 +214,7 @@ void ProjectGenericModel::collectGenericTypeTemplate(
     record.c1CacheKey = templateCacheKey(record.sourceFingerprint);
     telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
     templateStates_.push_back(
-        TemplateState{record, &unit, node, parent, templateStates_.size()});
+        TemplateState{record, &unit, node, parent, templateStates_.size(), {}});
 }
 
 void ProjectGenericModel::collectGenericMethodTemplate(
@@ -263,7 +263,7 @@ void ProjectGenericModel::collectGenericMethodTemplate(
         node->auxiliaryText() == "controlled-specialization";
     telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
     templateStates_.push_back(
-        TemplateState{record, &unit, node, parent, templateStates_.size()});
+        TemplateState{record, &unit, node, parent, templateStates_.size(), {}});
 }
 
 void ProjectGenericModel::pushCollectTemplateChildren(
