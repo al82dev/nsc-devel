@@ -265,7 +265,8 @@ bool ProjectGenericModel::commitTypeSpecializationProduct(
         *state.unit, product.clone, state.record.namespaceName, specializedName,
         GenericLookupScope{}, false, diagnostics);
     // NSC305-C03. Persist the specialized clone (the C3 cache payload) under the specialization key.
-    if (templateCache_.enabled())
+    // Nothing is stored once the compilation has reported an error.
+    if (templateCache_.enabled() && !diagnostics.hasErrors())
     {
         std::string error;
         (void)templateCache_.store(key, specializationPayload, error);

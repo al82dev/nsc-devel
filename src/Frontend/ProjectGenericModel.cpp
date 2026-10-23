@@ -541,13 +541,14 @@ bool ProjectGenericModel::materializePendingDemandsForBuild(
     return true;
 }
 
-void ProjectGenericModel::finalizeBuildState()
+void ProjectGenericModel::finalizeBuildState(const diagnostics::DiagnosticEngine& diagnostics)
 {
     telemetry_.maximumLogicalDepth = instantiationBudget_.maximumObservedDepth();
     // NSC305-C01. Persist the collected template records (the C1 metadata) when the cache is enabled.
     // restoreTemplateRecords is not called here: it only counted hits after the build, and those
-    // counts went into the instantiation-cache hit statistics.
-    storeTemplateRecords();
+    // counts went into the instantiation-cache hit statistics. Nothing is stored from a
+    // compilation that reported errors.
+    if (!diagnostics.hasErrors()) storeTemplateRecords();
     indexes_->rebuildGenerics(templateRecords_, specializations_);
     built_ = true;
 }
@@ -602,7 +603,7 @@ bool ProjectGenericModel::build(
     {
         return false;
     }
-    finalizeBuildState();
+    finalizeBuildState(diagnostics);
     return !diagnostics.hasErrors();
 }
 

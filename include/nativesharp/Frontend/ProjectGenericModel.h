@@ -555,7 +555,7 @@ private:
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics);
     bool materializePendingDemandsForBuild(diagnostics::DiagnosticEngine& diagnostics);
-    void finalizeBuildState();
+    void finalizeBuildState(const diagnostics::DiagnosticEngine& diagnostics);
 
     bool specializeGenericLambdaCall(
         ProjectSyntaxUnit& unit,
