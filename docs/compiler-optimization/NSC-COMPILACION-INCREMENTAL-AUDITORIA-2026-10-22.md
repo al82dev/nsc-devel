@@ -39,13 +39,12 @@ INFERENCIA = conclusión razonada que todavía no se midió. NO VERIFICADO = no 
    causa es el plan de partición `CacheAwareBalanced`: se restaura del historial de la caché, así que el reparto
    de funciones entre unidades depende de compilaciones anteriores. En O1–O3 esto cambia además el código
    optimizado, porque el inlining sólo ocurre dentro de una unidad.
-   - **Esto contradice la equivalencia estricta.**
-   - **No lo cambié:** una prueba existente (`ProjectOopLoweringTests`) fija ese diseño, y las pruebas no se
-     modifican sin autorización (sección 9).
-   - **Hay un prototipo compilado y medido de la política determinista (sección 8.6).** Con él:
-     - la equivalencia se cumple en todos los escenarios;
-     - agregar un método reutiliza 14 de 16 unidades (antes 0);
-     - pero falla exactamente esa verificación de la prueba.
+   - **Esto contradecía la equivalencia estricta.**
+   - **Corregido en esta rama (L3, commit `712b3137c`)**, con autorización del usuario del 2026-10-22 para
+     cambiar la política y la verificación de prueba que fijaba el diseño anterior (sección 8.7):
+     - la equivalencia se cumple en los 52 escenarios, en O0, O1, O2 y O3;
+     - agregar un método reutiliza 7 de 9 unidades en O0 y 14 de 16 en O1–O3 (antes 0);
+     - el build en frío no se volvió más lento (fase LLVM, sección 8.7).
 4. **El `.lib` cambiaba byte a byte entre dos builds de la misma entrada (HECHO).** Los nombres de los miembros
    del archivo COFF llevaban la ruta temporal `…\Temp\nativesharp-codegen-<reloj>-0\program-N.obj`.
    - **Corregido en esta rama.** Los miembros ahora son `program-N.obj`.
@@ -405,17 +404,17 @@ Tiempos en ms (`timing total_ms`). Aciertos = objetos restaurados de la caché d
 |---|---|---|---|
 | H1 | HECHO, corregido (ganancia menor: −14 % de `precompiled-metadata`) | El acierto de bundle materializaba todos los módulos precompilados antes de consultar el bundle; lo dominante es decodificar el NSMETA | `configurePrecompiledModules`: `preparePrecompiledProject` antes de `calculateIdentity`; s1 en `Math.Functions`: 615 → 532 ms (8 rondas, sección 8.5) |
 | H2 | HECHO, corregido | El `.lib` difiere byte a byte entre builds idénticos: nombres de miembro con ruta temporal y reloj | `nsc_compare.py`: payloads idénticos, tabla `//` distinta (`nativesharp-codegen-2358…` contra `2361…`) |
-| H3 | HECHO, **no corregido (requiere autorización)** | La salida incremental depende del historial de la caché: el plan `CacheAwareBalanced` restaurado no coincide con el reparto de un build limpio | s2-body en `Math.Functions`: `equal False` en O0, O1, O2 y O3; objetos `program-1..8` con tamaños distintos y `program-0` (globals) idéntico |
+| H3 | HECHO, **corregido (L3, `712b3137c`, autorizado)** | La salida incremental depende del historial de la caché: el plan `CacheAwareBalanced` restaurado no coincide con el reparto de un build limpio | s2-body en `Math.Functions`: `equal False` en O0, O1, O2 y O3; objetos `program-1..8` con tamaños distintos y `program-0` (globals) idéntico |
 | H4 | HECHO | El número de unidades depende de los hilos de la máquina en O1–O3 (`partitionCount = workerCount`). El `.lib`, y en O1–O3 el código optimizado (inlining sólo dentro de una unidad), dependen de la máquina | `ProjectOopObjectGenerator::generate`; `code-units: 15` aquí |
 | H5 | HECHO | La identidad MIR usa ordinales globales; cualquier inserción invalida casi todo | sección 5.1 |
 | H6 | HECHO | El digest común cubre todo el modelo; un campo en una clase invalida todas las unidades | s6-private-field: 0/9 y 0/16 |
-| H7 | HECHO | La clave del plan incluye el conjunto de funciones; agregar una función redistribuye todo | `persistentPlanKey` |
+| H7 | HECHO, **corregido (L3)** | La clave del plan incluye el conjunto de funciones; agregar una función redistribuye todo | `persistentPlanKey` |
 | H8 | HECHO | En un acierto de bundle, el reporte `--time` reimprime las líneas `code-unit` del build original (`miss-reason=cold`) | log de s1-nochange |
 | H9 | HECHO | Cada acierto LLVM paga copia y verificación COFF (≈14 ms por unidad), y el `.lib` se vuelve a armar si cambió cualquier objeto | líneas `code-unit` de s5-comment |
 | H10 | HECHO | Sin reutilización del frontend; pico de 4.6–5.2 GB en `Math.Functions` (`method-bodies` sube de 0.7 a 2.6 GB) | `peak_working_set_bytes` por fase |
 | H11 | HECHO, causa NO VERIFICADA | `Math.Core`: ~1 s de `oop-hir` con 8 ms de `method-bodies` | tabla en frío, sección 4 |
 | H12 | HECHO, causa NO VERIFICADA | Regresión: `new void*[7]` y `stackalloc void*[n]` rechazados con `void cannot be used as an allocation element type` (NativeForms y selfhost) | logs de la cadena; también con `tc-base` |
-| H13 | HECHO | Las pruebas `nsc_project_oop_lowering_tests`, `nsc_namespace_function_llvm_tests` y `nsc_compilation_artifact_cache_tests` **no enlazan** con el `CMakeLists.txt` actual: faltan `nsc_basic` y `nsc_driver` en su línea de enlace (`kCompilerBuildId`, `CompilationGraphScheduler::clear`, `writeFileTransactionally`) | mismo error en `991eead84` y en esta rama |
+| H13 | HECHO, **corregido (`89a0550bb`)** | Las pruebas `nsc_project_oop_lowering_tests`, `nsc_namespace_function_llvm_tests` y `nsc_compilation_artifact_cache_tests` **no enlazan** con el `CMakeLists.txt` actual: faltan `nsc_basic` y `nsc_driver` en su línea de enlace (`kCompilerBuildId`, `CompilationGraphScheduler::clear`, `writeFileTransactionally`) | mismo error en `991eead84` y en esta rama |
 | H14 | HECHO | Con el ambiente actual, 26 de 629 verificaciones de `nsc_project_oop_lowering_tests` fallan **igual** en `991eead84` y en esta rama: falta `C:/Program Files (x86)/NativeSharp/sdk/win64/import-libraries` y fallan los fixtures de agregados | sección 10 |
 
 ---
@@ -445,7 +444,7 @@ Tiempos en ms (`timing total_ms`). Aciertos = objetos restaurados de la caché d
 | L0b | Acierto de bundle sin decodificar NSMETA | Lista de entradas resueltas + SHA-256 guardada en el bundle, validada rehasheando | Diseñado (8.5); requiere auditar la resolución de referencias |
 | L1 | Archivo `.lib` determinista | Nombres de miembro estables | **Implementado** (H2) |
 | L2 | Objeto por unidad desde IR idéntico | SHA-256 del IR previo a la optimización + target + nivel + pipeline + identidad de codegen + inlining obligatorio | **Implementado** |
-| L3 | Partición determinista y estable | Función pura del MIR: cubetas por hash del nombre decorado, con Balanced cuando alguna queda vacía | **Prototipo compilado y medido (8.6); no aplicado** por la prueba que fija `CacheAwareBalanced` (sección 9) |
+| L3 | Partición determinista y estable | Función pura del MIR: cubetas por hash del nombre decorado, con Balanced cuando alguna queda vacía | **Implementado** (`712b3137c`, sección 8.7) |
 | L4 | Objeto por unidad sin bajar a IR | Identidad MIR **simbólica**: sin ordinales y con un digest común **por unidad** (sólo tipos, tablas y estáticos que la unidad referencia) | Diseñado; requiere auditar cada uso de ordinal en el lowering |
 | L5 | Frontend por declaración y por cuerpo | Ver 7.4 | Diseñado; prerrequisitos en 7.5 |
 | L6 | NSMETA de referencias decodificado | Snapshot binario mapeable, por SHA-256 del NSMETA | Diseñado |
@@ -476,8 +475,8 @@ Flujo por unidad en `processObjectCodeUnit`:
 - Los nombres derivados de ordinales de **tipo** (`__nativesharp_allocator_deallocate_<typeOrdinal>`,
   sufijos de estado estático) cambian el IR si se inserta un **tipo**. Insertar un método o un campo no los
   mueve.
-- Con `CacheAwareBalanced`, agregar una función redistribuye todas las unidades (H7). Su IR cambia y L2 no
-  ayuda en ese escenario hasta que se aplique L3.
+- Con `CacheAwareBalanced`, agregar una función redistribuía todas las unidades (H7). Su IR cambiaba y L2 no
+  ayudaba en ese escenario. Con L3 (sección 8.7) sólo cambia la unidad que recibe la función nueva.
 
 ### 7.4 L5: frontend incremental (diseño)
 
@@ -550,7 +549,9 @@ Unidad de reutilización: **la declaración** (tipo o miembro) y **el cuerpo** (
 | `a7b592c90` | H2: nombres estables de los miembros del `.lib` (`program-N.obj`) | `src/Linker/LldLinker.cpp` + este documento |
 | `07b53c6d7` | L2: reutilizar objetos por IR previo a la optimización cuando falla la identidad MIR | `ProjectOopObjectGenerator.cpp`, `LlvmOptimizer.h`, `CodeUnitTelemetry.h`, `CodeUnitIrReuse.h` (nuevo), `DriverExecution.cpp` |
 | `275874387` | H1: consultar el bundle antes de materializar los módulos precompilados | `PrecompiledProjectPreparation.{h,cpp}`, `PrecompiledModuleConfiguration.cpp` |
-| (este commit) | Documento con resultados y corrección del comentario de motivo en `PrecompiledProjectPreparation.cpp` | este documento + comentario |
+| `e88f0b44d` | Documento con resultados y corrección del comentario de motivo en `PrecompiledProjectPreparation.cpp` | este documento + comentario |
+| `712b3137c` | L3: partición `DeterministicIncremental` en todo modo de caché y LTO (autorizado); pruebas ajustadas y nueva verificación de equivalencia | `ProjectOopCodePartitionPolicy.h`, `ProjectOopCodePartition.cpp`, `ProjectOopObjectGenerator.cpp`, `tests/unit/ProjectOopLoweringTests.cpp` |
+| `89a0550bb` | H13: `nsc_compilation` enlaza `nsc_basic` y contiene `CompilationGraphScheduler.cpp`; todas las pruebas enlazan | `CMakeLists.txt` |
 
 - **Cómo se compiló.** Los tres cambios se compilaron y probaron juntos, en el estado final de la rama.
 - **Qué no se verificó.** No se compiló cada commit intermedio por separado (NO VERIFICADO).
@@ -709,7 +710,7 @@ reutiliza exactamente cuando el código generado sería el mismo.
 - **La varianza de 0.8–3.4 s del total** está fuera de las fases medidas: restauración de ~25 MB de salidas y
   probablemente escaneo de antivirus (NO VERIFICADO).
 
-### 8.6 Prototipo de partición determinista (no aplicado; evidencia para la decisión 9.1)
+### 8.6 Prototipo de partición determinista (evidencia previa a la decisión 9.1; reemplazado por 8.7)
 
 - **Qué es.** Un worktree aparte (`A:\nsc-devel-proto-partition`, desde `275874387`) con el parche
   `proto-partition.patch`. El generador usa siempre una política `DeterministicIncremental`: cubetas por hash
@@ -752,11 +753,73 @@ particular siguen pasando:
 
 
 
+### 8.7 L3 aplicado: partición `DeterministicIncremental` (commit `712b3137c`)
+
+- **Autorización.** El usuario autorizó el 2026-10-22 cambiar la política y la verificación de prueba que fijaba
+  `CacheAwareBalanced`.
+- **Qué cambió.**
+  - `buildObjectPartition` usa `DeterministicIncremental` en todo modo de caché y de LTO.
+  - Ya no calcula clave de plan ni restaura planes. Con la clave vacía, `finishCodeUnitBundle` no guarda
+    ninguno.
+  - `CacheAwareBalanced`, su payload y la API de planes de la caché quedan intactos y probados.
+- **Diferencia con el prototipo (8.6).** El prototipo cambiaba lo mismo, pero sin pruebas ajustadas ni
+  documentación.
+- **Pruebas ajustadas** (`tests/unit/ProjectOopLoweringTests.cpp`):
+  - *"cold generation publishes no code-partition plan: the partition is a pure function of the MIR"*
+    reemplaza a la verificación que exigía publicar el plan;
+  - la verificación de restauración de `CacheAwareBalanced` usa el payload de la partición en frío;
+  - la verificación de poda guarda un plan a mano, para seguir cubriendo el desalojo de planes;
+  - **nueva:** *"an incremental generation emits the same objects as a clean generation of the same sources"*,
+    que compara byte a byte contra una generación con caché vacía.
+- **Cambio de salida (esperado).** Los objetos particionados difieren de los del compilador anterior, porque el
+  reparto ahora es por hash del nombre. El número de unidades no cambia: O0 min(hilos, 8); O1–O3, hilos (H4).
+
+**Escenarios con `tc-l3`** (cachés `l3b`, una corrida; ms del build incremental / build limpio de referencia;
+entre paréntesis, unidades reusadas de 9 en O0 y de 16 en O1–O3). En **los 52** la salida incremental es igual
+a la del build limpio (`equal True`), incluido el `.lib` byte a byte.
+
+| Nivel | Biblioteca | s5-comment | s2-body | s3-private-method | s4-public-method | s6-private-field |
+|---|---|---|---|---|---|---|
+| O0 | Math.Functions | 8831 / 10532 (9) | 15779 / 18061 (8) | 10198 / 11201 (7) | 10710 / 16706 (7) | — |
+| O1 | Math.Functions | 10156 / 19966 (16) | 10849 / 16652 (15) | 14425 / 20365 (14) | 13145 / 15232 (14) | — |
+| O2 | Math.Functions | 8928 / 18529 (16) | 12017 / 19539 (15) | 14738 / 23922 (14) | 14359 / 18245 (14) | — |
+| O3 | Math.Functions | 9511 / 18826 (16) | 12128 / 20786 (15) | 14585 / 24018 (14) | 16241 / 18605 (14) | — |
+| O0 | Logging | 582 / 972 (9) | 1100 / 1261 (8) | 743 / 778 (7) | 624 / 767 (7) | 744 / 697 (9) |
+| O1 | Logging | 559 / 719 (16) | 577 / 729 (15) | 624 / 720 (14) | 614 / 743 (14) | 523 / 696 (16) |
+| O2 | Logging | 560 / 773 (16) | 645 / 744 (15) | 613 / 798 (14) | 598 / 762 (14) | 560 / 810 (16) |
+| O3 | Logging | 547 / 780 (16) | 642 / 800 (15) | 634 / 816 (14) | 611 / 756 (14) | 555 / 806 (16) |
+
+- Antes de L3, `s3` y `s4` reusaban 0 unidades en todos los niveles (sección 4.2).
+- Una sola corrida: los tiempos tienen ruido (sección 2.3); los conteos de unidades son exactos.
+- Con un método nuevo, lo que queda es casi todo frontend (sección 7.4).
+
+**Build en frío, `tc-new` (antes de L3) contra `tc-l3`** (`nsc_coldbench.py`, 3 rondas alternadas, caché
+nueva en cada build; mediana en ms):
+
+| Nivel | Math.Functions total | Math.Functions LLVM | Logging total | Logging LLVM |
+|---|---|---|---|---|
+| O0 | 15752 → 16579 | 3121 → 2670 | 726 → 659 | 157 → 127 |
+| O1 | 17722 → 14713 | 7104 → 6838 | 1405 → 821 | 225 → 246 |
+| O2 | 18902 → 18391 | 10726 → 10587 | 809 → 830 | 255 → 279 |
+| O3 | 18657 → 20041 | 10581 → 10598 | 804 → 769 | 257 → 257 |
+
+- **HECHO:** la fase LLVM, la única que cambia con la partición, no se volvió más lenta. En O0 y O1 bajó en
+  `Math.Functions`.
+- Los totales varían ±3 s entre rondas por el frontend; no son evidencia en ningún sentido.
+- **INFERENCIA:** las cubetas por hash quedan bien balanceadas porque estas bibliotecas tienen cientos de
+  funciones por unidad. En un programa con pocas funciones muy grandes el balance podría ser peor que LPT; no se
+  midió (NO VERIFICADO).
+
+**Cadena completa con `tc-l3`** (33 paquetes, caché nueva): en O0, O1, O2 y O3 compilan 32. `NativeForms` falla
+igual que antes (H12). Tiempo total de la cadena: O0 72.9 s, O1 82.2 s, O2 88.9 s, O3 85.3 s; base con el `nsc`
+instalado: 78.1, 79.5, 90.1 y 86.2 s (sección 4.1, otro momento: comparación sólo indicativa).
+
 ---
 
-## 9. Decisiones que requieren autorización
+## 9. Decisiones (estado al 2026-10-22)
 
-1. **Política de partición determinista (L3, corrige H3 y H7).**
+1. **Política de partición determinista (L3, corrige H3 y H7). RESUELTA: autorizada y aplicada
+   (`712b3137c`, sección 8.7).** Lo que sigue es el planteamiento original.
    - **Qué la frena.** `ProjectOopLoweringTests` exige que la generación con caché publique el plan
      `CacheAwareBalanced` bajo `persistentPlanKey` y que ese plan reproduzca el reparto Balanced en frío
      (*"cold generation atomically publishes its private code-partition plan"*).
@@ -779,9 +842,15 @@ particular siguen pasando:
    - Si se requiere conservar el formato anterior, se revierte su commit sin afectar lo demás.
    - **Evidencia** (sección 10): en la cadena completa O0, los objetos de las 32 bibliotecas son idénticos a los
      del `nsc` instalado.
-3. **Pruebas que no enlazan (H13).** Corregir la línea de enlace en `CMakeLists.txt` está fuera de este alcance.
-   Para ejecutarlas, las enlacé a mano con el mismo comando de ninja más `nsc_driver.lib nsc_basic.lib`
-   (`nsc_relink_test.py`).
+3. **Pruebas que no enlazan (H13). RESUELTA (`89a0550bb`).** Con la autorización del usuario de hacer los
+   cambios necesarios para mejorar el compilador, se corrigió la causa en `CMakeLists.txt`:
+   - `nsc_compilation` usaba `nsc_basic` sin enlazarlo;
+   - `CompilationGraphScheduler.cpp` vivía en `nsc_driver`, que depende de `nsc_frontend`, y `nsc_frontend` lo
+     usa.
+
+   Ahora `CompilationGraphScheduler.cpp` está en `nsc_compilation`, junto a `CompilationWorkerPool.cpp`, y
+   `nsc_compilation` enlaza `nsc_basic`. En el build completo enlazan 431 ejecutables, con 0 símbolos
+   indefinidos. Antes, las pruebas había que enlazarlas a mano con `nsc_relink_test.py`.
 
 ---
 
@@ -815,8 +884,31 @@ particular siguen pasando:
   - *"the artifact-cache byte budget evicts private partition plans with objects"*;
   - *"second equivalent generation restores every verified code unit from content cache"*;
   - la verificación del tope de unidades en O0 y la de "full-debug optimized generation remains monolithic".
-- **No se ejecutó el resto de la batería (NO VERIFICADO).** Son 432 ejecutables de prueba: la suite del
-  compilador, los juegos y las demás unitarias.
+- **Batería completa (después de L3 y H13, HECHO).** Se corrió la batería completa de CTest (686 pruebas) de
+  `991eead84` (con sólo la corrección de enlace H13 aplicada en su worktree) y de esta rama (`89a0550bb`), con
+  `nsc_suite.py`:
+  - copia de cada build fuera de `A:\nsc-devel` (`A:\temp\nsc-suite\{base,l3}`), por el problema de ambiente
+    de la sección 2.1;
+  - mismo comando, directorio y ambiente que CTest, con la ruta del build sustituida;
+  - `TEMP`/`TMP` dentro de la copia, para no escribir en `C:`;
+  - reglas de CTest: `PASS_REGULAR_EXPRESSION`, `WILL_FAIL`, `RUN_SERIAL` y `DEPENDS`.
+
+  | Revisión | pasan | fallan | no corren |
+  |---|---|---|---|
+  | `991eead84` + H13 | 387 | 297 | 2 |
+  | esta rama (`89a0550bb`) | 387 | 297 | 2 |
+
+  - **Las 686 pruebas tienen el mismo resultado y el mismo código de salida en las dos revisiones.**
+  - En las 224 pruebas que imprimen *"FAILED: N of M checks"*, N es igual en las dos. La única diferencia de M es
+    `nsc.project-oop-lowering`: 629 contra 630, por la verificación de equivalencia nueva de L3, que pasa.
+  - **Las 297 fallas son de ambiente y no prueban nada en ninguno de los dos sentidos:**
+    - 161 buscan el SDK instalado en `C:/Program Files (x86)/NativeSharp` (no existe, y no se escribe en `C:`);
+    - otras buscan bibliotecas en `A:\nsc-devel\lib\…` o rutas del build original compiladas en la prueba;
+    - el resto son ejecuciones de fixtures que fallan igual en la base (por ejemplo, `0xC00000FD`).
+  - **Las 2 que no corren** son `nsc.ns3.t03.sum-types` y `nsc.ns3.t10.await-protocol`. Sus fuentes de prueba no
+    compilan, **igual en `991eead84`** (`MatchArmCoverage` ganó `listLengths`; el inicializador de await quedó
+    viejo). No se tocaron.
+- **Batería anterior a L3/H13 (la que dice "no se ejecutó"):** reemplazada por el punto anterior.
 - **Validación funcional propia:**
   - 52 pares base/nueva en build limpio, con objetos idénticos;
   - 120 builds incrementales (60 escenarios × 2 compiladores) comparados contra su build limpio;
@@ -826,8 +918,11 @@ particular siguen pasando:
     - El `.h` es idéntico tras normalizar la identidad de build.
     - El `.nsmeta` difiere sólo en el digest de identidad (31–32 bytes).
     - `NativeForms` falla igual en ambos (H12).
-  - **La cadena completa con `tc-new` en O1–O3 no se corrió (NO VERIFICADO).** En esos niveles la equivalencia
-    está cubierta por los escenarios de `Logging` y `Math.Functions`.
+  - **La cadena completa con `tc-new` en O1–O3 no se corrió.** En esos niveles la equivalencia está cubierta por
+    los escenarios de `Logging` y `Math.Functions`.
+  - **Con `tc-l3` (después de L3) la cadena completa sí se corrió en O0, O1, O2 y O3:** compilan 32 de 33 en cada
+    nivel, y `NativeForms` falla igual (H12, sección 8.7). Sus objetos difieren de los del `nsc` instalado por
+    diseño (otro reparto), así que no se compararon byte a byte contra él.
 
 
 ---
@@ -840,6 +935,16 @@ particular siguen pasando:
   depuración cualquier edición invalida todo. NO VERIFICADO con mediciones.
 - **Juegos o proyectos EXE/DLL.** Las mediciones son de bibliotecas estáticas. Los EXE pasan además por el
   enlace incremental (`.nslinc`), que no se auditó aquí.
+- **H4.** El número de unidades en O1–O3 sigue dependiendo de los hilos de la máquina. No se cambió.
+- **Balance de L3 en programas con pocas funciones muy grandes.** NO VERIFICADO (sección 8.7).
+- **Las 297 pruebas que fallan por ambiente.** Para que prueben algo hace falta el SDK instalado en
+  `C:/Program Files (x86)/NativeSharp` y las bibliotecas en `A:\nsc-devel\lib`. Eso no se hizo: no se escribe en
+  `C:`.
+- **Las mediciones con `nsc_incremental_bench.py` y `nsc_scenarios.py` no redirigen `TEMP`.** El `nsc` medido creó
+  sus directorios temporales de codegen en el `TEMP` del proceso, `C:\Users\al82dev\AppData\Local\Temp`
+  (HECHO). Ahí quedan 15 directorios `nativesharp-codegen-*`. No se sabe cuántos son de esta tarea y cuántos de
+  builds anteriores (NO VERIFICADO), ni por qué no se borraron. No se tocaron. `nsc_suite.py` sí redirige `TEMP`
+  a `A:`.
 
 ---
 
@@ -851,6 +956,10 @@ particular siguen pasando:
 - Worktree `A:\nsc-devel-baseline-991eead84` y su `build-baseline`.
 - Worktree `A:\nsc-devel-proto-partition` y su `build-proto`.
 - `A:\temp\nsc-incremental-bench` (banco, cachés y resultados).
+- `A:\temp\nsc-suite\base` y `A:\temp\nsc-suite\l3`: copias de los builds para la batería completa
+  (~15 GB cada una).
+- **Modificado sin commit:** `A:\nsc-devel-baseline-991eead84\CMakeLists.txt` tiene la corrección H13, para
+  poder enlazar y correr la batería de la base.
 
 
 
@@ -870,6 +979,9 @@ Scripts en `A:\temp\nsc-incremental-bench\`:
 | `nsc_hitbench.py` | rondas alternadas sin cambios (H1) |
 | `nsc_crosscheck.py`, `nsc_idcheck.py`, `nsc_chaincheck.py` | equivalencia entre compiladores |
 | `msgs\proto-partition.patch` | parche del prototipo L3 (sección 8.6) |
+| `nsc_coldbench.py` | builds en frío alternados `tc-new` / `tc-l3` (sección 8.7) |
+| `nsc_suite.py` | copia de un build y batería de CTest fuera de `A:\nsc-devel` (sección 10) |
+| `nsc_logrun.py` | corre un programa, guarda toda la salida en un log e imprime sólo las fallas |
 
 Ejemplo:
 
