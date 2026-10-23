@@ -291,9 +291,9 @@ bool buildExecutableRuntime(
     return false;
 }
 
-bool optimizeExecutableModules(
+/// Optimizes the program module; the runtime module is optimized on its own (or restored).
+bool optimizeExecutableProgram(
     llvm_backend::LlvmModule& programModule,
-    llvm_backend::LlvmModule& runtimeModule,
     const llvm_backend::LlvmTargetMachine& targetMachine,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     std::string& error)
@@ -310,20 +310,10 @@ bool optimizeExecutableModules(
     llvm_backend::LlvmOptimizer optimizer;
     llvm_backend::LlvmOptimizationObservation programObservation;
     std::string optimizationError;
-    if (!optimizer.optimize(
-            programModule, targetMachine, optimizationLevel, &programObservation,
-            optimizationError))
-    {
-        error = "program LLVM optimization failed: " + optimizationError;
-        return false;
-    }
-    optimizationError.clear();
-    // NSC-LIMIT-005: observada, igual que la de arriba.
-    llvm_backend::LlvmOptimizationObservation runtimeObservation;
     if (optimizer.optimize(
-            runtimeModule, targetMachine, optimizationLevel, &runtimeObservation,
+            programModule, targetMachine, optimizationLevel, &programObservation,
             optimizationError)) return true;
-    error = "runtime LLVM optimization failed: " + optimizationError;
+    error = "program LLVM optimization failed: " + optimizationError;
     return false;
 }
 
@@ -334,6 +324,7 @@ bool optimizeExecutableRuntime(
     std::string& error)
 {
     llvm_backend::LlvmOptimizer optimizer;
+    // NSC-LIMIT-005: observada, igual que la de arriba.
     llvm_backend::LlvmOptimizationObservation runtimeObservation;
     std::string targetError;
     if (optimizer.optimize(
@@ -343,24 +334,13 @@ bool optimizeExecutableRuntime(
     return false;
 }
 
-bool emitExecutableObjects(
+/// Emits and verifies program.obj.
+bool emitProgramObject(
     llvm_backend::LlvmModule& programModule,
-    llvm_backend::LlvmModule& runtimeModule,
     const llvm_backend::LlvmTargetMachine& targetMachine,
-    std::unique_ptr<ScopedTemporaryDirectory>& temporaryDirectory,
-    std::filesystem::path& programObject,
-    std::filesystem::path& runtimeObject,
+    const std::filesystem::path& programObject,
     std::string& error)
 {
-    std::string temporaryError;
-    temporaryDirectory = createScopedTemporaryDirectory(temporaryError);
-    if (temporaryDirectory == nullptr)
-    {
-        error = temporaryError;
-        return false;
-    }
-    programObject = temporaryDirectory->path() / "program.obj";
-    runtimeObject = temporaryDirectory->path() / "runtime.obj";
     std::string emissionError;
     if (!targetMachine.emit(
             programModule, programObject, llvm_backend::LlvmCodeGenFileType::Object,
@@ -369,16 +349,7 @@ bool emitExecutableObjects(
         error = "program object emission failed: " + emissionError;
         return false;
     }
-    if (!verifyObject(programObject, "program", error)) return false;
-    emissionError.clear();
-    if (!targetMachine.emit(
-            runtimeModule, runtimeObject, llvm_backend::LlvmCodeGenFileType::Object,
-            emissionError))
-    {
-        error = "runtime object emission failed: " + emissionError;
-        return false;
-    }
-    return verifyObject(runtimeObject, "runtime", error);
+    return verifyObject(programObject, "program", error);
 }
 
 // HISTORICAL NOTE: the following comment records why both modules were once serialized.
@@ -596,17 +567,18 @@ bool WindowsExecutableBuilder::build(
     if (!verifyExecutableRuntimeLibrary(runtimeLibrary_, error)) return false;
     std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
     if (!createExecutableTargetMachine(optimizationLevel, targetMachine, error)) return false;
+    if (!optimizeExecutableProgram(programModule, *targetMachine, optimizationLevel, error)) return false;
+    std::string runtimeIdentity;
+    if (!executableRuntimeIdentity(runtimeLibrary_, mainSymbol, runtimeIdentity, error)) return false;
+    const std::string runtimeKey = executableRuntimeKey(runtimeIdentity, optimizationLevel);
     const bool independentRuntime = executableUsesIndependentRuntime(runtimeLibrary_);
-    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule;
-    if (!buildExecutableRuntime(runtimeLibrary_, mainSymbol, runtimeModule, error)) return false;
-    if (!optimizeExecutableModules(
-            programModule, *runtimeModule, *targetMachine, optimizationLevel, error)) return false;
     std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory;
-    std::filesystem::path programObject;
     std::filesystem::path runtimeObject;
-    if (!emitExecutableObjects(
-            programModule, *runtimeModule, *targetMachine, temporaryDirectory,
-            programObject, runtimeObject, error)) return false;
+    if (!provideExecutableRuntimeObject(
+            runtimeLibrary_, mainSymbol, optimizationLevel, runtimeKey, temporaryDirectory,
+            runtimeObject, error)) return false;
+    const std::filesystem::path programObject = temporaryDirectory->path() / "program.obj";
+    if (!emitProgramObject(programModule, *targetMachine, programObject, error)) return false;
     std::unique_ptr<LldLinker> linker;
     std::vector<std::filesystem::path> importLibraries;
     if (!discoverExecutableImports(
