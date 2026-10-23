@@ -1060,10 +1060,17 @@ bool ProjectCompilation::compileProjectOopMir(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-mir");
     oopMirModel_ = std::make_unique<ProjectOopMirModel>(lifetime_->indexes());
-    if (!templateCacheRoot_.empty())
-    {
-        oopMirModel_->setMirCacheRoot(templateCacheRoot_ / "mir");
-    }
+    // EN: The MIR cache stays disconnected, as before 3.0.6. Its compilation identity embeds the
+    //     complete textual HIR dump plus six semantic-model dumps, so every edit invalidates every
+    //     slot, while each build still pays those dumps, one SHA-256 per callable, one lookup per
+    //     callable and, on a miss, two write-through file publications per callable. Unchanged
+    //     inputs are already served by the compilation bundle cache before the frontend runs.
+    // ES: La caché MIR sigue desconectada, como antes de 3.0.6. Su identidad de compilación incluye
+    //     el volcado textual completo del HIR y seis volcados de modelos semánticos, de modo que
+    //     cualquier edición invalida todas las entradas, mientras cada compilación paga esos
+    //     volcados, un SHA-256 por callable, una consulta por callable y, en un miss, dos
+    //     publicaciones de archivo write-through por callable. Las entradas sin cambios ya las
+    //     atiende la caché de bundles de compilación antes de ejecutar el frontend.
     if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr)
     {
         oopMirModel_->setPanicProfile(projectGraph_->rootProject()->panicProfile());
