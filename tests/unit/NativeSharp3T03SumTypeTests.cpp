@@ -26,8 +26,8 @@ int main()
         "OR-pattern alternatives preserve identical ownership bindings");
 
     const std::array<std::string, 3> domain = {"Idle", "Ready", "Failed"};
-    const std::array<MatchArmCoverage, 3> complete = {{{{"Idle"}, false, false},
-        {{"Ready"}, false, false}, {{"Failed"}, false, false}}};
+    const std::array<MatchArmCoverage, 3> complete = {{{{"Idle"}, false, false, {}},
+        {{"Ready"}, false, false, {}}, {{"Failed"}, false, false, {}}}};
     const auto completeResult = analyzeClosedMatch(domain, complete);
     tests.expect(completeResult.exhaustive && completeResult.missingCases.empty(),
         "closed match reports exhaustive case coverage");
