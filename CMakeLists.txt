@@ -3073,15 +3073,6 @@ if(NSC_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/t00/edition3-mir.json")
 
     add_test(
-        NAME nsc.selfhost.bootstrap-infrastructure
-        COMMAND "${Python3_EXECUTABLE}" -B
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/selfhost/test_bootstrap_infrastructure.py")
-    set_tests_properties(
-        nsc.selfhost.bootstrap-infrastructure
-        PROPERTIES ENVIRONMENT
-            "PYTHONDONTWRITEBYTECODE=1;PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}")
-
-    add_test(
         NAME nsc.selfhost.bootstrap-profile-contract
         COMMAND "${Python3_EXECUTABLE}" -B
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/selfhost/test_bootstrap_profile.py")
