@@ -173,6 +173,10 @@ file(GLOB_RECURSE NSC_CODEGEN_IDENTITY_INPUTS CONFIGURE_DEPENDS LIST_DIRECTORIES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Linker/*"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/Linker/*")
 list(SORT NSC_CODEGEN_IDENTITY_INPUTS)
+# CONFIGURE_DEPENDS above only notices added or removed files. Editing one of these inputs must
+# also re-run configure; otherwise the identity keeps the old digest and the artifact cache accepts
+# objects produced by the previous code.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${NSC_CODEGEN_IDENTITY_INPUTS})
 set(NSC_CODEGEN_IDENTITY_MATERIAL "NSC-CODEGEN-CACHE-IDENTITY 1\n")
 foreach(NSC_CODEGEN_IDENTITY_INPUT IN LISTS NSC_CODEGEN_IDENTITY_INPUTS)
     file(SHA256 "${NSC_CODEGEN_IDENTITY_INPUT}" NSC_CODEGEN_IDENTITY_INPUT_SHA256)
