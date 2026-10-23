@@ -31,8 +31,8 @@ int main()
     const auto completeResult = analyzeClosedMatch(domain, complete);
     tests.expect(completeResult.exhaustive && completeResult.missingCases.empty(),
         "closed match reports exhaustive case coverage");
-    const std::array<MatchArmCoverage, 2> guarded = {{{{"Idle"}, false, false},
-        {{"Ready", "Failed"}, false, true}}};
+    const std::array<MatchArmCoverage, 2> guarded = {{{{"Idle"}, false, false, {}},
+        {{"Ready", "Failed"}, false, true, {}}}};
     const auto guardedResult = analyzeClosedMatch(domain, guarded);
     tests.expect(!guardedResult.exhaustive && guardedResult.missingCases.size() == 2,
         "a dynamic guard never contributes to static exhaustiveness");
