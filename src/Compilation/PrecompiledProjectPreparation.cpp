@@ -635,10 +635,13 @@ bool expandBinaryClosure(
     {
         const std::filesystem::path parentOwner = loaded[cursor].ownerProjectFile;
         const std::filesystem::path parentMetadataPath = loaded[cursor].metadataPath;
-        const std::string parentModule = loaded[cursor].metadata->moduleName;
-        const std::vector<interop::LibraryMetadataBinaryDependency> dependencies =
-            loaded[cursor].metadata->binaryDependencies;
-        for (const interop::LibraryMetadataBinaryDependency& dependency : dependencies)
+        // The metadata is shared and immutable: holding its pointer keeps the dependency list
+        // valid while expansion appends to loaded, without copying the list.
+        const std::shared_ptr<const interop::LibraryMetadata> parentMetadata =
+            loaded[cursor].metadata;
+        const std::string& parentModule = parentMetadata->moduleName;
+        for (const interop::LibraryMetadataBinaryDependency& dependency :
+             parentMetadata->binaryDependencies)
         {
             if (!expandBinaryDependency(
                     loadOptions,
