@@ -272,6 +272,32 @@ void appendIndexedEntries(
     }
 }
 
+/// Rewrites the prune index with the entries prune kept (and whatever other processes appended
+/// meanwhile). A failure only costs a later walk of the folders, so it is not reported.
+void rewritePruneIndex(
+    const CachePruneIndex& index,
+    const CachePruneIndexSnapshot& snapshot,
+    const std::vector<CachePruneEntry>& entries,
+    const std::vector<bool>& removed,
+    bool walked)
+{
+    std::vector<CachePruneIndexRecord> kept;
+    kept.reserve(entries.size());
+    for (std::size_t position = 0; position < entries.size(); ++position)
+    {
+        if (removed[position]) continue;
+        const CachePruneEntry& entry = entries[position];
+        CachePruneIndexRecord record;
+        record.kind = entry.payload.extension() == ".plan" ? 'p' : 'o';
+        record.key = entry.key;
+        record.publication = entry.publication;
+        record.size = entry.size;
+        kept.push_back(std::move(record));
+    }
+    std::string ignored;
+    index.rewrite(snapshot, kept, walked, ignored);
+}
+
 bool collectPrunableEntries(
     const std::filesystem::path& directory,
     std::string_view payloadExtension,
@@ -632,8 +658,11 @@ bool CompilationArtifactCache::prune(
         return left.key < right.key;
     });
     std::error_code filesystemError;
-    for (const CachePruneEntry& entry : entries)
+    // Entries evicted here or found gone; the index is rewritten without them.
+    std::vector<bool> removed(entries.size(), false);
+    for (std::size_t position = 0; position < entries.size(); ++position)
     {
+        const CachePruneEntry& entry = entries[position];
         if (totalBytes <= maximumBytes) break;
         CacheEntryLock entryLock;
         if (!entryLock.acquire(entry.payload.string() + ".lock", error)) return false;
@@ -645,6 +674,7 @@ bool CompilationArtifactCache::prune(
             // An indexed entry that is gone (removed by hand or by another process) stops counting,
             // as a walk of the folders would not have counted it.
             if (snapshot.valid) totalBytes = entry.size > totalBytes ? 0 : totalBytes - entry.size;
+            removed[position] = true;
             continue;
         }
         std::filesystem::remove(entry.metadata, filesystemError);
@@ -662,11 +692,14 @@ bool CompilationArtifactCache::prune(
             return false;
         }
         totalBytes = currentSize > totalBytes ? 0 : totalBytes - currentSize;
+        removed[position] = true;
         ++evictedEntries;
         evictedBytes += currentSize;
         lastPruneTelemetry_.evictedEntries = evictedEntries;
         lastPruneTelemetry_.evictedBytes = evictedBytes;
     }
+    if (snapshot.valid && std::ranges::find(removed, true) != removed.end())
+        rewritePruneIndex(index, snapshot, entries, removed, false);
     return true;
 }
 
