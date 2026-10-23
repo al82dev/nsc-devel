@@ -1,4 +1,5 @@
 #include "MirNodeMachine.h"
+#include "../../Internal/TypeIndexShadowCheck.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 
 #include <algorithm>
@@ -1976,6 +1977,11 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup21(
             if (node->typeKey.starts_with("type:"))
             {
                 const std::string_view identity(node->typeKey.data() + 5U, node->typeKey.size() - 5U);
+                if constexpr (internal::kIndexShadowCheckEnabled)
+                {
+                    internal::shadowCheckTypeIdentityIndex(
+                        *model_.nameLookup_, identity, "MirNodeMachine::lowerGroup21");
+                }
                 // The shared type index keeps the first type of an identity, as the scan; the
                 // scan only runs for hand-assembled models that have no type index.
                 spanTypeOrdinal = model_.nameLookup_->typeOrdinalForIdentity(identity);

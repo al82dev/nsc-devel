@@ -1,6 +1,8 @@
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
+#include "../Internal/IndexShadowCheckSwitch.h"
+#include "../Internal/IndexShadowMismatch.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include <algorithm>
@@ -264,7 +266,21 @@ const ProjectOopMirStructLayout* functionStructLayout(
     std::string_view typeKey) noexcept
 {
     if (indexes != nullptr && indexes->hasMirLayoutIndexes())
-        return indexes->mirStructLayoutForTypeKey(typeKey);
+    {
+        const ProjectOopMirStructLayout* indexed = indexes->mirStructLayoutForTypeKey(typeKey);
+        if constexpr (internal::kIndexShadowCheckEnabled)
+        {
+            const ProjectOopMirStructLayout* scanned = nullptr;
+            for (const ProjectOopMirStructLayout& layout : layouts)
+            {
+                if (layout.typeKey != typeKey) continue;
+                scanned = &layout;
+                break;
+            }
+            if (scanned != indexed) internal::reportIndexShadowMismatch("functionStructLayout", typeKey);
+        }
+        return indexed;
+    }
     for (const ProjectOopMirStructLayout& layout : layouts)
         if (layout.typeKey == typeKey) return &layout;
     return nullptr;
@@ -674,6 +690,15 @@ void inheritMoveNextDropFrames(std::vector<ProjectOopMirFunction>& functions)
         const std::string dropName =
             function.mangledName.substr(0, function.mangledName.size() - 9) + "$drop";
         const auto drop = firstByName.find(dropName);
+        if constexpr (internal::kIndexShadowCheckEnabled)
+        {
+            const auto scanned = std::ranges::find(functions, dropName, &ProjectOopMirFunction::mangledName);
+            const bool same = drop == firstByName.end()
+                ? scanned == functions.end()
+                : scanned != functions.end() &&
+                    static_cast<std::size_t>(scanned - functions.begin()) == drop->second;
+            if (!same) internal::reportIndexShadowMismatch("inheritMoveNextDropFrames", dropName);
+        }
         if (drop == firstByName.end()) continue;
         ProjectOopMirFunction& candidate = functions[drop->second];
         candidate.asyncFrameLocals = function.asyncFrameLocals;
@@ -716,6 +741,18 @@ void inheritConstructorFrames(
         const std::string constructorName =
             function.mangledName.substr(0, function.mangledName.size() - suffixLength);
         const auto constructor = constructorByName.find(constructorName);
+        if constexpr (internal::kIndexShadowCheckEnabled)
+        {
+            const auto scanned = std::ranges::find_if(functions, [&](const ProjectOopMirFunction& candidate)
+            {
+                return candidate.mangledName == constructorName && candidate.isGeneratorConstructor;
+            });
+            const bool same = constructor == constructorByName.end()
+                ? scanned == functions.end()
+                : scanned != functions.end() &&
+                    static_cast<std::size_t>(scanned - functions.begin()) == constructor->second;
+            if (!same) internal::reportIndexShadowMismatch("inheritConstructorFrames", constructorName);
+        }
         if (constructor == constructorByName.end()) continue;
         ProjectOopMirFunction& candidate = functions[constructor->second];
         candidate.asyncFrameLocals = function.asyncFrameLocals;
