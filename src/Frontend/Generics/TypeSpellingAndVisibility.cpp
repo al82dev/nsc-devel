@@ -408,11 +408,17 @@ void ProjectGenericModel::buildVisibility(const compilation::ProjectGraph& graph
     };
     for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
         projectByPath.emplace(pathKey(projects[ordinal].projectFile()), ordinal);
-    // The key of every reference is computed once; the walks of every start reuse it.
-    std::vector<std::vector<std::string>> referenceKeys(projects.size());
+    // Every reference is resolved to its project ordinal once, in reference order; references
+    // outside the graph are dropped, as the walk skipped them. The walks of every start reuse it.
+    std::vector<std::vector<std::size_t>> referencedOrdinals(projects.size());
     for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
+    {
         for (const std::filesystem::path& reference : projects[ordinal].projectReferences())
-            referenceKeys[ordinal].push_back(pathKey(reference));
+        {
+            const auto found = projectByPath.find(pathKey(reference));
+            if (found != projectByPath.end()) referencedOrdinals[ordinal].push_back(found->second);
+        }
+    }
 
     for (std::size_t start = 0; start < projects.size(); ++start)
     {
@@ -424,16 +430,16 @@ void ProjectGenericModel::buildVisibility(const compilation::ProjectGraph& graph
         {
             const std::size_t ordinal = pending.back().first;
             const std::size_t next = pending.back().second;
-            if (next == referenceKeys[ordinal].size())
+            if (next == referencedOrdinals[ordinal].size())
             {
                 pending.pop_back();
                 continue;
             }
             ++pending.back().second;
-            const auto found = projectByPath.find(referenceKeys[ordinal][next]);
-            if (found == projectByPath.end() || reachable[found->second]) continue;
-            reachable[found->second] = true;
-            pending.emplace_back(found->second, 0);
+            const std::size_t target = referencedOrdinals[ordinal][next];
+            if (reachable[target]) continue;
+            reachable[target] = true;
+            pending.emplace_back(target, 0);
         }
         for (std::size_t ordinal = 0; ordinal < reachable.size(); ++ordinal)
             if (reachable[ordinal]) visibleProjects_[start].push_back(ordinal);
