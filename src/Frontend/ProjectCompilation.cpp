@@ -48,16 +48,14 @@ void ProjectCompilation::setProjectLoadOptions(compilation::ProjectLoadOptions o
 
 void ProjectCompilation::setTemplateCacheRoot(std::filesystem::path root)
 {
-    // The syntax/template caches cannot preserve the parser product before generic materialization,
-    // and persisting the materialized tree changes the input of the next compilation. Keep them
-    // disconnected until their payload represents the parser product without traversing mutable AST
-    // relationships. The verified NSMETA repository is independent and remains enabled.
-    templateCacheRoot_.clear();
-    precompiledProductCacheRoot_.clear();
+    templateCacheRoot_ = std::move(root);
+    precompiledProductCacheRoot_ = templateCacheRoot_.empty()
+        ? std::filesystem::path{}
+        : templateCacheRoot_ / "precompiled-products";
     lifetime_->metadataRepository().setCacheRoot(
-        root.empty()
+        templateCacheRoot_.empty()
             ? std::filesystem::path{}
-            : root / "verified-nsmeta-models");
+            : templateCacheRoot_ / "verified-nsmeta-models");
 }
 
 const std::filesystem::path& ProjectCompilation::precompiledProductCacheRoot() const noexcept
@@ -135,7 +133,9 @@ std::string precompiledSyntaxCacheKey(
 {
     if (productCacheKey.empty()) return {};
     std::string material;
-    appendTemplateParseCacheKeyField(material, "nsc-precompiled-syntax-v1");
+    // EN: v2 retires every v1 entry: v1 published trees already rewritten by the generic pass.
+    // ES: v2 retira toda entrada v1: v1 publicaba árboles ya reescritos por el pase genérico.
+    appendTemplateParseCacheKeyField(material, "nsc-precompiled-syntax-v2");
     appendTemplateParseCacheKeyField(material, productCacheKey);
     appendTemplateParseCacheKeyField(material, std::to_string(sourceOrdinal));
     return templateParseSourceDigest(material);
@@ -700,6 +700,21 @@ bool ProjectCompilation::compileProjectGenerics(
             ProjectGenericModel::DefaultMaximumInstantiationDepth),
         projectLoadOptions_.genericInstantiationCount.value_or(
             ProjectGenericModel::DefaultMaximumInstantiationCount));
+    // EN: The generic model's C1 record cache and C3 clone cache stay disconnected, exactly as
+    //     before 3.0.6. C3 persists a clone after its nested references were rewritten, keys it only
+    //     by the specialization key (self-references inside a restored clone keep the producer's
+    //     spelling), and its hit path in executeTypeDemand returns without rewriting the requesting
+    //     syntax; resolved argument identities are not persisted either. C1 rebinds every field on
+    //     a hit but keeps dependency lists computed by another compilation. Both therefore change
+    //     the specializations and metadata that a cold build produces.
+    // ES: La caché C1 de registros y la caché C3 de clones del modelo genérico siguen
+    //     desconectadas, igual que antes de 3.0.6. C3 persiste un clon después de reescribir sus
+    //     referencias anidadas, lo indexa sólo por la clave de especialización (las autorreferencias
+    //     del clon restaurado conservan la escritura del productor) y su ruta de hit en
+    //     executeTypeDemand regresa sin reescribir la sintaxis que lo pidió; tampoco persiste las
+    //     identidades resueltas de los argumentos. C1 reenlaza todos los campos en un hit, pero
+    //     conserva listas de dependencias calculadas por otra compilación. Por eso ambas cambian las
+    //     especializaciones y la metadata que produce una compilación en frío.
     // NSC305-P01. The generic telemetry is a no-op unless a phase timing sink is wired (which the
     // driver only does for `--time` / `--time-trace`). It forwards sub-phase and per-template
     // timings through the same channel as the parent `generics` timer and never touches
@@ -726,6 +741,9 @@ bool ProjectCompilation::compileProjectGenerics(
     {
         return false;
     }
+    publishPrecompiledSyntaxProducts();
+    publishTemplateParseProduct();
+    releasePristineSyntaxProducts();
     return true;
 }
 
@@ -1042,6 +1060,17 @@ bool ProjectCompilation::compileProjectOopMir(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-mir");
     oopMirModel_ = std::make_unique<ProjectOopMirModel>(lifetime_->indexes());
+    // EN: The MIR cache stays disconnected, as before 3.0.6. Its compilation identity embeds the
+    //     complete textual HIR dump plus six semantic-model dumps, so every edit invalidates every
+    //     slot, while each build still pays those dumps, one SHA-256 per callable, one lookup per
+    //     callable and, on a miss, two write-through file publications per callable. Unchanged
+    //     inputs are already served by the compilation bundle cache before the frontend runs.
+    // ES: La caché MIR sigue desconectada, como antes de 3.0.6. Su identidad de compilación incluye
+    //     el volcado textual completo del HIR y seis volcados de modelos semánticos, de modo que
+    //     cualquier edición invalida todas las entradas, mientras cada compilación paga esos
+    //     volcados, un SHA-256 por callable, una consulta por callable y, en un miss, dos
+    //     publicaciones de archivo write-through por callable. Las entradas sin cambios ya las
+    //     atiende la caché de bundles de compilación antes de ejecutar el frontend.
     if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr)
     {
         oopMirModel_->setPanicProfile(projectGraph_->rootProject()->panicProfile());
@@ -1497,7 +1526,9 @@ bool ProjectCompilation::calculateTemplateParseCacheKey(std::string& loadError)
     if (templateCacheRoot_.empty()) return true;
 
     std::string material;
-    appendTemplateParseCacheKeyField(material, "nsc-template-parse-input-v1");
+    // EN: v2 retires every v1 corpus: v1 published trees already rewritten by the generic pass.
+    // ES: v2 retira todo corpus v1: v1 publicaba árboles ya reescritos por el pase genérico.
+    appendTemplateParseCacheKeyField(material, "nsc-template-parse-input-v2");
     appendTemplateParseCacheKeyField(material, kCompilerBuildId);
     appendTemplateParseCacheKeyField(material, std::to_string(units_.size()));
     for (std::size_t index = 0; index < units_.size(); ++index)
@@ -1597,6 +1628,10 @@ bool ProjectCompilation::restoreTemplateParseProduct(std::string& loadError)
 // Publishes the syntax corpus only after the generic pass has completed successfully. At that point
 // every unit is valid and the per-template records consumed by a warm hit have also been stored.
 // Cache I/O is opportunistic and never changes compiler success or diagnostics.
+// EN: The published unit payloads are the pristine snapshots taken right after parsing; the live trees
+//     were already rewritten by the generic pass and must never be published.
+// ES: Los payloads publicados son las fotografías prístinas tomadas justo después del parser; los árboles
+//     vivos ya fueron reescritos por el pase genérico y nunca deben publicarse.
 void ProjectCompilation::publishTemplateParseProduct()
 {
     if (templateParseCacheHit_ || templateCacheRoot_.empty() ||
@@ -1604,10 +1639,12 @@ void ProjectCompilation::publishTemplateParseProduct()
     {
         return;
     }
-    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units_)
+    for (std::size_t index = 0; index < units_.size(); ++index)
     {
+        const std::unique_ptr<ProjectSyntaxUnit>& unit = units_[index];
         if (unit == nullptr || !unit->isLexicallyValid() ||
-            !unit->isSyntaxValid() || unit->syntaxTree() == nullptr)
+            !unit->isSyntaxValid() || unit->syntaxTree() == nullptr ||
+            pristineSyntaxProduct(index).empty())
         {
             return;
         }
@@ -1615,16 +1652,15 @@ void ProjectCompilation::publishTemplateParseProduct()
     std::string payload;
     internal::CachePayloadWriter::string(payload, templateParseProductSchema);
     internal::CachePayloadWriter::u64(payload, units_.size());
-    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units_)
+    for (std::size_t index = 0; index < units_.size(); ++index)
     {
+        const std::unique_ptr<ProjectSyntaxUnit>& unit = units_[index];
         internal::CachePayloadWriter::u64(payload, unit->projectOrdinal());
         internal::CachePayloadWriter::u64(payload, unit->sourceOrdinal());
         internal::CachePayloadWriter::string(payload, unit->moduleName());
         internal::CachePayloadWriter::u32(payload, unit->fileId().value());
         internal::CachePayloadWriter::byte(payload, unit->isPrecompiled() ? 1U : 0U);
-        internal::CachePayloadWriter::string(
-            payload,
-            internal::serializeSyntaxProductUnit(*unit));
+        internal::CachePayloadWriter::string(payload, pristineSyntaxProduct(index));
     }
     TemplateParseCache& cache = lifetime_->templateParseCache();
     cache.setRoot(templateCacheRoot_);
@@ -1632,6 +1668,10 @@ void ProjectCompilation::publishTemplateParseProduct()
     (void)cache.store(templateParseCacheKey_, payload, ignoredError);
 }
 
+// EN: Publishes the pristine parse product of every precompiled unit that missed the local syntax cache.
+//     The payload is the snapshot taken before the generic pass; a missing snapshot skips publication.
+// ES: Publica el producto prístino del parser de cada unidad precompilada que falló la caché sintáctica
+//     local. El payload es la fotografía tomada antes del pase genérico; sin fotografía no se publica.
 void ProjectCompilation::publishPrecompiledSyntaxProducts()
 {
     if (precompiledProductCacheRoot_.empty()) return;
@@ -1653,10 +1693,114 @@ void ProjectCompilation::publishPrecompiledSyntaxProducts()
         {
             continue;
         }
-        const std::string payload = internal::serializeSyntaxProductUnit(unit);
+        const std::string_view payload = pristineSyntaxProduct(index);
+        if (payload.empty())
+        {
+            continue;
+        }
         std::string ignoredError;
         (void)cache.store(key, payload, ignoredError);
     }
+}
+
+// EN: Tells whether the precompiled unit at `index` missed the local syntax cache and therefore will
+//     be published after a successful generic pass.
+// ES: Indica si la unidad precompilada en `index` falló la caché sintáctica local y por tanto se
+//     publicará después de un pase genérico exitoso.
+bool ProjectCompilation::precompiledSyntaxProductPending(std::size_t index) const noexcept
+{
+    if (precompiledProductCacheRoot_.empty() || index >= precompiledSyntaxCacheKeysByUnit_.size() ||
+        precompiledSyntaxCacheKeysByUnit_[index].empty())
+    {
+        return false;
+    }
+    return index >= precompiledSyntaxCacheHitsByUnit_.size() ||
+        !precompiledSyntaxCacheHitsByUnit_[index];
+}
+
+// EN: Serializes, before the generic pass rewrites closed generic references and appends specialized
+//     clones, every syntax product that a later cache publication needs. Publishing a post-generics
+//     tree makes a later hit skip specialization discovery, which drops the closed-type aliases that
+//     bind precompiled callables to their NSMETA physical identities.
+// ES: Serializa, antes de que el pase genérico reescriba referencias genéricas cerradas y agregue clones
+//     especializados, cada producto sintáctico que una publicación posterior necesita. Publicar un árbol
+//     posterior a genéricos hace que un hit posterior omita el descubrimiento de especializaciones, lo
+//     que pierde los alias de tipos cerrados que enlazan callables precompilados con su identidad
+//     física en NSMETA.
+void ProjectCompilation::capturePristineSyntaxProducts()
+{
+    pristineSyntaxProductsByUnit_.clear();
+    const bool publishesCorpus = !templateParseCacheHit_ && !templateCacheRoot_.empty() &&
+        !templateParseCacheKey_.empty();
+    if (!publishesCorpus && precompiledProductCacheRoot_.empty())
+    {
+        return;
+    }
+    pristineSyntaxProductsByUnit_.resize(units_.size());
+    for (std::size_t index = 0; index < units_.size(); ++index)
+    {
+        const ProjectSyntaxUnit* unit = units_[index].get();
+        if (unit == nullptr || !unit->isLexicallyValid() || !unit->isSyntaxValid() ||
+            unit->syntaxTree() == nullptr)
+        {
+            continue;
+        }
+        if (publishesCorpus || precompiledSyntaxProductPending(index))
+        {
+            pristineSyntaxProductsByUnit_[index] = internal::serializeSyntaxProductUnit(*unit);
+        }
+    }
+}
+
+// EN: Returns the pristine snapshot of the unit at `index`, or an empty view when none was taken.
+// ES: Devuelve la fotografía prístina de la unidad en `index`, o una vista vacía si no se tomó.
+std::string_view ProjectCompilation::pristineSyntaxProduct(std::size_t index) const noexcept
+{
+    return index < pristineSyntaxProductsByUnit_.size()
+        ? std::string_view(pristineSyntaxProductsByUnit_[index])
+        : std::string_view{};
+}
+
+// EN: Releases the pristine snapshots once both cache publications have consumed them.
+// ES: Libera las fotografías prístinas una vez que ambas publicaciones de caché las consumieron.
+void ProjectCompilation::releasePristineSyntaxProducts() noexcept
+{
+    std::vector<std::string>().swap(pristineSyntaxProductsByUnit_);
+}
+
+// EN: Produces the parsed corpus from the template-parse cache or from the lexer and parser, and then
+//     snapshots the pristine syntax products before any later phase mutates the trees.
+// ES: Obtiene el corpus analizado desde la caché de parseo o desde lexer y parser, y después fotografía
+//     los productos sintácticos prístinos antes de que una fase posterior mute los árboles.
+bool ProjectCompilation::produceSyntaxCorpus(
+    driver::CompilationWorkerPool& syntaxWorkers,
+    std::string& loadError)
+{
+    if (!restoreTemplateParseProduct(loadError))
+    {
+        return false;
+    }
+    if (templateParseCacheHit_)
+    {
+        if (!enterStage(CompilationStage::Parse, loadError))
+        {
+            return false;
+        }
+        capturePristineSyntaxProducts();
+        return true;
+    }
+
+    bool lexicalOk = true;
+    if (!lexSyntaxUnits(syntaxWorkers, lexicalOk, loadError))
+    {
+        return false;
+    }
+    if (!parseSyntaxUnits(syntaxWorkers, lexicalOk, loadError))
+    {
+        return false;
+    }
+    capturePristineSyntaxProducts();
+    return true;
 }
 
 bool ProjectCompilation::lexSyntaxUnits(
@@ -1798,21 +1942,7 @@ bool ProjectCompilation::compileSyntaxCore(
         return false;
     }
 
-    if (!restoreTemplateParseProduct(loadError))
-    {
-        return false;
-    }
-    if (templateParseCacheHit_)
-    {
-        return enterStage(CompilationStage::Parse, loadError);
-    }
-
-    bool lexicalOk = true;
-    if (!lexSyntaxUnits(syntaxWorkers, lexicalOk, loadError))
-    {
-        return false;
-    }
-    return parseSyntaxUnits(syntaxWorkers, lexicalOk, loadError);
+    return produceSyntaxCorpus(syntaxWorkers, loadError);
 }
 
 bool ProjectCompilation::enterStage(CompilationStage stage, std::string& error)
