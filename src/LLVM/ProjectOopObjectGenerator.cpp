@@ -384,8 +384,9 @@ std::string preOptimizationObjectKey(
 
 /// EN: Second-level reuse: restores the object of a unit whose MIR identity missed but whose
 ///     pre-optimization IR equals one already compiled.
-///     Parameters: `cache` may be null; `usePreLlvmCache` gates the feature exactly like the MIR
-///     cache (off for full debug information and ThinLTO); `irKey` receives the key so the caller
+///     Parameters: `cache` may be null; `usePreOptimizationCache` gates the feature (off only for
+///     ThinLTO; unlike the MIR cache it stays on with full debug information, because every debug
+///     record is part of the IR that forms the key); `irKey` receives the key so the caller
 ///     can also store the freshly emitted object under it; `complete` becomes true on a hit, in
 ///     which case `cacheHit` is 1, `cacheMiss` is 0 and optimization and emission are skipped.
 ///     Returns false only on a cache I/O error (`moduleError` set). Telemetry: the print and hash
@@ -395,10 +396,11 @@ std::string preOptimizationObjectKey(
 ///     anywhere misses every unit even when its LLVM IR is unchanged (HECHO, audit 2026-10-22).
 /// ES: Reuso de segundo nivel: restaura el objeto de una unidad cuya identidad MIR fallo pero cuyo
 ///     IR previo a la optimizacion es igual a uno ya compilado.
-///     Parametros: `cache` puede ser null; `usePreLlvmCache` habilita la funcion igual que el cache
-///     MIR (apagado con depuracion completa y ThinLTO); `irKey` recibe la clave para que el
-///     llamador guarde tambien con ella el objeto recien emitido; `complete` queda en true en un
-///     acierto, con `cacheHit` en 1, `cacheMiss` en 0 y sin optimizar ni emitir.
+///     Parametros: `cache` puede ser null; `usePreOptimizationCache` habilita la funcion (apagada
+///     solo con ThinLTO; a diferencia del cache MIR sigue activa con depuracion completa, porque
+///     toda la metadata de depuracion forma parte del IR de la clave); `irKey` recibe la clave
+///     para que el llamador guarde tambien con ella el objeto recien emitido; `complete` queda
+///     en true en un acierto, con `cacheHit` en 1, `cacheMiss` en 0 y sin optimizar ni emitir.
 ///     Retorno: false solo ante un error de E/S del cache (`moduleError` fijado). Telemetria: la
 ///     impresion y el hash se suman a `fingerprintMicros`, la restauracion a `lookupMicros`, la
 ///     verificacion COFF a `verificationMicros`; `irReuse` registra off/miss/hit.
@@ -407,7 +409,7 @@ std::string preOptimizationObjectKey(
 ///     (HECHO, auditoria 2026-10-22).
 bool restorePreOptimizationObject(
     const CompilationArtifactCache* cache,
-    bool usePreLlvmCache,
+    bool usePreOptimizationCache,
     const LlvmModule& module,
     const LlvmTargetMachine& targetMachine,
     const std::string& codeGenerationPolicy,
@@ -423,7 +425,7 @@ bool restorePreOptimizationObject(
     bool& complete)
 {
     complete = false;
-    if (cache == nullptr || !cache->enabled() || !usePreLlvmCache) return true;
+    if (cache == nullptr || !cache->enabled() || !usePreOptimizationCache) return true;
     const PhaseClock fingerprint;
     irKey = preOptimizationObjectKey(
         *cache, module, targetMachine, codeGenerationPolicy, optimizationLevel,
@@ -558,6 +560,7 @@ void processObjectCodeUnit(
     std::size_t ordinal,
     bool usePartitions,
     bool usePreLlvmCache,
+    bool usePreOptimizationCache,
     bool preserveModuleText,
     bool requiresWholeModuleRequiredInlining,
     const frontend::ProjectNameLookup& nameLookup,
@@ -609,7 +612,7 @@ void processObjectCodeUnit(
     if (targetMachine == nullptr) return;
     std::string irKey;
     if (!restorePreOptimizationObject(
-            cache, usePreLlvmCache, *module, *targetMachine, codeGenerationPolicy,
+            cache, usePreOptimizationCache, *module, *targetMachine, codeGenerationPolicy,
             optimizationLevel, debugInformation, requiresWholeModuleRequiredInlining, objectFile,
             irKey, telemetry, cacheHit, cacheMiss, moduleError, complete) || complete) return;
     if (!optimizeConfiguredCodeUnit(
@@ -1011,6 +1014,10 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     const bool usePreLlvmCache = cache != nullptr && cache->enabled() &&
         debugInformation != DebugInformationKind::Full &&
         linkTimeOptimization != LinkTimeOptimizationMode::Thin;
+    // Reuse by pre-optimization IR does not depend on the MIR identity, so it also covers full
+    // debug information: lowering is still paid, optimization and emission are skipped on a hit.
+    const bool usePreOptimizationCache = cache != nullptr && cache->enabled() &&
+        linkTimeOptimization != LinkTimeOptimizationMode::Thin;
     ColdLlvmTrace coldLlvmTrace(
         kCodegenCacheIdentity, functionAnalysis.projectFingerprint(), debugInformation,
         optimizationLevel, moduleCount, usePartitions, usePreLlvmCache,
@@ -1036,7 +1043,7 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     std::mutex moduleProgressMutex;
     const auto processModule = [&](std::size_t ordinal) {
         processObjectCodeUnit(
-            ordinal, usePartitions, usePreLlvmCache, preserveModuleText,
+            ordinal, usePartitions, usePreLlvmCache, usePreOptimizationCache, preserveModuleText,
             requiresWholeModuleRequiredInlining, nameLookup, memberModel, mirModel,
             sourceManager, debugInformation, optimizationLevel, debugPrefixMaps,
             reachableDefinitions, coordinatorFunctionDeclarations, partition,
