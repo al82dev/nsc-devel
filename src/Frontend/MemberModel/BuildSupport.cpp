@@ -335,10 +335,15 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
     std::ranges::sort(aliases, [](const auto& left, const auto& right) {
         return left.first.size() > right.first.size();
     });
+    // Only effective aliases (non-empty and different from the published key) change a key.
+    // They are filtered once, after the sort, so the effective ones keep their sorted order;
+    // without any effective alias canonicalize returns its input unchanged.
+    std::erase_if(aliases, [](const auto& alias) {
+        return alias.first.empty() || alias.first == alias.second;
+    });
     const auto canonicalize = [&](std::string value) {
         for (const auto& [localTypeKey, publishedTypeKey] : aliases)
         {
-            if (localTypeKey.empty() || localTypeKey == publishedTypeKey) continue;
             std::size_t cursor = 0;
             while ((cursor = value.find(localTypeKey, cursor)) != std::string::npos)
             {
