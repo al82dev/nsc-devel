@@ -828,44 +828,6 @@ bool summarizeCodeUnits(
     return true;
 }
 
-void recordPartitionCosts(
-    ProjectOopCodePartition& partition,
-    const std::vector<std::uint8_t>& cacheHits,
-    const std::vector<CodeUnitTelemetry>& telemetry)
-{
-    // NSC305-L01. Record the observed per-unit cost into the partition's bounded historical weight.
-    for (std::size_t ordinal = 0; ordinal < partition.units().size(); ++ordinal)
-    {
-        if (cacheHits[ordinal + 1] != 0U) continue;
-        const CodeUnitTelemetry& unit = telemetry[ordinal + 1];
-        const std::uint64_t observed = unit.fingerprintMicros + unit.lookupMicros +
-            unit.loweringMicros + unit.targetMicros + unit.optimizationMicros +
-            unit.emissionMicros + unit.verificationMicros + unit.storeMicros;
-        partition.recordCodeUnitCost(partition.units()[ordinal].ordinal, observed);
-    }
-}
-
-bool storePartitionPlan(
-    ProjectOopCodePartition& partition,
-    const CompilationArtifactCache& cache,
-    const std::string& partitionPlanKey,
-    std::string& partitionPlanPayload,
-    ColdLlvmPreambleTelemetry& telemetry,
-    std::string& error)
-{
-    partitionPlanPayload = partition.persistentPlanPayload();
-    if (partitionPlanPayload.empty())
-    {
-        error = "cache-aware code partition did not produce a persistent plan";
-        return false;
-    }
-    const PhaseClock planStoreClock;
-    const bool stored = cache.storeCodePartitionPlan(
-        partitionPlanKey, partitionPlanPayload, error);
-    telemetry.planStoreMicros = planStoreClock.elapsedMicros();
-    return stored;
-}
-
 std::string combineModuleTexts(const std::vector<std::string>& moduleTexts)
 {
     std::string combined;
@@ -964,32 +926,18 @@ std::span<const CodeUnitTelemetry> ProjectOopObjectBundle::codeUnitTelemetry() c
 
 bool ProjectOopObjectGenerator::finishCodeUnitBundle(
     ProjectOopObjectBundle& result,
-    bool usePartitions,
     bool preserveModuleText,
     LinkTimeOptimizationMode linkTimeOptimization,
-    ProjectOopCodePartition& partition,
-    const CompilationArtifactCache* cache,
-    const std::string& partitionPlanKey,
-    std::string& partitionPlanPayload,
     std::vector<std::string>& moduleTexts,
     const std::vector<std::string>& moduleErrors,
     const std::vector<std::uint8_t>& cacheHits,
     const std::vector<std::uint8_t>& cacheMisses,
     std::vector<CodeUnitTelemetry>& codeUnitTelemetry,
-    ColdLlvmPreambleTelemetry& preambleTelemetry,
     std::string& error) const
 {
     if (!summarizeCodeUnits(
             moduleErrors, cacheHits, cacheMisses,
             result.cacheHitCount_, result.cacheMissCount_, error)) return false;
-    if (usePartitions) recordPartitionCosts(partition, cacheHits, codeUnitTelemetry);
-    // EN: buildObjectPartition never computes a plan key, so no plan is stored; the store stays
-    //     for a future plan-based policy. ES: buildObjectPartition nunca calcula una clave de
-    //     plan, asi que no se guarda ningun plan; el guardado queda para una politica futura.
-    if (usePartitions && cache != nullptr && cache->enabled() && !partitionPlanKey.empty() &&
-        !storePartitionPlan(
-            partition, *cache, partitionPlanKey, partitionPlanPayload,
-            preambleTelemetry, error)) return false;
     result.codeUnitTelemetry_ = std::move(codeUnitTelemetry);
     if (preserveModuleText) result.combinedLlvmText_ = combineModuleTexts(moduleTexts);
     if (linkTimeOptimization == LinkTimeOptimizationMode::Thin)
@@ -1015,8 +963,6 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     std::span<const std::uint8_t> reachableDefinitions,
     std::span<const std::size_t> coordinatorFunctionDeclarations,
     ProjectOopCodePartition& partition,
-    const std::string& partitionPlanKey,
-    std::string& partitionPlanPayload,
     bool requiresWholeModuleRequiredInlining,
     bool usePartitions,
     ProjectOopObjectBundle& result,
@@ -1028,8 +974,7 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
         nameLookup, memberModel, mirModel, sourceManager, debugInformation,
         optimizationLevel, workerCount, debugPrefixMaps, linkTimeOptimization,
         cache, functionAnalysis, reachableDefinitions, coordinatorFunctionDeclarations,
-        partition, partitionPlanKey, partitionPlanPayload,
-        requiresWholeModuleRequiredInlining, usePartitions, result,
+        partition, requiresWholeModuleRequiredInlining, usePartitions, result,
         preambleTelemetry, error, &workerPool);
 }
 
@@ -1048,8 +993,6 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     std::span<const std::uint8_t> reachableDefinitions,
     std::span<const std::size_t> coordinatorFunctionDeclarations,
     ProjectOopCodePartition& partition,
-    const std::string& partitionPlanKey,
-    std::string& partitionPlanPayload,
     bool requiresWholeModuleRequiredInlining,
     bool usePartitions,
     ProjectOopObjectBundle& result,
@@ -1110,9 +1053,8 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     for (const CodeUnitTelemetry& telemetry : codeUnitTelemetry)
         preambleTelemetry.staticFieldMaskMicros += telemetry.staticFieldMaskMicros;
     return finishCodeUnitBundle(
-        result, usePartitions, preserveModuleText, linkTimeOptimization, partition,
-        cache, partitionPlanKey, partitionPlanPayload, moduleTexts, moduleErrors,
-        cacheHits, cacheMisses, codeUnitTelemetry, preambleTelemetry, error);
+        result, preserveModuleText, linkTimeOptimization, moduleTexts, moduleErrors,
+        cacheHits, cacheMisses, codeUnitTelemetry, error);
 }
 
 std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
@@ -1200,8 +1142,6 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         functionAnalysis.reachableDefinitions();
 
     ProjectOopCodePartition partition;
-    std::string partitionPlanKey;
-    std::string partitionPlanPayload;
     if (!buildObjectPartition(
             mirModel, partitionCount, reachableDefinitions, partition, preambleTelemetry, error))
         return nullptr;
@@ -1244,8 +1184,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
             nameLookup, memberModel, mirModel, sourceManager, debugInformation,
             optimizationLevel, workerCount, debugPrefixMaps, linkTimeOptimization, cache,
             functionAnalysis, reachableDefinitions, coordinatorFunctionDeclarations, partition,
-            partitionPlanKey, partitionPlanPayload, requiresWholeModuleRequiredInlining,
-            usePartitions, *result, preambleTelemetry, error, workerPool)) return nullptr;
+            requiresWholeModuleRequiredInlining, usePartitions, *result, preambleTelemetry, error,
+            workerPool)) return nullptr;
     return result;
 }
 }
