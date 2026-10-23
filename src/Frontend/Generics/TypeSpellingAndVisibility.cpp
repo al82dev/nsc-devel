@@ -297,9 +297,12 @@ const ProjectGenericModel::DeclaredTypeIdentity* ProjectGenericModel::resolveDec
         std::vector<const DeclaredTypeIdentity*> identities;
         for (const std::string& spelling : rung.spellings)
         {
-            for (const DeclaredTypeIdentity& declaration : declaredTypeIdentities_)
+            // Only the declarations with this source name, in vector order.
+            const auto candidates = declaredTypeIdentitiesBySourceName_.find(spelling);
+            if (candidates == declaredTypeIdentitiesBySourceName_.end()) continue;
+            for (const std::size_t position : candidates->second)
             {
-                if (declaration.sourceName != spelling) continue;
+                const DeclaredTypeIdentity& declaration = declaredTypeIdentities_[position];
 
                 const bool sameProject = declaration.projectOrdinal == projectOrdinal;
                 bool visible = false;
