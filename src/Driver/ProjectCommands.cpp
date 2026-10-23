@@ -1576,11 +1576,15 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
     compilation::LibraryMetadataRepository metadataRepository;
     if (!manifest.calculateIdentity(metadataRepository, message))
         return result.failure(error, message, ExitCode::CompilationError);
-    std::vector<DependencyProvenance> provenance =
-        dependencyProvenance(manifest.projectGraph(), plan, manifest);
-    updateRootDependencyProvenance(project, *loaded, manifest, provenance);
-    if (options.dependencyReport && !json)
-        printDependencyProvenance(output, provenance);
+    // The provenance hashes every project input again; only --dependency-report prints it or puts
+    // it in the JSON result, so it is computed only then.
+    std::vector<DependencyProvenance> provenance;
+    if (options.dependencyReport)
+    {
+        provenance = dependencyProvenance(manifest.projectGraph(), plan, manifest);
+        updateRootDependencyProvenance(project, *loaded, manifest, provenance);
+        if (!json) printDependencyProvenance(output, provenance);
+    }
     return executeConfiguredBuild(
         options,
         json,
