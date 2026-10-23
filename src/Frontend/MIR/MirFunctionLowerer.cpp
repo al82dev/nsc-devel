@@ -307,6 +307,7 @@ std::uint64_t alignFrameOffset(std::uint64_t value, std::uint64_t alignment) noe
 
 void sumAwaitedFrameSizeNodes(
     const ProjectOopMirNode* root,
+    const ProjectCompilationIndexes* indexes,
     std::span<const ProjectOopMirStructLayout> layouts,
     std::uint64_t& frameSize)
 {
@@ -318,12 +319,9 @@ void sumAwaitedFrameSizeNodes(
         if (node == nullptr) continue;
         if (node->kind == ProjectOopMirNodeKind::AwaitFuture)
         {
-            for (const ProjectOopMirStructLayout& layout : layouts)
-            {
-                if (layout.typeKey != node->elementTypeKey) continue;
-                frameSize += layout.size;
-                break;
-            }
+            if (const ProjectOopMirStructLayout* layout =
+                    functionStructLayout(indexes, layouts, node->elementTypeKey))
+                frameSize += layout->size;
         }
         for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
             work.push_back(child->get());
@@ -606,13 +604,14 @@ void appendLiveFrameParameters(
 
 bool buildPollFrame(
     ProjectOopMirFunction& function,
+    const ProjectCompilationIndexes* indexes,
     std::span<const ProjectOopMirStructLayout> layouts,
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup,
     std::string& error)
 {
     std::uint64_t frameSize = 0;
-    sumAwaitedFrameSizeNodes(function.body.get(), layouts, frameSize);
+    sumAwaitedFrameSizeNodes(function.body.get(), indexes, layouts, frameSize);
     std::uint64_t order = 0;
     PositionMap localDefinition;
     PositionMap localLastUse;
@@ -739,7 +738,8 @@ void ProjectOopMirModel::sumAwaitedFrameSize(
     std::span<const ProjectOopMirStructLayout> layouts,
     std::uint64_t& frameSize)
 {
-    sumAwaitedFrameSizeNodes(root, layouts, frameSize);
+    // The layouts given here may not be the ones the shared index was built from: scan them.
+    sumAwaitedFrameSizeNodes(root, nullptr, layouts, frameSize);
 }
 
 void ProjectOopMirModel::collectPollLiveness(
@@ -826,7 +826,7 @@ ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(
     if (source.isImportedC || source.isImportedNative) return function;
     function.body = lowerNode(source.body.get(), error, functionLayouts);
     if (function.mangledName.ends_with("$poll") &&
-        !buildPollFrame(function, functionLayouts, objectLayoutModel, nameLookup, error))
+        !buildPollFrame(function, indexes_, functionLayouts, objectLayoutModel, nameLookup, error))
         return function;
     if (function.mangledName.ends_with("$moveNext"))
         buildMoveNextFrame(function, objectLayoutModel, nameLookup);
