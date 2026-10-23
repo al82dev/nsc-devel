@@ -124,7 +124,7 @@ std::string incrementalLinkKey(
     std::string_view mainSymbol,
     std::string& error)
 {
-    std::string material = "NativeSharp.IncrementalLink.v1\n";
+    std::string material = "NativeSharp.IncrementalLink.v2\n";
     material += std::to_string(static_cast<unsigned>(optimizationLevel)) + ":" +
         std::to_string(static_cast<unsigned>(debugInformation)) + ":" +
         std::to_string(static_cast<unsigned>(subsystem)) + ":" + std::string(mainSymbol) + "\n";
