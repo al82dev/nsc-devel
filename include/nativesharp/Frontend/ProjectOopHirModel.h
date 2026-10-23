@@ -181,6 +181,21 @@ private:
     void appendImportedCRegularFunction(
         std::size_t memberOrdinal,
         const ClassMemberSymbol& member);
+    // The bodyless function of a precompiled method or constructor, built from the member alone.
+    static bool makePrecompiledRegularFunction(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member,
+        ProjectOopHirFunction& imported,
+        std::string& error);
+    // The bodyless function of an imported C member, built from the member alone.
+    static ProjectOopHirFunction makeImportedCRegularFunction(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member);
+    // Fills the parallel-build result of a declaration-only member without a worker model.
+    static void buildDeclarationOnlyFunction(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member,
+        internal::RegularFunctionResult& result);
     void initializeRegularFunction(
         ProjectOopHirFunction& function,
         std::size_t memberOrdinal,

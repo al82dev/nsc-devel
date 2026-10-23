@@ -789,8 +789,11 @@ bool ProjectOopHirModel::buildRegularFunctionsInParallel(
         }
         const bool declarationOnly = member.isImportedC ||
             (member.isPrecompiled && member.kind != ClassMemberKind::Destructor);
+        // A declaration-only member (imported C, precompiled) has no body: its function is built
+        // from the member alone, as a worker model filtered to it would, without constructing a
+        // whole ProjectOopHirModel per member.
         if (declarationOnly)
-            buildMember(memberOrdinal);
+            buildDeclarationOnlyFunction(memberOrdinal, member, results[memberOrdinal]);
         else
             workers.submit([&buildMember, memberOrdinal](std::size_t)
             {
@@ -898,9 +901,10 @@ bool ProjectOopHirModel::regularFunctionShouldBeSkipped(
     return false;
 }
 
-bool ProjectOopHirModel::appendPrecompiledRegularFunction(
+bool ProjectOopHirModel::makePrecompiledRegularFunction(
     std::size_t memberOrdinal,
     const ClassMemberSymbol& member,
+    ProjectOopHirFunction& imported,
     std::string& error)
 {
     // The declaration came from .nsmeta and participates in the ordinary NativeSharp
@@ -909,7 +913,6 @@ bool ProjectOopHirModel::appendPrecompiledRegularFunction(
     // produced once by the library producer and transported through NSMETA.  Recomputing
     // it here is incorrect when a closed generic argument acquired a qualified spelling
     // during source reconstruction.
-    ProjectOopHirFunction imported;
     imported.memberOrdinal = memberOrdinal;
     imported.declaringTypeOrdinal = member.declaringTypeOrdinal;
     imported.constructor = member.kind == ClassMemberKind::Constructor;
@@ -941,12 +944,22 @@ bool ProjectOopHirModel::appendPrecompiledRegularFunction(
         imported.parameterPassKinds.push_back(parameter.passKind);
         imported.parameterOwnerships.push_back(parameter.ownership);
     }
+    return true;
+}
+
+bool ProjectOopHirModel::appendPrecompiledRegularFunction(
+    std::size_t memberOrdinal,
+    const ClassMemberSymbol& member,
+    std::string& error)
+{
+    ProjectOopHirFunction imported;
+    if (!makePrecompiledRegularFunction(memberOrdinal, member, imported, error)) return false;
     if (!functionByMember_.empty()) functionByMember_[memberOrdinal] = functions_.size();
     functions_.push_back(std::move(imported));
     return true;
 }
 
-void ProjectOopHirModel::appendImportedCRegularFunction(
+ProjectOopHirFunction ProjectOopHirModel::makeImportedCRegularFunction(
     std::size_t memberOrdinal,
     const ClassMemberSymbol& member)
 {
@@ -983,8 +996,35 @@ void ProjectOopHirModel::appendImportedCRegularFunction(
         imported.parameterPassKinds.push_back(parameter.passKind);
         imported.parameterOwnerships.push_back(parameter.ownership);
     }
+    return imported;
+}
+
+void ProjectOopHirModel::appendImportedCRegularFunction(
+    std::size_t memberOrdinal,
+    const ClassMemberSymbol& member)
+{
+    ProjectOopHirFunction imported = makeImportedCRegularFunction(memberOrdinal, member);
     if (!functionByMember_.empty()) functionByMember_[memberOrdinal] = functions_.size();
     functions_.push_back(std::move(imported));
+}
+
+void ProjectOopHirModel::buildDeclarationOnlyFunction(
+    std::size_t memberOrdinal,
+    const ClassMemberSymbol& member,
+    internal::RegularFunctionResult& result)
+{
+    // The branches buildRegularFunction takes for a member that is not skipped and is either
+    // imported from C or a precompiled method or constructor. A worker model filtered to this
+    // member produced exactly this one function, or this error, and no error range.
+    if (member.isImportedC)
+    {
+        result.functions.push_back(makeImportedCRegularFunction(memberOrdinal, member));
+        result.success = true;
+        return;
+    }
+    ProjectOopHirFunction imported;
+    result.success = makePrecompiledRegularFunction(memberOrdinal, member, imported, result.error);
+    if (result.success) result.functions.push_back(std::move(imported));
 }
 
 void ProjectOopHirModel::initializeRegularFunction(
