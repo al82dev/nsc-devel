@@ -1,6 +1,7 @@
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
+#include "../Internal/LlvmInstrumentationSwitches.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
 
@@ -10,6 +11,7 @@ using namespace llvm_api;
 
 bool OopLlvmImplementation::ensureRuntimeDebugTrace(std::string& error)
 {
+        if constexpr (!kRuntimeDebugTraceEnabled) return true;
         if (debugInformation_ != DebugInformationKind::Full || runtimeDebugTraceFunction_ != nullptr)
             return true;
 
@@ -102,6 +104,7 @@ bool OopLlvmImplementation::emitRuntimeDebugTrace(
         std::string_view text,
         std::string& error)
 {
+        if constexpr (!kRuntimeDebugTraceEnabled) return true;
         if (debugInformation_ != DebugInformationKind::Full) return true;
         if (!ensureRuntimeDebugTrace(error)) return false;
         LLVMValueRef message = internStringLiteral(text, error);
@@ -119,6 +122,7 @@ std::string OopLlvmImplementation::runtimeDebugCallableRecord(
         const frontend::ProjectOopMirFunction& function,
         std::string_view event) const
 {
+        if constexpr (!kRuntimeDebugTraceEnabled) return {};
         std::string kind = function.constructor
             ? (function.isStatic ? "static-constructor" : "constructor")
             : function.destructor
@@ -148,6 +152,7 @@ std::string OopLlvmImplementation::runtimeDebugFieldStoreRecord(
         const frontend::ProjectOopMirNode& store,
         std::string_view event) const
 {
+        if constexpr (!kRuntimeDebugTraceEnabled) return {};
         if (store.children.empty() || store.children.front() == nullptr ||
             memberModel_ == nullptr || currentMirFunction_ == nullptr)
         {
@@ -190,6 +195,7 @@ std::string OopLlvmImplementation::runtimeDebugFieldLoadRecord(
         const frontend::ProjectOopMirNode& field,
         std::string_view event) const
 {
+        if constexpr (!kRuntimeDebugTraceEnabled) return {};
         if (memberModel_ == nullptr || currentMirFunction_ == nullptr ||
             (field.kind != frontend::ProjectOopMirNodeKind::FieldLoad &&
              field.kind != frontend::ProjectOopMirNodeKind::BitFieldLoad) ||
@@ -220,6 +226,7 @@ std::string OopLlvmImplementation::runtimeDebugArrayRecord(
         const frontend::ProjectOopMirNode& node,
         std::string_view event) const
 {
+        if constexpr (!kRuntimeDebugTraceEnabled) return {};
         if (currentMirFunction_ == nullptr) return {};
         const std::string& callable = currentMirFunction_->debugDisplayName.empty()
             ? currentMirFunction_->mangledName
