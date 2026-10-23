@@ -168,7 +168,10 @@ bool normalizeTransitiveSourceOwnership(
             const ProjectSource& source = sources[index];
             const auto owner = sourceOwner.find(sourceKeys[ordinal][index]);
             if (owner == sourceOwner.end() || owner->second != ordinal) continue;
-            if (!ownSources.add(source.absolutePath, error)) return false;
+            // The source comes from a set of the same project directory: it is canonical and
+            // already validated.
+            if (!ownSources.addCanonical(source.absolutePath, source.projectRelativePath, error))
+                return false;
         }
         if (!ownSources.finalize(error, true)) return false;
         normalized.emplace_back(

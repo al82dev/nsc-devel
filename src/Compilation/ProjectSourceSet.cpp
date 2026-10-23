@@ -69,6 +69,26 @@ bool ProjectSourceSet::add(const std::filesystem::path& sourcePath, std::string&
     return true;
 }
 
+bool ProjectSourceSet::addCanonical(
+    const std::filesystem::path& canonicalSource,
+    const std::filesystem::path& projectRelativePath,
+    std::string& error)
+{
+    if (finalized_)
+    {
+        error = "cannot add a source after the project source set was finalized";
+        return false;
+    }
+    if (!sourceKeys_.insert(comparisonKey(projectRelativePath)).second)
+    {
+        error = "duplicate project source: '" + projectRelativePath.generic_string() + "'";
+        return false;
+    }
+
+    sources_.push_back(ProjectSource{canonicalSource, projectRelativePath, 0});
+    return true;
+}
+
 bool ProjectSourceSet::finalize(std::string& error, bool allowEmpty)
 {
     if (finalized_)

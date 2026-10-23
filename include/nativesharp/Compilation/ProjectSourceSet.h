@@ -17,6 +17,12 @@ public:
     explicit ProjectSourceSet(std::filesystem::path projectDirectory);
 
     bool add(const std::filesystem::path& sourcePath, std::string& error);
+    // Adds a source taken from another set of the same project directory: the path is already
+    // canonical and was validated by add, so only the finalization and duplicate checks run.
+    bool addCanonical(
+        const std::filesystem::path& canonicalSource,
+        const std::filesystem::path& projectRelativePath,
+        std::string& error);
     bool finalize(std::string& error, bool allowEmpty = false);
 
     const std::filesystem::path& projectDirectory() const noexcept;
