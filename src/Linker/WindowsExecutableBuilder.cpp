@@ -118,7 +118,6 @@ bool appendFileIdentity(
 std::string incrementalLinkKey(
     std::span<const std::filesystem::path> programObjects,
     std::string_view programLlvmText,
-    std::string_view runtimeLlvmText,
     std::string_view runtimeKey,
     std::span<const std::filesystem::path> extraLibraries,
     std::span<const ExternalImportModule> externalImports,
@@ -133,8 +132,6 @@ std::string incrementalLinkKey(
         std::to_string(static_cast<unsigned>(debugInformation)) + ":" +
         std::to_string(static_cast<unsigned>(subsystem)) + ":" + std::string(mainSymbol) + "\n";
     material.append(programLlvmText);
-    material.push_back('\n');
-    material.append(runtimeLlvmText);
     material.push_back('\n');
     material.append(runtimeKey);
     material.push_back('\n');
@@ -551,7 +548,6 @@ bool validatePartitionedExecutableRequest(
 bool prepareIncrementalExecutable(
     std::span<const std::filesystem::path> programObjects,
     std::string_view programLlvmText,
-    const llvm_backend::LlvmModule& runtimeModule,
     std::span<const std::filesystem::path> extraLinkLibraries,
     const std::filesystem::path& runtimeLibrary,
     std::span<const ExternalImportModule> externalImports,
@@ -569,7 +565,6 @@ bool prepareIncrementalExecutable(
 {
     statePath = incrementalStatePath(outputPath);
     if (!incrementalLink) return true;
-    const std::string runtimeText = runtimeModule.text();
     std::string runtimeIdentity;
     if (!executableRuntimeIdentity(runtimeLibrary, mainSymbol, runtimeIdentity, error)) return false;
     const std::string runtimeKey = executableRuntimeKey(runtimeIdentity, optimizationLevel);
@@ -577,7 +572,7 @@ bool prepareIncrementalExecutable(
         extraLinkLibraries.begin(), extraLinkLibraries.end());
     if (!runtimeLibrary.empty()) runtimeAwareLibraries.push_back(runtimeLibrary);
     incrementalKey = incrementalLinkKey(
-        programObjects, programLlvmText, runtimeText, runtimeKey, runtimeAwareLibraries,
+        programObjects, programLlvmText, runtimeKey, runtimeAwareLibraries,
         externalImports, optimizationLevel, debugInformation, subsystem, mainSymbol, error);
     if (incrementalKey.empty()) return false;
     std::filesystem::path pdbPath = outputPath;
@@ -642,7 +637,7 @@ bool WindowsExecutableBuilder::buildObjects(
     std::string incrementalKey;
     std::filesystem::path statePath;
     if (!prepareIncrementalExecutable(
-            programObjects, programLlvmText, *runtimeModule, extraLinkLibraries_, runtimeLibrary_,
+            programObjects, programLlvmText, extraLinkLibraries_, runtimeLibrary_,
             externalImports_, optimizationLevel, debugInformation_, subsystem_, mainSymbol,
             outputPath, incrementalLink_, incrementalKey, statePath, info_,
             reusedIncrementalLink_, error)) return false;
