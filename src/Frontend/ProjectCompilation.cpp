@@ -16,6 +16,7 @@
 #include "nativesharp/Source/SourceFile.h"
 #include "nativesharp/Source/SourcePosition.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -603,20 +604,22 @@ std::vector<std::string> collectParserKnownTypeNames(
         collectUsingAliases(unit->tokens(), aliases);
     }
 
+    // baseNames comes from the std::set, so it is sorted and unique: the target itself is a binary
+    // search and the names that start with "target." are one contiguous run beginning at the
+    // lower bound of that prefix. The same names are inserted as by comparing every alias with
+    // every name, and the result is the same sorted set.
     const std::vector<std::string> baseNames(names.begin(), names.end());
     for (const auto& [alias, target] : aliases)
     {
-        for (const std::string& known : baseNames)
+        if (std::binary_search(baseNames.begin(), baseNames.end(), target))
         {
-            if (known == target)
-            {
-                names.insert(alias);
-            }
-            const std::string prefix = target + ".";
-            if (known.starts_with(prefix))
-            {
-                names.insert(alias + known.substr(target.size()));
-            }
+            names.insert(alias);
+        }
+        const std::string prefix = target + ".";
+        for (auto known = std::lower_bound(baseNames.begin(), baseNames.end(), prefix);
+             known != baseNames.end() && known->starts_with(prefix); ++known)
+        {
+            names.insert(alias + known->substr(target.size()));
         }
     }
     return std::vector<std::string>(names.begin(), names.end());
