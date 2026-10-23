@@ -36,8 +36,8 @@ int main()
     const auto guardedResult = analyzeClosedMatch(domain, guarded);
     tests.expect(!guardedResult.exhaustive && guardedResult.missingCases.size() == 2,
         "a dynamic guard never contributes to static exhaustiveness");
-    const std::array<MatchArmCoverage, 2> unreachable = {{{{}, true, false},
-        {{"Ready"}, false, false}}};
+    const std::array<MatchArmCoverage, 2> unreachable = {{{{}, true, false, {}},
+        {{"Ready"}, false, false, {}}}};
     tests.expect(analyzeClosedMatch(domain, unreachable).unreachableArms ==
             std::vector<std::size_t>({1}),
         "an arm after an unguarded wildcard is unreachable");
