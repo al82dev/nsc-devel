@@ -633,13 +633,6 @@ bool WindowsExecutableBuilder::buildObjects(
     if (!validatePartitionedExecutableRequest(
             programObjects, programObjectsVerified_, outputPath, mainSymbol, error)) return false;
     if (!verifyExecutableRuntimeLibrary(runtimeLibrary_, error)) return false;
-    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
-    if (!createExecutableTargetMachine(optimizationLevel, targetMachine, error)) return false;
-    const bool independentRuntime = executableUsesIndependentRuntime(runtimeLibrary_);
-    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule;
-    if (!buildExecutableRuntime(runtimeLibrary_, mainSymbol, runtimeModule, error)) return false;
-    if (!optimizeExecutableRuntime(
-            *runtimeModule, *targetMachine, optimizationLevel, error)) return false;
     std::string incrementalKey;
     std::filesystem::path statePath;
     if (!prepareIncrementalExecutable(
@@ -648,6 +641,13 @@ bool WindowsExecutableBuilder::buildObjects(
             outputPath, incrementalLink_, incrementalKey, statePath, info_,
             reusedIncrementalLink_, error)) return false;
     if (reusedIncrementalLink_) return true;
+    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
+    if (!createExecutableTargetMachine(optimizationLevel, targetMachine, error)) return false;
+    const bool independentRuntime = executableUsesIndependentRuntime(runtimeLibrary_);
+    std::unique_ptr<llvm_backend::LlvmModule> runtimeModule;
+    if (!buildExecutableRuntime(runtimeLibrary_, mainSymbol, runtimeModule, error)) return false;
+    if (!optimizeExecutableRuntime(
+            *runtimeModule, *targetMachine, optimizationLevel, error)) return false;
     std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory;
     std::filesystem::path runtimeObject;
     if (!emitPartitionedRuntimeObject(
