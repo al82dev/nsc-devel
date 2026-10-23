@@ -1339,13 +1339,9 @@ bool ProjectCompilation::executeSyntaxComptime(
 }
 
 std::optional<std::size_t> ProjectCompilation::precompiledProjectOrdinal(
-    const PrecompiledSyntaxModule& module) const
+    const std::filesystem::path& canonicalMetadataPath) const
 {
-    std::error_code metadataError;
-    const std::filesystem::path canonicalMetadata =
-        std::filesystem::weakly_canonical(module.metadataPath, metadataError);
-    if (metadataError) return std::nullopt;
-    const auto found = precompiledProjectOrdinals_.find(canonicalMetadata);
+    const auto found = precompiledProjectOrdinals_.find(canonicalMetadataPath);
     if (found == precompiledProjectOrdinals_.end()) return std::nullopt;
     return found->second;
 }
@@ -1466,8 +1462,9 @@ bool ProjectCompilation::materializePrecompiledModule(
     std::string& loadError)
 {
     std::error_code metadataKeyError;
-    std::string metadataKey = std::filesystem::weakly_canonical(
-        module.metadataPath, metadataKeyError).generic_string();
+    const std::filesystem::path canonicalMetadata =
+        std::filesystem::weakly_canonical(module.metadataPath, metadataKeyError);
+    std::string metadataKey = canonicalMetadata.generic_string();
     if (metadataKeyError)
     {
         metadataKey = std::filesystem::absolute(
@@ -1477,7 +1474,11 @@ bool ProjectCompilation::materializePrecompiledModule(
     {
         return true;
     }
-    const std::optional<std::size_t> projectOrdinal = precompiledProjectOrdinal(module);
+    // The canonical path of the key above is reused; a path that could not be canonicalized
+    // has no project-graph node, as before.
+    const std::optional<std::size_t> projectOrdinal = metadataKeyError
+        ? std::optional<std::size_t>()
+        : precompiledProjectOrdinal(canonicalMetadata);
     if (!projectOrdinal.has_value())
     {
         loadError = "internal error: precompiled module '" + module.moduleName +

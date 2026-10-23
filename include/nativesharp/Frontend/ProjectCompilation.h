@@ -159,7 +159,7 @@ private:
         driver::CompilationWorkerPool& syntaxWorkers,
         std::string& loadError);
     std::optional<std::size_t> precompiledProjectOrdinal(
-        const PrecompiledSyntaxModule& module) const;
+        const std::filesystem::path& canonicalMetadataPath) const;
     bool materializePrecompiledUnit(
         const PrecompiledSyntaxModule& module,
         std::size_t projectOrdinal,
