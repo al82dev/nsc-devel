@@ -154,7 +154,7 @@ void TypeSyntax::setOriginProjectOrdinal(std::size_t projectOrdinal) noexcept
 {
     originProjectOrdinal_ = projectOrdinal;
 }
-std::optional<std::string> TypeSyntax::originNamespace() const noexcept { return originNamespace_; }
+const std::optional<std::string>& TypeSyntax::originNamespace() const noexcept { return originNamespace_; }
 void TypeSyntax::setOriginNamespace(std::string namespaceName) noexcept
 {
     originNamespace_ = std::move(namespaceName);

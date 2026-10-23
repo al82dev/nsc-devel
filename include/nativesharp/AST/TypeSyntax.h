@@ -171,7 +171,7 @@ public:
     // Resolution now goes entirely through this dedicated override (read only by
     // ProjectNameLookup::bindTypeSyntax), leaving baseName() -- and therefore every specialization
     // key derived from it -- untouched.
-    std::optional<std::string> originNamespace() const noexcept;
+    const std::optional<std::string>& originNamespace() const noexcept;
     void setOriginNamespace(std::string namespaceName) noexcept;
 
 private:
