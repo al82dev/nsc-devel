@@ -4,6 +4,9 @@
 #include "Internal/LoadedProject.h"
 #include "Internal/VisitState.h"
 
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
+
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Language/ModuleSemantics.h"
@@ -248,6 +251,15 @@ void preferExactSourceModuleArtifacts(
                 continue;
             }
 
+            if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+            {
+                const bool scanned = std::ranges::any_of(
+                    projectReferences, [&](const std::filesystem::path& path) {
+                        return pathKey(canonicalPath(path)) == sourceKey;
+                    });
+                if (scanned != referencedKeys.contains(sourceKey))
+                    frontend::internal::reportIndexShadowMismatch("preferExactSourceModuleArtifacts", sourceKey);
+            }
             if (referencedKeys.insert(sourceKey).second) projectReferences.push_back(source->second);
         }
         sortByPrecomputedKey(projectReferences, [](const std::filesystem::path& path) {

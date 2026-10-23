@@ -1,5 +1,7 @@
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Language/ModuleSemantics.h"
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
 
 #include <algorithm>
 #include <cctype>
@@ -208,6 +210,15 @@ bool collectUniquePrecompiledDescriptors(
     const ProjectOrdinalByPath projectByPath = projectOrdinalsByPath(projects);
     for (const PrecompiledProjectDescriptor& descriptor : descriptors)
     {
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        {
+            const std::string ownerKey = foldedPath(descriptor.ownerProjectFile);
+            const bool scanned = std::ranges::any_of(projects, [&](const Project& project) {
+                return foldedPath(project.projectFile()) == ownerKey;
+            });
+            if (scanned != projectByPath.contains(ownerKey))
+                frontend::internal::reportIndexShadowMismatch("collectUniquePrecompiledDescriptors", ownerKey);
+        }
         if (!projectByPath.contains(foldedPath(descriptor.ownerProjectFile)))
         {
             error = "precompiled metadata '" + descriptor.metadataPath.generic_string() +

@@ -1,5 +1,8 @@
 #include "nativesharp/Compilation/ProjectSourceSet.h"
 
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
+
 #include <algorithm>
 #include <cctype>
 #include <numeric>
@@ -59,7 +62,10 @@ bool ProjectSourceSet::add(const std::filesystem::path& sourcePath, std::string&
         return false;
     }
 
-    if (!sourceKeys_.insert(comparisonKey(relative)).second)
+    const std::string candidateKey = comparisonKey(relative);
+    if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        shadowCheckDuplicateKey(candidateKey, "ProjectSourceSet::add");
+    if (!sourceKeys_.insert(candidateKey).second)
     {
         error = "duplicate project source: '" + relative.generic_string() + "'";
         return false;
@@ -79,7 +85,10 @@ bool ProjectSourceSet::addCanonical(
         error = "cannot add a source after the project source set was finalized";
         return false;
     }
-    if (!sourceKeys_.insert(comparisonKey(projectRelativePath)).second)
+    const std::string candidateKey = comparisonKey(projectRelativePath);
+    if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        shadowCheckDuplicateKey(candidateKey, "ProjectSourceSet::addCanonical");
+    if (!sourceKeys_.insert(candidateKey).second)
     {
         error = "duplicate project source: '" + projectRelativePath.generic_string() + "'";
         return false;
@@ -169,6 +178,20 @@ std::string ProjectSourceSet::comparisonKey(const std::filesystem::path& path)
             return static_cast<char>(std::tolower(value));
         });
     return key;
+}
+
+void ProjectSourceSet::shadowCheckDuplicateKey(const std::string& key, std::string_view function) const
+{
+    // Validation builds only: the key set must answer like the former scan of every source.
+    if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+    {
+        const bool scanned = std::ranges::any_of(sources_, [&key](const ProjectSource& source)
+        {
+            return comparisonKey(source.projectRelativePath) == key;
+        });
+        if (scanned != sourceKeys_.contains(key))
+            frontend::internal::reportIndexShadowMismatch(function, key);
+    }
 }
 
 bool ProjectSourceSet::escapesProject(const std::filesystem::path& relativePath) noexcept

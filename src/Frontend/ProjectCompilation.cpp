@@ -3,6 +3,8 @@
 #include "Cache/CachePayloadWriter.h"
 #include "Cache/SyntaxProductCacheCodec.h"
 #include "Internal/ProjectPhaseTimer.h"
+#include "Internal/IndexShadowCheckSwitch.h"
+#include "Internal/IndexShadowMismatch.h"
 #include "nativesharp/Frontend/ComptimeEngine.h"
 #include "nativesharp/Frontend/TemplateParseCache.h"
 
@@ -1342,6 +1344,25 @@ std::optional<std::size_t> ProjectCompilation::precompiledProjectOrdinal(
     const std::filesystem::path& canonicalMetadataPath) const
 {
     const auto found = precompiledProjectOrdinals_.find(canonicalMetadataPath);
+    if constexpr (internal::kIndexShadowCheckEnabled)
+    {
+        std::optional<std::size_t> scanned;
+        for (std::size_t ordinal = 0; !scanned && ordinal < projectGraph_->projects().size(); ++ordinal)
+        {
+            std::error_code projectError;
+            const std::filesystem::path canonicalProject = std::filesystem::weakly_canonical(
+                projectGraph_->projects()[ordinal].projectFile(), projectError);
+            if (!projectError && canonicalProject == canonicalMetadataPath) scanned = ordinal;
+        }
+        const std::optional<std::size_t> indexed = found == precompiledProjectOrdinals_.end()
+            ? std::optional<std::size_t>()
+            : std::optional<std::size_t>(found->second);
+        if (scanned != indexed)
+        {
+            internal::reportIndexShadowMismatch(
+                "ProjectCompilation::precompiledProjectOrdinal", canonicalMetadataPath.generic_string());
+        }
+    }
     if (found == precompiledProjectOrdinals_.end()) return std::nullopt;
     return found->second;
 }

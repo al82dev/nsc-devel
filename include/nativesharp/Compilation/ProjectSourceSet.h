@@ -6,6 +6,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <vector>
 
@@ -32,6 +33,8 @@ public:
 private:
     static std::string comparisonKey(const std::filesystem::path& path);
     static bool escapesProject(const std::filesystem::path& relativePath) noexcept;
+    // Validation builds only (index shadow checks): compares sourceKeys_ with a scan of sources_.
+    void shadowCheckDuplicateKey(const std::string& key, std::string_view function) const;
 
     std::filesystem::path projectDirectory_;
     // Canonical form of projectDirectory_, resolved once by the first add that finds the
