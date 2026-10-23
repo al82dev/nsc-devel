@@ -279,7 +279,10 @@ def check_deploy_variant(
         return (
             plan is None and "overlaps compiler build tree" in error
         ), "prefix inside the build tree was not rejected"
-    return False, f"deploy plan variant {variant} is not checked yet"
+    if variant == 6:
+        second, _ = create_plan(deploy, config, build_mode)
+        return plan is not None and plan == second, "deploy plan differs across repetitions"
+    return False, f"unsupported deploy plan variant {variant}"
 
 
 def run_deploy_plan(
