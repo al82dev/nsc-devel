@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "Internal/IndexShadowCheckSwitch.h"
+#include "Internal/IndexShadowMismatch.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Language/MetaprogrammingSemantics.h"
 
@@ -219,6 +221,55 @@ ProjectMetaprogrammingModel::buildAttributeTargetIndex(
     return index;
 }
 
+void ProjectMetaprogrammingModel::shadowCheckAttributeTarget(
+    const AttributeTargetIndex& targets,
+    const ProjectNameLookup& names,
+    const ProjectMemberModel& members,
+    const ProjectComptimeRecord& record,
+    const ComptimeAttributeDirective& directive) const
+{
+    if constexpr (internal::kIndexShadowCheckEnabled)
+    {
+        std::optional<std::size_t> scannedType;
+        std::optional<std::size_t> scannedMember;
+        std::uint32_t nearest = UINT32_MAX;
+        for (std::size_t typeOrdinal = 0; typeOrdinal < names.namedTypes().size(); ++typeOrdinal)
+        {
+            const NamedTypeDeclaration& type = names.namedTypes()[typeOrdinal];
+            if (type.projectOrdinal != record.projectOrdinal ||
+                type.sourceOrdinal != record.sourceOrdinal || !type.range.isValid() ||
+                type.range.begin().offset() < directive.offset)
+                continue;
+            if (type.range.begin().offset() < nearest)
+            {
+                nearest = type.range.begin().offset();
+                scannedType = typeOrdinal;
+                scannedMember.reset();
+            }
+        }
+        for (std::size_t memberOrdinal = 0; memberOrdinal < members.members().size(); ++memberOrdinal)
+        {
+            const ClassMemberSymbol& member = members.members()[memberOrdinal];
+            if (member.sourceOrdinal != record.sourceOrdinal || !member.range.isValid() ||
+                member.range.begin().offset() < directive.offset ||
+                member.declaringTypeOrdinal >= names.namedTypes().size() ||
+                names.namedTypes()[member.declaringTypeOrdinal].projectOrdinal != record.projectOrdinal)
+                continue;
+            if (member.range.begin().offset() < nearest)
+            {
+                nearest = member.range.begin().offset();
+                scannedType = member.declaringTypeOrdinal;
+                scannedMember = memberOrdinal;
+            }
+        }
+        std::optional<std::size_t> indexedType;
+        std::optional<std::size_t> indexedMember;
+        findAttributeTarget(targets, members, record, directive, indexedType, indexedMember);
+        if (indexedType != scannedType || indexedMember != scannedMember)
+            internal::reportIndexShadowMismatch("findAttributeTarget", directive.identity);
+    }
+}
+
 bool ProjectMetaprogrammingModel::findAttributeTarget(
     const AttributeTargetIndex& targets,
     const ProjectMemberModel& members,
@@ -329,6 +380,8 @@ bool ProjectMetaprogrammingModel::collectAttributeUses(
                 continue;
             }
             if (!targets.has_value()) targets = buildAttributeTargetIndex(names, members);
+            if constexpr (internal::kIndexShadowCheckEnabled)
+                shadowCheckAttributeTarget(*targets, names, members, record, directive);
             if (!appendAttributeUse(
                 *targets, members, record, directive, definitions, nonRepeatableUses))
             {

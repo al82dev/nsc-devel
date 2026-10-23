@@ -92,6 +92,14 @@ private:
     static AttributeTargetIndex buildAttributeTargetIndex(
         const ProjectNameLookup& names,
         const ProjectMemberModel& members);
+    // Validation builds only (index shadow checks): findAttributeTarget must choose what the
+    // former scans of every named type and member chose.
+    void shadowCheckAttributeTarget(
+        const AttributeTargetIndex& targets,
+        const ProjectNameLookup& names,
+        const ProjectMemberModel& members,
+        const ProjectComptimeRecord& record,
+        const ComptimeAttributeDirective& directive) const;
     bool findAttributeTarget(
         const AttributeTargetIndex& targets,
         const ProjectMemberModel& members,
