@@ -834,8 +834,13 @@ bool verifyGenericTemplateClosure(
     const std::unordered_map<std::string, const LibraryMetadataGenericTemplate*>& templateByKey,
     std::vector<std::string>& chain,
     std::unordered_set<std::string>& visiting,
+    std::unordered_set<std::string>& verifiedTemplates,
     std::string& error)
 {
+    // A template whose walk already completed has a closure without missing same-module
+    // dependencies (a missing one would have stopped the verification), so walking it again
+    // cannot report anything.
+    if (verifiedTemplates.contains(generic.canonicalKey)) return true;
     if (!visiting.insert(generic.canonicalKey).second) return true;
     chain.push_back(generic.canonicalKey);
     for (const std::string& dependencyKey : generic.dependencies)
@@ -859,6 +864,7 @@ bool verifyGenericTemplateClosure(
                 templateByKey,
                 chain,
                 visiting,
+                verifiedTemplates,
                 error))
         {
             return false;
@@ -866,6 +872,7 @@ bool verifyGenericTemplateClosure(
     }
     chain.pop_back();
     visiting.erase(generic.canonicalKey);
+    verifiedTemplates.insert(generic.canonicalKey);
     return true;
 }
 
@@ -892,6 +899,7 @@ bool verifyGenericTemplates(
         if (publicRoot.accessibility != kPublicAccessibility) continue;
         std::vector<std::string> chain;
         std::unordered_set<std::string> visiting;
+        std::unordered_set<std::string> verifiedTemplates;
         if (!verifyGenericTemplateClosure(
                 publicRoot,
                 publicRoot,
@@ -900,6 +908,7 @@ bool verifyGenericTemplates(
                 templateByKey,
                 chain,
                 visiting,
+                verifiedTemplates,
                 error))
         {
             return false;
