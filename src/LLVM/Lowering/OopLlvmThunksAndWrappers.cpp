@@ -596,6 +596,16 @@ bool OopLlvmImplementation::isVectorCallDelegateType(std::string_view typeKey) c
             return functionType->callingConvention == language::CallingConvention::VectorCall;
         if (!typeKey.starts_with("type:")) return false;
         const std::string_view key = typeKey.substr(5);
+        // The shared type index keeps the first type of an identity, as the scan below; the
+        // scan only runs for hand-assembled models that have no type index.
+        if (const std::optional<std::size_t> ordinal = nameLookup_.typeOrdinalForIdentity(key))
+        {
+            const frontend::NamedTypeDeclaration* type = nameLookup_.typeForOrdinal(*ordinal);
+            return type != nullptr && type->kind == frontend::NamedTypeDeclarationKind::Delegate &&
+                type->syntax != nullptr &&
+                type->syntax->hasModifier(lexer::TokenKind::KwVectorCall);
+        }
+        if (nameLookup_.hasTypeIndex()) return false;
         for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
         {
             if (type.identity.key() != key) continue;
