@@ -700,7 +700,12 @@ ExitCode executeRestore(const RestoreOptions& options, bool json, std::ostream& 
         verified = 0;
         if (!verifyPlan(plan, verified, message)) return result.failure(error, message, ExitCode::InternalError);
     }
-    if (!options.locked && !atomicWrite(lockPath, plan.lock, message))
+    // An identical lock is not rewritten: same bytes, and no new timestamp for tools watching it.
+    std::string existingLock;
+    std::string ignoredReadError;
+    const bool rewriteLock = !options.locked &&
+        !(readText(lockPath, existingLock, ignoredReadError) && existingLock == plan.lock);
+    if (rewriteLock && !atomicWrite(lockPath, plan.lock, message))
         return result.failure(error, message, ExitCode::InternalError);
     if (completedPlan != nullptr) *completedPlan = std::move(plan);
     return result.success(output,
