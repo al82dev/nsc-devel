@@ -12,6 +12,7 @@
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 
 #include "Internal/HostContext.h"
+#include "../Frontend/Internal/TypeIndexShadowCheck.h"
 
 #include <algorithm>
 #include <cctype>
@@ -133,6 +134,8 @@ std::optional<std::size_t> namedTypeOrdinalForIdentity(
     const ProjectNameLookup& names,
     std::string_view identity) noexcept
 {
+    if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        frontend::internal::shadowCheckTypeIdentityIndex(names, identity, "namedTypeOrdinalForIdentity");
     const auto types = names.namedTypes();
     if (const std::optional<std::size_t> indexed = names.typeOrdinalForIdentity(identity))
         return *indexed < types.size() ? indexed : std::nullopt;

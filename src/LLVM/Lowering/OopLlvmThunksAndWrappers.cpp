@@ -3,6 +3,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "../../Frontend/Internal/TypeIndexShadowCheck.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -571,6 +572,11 @@ bool OopLlvmImplementation::isExternCDelegateType(std::string_view typeKey) cons
             return functionType->carrier == language::FunctionCarrier::Pointer;
         if (!typeKey.starts_with("type:")) return false;
         const std::string_view key = typeKey.substr(5);
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        {
+            frontend::internal::shadowCheckTypeIdentityIndex(
+                nameLookup_, key, "OopLlvmImplementation::isExternCDelegateType");
+        }
         // The shared type index keeps the first type of an identity, as the scan below; the
         // scan only runs for hand-assembled models that have no type index.
         if (const std::optional<std::size_t> ordinal = nameLookup_.typeOrdinalForIdentity(key))
@@ -596,6 +602,11 @@ bool OopLlvmImplementation::isVectorCallDelegateType(std::string_view typeKey) c
             return functionType->callingConvention == language::CallingConvention::VectorCall;
         if (!typeKey.starts_with("type:")) return false;
         const std::string_view key = typeKey.substr(5);
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        {
+            frontend::internal::shadowCheckTypeIdentityIndex(
+                nameLookup_, key, "OopLlvmImplementation::isVectorCallDelegateType");
+        }
         // The shared type index keeps the first type of an identity, as the scan below; the
         // scan only runs for hand-assembled models that have no type index.
         if (const std::optional<std::size_t> ordinal = nameLookup_.typeOrdinalForIdentity(key))
