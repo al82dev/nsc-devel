@@ -350,6 +350,9 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
     };
 
     const PrecompiledMemberIdentityIndex identityIndex(identities);
+    // canonicalize is a pure function of its input, so the canonical key of each declaring type
+    // is computed once and reused by its other members.
+    std::unordered_map<std::size_t, std::string> declaringTypeKeys;
 
     for (ClassMemberSymbol& member : members_)
     {
@@ -364,8 +367,15 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
             return false;
         }
 
-        const std::string declaringTypeKey = canonicalize(
-            "type:" + nameLookup_->namedTypes()[member.declaringTypeOrdinal].identity.key());
+        auto declaringTypeEntry = declaringTypeKeys.find(member.declaringTypeOrdinal);
+        if (declaringTypeEntry == declaringTypeKeys.end())
+        {
+            declaringTypeEntry = declaringTypeKeys.emplace(
+                member.declaringTypeOrdinal,
+                canonicalize("type:" + nameLookup_->namedTypes()[member.declaringTypeOrdinal].identity.key()))
+                .first;
+        }
+        const std::string& declaringTypeKey = declaringTypeEntry->second;
         const std::string signatureKey = canonicalize(member.signatureKey);
         const PrecompiledMemberIdentityMatch match = identityIndex.find(
             member.kind, declaringTypeKey, member.name, signatureKey);
