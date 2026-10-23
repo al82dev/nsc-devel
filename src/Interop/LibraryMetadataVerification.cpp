@@ -592,23 +592,51 @@ bool verifyDispatchRecord(
     return true;
 }
 
+// Dispatch tables by type key (the first table of each key, as the former linear search) and,
+// for each table, its slots by signature in ascending slot order. Built once per metadata.
+struct MetadataDispatchIndex final
+{
+    std::unordered_map<std::string, const LibraryMetadataDispatch*> tablesByType;
+    std::unordered_map<
+        const LibraryMetadataDispatch*,
+        std::unordered_map<std::string, std::vector<std::size_t>>> slotsBySignature;
+};
+
+/// Builds both indexes of metadata's dispatch tables.
+MetadataDispatchIndex buildMetadataDispatchIndex(const LibraryMetadata& metadata)
+{
+    MetadataDispatchIndex index;
+    for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
+    {
+        index.tablesByType.emplace(dispatch.typeKey, &dispatch);
+        auto& slots = index.slotsBySignature[&dispatch];
+        for (std::size_t slot = 0; slot < dispatch.slotSignatures.size(); ++slot)
+            slots[dispatch.slotSignatures[slot]].push_back(slot);
+    }
+    return index;
+}
+
 const LibraryMetadataDispatch* findMetadataDispatch(
-    const LibraryMetadata& metadata,
+    const MetadataDispatchIndex& index,
     const std::string& typeKey)
 {
-    for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
-        if (dispatch.typeKey == typeKey) return &dispatch;
-    return nullptr;
+    const auto found = index.tablesByType.find(typeKey);
+    return found == index.tablesByType.end() ? nullptr : found->second;
 }
 
 std::optional<std::size_t> findMetadataDispatchSlot(
+    const MetadataDispatchIndex& index,
     const LibraryMetadataDispatch& dispatch,
     const LibraryMetadataMember& member,
     std::uint32_t newSlotFlag)
 {
-    for (std::size_t slot = 0; slot < dispatch.slotSignatures.size(); ++slot)
+    // Only the slots whose signature matches, in the order the former scan met them.
+    const auto table = index.slotsBySignature.find(&dispatch);
+    if (table == index.slotsBySignature.end()) return std::nullopt;
+    const auto matching = table->second.find(member.signatureKey);
+    if (matching == table->second.end()) return std::nullopt;
+    for (const std::size_t slot : matching->second)
     {
-        if (dispatch.slotSignatures[slot] != member.signatureKey) continue;
         if ((member.flags & newSlotFlag) == 0U) return slot;
         if (slot < dispatch.slotCalleeNames.size() &&
             dispatch.slotCalleeNames[slot] == member.mangledName)
@@ -620,7 +648,7 @@ std::optional<std::size_t> findMetadataDispatchSlot(
 }
 
 bool verifyVirtualMemberDispatch(
-    const LibraryMetadata& metadata,
+    const MetadataDispatchIndex& dispatchIndex,
     const LibraryMetadataMember& member,
     const std::unordered_map<std::string, const LibraryMetadataType*>& typesByKey,
     std::string& error)
@@ -642,7 +670,7 @@ bool verifyVirtualMemberDispatch(
         return true;
     }
     const LibraryMetadataDispatch* dispatch =
-        findMetadataDispatch(metadata, member.declaringTypeKey);
+        findMetadataDispatch(dispatchIndex, member.declaringTypeKey);
     if (dispatch == nullptr)
     {
         error = "metadata virtual member '" + member.declaringTypeKey + "." +
@@ -650,7 +678,7 @@ bool verifyVirtualMemberDispatch(
         return false;
     }
     const std::optional<std::size_t> slot =
-        findMetadataDispatchSlot(*dispatch, member, kNewSlot);
+        findMetadataDispatchSlot(dispatchIndex, *dispatch, member, kNewSlot);
     if (!slot.has_value())
     {
         error = "metadata virtual member '" + member.declaringTypeKey + "." +
@@ -700,8 +728,9 @@ bool verifyMetadataDispatchContracts(
             return false;
         }
     }
+    const MetadataDispatchIndex dispatchIndex = buildMetadataDispatchIndex(metadata);
     for (const LibraryMetadataMember& member : metadata.members)
-        if (!verifyVirtualMemberDispatch(metadata, member, typesByKey, error)) return false;
+        if (!verifyVirtualMemberDispatch(dispatchIndex, member, typesByKey, error)) return false;
     return true;
 }
 
