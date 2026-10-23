@@ -9,7 +9,7 @@ int main()
     std::string error;
 
     const FutureProtocol typed{
-        "builtin:int", "Errors.IoError", "Tasks.Cancelled", true, true, true, true};
+        "builtin:int", "Errors.IoError", "Tasks.Cancelled", "", true, true, true, true};
     tests.expect(validateFutureProtocol(typed, error) && error.empty(),
         "Future publishes explicit value, error and cancellation types");
 
