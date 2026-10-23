@@ -6,6 +6,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace nativesharp::compilation
@@ -31,6 +32,8 @@ private:
     // directory; later adds reuse it instead of canonicalizing the directory again.
     std::optional<std::filesystem::path> canonicalProjectDirectory_;
     std::vector<ProjectSource> sources_;
+    // comparisonKey of every accepted source, for the duplicate check.
+    std::unordered_set<std::string> sourceKeys_;
     bool finalized_ = false;
 };
 }

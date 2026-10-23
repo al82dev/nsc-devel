@@ -58,15 +58,7 @@ bool ProjectSourceSet::add(const std::filesystem::path& sourcePath, std::string&
         return false;
     }
 
-    const std::string candidateKey = comparisonKey(relative);
-    const auto duplicate = std::find_if(
-        sources_.begin(),
-        sources_.end(),
-        [&candidateKey](const ProjectSource& source)
-        {
-            return comparisonKey(source.projectRelativePath) == candidateKey;
-        });
-    if (duplicate != sources_.end())
+    if (!sourceKeys_.insert(comparisonKey(relative)).second)
     {
         error = "duplicate project source: '" + relative.generic_string() + "'";
         return false;
