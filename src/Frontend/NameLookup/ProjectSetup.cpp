@@ -72,6 +72,20 @@ std::string sourcePathForUnit(
 }
 }
 
+namespace
+{
+/// Lower-cases every byte with std::tolower, as typeIsVisibleTo compared package, module and
+/// friend names.
+std::string foldedVisibilityName(std::string value)
+{
+    std::ranges::transform(value, value.begin(), [](unsigned char ch)
+    {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+}
+
 void ProjectNameLookup::initializeModules(const compilation::ProjectGraph& graph)
 {
     const std::span<const compilation::Project> projects = graph.projects();
@@ -81,12 +95,14 @@ void ProjectNameLookup::initializeModules(const compilation::ProjectGraph& graph
     reexportedTypesByModule_.resize(projects.size());
     packageByProject_.resize(projects.size());
     friendsByProject_.resize(projects.size());
+    foldedPackageByProject_.resize(projects.size());
     for (std::size_t projectOrdinal = 0; projectOrdinal < projects.size(); ++projectOrdinal)
     {
         modules_.push_back(std::make_unique<ModuleDeclarationSpace>(
             projectOrdinal,
             projects[projectOrdinal].moduleName()));
         packageByProject_[projectOrdinal] = std::string(projects[projectOrdinal].packageName());
+        foldedPackageByProject_[projectOrdinal] = foldedVisibilityName(packageByProject_[projectOrdinal]);
         friendsByProject_[projectOrdinal].assign(
             projects[projectOrdinal].friendModules().begin(),
             projects[projectOrdinal].friendModules().end());

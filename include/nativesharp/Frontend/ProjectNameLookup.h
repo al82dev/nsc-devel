@@ -537,6 +537,8 @@ private:
     std::unordered_map<const ast::AstNode*, std::size_t> typeOrdinalBySyntax_;
     std::vector<std::string> packageByProject_;
     std::vector<std::vector<std::string>> friendsByProject_;
+    // packageByProject_ lower-cased once in initializeModules, for typeIsVisibleTo.
+    std::vector<std::string> foldedPackageByProject_;
     std::unordered_map<const ast::TypeSyntax*, std::size_t> bindingBySyntax_;
     std::vector<ExpressionTypeNameBinding> expressionTypeBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> expressionTypeBindingBySyntax_;

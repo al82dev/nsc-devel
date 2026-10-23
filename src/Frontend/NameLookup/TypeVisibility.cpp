@@ -69,9 +69,10 @@ bool ProjectNameLookup::typeIsVisibleTo(
                 });
                 return value;
             };
+            // Package names were lower-cased once per project in initializeModules.
             if (type.accessibility == NamedTypeAccessibility::Package &&
-                fold(packageByProject_[type.projectOrdinal]) ==
-                    fold(packageByProject_[accessingProjectOrdinal]))
+                foldedPackageByProject_[type.projectOrdinal] ==
+                    foldedPackageByProject_[accessingProjectOrdinal])
             {
                 crosses = true;
             }
