@@ -700,22 +700,28 @@ void inheritConstructorFrames(
     std::size_t suffixLength,
     bool excludeMoveNextPoll)
 {
+    // mangledName -> first generator constructor with that name (the candidate the former scan
+    // found, which required isGeneratorConstructor). Built once; the loop below changes frames
+    // and bodies only, never names or the generator flag.
+    std::unordered_map<std::string_view, std::size_t> constructorByName;
+    for (std::size_t index = 0; index < functions.size(); ++index)
+    {
+        if (functions[index].isGeneratorConstructor)
+            constructorByName.try_emplace(functions[index].mangledName, index);
+    }
     for (ProjectOopMirFunction& function : functions)
     {
         if (!function.mangledName.ends_with(suffix)) continue;
         if (excludeMoveNextPoll && function.mangledName.ends_with("$moveNext$poll")) continue;
         const std::string constructorName =
             function.mangledName.substr(0, function.mangledName.size() - suffixLength);
-        for (ProjectOopMirFunction& candidate : functions)
-        {
-            if (candidate.mangledName != constructorName || !candidate.isGeneratorConstructor)
-                continue;
-            candidate.asyncFrameLocals = function.asyncFrameLocals;
-            candidate.asyncFrameParameters = function.asyncFrameParameters;
-            candidate.asyncFrameSize = function.asyncFrameSize;
-            insertGeneratorFrameInit(candidate);
-            break;
-        }
+        const auto constructor = constructorByName.find(constructorName);
+        if (constructor == constructorByName.end()) continue;
+        ProjectOopMirFunction& candidate = functions[constructor->second];
+        candidate.asyncFrameLocals = function.asyncFrameLocals;
+        candidate.asyncFrameParameters = function.asyncFrameParameters;
+        candidate.asyncFrameSize = function.asyncFrameSize;
+        insertGeneratorFrameInit(candidate);
     }
 }
 }
