@@ -3,6 +3,7 @@
 #include "../Frontend/Cache/CacheEntryStore.h"
 #include "Internal/ArtifactCacheFilesystemPath.h"
 #include "Internal/CacheEntryLock.h"
+#include "Internal/CachePruneIndex.h"
 #include "Internal/CachePruneEntry.h"
 #include "Internal/CachePruneMeasurement.h"
 
@@ -138,6 +139,115 @@ bool cacheEntryFilesAvailable(
         return true;
     if (reason != nullptr) *reason = CacheMissReason::IncompletePublication;
     return false;
+}
+
+/// Publishes one object entry under its entry lock: stages the payload, invalidates the
+/// metadata, replaces the payload, then writes the metadata (moved out of storeObject so the
+/// lock is released before the prune index is updated).
+bool publishObjectEntry(
+    std::string_view key,
+    const std::filesystem::path& cachedObject,
+    const std::filesystem::path& cachedMetadata,
+    const std::filesystem::path& source,
+    const basic::Sha256Digest& digest,
+    std::uintmax_t size,
+    std::string& error)
+{
+    std::error_code filesystemError;
+    CacheEntryLock entryLock;
+    if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
+    const std::filesystem::path temporaryObject =
+        objectEntryStore.temporarySibling(cachedObject);
+    std::filesystem::copy_file(cacheFilesystemPath(source), cacheFilesystemPath(temporaryObject),
+        std::filesystem::copy_options::overwrite_existing, filesystemError);
+    if (filesystemError)
+    {
+        error = "cannot stage cached object '" + cachedObject.string() + "': " +
+            filesystemError.message();
+        return false;
+    }
+    std::filesystem::remove(cacheFilesystemPath(cachedMetadata), filesystemError);
+    if (filesystemError)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(cacheFilesystemPath(temporaryObject), ignored);
+        error = "cannot invalidate artifact-cache metadata '" + cachedMetadata.string() +
+            "': " + filesystemError.message();
+        return false;
+    }
+    filesystemError.clear();
+    if (!objectEntryStore.replaceFileAtomically(temporaryObject, cachedObject, error)) return false;
+    return objectEntryStore.writeMetadataAtomically(
+        cachedMetadata, key, basic::sha256Hex(digest), size, error);
+}
+
+/// Publishes one code-partition plan under its entry lock (moved out of storeCodePartitionPlan
+/// so the lock is released before the prune index is updated).
+bool publishCodePartitionEntry(
+    const std::filesystem::path& payloadFile,
+    const std::filesystem::path& metadataFile,
+    std::string_view key,
+    std::string_view payload,
+    std::string& error)
+{
+    std::error_code filesystemError;
+    CacheEntryLock entryLock;
+    if (!entryLock.acquire(payloadFile.string() + ".lock", error)) return false;
+    const std::filesystem::path temporary =
+        codePartitionEntryStore.temporarySibling(payloadFile);
+    {
+        std::ofstream stream(cacheFilesystemPath(temporary), std::ios::binary | std::ios::trunc);
+        if (!stream)
+        {
+            error = "cannot open code-partition payload temporary '" + temporary.string() + "'";
+            return false;
+        }
+        stream.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+        if (!stream)
+        {
+            std::error_code ignored;
+            std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
+            error = "cannot write code-partition payload '" + temporary.string() + "'";
+            return false;
+        }
+    }
+    std::filesystem::remove(cacheFilesystemPath(metadataFile), filesystemError);
+    if (filesystemError)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
+        error = "cannot invalidate code-partition metadata '" + metadataFile.string() +
+            "': " + filesystemError.message();
+        return false;
+    }
+    if (!codePartitionEntryStore.replaceFileAtomically(temporary, payloadFile, error)) return false;
+    const std::span<const std::uint8_t> bytes(
+        reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
+    return codePartitionEntryStore.writeMetadataAtomically(
+        metadataFile, key, basic::sha256Hex(basic::sha256(bytes)), payload.size(), error);
+}
+
+/// Appends a publication to the prune index of `root`. When that fails the index is marked
+/// stale, so the next prune walks the folders. The entry is published either way: the index
+/// only saves work, so this never fails the store.
+void recordPrunePublication(
+    const std::filesystem::path& root,
+    char kind,
+    std::string_view key,
+    const std::filesystem::path& metadata,
+    std::uintmax_t size)
+{
+    const CachePruneIndex index(root);
+    CachePruneIndexRecord record;
+    record.kind = kind;
+    record.key = std::string(key);
+    record.size = size;
+    std::error_code filesystemError;
+    record.publication = std::filesystem::last_write_time(
+        cacheFilesystemPath(metadata), filesystemError);
+    std::string ignored;
+    if (!filesystemError && index.appendPublication(record, ignored)) return;
+    index.markStale(ignored);
 }
 
 bool collectPrunableEntries(
@@ -375,32 +485,13 @@ bool CompilationArtifactCache::storeObject(
         return false;
     }
     const std::filesystem::path cachedObject = objectPath(root_, key);
-    CacheEntryLock entryLock;
-    if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
-    const std::filesystem::path temporaryObject =
-        objectEntryStore.temporarySibling(cachedObject);
-    std::filesystem::copy_file(cacheFilesystemPath(source), cacheFilesystemPath(temporaryObject),
-        std::filesystem::copy_options::overwrite_existing, filesystemError);
-    if (filesystemError)
-    {
-        error = "cannot stage cached object '" + cachedObject.string() + "': " +
-            filesystemError.message();
+    // The entry lock is released before the prune index is updated: prune takes the index lock
+    // and the entry locks one at a time, never one inside the other.
+    if (!publishObjectEntry(
+            key, cachedObject, metadataPath(root_, key), source, digest, size, error))
         return false;
-    }
-    const std::filesystem::path cachedMetadata = metadataPath(root_, key);
-    std::filesystem::remove(cacheFilesystemPath(cachedMetadata), filesystemError);
-    if (filesystemError)
-    {
-        std::error_code ignored;
-        std::filesystem::remove(cacheFilesystemPath(temporaryObject), ignored);
-        error = "cannot invalidate artifact-cache metadata '" + cachedMetadata.string() +
-            "': " + filesystemError.message();
-        return false;
-    }
-    filesystemError.clear();
-    if (!objectEntryStore.replaceFileAtomically(temporaryObject, cachedObject, error)) return false;
-    return objectEntryStore.writeMetadataAtomically(
-        cachedMetadata, key, basic::sha256Hex(digest), size, error);
+    recordPrunePublication(root_, 'o', key, metadataPath(root_, key), size);
+    return true;
 }
 
 bool CompilationArtifactCache::restoreCodePartitionPlan(
@@ -483,40 +574,9 @@ bool CompilationArtifactCache::storeCodePartitionPlan(
             payloadFile.parent_path().string() + "': " + filesystemError.message();
         return false;
     }
-    CacheEntryLock entryLock;
-    if (!entryLock.acquire(payloadFile.string() + ".lock", error)) return false;
-    const std::filesystem::path temporary =
-        codePartitionEntryStore.temporarySibling(payloadFile);
-    {
-        std::ofstream stream(cacheFilesystemPath(temporary), std::ios::binary | std::ios::trunc);
-        if (!stream)
-        {
-            error = "cannot open code-partition payload temporary '" + temporary.string() + "'";
-            return false;
-        }
-        stream.write(payload.data(), static_cast<std::streamsize>(payload.size()));
-        if (!stream)
-        {
-            std::error_code ignored;
-            std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
-            error = "cannot write code-partition payload '" + temporary.string() + "'";
-            return false;
-        }
-    }
-    std::filesystem::remove(cacheFilesystemPath(metadataFile), filesystemError);
-    if (filesystemError)
-    {
-        std::error_code ignored;
-        std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
-        error = "cannot invalidate code-partition metadata '" + metadataFile.string() +
-            "': " + filesystemError.message();
-        return false;
-    }
-    if (!codePartitionEntryStore.replaceFileAtomically(temporary, payloadFile, error)) return false;
-    const std::span<const std::uint8_t> bytes(
-        reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
-    return codePartitionEntryStore.writeMetadataAtomically(
-        metadataFile, key, basic::sha256Hex(basic::sha256(bytes)), payload.size(), error);
+    if (!publishCodePartitionEntry(payloadFile, metadataFile, key, payload, error)) return false;
+    recordPrunePublication(root_, 'p', key, metadataFile, payload.size());
+    return true;
 }
 
 bool CompilationArtifactCache::prune(
