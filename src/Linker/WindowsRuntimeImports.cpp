@@ -1,12 +1,20 @@
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 
 #include "Internal/PlannedLibrary.h"
+#include "../LLVM/Internal/CacheVerifySwitch.h"
+
+#include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/LLVM/CompilationArtifactCache.h"
+#include "nativesharp/Linker/CoffArchiveVerifier.h"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <mutex>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -346,27 +354,139 @@ std::vector<PlannedLibrary> planExternalWindowsImportLibraries(
     return planned;
 }
 
+/// Identity of the linker that writes import libraries: path, size and SHA-256 of its executable.
+/// Hashed once per process and executable; the import-library cache key includes it.
+bool importLibraryLinkerIdentity(const LldLinker& linker, std::string& identity, std::string& error)
+{
+    static std::mutex mutex;
+    static std::map<std::filesystem::path, std::string> identities;
+    const std::lock_guard<std::mutex> lock(mutex);
+    const auto found = identities.find(linker.executablePath());
+    if (found != identities.end())
+    {
+        identity = found->second;
+        return true;
+    }
+    basic::Sha256Digest digest{};
+    std::uintmax_t size = 0;
+    if (!basic::sha256File(linker.executablePath(), digest, size, error)) return false;
+    identity = linker.executablePath().generic_string() + ":" + std::to_string(size) + ":" +
+        basic::sha256Hex(digest);
+    identities.emplace(linker.executablePath(), identity);
+    return true;
+}
+
+/// Cache key of one planned import library: fixed version, the DLL name exactly as planned (it is
+/// the LIBRARY line of the .def), machine x64, the linker identity and the symbols in planned order.
+std::string externalImportLibraryKey(
+    const llvm_backend::CompilationArtifactCache& cache,
+    const PlannedLibrary& library,
+    std::string_view linkerIdentity)
+{
+    std::string material = "NativeSharp.ExternalImportLibrary.v1\n";
+    material += "dll " + library.canonicalDll + "\n";
+    material += "machine x64\n";
+    material += "linker " + std::string(linkerIdentity) + "\n";
+    for (const std::string& symbol : library.symbols) material += "symbol " + symbol + "\n";
+    return cache.inputObjectKey(
+        material, "windows-x64-import-library", "", llvm_backend::LlvmOptimizationLevel::O0,
+        llvm_backend::DebugInformationKind::None);
+}
+
+/// Writes one planned import library with the linker; the error text is the historical one.
+bool createPlannedImportLibrary(
+    const LldLinker& linker,
+    const PlannedLibrary& library,
+    const std::filesystem::path& output,
+    std::string& error)
+{
+    std::vector<std::string_view> views;
+    views.reserve(library.symbols.size());
+    for (const std::string& symbol : library.symbols) views.push_back(symbol);
+    if (linker.createImportLibrary(library.canonicalDll, views, output, error)) return true;
+    error = library.canonicalDll + " import-library generation failed: " + error;
+    return false;
+}
+
+/// Restores one import library from the artifact cache. An entry that is not a valid COFF archive
+/// counts as a miss; the linker then writes over it.
+bool restoreImportLibrary(
+    const llvm_backend::CompilationArtifactCache& cache,
+    std::string_view key,
+    const std::filesystem::path& output,
+    bool& hit,
+    std::string& error)
+{
+    if (!cache.restoreObject(key, output, hit, error)) return false;
+    if (!hit) return true;
+    CoffArchiveVerifier verifier;
+    if (!verifier.verify(output)) hit = false;
+    return true;
+}
+
+/// Validation builds only (kCacheVerifyEnabled): writes the import library again next to the
+/// restored one and aborts when their contents differ.
+bool verifyRestoredImportLibrary(
+    const LldLinker& linker,
+    const PlannedLibrary& library,
+    const std::filesystem::path& output,
+    std::string& error)
+{
+    std::filesystem::path rebuilt = output;
+    rebuilt += ".verify.lib";
+    if (!createPlannedImportLibrary(linker, library, rebuilt, error)) return false;
+    basic::Sha256Digest restoredDigest{};
+    basic::Sha256Digest rebuiltDigest{};
+    std::uintmax_t restoredSize = 0;
+    std::uintmax_t rebuiltSize = 0;
+    if (!basic::sha256File(output, restoredDigest, restoredSize, error)) return false;
+    if (!basic::sha256File(rebuilt, rebuiltDigest, rebuiltSize, error)) return false;
+    if (restoredSize == rebuiltSize && restoredDigest == rebuiltDigest) return true;
+    std::fprintf(stderr, "nsc: cache verification failed: cached import library %s differs from a rebuild\n",
+        library.canonicalDll.c_str());
+    std::fflush(stderr);
+    std::abort();
+}
+
+/// Writes every planned import library into directory. With an active artifact cache each one is
+/// restored when its key is present and stored after the linker writes it; without a cache this
+/// is the historical behaviour (one linker run per DLL).
 bool materializeWindowsImportLibraries(
     const LldLinker& linker,
+    const llvm_backend::CompilationArtifactCache* cache,
     const std::filesystem::path& directory,
     const std::vector<PlannedLibrary>& planned,
     std::vector<std::filesystem::path>& libraries,
     std::string& error)
 {
+    const bool cacheEnabled = cache != nullptr && cache->enabled();
+    std::string linkerIdentity;
+    if (cacheEnabled && !planned.empty() && !importLibraryLinkerIdentity(linker, linkerIdentity, error))
+        return false;
     for (const PlannedLibrary& library : planned)
     {
         std::filesystem::path stem = upperAscii(library.canonicalDll);
         stem.replace_extension();
         const std::filesystem::path output =
             directory / (stem.string() + ".import.lib");
-        std::vector<std::string_view> views;
-        views.reserve(library.symbols.size());
-        for (const std::string& symbol : library.symbols) views.push_back(symbol);
-        if (!linker.createImportLibrary(library.canonicalDll, views, output, error))
+        std::string key;
+        bool hit = false;
+        if (cacheEnabled)
         {
-            error = library.canonicalDll + " import-library generation failed: " + error;
-            return false;
+            key = externalImportLibraryKey(*cache, library, linkerIdentity);
+            if (!restoreImportLibrary(*cache, key, output, hit, error)) return false;
         }
+        if (hit)
+        {
+            if (llvm_backend::kCacheVerifyEnabled)
+            {
+                if (!verifyRestoredImportLibrary(linker, library, output, error)) return false;
+            }
+            libraries.push_back(output);
+            continue;
+        }
+        if (!createPlannedImportLibrary(linker, library, output, error)) return false;
+        if (cacheEnabled && !cache->storeObject(key, output, error)) return false;
         libraries.push_back(output);
     }
     return true;
@@ -381,7 +501,8 @@ bool createCanonicalWindowsImportLibraries(
 {
     libraries.clear();
     const std::vector<PlannedLibrary> planned = planCanonicalWindowsImportLibraries();
-    return materializeWindowsImportLibraries(linker, directory, planned, libraries, error);
+    return materializeWindowsImportLibraries(
+        linker, llvm_backend::activeCompilationArtifactCache(), directory, planned, libraries, error);
 }
 
 bool findCanonicalWindowsImportLibraries(
@@ -436,6 +557,7 @@ bool createWindowsImportLibraries(
     if (!findCanonicalWindowsImportLibraries(libraries, error)) return false;
     const std::vector<PlannedLibrary> planned =
         planExternalWindowsImportLibraries(externalImports);
-    return materializeWindowsImportLibraries(linker, directory, planned, libraries, error);
+    return materializeWindowsImportLibraries(
+        linker, llvm_backend::activeCompilationArtifactCache(), directory, planned, libraries, error);
 }
 }
