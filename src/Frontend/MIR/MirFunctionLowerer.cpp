@@ -662,18 +662,22 @@ void buildMoveNextFrame(
 
 void inheritMoveNextDropFrames(std::vector<ProjectOopMirFunction>& functions)
 {
+    // mangledName -> first function with that name (the candidate the former scan found). Built
+    // once; the loop below changes frames only, never names.
+    std::unordered_map<std::string_view, std::size_t> firstByName;
+    firstByName.reserve(functions.size());
+    for (std::size_t index = 0; index < functions.size(); ++index)
+        firstByName.try_emplace(functions[index].mangledName, index);
     for (ProjectOopMirFunction& function : functions)
     {
         if (!function.mangledName.ends_with("$moveNext")) continue;
         const std::string dropName =
             function.mangledName.substr(0, function.mangledName.size() - 9) + "$drop";
-        for (ProjectOopMirFunction& candidate : functions)
-        {
-            if (candidate.mangledName != dropName) continue;
-            candidate.asyncFrameLocals = function.asyncFrameLocals;
-            candidate.asyncFrameSize = function.asyncFrameSize;
-            break;
-        }
+        const auto drop = firstByName.find(dropName);
+        if (drop == firstByName.end()) continue;
+        ProjectOopMirFunction& candidate = functions[drop->second];
+        candidate.asyncFrameLocals = function.asyncFrameLocals;
+        candidate.asyncFrameSize = function.asyncFrameSize;
     }
 }
 
