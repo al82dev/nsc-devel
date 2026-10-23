@@ -273,6 +273,8 @@ def check_deploy_variant(
         ), "deploy plan ignored the selected build tree or prefix"
     if variant == 3:
         return plan is None and "cmake" in error, "missing CMake must fail before any command"
+    if variant == 4:
+        return plan is None and "unsafe deploy prefix" in error, "drive-root prefix was not rejected"
     return False, f"deploy plan variant {variant} is not checked yet"
 
 
