@@ -894,12 +894,13 @@ bool verifyGenericTemplates(
     }
     if (metadata.formatMinor < 11) return true;
     const std::string sameModulePrefix = metadata.moduleName + "::";
+    // Shared by every public root: a closure verified from one root is not walked again.
+    std::unordered_set<std::string> verifiedTemplates;
     for (const LibraryMetadataGenericTemplate& publicRoot : metadata.genericTemplates)
     {
         if (publicRoot.accessibility != kPublicAccessibility) continue;
         std::vector<std::string> chain;
         std::unordered_set<std::string> visiting;
-        std::unordered_set<std::string> verifiedTemplates;
         if (!verifyGenericTemplateClosure(
                 publicRoot,
                 publicRoot,
