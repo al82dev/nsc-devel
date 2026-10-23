@@ -264,10 +264,63 @@ std::unique_ptr<LlvmModule> lowerCodeUnit(
 
 }
 
-std::unique_ptr<LlvmTargetMachine> prepareCodeUnitTarget(
+/// EN: Runs the LLVM optimization pipeline on a lowered module already configured for its target.
+///     Parameters: `module`, the code unit (mutated in place); `targetMachine`, the machine that
+///     configured it; `optimizationLevel`, O0..O3; `requiresWholeModuleRequiredInlining`, the
+///     mandatory-inlining obligation; `moduleError` receives the failure text; `telemetry`
+///     accumulates `optimizationMicros`.
+///     Returns true on success. Thread safety: one call per module; modules are not shared.
+///     This is the former second half of `prepareCodeUnitTarget`, split out unchanged so the
+///     pre-optimization IR can be fingerprinted between target configuration and optimization.
+/// ES: Ejecuta el pipeline de optimizacion de LLVM sobre un modulo ya configurado para su target.
+///     Parametros: `module`, la unidad (se modifica); `targetMachine`, la maquina que la configuro;
+///     `optimizationLevel`, O0..O3; `requiresWholeModuleRequiredInlining`, la obligacion de inlining
+///     obligatorio; `moduleError` recibe el texto de falla; `telemetry` acumula
+///     `optimizationMicros`.
+///     Retorno: true si tiene exito. Hilos: una llamada por modulo; los modulos no se comparten.
+///     Es la antigua segunda mitad de `prepareCodeUnitTarget`, separada sin cambios para poder tomar
+///     la huella del IR previo a la optimizacion entre la configuracion del target y la optimizacion.
+bool optimizeConfiguredCodeUnit(
     LlvmModule& module,
+    const LlvmTargetMachine& targetMachine,
     LlvmOptimizationLevel optimizationLevel,
     bool requiresWholeModuleRequiredInlining,
+    std::string& moduleError,
+    CodeUnitTelemetry& telemetry)
+{
+    LlvmOptimizer optimizer;
+    const PhaseClock optimization;
+    if (!optimizer.optimizePrepared(
+            module, targetMachine, optimizationLevel,
+            requiresWholeModuleRequiredInlining, nullptr, moduleError))
+    {
+        telemetry.optimizationMicros += optimization.elapsedMicros();
+        moduleError = moduleError.empty()
+            ? "optimization failed"
+            : "optimization failed: " + moduleError;
+        return false;
+    }
+    telemetry.optimizationMicros += optimization.elapsedMicros();
+    return true;
+}
+
+namespace
+{
+
+/// EN: Creates the Windows x64 target machine for a code unit and configures the module for it.
+///     Parameters: `module`, the lowered unit (triple and data layout are set in place);
+///     `optimizationLevel`, the requested level; `moduleError`, the failure text; `telemetry`
+///     accumulates `targetMicros`.
+///     Returns the configured machine, or nullptr with `moduleError` set. This is the former first
+///     half of `prepareCodeUnitTarget`, unchanged.
+/// ES: Crea la maquina de target Windows x64 de una unidad y configura el modulo para ella.
+///     Parametros: `module`, la unidad bajada (se fijan triple y data layout); `optimizationLevel`,
+///     el nivel pedido; `moduleError`, el texto de falla; `telemetry` acumula `targetMicros`.
+///     Retorno: la maquina configurada, o nullptr con `moduleError` fijado. Es la antigua primera
+///     mitad de `prepareCodeUnitTarget`, sin cambios.
+std::unique_ptr<LlvmTargetMachine> configureCodeUnitTarget(
+    LlvmModule& module,
+    LlvmOptimizationLevel optimizationLevel,
     std::string& moduleError,
     CodeUnitTelemetry& telemetry)
 {
@@ -284,24 +337,115 @@ std::unique_ptr<LlvmTargetMachine> prepareCodeUnitTarget(
             : "target configuration failed: " + moduleError;
         return nullptr;
     }
-    LlvmOptimizer optimizer;
-    const PhaseClock optimization;
-    if (!optimizer.optimizePrepared(
-            module, *targetMachine, optimizationLevel,
-            requiresWholeModuleRequiredInlining, nullptr, moduleError))
-    {
-        telemetry.optimizationMicros += optimization.elapsedMicros();
-        moduleError = moduleError.empty()
-            ? "optimization failed"
-            : "optimization failed: " + moduleError;
-        return nullptr;
-    }
-    telemetry.optimizationMicros += optimization.elapsedMicros();
     return targetMachine;
 }
 
-namespace
+/// EN: Content key of the object produced from a pre-optimization LLVM module.
+///     Parameters: `cache`, an enabled artifact cache; `module`, the lowered unit after target
+///     configuration and before optimization; `targetMachine`, its machine; the remaining values
+///     are every other input of optimization and emission.
+///     Returns a SHA-256 key over: a domain tag (so it never collides with the post-optimization
+///     keys of `restorePostLlvmObject`, whose text is optimized IR), the mandatory-inlining flag,
+///     the CPU name and feature string, and the full textual IR; `objectKey` adds the compiler
+///     codegen identity, LLVM version, triple, data layout, policy, level, pipeline and debug kind.
+///     Soundness: optimization and emission are deterministic functions of exactly these inputs,
+///     so two units with equal keys produce byte-identical objects (strict equivalence).
+///     Complexity: O(size of the IR) to print and hash. No side effects; thread safe.
+/// ES: Clave de contenido del objeto producido desde un modulo LLVM previo a la optimizacion.
+///     Parametros: `cache`, un cache de artefactos habilitado; `module`, la unidad bajada despues
+///     de configurar el target y antes de optimizar; `targetMachine`, su maquina; los demas valores
+///     son el resto de entradas de la optimizacion y la emision.
+///     Retorno: clave SHA-256 sobre: una etiqueta de dominio (para no chocar con las claves
+///     posteriores a la optimizacion de `restorePostLlvmObject`, cuyo texto es IR optimizado), la
+///     bandera de inlining obligatorio, el nombre de CPU y sus features, y el IR textual completo;
+///     `objectKey` agrega la identidad de codegen del compilador, la version de LLVM, el triple, el
+///     data layout, la politica, el nivel, el pipeline y el tipo de depuracion.
+///     Solidez: optimizacion y emision son funciones deterministas de exactamente estas entradas,
+///     asi que dos unidades con la misma clave producen objetos identicos byte a byte.
+///     Complejidad: O(tamano del IR) para imprimir y hashear. Sin efectos laterales.
+std::string preOptimizationObjectKey(
+    const CompilationArtifactCache& cache,
+    const LlvmModule& module,
+    const LlvmTargetMachine& targetMachine,
+    const std::string& codeGenerationPolicy,
+    LlvmOptimizationLevel optimizationLevel,
+    DebugInformationKind debugInformation,
+    bool requiresWholeModuleRequiredInlining)
 {
+    std::string material = "NativeSharp.PreOptimizationIrObject.v1\n";
+    material += requiresWholeModuleRequiredInlining ? "required-inlining 1\n" : "required-inlining 0\n";
+    material += "cpu " + targetMachine.cpuName() + "\n";
+    material += "features " + targetMachine.featureString() + "\n";
+    material += module.text();
+    return cache.objectKey(
+        material, targetMachine.triple(), targetMachine.dataLayout(),
+        codeGenerationPolicy, optimizationLevel, debugInformation);
+}
+
+/// EN: Second-level reuse: restores the object of a unit whose MIR identity missed but whose
+///     pre-optimization IR equals one already compiled.
+///     Parameters: `cache` may be null; `usePreLlvmCache` gates the feature exactly like the MIR
+///     cache (off for full debug information and ThinLTO); `irKey` receives the key so the caller
+///     can also store the freshly emitted object under it; `complete` becomes true on a hit, in
+///     which case `cacheHit` is 1, `cacheMiss` is 0 and optimization and emission are skipped.
+///     Returns false only on a cache I/O error (`moduleError` set). Telemetry: the print and hash
+///     time is added to `fingerprintMicros`, the restore to `lookupMicros`, the COFF check to
+///     `verificationMicros`; `irReuse` records off/miss/hit.
+///     Why: the MIR identity includes whole-model tables and global ordinals, so adding a member
+///     anywhere misses every unit even when its LLVM IR is unchanged (HECHO, audit 2026-10-22).
+/// ES: Reuso de segundo nivel: restaura el objeto de una unidad cuya identidad MIR fallo pero cuyo
+///     IR previo a la optimizacion es igual a uno ya compilado.
+///     Parametros: `cache` puede ser null; `usePreLlvmCache` habilita la funcion igual que el cache
+///     MIR (apagado con depuracion completa y ThinLTO); `irKey` recibe la clave para que el
+///     llamador guarde tambien con ella el objeto recien emitido; `complete` queda en true en un
+///     acierto, con `cacheHit` en 1, `cacheMiss` en 0 y sin optimizar ni emitir.
+///     Retorno: false solo ante un error de E/S del cache (`moduleError` fijado). Telemetria: la
+///     impresion y el hash se suman a `fingerprintMicros`, la restauracion a `lookupMicros`, la
+///     verificacion COFF a `verificationMicros`; `irReuse` registra off/miss/hit.
+///     Motivo: la identidad MIR incluye tablas de todo el modelo y ordinales globales, por lo que
+///     agregar un miembro en cualquier lugar falla todas las unidades aunque su IR no cambie
+///     (HECHO, auditoria 2026-10-22).
+bool restorePreOptimizationObject(
+    const CompilationArtifactCache* cache,
+    bool usePreLlvmCache,
+    const LlvmModule& module,
+    const LlvmTargetMachine& targetMachine,
+    const std::string& codeGenerationPolicy,
+    LlvmOptimizationLevel optimizationLevel,
+    DebugInformationKind debugInformation,
+    bool requiresWholeModuleRequiredInlining,
+    const std::filesystem::path& objectFile,
+    std::string& irKey,
+    CodeUnitTelemetry& telemetry,
+    std::uint8_t& cacheHit,
+    std::uint8_t& cacheMiss,
+    std::string& moduleError,
+    bool& complete)
+{
+    complete = false;
+    if (cache == nullptr || !cache->enabled() || !usePreLlvmCache) return true;
+    const PhaseClock fingerprint;
+    irKey = preOptimizationObjectKey(
+        *cache, module, targetMachine, codeGenerationPolicy, optimizationLevel,
+        debugInformation, requiresWholeModuleRequiredInlining);
+    telemetry.fingerprintMicros += fingerprint.elapsedMicros();
+    telemetry.irReuse = CodeUnitIrReuse::Miss;
+    bool hit = false;
+    const PhaseClock lookup;
+    if (!cache->restoreObject(irKey, objectFile, hit, moduleError)) return false;
+    telemetry.lookupMicros += lookup.elapsedMicros();
+    if (!hit) return true;
+    const PhaseClock verification;
+    CoffObjectVerifier verifier;
+    const bool verified = verifier.verify(objectFile);
+    telemetry.verificationMicros += verification.elapsedMicros();
+    if (!verified) return true;
+    telemetry.irReuse = CodeUnitIrReuse::Hit;
+    cacheHit = 1;
+    cacheMiss = 0;
+    complete = true;
+    return true;
+}
 
 bool restorePostLlvmObject(
     const CompilationArtifactCache* cache,
@@ -381,6 +525,35 @@ void emitAndStoreCodeUnit(
 namespace
 {
 
+/// EN: Publishes a freshly emitted object under its pre-optimization IR key as well.
+///     Parameters: `cache` may be null; `irKey` is empty when the IR reuse was not attempted;
+///     `objectFile`, the verified object just written by `emitAndStoreCodeUnit`; `telemetry`
+///     accumulates `storeMicros`; `moduleError` is left untouched when it already holds an error
+///     and otherwise receives a store failure.
+///     Effects: one cache publication (atomic in `CompilationArtifactCache::storeObject`).
+///     Why: a later build whose MIR identity differs but whose IR is equal then restores this
+///     object instead of optimizing and emitting again.
+/// ES: Publica el objeto recien emitido tambien con su clave de IR previo a la optimizacion.
+///     Parametros: `cache` puede ser null; `irKey` vacio si no se intento el reuso por IR;
+///     `objectFile`, el objeto verificado que acaba de escribir `emitAndStoreCodeUnit`;
+///     `telemetry` acumula `storeMicros`; `moduleError` no se toca si ya tiene un error y en otro
+///     caso recibe una falla de guardado.
+///     Efectos: una publicacion en el cache (atomica en `CompilationArtifactCache::storeObject`).
+///     Motivo: un build posterior con identidad MIR distinta pero IR igual restaura este objeto
+///     en lugar de optimizar y emitir otra vez.
+void storePreOptimizationObject(
+    const CompilationArtifactCache* cache,
+    const std::string& irKey,
+    const std::filesystem::path& objectFile,
+    CodeUnitTelemetry& telemetry,
+    std::string& moduleError)
+{
+    if (cache == nullptr || !cache->enabled() || irKey.empty() || !moduleError.empty()) return;
+    const PhaseClock store;
+    cache->storeObject(irKey, objectFile, moduleError);
+    telemetry.storeMicros += store.elapsedMicros();
+}
+
 void processObjectCodeUnit(
     std::size_t ordinal,
     bool usePartitions,
@@ -431,9 +604,17 @@ void processObjectCodeUnit(
         debugInformation, optimizationLevel, debugPrefixMaps, reachableDefinitions,
         selectedStaticFields, coordinatorFunctionDeclarations, partition, moduleError, telemetry);
     if (module == nullptr) return;
-    std::unique_ptr<LlvmTargetMachine> targetMachine = prepareCodeUnitTarget(
-        *module, optimizationLevel, requiresWholeModuleRequiredInlining, moduleError, telemetry);
+    std::unique_ptr<LlvmTargetMachine> targetMachine = configureCodeUnitTarget(
+        *module, optimizationLevel, moduleError, telemetry);
     if (targetMachine == nullptr) return;
+    std::string irKey;
+    if (!restorePreOptimizationObject(
+            cache, usePreLlvmCache, *module, *targetMachine, codeGenerationPolicy,
+            optimizationLevel, debugInformation, requiresWholeModuleRequiredInlining, objectFile,
+            irKey, telemetry, cacheHit, cacheMiss, moduleError, complete) || complete) return;
+    if (!optimizeConfiguredCodeUnit(
+            *module, *targetMachine, optimizationLevel, requiresWholeModuleRequiredInlining,
+            moduleError, telemetry)) return;
     if (preserveModuleText) moduleText = module->text();
     if (!restorePostLlvmObject(
             cache, usePreLlvmCache, *targetMachine, codeGenerationPolicy,
@@ -441,6 +622,7 @@ void processObjectCodeUnit(
             telemetry, cacheHit, cacheMiss, moduleError, complete) || complete) return;
     emitAndStoreCodeUnit(
         *module, *targetMachine, cache, cacheKey, objectFile, telemetry, moduleError);
+    storePreOptimizationObject(cache, irKey, objectFile, telemetry, moduleError);
 }
 
 bool buildObjectPartition(

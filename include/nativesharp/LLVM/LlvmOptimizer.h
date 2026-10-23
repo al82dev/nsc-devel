@@ -52,8 +52,9 @@ public:
 
 private:
     friend class ProjectOopObjectGenerator;
-    friend std::unique_ptr<LlvmTargetMachine> prepareCodeUnitTarget(
+    friend bool optimizeConfiguredCodeUnit(
         LlvmModule& module,
+        const LlvmTargetMachine& targetMachine,
         LlvmOptimizationLevel optimizationLevel,
         bool requiresWholeModuleRequiredInlining,
         std::string& moduleError,

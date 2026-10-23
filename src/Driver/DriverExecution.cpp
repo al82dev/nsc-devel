@@ -30,6 +30,7 @@ void appendCodeUnitTelemetry(std::ostream &output, const llvm_backend::ProjectOo
                << " target-us=" << unit.targetMicros << " optimization-us=" << unit.optimizationMicros
                << " emission-us=" << unit.emissionMicros << " verification-us=" << unit.verificationMicros
                << " store-us=" << unit.storeMicros
+               << " ir-reuse=" << llvm_backend::codeUnitIrReuseName(unit.irReuse)
                << " miss-reason=" << llvm_backend::cacheMissReasonName(unit.missReason) << '\n';
     }
 }
