@@ -418,6 +418,8 @@ std::string ProjectGenericModel::executeTypeDemand(
                 activePackSubstitutions_ = callerContext.packSubstitutions;
                 telemetry_.noteSpecializationHit();
                 ++instantiationCacheHitCount_;
+                // The demanding syntax names the specialization, as on the cold path below.
+                rewriteSpecializedSyntax(syntax, state.record, key, specializedName);
                 return specializedName;
             }
         }
