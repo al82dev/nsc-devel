@@ -206,6 +206,7 @@ void preferExactSourceModuleArtifacts(
             project.projectReferences().begin(), project.projectReferences().end());
         std::vector<LibraryReference> libraryReferences;
         libraryReferences.reserve(project.libraryReferences().size());
+        const std::string projectKey = pathKey(canonicalPath(project.projectFile()));
         for (const LibraryReference& reference : project.libraryReferences())
         {
             const std::string libraryStem = reference.libraryPath.stem().string();
@@ -214,15 +215,15 @@ void preferExactSourceModuleArtifacts(
                 ? moduleOwners.find(
                     language::canonicalWindowsModuleIdentity({}, libraryStem))
                 : moduleOwners.end();
-            if (source == moduleOwners.end() ||
-                pathKey(canonicalPath(source->second)) ==
-                    pathKey(canonicalPath(project.projectFile())))
+            const std::string sourceKey = source == moduleOwners.end()
+                ? std::string()
+                : pathKey(canonicalPath(source->second));
+            if (source == moduleOwners.end() || sourceKey == projectKey)
             {
                 libraryReferences.push_back(reference);
                 continue;
             }
 
-            const std::string sourceKey = pathKey(canonicalPath(source->second));
             const bool alreadyReferenced = std::ranges::any_of(
                 projectReferences, [&](const std::filesystem::path& path) {
                     return pathKey(canonicalPath(path)) == sourceKey;
