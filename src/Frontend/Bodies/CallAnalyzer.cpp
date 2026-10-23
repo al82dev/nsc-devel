@@ -4873,32 +4873,48 @@ void ProjectMethodBodyModel::validateThreadExecutorCaptures(
 
 bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
 {
-    if (typeKey.ends_with("*")) return false;
-    if (typeKey.starts_with("ref:") || typeKey.starts_with("refmut:"))
-    {
-        const std::size_t colon = typeKey.find(':');
-        return callTypeIsSend(typeKey.substr(colon + 1));
-    }
-    const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(typeKey);
-    if (!typeOrdinal.has_value()) return true;
+    // Depth-first walk over the field types with an explicit stack instead of recursion. The
+    // answer is the conjunction of the leaf tests the recursion made; a named type already
+    // walked in this query adds no new field types, so it is not walked again (the recursion
+    // had no such guard, so a cycle of field types never terminated).
+    std::vector<std::string> pending{typeKey};
+    std::unordered_set<std::size_t> walkedTypes;
     std::vector<std::size_t> fallbackMemberOrdinals;
-    std::span<const std::size_t> memberOrdinals =
-        memberModel_->membersDeclaredByType(*typeOrdinal);
-    if (!memberModel_->hasMembersDeclaredByTypeIndex())
+    while (!pending.empty())
     {
-        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+        std::string current = std::move(pending.back());
+        pending.pop_back();
+        // ref:/refmut: are stripped one at a time, each time after the pointer test, as the
+        // recursion did.
+        while (true)
         {
-            if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
-                fallbackMemberOrdinals.push_back(ordinal);
+            if (current.ends_with("*")) return false;
+            if (!current.starts_with("ref:") && !current.starts_with("refmut:")) break;
+            current = current.substr(current.find(':') + 1);
         }
-        memberOrdinals = fallbackMemberOrdinals;
-    }
-    for (const std::size_t memberOrdinal : memberOrdinals)
-    {
-        if (memberOrdinal >= memberModel_->members().size()) continue;
-        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-        if (member.kind != ClassMemberKind::Field) continue;
-        if (!callTypeIsSend(member.declaredTypeKey)) return false;
+        const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
+        if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
+        std::span<const std::size_t> memberOrdinals =
+            memberModel_->membersDeclaredByType(*typeOrdinal);
+        if (!memberModel_->hasMembersDeclaredByTypeIndex())
+        {
+            fallbackMemberOrdinals.clear();
+            for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+            {
+                if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
+                    fallbackMemberOrdinals.push_back(ordinal);
+            }
+            memberOrdinals = fallbackMemberOrdinals;
+        }
+        // Pushed in reverse so the fields are taken in declaration order, as the recursion did.
+        for (auto memberOrdinal = memberOrdinals.rbegin(); memberOrdinal != memberOrdinals.rend();
+             ++memberOrdinal)
+        {
+            if (*memberOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& member = memberModel_->members()[*memberOrdinal];
+            if (member.kind != ClassMemberKind::Field) continue;
+            pending.push_back(member.declaredTypeKey);
+        }
     }
     return true;
 }
