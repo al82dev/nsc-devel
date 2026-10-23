@@ -26,18 +26,24 @@ ExternalImportListBuilder::ExternalImportListBuilder(std::vector<linker::Externa
     : modules_(modules)
 {
     // emplace keeps the first module of a folded name, the one find_if would return.
+    symbolsByModule_.reserve(modules_.size());
     for (std::size_t index = 0; index < modules_.size(); ++index)
+    {
         moduleByFoldedName_.emplace(foldedName(modules_[index].dllName), index);
+        symbolsByModule_.emplace_back(modules_[index].symbols.begin(), modules_[index].symbols.end());
+    }
 }
 
 void ExternalImportListBuilder::append(const std::string &dllName, const std::string &symbol)
 {
     const auto [module, inserted] = moduleByFoldedName_.emplace(foldedName(dllName), modules_.size());
     if (inserted)
+    {
         modules_.push_back(linker::ExternalImportModule{dllName, {}});
-    std::vector<std::string> &symbols = modules_[module->second].symbols;
-    if (std::ranges::find(symbols, symbol) == symbols.end())
-        symbols.push_back(symbol);
+        symbolsByModule_.emplace_back();
+    }
+    if (symbolsByModule_[module->second].insert(symbol).second)
+        modules_[module->second].symbols.push_back(symbol);
 }
 
 bool loadLibraryReferenceMetadata(const compilation::LibraryReference &reference,

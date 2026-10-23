@@ -113,6 +113,8 @@ public:
 private:
     std::vector<linker::ExternalImportModule> &modules_;
     std::unordered_map<std::string, std::size_t> moduleByFoldedName_;
+    // Symbols of each module, by module position, for the duplicate check.
+    std::vector<std::unordered_set<std::string>> symbolsByModule_;
 };
 bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compilation,
                                       std::vector<std::filesystem::path> &libraries,
