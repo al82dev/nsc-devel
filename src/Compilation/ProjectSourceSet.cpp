@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <numeric>
 #include <system_error>
 
 namespace nativesharp::compilation
@@ -80,19 +81,38 @@ bool ProjectSourceSet::finalize(std::string& error, bool allowEmpty)
         return false;
     }
 
+    // Same order as comparing (comparisonKey, generic spelling) pairs, but each key is computed
+    // once per source instead of once per comparison. The order is total (duplicate keys are
+    // rejected by add), so sorting indices yields exactly the historical sequence.
+    std::vector<std::string> keys;
+    std::vector<std::string> spellings;
+    keys.reserve(sources_.size());
+    spellings.reserve(sources_.size());
+    for (const ProjectSource& source : sources_)
+    {
+        keys.push_back(comparisonKey(source.projectRelativePath));
+        spellings.push_back(source.projectRelativePath.generic_string());
+    }
+    std::vector<std::size_t> order(sources_.size());
+    std::iota(order.begin(), order.end(), std::size_t{0});
     std::sort(
-        sources_.begin(),
-        sources_.end(),
-        [](const ProjectSource& left, const ProjectSource& right)
+        order.begin(),
+        order.end(),
+        [&keys, &spellings](std::size_t left, std::size_t right)
         {
-            const std::string leftKey = comparisonKey(left.projectRelativePath);
-            const std::string rightKey = comparisonKey(right.projectRelativePath);
-            if (leftKey != rightKey)
+            if (keys[left] != keys[right])
             {
-                return leftKey < rightKey;
+                return keys[left] < keys[right];
             }
-            return left.projectRelativePath.generic_string() < right.projectRelativePath.generic_string();
+            return spellings[left] < spellings[right];
         });
+    std::vector<ProjectSource> sorted;
+    sorted.reserve(sources_.size());
+    for (const std::size_t index : order)
+    {
+        sorted.push_back(std::move(sources_[index]));
+    }
+    sources_ = std::move(sorted);
 
     for (std::size_t index = 0; index < sources_.size(); ++index)
     {
