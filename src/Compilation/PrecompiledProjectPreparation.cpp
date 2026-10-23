@@ -696,6 +696,44 @@ bool preparePrecompiledProject(
     frontend::ProjectCompilation& compilation,
     std::string& error)
 {
+    return preparePrecompiledProject(
+        std::move(graph), loadOptions, compilation, error, PrecompiledMaterializationGate{});
+}
+
+/// EN: Loads the explicit metadata, expands the binary closure, applies it to `graph`, asks
+///     `gate` (when present) whether materialization is needed, materializes the precompiled
+///     modules unless skipped, and installs the graph in `compilation`.
+///     Parameters: `graph`, the loaded project graph (consumed); `loadOptions`, the load policy;
+///     `compilation`, a compilation that has not started; `error`, the failure text; `gate`, the
+///     optional hook described in the header.
+///     Returns false on the first failure. Effects: fills the compilation's metadata repository,
+///     its precompiled modules (unless skipped) and its preloaded graph. Not thread safe for one
+///     compilation. Complexity: linear in the referenced metadata plus materialization.
+///     Why the gate: on a verified bundle hit the materialized modules are never used, so building
+///     them is wasted work. Measured on NativeSharp.Math.Functions (O0, audit 2026-10-22) it was
+///     about 10-15% of `precompiled-metadata` on that path; loading and decoding the referenced
+///     metadata, still needed to compute the identity, is the larger remaining part.
+/// ES: Carga la metadata explicita, expande la clausura binaria, la aplica a `graph`, pregunta a
+///     `gate` (si existe) si hace falta materializar, materializa los modulos precompilados salvo
+///     que se omita, e instala el grafo en `compilation`.
+///     Parametros: `graph`, el grafo cargado (se consume); `loadOptions`, la politica de carga;
+///     `compilation`, una compilacion no iniciada; `error`, el texto de falla; `gate`, el gancho
+///     opcional descrito en el header.
+///     Retorno: false en la primera falla. Efectos: llena el repositorio de metadata, los modulos
+///     precompilados (salvo omision) y el grafo precargado de la compilacion. No es seguro entre
+///     hilos para una misma compilacion. Complejidad: lineal en la metadata mas la materializacion.
+///     Motivo del gancho: en un acierto de bundle verificado los modulos materializados nunca se
+///     usan, asi que construirlos es trabajo perdido. Medido en NativeSharp.Math.Functions (O0,
+///     auditoria 2026-10-22) era cerca del 10-15% de `precompiled-metadata` en esa ruta; cargar y
+///     decodificar la metadata referenciada, que sigue haciendo falta para la identidad, es la
+///     parte mayor que queda.
+bool preparePrecompiledProject(
+    ProjectGraph graph,
+    const ProjectLoadOptions& loadOptions,
+    frontend::ProjectCompilation& compilation,
+    std::string& error,
+    const PrecompiledMaterializationGate& gate)
+{
     interop::LibraryMetadataCodec codec;
     std::vector<LoadedMetadata> loaded;
     std::unordered_map<std::string, std::size_t> loadedByModule;
@@ -737,6 +775,15 @@ bool preparePrecompiledProject(
         return false;
     }
 
+    bool skipMaterialization = false;
+    if (gate && !gate(graph, skipMaterialization, error))
+    {
+        return false;
+    }
+    if (skipMaterialization)
+    {
+        return compilation.setPreloadedProjectGraph(std::move(graph), error);
+    }
     std::vector<frontend::PrecompiledSyntaxModule> modules;
     if (!materializeModules(
             loaded,

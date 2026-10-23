@@ -269,6 +269,7 @@ add_library(nsc_compilation STATIC
     src/Language/TraitSemantics.cpp
     src/Driver/CompilationJobPolicy.cpp
     src/Driver/CompilationWorkerPool.cpp
+    src/Driver/CompilationGraphScheduler.cpp
     src/Compilation/SimpleXmlParser.cpp
     src/Compilation/SdkManifest.cpp
     src/Compilation/GlobPattern.cpp
@@ -289,6 +290,16 @@ add_library(nsc_compilation STATIC
     src/Compilation/PartialTypeAggregator.cpp)
 
 target_include_directories(nsc_compilation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# EN: The library metadata repository, its verified cache and the bundle cache use the compiler
+#     build identity and transactional file writes from nsc_basic; ProjectCompilation (nsc_frontend)
+#     owns a CompilationGraphScheduler, which lives here next to CompilationWorkerPool. Without
+#     these, every test that links nsc_frontend without nsc_driver failed to link (audit
+#     2026-10-22, H13).
+# ES: El repositorio de metadata, su cache verificada y la cache de bundles usan la identidad de
+#     build y las escrituras transaccionales de nsc_basic; ProjectCompilation (nsc_frontend) tiene
+#     un CompilationGraphScheduler, que vive aqui junto a CompilationWorkerPool. Sin esto, toda
+#     prueba que enlazaba nsc_frontend sin nsc_driver no enlazaba (auditoria 2026-10-22, H13).
+target_link_libraries(nsc_compilation PUBLIC nsc_basic)
 target_compile_features(nsc_compilation PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_compilation)
 
@@ -968,7 +979,6 @@ add_library(nsc_driver STATIC
     src/Driver/BreakingChangeLedger.cpp
     src/Driver/CompilationProfile.cpp
     src/Driver/CompilationTelemetry.cpp
-    src/Driver/CompilationGraphScheduler.cpp
     src/Driver/CompilationInputManifestFactory.cpp
     src/Driver/CompilerActionDispatcher.cpp
     src/Driver/CompilerConsole.cpp

@@ -692,15 +692,83 @@ bool validateStaticLibraryRequest(
     return false;
 }
 
+/// EN: Returns the directory shared by every object file, or an empty path when the objects do not
+///     all live in one directory.
+///     Parameters: `objectFiles`, the archive inputs in archive order; relative paths are resolved
+///     against the current directory. Precondition: none; an empty span yields an empty path.
+///     Returns: the common absolute parent directory, or an empty path. No side effects; reads no
+///     files; thread safe. Complexity: O(n) path conversions for n objects.
+///     Algorithm: compares each absolute parent with the first one, spelled exactly as
+///     `appendStaticLibraryObjects` spells it, so both helpers agree on which objects are shortened.
+/// ES: Devuelve el directorio que comparten todos los objetos, o una ruta vacia cuando no viven en
+///     un solo directorio.
+///     Parametros: `objectFiles`, las entradas del archivo en su orden; las rutas relativas se
+///     resuelven contra el directorio actual. Precondicion: ninguna; un span vacio da ruta vacia.
+///     Retorno: el directorio padre absoluto comun, o una ruta vacia. Sin efectos laterales; no lee
+///     archivos; seguro entre hilos. Complejidad: O(n) conversiones de ruta para n objetos.
+///     Algoritmo: compara el padre absoluto de cada objeto con el del primero, escrito igual que en
+///     `appendStaticLibraryObjects`, para que ambos helpers coincidan en que objetos se acortan.
+#ifdef _WIN32
+std::filesystem::path commonObjectDirectory(
+    std::span<const std::filesystem::path> objectFiles)
+{
+    std::filesystem::path common;
+    for (const std::filesystem::path& path : objectFiles)
+    {
+        std::error_code absoluteError;
+        const std::filesystem::path parent =
+            std::filesystem::absolute(path, absoluteError).parent_path();
+        if (absoluteError || parent.empty())
+        {
+            return {};
+        }
+        if (common.empty())
+        {
+            common = parent;
+        }
+        else if (parent != common)
+        {
+            return {};
+        }
+    }
+    return common;
+}
+#endif
+
+/// EN: Chooses the librarian working directory, which decides the archive member names.
+///     Parameters: `outputPath`, the archive to create; `objectFiles`, its inputs.
+///     Returns: the objects' common directory when the output path is absolute and every object
+///     shares one directory (members become stable basenames such as `program-0.obj`); otherwise
+///     the output's parent directory as before (only objects inside it are shortened); an empty
+///     path on non-Windows hosts or for a relative output. No side effects; thread safe.
+///     Why: partitioned code generation writes its objects to a fresh temporary directory whose
+///     name embeds a clock stamp. Passing those absolute paths made every archive differ byte by
+///     byte between two builds of identical input (HECHO, incremental audit 2026-10-22).
+/// ES: Elige el directorio de trabajo del bibliotecario, que decide los nombres de los miembros.
+///     Parametros: `outputPath`, el archivo a crear; `objectFiles`, sus entradas.
+///     Retorno: el directorio comun de los objetos cuando la salida es absoluta y todos comparten
+///     un directorio (los miembros quedan con nombres base estables como `program-0.obj`); en otro
+///     caso el padre de la salida como antes (solo se acortan los objetos que viven en el); ruta
+///     vacia fuera de Windows o con salida relativa. Sin efectos laterales; seguro entre hilos.
+///     Motivo: la generacion particionada escribe sus objetos en un directorio temporal nuevo cuyo
+///     nombre lleva una marca de reloj. Pasar esas rutas absolutas hacia que cada archivo difiriera
+///     byte a byte entre dos builds de la misma entrada (HECHO, auditoria incremental 2026-10-22).
 std::filesystem::path staticLibraryWorkingDirectory(
-    const std::filesystem::path& outputPath)
+    const std::filesystem::path& outputPath,
+    std::span<const std::filesystem::path> objectFiles)
 {
 #ifdef _WIN32
     // llvm-lib preserves the spelling of an input path as the COFF archive member name.  Use
     // basenames from a common working directory so deterministic archives do not leak build-tree
     // paths into downstream PDB module records.
-    return outputPath.is_absolute() ? outputPath.parent_path() : std::filesystem::path{};
+    if (!outputPath.is_absolute())
+    {
+        return {};
+    }
+    const std::filesystem::path objectDirectory = commonObjectDirectory(objectFiles);
+    return objectDirectory.empty() ? outputPath.parent_path() : objectDirectory;
 #else
+    (void)objectFiles;
     return {};
 #endif
 }
@@ -755,7 +823,8 @@ bool LldLinker::createStaticLibrary(
     std::vector<std::string> arguments = {
         "/machine:x64",
         responsePathArgument("/out:", outputPath)};
-    const std::filesystem::path workingDirectory = staticLibraryWorkingDirectory(outputPath);
+    const std::filesystem::path workingDirectory =
+        staticLibraryWorkingDirectory(outputPath, objectFiles);
     appendStaticLibraryObjects(arguments, objectFiles, workingDirectory);
     if (!writeResponseFile(responsePath, arguments, error)) return false;
     std::error_code cleanupError;

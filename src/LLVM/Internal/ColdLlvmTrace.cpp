@@ -51,16 +51,13 @@ ColdLlvmTrace::~ColdLlvmTrace()
     if (!output_ || !*output_) return;
     *output_ << "preamble"
             << " reachability-us=" << preamble_.reachabilityMicros
-            << " partition-key-us=" << preamble_.partitionKeyMicros
-            << " partition-restore-us=" << preamble_.partitionRestoreMicros
             << " partition-build-us=" << preamble_.partitionBuildMicros
             << " coordinator-closure-us=" << preamble_.coordinatorClosureMicros
             << " identity-index-build-us=" << preamble_.identityIndexBuildMicros
             << " line-table-identity-us=" << preamble_.lineTableIdentityMicros
             << " module-key-compose-us=" << preamble_.moduleKeyComposeMicros
             << " static-field-mask-us=" << preamble_.staticFieldMaskMicros
-            << " worker-wall-us=" << preamble_.workerWallMicros
-            << " plan-store-us=" << preamble_.planStoreMicros << '\n';
+            << " worker-wall-us=" << preamble_.workerWallMicros << '\n';
     output_->flush();
 }
 

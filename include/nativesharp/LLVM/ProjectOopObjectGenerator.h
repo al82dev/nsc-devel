@@ -95,19 +95,13 @@ public:
 private:
     bool finishCodeUnitBundle(
         ProjectOopObjectBundle& result,
-        bool usePartitions,
         bool preserveModuleText,
         LinkTimeOptimizationMode linkTimeOptimization,
-        ProjectOopCodePartition& partition,
-        const CompilationArtifactCache* cache,
-        const std::string& partitionPlanKey,
-        std::string& partitionPlanPayload,
         std::vector<std::string>& moduleTexts,
         const std::vector<std::string>& moduleErrors,
         const std::vector<std::uint8_t>& cacheHits,
         const std::vector<std::uint8_t>& cacheMisses,
         std::vector<CodeUnitTelemetry>& codeUnitTelemetry,
-        ColdLlvmPreambleTelemetry& preambleTelemetry,
         std::string& error) const;
     bool generateCodeUnits(
         const frontend::ProjectNameLookup& nameLookup,
@@ -124,8 +118,6 @@ private:
         std::span<const std::uint8_t> reachableDefinitions,
         std::span<const std::size_t> coordinatorFunctionDeclarations,
         ProjectOopCodePartition& partition,
-        const std::string& partitionPlanKey,
-        std::string& partitionPlanPayload,
         bool requiresWholeModuleRequiredInlining,
         bool usePartitions,
         ProjectOopObjectBundle& result,
@@ -146,8 +138,6 @@ private:
         std::span<const std::uint8_t> reachableDefinitions,
         std::span<const std::size_t> coordinatorFunctionDeclarations,
         ProjectOopCodePartition& partition,
-        const std::string& partitionPlanKey,
-        std::string& partitionPlanPayload,
         bool requiresWholeModuleRequiredInlining,
         bool usePartitions,
         ProjectOopObjectBundle& result,

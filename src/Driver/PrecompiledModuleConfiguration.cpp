@@ -155,32 +155,46 @@ void addCompilationLinkIdentity(
     }
 }
 
-bool configurePrecompiledModules(
+namespace
+{
+/// EN: Calculates the manifest identity from the closed project graph and looks up a verified
+///     compilation bundle for it.
+///     Parameters: `manifest`, whose graph inputs, identity and bundle lookup are filled;
+///     `compilation`, whose metadata repository supplies reference digests; `closedGraph`, the
+///     graph after the precompiled dependency closure; `deferrable`, true when the caller
+///     restores a verified bundle instead of compiling; `skipMaterialization` becomes true
+///     exactly when `deferrable` and the bundle is verified; `error`, the failure text.
+///     Returns false on an identity or cache I/O failure. Effects: may quarantine a corrupt bundle
+///     entry (inside CompilationBundleCache) and writes the `compilation-bundle-cache:` report
+///     line under --time.
+///     Why: this used to run after the precompiled modules were materialized; running it first
+///     lets a verified hit skip that work (audit 2026-10-22).
+/// ES: Calcula la identidad del manifiesto desde el grafo cerrado y busca un bundle de compilacion
+///     verificado para ella.
+///     Parametros: `manifest`, al que se agregan entradas del grafo, identidad y busqueda;
+///     `compilation`, cuyo repositorio de metadata da los digests de referencias; `closedGraph`, el grafo despues de la
+///     clausura precompilada; `deferrable`, true cuando el llamador restaura un bundle verificado
+///     en vez de compilar; `skipMaterialization` queda en true exactamente cuando `deferrable` y
+///     el bundle esta verificado; `error`, el texto de falla.
+///     Retorno: false ante una falla de identidad o de E/S del cache. Efectos: puede poner en
+///     cuarentena una entrada corrupta (dentro de CompilationBundleCache) y escribe la linea
+///     `compilation-bundle-cache:` con --time.
+///     Motivo: antes esto corria despues de materializar los modulos precompilados; correrlo antes
+///     permite que un acierto verificado omita ese trabajo (auditoria 2026-10-22).
+bool lookupCompilationBundle(
     compilation::CompilationInputManifest& manifest,
     frontend::ProjectCompilation& compilation,
+    const compilation::ProjectGraph& closedGraph,
+    bool deferrable,
+    bool& skipMaterialization,
     std::string& error)
 {
-    if (!compilation::preparePrecompiledProject(
-            manifest.releaseProjectGraph(), manifest.loadOptions(), compilation, error))
-    {
-        return false;
-    }
-    if (compilation.projectGraph() == nullptr)
-    {
-        error = "compilation input manifest requires a prepared project graph";
-        return false;
-    }
-    manifest.addProjectGraphInputs(*compilation.projectGraph());
+    manifest.addProjectGraphInputs(closedGraph);
     if (!manifest.calculateIdentity(
             compilation.libraryMetadataRepository(), error))
     {
         return false;
     }
-    compilation.setSourceBufferProvider(
-        [&manifest](const std::filesystem::path& path)
-        {
-            return manifest.sourceBuffer(path);
-        });
     compilation::CompilationBundleCache bundleCache;
     const llvm_backend::CompilationArtifactCache* const artifactCache =
         llvm_backend::activeCompilationArtifactCache();
@@ -216,7 +230,53 @@ bool configurePrecompiledModules(
         }
         activeExecutionScope->output << '\n';
     }
+    skipMaterialization = deferrable && hit;
     manifest.setBundleLookup(std::move(lookup));
+    return true;
+}
+}
+
+/// EN: Prepares the precompiled project of `manifest` in `compilation` and looks up its bundle.
+///     A verified bundle hit for a caller that restores outputs (one with required bundle
+///     outputs) skips materializing the precompiled modules, which only a compilation would use.
+///     Every caller with required outputs restores on a verified hit and never compiles; a
+///     caller without required outputs keeps the previous full preparation. Returns false with
+///     `error` on failure.
+/// ES: Prepara el proyecto precompilado de `manifest` en `compilation` y busca su bundle. Un
+///     acierto verificado para un llamador que restaura salidas (con salidas requeridas) omite
+///     materializar los modulos precompilados, que solo usaria una compilacion. Todo llamador con
+///     salidas requeridas restaura ante un acierto verificado y no compila; un llamador sin
+///     salidas requeridas conserva la preparacion completa anterior. Devuelve false con `error`.
+bool configurePrecompiledModules(
+    compilation::CompilationInputManifest& manifest,
+    frontend::ProjectCompilation& compilation,
+    std::string& error)
+{
+    const bool deferrable = !manifest.requiredBundleOutputNames().empty();
+    const compilation::PrecompiledMaterializationGate gate =
+        [&manifest, &compilation, deferrable](
+            const compilation::ProjectGraph& closedGraph,
+            bool& skipMaterialization,
+            std::string& gateError)
+        {
+            return lookupCompilationBundle(
+                manifest, compilation, closedGraph, deferrable, skipMaterialization, gateError);
+        };
+    if (!compilation::preparePrecompiledProject(
+            manifest.releaseProjectGraph(), manifest.loadOptions(), compilation, error, gate))
+    {
+        return false;
+    }
+    if (compilation.projectGraph() == nullptr)
+    {
+        error = "compilation input manifest requires a prepared project graph";
+        return false;
+    }
+    compilation.setSourceBufferProvider(
+        [&manifest](const std::filesystem::path& path)
+        {
+            return manifest.sourceBuffer(path);
+        });
     return true;
 }
 

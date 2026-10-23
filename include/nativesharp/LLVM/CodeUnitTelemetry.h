@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/LLVM/CacheMissReason.h"
+#include "nativesharp/LLVM/CodeUnitIrReuse.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -27,5 +28,9 @@ struct CodeUnitTelemetry final
     std::uint64_t verificationMicros = 0;
     std::uint64_t storeMicros = 0;
     CacheMissReason missReason = CacheMissReason::Hit;
+    // EN: Outcome of the second-level lookup by pre-optimization IR, tried only after the MIR
+    //     identity lookup missed. ES: Resultado de la busqueda de segundo nivel por IR previo a la
+    //     optimizacion, intentada solo despues de fallar la busqueda por identidad MIR.
+    CodeUnitIrReuse irReuse = CodeUnitIrReuse::Off;
 };
 }
