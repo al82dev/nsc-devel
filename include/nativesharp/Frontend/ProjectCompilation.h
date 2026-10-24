@@ -129,6 +129,16 @@ public:
     // ES: Snapshots semánticos aceptados para unidades de API pública restauradas, en orden de
     //     módulo.
     std::span<const PrecompiledSnapshotUnit> precompiledSnapshots() const noexcept;
+    std::span<const PrecompiledSyntaxModule> precompiledModules() const noexcept;
+    // EN: Producer side (plan item 2.2). The reference compilation of a library names the library
+    //     here before compiling; the subphase `precompiled-snapshot` then indexes the restored API
+    //     unit of that module, before any phase mutates it, and keeps it for capture.
+    // ES: Lado productor (punto 2.2 del plan). La compilación de referencia de una biblioteca nombra
+    //     aquí la biblioteca antes de compilar; la subfase `precompiled-snapshot` indexa entonces la
+    //     unidad de API restaurada de ese módulo, antes de que la mute cualquier fase, y la conserva
+    //     para la captura.
+    void setPrecompiledSnapshotCaptureModule(std::string moduleName);
+    const PrecompiledSnapshotUnit* precompiledSnapshotCapture() const noexcept;
     const ProjectNameLookup* nameLookup() const noexcept;
     const ProjectGenericModel* genericModel() const noexcept;
     const ProjectGenericConstraintModel* genericConstraintModel() const noexcept;
@@ -238,6 +248,8 @@ private:
     //     precompiledModules_), o sin valor para un módulo materializado bajo otra entrada.
     std::vector<std::optional<std::size_t>> precompiledApiUnits_;
     std::vector<PrecompiledSnapshotUnit> precompiledSnapshots_;
+    std::string precompiledSnapshotCaptureModule_;
+    std::optional<PrecompiledSnapshotUnit> precompiledSnapshotCapture_;
     source::SourceManager sourceManager_;
     diagnostics::DiagnosticEngine diagnostics_;
     std::vector<std::unique_ptr<ProjectSyntaxUnit>> units_;

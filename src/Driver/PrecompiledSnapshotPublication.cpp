@@ -2,6 +2,7 @@
 
 #include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
 #include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
+#include "nativesharp/Compilation/PrecompiledSemanticSnapshotCodec.h"
 
 #include <set>
 #include <string>
@@ -40,6 +41,55 @@ std::vector<compilation::LibraryReference> referenceLibraries(
     }
     return references;
 }
+
+// EN: The snapshot header of the captured API unit: every other module of the reference
+//     compilation with its NSMETA digest, and the shape of the API tree indexed before any phase
+//     mutated it.
+// ES: La cabecera del snapshot de la unidad de API capturada: cada otro módulo de la compilación de
+//     referencia con el digest de su NSMETA, y la forma del árbol de API indexado antes de que lo
+//     mutara cualquier fase.
+bool captureSnapshotHeader(const frontend::ProjectCompilation &reference,
+                           const frontend::PrecompiledSnapshotUnit &capture,
+                           compilation::PrecompiledSemanticSnapshot &snapshot, std::string &error)
+{
+    for (const frontend::PrecompiledSyntaxModule &module : reference.precompiledModules())
+    {
+        if (module.moduleName == capture.moduleName)
+            continue;
+        if (module.metadataDigest.size() != 64U)
+        {
+            error = "dependency '" + module.moduleName + "' has no NSMETA digest";
+            return false;
+        }
+        snapshot.dependencies.push_back({module.moduleName, module.metadataDigest});
+    }
+    snapshot.nodeCount = capture.index.nodes().size();
+    snapshot.typeCount = capture.index.types().size();
+    snapshot.nodeKindDigest = capture.index.kindDigest();
+    return true;
+}
+
+// EN: Plan item 2.3: rewrites the `.nsproducts` of the library transactionally as v2 with the
+//     snapshot; the four products stay exactly as written.
+// ES: Punto 2.3 del plan: reescribe de forma transaccional el `.nsproducts` de la biblioteca como
+//     v2 con el snapshot; los cuatro productos quedan exactamente como se escribieron.
+bool writeSnapshotSidecar(const frontend::ProjectCompilation &reference, const std::filesystem::path &metadataPath,
+                          const compilation::PrecompiledSemanticSnapshot &snapshot, std::string &error)
+{
+    const compilation::LibraryMetadataRepositoryEntry *const metadata =
+        reference.libraryMetadataRepository().load(metadataPath, error);
+    if (metadata == nullptr)
+        return false;
+    compilation::PrecompiledProductSidecar sidecar;
+    if (!compilation::PrecompiledProductSidecarCodec::read(
+            compilation::PrecompiledProductSidecarCodec::pathForMetadata(metadataPath), metadata->bytes(), sidecar,
+            error))
+    {
+        return false;
+    }
+    sidecar.publicApiSnapshot = compilation::PrecompiledSemanticSnapshotCodec::encode(snapshot);
+    return compilation::PrecompiledProductSidecarCodec::write(metadataPath, sidecar, metadata->bytes(), error);
+}
 }
 
 bool buildPrecompiledSnapshotReference(const frontend::ProjectCompilation &producer,
@@ -68,6 +118,7 @@ bool buildPrecompiledSnapshotReference(const frontend::ProjectCompilation &produ
                           std::move(sources), std::vector<std::filesystem::path>{},
                           referenceLibraries(*graph, metadataPath), std::vector<compilation::SdkManifest>{});
     reference.setProjectLoadOptions(producer.projectLoadOptions());
+    reference.setPrecompiledSnapshotCaptureModule(graph->rootProject()->moduleName());
     reference.setCompilationJobs(producer.compilationJobs());
     if (!compilation::preparePrecompiledProject(compilation::ProjectGraph(projectFile, std::move(projects)),
                                                 producer.projectLoadOptions(), reference, error))
@@ -85,10 +136,21 @@ void publishPrecompiledSnapshot(const frontend::ProjectCompilation &compilation,
         const bool built = measureDriverPhase("precompiled-snapshot-reference", [&]
                                               { return buildPrecompiledSnapshotReference(
                                                     compilation, metadataPath, reference, error); });
+        // EN: Plan item 2.4: any failure leaves the v1 `.nsproducts` as written; the library is
+        //     published anyway and consumers take today's path.
+        // ES: Punto 2.4 del plan: cualquier falla deja el `.nsproducts` v1 tal como se escribió; la
+        //     biblioteca se publica igual y los consumidores van por la ruta de hoy.
+        compilation::PrecompiledSemanticSnapshot snapshot;
+        const frontend::PrecompiledSnapshotUnit *const capture =
+            built ? reference.precompiledSnapshotCapture() : nullptr;
+        if (built && capture == nullptr)
+            error = "the library has no restored API unit";
+        const bool written = capture != nullptr && captureSnapshotHeader(reference, *capture, snapshot, error) &&
+                             writeSnapshotSidecar(reference, metadataPath, snapshot, error);
         if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
         {
             activeExecutionScope->output << "precompiled-snapshot-reference: "
-                                         << (built ? std::string("ok") : "failed " + error) << '\n';
+                                         << (written ? std::string("written") : "not-written " + error) << '\n';
         }
     }
     catch (const std::exception &exception)

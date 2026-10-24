@@ -21,6 +21,21 @@ std::span<const PrecompiledSnapshotUnit> ProjectCompilation::precompiledSnapshot
     return precompiledSnapshots_;
 }
 
+std::span<const PrecompiledSyntaxModule> ProjectCompilation::precompiledModules() const noexcept
+{
+    return precompiledModules_;
+}
+
+void ProjectCompilation::setPrecompiledSnapshotCaptureModule(std::string moduleName)
+{
+    precompiledSnapshotCaptureModule_ = std::move(moduleName);
+}
+
+const PrecompiledSnapshotUnit* ProjectCompilation::precompiledSnapshotCapture() const noexcept
+{
+    return precompiledSnapshotCapture_.has_value() ? &*precompiledSnapshotCapture_ : nullptr;
+}
+
 const compilation::ProjectLoadOptions& ProjectCompilation::projectLoadOptions() const noexcept
 {
     return projectLoadOptions_;
@@ -45,6 +60,7 @@ void ProjectCompilation::loadPrecompiledSnapshots()
 {
     const internal::ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "precompiled-snapshot");
     precompiledSnapshots_.clear();
+    precompiledSnapshotCapture_.reset();
     std::vector<compilation::PrecompiledSnapshotDependency> loadedDependencies;
     loadedDependencies.reserve(precompiledModules_.size());
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
@@ -56,6 +72,13 @@ void ProjectCompilation::loadPrecompiledSnapshots()
         if (moduleIndex >= precompiledApiUnits_.size() || !precompiledApiUnits_[moduleIndex].has_value())
             continue;
         const PrecompiledSyntaxModule& module = precompiledModules_[moduleIndex];
+        if (!precompiledSnapshotCaptureModule_.empty() && module.moduleName == precompiledSnapshotCaptureModule_)
+        {
+            PrecompiledSnapshotUnit& capture = precompiledSnapshotCapture_.emplace();
+            capture.unitOrdinal = *precompiledApiUnits_[moduleIndex];
+            capture.moduleName = module.moduleName;
+            capture.index.build(units_[capture.unitOrdinal]->syntaxTree());
+        }
         std::string reason;
         if (loadPrecompiledSnapshot(module, *precompiledApiUnits_[moduleIndex], loadedDependencies, reason))
             continue;
