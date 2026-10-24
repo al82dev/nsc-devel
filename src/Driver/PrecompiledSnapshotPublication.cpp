@@ -168,6 +168,19 @@ bool buildPrecompiledSnapshotReference(const frontend::ProjectCompilation &produ
     reference.setProjectLoadOptions(producer.projectLoadOptions());
     reference.setPrecompiledSnapshotCaptureModule(graph->rootProject()->moduleName());
     reference.setCompilationJobs(producer.compilationJobs());
+    // EN: Plan item 2.5: with --time, the reference reports how it loaded the snapshots of the
+    //     producer's library dependencies.
+    // ES: Punto 2.5 del plan: con --time, la referencia reporta cómo cargó los snapshots de las
+    //     dependencias de biblioteca del productor.
+    if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
+    {
+        auto *const output = &activeExecutionScope->output;
+        reference.setReportSink([output](std::string_view line) {
+            constexpr std::string_view loadPrefix = "precompiled-snapshot: ";
+            if (line.starts_with(loadPrefix))
+                *output << "precompiled-snapshot-reference-load: " << line.substr(loadPrefix.size()) << '\n';
+        });
+    }
     if (!compilation::preparePrecompiledProject(compilation::ProjectGraph(projectFile, std::move(projects)),
                                                 producer.projectLoadOptions(), reference, error))
         return false;
