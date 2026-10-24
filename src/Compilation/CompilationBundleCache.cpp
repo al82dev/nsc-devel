@@ -2,6 +2,7 @@
 
 #include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Driver/CompilationWorkerPool.h"
 
 #include <atomic>
 #include <charconv>
@@ -65,6 +66,52 @@ bool parseSize(std::string_view text, std::uintmax_t& result)
 bool validArtifactName(const std::filesystem::path& name)
 {
     return !name.empty() && name == name.filename() && name != "." && name != "..";
+}
+
+// EN: Hashes the outputs that store() would reach before its first invalid or duplicated name,
+//     one file per worker. hashed[index] is the result of sha256File and errors[index] its error;
+//     store() consumes them in the original order, so its manifest and its errors are unchanged.
+// ES: Calcula el hash de las salidas que store() alcanzaría antes de su primer nombre inválido o
+//     duplicado, un archivo por worker. hashed[index] es el resultado de sha256File y
+//     errors[index] su error; store() los consume en el orden original, así que su manifiesto y
+//     sus errores no cambian.
+void hashBundleOutputs(
+    const std::filesystem::path& outputDirectory,
+    const std::vector<std::string>& outputNames,
+    std::vector<basic::Sha256Digest>& digests,
+    std::vector<std::uintmax_t>& sizes,
+    std::vector<std::string>& errors,
+    std::vector<std::uint8_t>& hashed)
+{
+    digests.assign(outputNames.size(), basic::Sha256Digest{});
+    sizes.assign(outputNames.size(), 0);
+    errors.assign(outputNames.size(), std::string{});
+    hashed.assign(outputNames.size(), 0);
+    std::set<std::string> names;
+    std::size_t count = 0;
+    while (count < outputNames.size() &&
+           validArtifactName(std::filesystem::path(outputNames[count])) &&
+           names.insert(outputNames[count]).second)
+    {
+        ++count;
+    }
+    const auto hashOutput = [&](std::size_t index)
+    {
+        hashed[index] = basic::sha256File(
+            outputDirectory / std::filesystem::path(outputNames[index]),
+            digests[index], sizes[index], errors[index]) ? 1 : 0;
+    };
+    if (count < 2)
+    {
+        for (std::size_t index = 0; index < count; ++index) hashOutput(index);
+        return;
+    }
+    driver::CompilationWorkerPool workers(count);
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        workers.submit([&hashOutput, index](std::size_t) { hashOutput(index); });
+    }
+    workers.wait();
 }
 }
 
@@ -392,9 +439,15 @@ bool CompilationBundleCache::store(
     manifest << kManifestHeader << '\n'
              << "identity=" << identity << '\n'
              << "result=" << encodeHex(resultOutput) << '\n';
+    std::vector<basic::Sha256Digest> digests;
+    std::vector<std::uintmax_t> sizes;
+    std::vector<std::string> hashErrors;
+    std::vector<std::uint8_t> hashed;
+    hashBundleOutputs(outputDirectory, outputNames, digests, sizes, hashErrors, hashed);
     std::set<std::string> names;
-    for (const std::string& outputName : outputNames)
+    for (std::size_t index = 0; index < outputNames.size(); ++index)
     {
+        const std::string& outputName = outputNames[index];
         const std::filesystem::path name = outputName;
         if (!validArtifactName(name) || !names.insert(outputName).second)
         {
@@ -404,10 +457,9 @@ bool CompilationBundleCache::store(
             return false;
         }
         const std::filesystem::path source = outputDirectory / name;
-        basic::Sha256Digest digest{};
-        std::uintmax_t size = 0;
-        if (!basic::sha256File(source, digest, size, error))
+        if (hashed[index] == 0)
         {
+            error = hashErrors[index];
             std::filesystem::remove_all(staging, filesystemError);
             return false;
         }
@@ -426,7 +478,7 @@ bool CompilationBundleCache::store(
             return false;
         }
         manifest << "artifact=" << encodeHex(outputName) << '\t'
-                 << size << '\t' << basic::sha256Hex(digest) << '\n';
+                 << sizes[index] << '\t' << basic::sha256Hex(digests[index]) << '\n';
     }
     const std::filesystem::path manifestPath = staging / "bundle.manifest";
     std::ofstream output(manifestPath, std::ios::binary | std::ios::trunc);
