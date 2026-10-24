@@ -16,8 +16,17 @@ namespace nativesharp::frontend
 namespace
 {
 std::atomic<unsigned long long> temporaryOrdinal = 0;
+// EN: Publications are atomic renames without MOVEFILE_WRITE_THROUGH, like the object and code-partition stores:
+//     every entry is rebuildable, its metadata is published last, and `readTemplateEntry` checks the size and the
+//     SHA-256 before using a payload, so a publication lost to a power failure is a miss. The write-through flag
+//     forced a durability barrier on every corpus and syntax publication.
+// ES: Las publicaciones son renombres atómicos sin MOVEFILE_WRITE_THROUGH, igual que los almacenes de objetos y de
+//     particiones: cada entrada se puede reconstruir, su metadata se publica al final y `readTemplateEntry`
+//     comprueba el tamaño y el SHA-256 antes de usar un payload, así que una publicación perdida por un corte de
+//     energía es un fallo de caché. La bandera write-through forzaba una barrera de durabilidad en cada publicación
+//     del corpus y de la sintaxis.
 internal::CacheEntryStore templateEntryStore(
-    temporaryOrdinal, "NSCTPL 1", "template-cache", "template-cache", true, false);
+    temporaryOrdinal, "NSCTPL 1", "template-cache", "template-cache", false, false);
 
 std::filesystem::path entryDirectory(
     const std::filesystem::path& root,
