@@ -1,115 +1,65 @@
-#include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
-#include "nativesharp/Compilation/ProjectGraphLoader.h"
-#include "nativesharp/Compilation/ProjectLoadOptions.h"
-#include "nativesharp/Frontend/ProjectCompilation.h"
-#include "nativesharp/Frontend/ProjectConstructionModelDumper.h"
-#include "nativesharp/Frontend/ProjectDestructionModelDumper.h"
-#include "nativesharp/Frontend/ProjectGenericModelDumper.h"
-#include "nativesharp/Frontend/ProjectInheritanceModelDumper.h"
-#include "nativesharp/Frontend/ProjectInterfaceModelDumper.h"
-#include "nativesharp/Frontend/ProjectMemberModelDumper.h"
-#include "nativesharp/Frontend/ProjectMethodBodyModelDumper.h"
-#include "nativesharp/Frontend/ProjectNameLookupDumper.h"
-#include "nativesharp/Frontend/ProjectObjectLayoutModelDumper.h"
-#include "nativesharp/Frontend/ProjectOopHirModelDumper.h"
-#include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
-#include "nativesharp/Frontend/ProjectVirtualDispatchModelDumper.h"
-
+#include "../support/PrecompiledSnapshotFixture.h"
 #include "../support/TestContext.h"
 
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
-#include <map>
 #include <optional>
-#include <sstream>
 #include <string>
-#include <utility>
+#include <vector>
 
 // EN: Plan item 4.1 (component equivalence). Compiles one consumer project to MIR twice, with
 //     usePrecompiledSnapshots off and on, and requires identical dumps of every frontend model.
-//     Run with a consumer .nsproj as the first argument; the snapshot report lines go to stdout.
+//     Without arguments (CTest `nsc.precompiled-snapshot-equivalence`) it first emits its own
+//     fixture of two libraries, which publish their snapshots, and also requires that the consumer
+//     loads both snapshots and installs entries of every model. With a consumer .nsproj as the first
+//     argument it checks that project instead; the snapshot report lines go to stdout.
 // ES: Punto 4.1 del plan (equivalencia de componentes). Compila un proyecto consumidor hasta MIR dos
 //     veces, con usePrecompiledSnapshots apagado y encendido, y exige volcados idénticos de cada
-//     modelo del frontend. Se ejecuta con un .nsproj consumidor como primer argumento; las líneas
-//     del reporte de snapshots salen por stdout.
+//     modelo del frontend. Sin argumentos (CTest `nsc.precompiled-snapshot-equivalence`) primero
+//     emite su propio fixture de dos bibliotecas, que publican sus snapshots, y además exige que el
+//     consumidor cargue ambos snapshots e instale entradas de cada modelo. Con un .nsproj
+//     consumidor como primer argumento comprueba ese proyecto; las líneas del reporte de snapshots
+//     salen por stdout.
 
 namespace
 {
 using namespace nativesharp;
-using ModelDumps = std::map<std::string, std::string>;
 
-// EN: The dump of every model the driver can print, keyed by model name.
-// ES: El volcado de cada modelo que el driver puede imprimir, indexado por nombre de modelo.
-ModelDumps dumpModels(const frontend::ProjectCompilation& compilation)
+void printReport(const std::vector<std::string>& report, std::string_view prefix)
 {
-    ModelDumps dumps;
-    const frontend::ProjectNameLookup& names = *compilation.nameLookup();
-    const frontend::ProjectMemberModel& members = *compilation.memberModel();
-    std::ostringstream text;
-    dumps["generics"] = frontend::ProjectGenericModelDumper::dump(*compilation.genericModel());
-    frontend::ProjectNameLookupDumper().dump(names, text);
-    dumps["names"] = std::exchange(text, std::ostringstream{}).str();
-    frontend::ProjectMemberModelDumper().dump(members, names, text);
-    dumps["members"] = std::exchange(text, std::ostringstream{}).str();
-    frontend::ProjectInheritanceModelDumper().dump(*compilation.inheritanceModel(), names, text);
-    dumps["inheritance"] = std::exchange(text, std::ostringstream{}).str();
-    frontend::ProjectInterfaceModelDumper::dump(*compilation.interfaceModel(), text);
-    dumps["interfaces"] = std::exchange(text, std::ostringstream{}).str();
-    frontend::ProjectVirtualDispatchModelDumper().dump(*compilation.virtualDispatchModel(), members, names, text);
-    dumps["virtual-dispatch"] = std::exchange(text, std::ostringstream{}).str();
-    frontend::ProjectMethodBodyModelDumper().dump(*compilation.methodBodyModel(), members, names, text);
-    dumps["method-bodies"] = std::exchange(text, std::ostringstream{}).str();
-    frontend::ProjectDestructionModelDumper::dump(*compilation.destructionModel(), names, members, text);
-    dumps["destruction"] = std::exchange(text, std::ostringstream{}).str();
-    frontend::ProjectConstructionModelDumper().dump(*compilation.constructionModel(), members, names, text);
-    dumps["constructions"] = std::exchange(text, std::ostringstream{}).str();
-    frontend::ProjectObjectLayoutModelDumper().dump(*compilation.objectLayoutModel(), members, names, text);
-    dumps["layouts"] = std::exchange(text, std::ostringstream{}).str();
-    dumps["oop-hir"] = frontend::ProjectOopHirModelDumper::dump(*compilation.oopHirModel());
-    dumps["oop-mir"] = frontend::ProjectOopMirModelDumper::dump(*compilation.oopMirModel());
-    return dumps;
+    for (const std::string& line : report) std::cout << prefix << line << '\n';
 }
 
-// EN: Loads, prepares and compiles `project` to MIR with snapshots on or off; empty on failure.
-// ES: Carga, prepara y compila `project` hasta MIR con snapshots encendidos o apagados; vacío si
-//     falla.
-std::optional<ModelDumps> compileAndDump(
-    const std::filesystem::path& project,
-    bool useSnapshots,
-    std::string& error)
+// EN: Emits the fixture under the build folder and returns its consumer project.
+// ES: Emite el fixture bajo la carpeta de compilación y regresa su proyecto consumidor.
+std::optional<std::filesystem::path> prepareFixture(tests::TestContext& tests)
 {
-    compilation::ProjectLoadOptions options;
-    options.usePrecompiledSnapshots = useSnapshots;
-    const compilation::ProjectGraphLoader loader(1, {}, options);
-    std::optional<compilation::ProjectGraph> graph = loader.load(project, error);
-    if (!graph.has_value()) return std::nullopt;
-    frontend::ProjectCompilation compilation;
-    compilation.setProjectLoadOptions(options);
-    compilation.setReportSink([useSnapshots](std::string_view line)
-        { std::cout << (useSnapshots ? "[on] " : "[off] ") << line << '\n'; });
-    if (!compilation::preparePrecompiledProject(std::move(*graph), options, compilation, error) ||
-        !compilation.compileProjectOopMir(project, error))
-    {
-        return std::nullopt;
-    }
-    return dumpModels(compilation);
+    const std::string runtime =
+        (std::filesystem::path(NSC_BINARY_DIR) / "generated/NativeSharp.Runtime.Win32.lib").string();
+    _putenv_s("NSC_WINDOWS_RUNTIME_LIBRARY", runtime.c_str());
+    std::string output;
+    const std::optional<std::filesystem::path> consumer = tests::snapshot::buildFixture(
+        std::filesystem::path(NSC_BINARY_DIR) / "precompiled_snapshot_equivalence", output);
+    tests.expect(consumer.has_value(), "the fixture libraries emit: " + output);
+    tests.expect(output.find("precompiled-snapshot-reference: written") != std::string::npos,
+        "the fixture libraries publish their snapshots: " + output);
+    return consumer;
 }
 
-// EN: The first line where two dumps differ, for the failure message.
-// ES: La primera línea donde difieren dos volcados, para el mensaje de falla.
-std::string firstDifference(const std::string& left, const std::string& right)
+// EN: With the fixture, the consumer must load both snapshots and install entries of every model.
+// ES: Con el fixture, el consumidor debe cargar ambos snapshots e instalar entradas de cada modelo.
+void expectFixtureInstalls(tests::TestContext& tests, const std::vector<std::string>& report)
 {
-    std::istringstream leftLines(left);
-    std::istringstream rightLines(right);
-    std::string leftLine;
-    std::string rightLine;
-    for (std::size_t line = 1;; ++line)
+    tests.expect(tests::snapshot::reportContains(report, "precompiled-snapshot: loaded=2 "),
+        "the consumer loads the snapshots of both fixture libraries");
+    for (const std::string_view empty : {"name-declarations=0", "members=0", "namespace-functions=0",
+             "namespace-states=0", "classes=0", "interfaces=0", "implementing-types=0", "dispatch-classes=0",
+             "destruction-classes=0", "layout-structs=0", "layout-classes=0"})
     {
-        const bool hasLeft = static_cast<bool>(std::getline(leftLines, leftLine));
-        const bool hasRight = static_cast<bool>(std::getline(rightLines, rightLine));
-        if (!hasLeft && !hasRight) return "no difference";
-        if (!hasLeft || !hasRight || leftLine != rightLine)
-            return "line " + std::to_string(line) + ": off='" + leftLine + "' on='" + rightLine + "'";
+        tests.expect(!tests::snapshot::reportContains(report, std::string("install: ") + std::string(empty)) &&
+                !tests::snapshot::reportContains(report, " " + std::string(empty)),
+            "the consumer installs fixture entries (" + std::string(empty) + " not reported)");
     }
 }
 }
@@ -117,16 +67,20 @@ std::string firstDifference(const std::string& left, const std::string& right)
 int main(int argc, char** argv)
 {
     tests::TestContext tests;
-    if (argc < 2)
-    {
-        std::cout << "usage: nsc_precompiled_snapshot_equivalence_tests <consumer.nsproj>\n";
-        return tests.result();
-    }
-    const std::filesystem::path project(argv[1]);
+    const bool fixture = argc < 2;
+    const std::optional<std::filesystem::path> project =
+        fixture ? prepareFixture(tests) : std::optional<std::filesystem::path>(argv[1]);
+    if (!project.has_value()) return tests.result();
+    std::vector<std::string> offReport;
+    std::vector<std::string> onReport;
     std::string offError;
     std::string onError;
-    const std::optional<ModelDumps> off = compileAndDump(project, false, offError);
-    const std::optional<ModelDumps> on = compileAndDump(project, true, onError);
+    const std::optional<tests::snapshot::ModelDumps> off =
+        tests::snapshot::compileAndDump(*project, false, offReport, offError);
+    const std::optional<tests::snapshot::ModelDumps> on =
+        tests::snapshot::compileAndDump(*project, true, onReport, onError);
+    printReport(offReport, "[off] ");
+    printReport(onReport, "[on] ");
     tests.expect(off.has_value(), "the consumer compiles with snapshots off: " + offError);
     tests.expect(on.has_value(), "the consumer compiles with snapshots on: " + onError);
     if (!off.has_value() || !on.has_value()) return tests.result();
@@ -134,7 +88,8 @@ int main(int argc, char** argv)
     {
         const std::string& other = on->at(model);
         tests.expect(dump == other, "model '" + model + "' is identical with snapshots on and off" +
-            (dump == other ? std::string{} : " (" + firstDifference(dump, other) + ")"));
+            (dump == other ? std::string{} : " (" + tests::snapshot::firstDifference(dump, other) + ")"));
     }
+    if (fixture) expectFixtureInstalls(tests, onReport);
     return tests.result();
 }
