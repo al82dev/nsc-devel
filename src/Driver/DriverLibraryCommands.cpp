@@ -21,7 +21,7 @@ ExitCode Driver::runProjectHostHeaderGeneration(std::string_view inputPath, std:
     configureProjectExecution(compilation);
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(*manifest, compilation, loadError); }))
+            [&] { return configurePrecompiledModules(*manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
@@ -100,7 +100,7 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(std::string_view inputPath,
     configureProjectExecution(compilation);
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(*manifest, compilation, loadError); }))
+            [&] { return configurePrecompiledModules(*manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;

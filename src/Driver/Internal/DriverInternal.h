@@ -89,8 +89,12 @@ void addCompilationLinkIdentity(
     compilation::CompilationInputManifest &manifest, bool incrementalLink,
     linker::WindowsExecutableSubsystem subsystem,
     std::span<const std::filesystem::path> extraLinkLibraries);
+// `materializeDemandedSurface` is true for code generation: each precompiled module outside the
+// standard library then materializes only the declarations its sources can reach. Analysis dumps
+// and checks pass false and keep the complete surfaces.
 bool configurePrecompiledModules(compilation::CompilationInputManifest &manifest,
-                                 frontend::ProjectCompilation &compilation, std::string &error);
+                                 frontend::ProjectCompilation &compilation, std::string &error,
+                                 bool materializeDemandedSurface = false);
 bool restoreCompilationBundle(
     const compilation::CompilationInputManifest &manifest,
     bool &restored,

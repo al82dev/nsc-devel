@@ -30,7 +30,8 @@ namespace nativesharp::driver
 bool configurePrecompiledModules(
     compilation::CompilationInputManifest& manifest,
     frontend::ProjectCompilation& compilation,
-    std::string& error);
+    std::string& error,
+    bool materializeDemandedSurface);
 std::string fingerprintFiles(
     const compilation::CompilationInputManifest& manifest,
     std::vector<std::filesystem::path> files);
@@ -78,7 +79,8 @@ private:
     friend bool driver::configurePrecompiledModules(
         CompilationInputManifest& manifest,
         frontend::ProjectCompilation& compilation,
-        std::string& error);
+        std::string& error,
+        bool materializeDemandedSurface);
     friend std::string driver::fingerprintFiles(
         const CompilationInputManifest& manifest,
         std::vector<std::filesystem::path> files);

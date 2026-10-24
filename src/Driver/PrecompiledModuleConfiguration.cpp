@@ -250,7 +250,8 @@ bool lookupCompilationBundle(
 bool configurePrecompiledModules(
     compilation::CompilationInputManifest& manifest,
     frontend::ProjectCompilation& compilation,
-    std::string& error)
+    std::string& error,
+    bool materializeDemandedSurface)
 {
     const bool deferrable = !manifest.requiredBundleOutputNames().empty();
     const compilation::PrecompiledMaterializationGate gate =
@@ -262,8 +263,16 @@ bool configurePrecompiledModules(
             return lookupCompilationBundle(
                 manifest, compilation, closedGraph, deferrable, skipMaterialization, gateError);
         };
+    // Sources the manifest hashed for the bundle identity are served from memory; the others are
+    // read from disk.
+    const compilation::PrecompiledSurfaceSourceProvider surfaceSources =
+        [&manifest](const std::filesystem::path& path)
+        {
+            return manifest.sourceBuffer(path);
+        };
     if (!compilation::preparePrecompiledProject(
-            manifest.releaseProjectGraph(), manifest.loadOptions(), compilation, error, gate))
+            manifest.releaseProjectGraph(), manifest.loadOptions(), compilation, error, gate,
+            materializeDemandedSurface ? &surfaceSources : nullptr))
     {
         return false;
     }

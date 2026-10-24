@@ -81,7 +81,7 @@ bool prepareExecutableProject(std::string_view inputPath,
     std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(manifest, compilation, loadError); }))
+            [&] { return configurePrecompiledModules(manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return false;
@@ -356,7 +356,7 @@ bool prepareStaticLibraryProject(std::string_view inputPath,
     std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(manifest, compilation, loadError); }))
+            [&] { return configurePrecompiledModules(manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return false;
@@ -565,7 +565,7 @@ bool prepareDynamicLibraryProject(std::string_view inputPath,
     std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(manifest, compilation, loadError); }))
+            [&] { return configurePrecompiledModules(manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return false;

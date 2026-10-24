@@ -661,6 +661,8 @@ add_library(nsc_precompiled STATIC
     src/Compilation/PrecompiledProductCache.cpp
     src/Compilation/PrecompiledProductSidecarCodec.cpp
     src/Compilation/PrecompiledProjectPreparation.cpp
+    src/Compilation/PrecompiledSurfaceDemandCollection.cpp
+    src/Compilation/PrecompiledSurfaceReachability.cpp
     src/Driver/PrecompiledSurface/ContractMaterialization.cpp
     src/Driver/PrecompiledSurface/MetadataSourceMapping.cpp
     src/Driver/PrecompiledSurface/PrecompiledSourceGeneration.cpp
