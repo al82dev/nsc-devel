@@ -395,17 +395,59 @@ private:
         // refcount) instead of deep-copying a map/vector on each traversal descent. `read()` is the
         // const view; `write()` clones the container only when it is shared, then returns a mutable
         // reference. Small lexical containers get cloned rarely, so the clone cost is negligible.
+        // EN: The container is allocated on the first `write()`. A scope is built for every node of every unit and
+        //     most of its six containers are never written, so a default scope allocates nothing; until then
+        //     `read()` returns one shared empty container.
+        // ES: El contenedor se reserva en el primer `write()`. Se construye un scope por cada nodo de cada unidad y
+        //     casi nunca se escribe en sus seis contenedores, así que un scope por defecto no reserva nada;
+        //     mientras tanto `read()` devuelve un único contenedor vacío compartido.
         template <typename T>
         struct Cow final
         {
-            Cow() : value_(std::make_shared<T>()) {}
-            const T& read() const { return *value_; }
-            T& write()
+            Cow() = default;
+
+            // EN: Returns the current container, or the shared empty one when nothing was written. The reference
+            //     stays valid until the next `write()` on this wrapper. Thread safe for concurrent readers; the
+            //     empty container is never modified.
+            // ES: Devuelve el contenedor actual, o el vacío compartido si nunca se escribió. La referencia vale
+            //     hasta el siguiente `write()` sobre este envoltorio. Seguro para lectores concurrentes; el
+            //     contenedor vacío nunca se modifica.
+            const T& read() const
             {
-                if (value_.use_count() > 1)
-                    value_ = std::make_shared<T>(*value_);
+                if (value_ == nullptr)
+                {
+                    return emptyValue();
+                }
                 return *value_;
             }
+
+            // EN: Returns a container owned only by this wrapper: allocates an empty one on the first call and
+            //     clones a shared one, so a write never shows through another scope.
+            // ES: Devuelve un contenedor que solo posee este envoltorio: reserva uno vacío en la primera llamada y
+            //     clona uno compartido, de modo que una escritura nunca se ve desde otro scope.
+            T& write()
+            {
+                if (value_ == nullptr)
+                {
+                    value_ = std::make_shared<T>();
+                }
+                else if (value_.use_count() > 1)
+                {
+                    value_ = std::make_shared<T>(*value_);
+                }
+                return *value_;
+            }
+
+            // EN: The empty container `read()` returns before the first write. Constructed once per process (a
+            //     thread-safe function-local static) and never modified.
+            // ES: El contenedor vacío que `read()` devuelve antes de la primera escritura. Se construye una vez por
+            //     proceso (static local, seguro entre hilos) y nunca se modifica.
+            static const T& emptyValue()
+            {
+                static const T empty;
+                return empty;
+            }
+
             std::shared_ptr<T> value_;
         };
         Cow<std::vector<std::string>> importedNamespaces;
