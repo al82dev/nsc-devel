@@ -1555,13 +1555,22 @@ bool ProjectCompilation::materializePrecompiledSyntax(std::string& loadError)
             if (!projectError) precompiledProjectOrdinals_.try_emplace(canonicalProject, ordinal);
         }
     }
-    for (const PrecompiledSyntaxModule& module : precompiledModules_)
+    // EN: The public API unit is the first unit a module adds; a module whose metadata was already
+    //     materialized adds none.
+    // ES: La unidad de API pública es la primera unidad que agrega un módulo; un módulo cuya
+    //     metadata ya se materializó no agrega ninguna.
+    precompiledApiUnits_.assign(precompiledModules_.size(), std::nullopt);
+    for (std::size_t moduleIndex = 0; moduleIndex < precompiledModules_.size(); ++moduleIndex)
     {
-        if (!materializePrecompiledModule(module, materializedMetadata, loadError))
+        const std::size_t firstUnit = units_.size();
+        if (!materializePrecompiledModule(
+                precompiledModules_[moduleIndex], materializedMetadata, loadError))
         {
             return false;
         }
+        if (units_.size() > firstUnit) precompiledApiUnits_[moduleIndex] = firstUnit;
     }
+    loadPrecompiledSnapshots();
     return true;
 }
 

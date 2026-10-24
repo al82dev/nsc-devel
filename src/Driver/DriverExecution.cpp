@@ -52,6 +52,10 @@ void configureProjectExecution(frontend::ProjectCompilation &compilation)
         DriverExecutionScope *const scope = activeExecutionScope;
         compilation.setPhaseTimingSink([scope](std::string_view phase, std::chrono::nanoseconds elapsed)
                                        { scope->recordPhase(phase, elapsed); });
+        // EN: Report lines (precompiled snapshot counts) go out as they happen, like the bundle line.
+        // ES: Las líneas de reporte (cuentas de snapshots precompilados) salen al momento, como la
+        //     línea del bundle.
+        compilation.setReportSink([scope](std::string_view line) { scope->output << line << '\n'; });
     }
     if (activeExecutionScope != nullptr && activeExecutionScope->reportProgress)
     {

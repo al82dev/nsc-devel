@@ -81,6 +81,17 @@ std::string precompiledProductCacheKey(
     return basic::sha256Hex(basic::sha256(bytes));
 }
 
+// EN: SHA-256 (hex) of the NSMETA bytes of `entry`, or empty when the repository cannot load them.
+// ES: SHA-256 (hex) de los bytes de la NSMETA de `entry`, o vacío si el repositorio no los carga.
+std::string moduleMetadataDigest(
+    const LoadedMetadata& entry,
+    const LibraryMetadataRepository& repository)
+{
+    std::string ignoredError;
+    const LibraryMetadataRepositoryEntry* file = repository.load(entry.metadataPath, ignoredError);
+    return file == nullptr ? std::string{} : basic::sha256Hex(file->contentDigest());
+}
+
 bool restorePrecompiledSourceProducts(
     const std::filesystem::path& cacheRoot,
     std::string_view cacheKey,
@@ -159,6 +170,7 @@ bool materializeModuleProducts(
     std::string& templateSource,
     std::string& publicSyntax,
     std::string& templateSyntax,
+    std::string& publicApiSnapshot,
     bool& restoredPublishedProducts,
     std::string& error)
 {
@@ -171,6 +183,7 @@ bool materializeModuleProducts(
         templateSource = std::move(publishedProducts->publicTemplateSource);
         publicSyntax = std::move(publishedProducts->publicApiSyntax);
         templateSyntax = std::move(publishedProducts->publicTemplateSyntax);
+        publicApiSnapshot = std::move(publishedProducts->publicApiSnapshot);
         restoredPublishedProducts = true;
         return true;
     }
@@ -400,6 +413,7 @@ bool materializeModules(
         std::string templateSource;
         std::string publicSyntax;
         std::string templateSyntax;
+        std::string publicApiSnapshot;
         bool restoredPublishedProducts = false;
         if (pruned)
         {
@@ -416,6 +430,7 @@ bool materializeModules(
                 templateSource,
                 publicSyntax,
                 templateSyntax,
+                publicApiSnapshot,
                 restoredPublishedProducts,
                 error))
         {
@@ -435,7 +450,9 @@ bool materializeModules(
             genericSpecializations(surface, concreteMemberNames),
             restoredPublishedProducts
                 ? entry.productSidecarPath
-                : std::filesystem::path{}});
+                : std::filesystem::path{},
+            moduleMetadataDigest(entry, repository),
+            std::move(publicApiSnapshot)});
     }
     return true;
 }

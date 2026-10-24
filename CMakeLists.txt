@@ -653,6 +653,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectCostExplorer.cpp
     src/Frontend/ProjectOopMirModelDumper.cpp
     src/Frontend/ProjectCompilation.cpp
+    src/Frontend/ProjectCompilationSnapshots.cpp
     src/Frontend/ProjectCompilationIndexes.cpp
     src/Frontend/ProjectCompilationLifetime.cpp
     src/Frontend/ProjectCompilationDumper.cpp)

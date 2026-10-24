@@ -24,6 +24,7 @@
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Frontend/PrecompiledSnapshotUnit.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "nativesharp/Source/SourceManager.h"
 #include "Internal/ProjectSyntaxSourceRead.h"
@@ -64,6 +65,11 @@ public:
     void setPhaseTimingSink(
         std::function<void(std::string_view, std::chrono::nanoseconds)> sink);
     void setProgressSink(std::function<void(const basic::CompilationEvent&)> sink);
+    // EN: Receives the report lines of --time that are not phase timings (for example the
+    //     precompiled snapshot counts). Unset, nothing is reported.
+    // ES: Recibe las líneas del reporte de --time que no son tiempos de fase (por ejemplo, las
+    //     cuentas de snapshots precompilados). Sin asignar, no se reporta nada.
+    void setReportSink(std::function<void(std::string_view)> sink);
 #if 0 // INSTRUMENTATION CODE: detailed generics trace support.
     // Detailed, high-volume diagnostics are routed separately so normal --progress output keeps
     // its stable concise contract. The driver currently uses this for --generics-trace=<file>.
@@ -117,6 +123,10 @@ public:
     const diagnostics::DiagnosticEngine& diagnostics() const noexcept;
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units() const noexcept;
     std::span<const ProjectComptimeRecord> comptimeRecords() const noexcept;
+    // EN: Semantic snapshots accepted for restored public API units, in module order.
+    // ES: Snapshots semánticos aceptados para unidades de API pública restauradas, en orden de
+    //     módulo.
+    std::span<const PrecompiledSnapshotUnit> precompiledSnapshots() const noexcept;
     const ProjectNameLookup* nameLookup() const noexcept;
     const ProjectGenericModel* genericModel() const noexcept;
     const ProjectGenericConstraintModel* genericConstraintModel() const noexcept;
@@ -187,6 +197,12 @@ private:
         std::size_t projectOrdinal,
         std::string& loadError);
     bool materializePrecompiledSyntax(std::string& loadError);
+    void loadPrecompiledSnapshots();
+    bool loadPrecompiledSnapshot(
+        const PrecompiledSyntaxModule& module,
+        std::size_t unitOrdinal,
+        std::span<const compilation::PrecompiledSnapshotDependency> loadedDependencies,
+        std::string& reason);
     bool calculateTemplateParseCacheKey(std::string& loadError);
     bool restoreTemplateParseProduct(std::string& loadError);
     void publishTemplateParseProduct();
@@ -214,6 +230,12 @@ private:
     // Canonical project file -> first project-graph ordinal with that file. Built once per
     // compilation by materializePrecompiledSyntax; read by precompiledProjectOrdinal.
     std::map<std::filesystem::path, std::size_t> precompiledProjectOrdinals_;
+    // EN: Unit ordinal of the public API unit of each precompiled module (index of
+    //     precompiledModules_), or no value for a module materialized under another entry.
+    // ES: Ordinal de la unidad de API pública de cada módulo precompilado (índice de
+    //     precompiledModules_), o sin valor para un módulo materializado bajo otra entrada.
+    std::vector<std::optional<std::size_t>> precompiledApiUnits_;
+    std::vector<PrecompiledSnapshotUnit> precompiledSnapshots_;
     source::SourceManager sourceManager_;
     diagnostics::DiagnosticEngine diagnostics_;
     std::vector<std::unique_ptr<ProjectSyntaxUnit>> units_;
@@ -242,6 +264,7 @@ private:
     SourceBufferProvider sourceBufferProvider_;
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;
     std::function<void(const basic::CompilationEvent&)> progressSink_;
+    std::function<void(std::string_view)> reportSink_;
 #if 0 // INSTRUMENTATION CODE
     std::function<void(const basic::CompilationEvent&)> detailedProgressSink_;
 #endif // INSTRUMENTATION CODE
