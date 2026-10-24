@@ -381,7 +381,11 @@ bool ProjectGenericModel::expandAliasesInNode(
 
     const bool nodeOk = expandAliasesForNode(unit, node, currentScope, diagnostics);
     ok = nodeOk && ok;
-    const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
+    // EN: The children are read in place: the frames below only record the pointers and nothing
+    //     here edits the child list of `node`.
+    // ES: Los hijos se leen en su lugar: los frames de abajo solo guardan los punteros y aquí
+    //     nada modifica la lista de hijos de `node`.
+    const std::vector<ast::AstNode*>& children = node->children();
     for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
         frames.push_back(AliasFrame{*iterator, currentNamespace, currentScope});
     if (node->third() != nullptr)

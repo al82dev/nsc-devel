@@ -282,7 +282,11 @@ void ProjectGenericModel::pushCollectTemplateChildren(
          node->kind() == ast::AstNodeKind::StructDeclaration)
             ? appendOwner(ownerName, node->text()) : ownerName;
     const bool childInsideGeneric = insideGenericType || genericType;
-    const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
+    // EN: The children are read in place: the frames below only record the pointers and nothing
+    //     here edits the child list of `node`.
+    // ES: Los hijos se leen en su lugar: los frames de abajo solo guardan los punteros y aquí
+    //     nada modifica la lista de hijos de `node`.
+    const std::vector<ast::AstNode*>& children = node->children();
     for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
         stack.push_back(CollectFrame{
             *iterator, node, currentNamespace, childOwner, childInsideGeneric});
