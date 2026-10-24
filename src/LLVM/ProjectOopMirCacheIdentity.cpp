@@ -3,6 +3,7 @@
 #include "Internal/IdentityWriter.h"
 
 #include "nativesharp/Basic/Sha256.h"
+#include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Source/SourceManager.h"
 
@@ -425,25 +426,75 @@ std::string identityDigest(std::string_view identity)
 
 ProjectOopMirCacheIdentityIndex::ProjectOopMirCacheIdentityIndex(
     const frontend::ProjectOopMirModel& model)
+    : ProjectOopMirCacheIdentityIndex(model, nullptr)
 {
-    IdentityWriter common;
-    common.text("NativeSharp.ProjectOopMirCacheIdentity.Common.v1");
-    writeCommonModel(common, model);
-    commonDigest_ = identityDigest(common.take());
+}
 
-    declarationDigests_.reserve(model.functions().size());
-    definitionDigests_.reserve(model.functions().size());
-    for (const frontend::ProjectOopMirFunction& function : model.functions())
+ProjectOopMirCacheIdentityIndex::ProjectOopMirCacheIdentityIndex(
+    const frontend::ProjectOopMirModel& model,
+    driver::CompilationWorkerPool* workerPool)
+{
+    // EN: Every function owns its two slots, so each digest is computed exactly as in the
+    //     sequential loop no matter which worker writes it; the model is only read.
+    // ES: Cada función es dueña de sus dos ranuras, así que cada digest se calcula igual que en
+    //     el ciclo secuencial sin importar qué worker lo escriba; el modelo solo se lee.
+    constexpr std::size_t kFunctionsPerTask = 32;
+    const std::size_t functionCount = model.functions().size();
+    declarationDigests_.resize(functionCount);
+    definitionDigests_.resize(functionCount);
+    const bool parallel = workerPool != nullptr && workerPool->workerCount() > 1 &&
+        functionCount > kFunctionsPerTask;
+    if (parallel)
     {
+        for (std::size_t begin = 0; begin < functionCount; begin += kFunctionsPerTask)
+        {
+            const std::size_t end = std::min(functionCount, begin + kFunctionsPerTask);
+            workerPool->submit([this, &model, begin, end](std::size_t) {
+                computeFunctionDigests(model, begin, end);
+            });
+        }
+    }
+
+    // EN: The common digest overlaps with the queued tasks; they reference this object, so a
+    //     failure here still drains them before the exception leaves the constructor.
+    // ES: El digest común se traslapa con las tareas encoladas; estas referencian este objeto,
+    //     así que una falla aquí las drena antes de que la excepción salga del constructor.
+    try
+    {
+        IdentityWriter common;
+        common.text("NativeSharp.ProjectOopMirCacheIdentity.Common.v1");
+        writeCommonModel(common, model);
+        commonDigest_ = identityDigest(common.take());
+    }
+    catch (...)
+    {
+        if (parallel)
+        {
+            try { workerPool->wait(); } catch (...) {}
+        }
+        throw;
+    }
+
+    if (parallel) workerPool->wait();
+    else computeFunctionDigests(model, 0, functionCount);
+}
+
+void ProjectOopMirCacheIdentityIndex::computeFunctionDigests(
+    const frontend::ProjectOopMirModel& model, std::size_t begin, std::size_t end)
+{
+    const std::span<const frontend::ProjectOopMirFunction> functions = model.functions();
+    for (std::size_t ordinal = begin; ordinal < end; ++ordinal)
+    {
+        const frontend::ProjectOopMirFunction& function = functions[ordinal];
         IdentityWriter declaration;
         declaration.text("NativeSharp.ProjectOopMirCacheIdentity.Declaration.v1");
         writeFunction(declaration, function, false);
-        declarationDigests_.push_back(identityDigest(declaration.take()));
+        declarationDigests_[ordinal] = identityDigest(declaration.take());
 
         IdentityWriter definition;
         definition.text("NativeSharp.ProjectOopMirCacheIdentity.Definition.v1");
         writeFunction(definition, function, true);
-        definitionDigests_.push_back(identityDigest(definition.take()));
+        definitionDigests_[ordinal] = identityDigest(definition.take());
     }
 }
 

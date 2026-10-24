@@ -779,10 +779,13 @@ void composeModuleCacheKeys(
     const std::string& codeGenerationPolicy,
     std::vector<std::string>& cacheKeys,
     std::vector<CodeUnitTelemetry>& codeUnitTelemetry,
-    ColdLlvmPreambleTelemetry& telemetry)
+    ColdLlvmPreambleTelemetry& telemetry,
+    driver::CompilationWorkerPool* workerPool)
 {
     const PhaseClock identityIndexClock;
-    const ProjectOopMirCacheIdentityIndex identityIndex(mirModel);
+    // EN: The per-function digests run on the code-unit pool before any code unit is queued.
+    // ES: Los digests por función corren en el pool de unidades antes de encolar unidades.
+    const ProjectOopMirCacheIdentityIndex identityIndex(mirModel, workerPool);
     telemetry.identityIndexBuildMicros = identityIndexClock.elapsedMicros();
     // Line tables and full debug information both depend on the sources and their paths.
     std::string lineTableSourceIdentity;
@@ -1104,7 +1107,7 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
             nameLookup, memberModel, mirModel, sourceManager, debugPrefixMaps,
             reachableDefinitions, coordinatorFunctionDeclarations, partition, usePartitions,
             debugInformation, optimizationLevel, *cache, codeGenerationPolicy,
-            cacheKeys, codeUnitTelemetry, preambleTelemetry);
+            cacheKeys, codeUnitTelemetry, preambleTelemetry, workerPool);
     // Textual IR used to be serialized for every code unit even though the Windows import
     // planner no longer consumes it.  Keep it only for the two features whose keys/summaries
     // are intentionally based on IR.  Ordinary EXE/DLL/LIB production already fingerprints
