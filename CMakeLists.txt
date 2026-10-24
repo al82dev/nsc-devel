@@ -661,6 +661,7 @@ nsc_enable_warnings(nsc_frontend)
 add_library(nsc_precompiled STATIC
     src/Compilation/PrecompiledProductCache.cpp
     src/Compilation/PrecompiledProductSidecarCodec.cpp
+    src/Compilation/PrecompiledSemanticSnapshotCodec.cpp
     src/Compilation/PrecompiledProjectPreparation.cpp
     src/Compilation/PrecompiledSurfaceDemandCollection.cpp
     src/Compilation/PrecompiledSurfaceReachability.cpp
@@ -6001,6 +6002,18 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.precompiled-product-sidecar-snapshot
         COMMAND nsc_precompiled_product_sidecar_snapshot_tests)
+
+    add_executable(
+        nsc_precompiled_semantic_snapshot_codec_tests
+        tests/unit/PrecompiledSemanticSnapshotCodecTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_semantic_snapshot_codec_tests
+        PRIVATE nsc_precompiled nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_precompiled_semantic_snapshot_codec_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_precompiled_semantic_snapshot_codec_tests)
+    add_test(
+        NAME nsc.precompiled-semantic-snapshot-codec
+        COMMAND nsc_precompiled_semantic_snapshot_codec_tests)
 
     add_executable(
         nsc_compiler_identity_command_tests
