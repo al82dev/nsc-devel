@@ -119,8 +119,12 @@ bool ProjectInterfaceModel::build(
         interfaces_.push_back(std::move(info));
     }
 
-    bool ok = collectInterfaceBases(diagnostics);
     std::vector<VisitState> states(nameLookup.namedTypes().size(), VisitState::Unvisited);
+    // EN: Interfaces and implementing types of restored API units with snapshot entries (plan 3.7).
+    // ES: Interfaces y tipos implementadores de unidades de API restauradas con entradas en el
+    //     snapshot (plan 3.7).
+    installSnapshotInterfaces(states);
+    bool ok = collectInterfaceBases(diagnostics);
     for (const InterfaceTypeInfo& info : interfaces_)
     {
         if (!visitInterface(info.typeOrdinal, states, diagnostics))
@@ -370,6 +374,8 @@ bool ProjectInterfaceModel::collectInterfaceBases(diagnostics::DiagnosticEngine&
     bool ok = true;
     for (InterfaceTypeInfo& info : interfaces_)
     {
+        if (info.typeOrdinal < snapshotInstalledInterfaces_.size() && snapshotInstalledInterfaces_[info.typeOrdinal])
+            continue;
         const NamedTypeDeclaration& type = nameLookup_->namedTypes()[info.typeOrdinal];
         for (const NamedTypeDeclarationPart& part : type.parts)
         {
@@ -1239,6 +1245,7 @@ bool ProjectInterfaceModel::buildImplementingTypePlans(
     bool valueType,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    if (installSnapshotImplementingType(classOrdinal)) return true;
     std::vector<std::size_t>& implemented = interfacesByClass_[classOrdinal];
     if (baseOrdinal.has_value() && *baseOrdinal < interfacesByClass_.size())
     {

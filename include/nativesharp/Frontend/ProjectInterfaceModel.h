@@ -7,7 +7,9 @@
 #include "nativesharp/Frontend/TraitObjectContract.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "Internal/ClassInterfaceSnapshotEntry.h"
 #include "Internal/ProjectInterfaceDirectSource.h"
+#include "nativesharp/Frontend/PrecompiledSnapshotUnit.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -26,6 +28,8 @@ class DiagnosticEngine;
 
 namespace nativesharp::frontend
 {
+class PrecompiledSnapshotReader;
+class PrecompiledSnapshotWriter;
 class ProjectInterfaceModel final
 {
 public:
@@ -60,6 +64,23 @@ public:
     std::optional<std::size_t> typeOrdinalForTypeKey(std::string_view typeKey) const noexcept;
     std::string typeKeyForOrdinal(std::size_t typeOrdinal) const;
     bool isBuilt() const noexcept;
+
+    // EN: Plan item 3.7. Accepted snapshots, set before build(). An interface, class or struct whose
+    //     parts are all in a snapshot unit takes its interface info, or its implemented interfaces,
+    //     operator witnesses and table plans, from the `interfaces` section at the point where they
+    //     are computed today; trait-object contracts and every check on other types still run.
+    // ES: Punto 3.7 del plan. Snapshots aceptados, asignados antes de build(). Una interfaz, clase o
+    //     struct con todas sus partes en una unidad con snapshot toma su información de interfaz, o
+    //     sus interfaces implementadas, testigos de operador y planes de tabla, de la sección
+    //     `interfaces` en el punto donde hoy se calculan; los contratos de trait object y toda
+    //     comprobación sobre otros tipos se siguen ejecutando.
+    void setPrecompiledSnapshots(std::span<const PrecompiledSnapshotUnit> snapshots) noexcept;
+    std::size_t installedSnapshotInterfaceCount() const noexcept;
+    std::size_t installedSnapshotImplementingTypeCount() const noexcept;
+    // EN: Producer side: writes the entries of the types whose parts are all in `fileId`.
+    // ES: Lado productor: escribe las entradas de los tipos con todas sus partes en `fileId`.
+    void setPrecompiledSnapshotCaptureFile(FileId fileId) noexcept;
+    bool writePrecompiledSnapshotInterfaces(std::string& payload, std::string& error) const;
 
 private:
     enum class VisitState
@@ -217,6 +238,19 @@ private:
         std::size_t classTypeOrdinal,
         const ClassMemberSymbol& requirement) const noexcept;
     static std::uint64_t stableTypeId(std::string_view value) noexcept;
+    void installSnapshotInterfaces(std::vector<VisitState>& states);
+    bool installSnapshotInterface(PrecompiledSnapshotReader& reader);
+    bool readSnapshotImplementingType(PrecompiledSnapshotReader& reader);
+    bool readSnapshotPlan(
+        PrecompiledSnapshotReader& reader,
+        std::size_t classOrdinal,
+        ClassInterfaceSnapshotEntry& entry);
+    bool installSnapshotImplementingType(std::size_t classOrdinal);
+    void writeSnapshotInterface(PrecompiledSnapshotWriter& writer, const InterfaceTypeInfo& info, bool& written) const;
+    void writeSnapshotImplementingType(
+        PrecompiledSnapshotWriter& writer,
+        std::size_t classOrdinal,
+        bool& written) const;
 
     const ProjectNameLookup* nameLookup_ = nullptr;
     const ProjectMemberModel* memberModel_ = nullptr;
@@ -229,6 +263,12 @@ private:
     std::vector<std::vector<std::size_t>> tablePlanOrdinalsByClass_;
     bool tablePlanOrdinalsByClassIndexBuilt_ = false;
     std::vector<TraitObjectContract> traitObjectContracts_;
+    std::span<const PrecompiledSnapshotUnit> precompiledSnapshots_;
+    std::vector<bool> snapshotInstalledInterfaces_;
+    std::unordered_map<std::size_t, ClassInterfaceSnapshotEntry> snapshotImplementingTypes_;
+    std::size_t installedSnapshotInterfaces_ = 0;
+    std::size_t installedSnapshotImplementingTypes_ = 0;
+    std::optional<FileId> snapshotCaptureFile_;
     bool built_ = false;
 };
 }

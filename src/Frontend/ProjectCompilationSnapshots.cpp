@@ -188,4 +188,24 @@ bool ProjectCompilation::buildInheritanceModel()
     }
     return built;
 }
+
+// EN: Builds the interface model with the accepted snapshots (plan 3.7) and, in the reference
+//     compilation of a producer, with the FileId of the captured API unit.
+// ES: Construye el modelo de interfaces con los snapshots aceptados (plan 3.7) y, en la compilación
+//     de referencia de un productor, con el FileId de la unidad de API capturada.
+bool ProjectCompilation::buildInterfaceModel()
+{
+    interfaceModel_ = std::make_unique<ProjectInterfaceModel>();
+    interfaceModel_->setPrecompiledSnapshots(precompiledSnapshots_);
+    if (precompiledSnapshotCapture_.has_value())
+        interfaceModel_->setPrecompiledSnapshotCaptureFile(precompiledSnapshotCapture_->fileId);
+    const bool built = interfaceModel_->build(*nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
+    if (reportSink_ && !precompiledSnapshots_.empty())
+    {
+        reportSink_("precompiled-snapshot-install: interfaces=" +
+            std::to_string(interfaceModel_->installedSnapshotInterfaceCount()) + " implementing-types=" +
+            std::to_string(interfaceModel_->installedSnapshotImplementingTypeCount()));
+    }
+    return built;
+}
 }

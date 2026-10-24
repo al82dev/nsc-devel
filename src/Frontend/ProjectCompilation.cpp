@@ -945,8 +945,7 @@ bool ProjectCompilation::compileProjectInterfaces(
     if (cancellationRequested(loadError, "interfaces")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "interfaces");
-    interfaceModel_ = std::make_unique<ProjectInterfaceModel>();
-    return interfaceModel_->build(*nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
+    return buildInterfaceModel();
 }
 
 bool ProjectCompilation::compileProjectVirtualDispatch(

@@ -19,4 +19,10 @@ bool captureInheritanceSnapshot(
     const PrecompiledSnapshotUnit& capture,
     std::string& payload,
     std::string& error);
+
+bool captureInterfaceSnapshot(
+    const ProjectCompilation& reference,
+    const PrecompiledSnapshotUnit& capture,
+    std::string& payload,
+    std::string& error);
 }

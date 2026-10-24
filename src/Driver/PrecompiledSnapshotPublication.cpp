@@ -109,6 +109,7 @@ std::string captureSnapshotSections(const frontend::ProjectCompilation &referenc
     captureSection("namespace-members", frontend::captureNamespaceMemberSnapshot, reference, capture, snapshot,
                    skipped);
     captureSection("inheritance", frontend::captureInheritanceSnapshot, reference, capture, snapshot, skipped);
+    captureSection("interfaces", frontend::captureInterfaceSnapshot, reference, capture, snapshot, skipped);
     return skipped;
 }
 

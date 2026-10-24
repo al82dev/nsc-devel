@@ -460,6 +460,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/PrecompiledSyntaxNodeIndex.cpp
     src/Frontend/Snapshot/ClassMemberSnapshotCodec.cpp
     src/Frontend/Snapshot/MemberSnapshotCapture.cpp
+    src/Frontend/Snapshot/ModelReferenceSnapshotCodec.cpp
     src/Frontend/Snapshot/NameSnapshotCapture.cpp
     src/Frontend/Snapshot/NamespaceMemberSnapshotCapture.cpp
     src/Frontend/Snapshot/NamespaceMemberSnapshotCodec.cpp
@@ -537,6 +538,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectInheritanceSnapshots.cpp
     src/Frontend/ProjectInheritanceModelDumper.cpp
     src/Frontend/ProjectInterfaceModel.cpp
+    src/Frontend/ProjectInterfaceSnapshots.cpp
     src/Frontend/ProjectInterfaceModelDumper.cpp
     src/Frontend/ProjectMemberAccessibility.cpp
     src/Frontend/ProjectVirtualDispatchModel.cpp
