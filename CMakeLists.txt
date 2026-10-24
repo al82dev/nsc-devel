@@ -458,6 +458,8 @@ add_library(nsc_frontend STATIC
     src/Frontend/ComptimeEngine.cpp
     src/Frontend/MacroExpansionEngine.cpp
     src/Frontend/PrecompiledSyntaxNodeIndex.cpp
+    src/Frontend/Snapshot/PrecompiledSnapshotReader.cpp
+    src/Frontend/Snapshot/PrecompiledSnapshotWriter.cpp
     src/Frontend/ProjectSyntaxUnit.cpp
     src/Frontend/NamespaceSymbol.cpp
     src/Frontend/QualifiedNameLadder.cpp
@@ -6030,6 +6032,18 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.precompiled-syntax-node-index
         COMMAND nsc_precompiled_syntax_node_index_tests)
+
+    add_executable(
+        nsc_precompiled_snapshot_reference_tests
+        tests/unit/PrecompiledSnapshotReferenceTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_snapshot_reference_tests
+        PRIVATE nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_precompiled_snapshot_reference_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_precompiled_snapshot_reference_tests)
+    add_test(
+        NAME nsc.precompiled-snapshot-reference
+        COMMAND nsc_precompiled_snapshot_reference_tests)
 
     add_executable(
         nsc_compiler_identity_command_tests
