@@ -111,6 +111,23 @@ using internal::ProjectPhaseTimer;
 
 constexpr std::string_view templateParseProductSchema = "nsc-template-parse-product-v1";
 
+// EN: The whole-corpus parse cache stays disconnected. Its key hashes every source buffer of the
+//     corpus, the precompiled surfaces included, and a miss publishes the complete parsed corpus
+//     (tens of MB for a library over NativeSharpCore) with a SHA-256 of it, on every build whose
+//     sources changed. It can only hit when every source is identical, and then the compilation
+//     bundle cache already answers the whole compilation. The per-module precompiled syntax cache
+//     (`precompiledProductCacheRoot_`) is independent and stays on. With the key left empty,
+//     restoreTemplateParseProduct, publishTemplateParseProduct and the corpus snapshots are skipped.
+// ES: La caché de parseo del corpus completo queda desconectada. Su clave hashea cada buffer fuente
+//     del corpus, incluidas las superficies precompiladas, y un fallo publica el corpus analizado
+//     completo (decenas de MB para una biblioteca sobre NativeSharpCore) con su SHA-256, en cada build
+//     cuyas fuentes cambiaron. Solo puede acertar cuando todas las fuentes son idénticas, y entonces la
+//     caché de bundles de compilación ya responde la compilación completa. La caché de sintaxis
+//     precompilada por módulo (`precompiledProductCacheRoot_`) es independiente y sigue activa. Con la
+//     clave vacía se omiten restoreTemplateParseProduct, publishTemplateParseProduct y las fotografías
+//     del corpus.
+constexpr bool kTemplateParseCorpusCacheEnabled = false;
+
 // Appends one length-delimited field to the cache identity. Length framing prevents different
 // sequences of module names, ordinals or digests from producing the same unhashed material.
 void appendTemplateParseCacheKeyField(std::string& material, std::string_view value)
@@ -1555,7 +1572,7 @@ bool ProjectCompilation::materializePrecompiledSyntax(std::string& loadError)
 bool ProjectCompilation::calculateTemplateParseCacheKey(std::string& loadError)
 {
     templateParseCacheKey_.clear();
-    if (templateCacheRoot_.empty()) return true;
+    if (!kTemplateParseCorpusCacheEnabled || templateCacheRoot_.empty()) return true;
 
     std::string material;
     // EN: v2 retires every v1 corpus: v1 published trees already rewritten by the generic pass.
