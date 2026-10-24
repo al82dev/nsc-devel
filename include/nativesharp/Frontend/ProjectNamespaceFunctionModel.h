@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Basic/TransparentStringHash.h"
 #include "nativesharp/Frontend/NamespaceFunctionPart.h"
 #include "nativesharp/Frontend/NamespaceFunctionSymbol.h"
 #include "nativesharp/Frontend/PrecompiledNamespaceFunctionIdentity.h"
@@ -13,6 +14,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <span>
@@ -81,6 +83,25 @@ public:
     bool isBuilt() const noexcept;
 
 private:
+    // EN: namespace -> name -> ordinals of every project, filled next to functionsByName_ and
+    //     stateByName_. A reference resolves with one lookup instead of one per visible project.
+    // ES: namespace -> nombre -> ordinales de todos los proyectos, llenado junto a
+    //     functionsByName_ y stateByName_. Una referencia se resuelve con una búsqueda en lugar de
+    //     una por proyecto visible.
+    using OrdinalsByName = std::unordered_map<
+        std::string, std::vector<std::size_t>, basic::TransparentStringHash, std::equal_to<>>;
+    using OrdinalsByNamespaceName = std::unordered_map<
+        std::string, OrdinalsByName, basic::TransparentStringHash, std::equal_to<>>;
+
+    static std::span<const std::size_t> ordinalsInNamespace(
+        const OrdinalsByNamespaceName& index,
+        std::string_view namespaceName,
+        std::string_view name) noexcept;
+    static bool symbolVisibleFrom(
+        std::size_t symbolProject,
+        NamespaceFunctionAccessibility accessibility,
+        std::size_t projectOrdinal,
+        std::span<const std::size_t> visible) noexcept;
     void resetBuildState();
     void buildExtensionFunctionIndex();
     void collectNamespaceFunctions(
@@ -290,6 +311,8 @@ private:
     std::vector<NamespaceStateSymbol> states_;
     std::unordered_map<std::string, std::size_t> stateByName_;
     std::unordered_map<std::string, std::vector<std::size_t>> functionsByName_;
+    OrdinalsByNamespaceName functionsByNamespaceName_;
+    OrdinalsByNamespaceName statesByNamespaceName_;
     std::map<std::string, std::vector<std::size_t>, std::less<>> extensionFunctionsByName_;
     bool extensionFunctionIndexBuilt_ = false;
     std::vector<NamespaceFunctionReferenceBinding> referenceBindings_;

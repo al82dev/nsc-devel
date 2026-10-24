@@ -336,6 +336,8 @@ void ProjectNamespaceFunctionModel::resetBuildState()
     states_.clear();
     stateByName_.clear();
     functionsByName_.clear();
+    functionsByNamespaceName_.clear();
+    statesByNamespaceName_.clear();
     extensionFunctionsByName_.clear();
     extensionFunctionIndexBuilt_ = false;
     referenceBindings_.clear();
@@ -812,6 +814,7 @@ void ProjectNamespaceFunctionModel::mergeNamespaceFunction(
         symbolByIdentity.emplace(identity, ordinal);
         functionsByName_[nameLookupKey(
             candidate.projectOrdinal, candidate.namespaceName, candidate.name)].push_back(ordinal);
+        functionsByNamespaceName_[candidate.namespaceName][candidate.name].push_back(ordinal);
         functions_.push_back(std::move(candidate));
         return;
     }
@@ -951,6 +954,7 @@ void ProjectNamespaceFunctionModel::collectNamespaceState(
                 "' requires a constant initializer; dynamic initialization is not supported");
     }
     stateByName_.emplace(lookupKey, states_.size());
+    statesByNamespaceName_[state.namespaceName][state.name].push_back(states_.size());
     states_.push_back(std::move(state));
 }
 
@@ -1022,6 +1026,31 @@ std::optional<std::string> ProjectNamespaceFunctionModel::resolveNamespace(
     return std::nullopt;
 }
 
+std::span<const std::size_t> ProjectNamespaceFunctionModel::ordinalsInNamespace(
+    const OrdinalsByNamespaceName& index,
+    std::string_view namespaceName,
+    std::string_view name) noexcept
+{
+    const auto byName = index.find(namespaceName);
+    if (byName == index.end()) return {};
+    const auto ordinals = byName->second.find(name);
+    if (ordinals == byName->second.end()) return {};
+    return ordinals->second;
+}
+
+bool ProjectNamespaceFunctionModel::symbolVisibleFrom(
+    std::size_t symbolProject,
+    NamespaceFunctionAccessibility accessibility,
+    std::size_t projectOrdinal,
+    std::span<const std::size_t> visible) noexcept
+{
+    // EN: Own project: always. Another project: public and listed among the visible projects.
+    // ES: Proyecto propio: siempre. Otro proyecto: público y listado entre los proyectos visibles.
+    if (symbolProject == projectOrdinal) return true;
+    return accessibility == NamespaceFunctionAccessibility::Public &&
+        std::find(visible.begin(), visible.end(), symbolProject) != visible.end();
+}
+
 void ProjectNamespaceFunctionModel::appendFunctionCandidates(
     std::vector<std::size_t>& candidates,
     std::size_t projectOrdinal,
@@ -1047,19 +1076,35 @@ std::vector<std::size_t> ProjectNamespaceFunctionModel::candidatesInNamespace(
     std::string_view namespaceName,
     std::string_view functionName) const
 {
+    // EN: Same set as asking functionsByName_ for this project and for every visible project; the
+    //     result is sorted and unique, so the visit order does not matter.
+    // ES: Mismo conjunto que preguntar a functionsByName_ por este proyecto y por cada proyecto
+    //     visible; el resultado se ordena y es único, así que el orden de visita no importa.
+    const std::span<const std::size_t> visible = visibleProjects(nameLookup, projectOrdinal);
     std::vector<std::size_t> candidates;
-    appendFunctionCandidates(
-        candidates, projectOrdinal, projectOrdinal, namespaceName, functionName);
-    for (const std::size_t visibleProject : visibleProjects(nameLookup, projectOrdinal))
+    for (const std::size_t ordinal :
+         ordinalsInNamespace(functionsByNamespaceName_, namespaceName, functionName))
     {
-        if (visibleProject != projectOrdinal)
-        {
-            appendFunctionCandidates(
-                candidates, projectOrdinal, visibleProject, namespaceName, functionName);
-        }
+        if (ordinal >= functions_.size()) continue;
+        const NamespaceFunctionSymbol& function = functions_[ordinal];
+        if (symbolVisibleFrom(function.projectOrdinal, function.accessibility, projectOrdinal, visible))
+            candidates.push_back(ordinal);
     }
     std::sort(candidates.begin(), candidates.end());
     candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    if constexpr (internal::kIndexShadowCheckEnabled)
+    {
+        std::vector<std::size_t> scanned;
+        appendFunctionCandidates(scanned, projectOrdinal, projectOrdinal, namespaceName, functionName);
+        for (const std::size_t visibleProject : visible)
+        {
+            if (visibleProject != projectOrdinal)
+                appendFunctionCandidates(scanned, projectOrdinal, visibleProject, namespaceName, functionName);
+        }
+        std::sort(scanned.begin(), scanned.end());
+        scanned.erase(std::unique(scanned.begin(), scanned.end()), scanned.end());
+        if (scanned != candidates) internal::reportIndexShadowMismatch("candidatesInNamespace", functionName);
+    }
     return candidates;
 }
 
@@ -1101,18 +1146,34 @@ std::vector<std::size_t> ProjectNamespaceFunctionModel::stateCandidatesInNamespa
     std::string_view namespaceName,
     std::string_view stateName) const
 {
+    // EN: statesByNamespaceName_ holds exactly the states that stateByName_ maps (one per project
+    //     key), so this is the same set as one stateByName_ lookup per visible project.
+    // ES: statesByNamespaceName_ guarda exactamente los estados que mapea stateByName_ (uno por
+    //     llave de proyecto), así que es el mismo conjunto que una búsqueda por proyecto visible.
+    const std::span<const std::size_t> visible = visibleProjects(nameLookup, projectOrdinal);
     std::vector<std::size_t> candidates;
-    appendStateCandidate(candidates, projectOrdinal, projectOrdinal, namespaceName, stateName);
-    for (const std::size_t visibleProject : visibleProjects(nameLookup, projectOrdinal))
+    for (const std::size_t ordinal : ordinalsInNamespace(statesByNamespaceName_, namespaceName, stateName))
     {
-        if (visibleProject != projectOrdinal)
-        {
-            appendStateCandidate(
-                candidates, projectOrdinal, visibleProject, namespaceName, stateName);
-        }
+        if (ordinal >= states_.size()) continue;
+        const NamespaceStateSymbol& state = states_[ordinal];
+        if (symbolVisibleFrom(state.projectOrdinal, state.accessibility, projectOrdinal, visible))
+            candidates.push_back(ordinal);
     }
     std::sort(candidates.begin(), candidates.end());
     candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    if constexpr (internal::kIndexShadowCheckEnabled)
+    {
+        std::vector<std::size_t> scanned;
+        appendStateCandidate(scanned, projectOrdinal, projectOrdinal, namespaceName, stateName);
+        for (const std::size_t visibleProject : visible)
+        {
+            if (visibleProject != projectOrdinal)
+                appendStateCandidate(scanned, projectOrdinal, visibleProject, namespaceName, stateName);
+        }
+        std::sort(scanned.begin(), scanned.end());
+        scanned.erase(std::unique(scanned.begin(), scanned.end()), scanned.end());
+        if (scanned != candidates) internal::reportIndexShadowMismatch("stateCandidatesInNamespace", stateName);
+    }
     return candidates;
 }
 
