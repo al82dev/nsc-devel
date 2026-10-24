@@ -170,6 +170,31 @@ void ProjectGenericModel::collectDeclaredTypeIdentity(
         node->tokenKind() == lexer::TokenKind::KwPublic});
 }
 
+// EN: Sets the C1 cache identity of a template record: the fingerprint of the template's source tokens and the
+//     cache key derived from it. Only the C1 template cache reads these two fields (store and restore in
+//     TemplateCacheBridge.cpp), so they are computed only when that cache is enabled; with the cache disabled both
+//     stay empty and nothing observable changes. The fingerprint walks every token of the unit once per template,
+//     which made the collection quadratic in a unit with many templates. O(tokens of the unit) when the cache is
+//     enabled, O(1) otherwise.
+// ES: Asigna la identidad de caché C1 de un registro de plantilla: la huella de los tokens fuente de la plantilla y
+//     la clave de caché derivada de ella. Solo la caché C1 de plantillas lee estos dos campos (store y restore en
+//     TemplateCacheBridge.cpp), así que se calculan solo cuando esa caché está habilitada; con la caché
+//     deshabilitada ambos quedan vacíos y nada observable cambia. La huella recorre todos los tokens de la unidad
+//     una vez por plantilla, lo que hacía cuadrática la recolección en una unidad con muchas plantillas. O(tokens
+//     de la unidad) con la caché habilitada, O(1) sin ella.
+void ProjectGenericModel::assignTemplateCacheKey(
+    const ProjectSyntaxUnit& unit,
+    const ast::AstNode* node,
+    GenericTemplateRecord& record) const
+{
+    if (!templateCache_.enabled())
+    {
+        return;
+    }
+    record.sourceFingerprint = computeTemplateSourceFingerprint(unit, node);
+    record.c1CacheKey = templateCacheKey(record.sourceFingerprint);
+}
+
 void ProjectGenericModel::collectGenericTypeTemplate(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
@@ -211,8 +236,7 @@ void ProjectGenericModel::collectGenericTypeTemplate(
     record.canonicalKey = record.moduleName + "::" +
         qualifiedName(currentNamespace, record.qualifiedTypeName) +
         "`" + genericAritySpelling(record);
-    record.sourceFingerprint = computeTemplateSourceFingerprint(unit, node);
-    record.c1CacheKey = templateCacheKey(record.sourceFingerprint);
+    assignTemplateCacheKey(unit, node, record);
     telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
     templateStates_.push_back(
         TemplateState{record, &unit, node, parent, templateStates_.size(), {}});
@@ -257,8 +281,7 @@ void ProjectGenericModel::collectGenericMethodTemplate(
     record.canonicalKey = record.moduleName + "::" +
         (callableScope.empty() ? std::string{} : callableScope + ".") +
         record.name + "``" + genericAritySpelling(record);
-    record.sourceFingerprint = computeTemplateSourceFingerprint(unit, node);
-    record.c1CacheKey = templateCacheKey(record.sourceFingerprint);
+    assignTemplateCacheKey(unit, node, record);
     record.specializationFamilyKey = methodSpecializationFamilyKey(record, node);
     record.isControlledSpecialization =
         node->auxiliaryText() == "controlled-specialization";

@@ -221,6 +221,10 @@ private:
         const std::string& ownerName,
         bool insideGenericType,
         diagnostics::DiagnosticEngine& diagnostics);
+    void assignTemplateCacheKey(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        GenericTemplateRecord& record) const;
     static void pushCollectTemplateChildren(
         ast::AstNode* node,
         const std::string& currentNamespace,
