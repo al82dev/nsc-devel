@@ -5991,6 +5991,18 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_syntax_tree_serialization_equivalence_tests)
 
     add_executable(
+        nsc_precompiled_product_sidecar_snapshot_tests
+        tests/unit/PrecompiledProductSidecarSnapshotTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_product_sidecar_snapshot_tests
+        PRIVATE nsc_precompiled nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_precompiled_product_sidecar_snapshot_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_precompiled_product_sidecar_snapshot_tests)
+    add_test(
+        NAME nsc.precompiled-product-sidecar-snapshot
+        COMMAND nsc_precompiled_product_sidecar_snapshot_tests)
+
+    add_executable(
         nsc_compiler_identity_command_tests
         tests/unit/CompilerIdentityCommandTests.cpp)
     target_link_libraries(nsc_compiler_identity_command_tests PRIVATE nsc_driver nsc_frontend nsc_target)

@@ -17,6 +17,12 @@ namespace nativesharp::compilation
 namespace
 {
 constexpr std::string_view SidecarSchema = "nsc-precompiled-product-sidecar-v1";
+// EN: v2 appends the semantic snapshot of the public API unit after the four v1 products. A
+//     sidecar without a snapshot is still written as v1, byte for byte as before, and both are read.
+// ES: v2 agrega el snapshot semántico de la unidad de API pública después de los cuatro productos
+//     de v1. Un sidecar sin snapshot se sigue escribiendo como v1, byte por byte como antes, y se
+//     leen ambos.
+constexpr std::string_view SidecarSchemaV2 = "nsc-precompiled-product-sidecar-v2";
 
 std::string metadataDigest(std::span<const std::uint8_t> metadataBytes)
 {
@@ -32,12 +38,13 @@ std::string payloadDigest(std::string_view payload)
 
 void encodeBody(
     std::string& bytes,
+    std::string_view schema,
     std::string_view buildId,
     std::uint64_t metadataSize,
     std::string_view digest,
     const PrecompiledProductSidecar& sidecar)
 {
-    frontend::internal::CachePayloadWriter::string(bytes, SidecarSchema);
+    frontend::internal::CachePayloadWriter::string(bytes, schema);
     frontend::internal::CachePayloadWriter::string(bytes, buildId);
     frontend::internal::CachePayloadWriter::u64(bytes, metadataSize);
     frontend::internal::CachePayloadWriter::string(bytes, digest);
@@ -45,6 +52,8 @@ void encodeBody(
     frontend::internal::CachePayloadWriter::string(bytes, sidecar.publicTemplateSource);
     frontend::internal::CachePayloadWriter::string(bytes, sidecar.publicApiSyntax);
     frontend::internal::CachePayloadWriter::string(bytes, sidecar.publicTemplateSyntax);
+    if (schema == SidecarSchemaV2)
+        frontend::internal::CachePayloadWriter::string(bytes, sidecar.publicApiSnapshot);
 }
 }
 
@@ -110,6 +119,7 @@ std::string PrecompiledProductSidecarCodec::encode(
     std::string bytes;
     encodeBody(
         bytes,
+        sidecar.publicApiSnapshot.empty() ? SidecarSchema : SidecarSchemaV2,
         kCompilerBuildId,
         static_cast<std::uint64_t>(metadataBytes.size()),
         metadataDigest(metadataBytes),
@@ -138,19 +148,20 @@ bool PrecompiledProductSidecarCodec::decode(
         !reader.string(decoded.publicTemplateSource) ||
         !reader.string(decoded.publicApiSyntax) ||
         !reader.string(decoded.publicTemplateSyntax) ||
+        (schema == SidecarSchemaV2 && !reader.string(decoded.publicApiSnapshot)) ||
         !reader.string(checksum) || !reader.remaining().empty())
     {
         error = "precompiled product sidecar is truncated or malformed";
         return false;
     }
-    if (schema != SidecarSchema)
+    if (schema != SidecarSchema && schema != SidecarSchemaV2)
     {
         error = "precompiled product sidecar schema mismatch";
         return false;
     }
 
     std::string body;
-    encodeBody(body, buildId, metadataSize, digest, decoded);
+    encodeBody(body, schema, buildId, metadataSize, digest, decoded);
     if (payloadDigest(body) != checksum)
     {
         error = "precompiled product sidecar checksum mismatch";
