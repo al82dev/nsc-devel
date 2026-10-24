@@ -190,18 +190,21 @@ bool lookupCompilationBundle(
     std::string& error)
 {
     manifest.addProjectGraphInputs(closedGraph);
-    if (!manifest.calculateIdentity(
-            compilation.libraryMetadataRepository(), error))
-    {
-        return false;
-    }
     compilation::CompilationBundleCache bundleCache;
     const llvm_backend::CompilationArtifactCache* const artifactCache =
         llvm_backend::activeCompilationArtifactCache();
+    // Only the bundle cache uses the identity. Without it the inputs are not hashed: the lookup
+    // below reports the cache as disabled and the sources are read again by the syntax phase.
     if (artifactCache != nullptr && artifactCache->enabled())
     {
         bundleCache.setRoot(
             artifactCache->root() / "compilation-bundles");
+        manifest.setInputDigestCacheRoot(artifactCache->root() / "input-digests");
+        if (!manifest.calculateIdentity(
+                compilation.libraryMetadataRepository(), error))
+        {
+            return false;
+        }
     }
     compilation::CompilationBundleLookup lookup;
     if (!bundleCache.lookup(manifest.identity(), lookup, error))

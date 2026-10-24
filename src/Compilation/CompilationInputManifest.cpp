@@ -54,6 +54,7 @@ bool appendInputIdentity(
     std::unordered_map<std::string, std::string>& newInputDigests,
     std::unordered_map<std::string, std::uintmax_t>& newInputSizes,
     const LibraryMetadataRepository& metadataRepository,
+    const FileDigestCache& digestCache,
     std::string& error)
 {
     const std::string pathKey = inputPathKey(path);
@@ -90,7 +91,7 @@ bool appendInputIdentity(
     else
     {
         basic::Sha256Digest digest{};
-        if (!basic::sha256File(path, digest, size, error))
+        if (!digestCache.digest(path, digest, size, error))
         {
             return false;
         }
@@ -190,6 +191,11 @@ void CompilationInputManifest::addProjectGraphInputs(const ProjectGraph& graph)
     identity_.clear();
 }
 
+void CompilationInputManifest::setInputDigestCacheRoot(std::filesystem::path root)
+{
+    inputDigestCache_.setRoot(std::move(root));
+}
+
 bool CompilationInputManifest::calculateIdentity(
     const LibraryMetadataRepository& metadataRepository,
     std::string& error)
@@ -235,6 +241,7 @@ bool CompilationInputManifest::calculateIdentity(
                 inputDigests,
                 inputSizes,
                 metadataRepository,
+                inputDigestCache_,
                 error))
         {
             identity_.clear();

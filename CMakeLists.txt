@@ -291,6 +291,7 @@ add_library(nsc_compilation STATIC
     src/Compilation/LibraryMetadataRepository.cpp
     src/Compilation/CompilationBundleCache.cpp
     src/Compilation/CompilationInputManifest.cpp
+    src/Compilation/FileDigestCache.cpp
     src/Compilation/ProjectGraph.cpp
     src/Compilation/ProjectGraphLoader.cpp
     src/Compilation/ProjectGraphDumper.cpp

@@ -758,6 +758,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectGraph.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/CompilationBundleCache.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/CompilationInputManifest.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/FileDigestCache.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectGraphLoader.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectGraphDumper.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/TypeIdentity.cpp"
