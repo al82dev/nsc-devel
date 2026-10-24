@@ -110,6 +110,7 @@ std::string captureSnapshotSections(const frontend::ProjectCompilation &referenc
                    skipped);
     captureSection("inheritance", frontend::captureInheritanceSnapshot, reference, capture, snapshot, skipped);
     captureSection("interfaces", frontend::captureInterfaceSnapshot, reference, capture, snapshot, skipped);
+    captureSection("dispatch", frontend::captureDispatchSnapshot, reference, capture, snapshot, skipped);
     return skipped;
 }
 

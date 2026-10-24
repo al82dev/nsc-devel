@@ -208,4 +208,23 @@ bool ProjectCompilation::buildInterfaceModel()
     }
     return built;
 }
+
+// EN: Builds the virtual dispatch model with the accepted snapshots (plan 3.9) and, in the
+//     reference compilation of a producer, with the FileId of the captured API unit.
+// ES: Construye el modelo de despacho virtual con los snapshots aceptados (plan 3.9) y, en la
+//     compilación de referencia de un productor, con el FileId de la unidad de API capturada.
+bool ProjectCompilation::buildVirtualDispatchModel()
+{
+    virtualDispatchModel_ = std::make_unique<ProjectVirtualDispatchModel>(lifetime_->indexes());
+    virtualDispatchModel_->setPrecompiledSnapshots(precompiledSnapshots_);
+    if (precompiledSnapshotCapture_.has_value())
+        virtualDispatchModel_->setPrecompiledSnapshotCaptureFile(precompiledSnapshotCapture_->fileId);
+    const bool built = virtualDispatchModel_->build(*nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
+    if (reportSink_ && !precompiledSnapshots_.empty())
+    {
+        reportSink_("precompiled-snapshot-install: dispatch-classes=" +
+            std::to_string(virtualDispatchModel_->installedSnapshotClassCount()));
+    }
+    return built;
+}
 }

@@ -959,10 +959,7 @@ bool ProjectCompilation::compileProjectVirtualDispatch(
     if (cancellationRequested(loadError, "virtual-dispatch")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "virtual-dispatch");
-    virtualDispatchModel_ =
-        std::make_unique<ProjectVirtualDispatchModel>(lifetime_->indexes());
-    return virtualDispatchModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
+    return buildVirtualDispatchModel();
 }
 
 bool ProjectCompilation::compileProjectDestruction(

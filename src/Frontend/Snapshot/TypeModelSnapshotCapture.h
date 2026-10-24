@@ -25,4 +25,10 @@ bool captureInterfaceSnapshot(
     const PrecompiledSnapshotUnit& capture,
     std::string& payload,
     std::string& error);
+
+bool captureDispatchSnapshot(
+    const ProjectCompilation& reference,
+    const PrecompiledSnapshotUnit& capture,
+    std::string& payload,
+    std::string& error);
 }

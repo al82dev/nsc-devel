@@ -219,6 +219,7 @@ private:
     bool buildNamespaceFunctionModel();
     bool buildInheritanceModel();
     bool buildInterfaceModel();
+    bool buildVirtualDispatchModel();
     bool calculateTemplateParseCacheKey(std::string& loadError);
     bool restoreTemplateParseProduct(std::string& loadError);
     void publishTemplateParseProduct();

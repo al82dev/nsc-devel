@@ -542,6 +542,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectInterfaceModelDumper.cpp
     src/Frontend/ProjectMemberAccessibility.cpp
     src/Frontend/ProjectVirtualDispatchModel.cpp
+    src/Frontend/ProjectVirtualDispatchSnapshots.cpp
     src/Frontend/ProjectVirtualDispatchModelDumper.cpp
     src/Frontend/ProjectDestructionModel.cpp
     src/Frontend/ProjectDestructionModelDumper.cpp

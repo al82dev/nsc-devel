@@ -37,4 +37,16 @@ bool captureInterfaceSnapshot(
     if (!cleanReference(reference, interfaces, error)) return false;
     return interfaces->writePrecompiledSnapshotInterfaces(payload, error);
 }
+
+bool captureDispatchSnapshot(
+    const ProjectCompilation& reference,
+    const PrecompiledSnapshotUnit& capture,
+    std::string& payload,
+    std::string& error)
+{
+    static_cast<void>(capture);
+    const ProjectVirtualDispatchModel* const dispatch = reference.virtualDispatchModel();
+    if (!cleanReference(reference, dispatch, error)) return false;
+    return dispatch->writePrecompiledSnapshotDispatch(payload, error);
+}
 }
