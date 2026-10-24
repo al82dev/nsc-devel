@@ -73,6 +73,7 @@ bool ProjectMemberModel::build(
     collectAnonymousMemberPromotions(nameLookup, diagnostics);
     buildMembersDeclaredByTypeIndex();
     buildMemberNameIndex();
+    buildUserConversionIndex();
     indexes_->rebuildMembers(members_);
 
     validateCAbiExportNames(diagnostics);
@@ -121,6 +122,41 @@ std::span<const std::size_t> ProjectMemberModel::membersDeclaredByType(
 bool ProjectMemberModel::hasMembersDeclaredByTypeIndex() const noexcept
 {
     return membersDeclaredByTypeIndexBuilt_;
+}
+
+void ProjectMemberModel::buildUserConversionIndex()
+{
+    // EN: membersByType_ and the user-conversion flag of every member are final at this point of
+    //     build(): members are only appended while collecting, before this call.
+    // ES: membersByType_ y la marca de conversión de usuario de cada miembro son definitivos en
+    //     este punto de build(): los miembros solo se agregan al recolectar, antes de esta llamada.
+    userConversionsByType_.clear();
+    userConversionsByType_.resize(membersByType_.size());
+    for (std::size_t typeOrdinal = 0; typeOrdinal < membersByType_.size(); ++typeOrdinal)
+    {
+        for (const std::size_t memberOrdinal : membersByType_[typeOrdinal])
+        {
+            if (memberOrdinal < members_.size() && members_[memberOrdinal].isUserConversion)
+            {
+                userConversionsByType_[typeOrdinal].push_back(memberOrdinal);
+            }
+        }
+    }
+    userConversionIndexBuilt_ = true;
+}
+
+std::span<const std::size_t> ProjectMemberModel::userConversionsOfType(
+    std::size_t typeOrdinal) const noexcept
+{
+    static const std::vector<std::size_t> empty;
+    return userConversionIndexBuilt_ && typeOrdinal < userConversionsByType_.size()
+        ? std::span<const std::size_t>(userConversionsByType_[typeOrdinal])
+        : std::span<const std::size_t>(empty);
+}
+
+bool ProjectMemberModel::hasUserConversionIndex() const noexcept
+{
+    return userConversionIndexBuilt_;
 }
 
 std::span<const std::size_t> ProjectMemberModel::constructorsOfType(

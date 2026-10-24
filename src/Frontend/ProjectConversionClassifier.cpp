@@ -242,17 +242,32 @@ ProjectImplicitConversion ProjectConversionClassifier::findUserDefined(
         return noConversion(sourceTypeKey, targetTypeKey);
     }
 
-    std::unordered_set<std::size_t> declaringTypes;
+    // EN: At most two distinct declaring types. The visit order cannot change the result: a
+    //     single match is selected wherever it is found and a second match yields no conversion.
+    //     After build() only the user conversions of each type are visited; the members the index
+    //     skips fail the isUserConversion test below anyway.
+    // ES: A lo sumo dos tipos declarantes distintos. El orden de visita no cambia el resultado:
+    //     una sola coincidencia se elige donde se encuentre y una segunda no da conversión.
+    //     Tras build() solo se visitan las conversiones de usuario de cada tipo; los miembros que
+    //     el índice omite fallan de todos modos la prueba isUserConversion de abajo.
+    std::size_t declaringTypes[2] = {};
+    std::size_t declaringTypeCount = 0;
     const std::optional<std::size_t> sourceType = inheritanceModel_.typeOrdinalForTypeKey(sourceTypeKey);
     const std::optional<std::size_t> targetType = inheritanceModel_.typeOrdinalForTypeKey(targetTypeKey);
-    if (sourceType.has_value()) declaringTypes.insert(*sourceType);
-    if (targetType.has_value()) declaringTypes.insert(*targetType);
+    if (sourceType.has_value()) declaringTypes[declaringTypeCount++] = *sourceType;
+    if (targetType.has_value() && (declaringTypeCount == 0 || declaringTypes[0] != *targetType))
+        declaringTypes[declaringTypeCount++] = *targetType;
+    const bool indexed = memberModel_->hasUserConversionIndex();
 
     std::optional<std::size_t> selected;
     ProjectConversionKind selectedKind = ProjectConversionKind::None;
-    for (const std::size_t typeOrdinal : declaringTypes)
+    for (std::size_t declaringType = 0; declaringType < declaringTypeCount; ++declaringType)
     {
-        for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
+        const std::size_t typeOrdinal = declaringTypes[declaringType];
+        const std::span<const std::size_t> candidates = indexed
+            ? memberModel_->userConversionsOfType(typeOrdinal)
+            : memberModel_->membersOfType(typeOrdinal);
+        for (const std::size_t memberOrdinal : candidates)
         {
             if (memberOrdinal >= memberModel_->members().size()) continue;
             const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];

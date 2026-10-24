@@ -78,6 +78,12 @@ public:
     std::span<const std::size_t> membersDeclaredByType(
         std::size_t typeOrdinal) const noexcept;
     bool hasMembersDeclaredByTypeIndex() const noexcept;
+    // EN: Ordinals of membersOfType(typeOrdinal) whose symbol is a user conversion, in the same
+    //     order. Only meaningful when hasUserConversionIndex() is true (after build()).
+    // ES: Ordinales de membersOfType(typeOrdinal) cuyo símbolo es una conversión de usuario, en
+    //     el mismo orden. Solo tiene sentido cuando hasUserConversionIndex() es true (tras build()).
+    std::span<const std::size_t> userConversionsOfType(std::size_t typeOrdinal) const noexcept;
+    bool hasUserConversionIndex() const noexcept;
     std::span<const std::size_t> constructorsOfType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> promotedMembersOfType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> findMembers(
@@ -226,6 +232,7 @@ private:
     void buildTransitiveOwnershipCache();
     void buildMemberNameIndex();
     void buildMembersDeclaredByTypeIndex();
+    void buildUserConversionIndex();
     bool collectTypeMembers(
         std::size_t typeOrdinal,
         const NamedTypeDeclaration& type,
@@ -530,6 +537,8 @@ private:
     std::vector<std::vector<std::size_t>> membersByType_;
     std::vector<std::vector<std::size_t>> membersDeclaredByType_;
     bool membersDeclaredByTypeIndexBuilt_ = false;
+    std::vector<std::vector<std::size_t>> userConversionsByType_;
+    bool userConversionIndexBuilt_ = false;
     std::vector<std::vector<std::size_t>> constructorsByType_;
     std::vector<std::vector<std::size_t>> promotedMembersByType_;
     std::vector<MemberNameIndex> membersByName_;
