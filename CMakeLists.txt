@@ -6096,6 +6096,22 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_precompiled_snapshot_equivalence_tests)
 
     add_executable(
+        nsc_precompiled_snapshot_fallback_tests
+        tests/unit/PrecompiledSnapshotFallbackTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_snapshot_fallback_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_precompiled nsc_frontend nsc_target)
+    target_compile_features(nsc_precompiled_snapshot_fallback_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_precompiled_snapshot_fallback_tests
+        PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    add_dependencies(nsc_precompiled_snapshot_fallback_tests nsc)
+    nsc_enable_warnings(nsc_precompiled_snapshot_fallback_tests)
+    add_test(
+        NAME nsc.precompiled-snapshot-fallback
+        COMMAND nsc_precompiled_snapshot_fallback_tests)
+
+    add_executable(
         nsc_compiler_identity_command_tests
         tests/unit/CompilerIdentityCommandTests.cpp)
     target_link_libraries(nsc_compiler_identity_command_tests PRIVATE nsc_driver nsc_frontend nsc_target)
