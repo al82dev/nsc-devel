@@ -457,6 +457,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/Internal/EnumInitializerResolver.cpp
     src/Frontend/ComptimeEngine.cpp
     src/Frontend/MacroExpansionEngine.cpp
+    src/Frontend/PrecompiledSyntaxNodeIndex.cpp
     src/Frontend/ProjectSyntaxUnit.cpp
     src/Frontend/NamespaceSymbol.cpp
     src/Frontend/QualifiedNameLadder.cpp
@@ -6014,6 +6015,21 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.precompiled-semantic-snapshot-codec
         COMMAND nsc_precompiled_semantic_snapshot_codec_tests)
+
+    add_executable(
+        nsc_precompiled_syntax_node_index_tests
+        tests/unit/PrecompiledSyntaxNodeIndexTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_syntax_node_index_tests
+        PRIVATE nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_precompiled_syntax_node_index_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_precompiled_syntax_node_index_tests
+        PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_precompiled_syntax_node_index_tests)
+    add_test(
+        NAME nsc.precompiled-syntax-node-index
+        COMMAND nsc_precompiled_syntax_node_index_tests)
 
     add_executable(
         nsc_compiler_identity_command_tests
