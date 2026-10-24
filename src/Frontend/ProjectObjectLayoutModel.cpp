@@ -104,6 +104,7 @@ bool ProjectObjectLayoutModel::build(
     classLayoutIndexByType_.resize(nameLookup.namedTypes().size());
     namedTypeLayouts_.resize(nameLookup.namedTypes().size(), TypeLayout{0, 1});
     namedLayoutStates_.resize(nameLookup.namedTypes().size(), NamedLayoutState::Unvisited);
+    readSnapshotLayouts();
 
     for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
     {
@@ -534,6 +535,7 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutNamedType(
     {
         return std::nullopt;
     }
+    recordLayoutNeed(false, typeOrdinal);
 
     if (namedLayoutStates_[typeOrdinal] == NamedLayoutState::Complete)
     {
@@ -984,7 +986,13 @@ bool ProjectObjectLayoutModel::buildStructLayout(
 
     const NamedTypeDeclaration& type = nameLookup_->namedTypes()[typeOrdinal];
     if (type.kind != NamedTypeDeclarationKind::Struct) return false;
+    // EN: A struct of a restored API unit with a snapshot entry takes its layout from it (plan 3.12).
+    // ES: Una struct de una unidad de API restaurada con entrada en el snapshot toma de ella su layout
+    //     (plan 3.12).
+    bool installedBuilt = false;
+    if (installSnapshotStructLayout(typeOrdinal, diagnostics, installedBuilt)) return installedBuilt;
     namedLayoutStates_[typeOrdinal] = NamedLayoutState::Visiting;
+    beginLayoutNeeds(typeOrdinal);
     std::vector<target::StructFieldRequest> physicalFields;
     std::vector<std::size_t> fieldMembers;
     if (!collectStructPhysicalFields(
@@ -1043,6 +1051,7 @@ bool ProjectObjectLayoutModel::buildStructLayout(
         typeOrdinal, type, layoutOptions, *layout, fieldMembers, hasExplicitFieldOffsets);
     if (!validateStructAssertedSize(typeOrdinal, type, *layout, diagnostics)) return false;
     namedTypeLayouts_[typeOrdinal] = TypeLayout{layout->size, layout->alignment};
+    endLayoutNeeds(typeOrdinal);
     structLayoutIndexByType_[typeOrdinal] = structLayouts_.size();
     structLayouts_.push_back(std::move(valueLayout));
     namedLayoutStates_[typeOrdinal] = NamedLayoutState::Complete;
@@ -1239,7 +1248,14 @@ bool ProjectObjectLayoutModel::buildClassLayout(
         typeOrdinal >= nameLookup_->namedTypes().size() ||
         typeOrdinal >= classLayoutIndexByType_.size())
         return false;
+    recordLayoutNeed(true, typeOrdinal);
     if (classLayoutIndexByType_[typeOrdinal].has_value()) return true;
+    // EN: A class of a restored API unit with a snapshot entry takes its layout from it (plan 3.12).
+    // ES: Una clase de una unidad de API restaurada con entrada en el snapshot toma de ella su layout
+    //     (plan 3.12).
+    bool installedBuilt = false;
+    if (installSnapshotClassLayout(typeOrdinal, diagnostics, installedBuilt)) return installedBuilt;
+    beginLayoutNeeds(typeOrdinal);
 
     const NamedTypeDeclaration& type = nameLookup_->namedTypes()[typeOrdinal];
     const TypeLayout reference = classReferenceLayout();
@@ -1270,8 +1286,10 @@ bool ProjectObjectLayoutModel::buildClassLayout(
     if (!collectClassPhysicalFields(
             typeOrdinal, physicalFields, fieldMembers, diagnostics))
         return false;
-    return finalizeClassLayout(
-        typeOrdinal, type, offset, physicalFields, fieldMembers, layout, diagnostics);
+    if (!finalizeClassLayout(typeOrdinal, type, offset, physicalFields, fieldMembers, layout, diagnostics))
+        return false;
+    endLayoutNeeds(typeOrdinal);
+    return true;
 }
 
 bool ProjectObjectLayoutModel::buildPromotedFieldLayouts(

@@ -73,4 +73,16 @@ bool captureConstructionSnapshot(
     if (!cleanReference(reference, construction, error)) return false;
     return construction->writePrecompiledSnapshotConstruction(payload, error);
 }
+
+bool captureLayoutSnapshot(
+    const ProjectCompilation& reference,
+    const PrecompiledSnapshotUnit& capture,
+    std::string& payload,
+    std::string& error)
+{
+    static_cast<void>(capture);
+    const ProjectObjectLayoutModel* const layouts = reference.objectLayoutModel();
+    if (!cleanReference(reference, layouts, error)) return false;
+    return layouts->writePrecompiledSnapshotLayouts(payload, error);
+}
 }

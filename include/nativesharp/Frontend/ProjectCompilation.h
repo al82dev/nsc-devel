@@ -222,6 +222,7 @@ private:
     bool buildVirtualDispatchModel();
     bool buildDestructionModel();
     bool buildConstructionModel();
+    bool buildObjectLayoutModel();
     bool calculateTemplateParseCacheKey(std::string& loadError);
     bool restoreTemplateParseProduct(std::string& loadError);
     void publishTemplateParseProduct();

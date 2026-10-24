@@ -609,6 +609,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ConstructionModel/ConstructionAccessibility.cpp
     src/Frontend/ProjectConstructionModelDumper.cpp
     src/Frontend/ProjectObjectLayoutModel.cpp
+    src/Frontend/ProjectObjectLayoutSnapshots.cpp
     src/Frontend/ProjectObjectLayoutModelDumper.cpp
     src/Frontend/ProjectMetaprogrammingModel.cpp
     src/Frontend/HIR/HirBuildCoordinator.cpp

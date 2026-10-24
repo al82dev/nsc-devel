@@ -1001,11 +1001,7 @@ bool ProjectCompilation::compileProjectObjectLayouts(
     if (cancellationRequested(loadError, "layout")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "layout");
-    objectLayoutModel_ =
-        std::make_unique<ProjectObjectLayoutModel>(lifetime_->indexes());
-    if (!objectLayoutModel_->build(
-            *nameLookup_, *memberModel_, *inheritanceModel_, *constructionModel_, diagnostics_))
-        return false;
+    if (!buildObjectLayoutModel()) return false;
     metaprogrammingModel_ = std::make_unique<ProjectMetaprogrammingModel>();
     if (!metaprogrammingModel_->build(
             *nameLookup_, *memberModel_, *methodBodyModel_,

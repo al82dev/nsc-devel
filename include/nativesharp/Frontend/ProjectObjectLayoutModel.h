@@ -10,6 +10,9 @@
 #include "nativesharp/Frontend/ProjectInheritanceModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/PrecompiledSnapshotUnit.h"
+#include "Internal/ClassLayoutSnapshotEntry.h"
+#include "Internal/StructLayoutSnapshotEntry.h"
 #include "nativesharp/Language/AggregateSemantics.h"
 #include "nativesharp/Target/TargetDataLayout.h"
 
@@ -19,6 +22,8 @@
 #include <set>
 #include <span>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace nativesharp::diagnostics
@@ -29,6 +34,8 @@ class DiagnosticEngine;
 namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess;
+class PrecompiledSnapshotReader;
+class PrecompiledSnapshotWriter;
 
 
 
@@ -70,6 +77,22 @@ public:
         const ProjectNameLookup& nameLookup,
         std::string_view typeKey) const;
     bool isBuilt() const noexcept;
+
+    // EN: Plan item 3.12. Accepted snapshots, set before build(). A struct or class whose parts are
+    //     all in a snapshot unit takes its layout from the `layout` section where it is built today,
+    //     after asking, in the same order, for every layout its computation asked for; promoted
+    //     fields and allocation plans are still computed over all layouts.
+    // ES: Punto 3.12 del plan. Snapshots aceptados, asignados antes de build(). Una struct o clase
+    //     con todas sus partes en una unidad con snapshot toma su layout de la sección `layout` donde
+    //     hoy se construye, después de pedir, en el mismo orden, cada layout que pidió su cálculo; los
+    //     campos promovidos y los planes de alocación se siguen calculando sobre todos los layouts.
+    void setPrecompiledSnapshots(std::span<const PrecompiledSnapshotUnit> snapshots) noexcept;
+    std::size_t installedSnapshotStructCount() const noexcept;
+    std::size_t installedSnapshotClassCount() const noexcept;
+    // EN: Producer side: writes the layouts of the types whose parts are all in `fileId`.
+    // ES: Lado productor: escribe los layouts de los tipos con todas sus partes en `fileId`.
+    void setPrecompiledSnapshotCaptureFile(FileId fileId) noexcept;
+    bool writePrecompiledSnapshotLayouts(std::string& payload, std::string& error) const;
 
 private:
     friend struct ProjectOopHirModelTestAccess;
@@ -187,6 +210,26 @@ private:
         ClassObjectLayout& layout,
         diagnostics::DiagnosticEngine& diagnostics);
     bool buildPromotedFieldLayouts(diagnostics::DiagnosticEngine& diagnostics);
+    using LayoutNeeds = std::vector<std::pair<bool, std::size_t>>;
+    void readSnapshotLayouts();
+    bool readSnapshotFields(PrecompiledSnapshotReader& reader, std::vector<ObjectFieldLayout>& fields);
+    bool readSnapshotNeeds(PrecompiledSnapshotReader& reader, LayoutNeeds& needs);
+    bool readSnapshotStructLayout(PrecompiledSnapshotReader& reader);
+    bool readSnapshotClassLayout(PrecompiledSnapshotReader& reader);
+    bool replaySnapshotNeeds(
+        std::size_t typeOrdinal,
+        const LayoutNeeds& needs,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool installSnapshotStructLayout(std::size_t typeOrdinal, diagnostics::DiagnosticEngine& diagnostics, bool& built);
+    bool installSnapshotClassLayout(std::size_t typeOrdinal, diagnostics::DiagnosticEngine& diagnostics, bool& built);
+    void recordLayoutNeed(bool isClass, std::size_t typeOrdinal);
+    void beginLayoutNeeds(std::size_t typeOrdinal);
+    void endLayoutNeeds(std::size_t typeOrdinal);
+    void writeSnapshotFields(
+        PrecompiledSnapshotWriter& writer,
+        const std::vector<ObjectFieldLayout>& fields,
+        bool& written) const;
+    void writeSnapshotNeeds(PrecompiledSnapshotWriter& writer, const LayoutNeeds& needs, bool& written) const;
     void buildAllocationPlans();
 
     ProjectCompilationIndexes ownedIndexes_;
@@ -204,6 +247,18 @@ private:
     std::vector<target::TypeLayout> namedTypeLayouts_;
     std::vector<NamedLayoutState> namedLayoutStates_;
     std::vector<ObjectAllocationPlan> allocationPlans_;
+    std::span<const PrecompiledSnapshotUnit> precompiledSnapshots_;
+    std::unordered_map<std::size_t, StructLayoutSnapshotEntry> snapshotStructLayouts_;
+    std::unordered_map<std::size_t, ClassLayoutSnapshotEntry> snapshotClassLayouts_;
+    std::size_t installedSnapshotStructs_ = 0;
+    std::size_t installedSnapshotClasses_ = 0;
+    std::optional<FileId> snapshotCaptureFile_;
+    // EN: Producer side: the layouts being computed, innermost last, with the layouts each one asked
+    //     for so far, and the finished lists of the captured types.
+    // ES: Lado productor: los layouts en cálculo, el más interno al final, con los layouts que cada
+    //     uno ha pedido, y las listas terminadas de los tipos capturados.
+    std::vector<std::pair<std::size_t, LayoutNeeds>> layoutNeedFrames_;
+    std::unordered_map<std::size_t, LayoutNeeds> capturedLayoutNeeds_;
     bool built_ = false;
 };
 

@@ -267,4 +267,25 @@ bool ProjectCompilation::buildConstructionModel()
     }
     return built;
 }
+
+// EN: Builds the object layout model with the accepted snapshots (plan 3.12) and, in the reference
+//     compilation of a producer, with the FileId of the captured API unit.
+// ES: Construye el modelo de layout de objetos con los snapshots aceptados (plan 3.12) y, en la
+//     compilación de referencia de un productor, con el FileId de la unidad de API capturada.
+bool ProjectCompilation::buildObjectLayoutModel()
+{
+    objectLayoutModel_ = std::make_unique<ProjectObjectLayoutModel>(lifetime_->indexes());
+    objectLayoutModel_->setPrecompiledSnapshots(precompiledSnapshots_);
+    if (precompiledSnapshotCapture_.has_value())
+        objectLayoutModel_->setPrecompiledSnapshotCaptureFile(precompiledSnapshotCapture_->fileId);
+    const bool built = objectLayoutModel_->build(
+        *nameLookup_, *memberModel_, *inheritanceModel_, *constructionModel_, diagnostics_);
+    if (reportSink_ && !precompiledSnapshots_.empty())
+    {
+        reportSink_("precompiled-snapshot-install: layout-structs=" +
+            std::to_string(objectLayoutModel_->installedSnapshotStructCount()) + " layout-classes=" +
+            std::to_string(objectLayoutModel_->installedSnapshotClassCount()));
+    }
+    return built;
+}
 }
