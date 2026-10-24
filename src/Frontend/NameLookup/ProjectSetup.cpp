@@ -225,28 +225,40 @@ void ProjectNameLookup::buildVisibility(const compilation::ProjectGraph& graph)
         projectByPath.emplace(pathKey(projects[ordinal].projectFile()), ordinal);
     }
 
+    // Every reference is canonicalized once; the closure of each project then walks ordinals only.
+    // pathKey touches the file system, and walking it inside the closure repeated that work once
+    // per project and per edge.
+    std::vector<std::vector<std::size_t>> dependencies(projects.size());
+    for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
+    {
+        for (const std::filesystem::path& reference : projects[ordinal].projectReferences())
+        {
+            const auto iterator = projectByPath.find(pathKey(reference));
+            if (iterator != projectByPath.end())
+            {
+                dependencies[ordinal].push_back(iterator->second);
+            }
+        }
+    }
+
     for (std::size_t start = 0; start < projects.size(); ++start)
     {
         std::vector<bool> reachable(projects.size(), false);
-        std::function<void(std::size_t)> visit = [&](std::size_t ordinal)
+        std::vector<std::size_t> pending = {start};
+        while (!pending.empty())
         {
-            for (const std::filesystem::path& reference : projects[ordinal].projectReferences())
+            const std::size_t ordinal = pending.back();
+            pending.pop_back();
+            for (const std::size_t dependency : dependencies[ordinal])
             {
-                const auto iterator = projectByPath.find(pathKey(reference));
-                if (iterator == projectByPath.end())
-                {
-                    continue;
-                }
-                const std::size_t dependency = iterator->second;
                 if (reachable[dependency])
                 {
                     continue;
                 }
                 reachable[dependency] = true;
-                visit(dependency);
+                pending.push_back(dependency);
             }
-        };
-        visit(start);
+        }
 
         std::vector<std::size_t> visible;
         for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
