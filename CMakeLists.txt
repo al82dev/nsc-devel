@@ -1207,6 +1207,15 @@ foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.ns"
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.nsproj"
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.nsproducts")
+    # EN: obj/ holds the build's artifact cache (the builder bootstrap compiles
+    #     NativeSharp.Core in place); its .nsproducts are build products, not
+    #     distribution files. Listing them made the installed manifest require a cache
+    #     entry (2026-10-24).
+    # ES: obj/ guarda el cache de artefactos del build (el bootstrap del builder compila
+    #     NativeSharp.Core en su lugar); sus .nsproducts son productos de build, no
+    #     archivos de la distribucion. Listarlos hacia que el manifiesto instalado exigiera
+    #     una entrada del cache (2026-10-24).
+    list(FILTER _nsc_library_files EXCLUDE REGEX "(^|/)obj/")
     list(APPEND NSC_INSTALLATION_LIBRARY_FILES ${_nsc_library_files})
 endforeach()
 set(NSC_INSTALLATION_EXPECTED_PATHS
@@ -1285,6 +1294,8 @@ install(TARGETS nsc RUNTIME DESTINATION bin)
 if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
     install(FILES "${NSC_LLVM_C_RUNTIME}" DESTINATION bin)
 endif()
+# EN: The same exclusion as the manifest above: obj/ is the build's artifact cache.
+# ES: La misma exclusion que el manifiesto de arriba: obj/ es el cache de artefactos del build.
 foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
     install(DIRECTORY
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}"
@@ -1292,7 +1303,8 @@ foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
         FILES_MATCHING
         PATTERN "*.ns"
         PATTERN "*.nsproj"
-        PATTERN "*.nsproducts")
+        PATTERN "*.nsproducts"
+        PATTERN "obj" EXCLUDE)
 endforeach()
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/sdk/win64/nativesharp-runtime.nsimports"
     DESTINATION sdk/win64)
