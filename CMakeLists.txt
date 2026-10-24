@@ -965,6 +965,7 @@ nsc_enable_warnings(nsc_runtime)
 add_library(nsc_linker STATIC
     src/Linker/LldLinker.cpp
     src/Linker/CoffArchiveVerifier.cpp
+    src/Linker/Internal/LinkToolIdentity.cpp
     src/Linker/Internal/ScopedTemporaryDirectory.cpp
     src/Linker/Internal/TemporaryFiles.cpp
     src/Linker/PeExecutableVerifier.cpp

@@ -1,4 +1,5 @@
 #include "nativesharp/Linker/WindowsExecutableBuilder.h"
+#include "Internal/LinkToolIdentity.h"
 #include "Internal/ScopedTemporaryDirectory.h"
 
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
@@ -118,6 +119,38 @@ bool appendFileIdentity(
     return true;
 }
 
+/// EN: Appends the link tools of an executable to the incremental link key: NSLink (as
+///     LldLinker::discover resolves it) and the canonical Windows import libraries. Unavailable
+///     tools are recorded as such, so the state never matches and the link step reports the
+///     real error. Returns false with `error` only on a hashing failure.
+///     Why: the v2 key did not cover them, so a different NSLink reused the old executable.
+/// ES: Agrega a la llave de enlace incremental las herramientas de enlace de un ejecutable:
+///     NSLink (como lo resuelve LldLinker::discover) y las import libraries canonicas de Windows.
+///     Las herramientas no disponibles se registran asi, de modo que el estado nunca coincide y
+///     el enlace reporta el error real. Devuelve false con `error` solo si falla un hash.
+///     Motivo: la llave v2 no las cubria, y otro NSLink reutilizaba el ejecutable viejo.
+bool appendIncrementalLinkTools(std::string& material, std::string& error)
+{
+    std::string discoveryError;
+    const std::unique_ptr<LldLinker> linker = LldLinker::discover(discoveryError);
+    const std::filesystem::path linkerPath =
+        linker != nullptr ? linker->executablePath() : std::filesystem::path();
+    if (!appendLinkToolIdentity("linker", linkerPath, material, error)) return false;
+    std::vector<std::filesystem::path> importLibraries;
+    std::string importError;
+    if (!findCanonicalWindowsImportLibraries(importLibraries, importError))
+    {
+        material += "link-tool import-libraries unavailable\n";
+        return true;
+    }
+    for (std::size_t index = 0; index < importLibraries.size(); ++index)
+    {
+        const std::string role = "import-library-" + std::to_string(index);
+        if (!appendLinkToolIdentity(role, importLibraries[index], material, error)) return false;
+    }
+    return true;
+}
+
 std::string incrementalLinkKey(
     std::span<const std::filesystem::path> programObjects,
     std::string_view programLlvmText,
@@ -130,7 +163,7 @@ std::string incrementalLinkKey(
     std::string_view mainSymbol,
     std::string& error)
 {
-    std::string material = "NativeSharp.IncrementalLink.v2\n";
+    std::string material = "NativeSharp.IncrementalLink.v3\n";
     material += std::to_string(static_cast<unsigned>(optimizationLevel)) + ":" +
         std::to_string(static_cast<unsigned>(debugInformation)) + ":" +
         std::to_string(static_cast<unsigned>(subsystem)) + ":" + std::string(mainSymbol) + "\n";
@@ -138,6 +171,7 @@ std::string incrementalLinkKey(
     material.push_back('\n');
     material.append(runtimeKey);
     material.push_back('\n');
+    if (!appendIncrementalLinkTools(material, error)) return {};
     for (const auto& module : externalImports)
     {
         material += module.dllName + "\n";
