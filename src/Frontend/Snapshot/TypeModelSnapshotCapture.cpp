@@ -61,4 +61,16 @@ bool captureDestructionSnapshot(
     if (!cleanReference(reference, destruction, error)) return false;
     return destruction->writePrecompiledSnapshotDestruction(payload, error);
 }
+
+bool captureConstructionSnapshot(
+    const ProjectCompilation& reference,
+    const PrecompiledSnapshotUnit& capture,
+    std::string& payload,
+    std::string& error)
+{
+    static_cast<void>(capture);
+    const ProjectConstructionModel* const construction = reference.constructionModel();
+    if (!cleanReference(reference, construction, error)) return false;
+    return construction->writePrecompiledSnapshotConstruction(payload, error);
+}
 }

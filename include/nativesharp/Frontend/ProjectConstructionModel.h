@@ -19,12 +19,14 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Frontend/PrecompiledSnapshotUnit.h"
 
 #include <cstddef>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace nativesharp::diagnostics
@@ -35,6 +37,7 @@ class DiagnosticEngine;
 namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess;
+class PrecompiledSnapshotReader;
 
 class ProjectConstructionModel final
 {
@@ -58,6 +61,21 @@ public:
     const ProjectConstructionStatistics& statistics() const noexcept;
     bool isBuilt() const noexcept;
 
+    // EN: Plan item 3.11. Accepted snapshots, set before build(). A class whose parts are all in a
+    //     snapshot unit takes its implicit default-constructor binding from the `construction`
+    //     section at the point where it is bound today; its base type still comes from the
+    //     inheritance model.
+    // ES: Punto 3.11 del plan. Snapshots aceptados, asignados antes de build(). Una clase con todas
+    //     sus partes en una unidad con snapshot toma su binding de constructor por defecto implícito
+    //     de la sección `construction` en el punto donde hoy se enlaza; su tipo base sigue viniendo
+    //     del modelo de herencia.
+    void setPrecompiledSnapshots(std::span<const PrecompiledSnapshotUnit> snapshots) noexcept;
+    std::size_t installedSnapshotClassCount() const noexcept;
+    // EN: Producer side: writes the bindings of the classes whose parts are all in `fileId`.
+    // ES: Lado productor: escribe los bindings de las clases con todas sus partes en `fileId`.
+    void setPrecompiledSnapshotCaptureFile(FileId fileId) noexcept;
+    bool writePrecompiledSnapshotConstruction(std::string& payload, std::string& error) const;
+
 private:
     friend struct ProjectOopHirModelTestAccess;
 
@@ -68,6 +86,9 @@ private:
     void bindImplicitDefaultConstructor(
         std::size_t typeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    void readSnapshotConstruction();
+    bool readSnapshotImplicitDefault(PrecompiledSnapshotReader& reader);
+    bool installSnapshotImplicitDefault(std::size_t typeOrdinal);
     void bindExplicitBaseDefaultConstructor(
         std::size_t typeOrdinal,
         std::span<const std::size_t> baseConstructors,
@@ -239,6 +260,10 @@ private:
     std::vector<ImplicitDefaultConstructorBinding> implicitDefaultConstructorBindings_;
     std::vector<std::optional<std::size_t>> implicitDefaultBindingByType_;
     ProjectConstructionStatistics statistics_;
+    std::span<const PrecompiledSnapshotUnit> precompiledSnapshots_;
+    std::unordered_map<std::size_t, ImplicitDefaultConstructorBinding> snapshotImplicitDefaults_;
+    std::size_t installedSnapshotClasses_ = 0;
+    std::optional<FileId> snapshotCaptureFile_;
     bool built_ = false;
 };
 

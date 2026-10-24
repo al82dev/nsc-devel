@@ -112,6 +112,7 @@ std::string captureSnapshotSections(const frontend::ProjectCompilation &referenc
     captureSection("interfaces", frontend::captureInterfaceSnapshot, reference, capture, snapshot, skipped);
     captureSection("dispatch", frontend::captureDispatchSnapshot, reference, capture, snapshot, skipped);
     captureSection("destruction", frontend::captureDestructionSnapshot, reference, capture, snapshot, skipped);
+    captureSection("construction", frontend::captureConstructionSnapshot, reference, capture, snapshot, skipped);
     return skipped;
 }
 

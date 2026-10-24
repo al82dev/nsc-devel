@@ -601,6 +601,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
     src/Frontend/ProjectConstructionModel.cpp
+    src/Frontend/ProjectConstructionSnapshots.cpp
     src/Frontend/ConstructionModel/ImplicitDefaultConstructors.cpp
     src/Frontend/ConstructionModel/ConstructorInitializers.cpp
     src/Frontend/ConstructionModel/ConstructionBinding.cpp

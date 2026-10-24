@@ -246,4 +246,25 @@ bool ProjectCompilation::buildDestructionModel()
     }
     return built;
 }
+
+// EN: Builds the construction model with the accepted snapshots (plan 3.11) and, in the reference
+//     compilation of a producer, with the FileId of the captured API unit.
+// ES: Construye el modelo de construcción con los snapshots aceptados (plan 3.11) y, en la
+//     compilación de referencia de un productor, con el FileId de la unidad de API capturada.
+bool ProjectCompilation::buildConstructionModel()
+{
+    constructionModel_ = std::make_unique<ProjectConstructionModel>();
+    constructionModel_->setPrecompiledSnapshots(precompiledSnapshots_);
+    if (precompiledSnapshotCapture_.has_value())
+        constructionModel_->setPrecompiledSnapshotCaptureFile(precompiledSnapshotCapture_->fileId);
+    const bool built = constructionModel_->build(
+        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
+        *namespaceFunctionModel_, units_, diagnostics_);
+    if (reportSink_ && !precompiledSnapshots_.empty())
+    {
+        reportSink_("precompiled-snapshot-install: construction-classes=" +
+            std::to_string(constructionModel_->installedSnapshotClassCount()));
+    }
+    return built;
+}
 }

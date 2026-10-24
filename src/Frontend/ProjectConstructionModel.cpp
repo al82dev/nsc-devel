@@ -46,6 +46,7 @@ bool ProjectConstructionModel::build(
     statistics_ = {};
     initializerBindingByMember_.resize(memberModel.members().size());
     implicitDefaultBindingByType_.resize(nameLookup.namedTypes().size());
+    readSnapshotConstruction();
 
     // A source class with no explicit constructor still has a semantic constructor obligation.
     // Validate those chains first so explicit derived constructors and object constructions can

@@ -987,10 +987,7 @@ bool ProjectCompilation::compileProjectConstructions(
     if (cancellationRequested(loadError, "construction")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "construction");
-    constructionModel_ = std::make_unique<ProjectConstructionModel>();
-    return constructionModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
-        *namespaceFunctionModel_, units_, diagnostics_);
+    return buildConstructionModel();
 }
 
 bool ProjectCompilation::compileProjectObjectLayouts(

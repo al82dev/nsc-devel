@@ -221,6 +221,7 @@ private:
     bool buildInterfaceModel();
     bool buildVirtualDispatchModel();
     bool buildDestructionModel();
+    bool buildConstructionModel();
     bool calculateTemplateParseCacheKey(std::string& loadError);
     bool restoreTemplateParseProduct(std::string& loadError);
     void publishTemplateParseProduct();
