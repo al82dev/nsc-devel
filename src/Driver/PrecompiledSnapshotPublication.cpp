@@ -87,6 +87,12 @@ std::string captureSnapshotSections(const frontend::ProjectCompilation &referenc
         snapshot.sections.push_back({"names", std::move(payload)});
     else
         skipped += " names=" + error;
+    payload.clear();
+    error.clear();
+    if (frontend::captureNameDeclarationSnapshot(reference, capture, payload, error))
+        snapshot.sections.push_back({"name-declarations", std::move(payload)});
+    else
+        skipped += " name-declarations=" + error;
     return skipped;
 }
 

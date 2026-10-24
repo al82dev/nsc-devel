@@ -119,4 +119,20 @@ bool captureNameSnapshot(
     payload = writer.take();
     return true;
 }
+
+bool captureNameDeclarationSnapshot(
+    const ProjectCompilation& reference,
+    const PrecompiledSnapshotUnit& capture,
+    std::string& payload,
+    std::string& error)
+{
+    const ProjectNameLookup* const names = reference.nameLookup();
+    if (names == nullptr || !reference.diagnostics().diagnostics().empty())
+    {
+        error = "reference has no clean name lookup";
+        return false;
+    }
+    return names->writePrecompiledSnapshotDeclarations(
+        capture.index, *reference.units()[capture.unitOrdinal], payload, error);
+}
 }

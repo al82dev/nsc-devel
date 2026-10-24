@@ -697,6 +697,8 @@ bool ProjectCompilation::compileProjectNames(
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "names");
     nameLookup_ = std::make_unique<ProjectNameLookup>(lifetime_->indexes());
     nameLookup_->setPrecompiledSnapshots(precompiledSnapshots_);
+    if (precompiledSnapshotCapture_.has_value())
+        nameLookup_->setPrecompiledSnapshotCaptureUnit(precompiledSnapshotCapture_->unitOrdinal);
     if (!nameLookup_->build(
             *projectGraph_, units_, diagnostics_, compilationJobs_,
             &lifetime_->workerPool()))
@@ -706,7 +708,8 @@ bool ProjectCompilation::compileProjectNames(
     if (reportSink_ && !precompiledSnapshots_.empty())
     {
         reportSink_("precompiled-snapshot-install: names=" +
-            std::to_string(nameLookup_->installedSnapshotUnitCount()));
+            std::to_string(nameLookup_->installedSnapshotUnitCount()) + " name-declarations=" +
+            std::to_string(nameLookup_->installedDeclarationUnitCount()));
     }
     return enterStage(CompilationStage::Binding, loadError);
 }

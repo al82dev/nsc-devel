@@ -125,6 +125,19 @@ public:
     //     una identidad sin resolver hace que esa unidad se resuelva como hoy.
     void setPrecompiledSnapshots(std::span<const PrecompiledSnapshotUnit> snapshots) noexcept;
     std::size_t installedSnapshotUnitCount() const noexcept;
+    std::size_t installedDeclarationUnitCount() const noexcept;
+    // EN: Producer side. The reference compilation names its captured API unit before build(); the
+    //     declaration index computed for that unit is kept and written by
+    //     writePrecompiledSnapshotDeclarations as the `name-declarations` section.
+    // ES: Lado productor. La compilación de referencia nombra su unidad de API capturada antes de
+    //     build(); el índice de declaraciones calculado para esa unidad se conserva y lo escribe
+    //     writePrecompiledSnapshotDeclarations como la sección `name-declarations`.
+    void setPrecompiledSnapshotCaptureUnit(std::size_t unitOrdinal) noexcept;
+    bool writePrecompiledSnapshotDeclarations(
+        const PrecompiledSyntaxNodeIndex& index,
+        const ProjectSyntaxUnit& unit,
+        std::string& payload,
+        std::string& error) const;
 
 private:
     friend struct ProjectOopHirModelTestAccess;
@@ -173,6 +186,11 @@ private:
         const ProjectSyntaxUnit& unit,
         const PrecompiledSnapshotUnit& snapshot,
         UnitBindingIndex& index) const;
+    bool installUnitDeclarations(
+        const ProjectSyntaxUnit& unit,
+        const std::string& sourcePath,
+        const PrecompiledSnapshotUnit& snapshot,
+        UnitDeclarationIndex& index) const;
     void collectBindingIndexes(
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics,
@@ -566,6 +584,9 @@ private:
     ProjectCompilationIndexes* indexes_ = nullptr;
     std::span<const PrecompiledSnapshotUnit> precompiledSnapshots_;
     std::size_t installedSnapshotUnits_ = 0;
+    std::size_t installedDeclarationUnits_ = 0;
+    std::optional<std::size_t> snapshotCaptureUnit_;
+    std::optional<UnitDeclarationIndex> capturedDeclarations_;
     bool built_ = false;
 };
 

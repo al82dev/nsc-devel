@@ -123,12 +123,23 @@ void ProjectNameLookup::collectDeclarationIndexes(
     for (std::size_t index = 0; index < units.size(); ++index)
     {
         if (units[index] == nullptr || units[index]->syntaxTree() == nullptr) continue;
+        // EN: A restored API unit with an accepted snapshot takes its declarations from it (plan 3.1).
+        // ES: Una unidad de API restaurada con snapshot aceptado toma de él sus declaraciones (plan 3.1).
+        const PrecompiledSnapshotUnit* const snapshot = snapshotForUnit(index);
+        if (snapshot != nullptr && installUnitDeclarations(
+                *units[index], sourcePathForUnit(graph, *units[index]), *snapshot, declarationIndexes[index]))
+        {
+            ++installedDeclarationUnits_;
+            continue;
+        }
         workers.submit([&, index](std::size_t) {
             indexUnitDeclarations(
                 *units[index], sourcePathForUnit(graph, *units[index]), declarationIndexes[index]);
         });
     }
     workers.wait();
+    if (snapshotCaptureUnit_.has_value() && *snapshotCaptureUnit_ < declarationIndexes.size())
+        capturedDeclarations_ = declarationIndexes[*snapshotCaptureUnit_];
     for (std::size_t index = 0; index < units.size(); ++index)
     {
         if (units[index] == nullptr) continue;

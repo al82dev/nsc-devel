@@ -496,6 +496,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectNameLookup.cpp
     src/Frontend/NameLookup/ProjectSetup.cpp
     src/Frontend/NameLookup/SnapshotInstallation.cpp
+    src/Frontend/NameLookup/SnapshotDeclarations.cpp
     src/Frontend/NameLookup/QualifiedNamespaces.cpp
     src/Frontend/NameLookup/QualifiedTypeNames.cpp
     src/Frontend/NameLookup/ExpressionNames.cpp
