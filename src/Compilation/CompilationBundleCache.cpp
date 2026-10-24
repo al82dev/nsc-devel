@@ -68,6 +68,36 @@ bool validArtifactName(const std::filesystem::path& name)
     return !name.empty() && name == name.filename() && name != "." && name != "..";
 }
 
+// EN: Hashes each file with sha256File, one file per worker when there are several. hashed[index]
+//     is the result of sha256File for paths[index] and errors[index] its error.
+// ES: Calcula el hash de cada archivo con sha256File, un archivo por worker cuando hay varios.
+//     hashed[index] es el resultado de sha256File para paths[index] y errors[index] su error.
+void hashFiles(
+    const std::vector<std::filesystem::path>& paths,
+    std::vector<basic::Sha256Digest>& digests,
+    std::vector<std::uintmax_t>& sizes,
+    std::vector<std::string>& errors,
+    std::vector<std::uint8_t>& hashed)
+{
+    const std::size_t count = paths.size();
+    const auto hashFile = [&](std::size_t index)
+    {
+        hashed[index] = basic::sha256File(paths[index], digests[index], sizes[index], errors[index])
+            ? 1 : 0;
+    };
+    if (count < 2)
+    {
+        for (std::size_t index = 0; index < count; ++index) hashFile(index);
+        return;
+    }
+    driver::CompilationWorkerPool workers(count);
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        workers.submit([&hashFile, index](std::size_t) { hashFile(index); });
+    }
+    workers.wait();
+}
+
 // EN: Hashes the outputs that store() would reach before its first invalid or duplicated name,
 //     one file per worker. hashed[index] is the result of sha256File and errors[index] its error;
 //     store() consumes them in the original order, so its manifest and its errors are unchanged.
@@ -88,30 +118,109 @@ void hashBundleOutputs(
     errors.assign(outputNames.size(), std::string{});
     hashed.assign(outputNames.size(), 0);
     std::set<std::string> names;
-    std::size_t count = 0;
-    while (count < outputNames.size() &&
-           validArtifactName(std::filesystem::path(outputNames[count])) &&
-           names.insert(outputNames[count]).second)
+    std::vector<std::filesystem::path> paths;
+    while (paths.size() < outputNames.size() &&
+           validArtifactName(std::filesystem::path(outputNames[paths.size()])) &&
+           names.insert(outputNames[paths.size()]).second)
     {
-        ++count;
+        paths.push_back(outputDirectory / std::filesystem::path(outputNames[paths.size()]));
     }
-    const auto hashOutput = [&](std::size_t index)
+    hashFiles(paths, digests, sizes, errors, hashed);
+}
+
+// EN: Reads the artifact records of a manifest with the checks verify() applied to each line.
+//     Returns false at the first malformed record with the reason and detail verify() reported;
+//     records holds the records before it (cachedPath, destinationPath, size and digest).
+// ES: Lee los registros de artefactos de un manifiesto con las comprobaciones que verify()
+//     aplicaba a cada línea. Devuelve false en el primer registro mal formado con la razón y el
+//     detalle que reportaba verify(); records guarda los registros anteriores.
+bool readArtifactRecords(
+    std::istream& input,
+    const std::filesystem::path& entryDirectory,
+    const std::filesystem::path& outputDirectory,
+    std::set<std::string>& names,
+    std::vector<CompilationBundleArtifact>& records,
+    CompilationBundleMissReason& reason,
+    std::string& detail)
+{
+    std::string line;
+    while (std::getline(input, line))
     {
-        hashed[index] = basic::sha256File(
-            outputDirectory / std::filesystem::path(outputNames[index]),
-            digests[index], sizes[index], errors[index]) ? 1 : 0;
-    };
-    if (count < 2)
-    {
-        for (std::size_t index = 0; index < count; ++index) hashOutput(index);
-        return;
+        reason = CompilationBundleMissReason::ManifestInvalid;
+        if (!line.starts_with("artifact="))
+        {
+            detail = "artifact-record";
+            return false;
+        }
+        const std::size_t firstTab = line.find('\t');
+        const std::size_t secondTab = line.find('\t', firstTab + 1);
+        if (firstTab == std::string::npos || secondTab == std::string::npos)
+        {
+            detail = "artifact-fields";
+            return false;
+        }
+        std::string decodedName;
+        if (!decodeHex(std::string_view(line).substr(9, firstTab - 9), decodedName))
+        {
+            detail = "artifact-name-encoding";
+            return false;
+        }
+        const std::filesystem::path name = std::filesystem::path(decodedName).filename();
+        std::uintmax_t expectedSize = 0;
+        const std::string digest = line.substr(secondTab + 1);
+        if (!validArtifactName(name) || name.generic_string() != decodedName ||
+            !names.insert(decodedName).second ||
+            !parseSize(
+                std::string_view(line).substr(firstTab + 1, secondTab - firstTab - 1),
+                expectedSize) || digest.size() != 64)
+        {
+            detail = decodedName;
+            return false;
+        }
+        records.push_back({
+            entryDirectory / "artifacts" / name, outputDirectory / name, expectedSize, digest});
     }
-    driver::CompilationWorkerPool workers(count);
-    for (std::size_t index = 0; index < count; ++index)
+    reason = CompilationBundleMissReason::None;
+    return true;
+}
+
+// EN: The per-artifact checks of verify(), in their original order, on a precomputed hash.
+// ES: Las comprobaciones por artefacto de verify(), en su orden original, sobre un hash previo.
+bool checkArtifactRecord(
+    const CompilationBundleArtifact& record,
+    bool hashed,
+    std::uintmax_t actualSize,
+    const basic::Sha256Digest& actualDigest,
+    const std::string& hashError,
+    CompilationBundleMissReason& reason,
+    std::string& detail)
+{
+    detail = record.cachedPath.filename().generic_string();
+    std::error_code fileError;
+    if (!std::filesystem::is_regular_file(record.cachedPath, fileError))
     {
-        workers.submit([&hashOutput, index](std::size_t) { hashOutput(index); });
+        reason = fileError
+            ? CompilationBundleMissReason::ArtifactUnreadable
+            : CompilationBundleMissReason::ArtifactMissing;
+        return false;
     }
-    workers.wait();
+    if (!hashed)
+    {
+        reason = CompilationBundleMissReason::ArtifactUnreadable;
+        detail += ": " + hashError;
+        return false;
+    }
+    if (actualSize != record.size)
+    {
+        reason = CompilationBundleMissReason::ArtifactSizeMismatch;
+        return false;
+    }
+    if (basic::sha256Hex(actualDigest) != record.digest)
+    {
+        reason = CompilationBundleMissReason::ArtifactDigestMismatch;
+        return false;
+    }
+    return true;
 }
 }
 
@@ -265,89 +374,46 @@ bool CompilationBundleCache::verify(
             "result-output");
         return true;
     }
+    // EN: Every record is parsed first and the listed artifacts are hashed together on workers;
+    //     the checks then run per record in the original order, so the first failing record and
+    //     its reason are the ones the sequential loop reported. A parse failure stops the records
+    //     exactly where the loop stopped, after the records before it were checked.
+    // ES: Primero se interpretan todos los registros y los artefactos listados se hashean juntos
+    //     en workers; luego las comprobaciones corren por registro en el orden original, así que
+    //     el primer registro que falla y su razón son los que reportaba el ciclo secuencial. Una
+    //     falla de interpretación detiene los registros justo donde se detenía el ciclo, después
+    //     de comprobar los registros anteriores.
     std::set<std::string> names;
-    while (std::getline(input, line))
+    std::vector<CompilationBundleArtifact> records;
+    CompilationBundleMissReason parseReason = CompilationBundleMissReason::None;
+    std::string parseDetail;
+    const bool parsedAll = readArtifactRecords(
+        input, lookup.entryDirectory, outputDirectory, names, records, parseReason, parseDetail);
+    std::vector<std::filesystem::path> cachedPaths;
+    cachedPaths.reserve(records.size());
+    for (const CompilationBundleArtifact& record : records) cachedPaths.push_back(record.cachedPath);
+    std::vector<basic::Sha256Digest> digests(records.size());
+    std::vector<std::uintmax_t> sizes(records.size(), 0);
+    std::vector<std::string> hashErrors(records.size());
+    std::vector<std::uint8_t> hashed(records.size(), 0);
+    hashFiles(cachedPaths, digests, sizes, hashErrors, hashed);
+    for (std::size_t index = 0; index < records.size(); ++index)
     {
-        if (!line.starts_with("artifact="))
+        CompilationBundleMissReason reason = CompilationBundleMissReason::None;
+        std::string detail;
+        if (!checkArtifactRecord(
+                records[index], hashed[index] != 0, sizes[index], digests[index], hashErrors[index],
+                reason, detail))
         {
-            reject(
-                CompilationBundleMissReason::ManifestInvalid,
-                "artifact-record");
+            reject(reason, std::move(detail));
             return true;
         }
-        const std::size_t firstTab = line.find('\t');
-        const std::size_t secondTab = line.find('\t', firstTab + 1);
-        if (firstTab == std::string::npos || secondTab == std::string::npos)
-        {
-            reject(
-                CompilationBundleMissReason::ManifestInvalid,
-                "artifact-fields");
-            return true;
-        }
-        std::string decodedName;
-        if (!decodeHex(
-                std::string_view(line).substr(9, firstTab - 9), decodedName))
-        {
-            reject(
-                CompilationBundleMissReason::ManifestInvalid,
-                "artifact-name-encoding");
-            return true;
-        }
-        const std::filesystem::path name =
-            std::filesystem::path(decodedName).filename();
-        std::uintmax_t expectedSize = 0;
-        const std::string digest = line.substr(secondTab + 1);
-        if (!validArtifactName(name) || name.generic_string() != decodedName ||
-            !names.insert(decodedName).second ||
-            !parseSize(
-                std::string_view(line).substr(
-                    firstTab + 1, secondTab - firstTab - 1),
-                expectedSize) || digest.size() != 64)
-        {
-            reject(
-                CompilationBundleMissReason::ManifestInvalid,
-                decodedName);
-            return true;
-        }
-        const std::filesystem::path cachedPath =
-            lookup.entryDirectory / "artifacts" / name;
-        std::error_code fileError;
-        if (!std::filesystem::is_regular_file(cachedPath, fileError))
-        {
-            reject(
-                fileError
-                    ? CompilationBundleMissReason::ArtifactUnreadable
-                    : CompilationBundleMissReason::ArtifactMissing,
-                decodedName);
-            return true;
-        }
-        basic::Sha256Digest actualDigest{};
-        std::uintmax_t actualSize = 0;
-        std::string hashError;
-        if (!basic::sha256File(
-                cachedPath, actualDigest, actualSize, hashError))
-        {
-            reject(
-                CompilationBundleMissReason::ArtifactUnreadable,
-                decodedName + ": " + hashError);
-            return true;
-        }
-        if (actualSize != expectedSize)
-        {
-            reject(
-                CompilationBundleMissReason::ArtifactSizeMismatch,
-                decodedName);
-            return true;
-        }
-        if (basic::sha256Hex(actualDigest) != digest)
-        {
-            reject(
-                CompilationBundleMissReason::ArtifactDigestMismatch,
-                decodedName);
-            return true;
-        }
-        lookup.artifacts.push_back({
-            cachedPath, outputDirectory / name, expectedSize, digest});
+        lookup.artifacts.push_back(records[index]);
+    }
+    if (!parsedAll)
+    {
+        reject(parseReason, std::move(parseDetail));
+        return true;
     }
     for (const std::string& required : requiredOutputNames)
     {
