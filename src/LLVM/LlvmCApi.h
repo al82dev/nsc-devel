@@ -527,6 +527,14 @@ char* LLVMGetErrorMessage(LLVMErrorRef error);
 void LLVMDisposeErrorMessage(char* errorMessage);
 LLVMValueRef LLVMGetFirstFunction(LLVMModuleRef module);
 LLVMValueRef LLVMGetNextFunction(LLVMValueRef function);
+// Locales visibles en el depurador a -O0: la legalizacion SEH de B-001 solo debe tocar funciones
+// con un `catch` real. Estos tres simbolos recorren los bloques de una funcion y reconocen su
+// `catchswitch`. / Debugger-visible locals at -O0: the B-001 SEH legalization must only touch
+// functions with a real `catch`. These three symbols walk a function's blocks and recognize its
+// `catchswitch`.
+LLVMBasicBlockRef LLVMGetFirstBasicBlock(LLVMValueRef function);
+LLVMBasicBlockRef LLVMGetNextBasicBlock(LLVMBasicBlockRef block);
+LLVMValueRef LLVMIsACatchSwitchInst(LLVMValueRef value);
 LLVMBool LLVMIsDeclaration(LLVMValueRef global);
 LLVMBool LLVMHasPersonalityFn(LLVMValueRef function);
 

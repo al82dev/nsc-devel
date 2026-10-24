@@ -51,6 +51,22 @@ AutomaticInliningConfiguration llvmAutomaticInliningConfiguration(
 
 namespace
 {
+// Indica si la funcion contiene un `catchswitch`, es decir, un `catch` real que puede regresar a
+// su cuerpo por `catchret`. / Tells whether the function contains a `catchswitch`, i.e. a real
+// `catch` that can return into its body through `catchret`.
+bool functionHasCatchSwitch(llvm_api::LLVMValueRef function)
+{
+    for (llvm_api::LLVMBasicBlockRef block = llvm_api::LLVMGetFirstBasicBlock(function);
+         block != nullptr;
+         block = llvm_api::LLVMGetNextBasicBlock(block))
+    {
+        llvm_api::LLVMValueRef terminator = llvm_api::LLVMGetBasicBlockTerminator(block);
+        if (terminator != nullptr && llvm_api::LLVMIsACatchSwitchInst(terminator) != nullptr)
+            return true;
+    }
+    return false;
+}
+
 // Bug B-001 fix (EH+RAII reuse-after-catch SIGSEGV/access-violation crash) -- see
 // BUGS_ENCONTRADOS/bug_try_catch_reuso_objeto_tras_catch.md for the original report and the
 // project's "30_..." docs for the full root-cause writeup. Summary of what was actually found,
@@ -88,6 +104,22 @@ namespace
 // SEH-funclet-bearing functions. Scoping the promotion to exactly those functions (via
 // LLVMRunPassesOnFunction, LLVM's per-function C API pipeline entry point) keeps -O0 unchanged
 // for every function that never touches try/catch/finally.
+//
+// ALCANCE ACOTADO A `catch` REAL (2026-10-24). / SCOPE NARROWED TO A REAL `catch` (2026-10-24).
+// El disparador verificado de B-001 exige que un `catch` termine y regrese a la funcion por
+// `catchret`. Solo un `catchpad` puede ejecutar `catchret`, y todo `catchpad` cuelga de un
+// `catchswitch`. Una funcion con personalidad pero solo con `cleanuppad` (un `raii`, un `using`
+// o un `try/finally` sin `catch`) nunca vuelve a su propio cuerpo despues de una excepcion, asi
+// que no puede alcanzar el disparador. Promover sus locales a registros solo le quitaba la ranura
+// de pila a cada variable: el PDB las describia como `S_CONSTANT` o sin ubicacion y el depurador
+// mostraba `<optimized out>` en un build Debug.
+// The verified B-001 trigger needs a `catch` that completes and returns into the function through
+// `catchret`. Only a `catchpad` can execute `catchret`, and every `catchpad` hangs from a
+// `catchswitch`. A function with a personality but only `cleanuppad`s (a `raii`, a `using` or a
+// `try/finally` without `catch`) never resumes its own body after an exception, so it cannot reach
+// the trigger. Promoting its locals to registers only took the stack slot away from every variable:
+// the PDB described them as `S_CONSTANT` or without a location and the debugger showed
+// `<optimized out>` in a Debug build.
 bool legalizeSehFuncletFunctionsForO0(
     llvm_api::LLVMModuleRef module,
     llvm_api::LLVMTargetMachineRef targetMachine,
@@ -102,6 +134,9 @@ bool legalizeSehFuncletFunctionsForO0(
         // RaiseException) can carry no funclets and has nothing for mem2reg to legalize.
         if (llvm_api::LLVMIsDeclaration(function)) continue;
         if (!llvm_api::LLVMHasPersonalityFn(function)) continue;
+        // Sin `catchswitch` no hay `catchret`; los locales conservan su `alloca`.
+        // Without a `catchswitch` there is no `catchret`; locals keep their `alloca`.
+        if (!functionHasCatchSwitch(function)) continue;
 
         llvm_api::LLVMErrorRef functionError = llvm_api::LLVMRunPassesOnFunction(
             function, "mem2reg", targetMachine, options);
@@ -125,7 +160,8 @@ bool hasSehFuncletFunctions(llvm_api::LLVMModuleRef module)
          function = llvm_api::LLVMGetNextFunction(function))
     {
         if (!llvm_api::LLVMIsDeclaration(function) &&
-            llvm_api::LLVMHasPersonalityFn(function)) return true;
+            llvm_api::LLVMHasPersonalityFn(function) &&
+            functionHasCatchSwitch(function)) return true;
     }
     return false;
 }
