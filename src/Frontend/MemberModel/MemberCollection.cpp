@@ -228,6 +228,7 @@ void ProjectMemberModel::collectTypeMember(
     validateCAbiMember(symbol, type, memberNode, nameLookup, diagnostics);
     validateUserOperator(symbol, type, diagnostics);
     validateUserConversion(symbol, type, diagnostics);
+    captureSnapshotMember(part, symbol);
     if (isDuplicateMember(symbol, type, byName, diagnostics)) return;
     appendCollectedMember(std::move(symbol), typeOrdinal, memberNode, byName);
 }

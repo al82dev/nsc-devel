@@ -1,5 +1,6 @@
 #include "Internal/DriverInternal.h"
 
+#include "../Frontend/Snapshot/MemberSnapshotCapture.h"
 #include "../Frontend/Snapshot/NameSnapshotCapture.h"
 
 #include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
@@ -8,6 +9,7 @@
 
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -71,6 +73,23 @@ bool captureSnapshotHeader(const frontend::ProjectCompilation &reference,
     return true;
 }
 
+using SectionCapture = bool (*)(const frontend::ProjectCompilation &, const frontend::PrecompiledSnapshotUnit &,
+                                std::string &, std::string &);
+
+// EN: Captures one model section; on failure the model is recorded as skipped with its reason.
+// ES: Captura la sección de un modelo; si falla, el modelo queda como omitido con su razón.
+void captureSection(std::string_view model, SectionCapture captureModel, const frontend::ProjectCompilation &reference,
+                    const frontend::PrecompiledSnapshotUnit &capture,
+                    compilation::PrecompiledSemanticSnapshot &snapshot, std::string &skipped)
+{
+    std::string payload;
+    std::string error;
+    if (captureModel(reference, capture, payload, error))
+        snapshot.sections.push_back({std::string(model), std::move(payload)});
+    else
+        skipped += " " + std::string(model) + "=" + error;
+}
+
 // EN: Plan item 2.2: captures the section of every model; a model whose capture fails gets no
 //     section, so consumers analyze that model as today. Returns the skipped models and reasons.
 // ES: Punto 2.2 del plan: captura la sección de cada modelo; un modelo cuya captura falla no lleva
@@ -81,18 +100,10 @@ std::string captureSnapshotSections(const frontend::ProjectCompilation &referenc
                                     compilation::PrecompiledSemanticSnapshot &snapshot)
 {
     std::string skipped;
-    std::string payload;
-    std::string error;
-    if (frontend::captureNameSnapshot(reference, capture, payload, error))
-        snapshot.sections.push_back({"names", std::move(payload)});
-    else
-        skipped += " names=" + error;
-    payload.clear();
-    error.clear();
-    if (frontend::captureNameDeclarationSnapshot(reference, capture, payload, error))
-        snapshot.sections.push_back({"name-declarations", std::move(payload)});
-    else
-        skipped += " name-declarations=" + error;
+    captureSection("names", frontend::captureNameSnapshot, reference, capture, snapshot, skipped);
+    captureSection("name-declarations", frontend::captureNameDeclarationSnapshot, reference, capture, snapshot,
+                   skipped);
+    captureSection("members", frontend::captureMemberSnapshot, reference, capture, snapshot, skipped);
     return skipped;
 }
 

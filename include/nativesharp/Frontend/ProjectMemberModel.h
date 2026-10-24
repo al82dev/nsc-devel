@@ -140,6 +140,29 @@ public:
     static std::optional<std::uint64_t> fixedArrayCount(std::string_view typeKey);
     static std::optional<std::string> flexibleArrayElementTypeKey(std::string_view typeKey);
 
+    // EN: Plan item 3.3. Accepted snapshots of restored public API units, set before build(). A
+    //     member of such a unit whose node has an entry in the `members` section takes its symbol
+    //     from it instead of computing it; position-derived fields, generic specialization,
+    //     duplicate checks and every index are still computed exactly as for a computed member.
+    // ES: Punto 3.3 del plan. Snapshots aceptados de unidades de API pública restauradas, asignados
+    //     antes de build(). Un miembro de esa unidad cuyo nodo tiene entrada en la sección `members`
+    //     toma de ella su símbolo en lugar de calcularlo; los campos derivados de la posición, la
+    //     especialización genérica, las comprobaciones de duplicados y todos los índices se siguen
+    //     calculando igual que para un miembro calculado.
+    void setPrecompiledSnapshots(std::span<const PrecompiledSnapshotUnit> snapshots);
+    std::size_t installedSnapshotMemberCount() const noexcept;
+    // EN: Producer side. The reference compilation names the FileId of its captured API unit before
+    //     build(); every member symbol collected from a part of that file is kept and written by
+    //     writePrecompiledSnapshotMembers as the `members` section.
+    // ES: Lado productor. La compilación de referencia nombra el FileId de su unidad de API capturada
+    //     antes de build(); cada símbolo de miembro recolectado de una parte de ese archivo se
+    //     conserva y lo escribe writePrecompiledSnapshotMembers como la sección `members`.
+    void setPrecompiledSnapshotCaptureFile(FileId fileId) noexcept;
+    bool writePrecompiledSnapshotMembers(
+        const PrecompiledSyntaxNodeIndex& index,
+        std::string& payload,
+        std::string& error) const;
+
 private:
     friend struct ProjectOopHirModelTestAccess;
 
@@ -454,6 +477,18 @@ private:
         const NamedTypeDeclaration& type,
         const std::unordered_map<std::string, std::vector<std::size_t>>& byName,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    bool installSnapshotMember(
+        std::size_t typeOrdinal,
+        const NamedTypeDeclaration& type,
+        std::size_t partOrdinal,
+        const NamedTypeDeclarationPart& part,
+        const ast::AstNode* memberNode,
+        std::size_t declarationOrdinal,
+        std::unordered_map<std::string, std::vector<std::size_t>>& byName,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void captureSnapshotMember(
+        const NamedTypeDeclarationPart& part,
+        const ClassMemberSymbol& symbol);
     void appendCollectedMember(
         ClassMemberSymbol symbol,
         std::size_t typeOrdinal,
@@ -549,6 +584,10 @@ private:
         std::equal_to<>> typeOrdinalByKey_;
     std::vector<std::uint8_t> transitiveOwnershipCache_;
     std::unordered_map<const ast::AstNode*, std::size_t> memberBySyntax_;
+    std::unordered_map<const ast::AstNode*, ClassMemberSymbol> snapshotMembers_;
+    std::size_t installedSnapshotMembers_ = 0;
+    std::optional<FileId> snapshotCaptureFile_;
+    std::vector<ClassMemberSymbol> capturedMembers_;
     bool built_ = false;
 };
 

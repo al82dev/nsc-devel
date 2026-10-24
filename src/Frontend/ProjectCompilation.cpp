@@ -789,8 +789,7 @@ bool ProjectCompilation::compileProjectMembers(
     if (cancellationRequested(loadError, "members")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "members");
-    memberModel_ = std::make_unique<ProjectMemberModel>(lifetime_->indexes());
-    if (!memberModel_->build(*nameLookup_, units_, diagnostics_, genericModel_.get())) return false;
+    if (!buildMemberModel()) return false;
     if (!memberModel_->buildModuleInitializationPlan(*projectGraph_, loadError)) return false;
 
     std::vector<PrecompiledMemberIdentity> precompiledMembers;

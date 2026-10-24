@@ -215,6 +215,7 @@ private:
         std::size_t unitOrdinal,
         std::span<const compilation::PrecompiledSnapshotDependency> loadedDependencies,
         std::string& reason);
+    bool buildMemberModel();
     bool calculateTemplateParseCacheKey(std::string& loadError);
     bool restoreTemplateParseProduct(std::string& loadError);
     void publishTemplateParseProduct();

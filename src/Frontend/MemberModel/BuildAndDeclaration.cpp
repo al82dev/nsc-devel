@@ -874,6 +874,14 @@ void ProjectMemberModel::collectTypePartMembers(
     for (const ast::AstNode* memberNode : expandedMembers)
     {
         if (memberNode == nullptr || !isClassMemberNode(memberNode->kind())) continue;
+        // EN: A member of a restored API unit with a snapshot entry is installed (plan 3.3).
+        // ES: Un miembro de una unidad de API restaurada con entrada en el snapshot se instala (plan 3.3).
+        if (installSnapshotMember(
+                typeOrdinal, type, partOrdinal, part, memberNode, declarationOrdinal, byName, diagnostics))
+        {
+            ++declarationOrdinal;
+            continue;
+        }
         collectTypeMember(
             typeOrdinal,
             type,

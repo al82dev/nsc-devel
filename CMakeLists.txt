@@ -458,6 +458,8 @@ add_library(nsc_frontend STATIC
     src/Frontend/ComptimeEngine.cpp
     src/Frontend/MacroExpansionEngine.cpp
     src/Frontend/PrecompiledSyntaxNodeIndex.cpp
+    src/Frontend/Snapshot/ClassMemberSnapshotCodec.cpp
+    src/Frontend/Snapshot/MemberSnapshotCapture.cpp
     src/Frontend/Snapshot/NameSnapshotCapture.cpp
     src/Frontend/Snapshot/PrecompiledSnapshotReader.cpp
     src/Frontend/Snapshot/PrecompiledSnapshotValidation.cpp
@@ -521,6 +523,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/MemberModel/MemberCollection.cpp
     src/Frontend/MemberModel/MemberInitialization.cpp
     src/Frontend/MemberModel/OwnershipQueries.cpp
+    src/Frontend/MemberModel/SnapshotMembers.cpp
     src/Frontend/MemberModel/TypeIdentity.cpp
     src/Frontend/ProjectNamespaceFunctionModel.cpp
     src/Frontend/ProjectMemberModelDumper.cpp

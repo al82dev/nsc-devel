@@ -124,4 +124,23 @@ bool ProjectCompilation::loadPrecompiledSnapshot(
     precompiledSnapshots_.push_back(std::move(accepted));
     return true;
 }
+
+// EN: Builds the member model with the accepted snapshots (plan 3.3) and, in the reference
+//     compilation of a producer, with the FileId of the captured API unit.
+// ES: Construye el modelo de miembros con los snapshots aceptados (plan 3.3) y, en la compilación
+//     de referencia de un productor, con el FileId de la unidad de API capturada.
+bool ProjectCompilation::buildMemberModel()
+{
+    memberModel_ = std::make_unique<ProjectMemberModel>(lifetime_->indexes());
+    memberModel_->setPrecompiledSnapshots(precompiledSnapshots_);
+    if (precompiledSnapshotCapture_.has_value())
+        memberModel_->setPrecompiledSnapshotCaptureFile(units_[precompiledSnapshotCapture_->unitOrdinal]->fileId());
+    if (!memberModel_->build(*nameLookup_, units_, diagnostics_, genericModel_.get())) return false;
+    if (reportSink_ && !precompiledSnapshots_.empty())
+    {
+        reportSink_("precompiled-snapshot-install: members=" +
+            std::to_string(memberModel_->installedSnapshotMemberCount()));
+    }
+    return true;
+}
 }
