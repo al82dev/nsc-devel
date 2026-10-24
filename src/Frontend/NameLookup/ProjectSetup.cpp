@@ -207,6 +207,14 @@ void ProjectNameLookup::collectBindingIndexes(
     {
         localDiagnostics.emplace_back(diagnostics.errorLimit());
         if (units[index] == nullptr || units[index]->syntaxTree() == nullptr) continue;
+        // EN: A restored API unit with an accepted snapshot takes its bindings from it (plan 3.1).
+        // ES: Una unidad de API restaurada con snapshot aceptado toma de él sus bindings (plan 3.1).
+        const PrecompiledSnapshotUnit* const snapshot = snapshotForUnit(index);
+        if (snapshot != nullptr && installUnitBindings(*units[index], *snapshot, bindingIndexes[index]))
+        {
+            ++installedSnapshotUnits_;
+            continue;
+        }
         workers.submit([&, index](std::size_t) {
             bindUnit(*units[index], localDiagnostics[index], bindingIndexes[index]);
         });

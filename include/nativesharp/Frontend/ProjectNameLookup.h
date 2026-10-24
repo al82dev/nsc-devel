@@ -10,6 +10,7 @@
 #include "nativesharp/Frontend/PendingReexport.h"
 #include "nativesharp/Frontend/TypeNameBindingKind.h"
 #include "nativesharp/Frontend/TypeNameBinding.h"
+#include "nativesharp/Frontend/PrecompiledSnapshotUnit.h"
 #include "nativesharp/Frontend/ExpressionTypeNameBinding.h"
 #include "nativesharp/Frontend/ModuleDeclarationSpace.h"
 #include "nativesharp/AST/TypeSyntax.h"
@@ -114,6 +115,17 @@ public:
         std::span<const std::size_t> enclosingTypeOrdinals) const noexcept;
     bool isBuilt() const noexcept;
 
+    // EN: Plan item 3.1. Accepted snapshots of restored public API units, set before build(). The
+    //     type-name and expression bindings of such a unit are installed from its `names` section
+    //     instead of resolving the unit; any missing section or unresolved identity makes that unit
+    //     resolve as today.
+    // ES: Punto 3.1 del plan. Snapshots aceptados de unidades de API pública restauradas, asignados
+    //     antes de build(). Los bindings de nombres de tipo y de expresiones de esa unidad se
+    //     instalan desde su sección `names` en lugar de resolver la unidad; una sección ausente o
+    //     una identidad sin resolver hace que esa unidad se resuelva como hoy.
+    void setPrecompiledSnapshots(std::span<const PrecompiledSnapshotUnit> snapshots) noexcept;
+    std::size_t installedSnapshotUnitCount() const noexcept;
+
 private:
     friend struct ProjectOopHirModelTestAccess;
 
@@ -156,6 +168,11 @@ private:
         const NamespaceStateDeclaration& right);
     void finalizeNamespaceDeclarations();
     void mergeBindingIndexes(std::vector<UnitBindingIndex>& bindingIndexes);
+    const PrecompiledSnapshotUnit* snapshotForUnit(std::size_t unitOrdinal) const noexcept;
+    bool installUnitBindings(
+        const ProjectSyntaxUnit& unit,
+        const PrecompiledSnapshotUnit& snapshot,
+        UnitBindingIndex& index) const;
     void collectBindingIndexes(
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics,
@@ -547,6 +564,8 @@ private:
     std::unordered_map<const ast::AstNode*, std::size_t> expressionTypeBindingBySyntax_;
     std::unique_ptr<ProjectCompilationIndexes> ownedIndexes_;
     ProjectCompilationIndexes* indexes_ = nullptr;
+    std::span<const PrecompiledSnapshotUnit> precompiledSnapshots_;
+    std::size_t installedSnapshotUnits_ = 0;
     bool built_ = false;
 };
 

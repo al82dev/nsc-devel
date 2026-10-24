@@ -1,5 +1,7 @@
 #include "Internal/DriverInternal.h"
 
+#include "../Frontend/Snapshot/NameSnapshotCapture.h"
+
 #include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
 #include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
 #include "nativesharp/Compilation/PrecompiledSemanticSnapshotCodec.h"
@@ -67,6 +69,25 @@ bool captureSnapshotHeader(const frontend::ProjectCompilation &reference,
     snapshot.typeCount = capture.index.types().size();
     snapshot.nodeKindDigest = capture.index.kindDigest();
     return true;
+}
+
+// EN: Plan item 2.2: captures the section of every model; a model whose capture fails gets no
+//     section, so consumers analyze that model as today. Returns the skipped models and reasons.
+// ES: Punto 2.2 del plan: captura la sección de cada modelo; un modelo cuya captura falla no lleva
+//     sección, así que los consumidores analizan ese modelo como hoy. Regresa los modelos omitidos
+//     y sus razones.
+std::string captureSnapshotSections(const frontend::ProjectCompilation &reference,
+                                    const frontend::PrecompiledSnapshotUnit &capture,
+                                    compilation::PrecompiledSemanticSnapshot &snapshot)
+{
+    std::string skipped;
+    std::string payload;
+    std::string error;
+    if (frontend::captureNameSnapshot(reference, capture, payload, error))
+        snapshot.sections.push_back({"names", std::move(payload)});
+    else
+        skipped += " names=" + error;
+    return skipped;
 }
 
 // EN: Plan item 2.3: rewrites the `.nsproducts` of the library transactionally as v2 with the
@@ -145,12 +166,19 @@ void publishPrecompiledSnapshot(const frontend::ProjectCompilation &compilation,
             built ? reference.precompiledSnapshotCapture() : nullptr;
         if (built && capture == nullptr)
             error = "the library has no restored API unit";
+        std::string skipped;
         const bool written = capture != nullptr && captureSnapshotHeader(reference, *capture, snapshot, error) &&
+                             (skipped = captureSnapshotSections(reference, *capture, snapshot), true) &&
                              writeSnapshotSidecar(reference, metadataPath, snapshot, error);
         if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
         {
+            std::string sections;
+            for (const compilation::PrecompiledSnapshotSection &section : snapshot.sections)
+                sections += (sections.empty() ? "" : ",") + section.model;
             activeExecutionScope->output << "precompiled-snapshot-reference: "
-                                         << (written ? std::string("written") : "not-written " + error) << '\n';
+                                         << (written ? "written sections=" + sections + skipped
+                                                     : "not-written " + error)
+                                         << '\n';
         }
     }
     catch (const std::exception &exception)

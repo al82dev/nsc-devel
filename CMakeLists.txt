@@ -458,6 +458,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ComptimeEngine.cpp
     src/Frontend/MacroExpansionEngine.cpp
     src/Frontend/PrecompiledSyntaxNodeIndex.cpp
+    src/Frontend/Snapshot/NameSnapshotCapture.cpp
     src/Frontend/Snapshot/PrecompiledSnapshotReader.cpp
     src/Frontend/Snapshot/PrecompiledSnapshotValidation.cpp
     src/Frontend/Snapshot/PrecompiledSnapshotWriter.cpp
@@ -494,6 +495,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectOpaqueResultModel.cpp
     src/Frontend/ProjectNameLookup.cpp
     src/Frontend/NameLookup/ProjectSetup.cpp
+    src/Frontend/NameLookup/SnapshotInstallation.cpp
     src/Frontend/NameLookup/QualifiedNamespaces.cpp
     src/Frontend/NameLookup/QualifiedTypeNames.cpp
     src/Frontend/NameLookup/ExpressionNames.cpp
