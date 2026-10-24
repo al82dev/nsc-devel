@@ -141,6 +141,23 @@ bool LibraryMetadataCodec::read(
     LibraryMetadata& metadata,
     std::string& error) const
 {
+    return readBytes(bytes, true, metadata, error);
+}
+
+bool LibraryMetadataCodec::readAuthenticated(
+    std::span<const std::uint8_t> bytes,
+    LibraryMetadata& metadata,
+    std::string& error) const
+{
+    return readBytes(bytes, false, metadata, error);
+}
+
+bool LibraryMetadataCodec::readBytes(
+    std::span<const std::uint8_t> bytes,
+    bool authenticate,
+    LibraryMetadata& metadata,
+    std::string& error) const
+{
     error.clear();
     if (bytes.size() < kHeaderSize)
     {
@@ -175,7 +192,7 @@ bool LibraryMetadataCodec::read(
         return false;
     }
     const std::span<const std::uint8_t> payload(bytes.data() + kHeaderSize, static_cast<std::size_t>(payloadSize));
-    if (!sameFingerprint(basic::sha256(payload), payloadHash))
+    if (authenticate && !sameFingerprint(basic::sha256(payload), payloadHash))
     {
         error = "NativeSharp metadata payload checksum mismatch";
         return false;
@@ -184,7 +201,14 @@ bool LibraryMetadataCodec::read(
     LibraryMetadata decoded;
     initializeDecodedMetadata(
         decoded, major, minor, targetId, pointerSize, pointerAlignment, abiFingerprint);
-    if (!authenticateDecodedMetadata(payload, decoded, error)) return false;
+    if (authenticate)
+    {
+        if (!authenticateDecodedMetadata(payload, decoded, error)) return false;
+    }
+    else if (!decodePayload(payload, decoded, error))
+    {
+        return false;
+    }
     normalizeDecodedMetadata(decoded);
     metadata = std::move(decoded);
     return true;

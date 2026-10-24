@@ -43,6 +43,12 @@ std::shared_ptr<const interop::LibraryMetadata> readMetadata(
             std::string& decodeError) {
             return codec.read(bytes, result, decodeError);
         },
+        [&codec](
+            std::span<const std::uint8_t> bytes,
+            interop::LibraryMetadata& result,
+            std::string& decodeError) {
+            return codec.readAuthenticated(bytes, result, decodeError);
+        },
         error);
     if (decoded == nullptr) return {};
     if (!repository.verify(

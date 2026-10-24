@@ -33,6 +33,13 @@ public:
         const std::filesystem::path& path,
         const Decoder& decoder,
         std::string& error) const;
+    // Same as the overload above. When the persistent cache shows that this exact content already
+    // passed verification, `authenticatedDecoder` decodes it without authenticating it again.
+    std::shared_ptr<const interop::LibraryMetadata> decode(
+        const std::filesystem::path& path,
+        const Decoder& decoder,
+        const Decoder& authenticatedDecoder,
+        std::string& error) const;
     bool verify(
         const std::filesystem::path& path,
         const Verifier& verifier,

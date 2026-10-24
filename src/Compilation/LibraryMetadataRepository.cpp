@@ -74,6 +74,15 @@ std::shared_ptr<const interop::LibraryMetadata> LibraryMetadataRepository::decod
     const Decoder& decoder,
     std::string& error) const
 {
+    return decode(path, decoder, decoder, error);
+}
+
+std::shared_ptr<const interop::LibraryMetadata> LibraryMetadataRepository::decode(
+    const std::filesystem::path& path,
+    const Decoder& decoder,
+    const Decoder& authenticatedDecoder,
+    std::string& error) const
+{
     const LibraryMetadataRepositoryEntry* entry = load(path, error);
     if (entry == nullptr) return {};
     if (entry->decodeAttempted_)
@@ -88,9 +97,10 @@ std::shared_ptr<const interop::LibraryMetadata> LibraryMetadataRepository::decod
     std::string ignoredCacheError;
     const bool cacheReadable = verifiedCache_.restore(
         entry->persistentCacheKey_, restoredBytes, restored, ignoredCacheError);
+    // The key already carries the content digest; comparing the bytes themselves proves that the
+    // cached copy is this content without hashing it a second time.
     const bool restoredContentMatches =
-        restored && restoredBytes.size() == entry->bytes().size() &&
-        basic::sha256(restoredBytes) == entry->contentDigest();
+        restored && std::ranges::equal(restoredBytes, entry->bytes());
     if (cacheReadable && restoredContentMatches)
     {
         entry->restoredVerified_ = true;
@@ -100,7 +110,7 @@ std::shared_ptr<const interop::LibraryMetadata> LibraryMetadataRepository::decod
         verifiedCache_.quarantine(entry->persistentCacheKey_);
     }
     interop::LibraryMetadata metadata;
-    if (entry->restoredVerified_ && !decoder(restoredBytes, metadata, ignoredCacheError))
+    if (entry->restoredVerified_ && !authenticatedDecoder(entry->bytes(), metadata, ignoredCacheError))
     {
         verifiedCache_.quarantine(entry->persistentCacheKey_);
         entry->restoredVerified_ = false;
