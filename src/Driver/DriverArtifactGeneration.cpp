@@ -520,6 +520,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     addCompilationCodegenIdentity(
         *manifest, optimizationLevel, debugInformation,
         debugPrefixMaps, linkTimeOptimization);
+    addCompilationLinkToolIdentity(*manifest);
     frontend::ProjectCompilation compilation;
     std::vector<std::filesystem::path> referencedLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
