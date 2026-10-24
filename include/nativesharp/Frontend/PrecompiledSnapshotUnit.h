@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Basic/FileId.h"
 #include "nativesharp/Compilation/PrecompiledSemanticSnapshot.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxNodeIndex.h"
 
@@ -17,6 +18,11 @@ namespace nativesharp::frontend
 struct PrecompiledSnapshotUnit final
 {
     std::size_t unitOrdinal = 0;
+    // EN: FileId of the restored unit; a type takes per-type entries only when all its parts are
+    //     in this file (plan item 3.5).
+    // ES: FileId de la unidad restaurada; un tipo toma entradas por tipo solo si todas sus partes
+    //     están en este archivo (punto 3.5 del plan).
+    FileId fileId;
     std::string moduleName;
     compilation::PrecompiledSemanticSnapshot snapshot;
     PrecompiledSyntaxNodeIndex index;

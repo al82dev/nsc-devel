@@ -76,6 +76,7 @@ void ProjectCompilation::loadPrecompiledSnapshots()
         {
             PrecompiledSnapshotUnit& capture = precompiledSnapshotCapture_.emplace();
             capture.unitOrdinal = *precompiledApiUnits_[moduleIndex];
+            capture.fileId = units_[capture.unitOrdinal]->fileId();
             capture.moduleName = module.moduleName;
             capture.index.build(units_[capture.unitOrdinal]->syntaxTree());
         }
@@ -110,6 +111,7 @@ bool ProjectCompilation::loadPrecompiledSnapshot(
     }
     PrecompiledSnapshotUnit accepted;
     accepted.unitOrdinal = unitOrdinal;
+    accepted.fileId = units_[unitOrdinal]->fileId();
     accepted.moduleName = module.moduleName;
     std::string decodeError;
     if (!compilation::PrecompiledSemanticSnapshotCodec::decode(
@@ -166,5 +168,24 @@ bool ProjectCompilation::buildNamespaceFunctionModel()
             std::to_string(namespaceFunctionModel_->installedSnapshotStateCount()));
     }
     return true;
+}
+
+// EN: Builds the inheritance model with the accepted snapshots (plan 3.6) and, in the reference
+//     compilation of a producer, with the FileId of the captured API unit.
+// ES: Construye el modelo de herencia con los snapshots aceptados (plan 3.6) y, en la compilación
+//     de referencia de un productor, con el FileId de la unidad de API capturada.
+bool ProjectCompilation::buildInheritanceModel()
+{
+    inheritanceModel_ = std::make_unique<ProjectInheritanceModel>();
+    inheritanceModel_->setPrecompiledSnapshots(precompiledSnapshots_);
+    if (precompiledSnapshotCapture_.has_value())
+        inheritanceModel_->setPrecompiledSnapshotCaptureFile(precompiledSnapshotCapture_->fileId);
+    const bool built = inheritanceModel_->build(*nameLookup_, diagnostics_);
+    if (reportSink_ && !precompiledSnapshots_.empty())
+    {
+        reportSink_("precompiled-snapshot-install: classes=" +
+            std::to_string(inheritanceModel_->installedSnapshotClassCount()));
+    }
+    return built;
 }
 }

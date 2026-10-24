@@ -858,8 +858,7 @@ bool ProjectCompilation::compileProjectInheritance(
     if (cancellationRequested(loadError, "inheritance")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "inheritance");
-    inheritanceModel_ = std::make_unique<ProjectInheritanceModel>();
-    return inheritanceModel_->build(*nameLookup_, diagnostics_);
+    return buildInheritanceModel();
 }
 
 // NSC-LIMIT-007. LOS CONSTRAINTS SE VALIDAN AQUI, y este es el unico punto posible de toda la

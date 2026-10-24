@@ -467,6 +467,8 @@ add_library(nsc_frontend STATIC
     src/Frontend/Snapshot/PrecompiledSnapshotValidation.cpp
     src/Frontend/Snapshot/PrecompiledSnapshotWriter.cpp
     src/Frontend/Snapshot/SnapshotCodecSupport.cpp
+    src/Frontend/Snapshot/SnapshotTypeEligibility.cpp
+    src/Frontend/Snapshot/TypeModelSnapshotCapture.cpp
     src/Frontend/ProjectSyntaxUnit.cpp
     src/Frontend/NamespaceSymbol.cpp
     src/Frontend/QualifiedNameLadder.cpp
@@ -532,6 +534,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectNamespaceFunctionSnapshots.cpp
     src/Frontend/ProjectMemberModelDumper.cpp
     src/Frontend/ProjectInheritanceModel.cpp
+    src/Frontend/ProjectInheritanceSnapshots.cpp
     src/Frontend/ProjectInheritanceModelDumper.cpp
     src/Frontend/ProjectInterfaceModel.cpp
     src/Frontend/ProjectInterfaceModelDumper.cpp

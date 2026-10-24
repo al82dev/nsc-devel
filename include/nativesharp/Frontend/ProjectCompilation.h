@@ -217,6 +217,7 @@ private:
         std::string& reason);
     bool buildMemberModel();
     bool buildNamespaceFunctionModel();
+    bool buildInheritanceModel();
     bool calculateTemplateParseCacheKey(std::string& loadError);
     bool restoreTemplateParseProduct(std::string& loadError);
     void publishTemplateParseProduct();
