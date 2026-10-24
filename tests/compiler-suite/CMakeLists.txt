@@ -433,6 +433,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/PrecompiledProductCache.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/PrecompiledProductSidecarCodec.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/PrecompiledProjectPreparation.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/PrecompiledSemanticSnapshotCodec.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/PrecompiledSurfaceDemandCollection.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/PrecompiledSurfaceReachability.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Driver/PrecompiledSurface/ContractMaterialization.cpp"
