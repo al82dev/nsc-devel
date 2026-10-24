@@ -1,4 +1,5 @@
 #include "TemplateCatalogCodec.h"
+#include "SyntaxTreeWriteStep.h"
 
 #include "../../Cache/CachePayloadWriter.h"
 #include "../../Internal/InterfaceFingerprint.h"
@@ -12,9 +13,12 @@
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::frontend::internal
 {
@@ -360,40 +364,16 @@ static void applyTypeSyntaxOrigin(
     return true;
 }
 
-// NSC305-C01. Recursive serialization of a TypeSyntax: scalar fields, ordered type arguments,
-// function types, modifiers and const-expression carriers.
+static void appendSyntaxTree(std::string& out, const ast::AstNode* node, const ast::TypeSyntax* type);
+
+// NSC305-C01. Serialization of a TypeSyntax: scalar fields, ordered type arguments, function types,
+// modifiers and const-expression carriers (see appendSyntaxTree for the layout and the algorithm).
+// ES: Serialización de un TypeSyntax: campos escalares, argumentos de tipo en orden, tipos de función,
+//     modificadores y portadores de const-expression (ver appendSyntaxTree para el formato y el algoritmo).
 [[maybe_unused]] std::string serializeTypeSyntaxTree(const ast::TypeSyntax* type)
 {
-    if (type == nullptr) return {};
-    std::string out = serializeTypeSyntaxScalars(*type);
-    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(type->typeArguments().size()));
-    for (const ast::TypeSyntax* argument : type->typeArguments())
-        out += serializeTypeSyntaxTree(argument);
-    const bool hasReturn = type->functionReturnType() != nullptr;
-    const bool hasError = type->functionErrorType() != nullptr;
-    internal::CachePayloadWriter::byte(out, hasReturn ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, hasError ? 1U : 0U);
-    if (hasReturn) out += serializeTypeSyntaxTree(type->functionReturnType());
-    if (hasError) out += serializeTypeSyntaxTree(type->functionErrorType());
-    internal::CachePayloadWriter::u32(
-        out,
-        static_cast<std::uint32_t>(type->modifiers().size()));
-    for (const ast::TypeModifierSyntax& modifier : type->modifiers())
-    {
-        internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(modifier.kind));
-        writeSourceRange(out, modifier.range);
-        internal::CachePayloadWriter::u64(out, modifier.arrayRank);
-        internal::CachePayloadWriter::byte(
-            out,
-            static_cast<std::uint8_t>(modifier.pointerNullability));
-        internal::CachePayloadWriter::byte(out, modifier.pointerHasProvenance ? 1U : 0U);
-        internal::CachePayloadWriter::u64(out, modifier.pointerKnownAlignment);
-        internal::CachePayloadWriter::u32(out, modifier.pointerAddressSpace);
-        internal::CachePayloadWriter::byte(out, modifier.arrayCount != nullptr ? 1U : 0U);
-        if (modifier.arrayCount != nullptr) out += serializeAstNodeTree(modifier.arrayCount);
-    }
-    internal::CachePayloadWriter::byte(out, type->constExpression() != nullptr ? 1U : 0U);
-    if (type->constExpression() != nullptr) out += serializeAstNodeTree(type->constExpression());
+    std::string out;
+    appendSyntaxTree(out, nullptr, type);
     return out;
 }
 
@@ -657,8 +637,6 @@ static bool deserializeTypeSyntaxConstExpression(
     return node;
 }
 
-static std::string serializeGenericParameter(const ast::GenericParameterSyntax& parameter);
-static std::string serializeGenericConstraint(const ast::GenericConstraintClause& clause);
 static bool deserializeGenericParameter(
     ast::AstArena& arena,
     CachePayloadReader& reader,
@@ -670,15 +648,110 @@ static bool deserializeGenericConstraint(
     ast::GenericConstraintClause& clause,
     std::optional<FileId> relocatedFileId);
 
+namespace
+{
+using SyntaxStep = SyntaxTreeWriteStep;
+using SyntaxSteps = std::vector<SyntaxTreeWriteStep>;
+
+// EN: Schedules one step. The serializer pops the most recent step first, so a caller pushes the step that
+//     continues after a subtree before the subtree itself. O(1) amortized.
+// ES: Agenda un paso. El serializador saca primero el paso más reciente, así que quien llama apila el paso que
+//     continúa después de un subárbol antes que el subárbol. O(1) amortizado.
+void pushSyntaxStep(
+    SyntaxSteps& steps,
+    SyntaxStep::Kind kind,
+    const ast::AstNode* node,
+    const ast::TypeSyntax* type = nullptr,
+    std::size_t index = 0)
+{
+    steps.push_back(SyntaxStep{kind, node, type, index});
+}
+
+// EN: Node fields up to the two optional type slots: the scalars and the presence flags of the declared type and of
+//     the `throws` type. Schedules both slots and then the type list.
+// ES: Campos del nodo hasta las dos ranuras de tipo opcionales: los escalares y las banderas de presencia del tipo
+//     declarado y del tipo de `throws`. Agenda ambas ranuras y después la lista de tipos.
+void writeNodeHead(std::string& out, const ast::AstNode& node, SyntaxSteps& steps)
+{
+    out += serializeAstNodeScalars(node);
+    const ast::TypeSyntax* typeSyntax = node.typeSyntax();
+    const ast::TypeSyntax* throwsType = node.throwsTypeSyntax();
+    internal::CachePayloadWriter::byte(out, typeSyntax != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, throwsType != nullptr ? 1U : 0U);
+    pushSyntaxStep(steps, SyntaxStep::Kind::NodeTypeList, &node);
+    if (throwsType != nullptr) pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, throwsType);
+    if (typeSyntax != nullptr) pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, typeSyntax);
+}
+
+// EN: The count of the node's extra type syntaxes, then each of them in order (a null entry writes nothing, as
+//     before), then the declaration metadata.
+// ES: La cantidad de type syntaxes adicionales del nodo, luego cada una en orden (una entrada nula no escribe nada,
+//     como antes) y luego la metadata de declaración.
+void writeNodeTypeList(std::string& out, const ast::AstNode& node, SyntaxSteps& steps)
+{
+    const auto& syntaxes = node.typeSyntaxes();
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(syntaxes.size()));
+    pushSyntaxStep(steps, SyntaxStep::Kind::NodeMetadata, &node);
+    for (auto syntax = syntaxes.rbegin(); syntax != syntaxes.rend(); ++syntax)
+        pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, *syntax);
+}
+
 // Serializes declaration metadata that is neither a child node nor a TypeSyntax slot. These lists
 // preserve source order because generic binding and lifetime diagnostics observe that order.
-static void serializeAstNodeDeclarationMetadata(std::string& out, const ast::AstNode& node)
+// EN: This step writes the generic parameter count; the parameters follow one step each.
+// ES: Este paso escribe la cantidad de parámetros genéricos; cada parámetro sigue en su propio paso.
+void writeNodeMetadata(std::string& out, const ast::AstNode& node, SyntaxSteps& steps)
 {
     internal::CachePayloadWriter::u32(
         out,
         static_cast<std::uint32_t>(node.genericParameterSyntaxes().size()));
-    for (const ast::GenericParameterSyntax& parameter : node.genericParameterSyntaxes())
-        out += serializeGenericParameter(parameter);
+    pushSyntaxStep(steps, SyntaxStep::Kind::NodeGenericParameter, &node, nullptr, 0);
+}
+
+// NSC305-C01. GenericParameterSyntax + LifetimeParameterSyntax + LifetimeOutlivesConstraint (no
+// TypeSyntax recursion in the parameter; constantType is serialized as a full tree).
+// EN: Writes parameter `index` up to its constant type, which is scheduled before the parameter's range. After the
+//     last parameter, schedules the lifetime lists.
+// ES: Escribe el parámetro `index` hasta su tipo constante, que se agenda antes del rango del parámetro. Después
+//     del último parámetro agenda las listas de lifetimes.
+void writeNodeGenericParameter(
+    std::string& out,
+    const ast::AstNode& node,
+    std::size_t index,
+    SyntaxSteps& steps)
+{
+    const auto& parameters = node.genericParameterSyntaxes();
+    if (index >= parameters.size())
+    {
+        pushSyntaxStep(steps, SyntaxStep::Kind::NodeLifetimes, &node);
+        return;
+    }
+    const ast::GenericParameterSyntax& parameter = parameters[index];
+    internal::CachePayloadWriter::string(out, parameter.name);
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(parameter.kind));
+    internal::CachePayloadWriter::byte(out, parameter.constantType != nullptr ? 1U : 0U);
+    pushSyntaxStep(steps, SyntaxStep::Kind::NodeGenericParameterTail, &node, nullptr, index);
+    if (parameter.constantType != nullptr)
+        pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, parameter.constantType);
+}
+
+// EN: The range that closes generic parameter `index`, then the next parameter.
+// ES: El rango que cierra el parámetro genérico `index` y luego el parámetro siguiente.
+void writeNodeGenericParameterTail(
+    std::string& out,
+    const ast::AstNode& node,
+    std::size_t index,
+    SyntaxSteps& steps)
+{
+    writeSourceRange(out, node.genericParameterSyntaxes()[index].range);
+    pushSyntaxStep(steps, SyntaxStep::Kind::NodeGenericParameter, &node, nullptr, index + 1U);
+}
+
+// EN: The lifetime parameters and outlives constraints (plain fields), then the constraint count.
+// ES: Los parámetros de lifetime y las restricciones outlives (campos simples) y luego la cantidad de
+//     restricciones.
+void writeNodeLifetimes(std::string& out, const ast::AstNode& node, SyntaxSteps& steps)
+{
     internal::CachePayloadWriter::u32(
         out,
         static_cast<std::uint32_t>(node.lifetimeParameters().size()));
@@ -699,8 +772,277 @@ static void serializeAstNodeDeclarationMetadata(std::string& out, const ast::Ast
     internal::CachePayloadWriter::u32(
         out,
         static_cast<std::uint32_t>(node.genericConstraints().size()));
-    for (const ast::GenericConstraintClause& constraint : node.genericConstraints())
-        out += serializeGenericConstraint(constraint);
+    pushSyntaxStep(steps, SyntaxStep::Kind::NodeConstraint, &node, nullptr, 0);
+}
+
+// NSC305-C01. GenericConstraintClause (the source `where` clause; TypeSyntax references as trees).
+// EN: Writes clause `index` up to its equality constraint, which is scheduled before the projection. After the last
+//     clause, schedules the operand slots of the node.
+// ES: Escribe la cláusula `index` hasta su restricción de igualdad, que se agenda antes de la proyección. Después
+//     de la última cláusula agenda las ranuras de operandos del nodo.
+void writeNodeConstraint(
+    std::string& out,
+    const ast::AstNode& node,
+    std::size_t index,
+    SyntaxSteps& steps)
+{
+    if (index >= node.genericConstraints().size())
+    {
+        pushSyntaxStep(steps, SyntaxStep::Kind::NodeOperands, &node);
+        return;
+    }
+    const ast::GenericConstraintClause& clause = node.genericConstraints()[index];
+    internal::CachePayloadWriter::string(out, clause.parameterName);
+    writeSourceRange(out, clause.parameterRange);
+    internal::CachePayloadWriter::byte(out, clause.requiresClass ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresValueType ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresDefaultConstructor ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresCopy ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresMove ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresTrackedLifetime ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresUnmanaged ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresNotNull ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.requiresRefLike ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.equalityConstraint != nullptr ? 1U : 0U);
+    pushSyntaxStep(steps, SyntaxStep::Kind::NodeConstraintProjection, &node, nullptr, index);
+    if (clause.equalityConstraint != nullptr)
+        pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, clause.equalityConstraint);
+}
+
+// EN: The associated projection of clause `index`, then its type constraints.
+// ES: La proyección asociada de la cláusula `index` y luego sus restricciones de tipo.
+void writeNodeConstraintProjection(
+    std::string& out,
+    const ast::AstNode& node,
+    std::size_t index,
+    SyntaxSteps& steps)
+{
+    const ast::GenericConstraintClause& clause = node.genericConstraints()[index];
+    internal::CachePayloadWriter::byte(out, clause.associatedProjection != nullptr ? 1U : 0U);
+    pushSyntaxStep(steps, SyntaxStep::Kind::NodeConstraintTypes, &node, nullptr, index);
+    if (clause.associatedProjection != nullptr)
+        pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, clause.associatedProjection);
+}
+
+// EN: The count and the trees of the type constraints of clause `index`, then the clause tail.
+// ES: La cantidad y los árboles de las restricciones de tipo de la cláusula `index` y luego el final de la
+//     cláusula.
+void writeNodeConstraintTypes(
+    std::string& out,
+    const ast::AstNode& node,
+    std::size_t index,
+    SyntaxSteps& steps)
+{
+    const ast::GenericConstraintClause& clause = node.genericConstraints()[index];
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(clause.typeConstraints.size()));
+    pushSyntaxStep(steps, SyntaxStep::Kind::NodeConstraintTail, &node, nullptr, index);
+    for (auto constraint = clause.typeConstraints.rbegin();
+         constraint != clause.typeConstraints.rend();
+         ++constraint)
+    {
+        pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, *constraint);
+    }
+}
+
+// EN: The range and the substituted argument of clause `index`, then the next clause.
+// ES: El rango y el argumento sustituido de la cláusula `index` y luego la cláusula siguiente.
+void writeNodeConstraintTail(
+    std::string& out,
+    const ast::AstNode& node,
+    std::size_t index,
+    SyntaxSteps& steps)
+{
+    const ast::GenericConstraintClause& clause = node.genericConstraints()[index];
+    writeSourceRange(out, clause.range);
+    internal::CachePayloadWriter::byte(out, clause.substitutedArgument != nullptr ? 1U : 0U);
+    pushSyntaxStep(steps, SyntaxStep::Kind::NodeConstraint, &node, nullptr, index + 1U);
+    if (clause.substitutedArgument != nullptr)
+        pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, clause.substitutedArgument);
+}
+
+// EN: The presence flags of the three operand slots, then the present operands in order, then the ordered children.
+// ES: Las banderas de presencia de las tres ranuras de operandos, luego los operandos presentes en orden y luego
+//     los hijos en orden.
+void writeNodeOperands(std::string& out, const ast::AstNode& node, SyntaxSteps& steps)
+{
+    const ast::AstNode* first = node.first();
+    const ast::AstNode* second = node.second();
+    const ast::AstNode* third = node.third();
+    internal::CachePayloadWriter::byte(out, first != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, second != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, third != nullptr ? 1U : 0U);
+    pushSyntaxStep(steps, SyntaxStep::Kind::NodeChildren, &node);
+    if (third != nullptr) pushSyntaxStep(steps, SyntaxStep::Kind::Node, third);
+    if (second != nullptr) pushSyntaxStep(steps, SyntaxStep::Kind::Node, second);
+    if (first != nullptr) pushSyntaxStep(steps, SyntaxStep::Kind::Node, first);
+}
+
+// EN: The child count, then every child in order (a null child writes nothing, as before).
+// ES: La cantidad de hijos y luego cada hijo en orden (un hijo nulo no escribe nada, como antes).
+void writeNodeChildren(std::string& out, const ast::AstNode& node, SyntaxSteps& steps)
+{
+    const std::vector<ast::AstNode*>& children = node.children();
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(children.size()));
+    for (auto child = children.rbegin(); child != children.rend(); ++child)
+        pushSyntaxStep(steps, SyntaxStep::Kind::Node, *child);
+}
+
+// EN: Type fields up to the type arguments: the scalars and the argument count, then each argument.
+// ES: Campos del tipo hasta sus argumentos: los escalares y la cantidad de argumentos, y luego cada argumento.
+void writeTypeHead(std::string& out, const ast::TypeSyntax& type, SyntaxSteps& steps)
+{
+    out += serializeTypeSyntaxScalars(type);
+    const auto& arguments = type.typeArguments();
+    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(arguments.size()));
+    pushSyntaxStep(steps, SyntaxStep::Kind::TypeFunction, nullptr, &type);
+    for (auto argument = arguments.rbegin(); argument != arguments.rend(); ++argument)
+        pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, *argument);
+}
+
+// EN: The presence flags of the function return and error types, then both trees, then the modifiers.
+// ES: Las banderas de presencia de los tipos de retorno y de error de función, luego ambos árboles y luego los
+//     modificadores.
+void writeTypeFunction(std::string& out, const ast::TypeSyntax& type, SyntaxSteps& steps)
+{
+    const ast::TypeSyntax* returnType = type.functionReturnType();
+    const ast::TypeSyntax* errorType = type.functionErrorType();
+    internal::CachePayloadWriter::byte(out, returnType != nullptr ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, errorType != nullptr ? 1U : 0U);
+    pushSyntaxStep(steps, SyntaxStep::Kind::TypeModifiers, nullptr, &type);
+    if (errorType != nullptr) pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, errorType);
+    if (returnType != nullptr) pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, returnType);
+}
+
+// EN: The modifier count, then the first modifier.
+// ES: La cantidad de modificadores y luego el primer modificador.
+void writeTypeModifiers(std::string& out, const ast::TypeSyntax& type, SyntaxSteps& steps)
+{
+    internal::CachePayloadWriter::u32(
+        out,
+        static_cast<std::uint32_t>(type.modifiers().size()));
+    pushSyntaxStep(steps, SyntaxStep::Kind::TypeModifier, nullptr, &type, 0);
+}
+
+// EN: The fields of modifier `index`; its array count expression is scheduled before the next modifier. After the
+//     last modifier, schedules the const-expression slot.
+// ES: Los campos del modificador `index`; su expresión de longitud de arreglo se agenda antes del modificador
+//     siguiente. Después del último modificador agenda la ranura de const-expression.
+void writeTypeModifier(
+    std::string& out,
+    const ast::TypeSyntax& type,
+    std::size_t index,
+    SyntaxSteps& steps)
+{
+    if (index >= type.modifiers().size())
+    {
+        pushSyntaxStep(steps, SyntaxStep::Kind::TypeEnd, nullptr, &type);
+        return;
+    }
+    const ast::TypeModifierSyntax& modifier = type.modifiers()[index];
+    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(modifier.kind));
+    writeSourceRange(out, modifier.range);
+    internal::CachePayloadWriter::u64(out, modifier.arrayRank);
+    internal::CachePayloadWriter::byte(
+        out,
+        static_cast<std::uint8_t>(modifier.pointerNullability));
+    internal::CachePayloadWriter::byte(out, modifier.pointerHasProvenance ? 1U : 0U);
+    internal::CachePayloadWriter::u64(out, modifier.pointerKnownAlignment);
+    internal::CachePayloadWriter::u32(out, modifier.pointerAddressSpace);
+    internal::CachePayloadWriter::byte(out, modifier.arrayCount != nullptr ? 1U : 0U);
+    pushSyntaxStep(steps, SyntaxStep::Kind::TypeModifier, nullptr, &type, index + 1U);
+    if (modifier.arrayCount != nullptr)
+        pushSyntaxStep(steps, SyntaxStep::Kind::Node, modifier.arrayCount);
+}
+
+// EN: The const-expression carrier of a type: its presence flag and its tree.
+// ES: El portador de const-expression de un tipo: su bandera de presencia y su árbol.
+void writeTypeEnd(std::string& out, const ast::TypeSyntax& type, SyntaxSteps& steps)
+{
+    internal::CachePayloadWriter::byte(out, type.constExpression() != nullptr ? 1U : 0U);
+    if (type.constExpression() != nullptr)
+        pushSyntaxStep(steps, SyntaxStep::Kind::Node, type.constExpression());
+}
+
+// EN: Writes the fields of one step and schedules what follows it. A Node or Type step with a null subject writes
+//     nothing, exactly like the recursive serializer it replaces did for a null tree.
+// ES: Escribe los campos de un paso y agenda lo que le sigue. Un paso Node o Type con sujeto nulo no escribe nada,
+//     exactamente como el serializador recursivo que reemplaza hacía con un árbol nulo.
+void writeSyntaxStep(std::string& out, const SyntaxStep& step, SyntaxSteps& steps)
+{
+    if (step.kind == SyntaxStep::Kind::Type)
+    {
+        if (step.type != nullptr) writeTypeHead(out, *step.type, steps);
+        return;
+    }
+    if (step.kind == SyntaxStep::Kind::Node)
+    {
+        if (step.node != nullptr) writeNodeHead(out, *step.node, steps);
+        return;
+    }
+    switch (step.kind)
+    {
+    case SyntaxStep::Kind::NodeTypeList: writeNodeTypeList(out, *step.node, steps); return;
+    case SyntaxStep::Kind::NodeMetadata: writeNodeMetadata(out, *step.node, steps); return;
+    case SyntaxStep::Kind::NodeGenericParameter:
+        writeNodeGenericParameter(out, *step.node, step.index, steps);
+        return;
+    case SyntaxStep::Kind::NodeGenericParameterTail:
+        writeNodeGenericParameterTail(out, *step.node, step.index, steps);
+        return;
+    case SyntaxStep::Kind::NodeLifetimes: writeNodeLifetimes(out, *step.node, steps); return;
+    case SyntaxStep::Kind::NodeConstraint: writeNodeConstraint(out, *step.node, step.index, steps); return;
+    case SyntaxStep::Kind::NodeConstraintProjection:
+        writeNodeConstraintProjection(out, *step.node, step.index, steps);
+        return;
+    case SyntaxStep::Kind::NodeConstraintTypes:
+        writeNodeConstraintTypes(out, *step.node, step.index, steps);
+        return;
+    case SyntaxStep::Kind::NodeConstraintTail:
+        writeNodeConstraintTail(out, *step.node, step.index, steps);
+        return;
+    case SyntaxStep::Kind::NodeOperands: writeNodeOperands(out, *step.node, steps); return;
+    case SyntaxStep::Kind::NodeChildren: writeNodeChildren(out, *step.node, steps); return;
+    case SyntaxStep::Kind::TypeFunction: writeTypeFunction(out, *step.type, steps); return;
+    case SyntaxStep::Kind::TypeModifiers: writeTypeModifiers(out, *step.type, steps); return;
+    case SyntaxStep::Kind::TypeModifier: writeTypeModifier(out, *step.type, step.index, steps); return;
+    case SyntaxStep::Kind::TypeEnd: writeTypeEnd(out, *step.type, steps); return;
+    default: return;
+    }
+}
+}
+
+// EN: Appends the serialization of the tree rooted at `node`, or at `type` when `node` is null, to `out`.
+//     The format is the one the recursive serializer wrote: a node is its scalars, its declared and
+//     `throws` type slots, its extra type syntaxes, its declaration metadata, its three operands and its
+//     ordered children, and every nested tree is written in place where it appears. The recursive
+//     version built one string per subtree and copied it into its parent, so every byte was copied once
+//     per ancestor and the work grew with the product of size and depth. This version writes each byte
+//     once into `out`, using an explicit worklist of steps instead of recursion (stack depth no longer
+//     depends on the tree). O(size of the output) time; the worklist holds O(depth x fan-out) steps.
+//     Reads the trees only; safe to run concurrently on distinct or shared read-only trees.
+// ES: Agrega a `out` la serialización del árbol con raíz en `node`, o en `type` si `node` es nulo.
+//     El formato es el que escribía el serializador recursivo: un nodo son sus escalares, sus ranuras de
+//     tipo declarado y de `throws`, sus type syntaxes adicionales, su metadata de declaración, sus tres
+//     operandos y sus hijos en orden, y cada árbol anidado se escribe en el lugar donde aparece. La
+//     versión recursiva construía un string por subárbol y lo copiaba en el de su padre, así que cada
+//     byte se copiaba una vez por cada ancestro y el trabajo crecía con el producto de tamaño y
+//     profundidad. Esta versión escribe cada byte una sola vez en `out`, con una lista de pasos
+//     explícita en lugar de recursión (la profundidad de la pila ya no depende del árbol). Tiempo
+//     O(tamaño de la salida); la lista guarda O(profundidad x hijos) pasos. Solo lee los árboles; es
+//     seguro ejecutarla en paralelo sobre árboles distintos o compartidos de solo lectura.
+static void appendSyntaxTree(std::string& out, const ast::AstNode* node, const ast::TypeSyntax* type)
+{
+    SyntaxSteps steps;
+    if (node != nullptr)
+        pushSyntaxStep(steps, SyntaxStep::Kind::Node, node);
+    else if (type != nullptr)
+        pushSyntaxStep(steps, SyntaxStep::Kind::Type, nullptr, type);
+    while (!steps.empty())
+    {
+        const SyntaxStep step = steps.back();
+        steps.pop_back();
+        writeSyntaxStep(out, step, steps);
+    }
 }
 
 // Restores generic and lifetime metadata in the same deterministic order used by the parser.
@@ -761,34 +1103,14 @@ static bool deserializeAstNodeDeclarationMetadata(
     return true;
 }
 
-// NSC305-C01. Recursive serialization of a complete AstNode, including declaration metadata,
-// type syntax slots and every ordered child relationship.
+// NSC305-C01. Serialization of a complete AstNode, including declaration metadata, type syntax
+// slots and every ordered child relationship (see appendSyntaxTree for the layout and the algorithm).
+// ES: Serialización de un AstNode completo, con su metadata de declaración, sus ranuras de type syntax y
+//     cada relación de hijos en orden (ver appendSyntaxTree para el formato y el algoritmo).
 [[maybe_unused]] std::string serializeAstNodeTree(const ast::AstNode* node)
 {
-    if (node == nullptr) return {};
-    std::string out = serializeAstNodeScalars(*node);
-    const ast::TypeSyntax* typeSyntax = node->typeSyntax();
-    const ast::TypeSyntax* throwsType = node->throwsTypeSyntax();
-    internal::CachePayloadWriter::byte(out, typeSyntax != nullptr ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, throwsType != nullptr ? 1U : 0U);
-    if (typeSyntax != nullptr) out += serializeTypeSyntaxTree(typeSyntax);
-    if (throwsType != nullptr) out += serializeTypeSyntaxTree(throwsType);
-    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node->typeSyntaxes().size()));
-    for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
-        out += serializeTypeSyntaxTree(syntax);
-    serializeAstNodeDeclarationMetadata(out, *node);
-    const ast::AstNode* first = node->first();
-    const ast::AstNode* second = node->second();
-    const ast::AstNode* third = node->third();
-    internal::CachePayloadWriter::byte(out, first != nullptr ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, second != nullptr ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, third != nullptr ? 1U : 0U);
-    if (first != nullptr) out += serializeAstNodeTree(first);
-    if (second != nullptr) out += serializeAstNodeTree(second);
-    if (third != nullptr) out += serializeAstNodeTree(third);
-    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node->children().size()));
-    for (const ast::AstNode* child : node->children())
-        out += serializeAstNodeTree(child);
+    std::string out;
+    appendSyntaxTree(out, node, nullptr);
     return out;
 }
 
@@ -883,54 +1205,8 @@ ast::AstNode* deserializeAstNodeTree(
     return deserializeAstNodeTreeImpl(arena, reader, relocatedFileId);
 }
 
-// NSC305-C01. GenericParameterSyntax + LifetimeParameterSyntax + LifetimeOutlivesConstraint (no
-// TypeSyntax recursion in the parameter; constantType is serialized as a full tree).
-[[maybe_unused]] static std::string serializeGenericParameter(
-    const ast::GenericParameterSyntax& parameter)
-{
-    std::string out;
-    internal::CachePayloadWriter::string(out, parameter.name);
-    internal::CachePayloadWriter::byte(out, static_cast<std::uint8_t>(parameter.kind));
-    internal::CachePayloadWriter::byte(out, parameter.constantType != nullptr ? 1U : 0U);
-    if (parameter.constantType != nullptr)
-        out += serializeTypeSyntaxTree(parameter.constantType);
-    writeSourceRange(out, parameter.range);
-    return out;
-}
-
-// NSC305-C01. GenericConstraintClause (the source `where` clause; TypeSyntax references as trees).
-[[maybe_unused]] static std::string serializeGenericConstraint(
-    const ast::GenericConstraintClause& clause)
-{
-    std::string out;
-    internal::CachePayloadWriter::string(out, clause.parameterName);
-    writeSourceRange(out, clause.parameterRange);
-    internal::CachePayloadWriter::byte(out, clause.requiresClass ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, clause.requiresValueType ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, clause.requiresDefaultConstructor ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, clause.requiresCopy ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, clause.requiresMove ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, clause.requiresTrackedLifetime ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, clause.requiresUnmanaged ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, clause.requiresNotNull ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, clause.requiresRefLike ? 1U : 0U);
-    internal::CachePayloadWriter::byte(out, clause.equalityConstraint != nullptr ? 1U : 0U);
-    if (clause.equalityConstraint != nullptr)
-        out += serializeTypeSyntaxTree(clause.equalityConstraint);
-    internal::CachePayloadWriter::byte(out, clause.associatedProjection != nullptr ? 1U : 0U);
-    if (clause.associatedProjection != nullptr)
-        out += serializeTypeSyntaxTree(clause.associatedProjection);
-    internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(clause.typeConstraints.size()));
-    for (const ast::TypeSyntax* constraint : clause.typeConstraints)
-        out += serializeTypeSyntaxTree(constraint);
-    writeSourceRange(out, clause.range);
-    internal::CachePayloadWriter::byte(out, clause.substitutedArgument != nullptr ? 1U : 0U);
-    if (clause.substitutedArgument != nullptr)
-        out += serializeTypeSyntaxTree(clause.substitutedArgument);
-    return out;
-}
-
-// NSC305-C01. Inverse of serializeGenericParameter (allocates the constantType into `arena`).
+// NSC305-C01. Inverse of the generic parameter steps of appendSyntaxTree (allocates the constantType
+// into `arena`). ES: inverso de los pasos de parámetro genérico de appendSyntaxTree.
 [[maybe_unused]] static bool deserializeGenericParameter(
     ast::AstArena& arena,
     CachePayloadReader& reader,
@@ -954,7 +1230,8 @@ ast::AstNode* deserializeAstNodeTree(
     return true;
 }
 
-// NSC305-C01. Inverse of serializeGenericConstraint (allocates TypeSyntax references into `arena`).
+// NSC305-C01. Inverse of the generic constraint steps of appendSyntaxTree (allocates TypeSyntax
+// references into `arena`). ES: inverso de los pasos de restricción genérica de appendSyntaxTree.
 [[maybe_unused]] static bool deserializeGenericConstraint(
     ast::AstArena& arena,
     CachePayloadReader& reader,
@@ -1035,7 +1312,7 @@ ast::AstNode* deserializeAstNodeTree(
 [[maybe_unused]] std::string serializeCatalogEntry(const GenericTemplateRecord& record)
 {
     std::string out = serializeTemplateRecord(record);
-    out += serializeAstNodeTree(record.syntax);
+    appendSyntaxTree(out, record.syntax, nullptr);
     return out;
 }
 

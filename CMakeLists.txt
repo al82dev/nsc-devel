@@ -5976,6 +5976,21 @@ if(NSC_BUILD_TESTS)
         COMMAND nsc_precompiled_member_identity_index_tests)
 
     add_executable(
+        nsc_syntax_tree_serialization_equivalence_tests
+        tests/unit/SyntaxTreeSerializationEquivalenceTests.cpp)
+    target_link_libraries(
+        nsc_syntax_tree_serialization_equivalence_tests
+        PRIVATE nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_syntax_tree_serialization_equivalence_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_syntax_tree_serialization_equivalence_tests
+        PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_syntax_tree_serialization_equivalence_tests)
+    add_test(
+        NAME nsc.syntax-tree-serialization-equivalence
+        COMMAND nsc_syntax_tree_serialization_equivalence_tests)
+
+    add_executable(
         nsc_compiler_identity_command_tests
         tests/unit/CompilerIdentityCommandTests.cpp)
     target_link_libraries(nsc_compiler_identity_command_tests PRIVATE nsc_driver nsc_frontend nsc_target)
