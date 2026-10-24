@@ -34,5 +34,11 @@ struct PrecompiledSyntaxModule final
     // ES: Bytes del snapshot semántico de la unidad de API pública del `.nsproducts` publicado;
     //     vacío si el sidecar no lo trae o si no se usaron los productos publicados.
     std::string publicApiSnapshot;
+    // EN: True when the consumer's demand pruned the module surface (plan A1.4): its API unit is
+    //     generated from the pruned metadata, so no published snapshot applies to it.
+    // ES: True cuando la demanda del consumidor podó la superficie del módulo (plan A1.4): su
+    //     unidad de API se genera desde la metadata podada, así que ningún snapshot publicado le
+    //     aplica.
+    bool surfacePruned = false;
 };
 }

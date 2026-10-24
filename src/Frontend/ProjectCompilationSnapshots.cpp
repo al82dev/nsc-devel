@@ -104,6 +104,11 @@ bool ProjectCompilation::loadPrecompiledSnapshot(
         reason = "disabled";
         return false;
     }
+    if (module.surfacePruned)
+    {
+        reason = "pruned";
+        return false;
+    }
     if (module.publicApiSnapshot.empty())
     {
         reason = "absent";

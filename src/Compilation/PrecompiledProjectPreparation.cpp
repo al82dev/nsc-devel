@@ -452,7 +452,8 @@ bool materializeModules(
                 ? entry.productSidecarPath
                 : std::filesystem::path{},
             moduleMetadataDigest(entry, repository),
-            std::move(publicApiSnapshot)});
+            std::move(publicApiSnapshot),
+            pruned});
     }
     return true;
 }
