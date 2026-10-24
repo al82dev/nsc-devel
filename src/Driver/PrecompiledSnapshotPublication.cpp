@@ -2,6 +2,7 @@
 
 #include "../Frontend/Snapshot/MemberSnapshotCapture.h"
 #include "../Frontend/Snapshot/NameSnapshotCapture.h"
+#include "../Frontend/Snapshot/NamespaceMemberSnapshotCapture.h"
 
 #include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
 #include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
@@ -104,6 +105,8 @@ std::string captureSnapshotSections(const frontend::ProjectCompilation &referenc
     captureSection("name-declarations", frontend::captureNameDeclarationSnapshot, reference, capture, snapshot,
                    skipped);
     captureSection("members", frontend::captureMemberSnapshot, reference, capture, snapshot, skipped);
+    captureSection("namespace-members", frontend::captureNamespaceMemberSnapshot, reference, capture, snapshot,
+                   skipped);
     return skipped;
 }
 

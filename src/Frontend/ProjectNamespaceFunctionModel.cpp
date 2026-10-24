@@ -867,11 +867,17 @@ void ProjectNamespaceFunctionModel::collectNamespaceFunction(
     if (declaration.syntax == nullptr) return;
     const ast::AstNode& syntax = *declaration.syntax;
     NamespaceFunctionSymbol candidate;
-    initializeNamespaceFunction(candidate, declaration, nameLookup, memberModel, diagnostics);
-    collectNamespaceFunctionParameters(
-        candidate, declaration, syntax, nameLookup, memberModel, diagnostics, genericModel);
-    validateNamespaceFunctionLifetimes(candidate, syntax, diagnostics);
-    finalizeNamespaceFunctionIdentity(candidate, diagnostics);
+    // EN: A declaration of a restored API unit with a snapshot entry is installed (plan 3.4).
+    // ES: Una declaración de una unidad de API restaurada con entrada en el snapshot se instala (plan 3.4).
+    if (!installSnapshotFunction(declaration, candidate))
+    {
+        initializeNamespaceFunction(candidate, declaration, nameLookup, memberModel, diagnostics);
+        collectNamespaceFunctionParameters(
+            candidate, declaration, syntax, nameLookup, memberModel, diagnostics, genericModel);
+        validateNamespaceFunctionLifetimes(candidate, syntax, diagnostics);
+        finalizeNamespaceFunctionIdentity(candidate, diagnostics);
+        captureSnapshotFunction(declaration, candidate);
+    }
     mergeNamespaceFunction(
         std::move(candidate), declaration, diagnostics, symbolByIdentity, exportedCByName);
 }
@@ -904,26 +910,13 @@ void ProjectNamespaceFunctionModel::collectNamespaceState(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (declaration.syntax == nullptr) return;
-    const ast::AstNode& syntax = *declaration.syntax;
     NamespaceStateSymbol state;
-    state.accessibility = declaration.accessibility;
-    state.projectOrdinal = declaration.projectOrdinal;
-    state.sourceOrdinal = declaration.sourceOrdinal;
-    state.fileId = declaration.fileId;
-    state.range = declaration.range;
-    state.sourcePath = declaration.sourcePath;
-    state.moduleName = declaration.moduleName;
-    state.namespaceName = declaration.namespaceName;
-    state.name = declaration.name;
-    state.declaredTypeSyntax = syntax.typeSyntax();
-    state.declaredTypeKey = memberModel.canonicalTypeKey(syntax.typeSyntax(), nameLookup);
-    state.identityKey = "state:" + state.moduleName + "::" +
-        state.namespaceName + "." + state.name;
-    state.declarationSyntax = declaration.syntax;
-    state.initializerSyntax = syntax.first();
-    state.isConst = declaration.isConst;
-    state.isPrecompiled = declaration.isPrecompiled;
-    state.storageName = namespaceStateStorageName(state);
+    // EN: A declaration of a restored API unit with a snapshot entry is installed (plan 3.4); its
+    //     constant initializer was evaluated by the producer.
+    // ES: Una declaración de una unidad de API restaurada con entrada en el snapshot se instala
+    //     (plan 3.4); su inicializador constante lo evaluó el productor.
+    const bool installed = installSnapshotState(declaration, state);
+    if (!installed) initializeNamespaceState(state, declaration, nameLookup, memberModel);
 
     const std::string lookupKey =
         nameLookupKey(state.projectOrdinal, state.namespaceName, state.name);
@@ -942,7 +935,7 @@ void ProjectNamespaceFunctionModel::collectNamespaceState(
             "previous namespace state declaration is here");
         return;
     }
-    if (!initializeNamespaceStateConstant(state))
+    if (!installed && !initializeNamespaceStateConstant(state))
     {
         diagnostics.report(
             state.isConst
@@ -953,9 +946,37 @@ void ProjectNamespaceFunctionModel::collectNamespaceState(
             "namespace state '" + state.namespaceName + "." + state.name +
                 "' requires a constant initializer; dynamic initialization is not supported");
     }
+    if (!installed) captureSnapshotState(declaration, state);
     stateByName_.emplace(lookupKey, states_.size());
     statesByNamespaceName_[state.namespaceName][state.name].push_back(states_.size());
     states_.push_back(std::move(state));
+}
+
+void ProjectNamespaceFunctionModel::initializeNamespaceState(
+    NamespaceStateSymbol& state,
+    const NamespaceStateDeclaration& declaration,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel) const
+{
+    const ast::AstNode& syntax = *declaration.syntax;
+    state.accessibility = declaration.accessibility;
+    state.projectOrdinal = declaration.projectOrdinal;
+    state.sourceOrdinal = declaration.sourceOrdinal;
+    state.fileId = declaration.fileId;
+    state.range = declaration.range;
+    state.sourcePath = declaration.sourcePath;
+    state.moduleName = declaration.moduleName;
+    state.namespaceName = declaration.namespaceName;
+    state.name = declaration.name;
+    state.declaredTypeSyntax = syntax.typeSyntax();
+    state.declaredTypeKey = memberModel.canonicalTypeKey(syntax.typeSyntax(), nameLookup);
+    state.identityKey = "state:" + state.moduleName + "::" +
+        state.namespaceName + "." + state.name;
+    state.declarationSyntax = declaration.syntax;
+    state.initializerSyntax = syntax.first();
+    state.isConst = declaration.isConst;
+    state.isPrecompiled = declaration.isPrecompiled;
+    state.storageName = namespaceStateStorageName(state);
 }
 
 void ProjectNamespaceFunctionModel::collectNamespaceStates(

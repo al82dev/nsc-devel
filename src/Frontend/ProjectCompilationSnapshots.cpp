@@ -143,4 +143,28 @@ bool ProjectCompilation::buildMemberModel()
     }
     return true;
 }
+
+// EN: Builds the namespace function model with the accepted snapshots (plan 3.4) and, in the
+//     reference compilation of a producer, with the FileId of the captured API unit.
+// ES: Construye el modelo de funciones de namespace con los snapshots aceptados (plan 3.4) y, en la
+//     compilación de referencia de un productor, con el FileId de la unidad de API capturada.
+bool ProjectCompilation::buildNamespaceFunctionModel()
+{
+    namespaceFunctionModel_ = std::make_unique<ProjectNamespaceFunctionModel>();
+    namespaceFunctionModel_->setPrecompiledSnapshots(precompiledSnapshots_);
+    if (precompiledSnapshotCapture_.has_value())
+    {
+        namespaceFunctionModel_->setPrecompiledSnapshotCaptureFile(
+            units_[precompiledSnapshotCapture_->unitOrdinal]->fileId());
+    }
+    if (!namespaceFunctionModel_->build(*nameLookup_, *memberModel_, units_, diagnostics_, genericModel_.get()))
+        return false;
+    if (reportSink_ && !precompiledSnapshots_.empty())
+    {
+        reportSink_("precompiled-snapshot-install: namespace-functions=" +
+            std::to_string(namespaceFunctionModel_->installedSnapshotFunctionCount()) + " namespace-states=" +
+            std::to_string(namespaceFunctionModel_->installedSnapshotStateCount()));
+    }
+    return true;
+}
 }

@@ -216,6 +216,7 @@ private:
         std::span<const compilation::PrecompiledSnapshotDependency> loadedDependencies,
         std::string& reason);
     bool buildMemberModel();
+    bool buildNamespaceFunctionModel();
     bool calculateTemplateParseCacheKey(std::string& loadError);
     bool restoreTemplateParseProduct(std::string& loadError);
     void publishTemplateParseProduct();

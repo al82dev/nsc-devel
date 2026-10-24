@@ -461,9 +461,12 @@ add_library(nsc_frontend STATIC
     src/Frontend/Snapshot/ClassMemberSnapshotCodec.cpp
     src/Frontend/Snapshot/MemberSnapshotCapture.cpp
     src/Frontend/Snapshot/NameSnapshotCapture.cpp
+    src/Frontend/Snapshot/NamespaceMemberSnapshotCapture.cpp
+    src/Frontend/Snapshot/NamespaceMemberSnapshotCodec.cpp
     src/Frontend/Snapshot/PrecompiledSnapshotReader.cpp
     src/Frontend/Snapshot/PrecompiledSnapshotValidation.cpp
     src/Frontend/Snapshot/PrecompiledSnapshotWriter.cpp
+    src/Frontend/Snapshot/SnapshotCodecSupport.cpp
     src/Frontend/ProjectSyntaxUnit.cpp
     src/Frontend/NamespaceSymbol.cpp
     src/Frontend/QualifiedNameLadder.cpp
@@ -526,6 +529,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/MemberModel/SnapshotMembers.cpp
     src/Frontend/MemberModel/TypeIdentity.cpp
     src/Frontend/ProjectNamespaceFunctionModel.cpp
+    src/Frontend/ProjectNamespaceFunctionSnapshots.cpp
     src/Frontend/ProjectMemberModelDumper.cpp
     src/Frontend/ProjectInheritanceModel.cpp
     src/Frontend/ProjectInheritanceModelDumper.cpp

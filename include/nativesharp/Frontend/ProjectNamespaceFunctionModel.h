@@ -82,6 +82,30 @@ public:
     std::span<const NamespaceCompletionScope> completionScopes() const noexcept;
     bool isBuilt() const noexcept;
 
+    // EN: Plan item 3.4. Accepted snapshots of restored public API units, set before build(). A
+    //     namespace function or state whose declaration node has an entry in the `namespace-members`
+    //     section takes its symbol from it; the declaration-copied fields, merging, duplicate checks
+    //     and every index are still computed exactly as for a computed symbol.
+    // ES: Punto 3.4 del plan. Snapshots aceptados de unidades de API pública restauradas, asignados
+    //     antes de build(). Una función o un estado de namespace cuyo nodo de declaración tiene
+    //     entrada en la sección `namespace-members` toma de ella su símbolo; los campos copiados de
+    //     la declaración, la fusión, las comprobaciones de duplicados y todos los índices se siguen
+    //     calculando igual que para un símbolo calculado.
+    void setPrecompiledSnapshots(std::span<const PrecompiledSnapshotUnit> snapshots);
+    std::size_t installedSnapshotFunctionCount() const noexcept;
+    std::size_t installedSnapshotStateCount() const noexcept;
+    // EN: Producer side. The reference compilation names the FileId of its captured API unit before
+    //     build(); every function and state symbol computed from a declaration of that file is kept
+    //     and written by writePrecompiledSnapshotNamespaceMembers.
+    // ES: Lado productor. La compilación de referencia nombra el FileId de su unidad de API capturada
+    //     antes de build(); cada símbolo de función y de estado calculado desde una declaración de
+    //     ese archivo se conserva y lo escribe writePrecompiledSnapshotNamespaceMembers.
+    void setPrecompiledSnapshotCaptureFile(FileId fileId) noexcept;
+    bool writePrecompiledSnapshotNamespaceMembers(
+        const PrecompiledSyntaxNodeIndex& index,
+        std::string& payload,
+        std::string& error) const;
+
 private:
     // EN: namespace -> name -> ordinals of every project, filled next to functionsByName_ and
     //     stateByName_. A reference resolves with one lookup instead of one per visible project.
@@ -173,6 +197,23 @@ private:
         diagnostics::DiagnosticEngine& diagnostics,
         std::unordered_map<std::string, std::size_t>& symbolByIdentity,
         std::unordered_map<std::string, std::size_t>& exportedCByName);
+    bool installSnapshotFunction(
+        const NamespaceFunctionDeclaration& declaration,
+        NamespaceFunctionSymbol& candidate);
+    void captureSnapshotFunction(
+        const NamespaceFunctionDeclaration& declaration,
+        const NamespaceFunctionSymbol& candidate);
+    bool installSnapshotState(
+        const NamespaceStateDeclaration& declaration,
+        NamespaceStateSymbol& state);
+    void captureSnapshotState(
+        const NamespaceStateDeclaration& declaration,
+        const NamespaceStateSymbol& state);
+    void initializeNamespaceState(
+        NamespaceStateSymbol& state,
+        const NamespaceStateDeclaration& declaration,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel) const;
     void collectNamespaceStates(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
@@ -324,6 +365,13 @@ private:
     std::vector<NamespaceStateReferenceBinding> stateReferenceBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> stateReferenceBindingBySyntax_;
     std::vector<NamespaceCompletionScope> completionScopes_;
+    std::unordered_map<const ast::AstNode*, NamespaceFunctionSymbol> snapshotFunctions_;
+    std::unordered_map<const ast::AstNode*, NamespaceStateSymbol> snapshotStates_;
+    std::size_t installedSnapshotFunctions_ = 0;
+    std::size_t installedSnapshotStates_ = 0;
+    std::optional<FileId> snapshotCaptureFile_;
+    std::vector<std::pair<const ast::AstNode*, NamespaceFunctionSymbol>> capturedFunctions_;
+    std::vector<std::pair<const ast::AstNode*, NamespaceStateSymbol>> capturedStates_;
     bool built_ = false;
 };
 }

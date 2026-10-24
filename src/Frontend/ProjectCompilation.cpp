@@ -834,12 +834,7 @@ bool ProjectCompilation::compileProjectMembers(
         return false;
     }
 
-    namespaceFunctionModel_ = std::make_unique<ProjectNamespaceFunctionModel>();
-    if (!namespaceFunctionModel_->build(
-            *nameLookup_, *memberModel_, units_, diagnostics_, genericModel_.get()))
-    {
-        return false;
-    }
+    if (!buildNamespaceFunctionModel()) return false;
     std::vector<PrecompiledNamespaceFunctionIdentity> precompiledNamespaceFunctions;
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
