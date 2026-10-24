@@ -124,12 +124,16 @@ const std::string& TypeIdentity::validationError() const noexcept
     return validationError_;
 }
 
-std::string TypeIdentity::fullyQualifiedName() const
+// EN: Returns the cached fully qualified name built by `initializeNames`. O(1), no allocation.
+// ES: Devuelve el nombre completamente calificado que construyó `initializeNames`. O(1), sin reservar memoria.
+const std::string& TypeIdentity::fullyQualifiedName() const noexcept
 {
     return fullyQualifiedName_;
 }
 
-std::string TypeIdentity::key() const
+// EN: Returns the cached `Module::Name` key built by `initializeNames`. O(1), no allocation.
+// ES: Devuelve la clave `Modulo::Nombre` que construyó `initializeNames`. O(1), sin reservar memoria.
+const std::string& TypeIdentity::key() const noexcept
 {
     return key_;
 }
