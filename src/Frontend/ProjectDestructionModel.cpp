@@ -88,6 +88,7 @@ bool ProjectDestructionModel::build(
     inheritanceModel_ = &inheritanceModel;
     planByType_.resize(nameLookup.namedTypes().size());
     buildingType_.resize(nameLookup.namedTypes().size(), false);
+    readSnapshotDestruction();
 
     bool ok = true;
     for (const ClassInheritanceInfo& info : inheritanceModel.classes())
@@ -140,6 +141,11 @@ bool ProjectDestructionModel::buildClass(
         return false;
     }
     buildingType_[typeOrdinal] = true;
+    // EN: A class of a restored API unit with a snapshot entry takes its plan from it (plan 3.10).
+    // ES: Una clase de una unidad de API restaurada con entrada en el snapshot toma de ella su plan
+    //     (plan 3.10).
+    bool installedBuilt = false;
+    if (installSnapshotPlan(typeOrdinal, diagnostics, installedBuilt)) return installedBuilt;
 
     ClassDestructionPlan plan;
     initializeClassDestructionPlan(*nameLookup_, typeOrdinal, plan);

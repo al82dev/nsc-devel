@@ -973,9 +973,7 @@ bool ProjectCompilation::compileProjectDestruction(
     if (cancellationRequested(loadError, "destruction")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "destruction");
-    destructionModel_ = std::make_unique<ProjectDestructionModel>();
-    return destructionModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
+    return buildDestructionModel();
 }
 
 bool ProjectCompilation::compileProjectConstructions(

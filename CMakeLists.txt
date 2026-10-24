@@ -545,6 +545,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectVirtualDispatchSnapshots.cpp
     src/Frontend/ProjectVirtualDispatchModelDumper.cpp
     src/Frontend/ProjectDestructionModel.cpp
+    src/Frontend/ProjectDestructionSnapshots.cpp
     src/Frontend/ProjectDestructionModelDumper.cpp
     src/Frontend/ProjectTypeConversion.cpp
     src/Frontend/ProjectIntegerEvaluator.cpp

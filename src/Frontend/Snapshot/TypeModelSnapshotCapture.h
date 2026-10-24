@@ -31,4 +31,10 @@ bool captureDispatchSnapshot(
     const PrecompiledSnapshotUnit& capture,
     std::string& payload,
     std::string& error);
+
+bool captureDestructionSnapshot(
+    const ProjectCompilation& reference,
+    const PrecompiledSnapshotUnit& capture,
+    std::string& payload,
+    std::string& error);
 }

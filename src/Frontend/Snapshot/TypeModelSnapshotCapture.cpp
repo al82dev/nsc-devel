@@ -49,4 +49,16 @@ bool captureDispatchSnapshot(
     if (!cleanReference(reference, dispatch, error)) return false;
     return dispatch->writePrecompiledSnapshotDispatch(payload, error);
 }
+
+bool captureDestructionSnapshot(
+    const ProjectCompilation& reference,
+    const PrecompiledSnapshotUnit& capture,
+    std::string& payload,
+    std::string& error)
+{
+    static_cast<void>(capture);
+    const ProjectDestructionModel* const destruction = reference.destructionModel();
+    if (!cleanReference(reference, destruction, error)) return false;
+    return destruction->writePrecompiledSnapshotDestruction(payload, error);
+}
 }

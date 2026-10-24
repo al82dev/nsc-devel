@@ -227,4 +227,23 @@ bool ProjectCompilation::buildVirtualDispatchModel()
     }
     return built;
 }
+
+// EN: Builds the destruction model with the accepted snapshots (plan 3.10) and, in the reference
+//     compilation of a producer, with the FileId of the captured API unit.
+// ES: Construye el modelo de destrucción con los snapshots aceptados (plan 3.10) y, en la
+//     compilación de referencia de un productor, con el FileId de la unidad de API capturada.
+bool ProjectCompilation::buildDestructionModel()
+{
+    destructionModel_ = std::make_unique<ProjectDestructionModel>();
+    destructionModel_->setPrecompiledSnapshots(precompiledSnapshots_);
+    if (precompiledSnapshotCapture_.has_value())
+        destructionModel_->setPrecompiledSnapshotCaptureFile(precompiledSnapshotCapture_->fileId);
+    const bool built = destructionModel_->build(*nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
+    if (reportSink_ && !precompiledSnapshots_.empty())
+    {
+        reportSink_("precompiled-snapshot-install: destruction-classes=" +
+            std::to_string(destructionModel_->installedSnapshotClassCount()));
+    }
+    return built;
+}
 }
