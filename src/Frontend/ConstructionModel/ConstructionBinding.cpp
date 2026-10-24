@@ -185,6 +185,12 @@ void ProjectConstructionModel::evaluateConstructionCandidates(
     bool& accessibleMatchingArity) const
 {
     const ProjectConversionClassifier conversions(*inheritanceModel_, interfaceModel_, memberModel_);
+    // EN: One evaluated candidate is appended per explicit constructor; reserving avoids moving
+    //     the already evaluated candidates on every growth. Contents and order are unchanged.
+    // ES: Se agrega un candidato evaluado por constructor explícito; reservar evita mover los
+    //     candidatos ya evaluados en cada crecimiento. Contenido y orden no cambian.
+    binding.evaluatedCandidates.reserve(
+        binding.evaluatedCandidates.size() + binding.explicitConstructorMemberOrdinals.size());
     for (const std::size_t constructorOrdinal : binding.explicitConstructorMemberOrdinals)
     {
         const ClassMemberSymbol& constructor = memberModel_->members()[constructorOrdinal];
