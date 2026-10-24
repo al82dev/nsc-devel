@@ -1759,7 +1759,15 @@ bool ProjectCompilation::precompiledSyntaxProductPending(std::size_t index) cons
 //     posterior a genéricos hace que un hit posterior omita el descubrimiento de especializaciones, lo
 //     que pierde los alias de tipos cerrados que enlazan callables precompilados con su identidad
 //     física en NSMETA.
-void ProjectCompilation::capturePristineSyntaxProducts()
+// EN: The units are serialized on the syntax workers. Each task reads one unit, which no other task
+//     touches, and writes only its own slot of pristineSyntaxProductsByUnit_, which was sized before
+//     the first submission; the slots are read only after wait(). The snapshots are byte-identical to
+//     the sequential ones. wait() rethrows a task failure, as the sequential loop let it propagate.
+// ES: Las unidades se serializan en los workers sintácticos. Cada tarea lee una unidad que ninguna otra
+//     toca y escribe solo su propia ranura de pristineSyntaxProductsByUnit_, dimensionada antes de la
+//     primera tarea; las ranuras se leen solo después de wait(). Las fotografías son idénticas byte a
+//     byte a las secuenciales. wait() relanza el fallo de una tarea, como lo propagaba el bucle.
+void ProjectCompilation::capturePristineSyntaxProducts(driver::CompilationWorkerPool& syntaxWorkers)
 {
     pristineSyntaxProductsByUnit_.clear();
     const bool publishesCorpus = !templateParseCacheHit_ && !templateCacheRoot_.empty() &&
@@ -1779,9 +1787,13 @@ void ProjectCompilation::capturePristineSyntaxProducts()
         }
         if (publishesCorpus || precompiledSyntaxProductPending(index))
         {
-            pristineSyntaxProductsByUnit_[index] = internal::serializeSyntaxProductUnit(*unit);
+            syntaxWorkers.submit([this, unit, index](std::size_t)
+            {
+                pristineSyntaxProductsByUnit_[index] = internal::serializeSyntaxProductUnit(*unit);
+            });
         }
     }
+    syntaxWorkers.wait();
 }
 
 // EN: Returns the pristine snapshot of the unit at `index`, or an empty view when none was taken.
@@ -1818,7 +1830,7 @@ bool ProjectCompilation::produceSyntaxCorpus(
         {
             return false;
         }
-        capturePristineSyntaxProducts();
+        capturePristineSyntaxProducts(syntaxWorkers);
         return true;
     }
 
@@ -1831,7 +1843,7 @@ bool ProjectCompilation::produceSyntaxCorpus(
     {
         return false;
     }
-    capturePristineSyntaxProducts();
+    capturePristineSyntaxProducts(syntaxWorkers);
     return true;
 }
 

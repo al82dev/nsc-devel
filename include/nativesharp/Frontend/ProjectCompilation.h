@@ -192,7 +192,7 @@ private:
     void publishTemplateParseProduct();
     void publishPrecompiledSyntaxProducts();
     bool precompiledSyntaxProductPending(std::size_t index) const noexcept;
-    void capturePristineSyntaxProducts();
+    void capturePristineSyntaxProducts(driver::CompilationWorkerPool& syntaxWorkers);
     std::string_view pristineSyntaxProduct(std::size_t index) const noexcept;
     void releasePristineSyntaxProducts() noexcept;
     bool produceSyntaxCorpus(
