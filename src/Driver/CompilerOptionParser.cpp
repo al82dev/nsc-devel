@@ -83,7 +83,7 @@ OptionResult handleProgress(OptionContext& context)
     context.error << "nsc: error: " << compilerText(
         "unsupported progress format '", "formato de progreso no compatible '")
                   << value << compilerText(
-                       "'; expected text or json\n", "'; se esperaba text o json\n");
+                       "'; expected files, text or json\n", "'; se esperaba files, text o json\n");
     return matched(ExitCode::CommandLineError);
 }
 

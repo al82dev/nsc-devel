@@ -56,6 +56,7 @@ struct DriverExecutionScope final
     bool reportTiming = false;
     bool reportProgress = false;
     ProgressFormat progressFormat = ProgressFormat::Text;
+    std::size_t reportedSourceCount = 0;
 };
 
 extern thread_local DriverExecutionScope *activeExecutionScope;

@@ -141,6 +141,11 @@ void appendTimeTracePhases(
 
 bool parseProgressFormat(std::string_view value, ProgressFormat& format) noexcept
 {
+    if (value == "files")
+    {
+        format = ProgressFormat::Files;
+        return true;
+    }
     if (value == "text")
     {
         format = ProgressFormat::Text;
@@ -170,6 +175,13 @@ std::string renderCompilationEvent(
     const basic::CompilationEvent& event,
     ProgressFormat format)
 {
+    if (format == ProgressFormat::Files)
+    {
+        if (event.kind != basic::CompilationEventKind::WorkFinished || event.phase != "syntax-read")
+            return {};
+        return "[" + std::to_string(event.current) + "/" + std::to_string(event.total) +
+            "] Compiling " + std::string(event.detail);
+    }
     const auto durationMicroseconds =
         std::chrono::duration_cast<std::chrono::microseconds>(event.duration).count();
     if (format == ProgressFormat::Json)

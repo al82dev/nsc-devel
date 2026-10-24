@@ -956,9 +956,9 @@ bool parseBuildProgressOption(
     if (!enablesProgress && !argument.starts_with(formatPrefix)) return false;
     const std::string_view prefix = enablesProgress ? progressPrefix : formatPrefix;
     const std::string_view value = argument.substr(prefix.size());
-    if (value != "text" && value != "json")
+    if (value != "files" && value != "text" && value != "json")
     {
-        error = "progress format must be text or json";
+        error = "progress format must be files, text or json";
         return false;
     }
     if ((enablesProgress && options.progress) || options.progressFormat.has_value())
