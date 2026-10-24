@@ -73,6 +73,18 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
 bool writeVerifiedLibraryMetadata(const frontend::ProjectCompilation &compilation,
                                   const std::filesystem::path &destination, std::string &error,
                                   interop::LibraryMetadata *writtenModel = nullptr);
+// EN: Plan items 2.1-2.4. After the verified NSMETA and its `.nsproducts` are written, compiles an
+//     empty consumer of the library in memory and publishes the semantic snapshot of its public
+//     API unit. Never fails the build: without a snapshot consumers take today's path.
+// ES: Puntos 2.1 a 2.4 del plan. Después de escribir la NSMETA verificada y su `.nsproducts`,
+//     compila en memoria un consumidor vacío de la biblioteca y publica el snapshot semántico de su
+//     unidad de API pública. Nunca hace fallar el build: sin snapshot los consumidores van por la
+//     ruta de hoy.
+void publishPrecompiledSnapshot(const frontend::ProjectCompilation &compilation,
+                                const std::filesystem::path &metadataPath);
+bool buildPrecompiledSnapshotReference(const frontend::ProjectCompilation &producer,
+                                       const std::filesystem::path &metadataPath,
+                                       frontend::ProjectCompilation &reference, std::string &error);
 
 std::optional<compilation::CompilationInputManifest> loadCompilationInputManifest(
     const std::filesystem::path &projectFile, std::string &error);

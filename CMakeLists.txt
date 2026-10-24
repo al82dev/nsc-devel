@@ -1036,6 +1036,7 @@ add_library(nsc_driver STATIC
     src/Driver/NumericContract.cpp
     src/Driver/PackageLifecycle.cpp
     src/Driver/PrecompiledModuleConfiguration.cpp
+    src/Driver/PrecompiledSnapshotPublication.cpp
     src/Driver/ProjectCommands.cpp
     src/Driver/PromotionAct.cpp
     src/Driver/ReleaseCandidateFreeze.cpp

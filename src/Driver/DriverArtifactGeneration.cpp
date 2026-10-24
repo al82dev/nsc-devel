@@ -452,6 +452,7 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
         error << "nsc: error: Stage 48.2 static-library metadata generation failed: " << metadataError << '\n';
         return false;
     }
+    publishPrecompiledSnapshot(compilation, publication.metadataStage);
     if (!artifactPublisher.commit(buildError))
     {
         error << "nsc: error: static-library publication failed: " << buildError << '\n';
@@ -857,6 +858,7 @@ bool buildDynamicLibraryProduct(const std::filesystem::path &destination,
         error << "nsc: error: Stage 48.2 DLL metadata generation failed: " << metadataError << '\n';
         return false;
     }
+    publishPrecompiledSnapshot(compilation, publication.metadataStage);
     return true;
 }
 

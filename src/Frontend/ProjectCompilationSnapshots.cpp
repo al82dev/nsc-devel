@@ -21,6 +21,16 @@ std::span<const PrecompiledSnapshotUnit> ProjectCompilation::precompiledSnapshot
     return precompiledSnapshots_;
 }
 
+const compilation::ProjectLoadOptions& ProjectCompilation::projectLoadOptions() const noexcept
+{
+    return projectLoadOptions_;
+}
+
+std::size_t ProjectCompilation::compilationJobs() const noexcept
+{
+    return compilationJobs_;
+}
+
 // EN: Plan item 1.7 (subphase `precompiled-snapshot`). For each precompiled module with a restored
 //     public API unit: decode its snapshot, check it against the loaded dependencies and the
 //     restored tree, and keep it when it passes. A module without a usable snapshot takes today's

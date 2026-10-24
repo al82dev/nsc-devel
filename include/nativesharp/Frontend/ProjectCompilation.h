@@ -57,6 +57,8 @@ public:
     void setLifetime(ProjectCompilationLifetime& lifetime) noexcept;
     void setCompilationJobs(std::size_t jobs) noexcept;
     void setProjectLoadOptions(compilation::ProjectLoadOptions options);
+    const compilation::ProjectLoadOptions& projectLoadOptions() const noexcept;
+    std::size_t compilationJobs() const noexcept;
     void setTemplateCacheRoot(std::filesystem::path root);
     const std::filesystem::path& precompiledProductCacheRoot() const noexcept;
     void setCancellationCheck(std::function<bool()> check);
