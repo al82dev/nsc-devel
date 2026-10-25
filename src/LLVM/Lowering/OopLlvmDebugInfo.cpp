@@ -1193,10 +1193,46 @@ LLVMMetadataRef OopLlvmImplementation::debugOwnershipType(
         if (qualifiedPointee == nullptr)
         {
             const std::string uniqueId = "nativesharp:ownership:" + cacheKey;
-            qualifiedPointee = LLVMDIBuilderCreateStructType(
-                debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
-                64, 64, LLVMDIFlagArtificial, nullptr, nullptr, 0, 0, nullptr,
-                uniqueId.data(), uniqueId.size());
+            // ES: Si el tipo físico tiene un pointee publicado (la cabecera de un arreglo o de un
+            // string), el envoltorio hereda de él como el de una clase. Sin esa herencia el
+            // envoltorio quedaba vacío y nada referenciaba la cabecera: si ningún otro símbolo la
+            // usaba (`raii Pair[]` en DeepMemory) LLVM no la emitía y el depurador no podía
+            // expandir el arreglo.
+            // EN: When the physical type has a published pointee (the header of an array or of a
+            // string), the wrapper inherits from it like a class wrapper does. Without that
+            // inheritance the wrapper was empty and nothing referenced the header: when no other
+            // symbol used it (`raii Pair[]` in DeepMemory) LLVM did not emit it and the debugger
+            // could not expand the array.
+            const auto base = debugPointeeTypes_.find(std::string(typeKey));
+            const std::uint64_t baseBits = base != debugPointeeTypes_.end()
+                ? LLVMDITypeGetSizeInBits(base->second) : 0;
+            if (baseBits > 0)
+            {
+                LLVMMetadataRef temporary = LLVMDIBuilderCreateReplaceableCompositeType(
+                    debugBuilder_, LLVMDWARFTagStructureType, name.data(), name.size(),
+                    debugCompileUnit_, file, line, 0, baseBits, 64, LLVMDIFlagArtificial,
+                    uniqueId.data(), uniqueId.size());
+                LLVMMetadataRef inheritance = temporary != nullptr
+                    ? LLVMDIBuilderCreateInheritance(
+                        debugBuilder_, temporary, base->second, 0, 0, LLVMDIFlagPublic)
+                    : nullptr;
+                LLVMMetadataRef elements[] = {inheritance};
+                qualifiedPointee = inheritance != nullptr
+                    ? LLVMDIBuilderCreateStructType(
+                        debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
+                        baseBits, 64, LLVMDIFlagArtificial, nullptr, elements, 1, 0, nullptr,
+                        uniqueId.data(), uniqueId.size())
+                    : nullptr;
+                if (temporary != nullptr && qualifiedPointee != nullptr)
+                    LLVMMetadataReplaceAllUsesWith(temporary, qualifiedPointee);
+            }
+            if (qualifiedPointee == nullptr)
+            {
+                qualifiedPointee = LLVMDIBuilderCreateStructType(
+                    debugBuilder_, debugCompileUnit_, name.data(), name.size(), file, line,
+                    64, 64, LLVMDIFlagArtificial, nullptr, nullptr, 0, 0, nullptr,
+                    uniqueId.data(), uniqueId.size());
+            }
         }
         LLVMMetadataRef qualified = qualifiedPointee != nullptr
             ? LLVMDIBuilderCreatePointerType(
