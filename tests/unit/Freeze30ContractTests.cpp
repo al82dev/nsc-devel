@@ -1495,6 +1495,28 @@ class Program
     }
 }
 )ns", 22013, true);
+    // EN: LinkedList<T> keeps each value in an `owned T[]` slot of one element; the removed value
+    //     belongs to the caller and every remaining value is dropped once by Clear().
+    // ES: LinkedList<T> guarda cada valor en un slot `owned T[]` de un elemento; el valor removido
+    //     es del llamador y cada valor restante se destruye una vez en Clear().
+    expectRun(tests, root, "C12LinkedList", prelude + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int before = 0;
+        {
+            raii LinkedList<Guard> list = new LinkedList<Guard>();
+            list.AddLast(Factory.Make(1));
+            list.AddLast(Factory.Make(2));
+            list.AddLast(Factory.Make(3));
+            Guard first = list.RemoveFirst();
+            before = Counter.Drops;
+        }
+        return before * 1000 + Counter.Drops;
+    }
+}
+)ns", 123, true);
 }
 
 int main()
