@@ -1,0 +1,32 @@
+namespace NativeSharp.Core
+{
+    // NativeSharp.Core.IDisposable -- freeze 3.0, C-07.
+    //
+    // EN: The `using (T x = e) { ... }` statement calls `Dispose()` on `x` exactly once when the
+    //     block exits -- normally, through return/break/continue, or through an exception. The
+    //     compiler has required this interface by its fully qualified name since Stage 45, but it
+    //     was never shipped, so every project had to declare it by hand before `using` could be
+    //     written. It is shipped here once, the same way `NativeSharp.Core.Exception` is.
+    //
+    //     Dispose and the destructor are two different obligations. `Dispose()` releases what the
+    //     object controls (a handle, a lock, a buffer it lends out) at the end of the `using`
+    //     block; the destructor still runs when the object's owner ends its lifetime. A type may
+    //     implement both: `using` does not destroy the object, it only disposes it, and a type
+    //     whose Dispose already released everything keeps a destructor that tolerates that.
+    //
+    // ES: La sentencia `using (T x = e) { ... }` llama `Dispose()` sobre `x` exactamente una vez
+    //     al salir del bloque -- normalmente, por return/break/continue o por una excepcion. El
+    //     compilador exige esta interfaz por su nombre completo desde la Stage 45, pero nunca se
+    //     publico, asi que cada proyecto tenia que declararla a mano antes de poder escribir
+    //     `using`. Se publica aqui una vez, igual que `NativeSharp.Core.Exception`.
+    //
+    //     Dispose y el destructor son obligaciones distintas. `Dispose()` libera lo que el objeto
+    //     controla (un handle, un candado, un buffer que presta) al final del bloque `using`; el
+    //     destructor sigue corriendo cuando el dueno del objeto termina su vida. Un tipo puede
+    //     implementar ambos: `using` no destruye el objeto, solo lo dispone, y un tipo cuyo
+    //     Dispose ya libero todo conserva un destructor que lo tolera.
+    public interface IDisposable
+    {
+        void Dispose();
+    }
+}

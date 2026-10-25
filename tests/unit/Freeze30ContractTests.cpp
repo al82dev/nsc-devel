@@ -205,6 +205,43 @@ class Program
 }
 )ns", 0);
 }
+
+/// EN: C-07. NativeSharp.Core publishes IDisposable: `using` compiles against the library without
+///     a local declaration and calls Dispose exactly once on every exit path.
+/// ES: C-07. NativeSharp.Core publica IDisposable: `using` compila contra la biblioteca sin una
+///     declaracion local y llama Dispose exactamente una vez en cada salida.
+void testCoreDisposable(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C07CoreDisposable", R"ns(
+using NativeSharp.Core;
+
+class Handle : IDisposable
+{
+    public static int Disposed = 0;
+    public void Dispose() { Disposed = Disposed + 1; }
+}
+
+class Program
+{
+    public static int Work(bool early)
+    {
+        using (Handle handle = new Handle())
+        {
+            if (early) { return 1; }
+        }
+        return 2;
+    }
+
+    public static int Main()
+    {
+        int first = Work(true);
+        int second = Work(false);
+        if (first != 1 || second != 2) { return 9; }
+        return Handle.Disposed;
+    }
+}
+)ns", 2);
+}
 }
 
 int main()
@@ -216,5 +253,6 @@ int main()
     std::filesystem::create_directories(root, filesystemError);
 
     testAllocatorAlignment(tests, root);
+    testCoreDisposable(tests, root);
     return tests.resultKeeping(root);
 }
