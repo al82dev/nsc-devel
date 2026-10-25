@@ -27,6 +27,7 @@
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
+#include "nativesharp/LLVM/ThinLtoLibrarySidecarCodec.h"
 
 #include <algorithm>
 #include <array>
@@ -415,6 +416,38 @@ bool appendOptionalProductSidecar(
         package, "precompiled-products", sidecar, destinationBase, error);
 }
 
+// EN: Restores the ThinLTO bitcode sidecar of a static library with the library, when the package
+//     has one (optimization part 2, item 52). A DLL's import library never gets one: the DLL
+//     boundary is a binary contract. A sidecar the package already lists in "files" is not added
+//     twice. Its hash enters the lock like every other artifact.
+// ES: Restaura el sidecar de bitcode ThinLTO de una biblioteca estatica junto con la biblioteca,
+//     cuando el paquete lo trae (parte 2, punto 52). La biblioteca de importacion de una DLL nunca
+//     lo lleva: el limite de la DLL es un contrato binario. Un sidecar que el paquete ya lista en
+//     "files" no se agrega dos veces. Su hash entra al lock como cualquier otro artefacto.
+bool appendOptionalThinLtoSidecar(
+    RestoredPackage& package,
+    const fs::path& library,
+    const fs::path& destinationBase,
+    std::string& error)
+{
+    const fs::path sidecar = llvm_backend::ThinLtoLibrarySidecarCodec::pathFor(library);
+    const fs::path source = package.sourceRoot / sidecar;
+    std::error_code fileError;
+    if (!fs::is_regular_file(source, fileError))
+    {
+        if (!fileError || fileError == std::errc::no_such_file_or_directory)
+            return true;
+        error = "cannot inspect package ThinLTO sidecar '" + source.string() + "': " + fileError.message();
+        return false;
+    }
+    const fs::path destination = destinationBase / sidecar.filename();
+    for (const Artifact& artifact : package.artifacts)
+    {
+        if (artifact.relativeDestination == destination) return true;
+    }
+    return appendArtifact(package, "thinlto-sidecar", sidecar, destinationBase, error);
+}
+
 std::optional<fs::path> packageManifest(const fs::path& root)
 {
     for (const char* name : {"NativeSharp.package.json", "package.json", ".nspackage.json"})
@@ -476,6 +509,7 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
         { error = "package manifest must contain at least one library"; return false; }
         std::vector<fs::path> metadataArtifacts;
         metadataArtifacts.reserve(libraries->array()->size());
+        std::vector<fs::path> staticLibraries;
         for (const Json& library : *libraries->array())
         {
             const fs::path metadataArtifact =
@@ -486,6 +520,7 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
             metadataArtifacts.push_back(metadataArtifact);
             const std::string runtime = stringMember(library, "runtime");
             if (!runtime.empty() && !appendArtifact(package, "runtime", runtime, destinationBase, error)) return false;
+            if (runtime.empty()) staticLibraries.push_back(stringMember(library, "library"));
         }
         if (const Json* files = member(root, "files"))
         {
@@ -502,6 +537,10 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
             if (!appendOptionalProductSidecar(
                     package, metadataArtifact, destinationBase, error))
                 return false;
+        }
+        for (const fs::path& staticLibrary : staticLibraries)
+        {
+            if (!appendOptionalThinLtoSidecar(package, staticLibrary, destinationBase, error)) return false;
         }
     }
     else
@@ -526,6 +565,8 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
         if (!appendOptionalProductSidecar(
                 package, metadata.front(), destinationBase, error)) return false;
         if (!runtimes.empty() && !appendArtifact(package, "runtime", runtimes.front(), destinationBase, error))
+            return false;
+        if (runtimes.empty() && !appendOptionalThinLtoSidecar(package, libraries.front(), destinationBase, error))
             return false;
     }
     return true;
@@ -1188,6 +1229,13 @@ std::vector<DependencyProvenance> dependencyProvenance(
             if (!reference.runtimePath.empty()) artifacts.push_back(reference.runtimePath);
             if (!reference.productSidecarPath.empty())
                 artifacts.push_back(reference.productSidecarPath);
+            // The ThinLTO sidecar of a static library is part of what the build consumed (item 52).
+            // El sidecar ThinLTO de una biblioteca estatica es parte de lo que consumio el build.
+            const fs::path thinLtoSidecar =
+                llvm_backend::ThinLtoLibrarySidecarCodec::pathFor(reference.libraryPath);
+            std::error_code sidecarError;
+            if (reference.runtimePath.empty() && fs::is_regular_file(thinLtoSidecar, sidecarError))
+                artifacts.push_back(thinLtoSidecar);
             records.push_back(DependencyProvenance{
                 "library-reference", reference.metadataPath.stem().string(),
                 reference.libraryPath,

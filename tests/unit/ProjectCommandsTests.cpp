@@ -6,10 +6,12 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace
@@ -227,6 +229,50 @@ int main()
         const ExitCode code = run({"restore", project.string(), "--verify", "--output-format=json"}, output, error);
         tests.expect(code == ExitCode::Success && output.str().find("Restore verified") != std::string::npos,
                      "restore verify accepts matching hashes without rewriting packages");
+    }
+
+    // Optimization part 2, item 52: restore brings the ThinLTO sidecar of a static library with the
+    // library, and never the one beside a DLL's import library.
+    // Parte 2, punto 52: restore trae el sidecar ThinLTO de una biblioteca estatica con la biblioteca,
+    // y nunca el que esta junto a la biblioteca de importacion de una DLL.
+    {
+        const fs::path thinRoot = root / "ThinRestore";
+        const fs::path thinProject = thinRoot / "ThinRestore.nsproj";
+        std::ostringstream newOutput;
+        std::ostringstream newError;
+        const ExitCode created =
+            run({"new", "console", "-n", "ThinRestore", "-o", thinRoot.string()}, newOutput, newError);
+        tests.expect(created == ExitCode::Success, "new creates the ThinLTO restore project");
+        const fs::path staticPackage = root / "packages" / "NativeSharp.Thin" / "1.0.0";
+        writeFile(staticPackage / "NativeSharp.Thin.lib", "archive");
+        writeFile(staticPackage / "NativeSharp.Thin.nsmeta", "metadata");
+        writeFile(staticPackage / "NativeSharp.Thin.nsthinlto", "sidecar");
+        const fs::path dllPackage = root / "packages" / "NativeSharp.ThinDll" / "1.0.0";
+        writeFile(dllPackage / "NativeSharp.ThinDll.lib", "import");
+        writeFile(dllPackage / "NativeSharp.ThinDll.nsmeta", "metadata");
+        writeFile(dllPackage / "NativeSharp.ThinDll.dll", "runtime");
+        writeFile(dllPackage / "NativeSharp.ThinDll.nsthinlto", "sidecar");
+        for (const auto& [id, source] : {std::pair{std::string("NativeSharp.Thin"), staticPackage},
+                                         std::pair{std::string("NativeSharp.ThinDll"), dllPackage}})
+        {
+            std::ostringstream output;
+            std::ostringstream error;
+            tests.expect(run({"add", "package", id, "--version", "1.0.0", "--source", source.string(),
+                              thinProject.string()}, output, error) == ExitCode::Success,
+                         "add package records the ThinLTO restore dependency " + id);
+        }
+        std::ostringstream output;
+        std::ostringstream error;
+        const ExitCode code = run({"restore", thinProject.string(), "--output-format=json"}, output, error);
+        const fs::path restored = thinRoot / "obj/nativesharp/packages";
+        std::ifstream lockStream(thinRoot / "NativeSharp.lock.json", std::ios::binary);
+        const std::string lock{std::istreambuf_iterator<char>(lockStream), {}};
+        tests.expect(code == ExitCode::Success &&
+                         fs::is_regular_file(restored / "NativeSharp.Thin/1.0.0/NativeSharp.Thin.nsthinlto") &&
+                         lock.find("thinlto-sidecar") != std::string::npos,
+                     "restore materializes and locks the ThinLTO sidecar of a static library: " + error.str());
+        tests.expect(!fs::is_regular_file(restored / "NativeSharp.ThinDll/1.0.0/NativeSharp.ThinDll.nsthinlto"),
+                     "restore leaves out a ThinLTO sidecar beside a DLL import library");
     }
 
     {
