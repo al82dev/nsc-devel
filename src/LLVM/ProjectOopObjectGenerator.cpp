@@ -450,7 +450,8 @@ std::string preOptimizationObjectKey(
 /// EN: Second-level reuse: restores the object of a unit whose MIR identity missed but whose
 ///     pre-optimization IR equals one already compiled.
 ///     Parameters: `cache` may be null; `usePreOptimizationCache` gates the feature (off only for
-///     ThinLTO; unlike the MIR cache it stays on with full debug information, because every debug
+///     ThinLTO until optimization part 2 item 7, always on with a cache since then; unlike the MIR
+///     cache it stays on with full debug information, because every debug
 ///     record is part of the IR that forms the key); `irKey` receives the key so the caller
 ///     can also store the freshly emitted object under it; `complete` becomes true on a hit, in
 ///     which case `cacheHit` is 1, `cacheMiss` is 0 and optimization and emission are skipped.
@@ -462,7 +463,8 @@ std::string preOptimizationObjectKey(
 /// ES: Reuso de segundo nivel: restaura el objeto de una unidad cuya identidad MIR fallo pero cuyo
 ///     IR previo a la optimizacion es igual a uno ya compilado.
 ///     Parametros: `cache` puede ser null; `usePreOptimizationCache` habilita la funcion (apagada
-///     solo con ThinLTO; a diferencia del cache MIR sigue activa con depuracion completa, porque
+///     solo con ThinLTO hasta el punto 7 de la parte 2, siempre activa con cache desde entonces; a
+///     diferencia del cache MIR sigue activa con depuracion completa, porque
 ///     toda la metadata de depuracion forma parte del IR de la clave); `irKey` recibe la clave
 ///     para que el llamador guarde tambien con ella el objeto recien emitido; `complete` queda
 ///     en true en un acierto, con `cacheHit` en 1, `cacheMiss` en 0 y sin optimizar ni emitir.
@@ -919,23 +921,40 @@ std::string combineModuleTexts(const std::vector<std::string>& moduleTexts)
     return combined;
 }
 
-std::string thinLtoIndexDigest(const std::vector<std::string>& moduleTexts)
+/// EN: Digest of the partitioned build that `-flto=thin` reports: the SHA-256 of every emitted
+///     object in ordinal order. Returns false with `error` when an object cannot be read.
+///     Why: v1 hashed the optimized textual IR, which forced ThinLTO to print every module and to
+///     skip the pre-LLVM and pre-optimization caches (a cache hit has no module to print). The
+///     objects are byte-identical for identical input whatever the worker count or cache state,
+///     so they give the same reproducibility without either cost (optimization part 2, item 7).
+/// ES: Digest del build particionado que reporta `-flto=thin`: el SHA-256 de cada objeto emitido
+///     en orden de ordinal. Devuelve false con `error` cuando no se puede leer un objeto.
+///     Motivo: v1 hacia hash del IR textual optimizado, lo que obligaba a ThinLTO a imprimir cada
+///     modulo y a saltarse los caches pre-LLVM y pre-optimizacion (un acierto no tiene modulo que
+///     imprimir). Los objetos son identicos byte a byte para la misma entrada sin importar workers
+///     ni estado del cache, asi que dan la misma reproducibilidad sin ningun costo (optimizacion
+///     parte 2, punto 7).
+bool thinLtoIndexDigest(
+    const std::vector<std::filesystem::path>& objectFiles,
+    std::string& digest,
+    std::string& error)
 {
     // The index is independent of temporary paths, scheduling and cache state. Each optimized
     // partition contributes in stable ordinal order, matching ThinLTO's summary-before-backend
     // contract while native object generation remains embarrassingly parallel.
-    std::string index = "NativeSharp.ThinLTO.Index.v1\n";
-    for (std::size_t ordinal = 0; ordinal < moduleTexts.size(); ++ordinal)
+    std::string index = "NativeSharp.ThinLTO.Index.v2\n";
+    for (std::size_t ordinal = 0; ordinal < objectFiles.size(); ++ordinal)
     {
-        const auto bytes = std::span<const std::uint8_t>(
-            reinterpret_cast<const std::uint8_t*>(moduleTexts[ordinal].data()),
-            moduleTexts[ordinal].size());
-        index += std::to_string(ordinal) + ":" +
-            basic::sha256Hex(basic::sha256(bytes)) + "\n";
+        basic::Sha256Digest objectDigest{};
+        std::uintmax_t size = 0;
+        if (!basic::sha256File(objectFiles[ordinal], objectDigest, size, error)) return false;
+        index += std::to_string(ordinal) + ":" + std::to_string(size) + ":" +
+            basic::sha256Hex(objectDigest) + "\n";
     }
     const auto bytes = std::span<const std::uint8_t>(
         reinterpret_cast<const std::uint8_t*>(index.data()), index.size());
-    return basic::sha256Hex(basic::sha256(bytes));
+    digest = basic::sha256Hex(basic::sha256(bytes));
+    return true;
 }
 
 }
@@ -1022,8 +1041,12 @@ bool ProjectOopObjectGenerator::finishCodeUnitBundle(
     if (preserveModuleText) result.combinedLlvmText_ = combineModuleTexts(moduleTexts);
     if (linkTimeOptimization == LinkTimeOptimizationMode::Thin)
     {
-        result.thinLtoSummaryCount_ = moduleTexts.size();
-        result.thinLtoIndexDigest_ = thinLtoIndexDigest(moduleTexts);
+        result.thinLtoSummaryCount_ = result.objectFiles_.size();
+        if (!thinLtoIndexDigest(result.objectFiles_, result.thinLtoIndexDigest_, error))
+        {
+            error = "could not index the ThinLTO code units: " + error;
+            return false;
+        }
     }
     return true;
 }
@@ -1090,12 +1113,14 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     const std::string codeGenerationPolicy = codeGenerationPolicyIdentity(linkTimeOptimization);
     // Full debug information uses the pre-LLVM cache too, with the identity of
     // combineFullDebugCacheIdentity (sources, paths, prefix maps and model dumps).
-    const bool usePreLlvmCache = cache != nullptr && cache->enabled() &&
-        linkTimeOptimization != LinkTimeOptimizationMode::Thin;
+    // -flto=thin keeps both caches: its index hashes the emitted objects, and the code-generation
+    // policy in every key already separates its cache domain (optimization part 2, item 7).
+    // -flto=thin conserva ambos caches: su indice hace hash de los objetos emitidos y la politica
+    // de generacion de codigo de cada llave ya separa su dominio de cache (parte 2, punto 7).
+    const bool usePreLlvmCache = cache != nullptr && cache->enabled();
     // Reuse by pre-optimization IR does not depend on the MIR identity, so it also covers full
     // debug information: lowering is still paid, optimization and emission are skipped on a hit.
-    const bool usePreOptimizationCache = cache != nullptr && cache->enabled() &&
-        linkTimeOptimization != LinkTimeOptimizationMode::Thin;
+    const bool usePreOptimizationCache = cache != nullptr && cache->enabled();
     ColdLlvmTrace coldLlvmTrace(
         kCodegenCacheIdentity, functionAnalysis.projectFingerprint(), debugInformation,
         optimizationLevel, moduleCount, usePartitions, usePreLlvmCache,
