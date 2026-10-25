@@ -546,11 +546,13 @@ LLVMErrorRef LLVMRunPasses(
 // the functions that actually declare a Windows SEH personality (LLVMHasPersonalityFn), instead
 // of promoting every -O0 local in the whole program -- see that function's own header comment
 // for why a module-wide mem2reg-at-O0 would be the wrong fix.
-LLVMErrorRef LLVMRunPassesOnFunction(
-    LLVMValueRef function,
-    const char* passes,
-    LLVMTargetMachineRef targetMachine,
-    LLVMPassBuilderOptionsRef options);
+// LEGALIZACION SEH DE B-001 RETIRADA / B-001 SEH LEGALIZATION RETIRED.
+// ES: La legalizacion se retiro (commit "Retire the -O0 mem2reg legalization of functions with a catch") y
+// ya nadie llama a LLVMRunPassesOnFunction, asi que su declaracion se quito; el comentario de arriba queda como
+// historia.
+// EN: The legalization was retired (commit "Retire the -O0 mem2reg legalization of functions with a catch")
+// and nothing calls LLVMRunPassesOnFunction anymore, so its declaration was removed; the comment above stays
+// as history.
 char* LLVMGetErrorMessage(LLVMErrorRef error);
 void LLVMDisposeErrorMessage(char* errorMessage);
 LLVMValueRef LLVMGetFirstFunction(LLVMModuleRef module);
@@ -560,11 +562,12 @@ LLVMValueRef LLVMGetNextFunction(LLVMValueRef function);
 // `catchswitch`. / Debugger-visible locals at -O0: the B-001 SEH legalization must only touch
 // functions with a real `catch`. These three symbols walk a function's blocks and recognize its
 // `catchswitch`.
-LLVMBasicBlockRef LLVMGetFirstBasicBlock(LLVMValueRef function);
-LLVMBasicBlockRef LLVMGetNextBasicBlock(LLVMBasicBlockRef block);
-LLVMValueRef LLVMIsACatchSwitchInst(LLVMValueRef value);
+// ES: Con la legalizacion retirada, LLVMGetFirstBasicBlock, LLVMGetNextBasicBlock, LLVMIsACatchSwitchInst y
+// LLVMHasPersonalityFn ya no se usan y se quitaron. LLVMIsDeclaration sigue en uso (LlvmNativeSanitizer).
+// EN: With the legalization retired, LLVMGetFirstBasicBlock, LLVMGetNextBasicBlock, LLVMIsACatchSwitchInst and
+// LLVMHasPersonalityFn are no longer used and were removed. LLVMIsDeclaration is still used
+// (LlvmNativeSanitizer).
 LLVMBool LLVMIsDeclaration(LLVMValueRef global);
-LLVMBool LLVMHasPersonalityFn(LLVMValueRef function);
 
 LLVMTypeRef LLVMVoidTypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMInt1TypeInContext(LLVMContextRef context);
