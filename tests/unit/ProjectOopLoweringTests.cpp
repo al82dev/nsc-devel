@@ -3026,6 +3026,88 @@ public class Work
             error + ")");
 }
 
+/// EN: The code partition no longer depends on the worker count: the same MIR generated with one
+///     worker and with sixteen workers must give byte-identical objects (O2 without debug
+///     information and O0 with full debug information, whose CodeView feeds the PDB), and objects
+///     cached by a one-worker build must be reused by a sixteen-worker build.
+/// ES: La particion de codigo ya no depende del numero de workers: el mismo MIR generado con un
+///     worker y con dieciseis debe dar objetos identicos byte a byte (O2 sin informacion de
+///     depuracion y O0 con informacion completa, cuyo CodeView alimenta el PDB), y los objetos que
+///     guarda un build de un worker deben reutilizarse en un build de dieciseis.
+void testWorkerIndependentPartitions(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "WorkerIndependentPartitions";
+    writeProject(directory, "WorkerIndependent");
+    std::string source = "public class Work\n{\n";
+    for (int index = 0; index < 24; ++index)
+    {
+        source += "    public static noinline int F" + std::to_string(index) + "(int value) { return value * " +
+            std::to_string(index + 3) + " + " + std::to_string(index) + "; }\n";
+    }
+    source += "    public static int Main() { return F0(1) + F23(2); }\n}\n";
+    writeFile(directory / "Work.ns", source);
+
+    ProjectCompilation compilation;
+    compilation.setCompilationJobs(4);
+    std::string error;
+    const bool compiled = compilation.compileProjectOopMir(
+        directory / "WorkerIndependent.nsproj", error);
+    tests.expect(compiled && compilation.oopMirModel() != nullptr,
+        "worker-independent partition fixture produces OOP MIR (" + error + ")");
+    if (!compiled || compilation.oopMirModel() == nullptr) return;
+
+    struct Profile
+    {
+        nativesharp::llvm_backend::DebugInformationKind debugInformation;
+        nativesharp::llvm_backend::LlvmOptimizationLevel optimizationLevel;
+        std::string name;
+    };
+    const Profile profiles[] = {
+        {nativesharp::llvm_backend::DebugInformationKind::None,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O2, "O2"},
+        {nativesharp::llvm_backend::DebugInformationKind::Full,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O0, "O0-g"}};
+    nativesharp::llvm_backend::ProjectOopObjectGenerator generator;
+    for (const Profile& profile : profiles)
+    {
+        nativesharp::llvm_backend::CompilationArtifactCache sharedCache;
+        sharedCache.setRoot(directory / ("shared-cache-" + profile.name));
+        sharedCache.setCodegenIdentity("worker-independent-partitions");
+        std::unique_ptr<nativesharp::llvm_backend::ProjectOopObjectBundle> oneWorker;
+        std::unique_ptr<nativesharp::llvm_backend::ProjectOopObjectBundle> reused;
+        {
+            nativesharp::llvm_backend::CompilationArtifactCacheScope scope(sharedCache);
+            error.clear();
+            oneWorker = generator.generate(
+                *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+                compilation.sourceManager(), profile.debugInformation, profile.optimizationLevel,
+                1, {}, error);
+            std::string reusedError;
+            reused = generator.generate(
+                *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+                compilation.sourceManager(), profile.debugInformation, profile.optimizationLevel,
+                16, {}, reusedError);
+            tests.expect(oneWorker != nullptr && reused != nullptr && oneWorker->codeUnitCount() > 1 &&
+                    reused->cacheMissCount() == 0 &&
+                    reused->cacheHitCount() == reused->objectFiles().size(),
+                profile.name + ": a sixteen-worker build reuses every object of a one-worker build (" +
+                    error + reusedError + ")");
+        }
+        nativesharp::llvm_backend::CompilationArtifactCache cleanCache;
+        cleanCache.setRoot(directory / ("clean-cache-" + profile.name));
+        cleanCache.setCodegenIdentity("worker-independent-partitions");
+        nativesharp::llvm_backend::CompilationArtifactCacheScope cleanScope(cleanCache);
+        error.clear();
+        auto sixteenWorkers = generator.generate(
+            *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+            compilation.sourceManager(), profile.debugInformation, profile.optimizationLevel,
+            16, {}, error);
+        tests.expect(oneWorker != nullptr && sixteenWorkers != nullptr &&
+                sixteenWorkers->cacheHitCount() == 0 && sameObjectFiles(*oneWorker, *sixteenWorkers),
+            profile.name + ": one worker and sixteen workers emit byte-identical objects (" + error + ")");
+    }
+}
+
 void testPartitionStaticFieldReachability(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path directory = root / "PartitionStaticFieldReachability";
@@ -21414,6 +21496,10 @@ int main()
     {
         testPreciseIncrementalInvalidation(tests, root);
     }
+    else if (focusValue == "worker-independent-partitions")
+    {
+        testWorkerIndependentPartitions(tests, root);
+    }
     else if (focusValue == "hir-default-argument-depth")
     {
         testDeepOptionalDefaultHir(tests, root);
@@ -21788,6 +21874,7 @@ int main()
         testAggregateCallableBoundary(tests, root);
         testNarrowSignedEnumNameLowering(tests, root);
         testPreciseIncrementalInvalidation(tests, root);
+        testWorkerIndependentPartitions(tests, root);
         testPartitionStaticFieldReachability(tests, root);
         testImportedConstantCoordinatorReachability(tests);
         testSharedLlvmAnalysis(tests, root);
