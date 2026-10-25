@@ -1279,6 +1279,17 @@ LLVMMetadataRef OopLlvmImplementation::debugOwnershipType(
         LLVMMetadataRef physical = debugType(typeKey);
         if (automaticDestruction) ownership = sema::OwnershipKind::Owned;
         if (physical == nullptr || ownership == sema::OwnershipKind::None) return physical;
+        // ES: El envoltorio de ownership es un puntero a un tipo que hereda del pointee. Un struct
+        // o un enum se guardan por valor, asi que no tienen pointee: `Point p = new Point(1, 2)`
+        // se declaraba "owned Point*" y el depurador leia los bytes del struct como una direccion.
+        // Un valor se describe con su tipo fisico.
+        // EN: The ownership wrapper is a pointer to a type that derives from the pointee. A struct
+        // or an enum is stored by value, so it has no pointee: `Point p = new Point(1, 2)` was
+        // declared "owned Point*" and the debugger read the struct's bytes as an address. A value
+        // is described with its physical type.
+        if (findStructLayout(mirModel_, typeKey) != nullptr ||
+            findEnumUnderlyingInfo(nameLookup_, typeKey) != nullptr)
+            return physical;
 
         const std::string qualifier = automaticDestruction
             ? "raii"
