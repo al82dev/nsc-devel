@@ -115,7 +115,8 @@ constexpr std::string_view kProjectActions[] = {
     "--dump-project-constructions", "--check-project-layouts", "--dump-project-layouts",
     "--check-project-oop-hir", "--dump-project-oop-hir", "--check-project-oop-mir",
     "--dump-project-oop-mir", "--explain-project-costs", "--explain-project-costs-json",
-    "--verify-project-oop-llvm", "--dump-project-oop-llvm"};
+    "--verify-project-oop-llvm", "--dump-project-oop-llvm", "--verify-project-oop-llvm-opt",
+    "--dump-project-oop-llvm-opt"};
 
 constexpr std::string_view kFrontendActions[] = {
     "--check", "--dump-source", "--dump-tokens", "--dump-ast", "--dump-symbols",
@@ -283,7 +284,7 @@ CompilerActionDispatcher::dispatchSingleArgument() const
                << action << "'\n";
         return ExitCode::CommandLineError;
     }
-    return Driver::runFrontend(
+    return Driver::runSourceFile(
         "--program", action, invocation_.optimizationLevel, output_, error_);
 }
 
@@ -419,9 +420,9 @@ CompilerActionDispatcher::dispatchLibraryAndFrontend(std::string_view action) co
     if (action == "--dump-api-surface")
         return Driver::dumpLibraryApiSurface(arguments_[1], output_, error_);
     if (containsAction(kProjectActions, action))
-        return Driver::runProject(action, arguments_[1], output_, error_);
+        return Driver::runProject(action, arguments_[1], output_, error_, invocation_.optimizationLevel);
     if (containsAction(kFrontendActions, action))
-        return Driver::runFrontend(
+        return Driver::runSourceFile(
             action, arguments_[1], invocation_.optimizationLevel, output_, error_);
     return {};
 }

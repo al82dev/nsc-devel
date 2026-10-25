@@ -2,13 +2,24 @@
   "id": "nsc.dump-symbols",
   "component": "sema",
   "kind": "dump",
-  "sources": ["full_frontend.ns"],
-  "arguments": ["--dump-symbols", "{source:0}"],
+  "sources": [
+    "full_frontend.ns"
+  ],
+  "arguments": [
+    "--dump-symbols",
+    "{source:0}"
+  ],
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {"mode": "regex", "text": "Function Main.*defined"}
+    "stdout": {
+      "mode": "regex",
+      "text": "module\\[1\\] full_frontend"
+    }
   },
-  "tags": ["legacy-parity", "o0-only"],
+  "tags": [
+    "legacy-parity",
+    "o0-only"
+  ],
   "requires": []
 }

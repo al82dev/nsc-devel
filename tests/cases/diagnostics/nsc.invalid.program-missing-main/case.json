@@ -2,16 +2,23 @@
   "id": "nsc.invalid.program-missing-main",
   "component": "diagnostics",
   "kind": "compile-only",
-  "sources": ["library_unit.ns"],
-  "arguments": ["{source:0}"],
+  "sources": [
+    "library_unit.ns"
+  ],
+  "arguments": [
+    "{source:0}"
+  ],
   "optimization": "O0",
   "expected": {
     "exit_code": 1,
     "stderr": {
       "mode": "contains",
-      "text": "executable compilation requires exactly one definition of int Main()"
+      "text": "OOP executable requires exactly one int Main()"
     }
   },
-  "tags": ["integration", "negative"],
+  "tags": [
+    "integration",
+    "negative"
+  ],
   "requires": []
 }

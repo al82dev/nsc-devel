@@ -163,4 +163,42 @@ void ProjectNameLookup::resolveTypeNameBinding(
             candidateList(binding.candidateTypeOrdinals, namedTypes_));
 }
 
+void ProjectNameLookup::reportUnsupportedGlobalDeclarations(
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
+    {
+        if (unit == nullptr || unit->isPrecompiled() || unit->syntaxTree() == nullptr) continue;
+        // EN: Only namespace scopes are walked; a class keeps its own `extern C from` blocks.
+        // ES: Solo se recorren ambitos de namespace; una clase conserva sus bloques `extern C from`.
+        std::vector<std::pair<const ast::AstNode*, bool>> pending = {{unit->syntaxTree(), true}};
+        while (!pending.empty())
+        {
+            const auto [scope, globalNamespace] = pending.back();
+            pending.pop_back();
+            for (const ast::AstNode* child : scope->children())
+            {
+                if (child == nullptr) continue;
+                if (child->kind() == ast::AstNodeKind::NamespaceDeclaration)
+                    pending.push_back({child, false});
+                else if (child->kind() == ast::AstNodeKind::ExternCDeclaration)
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        child->range(),
+                        "an 'extern C' import outside a class is not supported in NativeSharp 3.0; "
+                        "declare it in a class: extern C from \"<library>.dll\" { ... }");
+                else if (globalNamespace && child->kind() == ast::AstNodeKind::GlobalVariableDeclaration)
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::ExpectedDeclaration,
+                        diagnostics::DiagnosticSeverity::Error,
+                        child->range(),
+                        "a variable outside every namespace is not supported in NativeSharp 3.0; "
+                        "declare it inside a namespace or as a static field");
+            }
+        }
+    }
+}
+
 }

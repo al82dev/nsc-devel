@@ -14,7 +14,7 @@
     "exit_code": 0,
     "stdout": {
       "mode": "contains",
-      "text": "phi i32"
+      "text": "phi i1"
     }
   },
   "tags": [

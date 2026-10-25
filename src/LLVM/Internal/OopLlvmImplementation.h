@@ -1343,7 +1343,10 @@ private:
     void collectCoroutineSuspensions(const frontend::ProjectOopMirNode* root);
     LLVMValueRef ensureCoroutineFrame(
         const frontend::ProjectOopMirFunction& function, std::string& error);
-    void aliasCoroutineFrameLocals(const frontend::ProjectOopMirFunction& function);
+    bool aliasCoroutineFrameLocals(
+        const frontend::ProjectOopMirFunction& function, std::string& error);
+    LLVMValueRef ensureCoroutineCaptureCell(
+        LLVMValueRef cellSlot, std::string_view typeKey, std::size_t localOrdinal, std::string& error);
     void zeroCoroutineDropFlags(LLVMValueRef frame, const frontend::ProjectOopMirFunction& function);
     bool emitCoroutineDoneReturn(const frontend::ProjectOopMirFunction& function, std::string& error);
     bool finishCoroutineDispatch(std::string& error);
@@ -3432,6 +3435,11 @@ private:
     std::unordered_map<std::size_t, LLVMValueRef> stackObjectStorage_;
     std::unordered_map<std::size_t, LLVMValueRef> parameterCaptureCells_;
     std::unordered_map<std::size_t, LLVMValueRef> localCaptureCells_;
+    // EN: Freeze 3.0 C-05. Captured locals of a frame-resident coroutine: their cell is created on
+    //     the first entry and found in the frame on every resume (local ordinal -> value type).
+    // ES: Congelamiento 3.0 C-05. Locales capturados de una corrutina con frame: su celda se crea
+    //     en la primera entrada y se encuentra en el frame en cada reanudacion (ordinal -> tipo).
+    std::unordered_map<std::size_t, std::string> coroutineCapturedLocals_;
     LLVMValueRef thisCaptureCell_ = nullptr;
     std::vector<LLVMValueRef> ownedCaptureCells_;
     LLVMBasicBlockRef captureCellExceptionalCleanupBlock_ = nullptr;

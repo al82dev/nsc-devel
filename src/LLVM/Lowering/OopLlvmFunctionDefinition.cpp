@@ -79,6 +79,7 @@ void OopLlvmImplementation::prepareFunctionDefinitionState(
         stackObjectStorage_.clear();
         parameterCaptureCells_.clear();
         localCaptureCells_.clear();
+        coroutineCapturedLocals_.clear();
         thisCaptureCell_ = nullptr;
         ownedCaptureCells_.clear();
         captureCellExceptionalCleanupBlock_ = nullptr;
@@ -280,7 +281,7 @@ bool OopLlvmImplementation::prepareFunctionCleanupState(
             }
         }
         const bool hasExceptionalControl = function.exceptionFlow.requiresPersonality;
-        if (hasExceptionalControl || !ownedCaptureCells_.empty())
+        if (hasExceptionalControl || !ownedCaptureCells_.empty() || !coroutineCapturedLocals_.empty())
             LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
         if (function.constructor || function.returnTypeKey == "builtin:void" ||
             !hasExceptionalControl) return true;
@@ -390,6 +391,19 @@ bool OopLlvmImplementation::collectLocalStorage(
             currentMirFunction_->capturedLocalOrdinals,
             *node->localOrdinal) != currentMirFunction_->capturedLocalOrdinals.end();
         LLVMValueRef slot = nullptr;
+        if (captured && currentMirFunction_->mangledName.ends_with("$moveNext$poll"))
+            return fail(error, "a lambda that captures a local of an async generator is not supported "
+                "in NativeSharp 3.0; capture a copy made outside the generator");
+        if (captured && isFrameResidentCoroutine(*currentMirFunction_))
+        {
+            // EN: Freeze 3.0 C-05: the cell outlives this call; aliasCoroutineFrameLocals finds it
+            //     in the frame or creates it on the first entry.
+            // ES: Congelamiento 3.0 C-05: la celda sobrevive a esta llamada;
+            //     aliasCoroutineFrameLocals la encuentra en el frame o la crea en la primera entrada.
+            coroutineCapturedLocals_.emplace(*node->localOrdinal, typeKey);
+            localStorage_[*node->localOrdinal] = nullptr;
+            return true;
+        }
         if (captured)
         {
             LLVMValueRef cell = allocateCaptureCell(

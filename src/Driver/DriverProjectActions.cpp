@@ -65,7 +65,8 @@ bool compileProjectAction(std::string_view action, std::string_view path,
                           frontend::ProjectCompilation &projectCompilation, std::string &loadError, bool &oopLlvmAction,
                           bool &oopHirAction)
 {
-    oopLlvmAction = action == "--verify-project-oop-llvm" || action == "--dump-project-oop-llvm";
+    oopLlvmAction = action == "--verify-project-oop-llvm" || action == "--dump-project-oop-llvm" ||
+                    action == "--verify-project-oop-llvm-opt" || action == "--dump-project-oop-llvm-opt";
     const bool oopMirAction = oopLlvmAction || action == "--check-project-oop-mir" ||
                               action == "--dump-project-oop-mir" || action == "--explain-project-costs" ||
                               action == "--explain-project-costs-json";
@@ -224,7 +225,8 @@ void dumpProjectSemanticModels(std::string_view action, frontend::ProjectCompila
 
 bool lowerProjectLlvm(std::string_view action, bool oopLlvmAction, bool success,
                       frontend::ProjectCompilation &projectCompilation,
-                      std::unique_ptr<llvm_backend::LlvmModule> &oopLlvmModule, std::ostream &output,
+                      std::unique_ptr<llvm_backend::LlvmModule> &oopLlvmModule,
+                      llvm_backend::LlvmOptimizationLevel optimizationLevel, std::ostream &output,
                       std::ostream &error)
 {
     if (!oopLlvmAction || !success || projectCompilation.nameLookup() == nullptr ||
@@ -246,6 +248,26 @@ bool lowerProjectLlvm(std::string_view action, bool oopLlvmAction, bool success,
     }
     if (action == "--dump-project-oop-llvm")
         output << oopLlvmModule->text();
+    // EN: Freeze 3.0 C-05: the optimized forms verify the module, run the pipeline of the
+    //     requested level and dump or verify the result (the former single-file -opt dumps).
+    // ES: Congelamiento 3.0 C-05: las formas optimizadas verifican el modulo, corren el pipeline
+    //     del nivel pedido y vuelcan o verifican el resultado (los antiguos -opt de un archivo).
+    if (action != "--dump-project-oop-llvm-opt" && action != "--verify-project-oop-llvm-opt") return true;
+    std::string verificationError;
+    if (!oopLlvmModule->verify(verificationError))
+    {
+        error << "nsc: internal error: LLVM verification failed: " << verificationError << '\n';
+        return false;
+    }
+    std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
+    if (!optimizeCodeGenerationModule(*oopLlvmModule, optimizationLevel, targetMachine, error)) return false;
+    if (action == "--dump-project-oop-llvm-opt")
+    {
+        output << oopLlvmModule->text();
+        return true;
+    }
+    output << "LLVM optimization verification: ok\n"
+           << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n';
     return true;
 }
 
@@ -421,7 +443,8 @@ void printProjectCheckPart3(std::string_view action, frontend::ProjectCompilatio
     }
 }
 
-ExitCode Driver::runProject(std::string_view action, std::string_view path, std::ostream &output, std::ostream &error)
+ExitCode Driver::runProject(std::string_view action, std::string_view path, std::ostream &output, std::ostream &error,
+                            llvm_backend::LlvmOptimizationLevel optimizationLevel)
 {
     if (const std::optional<ExitCode> basic = runBasicProjectAction(action, path, output, error))
         return *basic;
@@ -457,7 +480,8 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
     dumpProjectSemanticModels(action, projectCompilation, output);
 
     std::unique_ptr<llvm_backend::LlvmModule> oopLlvmModule;
-    if (!lowerProjectLlvm(action, oopLlvmAction, success, projectCompilation, oopLlvmModule, output, error) ||
+    if (!lowerProjectLlvm(action, oopLlvmAction, success, projectCompilation, oopLlvmModule, optimizationLevel,
+                          output, error) ||
         !validateProjectCompilationResult(success, oopHirAction, projectCompilation, error))
         return ExitCode::CompilationError;
 

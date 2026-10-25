@@ -820,7 +820,8 @@ bool ProjectOopHirModel::mergeParallelRegularFunctions(
             return false;
         }
         if (result.functions.empty()) continue;
-        functionByMember_[memberOrdinal] = functions_.size();
+        const std::size_t wrapperIndex = functions_.size();
+        functionByMember_[memberOrdinal] = wrapperIndex;
         for (ProjectOopHirFunction& function : result.functions)
         {
             std::size_t localCount = 0;
@@ -845,8 +846,22 @@ bool ProjectOopHirModel::mergeParallelRegularFunctions(
             nextHirRegionOrdinal_ += regionCount;
             functions_.push_back(std::move(function));
         }
+        recordCoroutineBody(wrapperIndex);
     }
     return true;
+}
+
+// EN: Freeze 3.0 C-05. A coroutine's body sits right after its wrapper: the poll (async, async
+//     generator) or the MoveNext (generator).
+// ES: Congelamiento 3.0 C-05. El cuerpo de una corrutina queda justo despues de su envoltorio: el
+//     poll (async, generador async) o el MoveNext (generador).
+void ProjectOopHirModel::recordCoroutineBody(std::size_t wrapperIndex)
+{
+    if (wrapperIndex + 1 >= functions_.size()) return;
+    const ProjectOopHirFunction& wrapper = functions_[wrapperIndex];
+    const ProjectOopHirFunction& next = functions_[wrapperIndex + 1];
+    if (next.isAsyncPoll || next.mangledName == wrapper.mangledName + "$moveNext")
+        coroutineBodyFunction_[wrapperIndex] = wrapperIndex + 1;
 }
 
 bool ProjectOopHirModel::regularFunctionShouldBeSkipped(
@@ -1582,11 +1597,13 @@ bool ProjectOopHirModel::appendRegularCoroutineFunctions(
     }
     if (!functionByMember_.empty())
         functionByMember_[function.memberOrdinal] = functions_.size();
+    const std::size_t wrapperIndex = functions_.size();
     functions_.push_back(std::move(function));
     if (poll) functions_.push_back(std::move(*poll));
     if (moveNext) functions_.push_back(std::move(*moveNext));
     if (drop) functions_.push_back(std::move(*drop));
     if (entry) functions_.push_back(std::move(*entry));
+    recordCoroutineBody(wrapperIndex);
     return true;
 }
 
@@ -1824,9 +1841,11 @@ bool ProjectOopHirModel::buildNamespaceFunction(
         poll = splitAsyncFunction(function, error);
         if (poll == nullptr) return false;
     }
-    functionByNamespaceFunction_[functionOrdinal] = functions_.size();
+    const std::size_t wrapperIndex = functions_.size();
+    functionByNamespaceFunction_[functionOrdinal] = wrapperIndex;
     functions_.push_back(std::move(function));
     if (poll) functions_.push_back(std::move(*poll));
+    recordCoroutineBody(wrapperIndex);
     return true;
 }
 
@@ -1997,6 +2016,13 @@ bool ProjectOopHirModel::markLambdaClosureCells(std::string& error)
             error = "E11 lambda creator function is unavailable";
             return false;
         }
+        // EN: A coroutine's locals live in the function that now holds its body.
+        // ES: Los locales de una corrutina viven en la funcion que ahora tiene su cuerpo.
+        ProjectOopHirFunction* localOwner = creator;
+        const auto body = coroutineBodyFunction_.find(
+            static_cast<std::size_t>(creator - functions_.data()));
+        if (body != coroutineBodyFunction_.end() && body->second < functions_.size())
+            localOwner = &functions_[body->second];
         for (const MethodLambdaCapture& capture : lambda.captures)
         {
             switch (capture.sourceKind)
@@ -2005,7 +2031,7 @@ bool ProjectOopHirModel::markLambdaClosureCells(std::string& error)
                 case MethodLambdaCaptureSourceKind::ParentLocal:
                     if (capture.sourceOrdinal.has_value())
                         appendUniqueOrdinal(
-                            creator->capturedLocalOrdinals, *capture.sourceOrdinal);
+                            localOwner->capturedLocalOrdinals, *capture.sourceOrdinal);
                     break;
                 case MethodLambdaCaptureSourceKind::OriginalParameter:
                 case MethodLambdaCaptureSourceKind::ParentParameter:

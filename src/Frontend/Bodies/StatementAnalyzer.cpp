@@ -1166,6 +1166,58 @@ void ProjectMethodBodyModel::analyzeBlockMatchCoverage(
     else reportClosedBlockMatchCoverage(block, arms, domain, diagnostics);
 }
 
+// EN: Freeze 3.0 C-05. The parser lowers `match` to a chain of `if (!selected)` tests, so the flow
+//     analysis alone always sees a path where no arm ran. That path cannot happen when the
+//     coverage check proved the match exhaustive.
+// ES: Congelamiento 3.0 C-05. El parser baja `match` a una cadena de pruebas `if (!selected)`, asi
+//     que el analisis de flujo por si solo siempre ve una ruta donde ningun brazo corrio. Esa ruta
+//     no puede ocurrir cuando la cobertura probo que el match es exhaustivo.
+bool ProjectMethodBodyModel::blockMatchIsExhaustive(
+    const ast::AstNode* block,
+    std::size_t activeScope) const
+{
+    const std::vector<language::MatchArmCoverage> arms = parseBlockMatchCoverage(block);
+    const std::vector<std::string> domain = blockMatchCoverageDomain(block, activeScope);
+    if (!domain.empty()) return language::analyzeClosedMatch(domain, arms).exhaustive;
+    if (!matchCoverageHasListLength(arms)) return matchCoverageHasUnguardedWildcard(arms);
+    return language::analyzeListMatch(arms).exhaustive;
+}
+
+// EN: An arm body is the block whose first statement is `$__nsc_match_N_selected = true`.
+// ES: Un cuerpo de brazo es el bloque cuya primera sentencia es `$__nsc_match_N_selected = true`.
+void ProjectMethodBodyModel::recordMatchArmExit(const ast::AstNode* block)
+{
+    if (block->children().empty()) return;
+    const ast::AstNode* first = block->children().front();
+    if (first == nullptr || first->kind() != ast::AstNodeKind::ExpressionStatement) return;
+    const ast::AstNode* assignment = first->first();
+    if (assignment == nullptr || assignment->kind() != ast::AstNodeKind::AssignmentExpression ||
+        assignment->first() == nullptr ||
+        assignment->first()->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    constexpr std::string_view prefix = "$__nsc_match_";
+    constexpr std::string_view suffix = "_selected";
+    const std::string& name = assignment->first()->text();
+    if (!name.starts_with(prefix) || !name.ends_with(suffix)) return;
+    bool& fallsThrough = matchArmFallthrough_[name.substr(0, name.size() - suffix.size())];
+    fallsThrough = fallsThrough || ownershipFlowReachable_;
+}
+
+// EN: After an exhaustive match whose every arm returned, threw or broke out, nothing follows.
+// ES: Despues de un match exhaustivo cuyos brazos retornaron, lanzaron o salieron, nada sigue.
+void ProjectMethodBodyModel::closeExhaustiveMatch(
+    const ast::AstNode* block,
+    std::size_t activeScope)
+{
+    constexpr std::string_view matchCoveragePrefix = "match-coverage:v1:";
+    if (!block->auxiliaryText().starts_with(matchCoveragePrefix) || block->text().empty()) return;
+    const auto arm = matchArmFallthrough_.find(block->text());
+    if (arm == matchArmFallthrough_.end()) return;
+    const bool everyArmExits = !arm->second;
+    matchArmFallthrough_.erase(arm);
+    if (everyArmExits && ownershipFlowReachable_ && blockMatchIsExhaustive(block, activeScope))
+        ownershipFlowReachable_ = false;
+}
+
 void ProjectMethodBodyModel::finishBlockFrame(
     std::vector<StatementFrame>& frames,
     BlockFrame& frame,
@@ -1184,6 +1236,8 @@ void ProjectMethodBodyModel::finishBlockFrame(
     activeCleanupRegions_.resize(cleanupDepthAtEntry);
     if (deferCaptureBoundary) deferCaptureStack_.pop_back();
     analyzeBlockMatchCoverage(block, activeScope, diagnostics);
+    recordMatchArmExit(block);
+    closeExhaustiveMatch(block, activeScope);
     std::optional<OwnershipFlowSnapshot> restoreAfterExit =
         std::move(frame.restoreAfterExit);
     frames.pop_back();
@@ -1782,8 +1836,12 @@ void ProjectMethodBodyModel::analyzeReturnStatement(
 {
     // NS304-T06-F02: a generator (Iterator<T> return) ends with `yield break`, not an
     // ordinary value return; reject `return v;` but allow the bare `return;`.
+    // EN: Freeze 3.0 C-05: a `return` inside a lambda belongs to the lambda, not to the generator
+    //     that creates it.
+    // ES: Congelamiento 3.0 C-05: un `return` dentro de una lambda es de la lambda, no del
+    //     generador que la crea.
     const ClassMemberSymbol* returnMethod = methodSymbol(methodMemberOrdinal);
-    if (statement->first() != nullptr && returnMethod != nullptr &&
+    if (statement->first() != nullptr && returnMethod != nullptr && !currentLambdaOrdinal_.has_value() &&
         language::iteratorInnerTypeKey(returnMethod->declaredTypeKey).has_value())
     {
         diagnostics.report(

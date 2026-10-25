@@ -775,6 +775,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/GlobPattern.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/Project.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectSourceSet.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ImplicitProjectRegistry.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectLoader.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/PrecompiledProductSidecarPath.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Compilation/ProjectDumper.cpp"

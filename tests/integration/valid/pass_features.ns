@@ -1,77 +1,80 @@
-int Trace = 0;
-
-int Touch()
+namespace PassFeatures
 {
-    Trace += 1;
-    return 7;
-}
+    int Trace = 0;
 
-int FoldAndBranch()
-{
-    int a = 1;
-    int b = 2;
-    int sum = a + b;
-
-    int dead = sum * 10;
-
-    if (sum == 3)
+    int Touch()
     {
-        return sum + 39;
+        Trace += 1;
+        return 7;
     }
-    else
+
+    int FoldAndBranch()
     {
-        return dead;
+        int a = 1;
+        int b = 2;
+        int sum = a + b;
+
+        int dead = sum * 10;
+
+        if (sum == 3)
+        {
+            return sum + 39;
+        }
+        else
+        {
+            return dead;
+        }
     }
-}
 
-int KeepIntegerTrap(int divisor)
-{
-    int trapped = 10 / divisor;
-    return 0;
-}
-
-int KeepBoundsCheck(int index)
-{
-    int[4] values;
-    int value = values[index];
-    return 0;
-}
-
-int KeepCall()
-{
-    int ignored = Touch();
-    return 0;
-}
-
-int Main()
-{
-    return FoldAndBranch();
-}
-
-int SameConstant(bool condition)
-{
-    int value;
-    if (condition)
+    int KeepIntegerTrap(int divisor)
     {
-        value = 5;
+        int trapped = 10 / divisor;
+        return 0;
     }
-    else
-    {
-        value = 5;
-    }
-    return value;
-}
 
-int SameValue(bool condition)
-{
-    int value = 5;
-    if (condition)
+    int KeepBoundsCheck(int index)
     {
-        value = value;
+        int[4] values;
+        int value = values[index];
+        return 0;
     }
-    else
+
+    int KeepCall()
     {
-        value = value;
+        int ignored = Touch();
+        return 0;
     }
-    return value;
+
+    int Main()
+    {
+        return FoldAndBranch();
+    }
+
+    int SameConstant(bool condition)
+    {
+        int value;
+        if (condition)
+        {
+            value = 5;
+        }
+        else
+        {
+            value = 5;
+        }
+        return value;
+    }
+
+    int SameValue(bool condition)
+    {
+        int value = 5;
+        if (condition)
+        {
+            value = value;
+        }
+        else
+        {
+            value = value;
+        }
+        return value;
+    }
 }

@@ -1,9 +1,14 @@
-extern C int puts(char* text);
+using NativeSharp.Core;
+
+class Native
+{
+    extern C from "kernel32.dll" { public uint GetCurrentProcessId(); }
+}
 
 struct Point
 {
-    int X;
-    int Y;
+    public int X;
+    public int Y;
 }
 
 enum Color
@@ -13,8 +18,11 @@ enum Color
     Blue,
 }
 
-const int GlobalAnswer = 40 + 2;
-int Counter;
+namespace Frontend
+{
+    const int GlobalAnswer = 40 + 2;
+    int Counter;
+}
 
 int Add(int a, int b)
 {
@@ -34,12 +42,7 @@ int Main()
     values[0] = p.X;
     values[1] = p.Y;
 
-    int* heap = new int[4];
-    if (heap == null)
-    {
-        return 1;
-    }
-
+    owned int[] heap = new int[4];
     heap[0] = Add(values[0], values[1]);
     int* temp = stackalloc int[4];
     temp[0] = heap[0];
@@ -47,12 +50,11 @@ int Main()
     nuint pointSize = sizeof(Point);
     if (pointSize == 0u)
     {
-        delete[] heap;
         return 2;
     }
 
-    puts("NativeSharp frontend");
+    uint process = Native.GetCurrentProcessId();
+    Console.WriteLine("NativeSharp frontend");
     int result = temp[0];
-    delete[] heap;
-    return result;
+    return process == 0u ? 1 : result;
 }

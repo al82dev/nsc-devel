@@ -2,13 +2,25 @@
   "id": "nsc.dump-pass-pipeline",
   "component": "passes",
   "kind": "dump",
-  "sources": ["pass_features.ns"],
-  "arguments": ["--dump-pass-pipeline", "{source:0}"],
+  "sources": [
+    "pass_features.ns"
+  ],
+  "arguments": [
+    "--dump-pass-pipeline",
+    "{source:0}"
+  ],
   "optimization": "O0",
   "expected": {
-    "exit_code": 0,
-    "stdout": {"mode": "regex", "text": "pass.pipeline"}
+    "exit_code": 2,
+    "stderr": {
+      "mode": "contains",
+      "text": "NativeSharp 1.x single-file pipeline"
+    }
   },
-  "tags": ["legacy-parity", "o0-only"],
+  "tags": [
+    "legacy-parity",
+    "o0-only",
+    "nativesharp-1x-stage-removed"
+  ],
   "requires": []
 }

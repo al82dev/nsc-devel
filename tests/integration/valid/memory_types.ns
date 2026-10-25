@@ -1,7 +1,7 @@
 struct Pair
 {
-    int X;
-    int Y;
+    public int X;
+    public int Y;
 }
 
 enum Mode
@@ -19,10 +19,9 @@ int Main()
     int[3] values;
     values[0] = pointer->X;
     values[1] = value.Y;
-    int* heap = new int[3];
+    owned int[] heap = new int[3];
     int* local = stackalloc int[3];
     heap[0] = values[0];
     local[0] = heap[0];
-    delete[] heap;
     return local[0] + (int)Mode.Second + (int)sizeof(Pair);
 }

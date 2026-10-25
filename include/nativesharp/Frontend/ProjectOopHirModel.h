@@ -165,6 +165,7 @@ private:
     bool mergeParallelRegularFunctions(
         std::vector<internal::RegularFunctionResult>& results,
         std::string& error);
+    void recordCoroutineBody(std::size_t wrapperIndex);
     bool buildRegularFunctionsSequentially(
         std::optional<std::size_t> memberFilter,
         std::string& error);
@@ -4328,6 +4329,14 @@ private:
     std::vector<std::optional<std::size_t>> functionByMember_;
     std::vector<std::optional<std::size_t>> functionByNamespaceFunction_;
     std::vector<std::optional<std::size_t>> functionByLambda_;
+    // EN: Freeze 3.0 C-05 (found while porting the file-mode cases): a coroutine's body moves into
+    //     its poll or MoveNext, so the locals a lambda captures there belong to that function and
+    //     not to the constructor left at the member's index. Wrapper index -> body index.
+    // ES: Congelamiento 3.0 C-05 (hallazgo al portar los casos de modo archivo): el cuerpo de una
+    //     corrutina se muda a su poll o MoveNext, asi que los locales que ahi captura una lambda
+    //     son de esa funcion y no del constructor que queda en el indice del miembro.
+    //     Indice del envoltorio -> indice del cuerpo.
+    std::unordered_map<std::size_t, std::size_t> coroutineBodyFunction_;
     std::unordered_map<const ast::AstNode*, const MethodNameBinding*> nameBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodExpressionTypeBinding*> expressionTypeBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodCallBinding*> callBySyntax_;

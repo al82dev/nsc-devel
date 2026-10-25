@@ -670,6 +670,9 @@ private:
         const ast::AstNode* block,
         std::size_t activeScope,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    bool blockMatchIsExhaustive(const ast::AstNode* block, std::size_t activeScope) const;
+    void recordMatchArmExit(const ast::AstNode* block);
+    void closeExhaustiveMatch(const ast::AstNode* block, std::size_t activeScope);
     void finishBlockFrame(
         std::vector<StatementFrame>& frames,
         BlockFrame& frame,
@@ -4662,6 +4665,10 @@ private:
     //     suspende si su cuerpo tiene `yield;`, espera a un productor que se suspende o espera un
     //     future cuyo origen no es una llamada directa a un callable async de fuente.
     void verifySynchronousAwaits(diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 C-05 (found): a method with a result whose block body can reach its end.
+    // ES: Congelamiento 3.0 C-05 (hallazgo): un metodo con resultado cuyo cuerpo puede llegar al final.
+    void reportMissingReturn(
+        const ClassMemberSymbol& callable, diagnostics::DiagnosticEngine& diagnostics) const;
     bool awaitProducerCanSuspend(
         std::size_t producerOrdinal,
         std::unordered_map<std::size_t, int>& memo) const;
@@ -5193,6 +5200,12 @@ private:
     bool inUnevaluatedOperand_ = false;
     bool formingAddressOperand_ = false;
     bool ownershipFlowReachable_ = true;
+    // EN: Freeze 3.0 C-05. Per lowered match statement (its `$__nsc_match_N` temporary), whether
+    //     some arm body reached its end; an exhaustive match whose arms all exit ends the flow.
+    // ES: Congelamiento 3.0 C-05. Por cada match bajado (su temporal `$__nsc_match_N`), si algun
+    //     cuerpo de brazo llego a su final; un match exhaustivo cuyos brazos salen todos termina
+    //     el flujo.
+    std::unordered_map<std::string, bool> matchArmFallthrough_;
     // While a MemberExpression recursively analyzes its receiver, a partially moved aggregate
     // root may be inspected only long enough to select a still-live field. The completed member
     // path is validated immediately afterward; methods/properties still require the whole value.

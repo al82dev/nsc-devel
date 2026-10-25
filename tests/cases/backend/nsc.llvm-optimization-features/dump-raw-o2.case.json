@@ -2,13 +2,25 @@
   "id": "nsc.dump-llvm-raw-with-o2",
   "component": "llvm",
   "kind": "dump",
-  "sources": ["llvm_optimization_features.ns"],
-  "arguments": ["--dump-llvm", "{source:0}", "-O2"],
+  "sources": [
+    "llvm_optimization_features.ns"
+  ],
+  "arguments": [
+    "--dump-llvm",
+    "{source:0}",
+    "-O2"
+  ],
   "optimization": "O2",
   "expected": {
     "exit_code": 0,
-    "stdout": {"mode": "regex", "text": "call i32 @Square"}
+    "stdout": {
+      "mode": "regex",
+      "text": "call i32 @\"__nsc_function_llvm_optimization_features\\$3A\\$3A__Square"
+    }
   },
-  "tags": ["legacy-parity", "fixed-profile"],
+  "tags": [
+    "legacy-parity",
+    "fixed-profile"
+  ],
   "requires": []
 }

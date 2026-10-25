@@ -2,13 +2,26 @@
   "id": "nsc.verify-opt",
   "component": "passes",
   "kind": "dump",
-  "sources": ["pass_features.ns"],
-  "arguments": ["--verify-opt", "{source:0}"],
+  "sources": [
+    "pass_features.ns"
+  ],
+  "arguments": [
+    "--verify-opt",
+    "{source:0}"
+  ],
   "optimization": "O0",
   "expected": {
-    "exit_code": 0,
-    "stdout": {"mode": "contains", "text": "Optimization verification: ok"}
+    "exit_code": 2,
+    "stderr": {
+      "mode": "contains",
+      "text": "NativeSharp 1.x single-file pipeline"
+    }
   },
-  "tags": ["integration", "legacy-parity", "passes"],
+  "tags": [
+    "integration",
+    "legacy-parity",
+    "passes",
+    "nativesharp-1x-stage-removed"
+  ],
   "requires": []
 }

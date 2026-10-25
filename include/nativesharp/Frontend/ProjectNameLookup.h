@@ -280,6 +280,16 @@ private:
         std::size_t groupBegin,
         std::size_t groupEnd,
         diagnostics::DiagnosticEngine& diagnostics);
+    // EN: Freeze 3.0 C-05 (found): declarations the 1.x grammar still parses but no 3.x model
+    //     registers -- an `extern C` import outside a class, a variable outside any namespace.
+    //     They used to vanish silently; a later use then failed as an unknown identifier.
+    // ES: Congelamiento 3.0 C-05 (hallazgo): declaraciones que la gramatica 1.x aun analiza pero
+    //     que ningun modelo 3.x registra -- un import `extern C` fuera de una clase, una variable
+    //     fuera de todo namespace. Desaparecian en silencio; un uso posterior fallaba como
+    //     identificador desconocido.
+    void reportUnsupportedGlobalDeclarations(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void validateTraitImplementationTarget(
         std::size_t groupBegin,
         std::size_t groupEnd,

@@ -283,6 +283,7 @@ add_library(nsc_compilation STATIC
     src/Compilation/GlobPattern.cpp
     src/Compilation/Project.cpp
     src/Compilation/ProjectSourceSet.cpp
+    src/Compilation/ImplicitProjectRegistry.cpp
     src/Compilation/ProjectLoader.cpp
     src/Compilation/PrecompiledProductSidecarPath.cpp
     src/Compilation/ProjectDumper.cpp
@@ -1075,7 +1076,7 @@ add_library(nsc_driver STATIC
     src/Driver/DriverArtifactGeneration.cpp
     src/Driver/DriverExecution.cpp
     src/Driver/DriverHelp.cpp
-    src/Driver/DriverLegacyFrontend.cpp
+    src/Driver/DriverImplicitProject.cpp
     src/Driver/DriverLibraryCommands.cpp
     src/Driver/DriverProjectActions.cpp
     src/Driver/InstallationManifest.cpp
@@ -6897,84 +6898,98 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.dump-ast PROPERTIES PASS_REGULAR_EXPRESSION "CompilationUnit")
 
     add_test(NAME nsc.dump-symbols COMMAND "${NSC_TEST_COMPILER}" --dump-symbols ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
-    set_tests_properties(nsc.dump-symbols PROPERTIES PASS_REGULAR_EXPRESSION "Function Main.*defined")
+    set_tests_properties(nsc.dump-symbols PROPERTIES PASS_REGULAR_EXPRESSION "module\\[1\\] full_frontend")
 
     add_test(NAME nsc.dump-sema COMMAND "${NSC_TEST_COMPILER}" --dump-sema ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
     set_tests_properties(
         nsc.dump-sema
-        PROPERTIES PASS_REGULAR_EXPRESSION "conversion implicit-string-literal-to-char-pointer")
+        PROPERTIES PASS_REGULAR_EXPRESSION "full_frontend::Native.GetCurrentProcessId")
 
     add_test(NAME nsc.dump-hir COMMAND "${NSC_TEST_COMPILER}" --dump-hir ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
-    set_tests_properties(nsc.dump-hir PROPERTIES PASS_REGULAR_EXPRESSION "FunctionDeclaration symbol=Function:Main")
+    set_tests_properties(nsc.dump-hir PROPERTIES PASS_REGULAR_EXPRESSION "__nsc_function_full_frontend.3A.3A__Main")
 
     add_test(NAME nsc.dump-hir-features COMMAND "${NSC_TEST_COMPILER}" --dump-hir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
     set_tests_properties(
         nsc.dump-hir-features
-        PROPERTIES PASS_REGULAR_EXPRESSION "CompoundAssignment.*read-conversion=integral-promotion")
+        PROPERTIES PASS_REGULAR_EXPRESSION "compound-store type=builtin:byte op=Plus")
 
     add_test(NAME nsc.verify-hir COMMAND "${NSC_TEST_COMPILER}" --verify-hir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
-    set_tests_properties(nsc.verify-hir PROPERTIES PASS_REGULAR_EXPRESSION "HIR verification: ok")
+    set_tests_properties(nsc.verify-hir PROPERTIES PASS_REGULAR_EXPRESSION "project OOP HIR check: ok")
 
     add_test(NAME nsc.dump-mir COMMAND "${NSC_TEST_COMPILER}" --dump-mir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
-    set_tests_properties(nsc.dump-mir PROPERTIES PASS_REGULAR_EXPRESSION "mir.module")
+    set_tests_properties(nsc.dump-mir PROPERTIES PASS_REGULAR_EXPRESSION "project.oop.mir")
 
     add_test(NAME nsc.verify-mir COMMAND "${NSC_TEST_COMPILER}" --verify-mir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
-    set_tests_properties(nsc.verify-mir PROPERTIES PASS_REGULAR_EXPRESSION "MIR verification: ok")
+    set_tests_properties(nsc.verify-mir PROPERTIES PASS_REGULAR_EXPRESSION "project OOP MIR check: ok")
 
     add_test(NAME nsc.dump-mir-features COMMAND "${NSC_TEST_COMPILER}" --dump-mir ${NSC_INTEGRATION_DIR}/valid/mir_features.ns)
-    set_tests_properties(nsc.dump-mir-features PROPERTIES PASS_REGULAR_EXPRESSION "bounds.check")
+    set_tests_properties(
+        nsc.dump-mir-features
+        PROPERTIES PASS_REGULAR_EXPRESSION "raw-element-address type=builtin:int")
 
     add_test(NAME nsc.verify-mir-features COMMAND "${NSC_TEST_COMPILER}" --verify-mir ${NSC_INTEGRATION_DIR}/valid/mir_features.ns)
-    set_tests_properties(nsc.verify-mir-features PROPERTIES PASS_REGULAR_EXPRESSION "MIR verification: ok")
+    set_tests_properties(nsc.verify-mir-features PROPERTIES PASS_REGULAR_EXPRESSION "project OOP MIR check: ok")
 
+    # EN: Freeze 3.0 C-05. A source file compiles as its implicit project; the 1.x single-file CFG,
+    #     dominance, SSA, optimization and pass-pipeline stages no longer exist, so these actions
+    #     must be rejected with a message that names the removed pipeline.
+    # ES: Congelamiento 3.0 C-05. Un archivo fuente compila como su proyecto implicito; las etapas
+    #     CFG, dominancia, SSA, optimizacion y pass-pipeline del pipeline 1.x de un solo archivo ya
+    #     no existen, asi que estas acciones deben rechazarse nombrando el pipeline eliminado.
     add_test(NAME nsc.dump-cfg COMMAND "${NSC_TEST_COMPILER}" --dump-cfg ${NSC_INTEGRATION_DIR}/valid/control_flow.ns)
-    set_tests_properties(nsc.dump-cfg PROPERTIES PASS_REGULAR_EXPRESSION "cfg.module")
+    set_tests_properties(nsc.dump-cfg PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
 
     add_test(NAME nsc.verify-cfg COMMAND "${NSC_TEST_COMPILER}" --verify-cfg ${NSC_INTEGRATION_DIR}/valid/control_flow.ns)
-    set_tests_properties(nsc.verify-cfg PROPERTIES PASS_REGULAR_EXPRESSION "CFG verification: ok")
+    set_tests_properties(nsc.verify-cfg PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
 
     add_test(NAME nsc.dump-cfg-features COMMAND "${NSC_TEST_COMPILER}" --dump-cfg ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
-    set_tests_properties(nsc.dump-cfg-features PROPERTIES PASS_REGULAR_EXPRESSION "\[unreachable\]")
+    set_tests_properties(
+        nsc.dump-cfg-features
+        PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
 
     add_test(NAME nsc.verify-cfg-features COMMAND "${NSC_TEST_COMPILER}" --verify-cfg ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
-    set_tests_properties(nsc.verify-cfg-features PROPERTIES PASS_REGULAR_EXPRESSION "CFG verification: ok")
+    set_tests_properties(
+        nsc.verify-cfg-features
+        PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
 
     add_test(
         NAME nsc.dump-dominance
         COMMAND "${NSC_TEST_COMPILER}" --dump-dominance ${NSC_INTEGRATION_DIR}/valid/dominance_features.ns)
-    set_tests_properties(nsc.dump-dominance PROPERTIES PASS_REGULAR_EXPRESSION "dominance.module")
+    set_tests_properties(nsc.dump-dominance PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
 
     add_test(
         NAME nsc.verify-dominance
         COMMAND "${NSC_TEST_COMPILER}" --verify-dominance ${NSC_INTEGRATION_DIR}/valid/dominance_features.ns)
     set_tests_properties(
         nsc.verify-dominance
-        PROPERTIES PASS_REGULAR_EXPRESSION "Dominance verification: ok")
+        PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
 
     add_test(
         NAME nsc.dump-ssa
         COMMAND "${NSC_TEST_COMPILER}" --dump-ssa ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
-    set_tests_properties(nsc.dump-ssa PROPERTIES PASS_REGULAR_EXPRESSION "phi @value")
+    set_tests_properties(nsc.dump-ssa PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
 
     add_test(
         NAME nsc.verify-ssa
         COMMAND "${NSC_TEST_COMPILER}" --verify-ssa ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
-    set_tests_properties(nsc.verify-ssa PROPERTIES PASS_REGULAR_EXPRESSION "SSA verification: ok")
+    set_tests_properties(nsc.verify-ssa PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
 
     add_test(
         NAME nsc.dump-opt
         COMMAND "${NSC_TEST_COMPILER}" --dump-opt ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
-    set_tests_properties(nsc.dump-opt PROPERTIES PASS_REGULAR_EXPRESSION "optimized.ssa.module")
+    set_tests_properties(nsc.dump-opt PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
 
     add_test(
         NAME nsc.verify-opt
         COMMAND "${NSC_TEST_COMPILER}" --verify-opt ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
-    set_tests_properties(nsc.verify-opt PROPERTIES PASS_REGULAR_EXPRESSION "Optimization verification: ok")
+    set_tests_properties(nsc.verify-opt PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
 
     add_test(
         NAME nsc.dump-pass-pipeline
         COMMAND "${NSC_TEST_COMPILER}" --dump-pass-pipeline ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
-    set_tests_properties(nsc.dump-pass-pipeline PROPERTIES PASS_REGULAR_EXPRESSION "pass.pipeline")
+    set_tests_properties(
+        nsc.dump-pass-pipeline
+        PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
 
     add_test(
         NAME nsc.dump-llvm
@@ -6996,7 +7011,7 @@ if(NSC_BUILD_TESTS)
         COMMAND "${NSC_TEST_COMPILER}" --dump-llvm ${NSC_INTEGRATION_DIR}/valid/llvm_optimization_features.ns -O2)
     set_tests_properties(
         nsc.dump-llvm-raw-with-o2
-        PROPERTIES PASS_REGULAR_EXPRESSION "call i32 @Square")
+        PROPERTIES PASS_REGULAR_EXPRESSION "call i32 @.__nsc_function_llvm_optimization_features.3A.3A__Square")
 
     add_test(
         NAME nsc.verify-llvm-opt-o3
@@ -7008,7 +7023,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.dump-llvm-phi
         COMMAND "${NSC_TEST_COMPILER}" --dump-llvm ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
-    set_tests_properties(nsc.dump-llvm-phi PROPERTIES PASS_REGULAR_EXPRESSION "phi i32")
+    set_tests_properties(nsc.dump-llvm-phi PROPERTIES PASS_REGULAR_EXPRESSION "phi i1")
 
     add_test(
         NAME nsc.verify-llvm-features

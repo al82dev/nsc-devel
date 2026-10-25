@@ -103,6 +103,7 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     definiteAssignmentWriteTarget_ = nullptr;
     activeUnionWriteTarget_ = nullptr;
     ownershipFlowReachable_ = true;
+    matchArmFallthrough_.clear();
     activeRequiredFieldAssignments_.clear();
     hasRequiredConstructorExit_ = false;
     requiredConstructorExitAssignments_.clear();
@@ -243,6 +244,7 @@ void ProjectMethodBodyModel::analyzeCallable(
             }
         }
     }
+    reportMissingReturn(callable, diagnostics);
     finalizeRequiredConstructorAssignments(callable, callableOrdinal);
     closeOwnedParameterCleanups(
         cleanupOrdinals, callable, callableOrdinal, rootScopeOrdinal);
@@ -435,6 +437,35 @@ const ast::AstNode* uniqueLocalInitializer(const ast::AstNode* body, std::string
     }
     return declarations == 1 ? initializer : nullptr;
 }
+}
+
+void ProjectMethodBodyModel::reportMissingReturn(
+    const ClassMemberSymbol& callable,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    // EN: Freeze 3.0 C-05 (found while porting the single-file cases): the 3.x pipeline accepted
+    //     a method whose body falls off its end without a value, and the backend closed that path
+    //     with `unreachable`, so the call had undefined behavior. A generator's end is its normal
+    //     completion, and an expression body always yields its value.
+    // ES: Congelamiento 3.0 C-05 (hallazgo al portar los casos de un archivo): el pipeline 3.x
+    //     aceptaba un metodo cuyo cuerpo llega al final sin valor, y el backend cerraba esa ruta
+    //     con `unreachable`, asi que la llamada tenia comportamiento indefinido. El final de un
+    //     generador es su terminacion normal, y un cuerpo de expresion siempre produce su valor.
+    if (!ownershipFlowReachable_ || callable.kind != ClassMemberKind::Method || callable.syntax == nullptr ||
+        callable.syntax->first() == nullptr ||
+        callable.syntax->first()->kind() != ast::AstNodeKind::BlockStatement) return;
+    // EN: An async method's body yields the future's inner type; `async void` ends normally.
+    // ES: El cuerpo de un metodo async produce el tipo interior del future; `async void` termina
+    //     normalmente.
+    const std::string result = effectiveReturnTypeKey(callable);
+    if (result.empty() || result == "builtin:void" || result == "builtin:never" ||
+        language::iteratorInnerTypeKey(result).has_value() ||
+        language::asyncIteratorInnerTypeKey(result).has_value()) return;
+    diagnostics.report(
+        diagnostics::DiagnosticId::NotAllPathsReturn,
+        diagnostics::DiagnosticSeverity::Error,
+        callable.syntax->range(),
+        "not all reachable control paths return a value from function '" + callable.name + "'");
 }
 
 bool ProjectMethodBodyModel::awaitOperandCanSuspend(

@@ -2,13 +2,26 @@
   "id": "nsc.verify-ssa",
   "component": "ssa",
   "kind": "semantic",
-  "sources": ["ssa_features.ns"],
-  "arguments": ["--verify-ssa", "{source:0}"],
+  "sources": [
+    "ssa_features.ns"
+  ],
+  "arguments": [
+    "--verify-ssa",
+    "{source:0}"
+  ],
   "optimization": "O0",
   "expected": {
-    "exit_code": 0,
-    "stdout": {"mode": "contains", "text": "SSA verification: ok"}
+    "exit_code": 2,
+    "stderr": {
+      "mode": "contains",
+      "text": "NativeSharp 1.x single-file pipeline"
+    }
   },
-  "tags": ["integration", "ssa", "verification"],
+  "tags": [
+    "integration",
+    "ssa",
+    "verification",
+    "nativesharp-1x-stage-removed"
+  ],
   "requires": []
 }

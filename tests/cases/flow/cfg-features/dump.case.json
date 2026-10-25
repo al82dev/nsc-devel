@@ -2,13 +2,26 @@
   "id": "nsc.dump-cfg-features",
   "component": "cfg",
   "kind": "dump",
-  "sources": ["cfg_features.ns"],
-  "arguments": ["--dump-cfg", "{source:0}"],
+  "sources": [
+    "cfg_features.ns"
+  ],
+  "arguments": [
+    "--dump-cfg",
+    "{source:0}"
+  ],
   "optimization": "O0",
   "expected": {
-    "exit_code": 0,
-    "stdout": {"mode": "contains", "text": "[unreachable]"}
+    "exit_code": 2,
+    "stderr": {
+      "mode": "contains",
+      "text": "NativeSharp 1.x single-file pipeline"
+    }
   },
-  "tags": ["integration", "cfg", "dump"],
+  "tags": [
+    "integration",
+    "cfg",
+    "dump",
+    "nativesharp-1x-stage-removed"
+  ],
   "requires": []
 }

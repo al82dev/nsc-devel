@@ -2,13 +2,26 @@
   "id": "nsc.verify-dominance",
   "component": "dominance",
   "kind": "semantic",
-  "sources": ["dominance_features.ns"],
-  "arguments": ["--verify-dominance", "{source:0}"],
+  "sources": [
+    "dominance_features.ns"
+  ],
+  "arguments": [
+    "--verify-dominance",
+    "{source:0}"
+  ],
   "optimization": "O0",
   "expected": {
-    "exit_code": 0,
-    "stdout": {"mode": "contains", "text": "Dominance verification: ok"}
+    "exit_code": 2,
+    "stderr": {
+      "mode": "contains",
+      "text": "NativeSharp 1.x single-file pipeline"
+    }
   },
-  "tags": ["integration", "dominance", "verification"],
+  "tags": [
+    "integration",
+    "dominance",
+    "verification",
+    "nativesharp-1x-stage-removed"
+  ],
   "requires": []
 }

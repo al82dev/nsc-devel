@@ -2,13 +2,25 @@
   "id": "nsc.verify-mir-features",
   "component": "mir",
   "kind": "dump",
-  "sources": ["mir_features.ns"],
-  "arguments": ["--verify-mir", "{source:0}"],
+  "sources": [
+    "mir_features.ns"
+  ],
+  "arguments": [
+    "--verify-mir",
+    "{source:0}"
+  ],
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {"mode": "contains", "text": "MIR verification: ok"}
+    "stdout": {
+      "mode": "contains",
+      "text": "project OOP MIR check: ok"
+    }
   },
-  "tags": ["integration", "legacy-parity", "mir"],
+  "tags": [
+    "integration",
+    "legacy-parity",
+    "mir"
+  ],
   "requires": []
 }

@@ -1,9 +1,9 @@
-extern C int puts(char* text);
+using NativeSharp.Core;
 
 struct Pair
 {
-    int A;
-    int B;
+    public int A;
+    public int B;
 }
 
 enum Mode
@@ -70,13 +70,8 @@ int Main()
     nuint address = (nuint)restored;
     restored = (int*)address;
 
-    int* scalar = new int;
-    delete scalar;
-    int* heap = new int[4];
+    owned int[] heap = new int[4];
     heap[0] = values[0];
-    delete[] heap;
-    delete null;
-    delete[] null;
 
     int* temporary = stackalloc int[4];
     temporary[0] = pair.A;
@@ -93,7 +88,7 @@ int Main()
     bool positive = pairSize > 0u && true;
     if (positive || false)
     {
-        puts("HIR stage 11");
+        Console.WriteLine("HIR stage 11");
     }
 
     long promoted = Promote(narrowed);

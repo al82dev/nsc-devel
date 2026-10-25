@@ -135,14 +135,21 @@ LLVMValueRef OopLlvmImplementation::ensureCoroutineFrame(
 void OopLlvmImplementation::zeroCoroutineDropFlags(
         LLVMValueRef frame, const frontend::ProjectOopMirFunction& function)
 {
-        const std::uint64_t base = dropFlagBase(function);
-        LLVMTypeRef byteType = LLVMInt8TypeInContext(context_);
-        for (std::size_t index = 0; index < function.asyncFrameLocals.size(); ++index)
-            LLVMBuildStore(
-                builder_, LLVMConstInt(byteType, 0, 0), byteOffset(frame, base + index, "coro.flag.zero"));
+        // EN: Freeze 3.0 C-05: the whole frame starts zeroed, so the drop guards start cleared and
+        //     the capture-cell slots start empty.
+        // ES: Congelamiento 3.0 C-05: todo el frame inicia en cero, asi las guardas de destruccion
+        //     inician limpias y los slots de celdas de captura inician vacios.
+        if (function.asyncFrameSize == 0 || memsetFunction_ == nullptr) return;
+        LLVMValueRef arguments[] = {
+            frame,
+            LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+            LLVMConstInt(LLVMInt64TypeInContext(context_), function.asyncFrameSize, 0),
+            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, arguments, 4, "");
 }
 
-void OopLlvmImplementation::aliasCoroutineFrameLocals(const frontend::ProjectOopMirFunction& function)
+bool OopLlvmImplementation::aliasCoroutineFrameLocals(
+        const frontend::ProjectOopMirFunction& function, std::string& error)
 {
         // EN: A local's storage IS its frame slot (and its drop guard a frame byte); the entry-block
         //     allocas collectLocalAllocas made stay unused. Captured locals keep their cells.
@@ -153,6 +160,15 @@ void OopLlvmImplementation::aliasCoroutineFrameLocals(const frontend::ProjectOop
         {
             const auto& [localOrdinal, offset, typeKey] = function.asyncFrameLocals[index];
             (void)typeKey;
+            const auto captured = coroutineCapturedLocals_.find(localOrdinal);
+            if (captured != coroutineCapturedLocals_.end())
+            {
+                LLVMValueRef cell = ensureCoroutineCaptureCell(
+                    byteOffset(coroutine_.frame, offset, "coro.cell.slot"), captured->second,
+                    localOrdinal, error);
+                if (cell == nullptr) return false;
+                continue;
+            }
             if (localCaptureCells_.contains(localOrdinal)) continue;
             const auto storage = localStorage_.find(localOrdinal);
             if (storage == localStorage_.end() || storage->second == nullptr) continue;
@@ -161,6 +177,52 @@ void OopLlvmImplementation::aliasCoroutineFrameLocals(const frontend::ProjectOop
             if (flag != localValueDropFlags_.end())
                 flag->second = byteOffset(coroutine_.frame, flagBase + index, "coro.drop.flag");
         }
+        for (const auto& [localOrdinal, typeKey] : coroutineCapturedLocals_)
+            if (!localCaptureCells_.contains(localOrdinal))
+                return fail(error, "captured coroutine local has no frame slot for its cell");
+        return true;
+}
+
+LLVMValueRef OopLlvmImplementation::ensureCoroutineCaptureCell(
+        LLVMValueRef cellSlot, std::string_view typeKey, std::size_t localOrdinal, std::string& error)
+{
+        // EN: Freeze 3.0 C-05 (found while porting the file-mode cases): a captured local of a
+        //     coroutine got a new cell on every poll, so a lambda made before an `await` and the
+        //     code after it saw different variables. The cell is made once and kept in the frame;
+        //     the return that completes the coroutine releases it, a suspension does not.
+        // ES: Congelamiento 3.0 C-05 (hallazgo al portar los casos de modo archivo): un local
+        //     capturado de una corrutina recibia una celda nueva en cada poll, asi que una lambda
+        //     creada antes de un `await` y el codigo posterior veian variables distintas. La celda
+        //     se crea una vez y se guarda en el frame; el return que completa la corrutina la
+        //     libera, una suspension no.
+        LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef stored = LLVMBuildLoad2(builder_, pointerType, cellSlot, "coro.cell");
+        LLVMBasicBlockRef present = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef create = appendBlock("coro.cell.create");
+        LLVMBasicBlockRef ready = appendBlock("coro.cell.ready");
+        LLVMBuildCondBr(
+            builder_,
+            LLVMBuildICmp(builder_, LLVMIntEQ, stored, LLVMConstNull(pointerType), "coro.cell.missing"),
+            create, ready);
+        enterBlock(create);
+        LLVMValueRef unusedValue = nullptr;
+        const std::string stem = localValueName(localOrdinal, "capture.local", "");
+        LLVMValueRef created = allocateCaptureCell(typeKey, unusedValue, stem, error);
+        if (created == nullptr) return nullptr;
+        LLVMBuildStore(builder_, created, cellSlot);
+        LLVMBasicBlockRef createdBlock = LLVMGetInsertBlock(builder_);
+        LLVMBuildBr(builder_, ready);
+        enterBlock(ready);
+        LLVMValueRef cell = LLVMBuildPhi(builder_, pointerType, "coro.cell.phi");
+        LLVMValueRef incoming[] = {stored, created};
+        LLVMBasicBlockRef incomingBlocks[] = {present, createdBlock};
+        LLVMAddIncoming(cell, incoming, incomingBlocks, 2);
+        LLVMValueRef value = captureCellValueAddress(cell, typeKey, stem, error);
+        if (value == nullptr) return nullptr;
+        localCaptureCells_[localOrdinal] = cell;
+        localStorage_[localOrdinal] = value;
+        ownedCaptureCells_.push_back(cell);
+        return cell;
 }
 
 bool OopLlvmImplementation::emitCoroutineDoneReturn(
@@ -191,7 +253,7 @@ bool OopLlvmImplementation::beginCoroutineDispatch(
             builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0], "coro.self");
         coroutine_.frame = ensureCoroutineFrame(function, error);
         if (coroutine_.frame == nullptr) return false;
-        aliasCoroutineFrameLocals(function);
+        if (!aliasCoroutineFrameLocals(function, error)) return false;
         collectCoroutineSuspensions(function.body.get());
         coroutine_.resumeState = entryBlockAlloca(intType, 0, "coro.resume.state");
         LLVMValueRef state = LLVMBuildLoad2(builder_, intType, coroutine_.self, "coro.state");
@@ -345,6 +407,7 @@ bool OopLlvmImplementation::emitCoroutineYieldCancel(
             {
                 LLVMBuildStore(
                     builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1), coroutine_.self);
+                releaseOwnedCaptureCells();
                 LLVMBuildRet(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
             }
         }

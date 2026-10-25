@@ -20,9 +20,11 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace
 {
@@ -830,6 +832,270 @@ class Program
 )ns", 11);
 }
 
+/// EN: Runs the driver on `arguments`; `text` gets its output and error streams.
+/// ES: Corre el driver con `arguments`; `text` recibe su salida y su error.
+ExitCode runDriver(std::span<const std::string_view> arguments, std::string& text)
+{
+    Driver driver;
+    std::ostringstream output;
+    std::ostringstream error;
+    const ExitCode code = driver.run(arguments, output, error);
+    text = output.str() + error.str();
+    return code;
+}
+
+/// EN: C-05. A source file compiles as its implicit project: the same source produces the same
+///     MIR and LLVM as an explicit project with the same name, and both programs run alike. The
+///     source mixes the 3.x surface the 1.x file pipeline lacked: a variant `match`, a lambda
+///     with a capture, interpolation and an `async Main` that awaits a suspending call (whose
+///     captured local must survive the suspension).
+/// ES: C-05. Un archivo fuente compila como su proyecto implicito: el mismo fuente produce el
+///     mismo MIR y LLVM que un proyecto explicito con el mismo nombre, y ambos programas corren
+///     igual. El fuente mezcla la superficie 3.x que el pipeline 1.x de archivo no tenia: un
+///     `match` de variant, una lambda con captura, interpolacion y un `async Main` que espera una
+///     llamada que se suspende (cuyo local capturado debe sobrevivir a la suspension).
+void testFileModeMatchesProject(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "C05FileMode";
+    const std::filesystem::path source = directory / "Main.ns";
+    const std::filesystem::path project = writeProject(directory, "Main");
+    writeFile(source, R"ns(
+using NativeSharp.Core;
+
+delegate int Transform(int value);
+
+variant Shape { Circle(int), Square(int) }
+
+class Program
+{
+    private static int Area(Shape shape)
+    {
+        match (shape)
+        {
+            Circle(var r) => { return 3 * r * r; },
+            Square(var s) => { return s * s; }
+        }
+    }
+
+    private static async int Twice(int value)
+    {
+        yield;
+        return value * 2;
+    }
+
+    public static async int Main()
+    {
+        int bias = 1;
+        raii Transform addBias = [copy bias] (int value) => value + bias;
+        raii string text = $"area={Area(Shape.Square(3))}";
+        int doubled = await Twice(addBias(text.Length));
+        return doubled + addBias(0) - bias;
+    }
+}
+)ns");
+    const std::string sourceText = source.string();
+    const std::string projectText = project.string();
+    const std::array<std::pair<std::string_view, std::string_view>, 2> dumps = {{
+        {"--dump-mir", "--dump-project-oop-mir"}, {"--dump-llvm", "--dump-project-oop-llvm"}}};
+    for (const auto& [fileAction, projectAction] : dumps)
+    {
+        std::string fileOutput;
+        std::string projectOutput;
+        const std::array<std::string_view, 2> fileArguments = {fileAction, sourceText};
+        const std::array<std::string_view, 2> projectArguments = {projectAction, projectText};
+        const ExitCode fileCode = runDriver(fileArguments, fileOutput);
+        const ExitCode projectCode = runDriver(projectArguments, projectOutput);
+        tests.expect(fileCode == ExitCode::Success && projectCode == ExitCode::Success &&
+                fileOutput == projectOutput,
+            std::string(fileAction) + " of the file equals " + std::string(projectAction) +
+                " of the project: " + fileOutput.substr(0, 400));
+    }
+    const std::array<std::string_view, 2> levels = {"-O0", "-O2"};
+    for (const std::string_view level : levels)
+    {
+        const std::filesystem::path executable =
+            directory / ("file" + std::string(level.substr(1)) + ".exe");
+        const std::string executableText = executable.string();
+        const std::array<std::string_view, 5> arguments = {
+            level, "--emit-exe", sourceText, "-o", executableText};
+        std::string diagnostic;
+        const ExitCode code = runDriver(arguments, diagnostic);
+        tests.expect(code == ExitCode::Success,
+            "C05FileMode [" + std::string(level) + "]: the file compiles: " + diagnostic);
+        if (code != ExitCode::Success) continue;
+        const std::string command = "\"\"" + executableText + "\"\"";
+        const int observed = std::system(command.c_str());
+        tests.expect(observed == 14,
+            "C05FileMode [" + std::string(level) + "]: exits 14, observed " + std::to_string(observed));
+    }
+}
+
+/// EN: C-05 (found while porting the file-mode cases). A local a lambda captures by reference in a
+///     coroutine keeps one cell across suspensions: the lambda made before an `await` (or a
+///     `yield return`) and the code after it share the variable.
+/// ES: C-05 (hallazgo al portar los casos de modo archivo). Un local que una lambda captura por
+///     referencia en una corrutina conserva una sola celda entre suspensiones: la lambda creada
+///     antes de un `await` (o un `yield return`) y el codigo posterior comparten la variable.
+void testCaptureSurvivesSuspension(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C05CaptureAcrossAwait", R"ns(
+delegate int Transform(int value);
+
+class Program
+{
+    private static async int Twice(int value)
+    {
+        yield;
+        return value * 2;
+    }
+
+    public static async int Main()
+    {
+        int counter = 1;
+        raii Transform bump = [ref mut counter] (int value) =>
+        {
+            counter = counter + value;
+            return counter;
+        };
+        int before = bump(1);
+        int doubled = await Twice(before);
+        int after = bump(10);
+        return after + counter + doubled;
+    }
+}
+)ns", 28);
+    expectRun(tests, root, "C05CaptureAcrossYield", R"ns(
+delegate int Transform(int value);
+
+class Program
+{
+    public static Iterator<int> Gen()
+    {
+        int counter = 1;
+        raii Transform bump = [ref mut counter] (int value) =>
+        {
+            counter = counter + value;
+            return counter;
+        };
+        yield return bump(1);
+        yield return bump(10);
+        yield return counter;
+    }
+
+    public static int Main()
+    {
+        int sum = 0;
+        foreach (var x in Gen()) { sum = sum * 100 + x; }
+        return sum % 251;
+    }
+}
+)ns", 128);
+}
+
+/// EN: C-05 (found while porting the file-mode cases). A method that can fall off its end without
+///     a value is rejected; an exhaustive `match` whose arms all return or panic, an `async void`
+///     method and an `async int` method that returns are accepted.
+/// ES: C-05 (hallazgo al portar los casos de modo archivo). Un metodo que puede llegar a su final
+///     sin valor se rechaza; un `match` exhaustivo cuyos brazos retornan o hacen panic, un metodo
+///     `async void` y un metodo `async int` que retorna se aceptan.
+void testMissingReturn(TestContext& tests, const std::filesystem::path& root)
+{
+    expectReject(tests, root, "C05MissingReturn", R"ns(
+class Program
+{
+    private static int Pick(bool flag)
+    {
+        if (flag)
+        {
+            return 1;
+        }
+    }
+
+    public static int Main()
+    {
+        return Pick(true);
+    }
+}
+)ns", "not all reachable control paths return a value from function 'Pick'");
+    expectRun(tests, root, "C05EveryPathReturns", R"ns(
+variant Decision { Value(int), Stop }
+
+class Program
+{
+    public static int Hits;
+
+    private static int Pick(Decision decision)
+    {
+        match (decision)
+        {
+            Value(var value) => { return value; },
+            Stop => { panic("stopped"); }
+        }
+    }
+
+    private static int Sign(int value)
+    {
+        match (value)
+        {
+            0 => { return 0; },
+            _ => { return 1; }
+        }
+    }
+
+    private static async void Bump()
+    {
+        yield;
+        Hits = Hits + 1;
+    }
+
+    private static async int Later()
+    {
+        yield;
+        return 1;
+    }
+
+    public static async int Main()
+    {
+        await Bump();
+        int later = await Later();
+        return Pick(Decision.Value(39)) + Sign(5) + Hits + later;
+    }
+}
+)ns", 42);
+}
+
+/// EN: C-05 (found while porting the file-mode cases). An `extern C` import outside a class and a
+///     variable outside every namespace were 1.x file-mode forms; 3.x rejects both by name instead
+///     of failing later with an unknown identifier.
+/// ES: C-05 (hallazgo al portar los casos de modo archivo). Un import `extern C` fuera de una clase
+///     y una variable fuera de todo namespace eran formas del modo archivo 1.x; 3.x rechaza ambas
+///     por nombre en vez de fallar despues con un identificador desconocido.
+void testGlobalDeclarationsRejected(TestContext& tests, const std::filesystem::path& root)
+{
+    expectReject(tests, root, "C05GlobalExtern", R"ns(
+extern C int MissingNativeSymbol();
+
+class Program
+{
+    public static int Main()
+    {
+        return 0;
+    }
+}
+)ns", "an 'extern C' import outside a class is not supported in NativeSharp 3.0");
+    expectReject(tests, root, "C05GlobalVariable", R"ns(
+int Counter;
+
+class Program
+{
+    public static int Main()
+    {
+        return 0;
+    }
+}
+)ns", "a variable outside every namespace is not supported in NativeSharp 3.0");
+}
+
 int main()
 {
     TestContext tests;
@@ -850,5 +1116,9 @@ int main()
     testCoroutineFrameLocals(tests, root);
     testGeneratorResume(tests, root);
     testGeneratorEarlyStop(tests, root);
+    testFileModeMatchesProject(tests, root);
+    testCaptureSurvivesSuspension(tests, root);
+    testMissingReturn(tests, root);
+    testGlobalDeclarationsRejected(tests, root);
     return tests.resultKeeping(root);
 }

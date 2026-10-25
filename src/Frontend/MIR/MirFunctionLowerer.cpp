@@ -630,10 +630,17 @@ void appendCoroutineFrameLocalNodes(
         if (declares && !typeKey.empty() && typeKey != "builtin:never" &&
             seen.insert(*node->localOrdinal).second)
         {
-            // EN: A reference local stores an address; its slot is a pointer.
-            // ES: Un local referencia guarda una direccion; su slot es un puntero.
-            const bool pointerSlot = node->referenceLocal || typeKey.ends_with("*");
-            const std::string storageKey = node->referenceLocal ? typeKey + "*" : typeKey;
+            // EN: A reference local stores an address; its slot is a pointer. A local a lambda
+            //     captures lives in a heap cell, and its slot keeps that cell across suspensions.
+            // ES: Un local referencia guarda una direccion; su slot es un puntero. Un local que una
+            //     lambda captura vive en una celda del heap, y su slot conserva esa celda entre
+            //     suspensiones.
+            const bool captured = std::ranges::find(
+                function.capturedLocalOrdinals, *node->localOrdinal) !=
+                function.capturedLocalOrdinals.end();
+            const bool pointerSlot = captured || node->referenceLocal || typeKey.ends_with("*");
+            const std::string storageKey =
+                captured || node->referenceLocal ? typeKey + "*" : typeKey;
             std::optional<std::pair<std::uint64_t, std::uint64_t>> layout;
             if (pointerSlot) layout = std::pair<std::uint64_t, std::uint64_t>{8, 8};
             else layout = objectLayoutModel.valueLayoutForTypeKey(nameLookup, storageKey);
