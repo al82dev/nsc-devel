@@ -1,0 +1,348 @@
+#include "ThinLtoBackend.h"
+
+#include "nativesharp/LLVM/LlvmModule.h"
+#include "nativesharp/LLVM/LlvmTargetMachine.h"
+
+#if !defined(NSC_THINLTO_UNAVAILABLE)
+#include "llvm-c/Core.h"
+#include "llvm-c/Error.h"
+#include "llvm-c/TargetMachine.h"
+#include "llvm-c/Transforms/PassBuilder.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Analysis/ModuleSummaryAnalysis.h"
+#include "llvm/Analysis/ProfileSummaryInfo.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/IR/DiagnosticInfo.h"
+#include "llvm/IR/DiagnosticPrinter.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/ModuleSummaryIndex.h"
+#include "llvm/LTO/Config.h"
+#include "llvm/LTO/LTO.h"
+#include "llvm/Support/Caching.h"
+#include "llvm/Support/CodeGen.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Threading.h"
+#include "llvm/Support/raw_ostream.h"
+#endif
+
+#include <algorithm>
+#include <memory>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+
+namespace nativesharp::llvm_backend
+{
+#if defined(NSC_THINLTO_UNAVAILABLE)
+ThinLtoBackend::ThinLtoBackend(std::size_t moduleCount)
+    : bitcode_(moduleCount),
+      identifiers_(moduleCount),
+      finalModuleTexts_(moduleCount)
+{
+}
+
+bool ThinLtoBackend::available() noexcept
+{
+    return false;
+}
+
+bool ThinLtoBackend::addModule(
+    std::size_t, LlvmModule&, const LlvmTargetMachine&, LlvmOptimizationLevel, std::string& error)
+{
+    error = "ThinLTO needs the STATIC LLVM host";
+    return false;
+}
+
+bool ThinLtoBackend::run(
+    std::span<const std::filesystem::path>,
+    const LlvmTargetMachine&,
+    LlvmOptimizationLevel,
+    std::size_t,
+    const std::filesystem::path&,
+    std::string& error)
+{
+    error = "ThinLTO needs the STATIC LLVM host";
+    return false;
+}
+#else
+namespace
+{
+unsigned levelNumber(LlvmOptimizationLevel level) noexcept
+{
+    switch (level)
+    {
+    case LlvmOptimizationLevel::O0: return 0;
+    case LlvmOptimizationLevel::O1: return 1;
+    case LlvmOptimizationLevel::O2: return 2;
+    case LlvmOptimizationLevel::O3: return 3;
+    }
+    return 0;
+}
+
+// The code generation level LlvmTargetMachine::createWindowsX64 uses for `level`.
+// El nivel de generacion de codigo que usa LlvmTargetMachine::createWindowsX64 para `level`.
+llvm::CodeGenOptLevel codeGenerationLevel(LlvmOptimizationLevel level) noexcept
+{
+    switch (level)
+    {
+    case LlvmOptimizationLevel::O0: return llvm::CodeGenOptLevel::None;
+    case LlvmOptimizationLevel::O1: return llvm::CodeGenOptLevel::Less;
+    case LlvmOptimizationLevel::O2: return llvm::CodeGenOptLevel::Default;
+    case LlvmOptimizationLevel::O3: return llvm::CodeGenOptLevel::Aggressive;
+    }
+    return llvm::CodeGenOptLevel::None;
+}
+
+std::vector<std::string> splitFeatures(const std::string& features)
+{
+    std::vector<std::string> result;
+    llvm::SmallVector<llvm::StringRef, 16> parts;
+    llvm::StringRef(features).split(parts, ',', -1, false);
+    for (const llvm::StringRef part : parts) result.emplace_back(part.str());
+    return result;
+}
+
+std::size_t importedDefinitions(const llvm::Module& module) noexcept
+{
+    std::size_t count = 0;
+    for (const llvm::Function& function : module)
+        if (!function.isDeclaration() && function.hasAvailableExternallyLinkage()) ++count;
+    return count;
+}
+}
+
+ThinLtoBackend::ThinLtoBackend(std::size_t moduleCount)
+    : bitcode_(moduleCount),
+      identifiers_(moduleCount),
+      finalModuleTexts_(moduleCount)
+{
+}
+
+bool ThinLtoBackend::available() noexcept
+{
+    return true;
+}
+
+bool ThinLtoBackend::addModule(
+    std::size_t ordinal,
+    LlvmModule& module,
+    const LlvmTargetMachine& targetMachine,
+    LlvmOptimizationLevel level,
+    std::string& error)
+{
+    if (ordinal >= bitcode_.size() || module.module_ == nullptr || targetMachine.targetMachine_ == nullptr)
+    {
+        error = "ThinLTO received an invalid code unit";
+        return false;
+    }
+    LLVMModuleRef moduleRef = static_cast<LLVMModuleRef>(module.module_);
+    LLVMPassBuilderOptionsRef options = LLVMCreatePassBuilderOptions();
+    const std::string pipeline = "thinlto-pre-link<O" + std::to_string(levelNumber(level)) + ">";
+    LLVMErrorRef failure = LLVMRunPasses(
+        moduleRef, pipeline.c_str(), static_cast<LLVMTargetMachineRef>(targetMachine.targetMachine_), options);
+    LLVMDisposePassBuilderOptions(options);
+    if (failure != nullptr)
+    {
+        char* message = LLVMGetErrorMessage(failure);
+        error = "ThinLTO pre-link pipeline failed: " + std::string(message != nullptr ? message : "");
+        LLVMDisposeErrorMessage(message);
+        return false;
+    }
+    llvm::Module& unwrapped = *llvm::unwrap(moduleRef);
+    llvm::ProfileSummaryInfo profile(unwrapped);
+    const llvm::ModuleSummaryIndex index = llvm::buildModuleSummaryIndex(unwrapped, nullptr, &profile);
+    std::string bytes;
+    llvm::raw_string_ostream stream(bytes);
+    llvm::WriteBitcodeToFile(unwrapped, stream, false, &index);
+    stream.flush();
+    bitcode_[ordinal] = std::move(bytes);
+    // ThinLTO keys modules by identifier, so it is the stable ordinal and never a path.
+    // ThinLTO identifica los modulos por su identificador: el ordinal estable, nunca una ruta.
+    identifiers_[ordinal] = "nativesharp-thinlto-unit-" + std::to_string(ordinal);
+    return true;
+}
+
+bool ThinLtoBackend::run(
+    std::span<const std::filesystem::path> objectFiles,
+    const LlvmTargetMachine& targetMachine,
+    LlvmOptimizationLevel level,
+    std::size_t threads,
+    const std::filesystem::path& cacheDirectory,
+    std::string& error)
+{
+    if (objectFiles.size() != bitcode_.size())
+    {
+        error = "ThinLTO object list does not match its code units";
+        return false;
+    }
+    importedFunctions_ = 0;
+    cachedBackends_ = 0;
+    backendRuns_ = 0;
+    llvm::lto::Config config;
+    config.CPU = targetMachine.cpuName();
+    config.MAttrs = splitFeatures(targetMachine.featureString());
+    config.DefaultTriple = targetMachine.triple();
+    config.OptLevel = levelNumber(level);
+    config.CGOptLevel = codeGenerationLevel(level);
+    // LLVMCreateTargetMachine runs with LLVMRelocDefault and LLVMCodeModelDefault; let LLVM pick the
+    // same effective models instead of the LTO defaults.
+    // LLVMCreateTargetMachine usa LLVMRelocDefault y LLVMCodeModelDefault; LLVM elige los mismos
+    // modelos efectivos en lugar de los valores por omision de LTO.
+    config.RelocModel = std::nullopt;
+    config.CodeModel = std::nullopt;
+    config.DiagHandler = [this](const llvm::DiagnosticInfo& info)
+    {
+        if (info.getSeverity() != llvm::DS_Error) return;
+        std::string text;
+        llvm::raw_string_ostream stream(text);
+        llvm::DiagnosticPrinterRawOStream printer(stream);
+        info.print(printer);
+        stream.flush();
+        const std::lock_guard lock(diagnosticsMutex_);
+        diagnostics_ += (diagnostics_.empty() ? "" : "; ") + text;
+    };
+    // Runs once per backend that really executes; a backend served by the cache skips it.
+    // Se ejecuta una vez por backend que de verdad corre; uno servido por el cache no pasa aqui.
+    config.PostImportModuleHook = [this](unsigned, const llvm::Module& module)
+    {
+        ++backendRuns_;
+        importedFunctions_ += importedDefinitions(module);
+        return true;
+    };
+    std::unordered_map<std::string, std::size_t> ordinalByIdentifier;
+    for (std::size_t ordinal = 0; ordinal < identifiers_.size(); ++ordinal)
+        ordinalByIdentifier.emplace(identifiers_[ordinal], ordinal);
+    const auto ordinalFor = [&](unsigned task, const llvm::Twine& moduleName) -> std::size_t
+    {
+        const auto found = ordinalByIdentifier.find(moduleName.str());
+        if (found != ordinalByIdentifier.end()) return found->second;
+        return task == 0 ? objectFiles.size() : static_cast<std::size_t>(task - 1U);
+    };
+    if (captureFinalModuleTexts_)
+    {
+        config.PostOptModuleHook = [this](unsigned task, const llvm::Module& module)
+        {
+            const std::size_t ordinal = task == 0 ? finalModuleTexts_.size() : task - 1U;
+            if (ordinal >= finalModuleTexts_.size()) return true;
+            std::string text;
+            llvm::raw_string_ostream stream(text);
+            module.print(stream, nullptr);
+            stream.flush();
+            finalModuleTexts_[ordinal] = std::move(text);
+            return true;
+        };
+    }
+    llvm::lto::ThinBackend backend = llvm::lto::createInProcessThinBackend(
+        llvm::heavyweight_hardware_concurrency(static_cast<unsigned>(threads == 0 ? 1 : threads)));
+    llvm::lto::LTO lto(std::move(config), std::move(backend));
+    std::unordered_set<std::string> prevailing;
+    for (std::size_t ordinal = 0; ordinal < bitcode_.size(); ++ordinal)
+    {
+        llvm::Expected<std::unique_ptr<llvm::lto::InputFile>> input =
+            llvm::lto::InputFile::create(llvm::MemoryBufferRef(bitcode_[ordinal], identifiers_[ordinal]));
+        if (!input)
+        {
+            error = "ThinLTO cannot read code unit " + std::to_string(ordinal) + ": " +
+                llvm::toString(input.takeError());
+            return false;
+        }
+        std::vector<llvm::lto::SymbolResolution> resolutions;
+        for (const llvm::lto::InputFile::Symbol& symbol : (*input)->symbols())
+        {
+            llvm::lto::SymbolResolution resolution;
+            if (!symbol.isUndefined())
+            {
+                resolution.Prevailing = prevailing.insert(symbol.getName().str()).second;
+                resolution.FinalDefinitionInLinkageUnit = resolution.Prevailing;
+                resolution.VisibleToRegularObj = true;
+            }
+            resolutions.push_back(resolution);
+        }
+        if (llvm::Error added = lto.add(std::move(*input), resolutions))
+        {
+            error = "ThinLTO cannot add code unit " + std::to_string(ordinal) + ": " +
+                llvm::toString(std::move(added));
+            return false;
+        }
+    }
+    std::string streamError;
+    std::mutex streamErrorMutex;
+    const llvm::AddStreamFn addStream = [&](unsigned task, const llvm::Twine& moduleName)
+        -> llvm::Expected<std::unique_ptr<llvm::CachedFileStream>>
+    {
+        const std::size_t ordinal = ordinalFor(task, moduleName);
+        if (ordinal >= objectFiles.size())
+            return llvm::createStringError("ThinLTO produced an unexpected task " + std::to_string(task));
+        std::error_code openError;
+        auto output = std::make_unique<llvm::raw_fd_ostream>(
+            objectFiles[ordinal].string(), openError, llvm::sys::fs::OF_None);
+        if (openError) return llvm::errorCodeToError(openError);
+        return std::make_unique<llvm::CachedFileStream>(std::move(output), objectFiles[ordinal].string());
+    };
+    llvm::FileCache backendCache;
+    if (!cacheDirectory.empty())
+    {
+        const llvm::AddBufferFn addBuffer =
+            [&](unsigned task, const llvm::Twine& moduleName, std::unique_ptr<llvm::MemoryBuffer> buffer)
+        {
+            const std::size_t ordinal = ordinalFor(task, moduleName);
+            std::error_code openError;
+            llvm::raw_fd_ostream output(
+                ordinal < objectFiles.size() ? objectFiles[ordinal].string() : std::string(),
+                openError, llvm::sys::fs::OF_None);
+            if (ordinal >= objectFiles.size() || openError)
+            {
+                const std::lock_guard lock(streamErrorMutex);
+                streamError = "ThinLTO cannot restore a cached backend object";
+                return;
+            }
+            output << buffer->getBuffer();
+        };
+        llvm::Expected<llvm::FileCache> created =
+            llvm::localCache("NativeSharp ThinLTO", "nativesharp-thinlto", cacheDirectory.string(), addBuffer);
+        if (!created)
+        {
+            error = "ThinLTO cannot open its backend cache: " + llvm::toString(created.takeError());
+            return false;
+        }
+        backendCache = std::move(*created);
+    }
+    if (llvm::Error failed = lto.run(addStream, backendCache))
+    {
+        error = "ThinLTO failed: " + llvm::toString(std::move(failed));
+        if (!diagnostics_.empty()) error += " (" + diagnostics_ + ")";
+        return false;
+    }
+    cachedBackends_ = bitcode_.size() - std::min<std::size_t>(backendRuns_, bitcode_.size());
+    if (!streamError.empty() || !diagnostics_.empty())
+    {
+        error = !streamError.empty() ? streamError : "ThinLTO reported errors: " + diagnostics_;
+        return false;
+    }
+    return true;
+}
+
+#endif
+
+void ThinLtoBackend::setCaptureFinalModuleTexts(bool capture) noexcept
+{
+    captureFinalModuleTexts_ = capture;
+}
+
+std::span<const std::string> ThinLtoBackend::finalModuleTexts() const noexcept
+{
+    return finalModuleTexts_;
+}
+
+std::size_t ThinLtoBackend::importedFunctionCount() const noexcept
+{
+    return importedFunctions_;
+}
+
+std::size_t ThinLtoBackend::cachedBackendCount() const noexcept
+{
+    return cachedBackends_;
+}
+}

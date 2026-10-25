@@ -72,12 +72,13 @@ class Program
         const nativesharp::ExitCode result = driver.run(arguments, output, error);
         tests.expect(result == nativesharp::ExitCode::Success,
             "ThinLTO project emits successfully: " + error.str());
-        tests.expect(error.str().find("nsc: warning: -flto=thin") != std::string::npos,
-            "ThinLTO warns that it still builds the normal partitioned code");
+        tests.expect(error.str().find("nsc: warning: -flto=thin") == std::string::npos,
+            "ThinLTO at -O2 runs real backends and does not warn");
         const std::string text = output.str();
         const std::string index = valueAfter(text, "thinlto-index: ");
         tests.expect(text.find("link-time-optimization: thin") != std::string::npos &&
                 text.find("thinlto-summaries: 1") == std::string::npos &&
+                text.find("thinlto-imports: ") != std::string::npos &&
                 index.size() == 64,
             "ThinLTO builds multiple indexed summaries");
         if (run == 0) firstIndex = index;
@@ -89,6 +90,20 @@ class Program
             tests.expect(std::system(command.c_str()) == 42,
                 "ThinLTO executable preserves native program behavior");
         }
+    }
+    {
+        // At -O0 thin keeps the ordinary partitioned build and says so (optimization part 2, item 44).
+        // En -O0 thin conserva el build particionado normal y lo dice (parte 2, punto 44).
+        const std::string executable = (root / "ThinO0.exe").string();
+        const std::array<std::string_view, 7> arguments = {
+            "-O0", "-j4", "-flto=thin", "--emit-project-oop-exe", project, "-o", executable};
+        nativesharp::driver::Driver driver;
+        std::ostringstream output;
+        std::ostringstream error;
+        const nativesharp::ExitCode result = driver.run(arguments, output, error);
+        tests.expect(result == nativesharp::ExitCode::Success &&
+                error.str().find("nsc: warning: -flto=thin at -O0") != std::string::npos,
+            "ThinLTO at -O0 warns that it builds the ordinary partitioned code: " + error.str());
     }
     return tests.resultKeeping(root);
 }
