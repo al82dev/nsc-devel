@@ -867,6 +867,8 @@ if(LLVM_FOUND)
             nativecodegen
             passes
             X86
+            X86Disassembler
+            MCDisassembler
             AArch64)
         list(APPEND NSC_LLVM_LINK_LIBRARIES ${NSC_LLVM_COMPONENT_LIBS})
     endif()
@@ -894,6 +896,8 @@ add_library(nsc_llvm STATIC
     src/LLVM/FloatingPointMode.cpp
     src/LLVM/Internal/ArtifactCacheFilesystemPath.cpp
     src/LLVM/Internal/CacheEntryLock.cpp
+    src/LLVM/Internal/CodeViewProcedureRanges.cpp
+    src/LLVM/Internal/CoffObjectFile.cpp
     src/LLVM/Internal/CachePruneIndex.cpp
     src/LLVM/Internal/CachePruneMeasurement.cpp
     src/LLVM/Internal/CachePruneRecordTable.cpp
@@ -910,6 +914,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/Internal/ScopedDebugLocation.cpp
     src/LLVM/Internal/ScopedDebugScope.cpp
     src/LLVM/Internal/StandardErrorCapture.cpp
+    src/LLVM/Internal/X64InstructionWalker.cpp
     src/LLVM/LlvmDebugPrefixMap.cpp
     src/LLVM/LlvmModule.cpp
     src/LLVM/LlvmTypeClassification.cpp

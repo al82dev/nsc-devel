@@ -473,6 +473,30 @@ void LLVMInitializeX86Target();
 void LLVMInitializeX86TargetMC();
 void LLVMInitializeX86AsmParser();
 void LLVMInitializeX86AsmPrinter();
+// ES: Desensamblador de LLVM (llvm-c/Disassembler.h). CodeViewProcedureRanges lo usa para conocer las fronteras
+// de instruccion de cada funcion y ubicar su ultimo epilogo.
+// EN: LLVM's disassembler (llvm-c/Disassembler.h). CodeViewProcedureRanges uses it to know each function's
+// instruction boundaries and locate its last epilogue.
+void LLVMInitializeX86Disassembler();
+using LLVMDisasmContextRef = void*;
+using LLVMOpInfoCallback = int (*)(void* disassemblerInfo, std::uint64_t pc, std::uint64_t offset,
+    std::uint64_t operandSize, std::uint64_t instructionSize, int tagType, void* tagBuffer);
+using LLVMSymbolLookupCallback = const char* (*)(void* disassemblerInfo, std::uint64_t referenceValue,
+    std::uint64_t* referenceType, std::uint64_t referencePc, const char** referenceName);
+LLVMDisasmContextRef LLVMCreateDisasm(
+    const char* tripleName,
+    void* disassemblerInfo,
+    int tagType,
+    LLVMOpInfoCallback getOperandInfo,
+    LLVMSymbolLookupCallback symbolLookup);
+std::size_t LLVMDisasmInstruction(
+    LLVMDisasmContextRef context,
+    std::uint8_t* bytes,
+    std::uint64_t byteCount,
+    std::uint64_t pc,
+    char* outputString,
+    std::size_t outputStringSize);
+void LLVMDisasmDispose(LLVMDisasmContextRef context);
 void LLVMInitializeAArch64TargetInfo();
 void LLVMInitializeAArch64Target();
 void LLVMInitializeAArch64TargetMC();
