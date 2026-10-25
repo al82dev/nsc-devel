@@ -3167,6 +3167,78 @@ void testWorkerIndependentPartitions(TestContext& tests, const std::filesystem::
     }
 }
 
+/// EN: Optimization part 2, item 46. Generates a 24-function project at O2 with -flto=thin and four
+///     workers, keeping the optimized IR of every unit after its ThinLTO backend. The backends must
+///     import definitions across units, and the unit that defines Main must keep no call to any F<k>,
+///     including at least one F<k> defined in another unit: cross-partition inlining is observable.
+/// ES: Punto 46 de la parte 2. Genera un proyecto de 24 funciones en O2 con -flto=thin y cuatro
+///     workers, conservando el IR optimizado de cada unidad tras su backend ThinLTO. Los backends
+///     deben importar definiciones entre unidades y la unidad que define Main no debe conservar
+///     ninguna llamada a F<k>, incluida al menos una F<k> definida en otra unidad: el inlining entre
+///     particiones es observable.
+void testThinLtoCrossPartitionInlining(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "ThinLtoCrossPartitionInlining";
+    writeProject(directory, "ThinInline");
+    std::string source = "public class Work\n{\n";
+    for (int index = 0; index < 24; ++index)
+    {
+        source += "    public static int F" + std::to_string(index) + "(int value) { return value * " +
+            std::to_string(index + 2) + " + " + std::to_string(index) + "; }\n";
+    }
+    source += "    public static int Main()\n    {\n        int total = 0;\n";
+    for (int index = 0; index < 24; ++index)
+        source += "        total = total + F" + std::to_string(index) + "(" + std::to_string(index) + ");\n";
+    source += "        return total;\n    }\n}\n";
+    writeFile(directory / "Work.ns", source);
+
+    ProjectCompilation compilation;
+    compilation.setCompilationJobs(4);
+    std::string error;
+    const bool compiled = compilation.compileProjectOopMir(directory / "ThinInline.nsproj", error);
+    tests.expect(compiled && compilation.oopMirModel() != nullptr,
+        "ThinLTO inlining fixture produces OOP MIR (" + error + ")");
+    if (!compiled || compilation.oopMirModel() == nullptr) return;
+
+    nativesharp::llvm_backend::ProjectOopObjectGenerator generator;
+    generator.setThinLtoFinalModuleTextCapture(true);
+    error.clear();
+    const auto bundle = generator.generate(
+        *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+        compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+        nativesharp::llvm_backend::LlvmOptimizationLevel::O2, 4, {},
+        nativesharp::llvm_backend::LinkTimeOptimizationMode::Thin, error);
+    tests.expect(bundle != nullptr && bundle->codeUnitCount() > 1 && bundle->thinLtoImportCount() > 0,
+        "ThinLTO backends import definitions across code units (" + error + ")");
+    if (bundle == nullptr) return;
+
+    const auto lines = [](const std::string& text, std::string_view needle, std::string_view prefix)
+    {
+        std::istringstream stream(text);
+        std::string line;
+        while (std::getline(stream, line))
+            if (line.find(needle) != std::string::npos && line.find(prefix) != std::string::npos) return true;
+        return false;
+    };
+    const std::string* mainUnit = nullptr;
+    for (const std::string& text : bundle->thinLtoFinalModuleTexts())
+        if (lines(text, "Work__Main", "define ")) mainUnit = &text;
+    tests.expect(mainUnit != nullptr, "the final ThinLTO IR contains the unit that defines Main");
+    if (mainUnit == nullptr) return;
+    bool everyCallInlined = true;
+    bool crossUnitCallee = false;
+    for (int index = 0; index < 24; ++index)
+    {
+        const std::string callee = "Work__F" + std::to_string(index) + "__";
+        const bool called = lines(*mainUnit, callee, "call ");
+        const bool definedHere = lines(*mainUnit, callee, "define ");
+        everyCallInlined = everyCallInlined && !called;
+        crossUnitCallee = crossUnitCallee || !definedHere;
+    }
+    tests.expect(crossUnitCallee, "at least one callee of Main lives in another code unit");
+    tests.expect(everyCallInlined, "ThinLTO inlines every callee into Main, across code units");
+}
+
 void testPartitionStaticFieldReachability(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path directory = root / "PartitionStaticFieldReachability";
@@ -21559,6 +21631,10 @@ int main()
     {
         testWorkerIndependentPartitions(tests, root);
     }
+    else if (focusValue == "thinlto-cross-partition-inlining")
+    {
+        testThinLtoCrossPartitionInlining(tests, root);
+    }
     else if (focusValue == "hir-default-argument-depth")
     {
         testDeepOptionalDefaultHir(tests, root);
@@ -21934,6 +22010,7 @@ int main()
         testNarrowSignedEnumNameLowering(tests, root);
         testPreciseIncrementalInvalidation(tests, root);
         testWorkerIndependentPartitions(tests, root);
+        testThinLtoCrossPartitionInlining(tests, root);
         testPartitionStaticFieldReachability(tests, root);
         testImportedConstantCoordinatorReachability(tests);
         testSharedLlvmAnalysis(tests, root);
