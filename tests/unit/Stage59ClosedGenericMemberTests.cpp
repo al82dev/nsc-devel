@@ -180,6 +180,18 @@ int main()
         "        Caja<Caja<int>> fuera = Caja<Caja<int>>.Make(dentro);\n"
         "        return fuera.Item.Item;"));
 
+    // Un argumento de tipo GENERICO en la llamada a un metodo generico. Aqui el `>>` cierra a
+    // la vez el argumento (`Caja<int>`) y la lista del metodo; el predicado escaneaba el
+    // argumento como un tipo suelto, lo daba por invalido y la llamada se leia como
+    // comparaciones: "expected expression" en `int`.
+    // A GENERIC type argument in a generic method call. The `>>` closes the argument
+    // (`Caja<int>`) and the method list at once; the predicate scanned the argument as a
+    // standalone type, judged it invalid and the call was read as comparisons.
+    expectValid(tests, root, "metodo_generico_con_argumento_generico", program(
+        "        Caja<int> dentro = Caja<int>.Make(5);\n"
+        "        if (Ayuda.Envolver<Caja<int>>(dentro).Item != 5) { return 1; }\n"
+        "        return Ayuda.Envolver<Par<int, long>>(new Par<int, long>()).First;"));
+
     // El tipo cerrado como receptor de una llamada cuyo resultado se encadena.
     expectValid(tests, root, "encadenado", program(
         "        return Caja<int>.Make(9).Item;"));

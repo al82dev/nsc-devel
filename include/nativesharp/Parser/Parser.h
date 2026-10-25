@@ -374,6 +374,7 @@ private:
     bool genericLookaheadTokenIsAllowed(
         std::size_t cursor,
         int parenthesisDepth) const noexcept;
+    bool canStartTypeArgumentAt(std::size_t tokenIndex) const noexcept;
     bool looksLikeGenericCallTypeArguments() const noexcept;
     bool scanClosedGenericTypePrefix(std::size_t& cursor) const noexcept;
     bool looksLikeClosedGenericTypeReference() const noexcept;

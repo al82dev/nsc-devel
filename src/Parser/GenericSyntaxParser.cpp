@@ -791,6 +791,42 @@ bool Parser::genericLookaheadTokenIsAllowed(
     return true;
 }
 
+// Un argumento de tipo puede compartir su cierre con la lista que lo contiene: en
+// `F<Box<int>>()` el token `>>` cierra `Box<int>` y tambien `F<...>`. `canStartTypeAt`
+// escanea el argumento como un tipo suelto y lo rechaza, porque ese `>>` deja su
+// profundidad en -1; asi `F<Box<int>>()` se leia como comparaciones. Esta variante
+// acepta un tipo con nombre generico cuyo ultimo cierre es un `>>` compartido.
+// A type argument can share its closing token with the enclosing list: in
+// `F<Box<int>>()` the `>>` token closes `Box<int>` and `F<...>` too. `canStartTypeAt`
+// scans the argument as a standalone type and rejects it, because that `>>` leaves its
+// depth at -1; so `F<Box<int>>()` was read as comparisons. This variant accepts a
+// named generic type whose last closer is a shared `>>`.
+bool Parser::canStartTypeArgumentAt(std::size_t tokenIndex) const noexcept
+{
+    if (canStartTypeAt(tokenIndex)) return true;
+    std::size_t cursor = tokenIndex;
+    if (cursor >= tokens_.size() || !scanOwnershipTypePrefix(cursor) ||
+        cursor >= tokens_.size())
+        return false;
+    bool builtin = false;
+    if (!scanNamedTypeIdentityAt(cursor, cursor, builtin) || builtin) return false;
+    if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::Less) return false;
+    int depth = 0;
+    for (; cursor < tokens_.size(); ++cursor)
+    {
+        const TokenKind kind = tokens_[cursor].kind();
+        if (kind == TokenKind::Less) ++depth;
+        else if (kind == TokenKind::Greater) --depth;
+        else if (kind == TokenKind::GreaterGreater) depth -= 2;
+        else if (kind == TokenKind::EndOfFile) return false;
+        // Profundidad -1: el `>>` cerro este argumento y la lista exterior.
+        // Depth -1: the `>>` closed this argument and the enclosing list.
+        if (depth == -1) return kind == TokenKind::GreaterGreater;
+        if (depth <= 0) return false;
+    }
+    return false;
+}
+
 bool Parser::looksLikeGenericCallTypeArguments() const noexcept
 {
     if (!at(TokenKind::Less)) return false;
@@ -811,7 +847,7 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
                 kind == TokenKind::Tilde || kind == TokenKind::Bang ||
                 kind == TokenKind::IntegerLiteral || kind == TokenKind::KwTrue ||
                 kind == TokenKind::KwFalse;
-            if (!constantArgument && !canStartTypeAt(cursor)) return false;
+            if (!constantArgument && !canStartTypeArgumentAt(cursor)) return false;
             expectsArgument = false;
             sawArgument = true;
         }
