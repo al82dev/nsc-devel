@@ -303,14 +303,32 @@ LLVMMetadataRef OopLlvmImplementation::debugLocation(const frontend::ProjectOopM
             return nullptr;
         const SourceRange range = node->syntax->range();
         if (!range.isValid()) return nullptr;
-        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        return debugLocationAt(range.begin());
+    }
+
+LLVMMetadataRef OopLlvmImplementation::debugEndLocation(const frontend::ProjectOopMirNode* node)
+{
+        if (debugBuilder_ == nullptr || sourceManager_ == nullptr ||
+            currentDebugSubprogram_ == nullptr || node == nullptr || node->syntax == nullptr)
+            return nullptr;
+        const SourceRange range = node->syntax->range();
+        if (!range.isValid()) return nullptr;
+        return debugLocationAt(range.end());
+    }
+
+LLVMMetadataRef OopLlvmImplementation::debugLocationAt(SourceLocation location)
+{
+        if (debugBuilder_ == nullptr || sourceManager_ == nullptr ||
+            currentDebugSubprogram_ == nullptr || !location.isValid())
+            return nullptr;
+        const source::SourcePosition position = sourceManager_->getPosition(location);
         LLVMMetadataRef scope = currentDebugScope_ != nullptr
             ? currentDebugScope_
             : currentDebugSubprogram_;
-        const std::uint32_t fileKey = range.begin().fileId().value();
+        const std::uint32_t fileKey = location.fileId().value();
         if (fileKey != currentDebugFileKey_)
         {
-            if (LLVMMetadataRef file = debugFile(range.begin()); file != nullptr)
+            if (LLVMMetadataRef file = debugFile(location); file != nullptr)
             {
                 scope = LLVMDIBuilderCreateLexicalBlockFile(
                     debugBuilder_, scope, file, 0);

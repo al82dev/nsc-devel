@@ -124,6 +124,12 @@ private:
 
     LLVMMetadataRef debugLocation(const frontend::ProjectOopMirNode* node);
 
+    // ES: Ubicación del final del nodo (la llave de cierre de un bloque).
+    // EN: Location of the node's end (the closing brace of a block).
+    LLVMMetadataRef debugEndLocation(const frontend::ProjectOopMirNode* node);
+
+    LLVMMetadataRef debugLocationAt(SourceLocation location);
+
     LLVMMetadataRef createDebugLexicalScope(
         const frontend::ProjectOopMirNode* node,
         LLVMMetadataRef parent);

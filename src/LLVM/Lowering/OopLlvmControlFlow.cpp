@@ -314,12 +314,21 @@ bool OopLlvmImplementation::emitOneTryCatchBody(
         // source statement (or to `catch` for an empty body).  Instructions that survive
         // from the body keep their more precise nested locations; this is only the stable
         // anchor that mem2reg cannot erase.
+        //
+        // ES: Actualización (2026-10-24): esa legalización se retiró y el cuerpo conserva sus
+        // propias líneas. Atribuir la llamada a la primera sentencia del cuerpo creaba, después
+        // de la última, un segundo tramo de esa línea en la tabla de líneas: el depurador volvía a
+        // detenerse en la primera sentencia al salir del `catch`. La llamada pertenece ahora a la
+        // llave de cierre del cuerpo (o al `catch`, si el cuerpo no tiene sintaxis).
+        // EN: Update (2026-10-24): that legalization was retired and the body keeps its own lines.
+        // Attributing the call to the body's first statement created, after the last one, a second
+        // run of that line in the line table: the debugger stopped on the first statement again
+        // when leaving the `catch`. The call now belongs to the body's closing brace (or to the
+        // `catch` when the body has no syntax).
         const frontend::ProjectOopMirNode* catchBody = catchNode->children[bodyIndex].get();
-        const frontend::ProjectOopMirNode* catchAnchor = catchNode;
-        if (catchBody != nullptr && catchBody->kind == frontend::ProjectOopMirNodeKind::Block &&
-            !catchBody->children.empty() && catchBody->children.front() != nullptr)
-            catchAnchor = catchBody->children.front().get();
-        ScopedDebugLocation catchCompletionLocation(builder_, debugLocation(catchAnchor));
+        LLVMMetadataRef catchEnd = debugEndLocation(catchBody);
+        ScopedDebugLocation catchCompletionLocation(
+            builder_, catchEnd != nullptr ? catchEnd : debugLocation(catchNode));
         buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
         LLVMBuildBr(builder_, hasFinally ? normalFinallyBlock : continueBlock);
         return true;
