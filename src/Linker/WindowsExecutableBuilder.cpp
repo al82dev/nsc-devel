@@ -163,7 +163,9 @@ std::string incrementalLinkKey(
     std::string_view mainSymbol,
     std::string& error)
 {
-    std::string material = "NativeSharp.IncrementalLink.v3\n";
+    // v4: NSLink receives stable input and PDB spellings, so a v3 product embeds temporary paths.
+    // v4: NSLink recibe nombres estables de entradas y PDB; un producto v3 lleva rutas temporales.
+    std::string material = "NativeSharp.IncrementalLink.v4\n";
     material += std::to_string(static_cast<unsigned>(optimizationLevel)) + ":" +
         std::to_string(static_cast<unsigned>(debugInformation)) + ":" +
         std::to_string(static_cast<unsigned>(subsystem)) + ":" + std::string(mainSymbol) + "\n";

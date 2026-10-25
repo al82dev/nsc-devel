@@ -16,7 +16,9 @@
 #include "nativesharp/LLVM/ProjectOopFunctionReachability.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 #include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
+#include "nativesharp/Linker/WindowsExecutableBuilder.h"
 #include "nativesharp/Linker/WindowsLibraryBuilder.h"
+#include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 
 #include "../support/TestContext.h"
 
@@ -3034,6 +3036,36 @@ public class Work
 ///     worker y con dieciseis debe dar objetos identicos byte a byte (O2 sin informacion de
 ///     depuracion y O0 con informacion completa, cuyo CodeView alimenta el PDB), y los objetos que
 ///     guarda un build de un worker deben reutilizarse en un build de dieciseis.
+/// EN: Links the objects of a bundle into `<directory>/WorkerIndependent.exe` with a full PDB and
+///     reads back the executable and PDB bytes. Returns false with `error` when the link fails.
+///     Side effects: replaces `directory`.
+/// ES: Enlaza los objetos de un paquete en `<directory>/WorkerIndependent.exe` con PDB completo y
+///     lee los bytes del ejecutable y del PDB. Devuelve false con `error` si el enlace falla.
+///     Efectos laterales: reemplaza `directory`.
+bool linkedArtifactBytes(
+    const nativesharp::llvm_backend::ProjectOopObjectBundle& bundle,
+    const std::filesystem::path& directory,
+    std::string_view mainSymbol,
+    std::string& executableBytes,
+    std::string& pdbBytes,
+    std::string& error)
+{
+    std::error_code ignored;
+    std::filesystem::remove_all(directory, ignored);
+    std::filesystem::create_directories(directory, ignored);
+    nativesharp::linker::WindowsExecutableBuilder builder;
+    builder.setRuntimeLibrary(nativesharp::linker::configuredWindowsRuntimeLibrary());
+    builder.setDebugInformation(nativesharp::llvm_backend::DebugInformationKind::Full);
+    const std::filesystem::path executable = directory / "WorkerIndependent.exe";
+    if (!builder.buildObjects(bundle.objectFiles(), bundle.combinedLlvmText(), executable,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O0, mainSymbol, error)) return false;
+    std::ifstream executableStream(executable, std::ios::binary);
+    executableBytes.assign(std::istreambuf_iterator<char>(executableStream), {});
+    std::ifstream pdbStream(directory / "WorkerIndependent.pdb", std::ios::binary);
+    pdbBytes.assign(std::istreambuf_iterator<char>(pdbStream), {});
+    return !executableBytes.empty() && !pdbBytes.empty();
+}
+
 void testWorkerIndependentPartitions(TestContext& tests, const std::filesystem::path& root)
 {
     const auto directory = root / "WorkerIndependentPartitions";
@@ -3055,6 +3087,14 @@ void testWorkerIndependentPartitions(TestContext& tests, const std::filesystem::
     tests.expect(compiled && compilation.oopMirModel() != nullptr,
         "worker-independent partition fixture produces OOP MIR (" + error + ")");
     if (!compiled || compilation.oopMirModel() == nullptr) return;
+    bool ambiguousEntry = false;
+    const nativesharp::frontend::ProjectOopMirFunction* entry =
+        compilation.namespaceFunctionModel() == nullptr
+            ? nullptr
+            : compilation.oopMirModel()->executableEntryPoint(
+                *compilation.namespaceFunctionModel(), ambiguousEntry);
+    tests.expect(entry != nullptr && !ambiguousEntry,
+        "worker-independent partition fixture has one executable entry point");
 
     struct Profile
     {
@@ -3105,6 +3145,25 @@ void testWorkerIndependentPartitions(TestContext& tests, const std::filesystem::
         tests.expect(oneWorker != nullptr && sixteenWorkers != nullptr &&
                 sixteenWorkers->cacheHitCount() == 0 && sameObjectFiles(*oneWorker, *sixteenWorkers),
             profile.name + ": one worker and sixteen workers emit byte-identical objects (" + error + ")");
+        // The PDB must not depend on the worker count either: NSLink spells the input objects
+        // into it and hashes them into the GUID that the executable repeats.
+        // El PDB tampoco debe depender del numero de workers: NSLink escribe en el los objetos de
+        // entrada y los mete en el hash del GUID que el ejecutable repite.
+        if (profile.debugInformation == nativesharp::llvm_backend::DebugInformationKind::None ||
+            entry == nullptr || oneWorker == nullptr || sixteenWorkers == nullptr) continue;
+        std::string oneExecutable;
+        std::string onePdb;
+        std::string sixteenExecutable;
+        std::string sixteenPdb;
+        std::string linkError;
+        const bool linked =
+            linkedArtifactBytes(*oneWorker, directory / ("link-one-" + profile.name),
+                entry->mangledName, oneExecutable, onePdb, linkError) &&
+            linkedArtifactBytes(*sixteenWorkers, directory / ("link-sixteen-" + profile.name),
+                entry->mangledName, sixteenExecutable, sixteenPdb, linkError);
+        tests.expect(linked && onePdb == sixteenPdb && oneExecutable == sixteenExecutable,
+            profile.name + ": one worker and sixteen workers link byte-identical executables and PDBs (" +
+                linkError + ")");
     }
 }
 
