@@ -1219,9 +1219,11 @@ bool OopLlvmImplementation::emitDebugLocal(
         LLVMValueRef storage,
         std::string& error)
 {
+        LLVMMetadataRef variableScope =
+            pendingLocalDebugScope_ != nullptr ? pendingLocalDebugScope_ : currentDebugScope_;
         return emitLocalDebugInfo(
             debugInformation_, debugBuilder_, context_, builder_, currentDebugSubprogram_,
-            currentDebugScope_, sourceManager_, debugDeclaredLocals_,
+            variableScope, sourceManager_, debugDeclaredLocals_,
             [&](SourceLocation location) { return debugFile(location); },
             [&](std::string_view elementTypeKey, std::size_t rank) {
                 return debugVariableLengthArrayType(elementTypeKey, rank);

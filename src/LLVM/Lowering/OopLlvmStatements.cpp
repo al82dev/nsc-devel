@@ -102,17 +102,28 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     // this block. Consecutive declarations therefore form the same lifetime
                     // chain as the source language: earlier locals remain visible, later locals
                     // begin exactly where declared, and all scopes close at the brace.
+                    //
+                    // ES: El inicializador se baja todavía en el ámbito padre y sólo la variable
+                    // pertenece al ámbito de la declaración, que se activa al terminar la sentencia.
+                    // Un local no se ve en su propia línea (su valor aún no existe: en un bucle
+                    // sería el de la vuelta anterior); se ve desde la sentencia siguiente.
+                    // EN: The initializer is still lowered in the parent scope and only the
+                    // variable belongs to the declaration scope, which becomes active once the
+                    // statement ends. A local is not visible on its own line (its value does not
+                    // exist yet; in a loop it would be the previous iteration's); it is visible from
+                    // the next statement on.
+                    LLVMMetadataRef declarationScope = nullptr;
                     if (child != nullptr &&
                         child->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration)
                     {
-                        if (LLVMMetadataRef declarationScope =
-                                createDebugLexicalScope(child.get(), currentDebugScope_);
-                            declarationScope != nullptr)
-                        {
-                            currentDebugScope_ = declarationScope;
-                        }
+                        declarationScope = createDebugLexicalScope(child.get(), currentDebugScope_);
                     }
-                    if (!lowerStatement(child.get(), error))
+                    LLVMMetadataRef enclosingPendingScope = pendingLocalDebugScope_;
+                    pendingLocalDebugScope_ = declarationScope;
+                    const bool lowered = lowerStatement(child.get(), error);
+                    pendingLocalDebugScope_ = enclosingPendingScope;
+                    if (declarationScope != nullptr) currentDebugScope_ = declarationScope;
+                    if (!lowered)
                     {
                         activeCleanupRegions_.resize(cleanupDepthAtEntry);
                         return false;

@@ -3291,6 +3291,13 @@ private:
     const frontend::ProjectOopMirFunction* currentMirFunction_ = nullptr;
     LLVMMetadataRef currentDebugSubprogram_ = nullptr;
     LLVMMetadataRef currentDebugScope_ = nullptr;
+    // ES: Ámbito léxico de la declaración que se está bajando. La variable pertenece a él, pero las
+    // instrucciones del inicializador se quedan en el ámbito padre: así el local es visible a partir
+    // de la sentencia siguiente a su declaración y no en su propia línea.
+    // EN: Lexical scope of the declaration being lowered. The variable belongs to it, but the
+    // initializer's instructions stay in the parent scope, so the local becomes visible from the
+    // statement after its declaration, not on its own line.
+    LLVMMetadataRef pendingLocalDebugScope_ = nullptr;
     std::uint32_t currentDebugFileKey_ = 0;
     LLVMValueRef thisValue_ = nullptr;
     LLVMValueRef closureEnvironment_ = nullptr;
