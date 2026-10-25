@@ -191,8 +191,10 @@ bool OopLlvmImplementation::initializeFunctionParameter(
         }
         LLVMTypeRef type = llvmType(function.parameterTypeKeys[index], error);
         if (type == nullptr) return false;
-        LLVMValueRef storage = LLVMBuildAlloca(
-            builder_, type, (parameterName + ".addr").c_str());
+        // ES: Toda ranura de pila de la función vive en el bloque de entrada (ver
+        // collectLocalStorage).
+        // EN: Every stack slot of the function lives in the entry block (see collectLocalStorage).
+        LLVMValueRef storage = entryBlockAlloca(type, 0, (parameterName + ".addr").c_str());
         LLVMBuildStore(builder_, value, storage);
         parameterStorage_[index] = storage;
         return emitDebugParameter(function, index, storage, error);
@@ -246,16 +248,15 @@ bool OopLlvmImplementation::prepareFunctionCleanupState(
             LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
             if (cleanup.localOrdinal.has_value())
             {
-                LLVMValueRef flag = LLVMBuildAlloca(
-                    builder_, flagType,
-                    ("drop.flag.l" + std::to_string(*cleanup.localOrdinal)).c_str());
+                LLVMValueRef flag = entryBlockAlloca(
+                    flagType, 0, ("drop.flag.l" + std::to_string(*cleanup.localOrdinal)).c_str());
                 LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag);
                 localValueDropFlags_[*cleanup.localOrdinal] = flag;
             }
             else if (cleanup.parameterOrdinal.has_value())
             {
-                LLVMValueRef flag = LLVMBuildAlloca(
-                    builder_, flagType,
+                LLVMValueRef flag = entryBlockAlloca(
+                    flagType, 0,
                     ("drop.flag.p" + std::to_string(*cleanup.parameterOrdinal)).c_str());
                 LLVMBuildStore(builder_, LLVMConstInt(flagType, 1, 0), flag);
                 parameterValueDropFlags_[*cleanup.parameterOrdinal] = flag;
@@ -270,9 +271,8 @@ bool OopLlvmImplementation::prepareFunctionCleanupState(
             ? LLVMPointerTypeInContext(context_, 0)
             : llvmType(function.returnTypeKey, error);
         if (returnType == nullptr) return false;
-        returnStorage_ = LLVMBuildAlloca(builder_, returnType, "eh.return.addr");
-        const unsigned returnAlignment = structAlignmentFor(function.returnTypeKey);
-        if (returnAlignment > 1U) LLVMSetAlignment(returnStorage_, returnAlignment);
+        returnStorage_ = entryBlockAlloca(
+            returnType, structAlignmentFor(function.returnTypeKey), "eh.return.addr");
         return true;
     }
 
@@ -383,8 +383,21 @@ bool OopLlvmImplementation::collectLocalStorage(
         }
         else
         {
-            slot = LLVMBuildAlloca(
-                builder_, type, ("local" + std::to_string(*node->localOrdinal) + ".addr").c_str());
+            // ES: La ranura se crea en el bloque de entrada aunque el builder ya esté en otro
+            // bloque. Una celda de captura anterior (o la de un parámetro) emite una reserva en el
+            // montón con su comprobación de null, que cierra el bloque de entrada; los locales que
+            // venían después quedaban como `alloca` dinámicos. LLVM los describía en el PDB con
+            // ubicaciones indirectas, a otros los perdía (en DeepFunctional faltaban `shifted` y
+            // `same`), y un `alloca` fuera del bloque de entrada vuelve a reservar pila cada vez
+            // que se ejecuta.
+            // EN: The slot is created in the entry block even when the builder already sits in
+            // another block. An earlier capture cell (or a parameter's) emits a heap allocation with
+            // its null check, which closes the entry block; the locals that came after became
+            // dynamic `alloca`s. LLVM described them in the PDB with indirect locations, lost others
+            // (DeepFunctional was missing `shifted` and `same`), and an `alloca` outside the entry
+            // block reserves stack again every time it runs.
+            slot = entryBlockAlloca(
+                type, 0, ("local" + std::to_string(*node->localOrdinal) + ".addr").c_str());
         }
         // An indirect-struct carrier is [N x i8], whose alloca defaults to align 1 --
         // but member accesses through the slot do naturally-aligned typed loads and
@@ -412,10 +425,9 @@ void OopLlvmImplementation::collectStackPromotedObjectStorage(
         }
         const frontend::ProjectOopMirNode* construction = node->children.front().get();
         LLVMTypeRef bytes = LLVMArrayType2(LLVMInt8TypeInContext(context_), construction->immediate);
-        LLVMValueRef object = LLVMBuildAlloca(
-            builder_, bytes, ("local" + std::to_string(*node->localOrdinal) + ".object").c_str());
-        if (construction->alignment > 1U)
-            LLVMSetAlignment(object, static_cast<unsigned>(construction->alignment));
+        LLVMValueRef object = entryBlockAlloca(
+            bytes, static_cast<unsigned>(construction->alignment),
+            ("local" + std::to_string(*node->localOrdinal) + ".object").c_str());
         stackObjectStorage_[*node->localOrdinal] = object;
     }
 
