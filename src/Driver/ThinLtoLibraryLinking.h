@@ -92,12 +92,16 @@ public:
     void printResult(std::ostream& output) const;
 
     /// EN: Writes the sidecar of a static library whose bundle kept its units: digests of the staged
-    ///     .lib and .nsmeta, the compatibility identity and the units, to `sidecarStage`.
+    ///     .lib and .nsmeta, the compatibility identity and the units, to `sidecarStage`. Since item
+    ///     53 the identity adds the configured runtime library and the sidecar lists the metadata of
+    ///     every library `compilation` references.
     /// ES: Escribe el sidecar de una biblioteca estatica cuyo paquete conservo sus unidades: digests
     ///     de la .lib y la .nsmeta en staging, la identidad de compatibilidad y las unidades, en
-    ///     `sidecarStage`.
+    ///     `sidecarStage`. Desde el punto 53 la identidad agrega la biblioteca de runtime configurada
+    ///     y el sidecar lista la metadata de cada biblioteca que referencia `compilation`.
     static bool writeSidecar(
         const llvm_backend::ProjectOopObjectBundle& bundle,
+        const frontend::ProjectCompilation& compilation,
         const std::filesystem::path& libraryStage,
         const std::filesystem::path& metadataStage,
         const std::filesystem::path& sidecarStage,

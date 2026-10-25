@@ -11,6 +11,7 @@
 #include <memory>
 #include <span>
 #include <system_error>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -28,12 +29,96 @@ std::string fileDigest(const std::filesystem::path& path)
     return basic::sha256File(path, digest, size, ignored) ? basic::sha256Hex(digest) : std::string();
 }
 
+// Lower-case file name of a metadata path, the name a dependency is matched by.
+// Nombre de archivo en minusculas de una ruta de metadata, el nombre con que se empata una dependencia.
+std::string dependencyMetadataName(const std::filesystem::path& metadata)
+{
+    std::string name = metadata.filename().string();
+    for (char& character : name)
+    {
+        if (character >= 'A' && character <= 'Z') character = static_cast<char>(character - 'A' + 'a');
+    }
+    return name;
+}
+
+// The compatibility line of the configured NativeSharp runtime library (item 53): the units call
+// it, so a different runtime makes the sidecar incompatible.
+// La linea de compatibilidad de la biblioteca de runtime de NativeSharp configurada (punto 53): las
+// unidades la llaman, asi que otro runtime vuelve incompatible el sidecar.
+std::string thinLtoRuntimeIdentity()
+{
+    const std::filesystem::path runtime = linker::configuredWindowsRuntimeLibrary();
+    const std::string digest = runtime.empty() ? std::string("none") : fileDigest(runtime);
+    return "runtime " + (digest.empty() ? std::string("unreadable") : digest) + "\n";
+}
+
+// "name digest" lines, sorted, of the metadata of every library reference of `compilation`.
+// Lineas "nombre digest", ordenadas, de la metadata de cada referencia a biblioteca de `compilation`.
+std::string thinLtoDependencyText(const frontend::ProjectCompilation& compilation)
+{
+    std::vector<std::string> lines;
+    if (compilation.projectGraph() != nullptr)
+    {
+        std::unordered_set<std::string> seen;
+        for (const compilation::Project& project : compilation.projectGraph()->projects())
+        {
+            for (const compilation::LibraryReference& reference : project.libraryReferences())
+            {
+                if (!seen.insert(foldedPathKey(reference.metadataPath)).second) continue;
+                const std::string digest = fileDigest(reference.metadataPath);
+                lines.push_back(dependencyMetadataName(reference.metadataPath) + " " + digest);
+            }
+        }
+    }
+    std::ranges::sort(lines);
+    std::string text;
+    for (const std::string& line : lines) text += line + "\n";
+    return text;
+}
+
+// Every dependency of a sidecar must be referenced by this build with the same metadata bytes.
+// Toda dependencia de un sidecar debe estar referenciada por este build con los mismos bytes.
+bool dependenciesMatch(
+    const std::string& dependencies,
+    const std::unordered_map<std::string, std::filesystem::path>& metadataByName,
+    std::string& reason)
+{
+    std::size_t begin = 0;
+    while (begin < dependencies.size())
+    {
+        std::size_t end = dependencies.find('\n', begin);
+        if (end == std::string::npos) end = dependencies.size();
+        const std::string line = dependencies.substr(begin, end - begin);
+        begin = end + 1;
+        const std::size_t separator = line.rfind(' ');
+        if (separator == std::string::npos)
+        {
+            reason = "the sidecar lists an invalid dependency";
+            return false;
+        }
+        const std::string name = line.substr(0, separator);
+        const auto found = metadataByName.find(name);
+        if (found == metadataByName.end())
+        {
+            reason = "dependency " + name + " is not referenced by this build";
+            return false;
+        }
+        if (fileDigest(found->second) != line.substr(separator + 1))
+        {
+            reason = "dependency " + name + " differs from the one the library was built with";
+            return false;
+        }
+    }
+    return true;
+}
+
 // The checks of NSC-DISENO-SIDECAR-THINLTO-BIBLIOTECAS.md, section 6; `reason` says why one failed.
 // Las revisiones de la seccion 6 del diseno; `reason` dice por que fallo una.
 bool acceptSidecar(
     const compilation::LibraryReference& reference,
     const std::filesystem::path& sidecarPath,
     const std::string& compatibility,
+    const std::unordered_map<std::string, std::filesystem::path>& metadataByName,
     llvm_backend::ThinLtoLibrarySidecar& sidecar,
     std::string& reason)
 {
@@ -53,7 +138,7 @@ bool acceptSidecar(
         reason = "the sidecar does not match its metadata";
         return false;
     }
-    return true;
+    return dependenciesMatch(sidecar.dependencies, metadataByName, reason);
 }
 
 // Removes the archive directories nobody used for a week; housekeeping that never fails a build.
@@ -177,6 +262,13 @@ bool ThinLtoLibraryLinking::collect(
     std::string compatibility;
     if (!llvm_backend::ProjectOopObjectGenerator::thinLtoCompatibility(level, debugInformation, compatibility, error))
         return false;
+    compatibility += thinLtoRuntimeIdentity();
+    std::unordered_map<std::string, std::filesystem::path> metadataByName;
+    for (const compilation::Project& project : compilation.projectGraph()->projects())
+    {
+        for (const compilation::LibraryReference& reference : project.libraryReferences())
+            metadataByName.emplace(dependencyMetadataName(reference.metadataPath), reference.metadataPath);
+    }
     std::unordered_set<std::string> seen;
     for (const compilation::Project& project : compilation.projectGraph()->projects())
     {
@@ -192,7 +284,7 @@ bool ThinLtoLibraryLinking::collect(
             if (!std::filesystem::is_regular_file(sidecarPath, statusError)) continue;
             llvm_backend::ThinLtoLibrarySidecar sidecar;
             std::string reason;
-            if (acceptSidecar(reference, sidecarPath, compatibility, sidecar, reason))
+            if (acceptSidecar(reference, sidecarPath, compatibility, metadataByName, sidecar, reason))
                 libraries_.push_back({reference.libraryPath, std::move(sidecar.units)});
             else
                 fallbacks_.push_back(reference.libraryPath.filename().string() + ": " + reason);
@@ -260,15 +352,19 @@ void ThinLtoLibraryLinking::printResult(std::ostream& output) const
 
 bool ThinLtoLibraryLinking::writeSidecar(
     const llvm_backend::ProjectOopObjectBundle& bundle,
+    const frontend::ProjectCompilation& compilation,
     const std::filesystem::path& libraryStage,
     const std::filesystem::path& metadataStage,
     const std::filesystem::path& sidecarStage,
     std::string& error)
 {
     llvm_backend::ThinLtoLibrarySidecar sidecar;
-    sidecar.compatibility = bundle.thinLtoCompatibility();
+    sidecar.compatibility = bundle.thinLtoCompatibility().empty()
+        ? std::string()
+        : bundle.thinLtoCompatibility() + thinLtoRuntimeIdentity();
     sidecar.libraryDigest = fileDigest(libraryStage);
     sidecar.metadataDigest = fileDigest(metadataStage);
+    sidecar.dependencies = thinLtoDependencyText(compilation);
     if (sidecar.compatibility.empty() || sidecar.libraryDigest.empty() || sidecar.metadataDigest.empty())
     {
         error = "the ThinLTO sidecar needs the compatibility identity, the library and its metadata";

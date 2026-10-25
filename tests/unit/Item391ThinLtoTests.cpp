@@ -1,6 +1,9 @@
 #include "nativesharp/Basic/ExitCode.h"
+#include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/LLVM/LinkTimeOptimizationMode.h"
+#include "nativesharp/LLVM/ThinLtoLibrarySidecar.h"
+#include "nativesharp/LLVM/ThinLtoLibrarySidecarCodec.h"
 
 #include "../support/TestContext.h"
 
@@ -289,6 +292,103 @@ class Program
         tests.expect(!executables[0].empty() && executables[0] == executables[1] &&
                 !pdbs[0].empty() && pdbs[0] == pdbs[1],
             "identical -O2 -g builds that consume a library sidecar write the same executable and PDB");
+    }
+    {
+        // A sidecar binds the metadata of the libraries its library was built against (item 53):
+        // after a dependency changes, the dependent library links natively and says why. A v1 sidecar
+        // is rejected. Un sidecar liga la metadata de las bibliotecas contra las que se construyo su
+        // biblioteca (punto 53): tras cambiar una dependencia, la dependiente se enlaza nativa y dice
+        // por que. Un sidecar v1 se rechaza.
+        const auto build = [](std::span<const std::string_view> arguments, std::string& output) {
+            nativesharp::driver::Driver driver;
+            std::ostringstream out;
+            std::ostringstream err;
+            const nativesharp::ExitCode result = driver.run(arguments, out, err);
+            output = out.str() + err.str();
+            return result == nativesharp::ExitCode::Success;
+        };
+        const std::filesystem::path chain = root / "Chain";
+        const auto library = [&](std::string_view name, std::string_view source, std::string_view references) {
+            writeFile(chain / name / (std::string(name) + ".nsproj"),
+                "<Project><PropertyGroup><Name>" + std::string(name) + "</Name><OutputType>StaticLibrary"
+                "</OutputType></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup>" +
+                std::string(references) + "</Project>");
+            writeFile(chain / name / "Api.ns", source);
+        };
+        const auto reference = [&](std::string_view name) {
+            const std::filesystem::path directory = chain / name;
+            return "<LibraryReference Include=\"" + (directory / (std::string(name) + ".lib")).generic_string() +
+                "\" Metadata=\"" + (directory / (std::string(name) + ".nsmeta")).generic_string() + "\" />";
+        };
+        const auto emitLibrary = [&](std::string_view name, std::string& text) {
+            const std::string project = (chain / name / (std::string(name) + ".nsproj")).string();
+            const std::string output = (chain / name / (std::string(name) + ".lib")).string();
+            const std::array<std::string_view, 6> arguments = {
+                "-O2", "-flto=thin", "--emit-project-oop-lib", project, "-o", output};
+            return build(arguments, text);
+        };
+        library("ThinBase", "namespace ThinBase { public static class Seed { "
+            "public static int Value() { return 20; } } }\n", "");
+        library("ThinMid", "namespace ThinMid { public static class Steps { "
+            "public static int Twice() { return ThinBase.Seed.Value() * 2; } } }\n",
+            "<ItemGroup>" + reference("ThinBase") + "</ItemGroup>");
+        writeFile(chain / "App" / "App.nsproj",
+            "<Project><PropertyGroup><Name>App</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
+            "</ItemGroup><ItemGroup>" + reference("ThinMid") + reference("ThinBase") + "</ItemGroup></Project>");
+        writeFile(chain / "App" / "Program.ns",
+            "class Program { public static int Main() { return ThinMid.Steps.Twice() + 2; } }\n");
+        const std::string appProject = (chain / "App" / "App.nsproj").string();
+        const std::string appExecutable = (chain / "App" / "App.exe").string();
+        const std::array<std::string_view, 6> appArguments = {
+            "-O2", "-flto=thin", "--emit-project-oop-exe", appProject, "-o", appExecutable};
+        std::string text;
+        tests.expect(emitLibrary("ThinBase", text) && emitLibrary("ThinMid", text),
+            "the ThinLTO dependency chain builds: " + text);
+        tests.expect(build(appArguments, text) && text.find("thinlto-libraries: 2") != std::string::npos,
+            "a consumer imports from a library and from its dependency: " + text);
+        // A real dependency change already fails the build (the binary closure ABI fingerprint), so
+        // the sidecar records a dependency digest that no longer matches. Un cambio real de
+        // dependencia ya falla el build (huella ABI del cierre binario), asi que el sidecar registra un
+        // digest de dependencia que ya no coincide.
+        const std::filesystem::path midSidecar = chain / "ThinMid" / "ThinMid.nsthinlto";
+        nativesharp::llvm_backend::ThinLtoLibrarySidecar stale;
+        std::string codecError;
+        const bool readStale = nativesharp::llvm_backend::ThinLtoLibrarySidecarCodec::read(
+            midSidecar, stale, codecError);
+        const std::size_t separator = stale.dependencies.rfind(' ');
+        tests.expect(readStale && stale.dependencies.starts_with("thinbase.nsmeta ") && separator != std::string::npos,
+            "the sidecar of a library lists the metadata it was built against: " + codecError);
+        if (readStale && separator != std::string::npos)
+        {
+            stale.dependencies = stale.dependencies.substr(0, separator + 1) + std::string(64, '0') + "\n";
+            tests.expect(nativesharp::llvm_backend::ThinLtoLibrarySidecarCodec::write(midSidecar, stale, codecError),
+                "the stale sidecar is written: " + codecError);
+        }
+        const bool rebuilt = build(appArguments, text);
+        tests.expect(rebuilt && text.find("thinlto-libraries: 1") != std::string::npos &&
+                text.find("thinlto-library-fallback: ThinMid.lib: dependency thinbase.nsmeta differs") !=
+                    std::string::npos,
+            "a library whose dependency differs links natively and says why: " + text);
+        if (rebuilt)
+        {
+            const std::string command = "\"" + appExecutable + "\"";
+            tests.expect(std::system(command.c_str()) == 42,
+                "the executable with a native fallback for a changed dependency preserves program behavior");
+        }
+
+        // A sidecar in the v1 format links natively. Un sidecar en formato v1 se enlaza nativo.
+        std::string version1("NSTHINLT");
+        version1.append("\x01\x00\x00\x00", 4);
+        const nativesharp::basic::Sha256Digest digest = nativesharp::basic::sha256(std::span<const std::uint8_t>(
+            reinterpret_cast<const std::uint8_t*>(version1.data()), version1.size()));
+        version1.append(reinterpret_cast<const char*>(digest.data()), digest.size());
+        writeFile(chain / "ThinMid" / "ThinMid.nsthinlto", version1);
+        nativesharp::llvm_backend::ThinLtoLibrarySidecar sidecar;
+        std::string error;
+        tests.expect(!nativesharp::llvm_backend::ThinLtoLibrarySidecarCodec::read(
+                         chain / "ThinMid" / "ThinMid.nsthinlto", sidecar, error) &&
+                error.find("version") != std::string::npos,
+            "a v1 ThinLTO sidecar is rejected by its version: " + error);
     }
     {
         // At -O0 thin keeps the ordinary partitioned build and says so (optimization part 2, item 44).

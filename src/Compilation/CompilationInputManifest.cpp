@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <string>
+#include <system_error>
 
 namespace nativesharp::compilation
 {
@@ -377,6 +378,22 @@ void CompilationInputManifest::collectGraphInputs(const ProjectGraph& graph)
             if (!reference.productSidecarPath.empty())
             {
                 inputFiles_.push_back(reference.productSidecarPath);
+            }
+            // EN: The ThinLTO sidecar beside a static library decides what an executable or DLL
+            //     links, so it is an input like the library (optimization part 2, item 53). Same
+            //     path rule as llvm_backend::ThinLtoLibrarySidecarCodec::pathFor.
+            // ES: El sidecar ThinLTO junto a una biblioteca estatica decide que enlaza un ejecutable
+            //     o una DLL, asi que es una entrada como la biblioteca (parte 2, punto 53). Misma
+            //     regla de ruta que llvm_backend::ThinLtoLibrarySidecarCodec::pathFor.
+            if (reference.runtimePath.empty() && !reference.libraryPath.empty())
+            {
+                std::filesystem::path thinLtoSidecar = reference.libraryPath;
+                thinLtoSidecar.replace_extension(".nsthinlto");
+                std::error_code statusError;
+                if (std::filesystem::is_regular_file(thinLtoSidecar, statusError))
+                {
+                    inputFiles_.push_back(thinLtoSidecar);
+                }
             }
         }
         for (const SdkManifest& sdk : project.sdkReferences())

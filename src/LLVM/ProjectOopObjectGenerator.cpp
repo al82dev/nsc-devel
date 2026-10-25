@@ -1163,6 +1163,14 @@ bool ProjectOopObjectGenerator::thinLtoCompatibility(
         "debug " + std::string(debugInformationKindName(debugInformation)) + "\n" +
         "codegen " + std::string(kCodegenCacheIdentity) + "\n" +
         "policy " + codeGenerationPolicyIdentity(LinkTimeOptimizationMode::Thin) + "\n";
+    // The optimization pipeline and the floating-point contract also shape every unit (item 53).
+    // El pipeline de optimizacion y el contrato de punto flotante tambien dan forma a cada unidad.
+    identity += "pipeline " + std::string(llvmOptimizationPipelineName(level)) + " " +
+        std::to_string(llvmOptimizationPipelineVersion(level)) + "\n";
+    identity += "floating-point " + std::string(floatingPointModeName(activeFloatingPointMode())) + " " +
+        std::string(fmaContractPolicyName(activeFmaContractPolicy())) + " " +
+        std::string(floatingPointRoundingModeName(activeFloatingPointRoundingMode())) + " " +
+        std::string(floatingPointDenormalModeName(activeFloatingPointDenormalMode())) + "\n";
     return true;
 }
 

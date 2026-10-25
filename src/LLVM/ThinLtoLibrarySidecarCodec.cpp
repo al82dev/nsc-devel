@@ -14,7 +14,7 @@ namespace nativesharp::llvm_backend
 namespace
 {
 constexpr std::string_view kSignature = "NSTHINLT";
-constexpr std::uint32_t kVersion = 1;
+constexpr std::uint32_t kVersion = 2;
 // A library has one unit per code partition; this only bounds a corrupt count.
 // Una biblioteca tiene una unidad por particion de codigo; esto solo acota un conteo corrupto.
 constexpr std::uint32_t kMaximumUnits = 65536;
@@ -91,8 +91,8 @@ bool decode(std::string_view bytes, ThinLtoLibrarySidecar& sidecar, std::string&
         return false;
     }
     if (!readString(body, offset, decoded.compatibility) || !readString(body, offset, decoded.libraryDigest) ||
-        !readString(body, offset, decoded.metadataDigest) || !readInteger(body, offset, count, 4) || count == 0 ||
-        count > kMaximumUnits)
+        !readString(body, offset, decoded.metadataDigest) || !readString(body, offset, decoded.dependencies) ||
+        !readInteger(body, offset, count, 4) || count == 0 || count > kMaximumUnits)
     {
         error = "truncated or invalid ThinLTO sidecar header";
         return false;
@@ -135,6 +135,7 @@ bool ThinLtoLibrarySidecarCodec::write(
     appendString(bytes, sidecar.compatibility);
     appendString(bytes, sidecar.libraryDigest);
     appendString(bytes, sidecar.metadataDigest);
+    appendString(bytes, sidecar.dependencies);
     appendInteger(bytes, sidecar.units.size(), 4);
     for (const std::string& unit : sidecar.units)
     {

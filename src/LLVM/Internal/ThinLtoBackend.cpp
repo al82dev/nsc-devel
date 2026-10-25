@@ -13,6 +13,9 @@
 #include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Config/llvm-config.h"
+#if __has_include("llvm/Support/VCSRevision.h")
+#include "llvm/Support/VCSRevision.h"
+#endif
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/Module.h"
@@ -216,7 +219,14 @@ bool ThinLtoBackend::collectUndefinedSymbols(
 
 std::string ThinLtoBackend::compatibilityIdentity(const LlvmTargetMachine& targetMachine, LlvmOptimizationLevel level)
 {
-    return std::string("llvm ") + LLVM_VERSION_STRING + "\n" +
+    // The exact source revision of LLVM, when this LLVM build records one (item 53).
+    // La revision exacta de las fuentes de LLVM, cuando este build de LLVM la registra (punto 53).
+#if defined(LLVM_REVISION)
+    const std::string revision = std::string("llvm-revision ") + LLVM_REVISION + "\n";
+#else
+    const std::string revision = "llvm-revision none\n";
+#endif
+    return std::string("llvm ") + LLVM_VERSION_STRING + "\n" + revision +
         "triple " + targetMachine.triple() + "\n" +
         "cpu " + targetMachine.cpuName() + "\n" +
         "features " + targetMachine.featureString() + "\n" +

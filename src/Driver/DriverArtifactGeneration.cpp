@@ -488,8 +488,9 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
     {
         // The sidecar binds the staged .lib and .nsmeta, so it is written after both (item 48).
         // El sidecar liga la .lib y la .nsmeta en staging, asi que se escribe despues de ambas.
-        if (!ThinLtoLibraryLinking::writeSidecar(objectBundle, publication.stage, publication.metadataStage,
-                                                 publication.thinLtoSidecarStage, buildError) ||
+        if (!ThinLtoLibraryLinking::writeSidecar(objectBundle, compilation, publication.stage,
+                                                 publication.metadataStage, publication.thinLtoSidecarStage,
+                                                 buildError) ||
             !artifactPublisher.addStaticLibraryThinLtoSidecar(publication, buildError))
         {
             error << "nsc: error: static-library ThinLTO sidecar generation failed: " << buildError << '\n';
