@@ -1,4 +1,5 @@
 #include "../Internal/OopLlvmImplementation.h"
+#include "../Internal/LlvmInstrumentationSwitches.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
@@ -10,7 +11,8 @@ using namespace llvm_api;
 
 bool OopLlvmImplementation::ensureRuntimeDebugTrace(std::string& error)
 {
-        if (debugInformation_ != DebugInformationKind::Full || runtimeDebugTraceFunction_ != nullptr)
+        if (!kRuntimeDebugTraceEnabled || debugInformation_ != DebugInformationKind::Full ||
+            runtimeDebugTraceFunction_ != nullptr)
             return true;
 
         LLVMTypeRef voidType = LLVMVoidTypeInContext(context_);
@@ -102,7 +104,7 @@ bool OopLlvmImplementation::emitRuntimeDebugTrace(
         std::string_view text,
         std::string& error)
 {
-        if (debugInformation_ != DebugInformationKind::Full) return true;
+        if (!kRuntimeDebugTraceEnabled || debugInformation_ != DebugInformationKind::Full) return true;
         if (!ensureRuntimeDebugTrace(error)) return false;
         LLVMValueRef message = internStringLiteral(text, error);
         if (message == nullptr)

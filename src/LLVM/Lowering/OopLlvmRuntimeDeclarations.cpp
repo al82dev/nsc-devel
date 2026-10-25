@@ -1,4 +1,5 @@
 #include "../Internal/OopLlvmImplementation.h"
+#include "../Internal/LlvmInstrumentationSwitches.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
@@ -76,7 +77,7 @@ bool OopLlvmImplementation::declareRuntimeAllocatorDebug(
         std::string& error)
 {
         LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-        if (debugInformation_ == DebugInformationKind::Full)
+        if (kRuntimeDebugTraceEnabled && debugInformation_ == DebugInformationKind::Full)
         {
             constexpr std::string_view allocationRecordText =
                 "[NSC RUNTIME DEBUG INSTRUMENTATION CODE] event=ALLOCATE|allocator=runtime\r\n";
