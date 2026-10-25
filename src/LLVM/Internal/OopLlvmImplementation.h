@@ -137,6 +137,7 @@ private:
     const frontend::NamedTypeDeclaration* debugNamedType(std::string_view typeKey) const noexcept;
 
     std::string debugNamedDisplayName(const frontend::NamedTypeDeclaration& named) const;
+    std::string debugTypeKeyDisplayName(std::string_view typeKey) const;
 
     static LLVMDIFlags debugMemberFlags(frontend::ClassMemberAccessibility accessibility) noexcept;
 

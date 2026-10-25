@@ -4,9 +4,121 @@
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
 
+#include <cctype>
+
 namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
+
+namespace
+{
+// ES: Lee el entero decimal de `text` desde `cursor` y deja `cursor` tras su ultimo digito.
+// EN: Reads the decimal integer of `text` at `cursor` and leaves `cursor` past its last digit.
+bool readDecimal(std::string_view text, std::size_t& cursor, std::size_t& value)
+{
+    const std::size_t begin = cursor;
+    value = 0;
+    while (cursor < text.size() && text[cursor] >= '0' && text[cursor] <= '9')
+        value = value * 10U + static_cast<std::size_t>(text[cursor++] - '0');
+    return cursor != begin;
+}
+
+// ES: Salta un segmento `<etiqueta>[N]=<N caracteres>` que empieza en `cursor`.
+// EN: Skips a `<label>[N]=<N characters>` segment that starts at `cursor`.
+bool skipLengthPrefixedSegment(std::string_view text, std::string_view label, std::size_t& cursor)
+{
+    if (text.substr(cursor, label.size()) != label) return false;
+    std::size_t next = cursor + label.size();
+    std::size_t length = 0;
+    if (!readDecimal(text, next, length) || text.substr(next, 2) != "]=") return false;
+    next += 2U;
+    if (length > text.size() - next) return false;
+    cursor = next + length;
+    return true;
+}
+
+bool isTypeSpellingStart(const std::string& output) noexcept
+{
+    if (output.empty()) return true;
+    const char previous = output.back();
+    return previous == '<' || previous == ',' || previous == ' ' || previous == '(' ||
+        previous == '[' || previous == '*';
+}
+
+// ES: Las claves de tipo y las identidades de especializacion son maquinaria interna del
+// compilador: llevan prefijos (`builtin:`, `type:`, `const:`), el modulo (`Modulo::`), la aridad
+// (`Box`1`) y, en un argumento generico, el sitio de origen
+// (`@origin-module[N]=...;namespace[N]=...`). El nombre de un tipo en el PDB es lo que ve el
+// usuario en el depurador, asi que se publica la ortografia del lenguaje: `int[]`,
+// `NativeSharp.Core.Exception[]`, `GenericLibrary.Box<Box<int>>`.
+// EN: Type keys and specialization identities are compiler machinery: they carry prefixes
+// (`builtin:`, `type:`, `const:`), the module (`Module::`), the arity (`Box`1`) and, in a generic
+// argument, the origin site (`@origin-module[N]=...;namespace[N]=...`). A type's name in the PDB
+// is what the user sees in the debugger, so the language spelling is published: `int[]`,
+// `NativeSharp.Core.Exception[]`, `GenericLibrary.Box<Box<int>>`.
+std::string debugReadableSpelling(std::string_view text)
+{
+    std::string output;
+    output.reserve(text.size());
+    std::size_t cursor = 0;
+    while (cursor < text.size())
+    {
+        if (skipLengthPrefixedSegment(text, "@origin-module[", cursor))
+        {
+            skipLengthPrefixedSegment(text, ";namespace[", cursor);
+            continue;
+        }
+        if (text[cursor] == '`')
+        {
+            std::size_t next = cursor + 1U;
+            std::size_t arity = 0;
+            if (readDecimal(text, next, arity))
+            {
+                cursor = next;
+                continue;
+            }
+        }
+        if (isTypeSpellingStart(output))
+        {
+            if (text.substr(cursor, 8) == "builtin:") { cursor += 8U; continue; }
+            if (text.substr(cursor, 5) == "type:") { cursor += 5U; continue; }
+            if (text.substr(cursor, 6) == "const:")
+            {
+                const std::size_t equal = text.find('=', cursor);
+                if (equal != std::string_view::npos) { cursor = equal + 1U; continue; }
+            }
+            std::size_t name = cursor;
+            while (name < text.size() &&
+                   (std::isalnum(static_cast<unsigned char>(text[name])) != 0 ||
+                    text[name] == '_' || text[name] == '.' || text[name] == '-'))
+                ++name;
+            if (name > cursor && text.substr(name, 2) == "::")
+            {
+                cursor = name + 2U;
+                continue;
+            }
+        }
+        output.push_back(text[cursor++]);
+    }
+    return output;
+}
+
+// ES: El parser respalda cada evento con un campo sintetico `__nsc_event_<Nombre>$stage42`. En el
+// depurador el campo es el evento que escribio el usuario, asi que se publica con su nombre.
+// EN: The parser backs each event with a synthetic `__nsc_event_<Name>$stage42` field. In the
+// debugger the field is the event the user wrote, so it is published under its name.
+std::string debugFieldName(std::string_view name)
+{
+    constexpr std::string_view eventPrefix = "__nsc_event_";
+    constexpr std::string_view eventSuffix = "$stage42";
+    if (name.size() > eventPrefix.size() + eventSuffix.size() && name.starts_with(eventPrefix) &&
+        name.ends_with(eventSuffix))
+        return std::string(name.substr(
+            eventPrefix.size(), name.size() - eventPrefix.size() - eventSuffix.size()));
+    return std::string(name);
+}
+}
+
 
 bool OopLlvmImplementation::initializeDebugInformation(std::string& error)
 {
@@ -383,7 +495,8 @@ std::string OopLlvmImplementation::debugNamedDisplayName(const frontend::NamedTy
             display.resize(metadata);
         // A specialization key starts with the project/module identity.  CodeView already scopes
         // this compile unit to that module, so publish the NativeSharp namespace/type spelling.
-        if (const std::size_t module = display.find("::"); module != std::string::npos)
+        if (const std::size_t module = display.find("::");
+            module != std::string::npos && module < display.find('<'))
             display.erase(0, module + 2);
         // `Box`1<int>` is the canonical arity-bearing key.  The arity is identity machinery, not
         // source syntax; the PDB display name is the closed spelling users wrote: `Box<int>`.
@@ -394,7 +507,30 @@ std::string OopLlvmImplementation::debugNamedDisplayName(const frontend::NamedTy
             while (end < display.size() && display[end] >= '0' && display[end] <= '9') ++end;
             display.erase(tick, end - tick);
         }
-        return display;
+        // ES: Los argumentos conservan la decoracion de su sitio de origen; se limpian igual que
+        // una clave de tipo.
+        // EN: The arguments keep their origin-site decoration; they are cleaned like a type key.
+        return debugReadableSpelling(display);
+    }
+
+// ES: Nombre de depuracion de una clave de tipo, con la ortografia del lenguaje. Un arreglo o un
+// puntero se nombra por su elemento para que `type:Modulo::Ns.T[]` se lea `Ns.T[]`.
+// EN: Debug name of a type key, in the language spelling. An array or a pointer is named after
+// its element so that `type:Module::Ns.T[]` reads `Ns.T[]`.
+std::string OopLlvmImplementation::debugTypeKeyDisplayName(std::string_view typeKey) const
+{
+        if (typeKey == "builtin:string" || typeKey == "string-literal") return "string";
+        if (const frontend::NamedTypeDeclaration* named = debugNamedType(typeKey); named != nullptr)
+            return debugNamedDisplayName(*named);
+        if (frontend::ProjectTypeConversion::isNativeArray(typeKey))
+        {
+            const std::size_t open = typeKey.rfind('[');
+            return debugTypeKeyDisplayName(typeKey.substr(0, open)) +
+                std::string(typeKey.substr(open));
+        }
+        if (typeKey.size() > 1U && typeKey.back() == '*')
+            return debugTypeKeyDisplayName(typeKey.substr(0, typeKey.size() - 1U)) + "*";
+        return debugReadableSpelling(typeKey);
     }
 
 LLVMDIFlags OopLlvmImplementation::debugMemberFlags(frontend::ClassMemberAccessibility accessibility) noexcept
@@ -490,7 +626,7 @@ void OopLlvmImplementation::appendDebugClassMembers(
             {
                 const frontend::ClassMemberSymbol& member =
                     memberModel_->members()[field.memberOrdinal];
-                fieldName = member.name;
+                fieldName = debugFieldName(member.name);
                 fieldFlags = debugMemberFlags(member.accessibility);
                 if (member.range.isValid())
                 {
@@ -941,7 +1077,7 @@ std::vector<LLVMMetadataRef> OopLlvmImplementation::debugStructMembers(
             if (memberModel_ != nullptr && field.memberOrdinal < memberModel_->members().size())
             {
                 const frontend::ClassMemberSymbol& member = memberModel_->members()[field.memberOrdinal];
-                fieldName = member.name;
+                fieldName = debugFieldName(member.name);
                 fieldFlags = debugMemberFlags(member.accessibility);
                 if (member.range.isValid())
                 {
@@ -1105,9 +1241,7 @@ LLVMMetadataRef OopLlvmImplementation::debugType(std::string_view typeKey)
         }
         else
         {
-            const std::string name = typeKey == "builtin:string"
-                ? "string"
-                : std::string(typeKey);
+            const std::string name = debugTypeKeyDisplayName(typeKey);
             if (typeKey == "builtin:string" || typeKey == "string-literal")
                 return debugHeaderReference(typeKey, name, "builtin:char");
             if (frontend::ProjectTypeConversion::isNativeArray(typeKey))
@@ -1155,7 +1289,7 @@ LLVMMetadataRef OopLlvmImplementation::debugOwnershipType(
 
         const frontend::NamedTypeDeclaration* named = debugNamedType(typeKey);
         const std::string name = qualifier + " " +
-            (named != nullptr ? debugNamedDisplayName(*named) : std::string(typeKey));
+            (named != nullptr ? debugNamedDisplayName(*named) : debugTypeKeyDisplayName(typeKey));
         LLVMMetadataRef file = range.isValid() ? debugFile(range.begin()) : nullptr;
         const unsigned line = range.isValid() && sourceManager_ != nullptr
             ? sourceManager_->getPosition(range.begin()).line
