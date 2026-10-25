@@ -268,7 +268,7 @@ bool OopLlvmImplementation::emitOneTryCatchBody(
                 return fail(error, "Stage 45.11 typed catch local has no LLVM storage");
             }
             LLVMBuildStore(builder_, caughtException, localFound->second);
-            if (!emitDebugCatchParameter(catchNode, localFound->second, index, error))
+            if (!emitDebugCatchParameter(catchNode, localFound->second, error))
             {
                 if (hasFinally) activeCleanupRegions_.pop_back();
                 return false;

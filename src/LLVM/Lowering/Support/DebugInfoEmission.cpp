@@ -287,6 +287,19 @@ bool emitThisDebugInfo(
 
 // NSC305-L03. Emits the debug metadata for a catch parameter (moved out of the lowerer's
 // emitDebugCatchParameter as a pure move).
+//
+// ES: La variable del `catch` es un local del bloque `catch`, no un parámetro del método: el cuerpo
+// del `catch` es código ordinario de la función padre (no un funclet con argumentos). Se describe
+// como variable automática del ámbito léxico del `catch`. Como parámetro, dos `try` con variable
+// de `catch` en el mismo método recibían el mismo número de argumento y el verificador de LLVM
+// rechazaba el módulo con `-g`; además CodeView la marcaba `param` y el depurador la mostraba entre
+// los argumentos.
+// EN: The `catch` variable is a local of the `catch` block, not a parameter of the method: the
+// `catch` body is ordinary code of the parent function (not a funclet with arguments). It is
+// described as an automatic variable of the `catch` lexical scope. As a parameter, two `try`
+// statements with a `catch` variable in the same method received the same argument number and the
+// LLVM verifier rejected the module under `-g`; CodeView also flagged it `param` and the debugger
+// listed it among the arguments.
 bool emitCatchParameterDebugInfo(
     DebugInformationKind debugInformation,
     LLVMDIBuilderRef debugBuilder,
@@ -294,14 +307,12 @@ bool emitCatchParameterDebugInfo(
     LLVMBuilderRef builder,
     LLVMMetadataRef currentDebugSubprogram,
     LLVMMetadataRef currentDebugScope,
-    const frontend::ProjectOopMirFunction* currentMirFunction,
     const source::SourceManager* sourceManager,
     std::unordered_set<std::size_t>& debugDeclaredLocals,
     const std::function<LLVMMetadataRef(SourceLocation)>& debugFileLookup,
     const std::function<LLVMMetadataRef(std::string_view, std::string_view)>& debugTypeLookup,
     const frontend::ProjectOopMirNode* node,
     LLVMValueRef storage,
-    std::size_t handlerIndex,
     std::string& error)
 {
     if (debugInformation != DebugInformationKind::Full || currentDebugSubprogram == nullptr ||
@@ -318,13 +329,9 @@ bool emitCatchParameterDebugInfo(
         currentDebugScope != nullptr ? currentDebugScope : currentDebugSubprogram;
     if (file == nullptr || type == nullptr || scope == nullptr) return true;
     const source::SourcePosition position = sourceManager->getPosition(range.begin());
-    const unsigned ordinaryParameters = currentMirFunction != nullptr
-        ? static_cast<unsigned>(currentMirFunction->parameterTypeKeys.size())
-        : 0U;
-    LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
+    LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
         debugBuilder, scope, node->stringValue.data(), node->stringValue.size(),
-        ordinaryParameters + static_cast<unsigned>(handlerIndex) + 1U,
-        file, position.line, type, 1, LLVMDIFlagZero);
+        file, position.line, type, 1, LLVMDIFlagZero, 0);
     LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder, nullptr, 0);
     LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
         context, position.line, position.column, scope, nullptr);

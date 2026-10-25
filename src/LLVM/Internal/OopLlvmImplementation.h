@@ -219,7 +219,6 @@ private:
     bool emitDebugCatchParameter(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef storage,
-        std::size_t handlerIndex,
         std::string& error);
 
     bool emitDebugThis(

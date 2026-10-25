@@ -1187,17 +1187,16 @@ bool OopLlvmImplementation::emitDebugParameter(
 bool OopLlvmImplementation::emitDebugCatchParameter(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef storage,
-        std::size_t handlerIndex,
         std::string& error)
 {
         return emitCatchParameterDebugInfo(
             debugInformation_, debugBuilder_, context_, builder_, currentDebugSubprogram_,
-            currentDebugScope_, currentMirFunction_, sourceManager_, debugDeclaredLocals_,
+            currentDebugScope_, sourceManager_, debugDeclaredLocals_,
             [&](SourceLocation location) { return debugFile(location); },
             [&](std::string_view typeKey, std::string_view name) {
                 return debugNamedValueType(typeKey, name);
             },
-            node, storage, handlerIndex, error);
+            node, storage, error);
     }
 
 bool OopLlvmImplementation::emitDebugThis(
