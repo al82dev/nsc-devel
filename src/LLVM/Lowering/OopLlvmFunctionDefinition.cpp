@@ -37,6 +37,16 @@ bool OopLlvmImplementation::defineFunction(const frontend::ProjectOopMirFunction
         return finishFunctionDefinition(function, error);
     }
 
+std::string OopLlvmImplementation::localValueName(
+        std::size_t localOrdinal,
+        std::string_view prefix,
+        std::string_view suffix)
+{
+        const auto [entry, inserted] = localNameNumbers_.try_emplace(localOrdinal, localNameNumbers_.size());
+        (void)inserted;
+        return std::string(prefix) + std::to_string(entry->second) + std::string(suffix);
+}
+
 void OopLlvmImplementation::prepareFunctionDefinitionState(
         const frontend::ProjectOopMirFunction& function,
         const FunctionInfo& info)
@@ -59,6 +69,7 @@ void OopLlvmImplementation::prepareFunctionDefinitionState(
                 LLVMDIBuilderCreateDebugLocation(context_, 0, 0, currentDebugSubprogram_, nullptr));
         parameterStorage_.clear();
         localStorage_.clear();
+        localNameNumbers_.clear();
         parameterValueDropFlags_.clear();
         localValueDropFlags_.clear();
         stackObjectStorage_.clear();
@@ -251,7 +262,7 @@ bool OopLlvmImplementation::prepareFunctionCleanupState(
             if (cleanup.localOrdinal.has_value())
             {
                 LLVMValueRef flag = entryBlockAlloca(
-                    flagType, 0, ("drop.flag.l" + std::to_string(*cleanup.localOrdinal)).c_str());
+                    flagType, 0, localValueName(*cleanup.localOrdinal, "drop.flag.l", "").c_str());
                 LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag);
                 localValueDropFlags_[*cleanup.localOrdinal] = flag;
             }
@@ -378,7 +389,7 @@ bool OopLlvmImplementation::collectLocalStorage(
         if (captured)
         {
             LLVMValueRef cell = allocateCaptureCell(
-                typeKey, slot, "capture.local" + std::to_string(*node->localOrdinal), error);
+                typeKey, slot, localValueName(*node->localOrdinal, "capture.local", ""), error);
             if (cell == nullptr || slot == nullptr) return false;
             localCaptureCells_[*node->localOrdinal] = cell;
             ownedCaptureCells_.push_back(cell);
@@ -399,7 +410,7 @@ bool OopLlvmImplementation::collectLocalStorage(
             // (DeepFunctional was missing `shifted` and `same`), and an `alloca` outside the entry
             // block reserves stack again every time it runs.
             slot = entryBlockAlloca(
-                type, 0, ("local" + std::to_string(*node->localOrdinal) + ".addr").c_str());
+                type, 0, localValueName(*node->localOrdinal, "local", ".addr").c_str());
         }
         // An indirect-struct carrier is [N x i8], whose alloca defaults to align 1 --
         // but member accesses through the slot do naturally-aligned typed loads and
@@ -429,7 +440,7 @@ void OopLlvmImplementation::collectStackPromotedObjectStorage(
         LLVMTypeRef bytes = LLVMArrayType2(LLVMInt8TypeInContext(context_), construction->immediate);
         LLVMValueRef object = entryBlockAlloca(
             bytes, static_cast<unsigned>(construction->alignment),
-            ("local" + std::to_string(*node->localOrdinal) + ".object").c_str());
+            localValueName(*node->localOrdinal, "local", ".object").c_str());
         stackObjectStorage_[*node->localOrdinal] = object;
     }
 

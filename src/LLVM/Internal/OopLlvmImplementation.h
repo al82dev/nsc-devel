@@ -636,6 +636,19 @@ private:
 
     void collectLocalAllocas(const frontend::ProjectOopMirNode* node, std::string& error);
 
+    // EN: IR value name of a local: `<prefix><n><suffix>`, where n is the order in which the
+    //     function being lowered first names that local, not its project-wide MIR ordinal.
+    //     Why: the MIR numbers locals across the whole project, so declaring one local in any body
+    //     renamed the locals of every later function and changed the IR text, and with it the
+    //     pre-optimization cache key, of every code unit (optimization part 2, bodies).
+    // ES: Nombre de valor IR de un local: `<prefix><n><suffix>`, donde n es el orden en que la
+    //     funcion que se baja nombra por primera vez ese local, no su ordinal MIR de proyecto.
+    //     Motivo: el MIR numera los locales de todo el proyecto, asi que declarar un local en
+    //     cualquier cuerpo renombraba los locales de todas las funciones siguientes y cambiaba el
+    //     texto IR, y con el la llave del cache pre-optimizacion, de cada unidad (parte 2, cuerpos).
+    std::string localValueName(
+        std::size_t localOrdinal, std::string_view prefix, std::string_view suffix);
+
     bool collectLocalStorage(
         const frontend::ProjectOopMirNode* node,
         bool& stopAfterChildren,
@@ -3348,6 +3361,9 @@ private:
     LLVMValueRef constructionThisOverride_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> parameterStorage_;
     std::unordered_map<std::size_t, LLVMValueRef> localStorage_;
+    // Function-relative numbers used by localValueName; cleared for every function definition.
+    // Numeros relativos a la funcion que usa localValueName; se vacia en cada definicion.
+    std::unordered_map<std::size_t, std::size_t> localNameNumbers_;
     // Only custom-destructor aggregates need an explicit guard. Aggregates whose drop consists
     // solely of owned fields use the cleared field slots themselves as optimized drop flags.
     std::unordered_map<std::size_t, LLVMValueRef> parameterValueDropFlags_;
