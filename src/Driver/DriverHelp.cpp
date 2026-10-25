@@ -11,7 +11,7 @@ void printHelpUsagePart1(std::ostream &output)
            << "  nsc new <console|classlib|dll> -n <name> [-o <directory>] [--force]\n"
            << "  nsc restore [file.nsproj] [--force|--locked-mode|--verify] [--source <directory>]\n"
            << "  nsc build [file.nsproj] [-c Debug|Release] [-O0|-O1|-O2|-O3] "
-              "[-g0|-gline-tables-only|-g] [-j <jobs>] [--linker NSLink] [--no-restore] "
+              "[-g0|-gline-tables-only|-g] [-flto[=full|thin|none]] [-j <jobs>] [--linker NSLink] [--no-restore] "
               "[--precompiled-only] [--dependency-report]\n"
            << "  nsc run [file.nsproj] [build options] [-- program arguments]\n"
            << "  nsc clean [file.nsproj]\n"
