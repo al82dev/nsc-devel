@@ -1002,10 +1002,16 @@ LLVMMetadataRef OopLlvmImplementation::debugBasicType(std::string_view typeKey)
 LLVMMetadataRef OopLlvmImplementation::debugPointerType(std::string_view typeKey)
 {
         const std::string_view pointeeKey = typeKey.substr(0, typeKey.size() - 1);
+        // ES: LLVM representa `void` como la ausencia de tipo base (nullptr). Un tipo sin
+        // especificar llamado "void" se volvia en CodeView "sin tipo" (0x0000), y el puntero
+        // `void*` quedaba como 0x0600 en vez de 0x0603 (puntero de 64 bits a void).
+        // EN: LLVM represents `void` as the absence of a base type (nullptr). An unspecified type
+        // named "void" became "no type" (0x0000) in CodeView, and the `void*` pointer ended up as
+        // 0x0600 instead of 0x0603 (64-bit pointer to void).
         LLVMMetadataRef pointee = pointeeKey == "builtin:void"
-            ? LLVMDIBuilderCreateUnspecifiedType(debugBuilder_, "void", 4)
+            ? nullptr
             : debugType(pointeeKey);
-        const std::string name(typeKey);
+        const std::string name = debugTypeKeyDisplayName(typeKey);
         return LLVMDIBuilderCreatePointerType(
             debugBuilder_, pointee, 64, 64, 0, name.data(), name.size());
     }
