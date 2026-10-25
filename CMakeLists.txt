@@ -808,6 +808,15 @@ if(WIN32)
     set(CMAKE_DISABLE_FIND_PACKAGE_zstd TRUE)
     set(CMAKE_DISABLE_FIND_PACKAGE_LibXml2 TRUE)
 endif()
+# ES: La familia de LLVM contra la que se compila nsc. Se acepta cualquier version menor o de parche
+# de esta version mayor (23.0, 23.1, ...). Pasar a otra familia de LLVM es cambiar este valor.
+# EN: The LLVM release family nsc is built against. Any minor or patch release of this major version is
+# accepted (23.0, 23.1, ...). Moving to another LLVM family is a deliberate change of this value.
+set(NSC_LLVM_MAJOR_VERSION "23" CACHE STRING
+    "LLVM major version (release family) that nsc is built against")
+if(NOT NSC_LLVM_MAJOR_VERSION MATCHES "^[0-9]+$")
+    message(FATAL_ERROR "NSC_LLVM_MAJOR_VERSION must be an LLVM major version number, such as 23")
+endif()
 find_package(LLVM CONFIG QUIET)
 set(NSC_LLVM_LINK_LIBRARIES)
 if(LLVM_FOUND)
@@ -819,11 +828,19 @@ if(LLVM_FOUND)
     # appears in LLVM 20. With the old declaration, configuring against a genuine LLVM 19 passed
     # here and then failed later at compile time with an unresolved symbol, which is exactly the
     # kind of contract break a version gate exists to prevent.
-    if(LLVM_PACKAGE_VERSION VERSION_LESS 23 OR LLVM_PACKAGE_VERSION VERSION_GREATER_EQUAL 24)
+    #
+    # ES: La legalizacion SEH de -O0 se retiro y LlvmOptimizer.cpp ya no llama a
+    # LLVMRunPassesOnFunction, asi que esa funcion ya no es la razon de este control. Ahora se revisa
+    # la familia de LLVM que indica NSC_LLVM_MAJOR_VERSION: se acepta cualquier version de esa
+    # version mayor y se rechaza cualquier otra.
+    # EN: The -O0 SEH legalization was retired, and LlvmOptimizer.cpp no longer calls
+    # LLVMRunPassesOnFunction, so that entry point is no longer the reason for this gate. The gate now
+    # checks the LLVM release family named by NSC_LLVM_MAJOR_VERSION: every release of that major
+    # version is accepted, and any other major version is rejected.
+    if(NOT LLVM_VERSION_MAJOR STREQUAL NSC_LLVM_MAJOR_VERSION)
         message(FATAL_ERROR
-            "NativeSharp 3.0 supports LLVM 23.x; the API floor is LLVM 20 because "
-            "LLVMRunPassesOnFunction is required for -O0 SEH legalization, but only the LLVM 23 "
-            "line is qualified for the 3.0 release contract; "
+            "NativeSharp 3.0 requires the LLVM ${NSC_LLVM_MAJOR_VERSION}.x release family "
+            "(NSC_LLVM_MAJOR_VERSION=${NSC_LLVM_MAJOR_VERSION}); "
             "found LLVM ${LLVM_PACKAGE_VERSION}")
     endif()
     if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
@@ -856,7 +873,8 @@ if(LLVM_FOUND)
 else()
     if(WIN32)
         message(FATAL_ERROR
-            "NativeSharp requires the LLVM 23 CMake package and its static component libraries; "
+            "NativeSharp requires the LLVM ${NSC_LLVM_MAJOR_VERSION} CMake package and its static "
+            "component libraries; "
             "the monolithic LLVM-C.dll/import-library fallback is forbidden on Windows")
     endif()
     find_library(
