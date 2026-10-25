@@ -339,3 +339,56 @@ La primera campaña resolvió costos fijos importantes y construyó una base de 
 La siguiente ganancia grande no saldrá de otra caché global ni de más lookups aislados: requiere conservar el
 frontend del proyecto editable por unidades con dependencias explícitas. Ése debe ser el centro de la optimización
 parte 2. Los demás pendientes son habilitadores, estabilizadores u optimizaciones posteriores guiadas por perfil.
+
+## 11. Estado al cierre de la parte 2
+
+**Fecha:** 2026-10-25
+**Rama:** `development-fixes-debug-ide`
+**Plan:** `NSC-PLAN-OPTIMIZACION-PARTE-2.md` (49 puntos)
+
+Esta sección registra qué quedó implementado sobre la auditoría. Las cifras de tiempo, memoria y tamaño se
+registran sólo en `NSC-MEDICION-PARTE-2.md`.
+
+### 11.1 Terminado
+
+| Tema | Resultado | Commits |
+|---|---|---|
+| P1-1 Particiones LLVM estables | Una función va a su partición por hash estable de su nombre; 8 particiones en O0 y 16 en O1–O3, nunca según `-j`; el scheduler sólo las reparte. | `7e6b30975`, `b2b6fd619` |
+| PDB reproducible | NSLink enlaza desde nombres estables en `<salida>.nslink-inputs` y recibe `/pdb:` sin ruta de staging; `-j 1` y `-j 16` escriben el mismo PDB. | `537c0cfff` |
+| N-05 Thin y cachés | `-flto=thin` conserva las cachés pre-LLVM y pre-optimización y deja de forzar IR textual. | `96c9cd420`, `685267a0c` |
+| Edición de un cuerpo | Los locales LLVM se nombran por función: editar un cuerpo deja intactos los objetos de las demás unidades y la caché de objetos los reutiliza. | `f9839355a` |
+| Pruebas de edición | Reconstrucción caliente tras editar un cuerpo, un cuerpo genérico y el PDB resultante: iguales a un build limpio. | `94c68c33f`, `b0b52ad20`, `66cab0d70` |
+| LTO | ThinLTO real, caché de backends, `-g` reproducible, `nsc build`, IDE y sidecars de bibliotecas estáticas. | ver `NSC-AUDITORIA-LTO-2026-10-24.md`, sección 11 |
+
+### 11.2 Pendiente
+
+Los puntos 10 a 20, 22 y 25 a 40 del plan siguen pendientes. Son P0-1 (reutilización semántica por archivo y por
+callable), P0-2 (snapshots de precompilados con superficie podada), P0-3 (especializaciones genéricas persistentes)
+y P0-4 (MIR por callable).
+
+No se implementaron dentro de este plan porque cambian qué parte del frontend se reutiliza entre builds. Un error
+ahí no produce un fallo visible sino un ejecutable compilado con declaraciones, cuerpos o especializaciones viejas.
+Requieren antes:
+
+- congelar las identidades semánticas de archivo, callable y especialización (P2-01);
+- registrar las dependencias reales entre declaraciones, cuerpos y especializaciones, incluidas lambdas e
+  instanciaciones genéricas;
+- un camino completo de respaldo ante cualquier duda, con pruebas de equivalencia en O0 `-g` y O2.
+
+La reutilización disponible al cierre es la de objetos: tras editar un cuerpo, el frontend completo vuelve a correr,
+pero sólo las unidades de código cuyo IR cambió vuelven a pasar por LLVM.
+
+### 11.3 Reconciliación con la sección 5
+
+| Pendiente | Estado al cierre |
+|---|---|
+| P0-1 Reutilización semántica por unidad editable | PENDIENTE (puntos 10–20, 22, 25–31). |
+| P0-2 Snapshots con superficies demandadas | PENDIENTE (puntos 38–40). |
+| P0-3 Especializaciones genéricas | PENDIENTE (puntos 32–37). |
+| P0-4 MIR por callable | PENDIENTE (puntos 17–18). |
+| P1-1 Particiones LLVM estables | HECHO. |
+| P1-2 Reutilización de `TargetMachine` | Se decide con la medición (`NSC-MEDICION-PARTE-2.md`, punto 7). |
+| P1-3 Observabilidad desde `nsc build` | Se decide con la medición (puntos 1 a 3). |
+| P1-4 Proceso persistente | PENDIENTE; depende de P0-1. |
+| P1-5 Verificación económica de bundles | Sin cambios. |
+| P2-1 Microíndices guiados por perfil | Sin cambios. |
