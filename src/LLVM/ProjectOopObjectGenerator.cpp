@@ -1222,9 +1222,20 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     // emission, verification and cache publication exceed the scheduling gain.
     // Keep the requested worker pool, but cap only the number of O0 partitions.
     constexpr std::size_t maxColdO0CodeUnits = 8;
+    // EN: The partition no longer depends on the worker count: O0 always asks for the eight units
+    //     above and O1-O3 for sixteen, and the pool runs them with whatever workers it has. The
+    //     same sources therefore produce the same objects, PDB and object-cache keys with any -j
+    //     and on any machine; before, -j 4 and -j 16 split the program differently and missed
+    //     each other's cache. ProjectOopCodePartition still caps the count at the candidates.
+    // ES: La particion ya no depende del numero de workers: O0 siempre pide las ocho unidades de
+    //     arriba y O1-O3 dieciseis, y el pool las ejecuta con los workers que tenga. Las mismas
+    //     fuentes dan entonces los mismos objetos, el mismo PDB y las mismas llaves de cache con
+    //     cualquier -j y en cualquier maquina; antes -j 4 y -j 16 partian distinto el programa y
+    //     no aprovechaban la cache del otro. ProjectOopCodePartition sigue acotando por candidatas.
+    constexpr std::size_t stableOptimizedCodeUnits = 16;
     const std::size_t partitionCount = optimizationLevel == LlvmOptimizationLevel::O0
-        ? std::min(workerCount, maxColdO0CodeUnits)
-        : workerCount;
+        ? maxColdO0CodeUnits
+        : stableOptimizedCodeUnits;
     const CompilationArtifactCache* const cache = activeCompilationArtifactCache();
     ColdLlvmPreambleTelemetry preambleTelemetry;
     const PhaseClock reachabilityClock;
@@ -1255,8 +1266,12 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     // Full LTO deliberately keeps the complete program in one LLVM module. This makes
     // inter-unit inlining, global DCE and constant propagation happen before native object
     // emission instead of asking the PE linker to recover information already discarded.
+    // EN: A single worker runs the same partitions one after another instead of switching to a
+    //     monolithic module, so -j 1 emits exactly the objects of any other -j.
+    // ES: Un solo worker ejecuta las mismas particiones una tras otra en vez de pasar a un modulo
+    //     monolitico, asi que -j 1 emite exactamente los objetos de cualquier otro -j.
     const bool usePartitions = linkTimeOptimization != LinkTimeOptimizationMode::Full &&
-        workerCount > 1 && partition.units().size() > 1 &&
+        partition.units().size() > 1 &&
         !requiresWholeModuleDebugInlining && !requiresWholeModuleRequiredInlining;
     const std::size_t moduleCount = usePartitions ? partition.units().size() + 1 : 1;
     const bool parallelOptimization = usePartitions && optimizationLevel != LlvmOptimizationLevel::O0;
@@ -1272,6 +1287,14 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         result->objectFiles_.push_back(
             *temporaryDirectory / ("program-" + std::to_string(ordinal) + ".obj"));
 
+    // EN: Partitions always run on a pool; a caller without one gets a pool of its worker count.
+    // ES: Las particiones siempre corren en un pool; quien no trae uno recibe uno de sus workers.
+    std::optional<driver::CompilationWorkerPool> ownedWorkerPool;
+    if (usePartitions && workerPool == nullptr)
+    {
+        ownedWorkerPool.emplace(workerCount);
+        workerPool = &*ownedWorkerPool;
+    }
     if (!generateCodeUnits(
             nameLookup, memberModel, mirModel, sourceManager, debugInformation,
             optimizationLevel, workerCount, debugPrefixMaps, linkTimeOptimization, cache,
