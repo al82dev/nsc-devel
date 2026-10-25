@@ -597,6 +597,7 @@ void ProjectOopHirModel::appendAllocatorPreamble(
     const ast::AstNode* expression,
     const ObjectConstructionBinding& binding,
     std::size_t computedSize,
+    std::size_t computedAlignment,
     std::size_t temporaryOrdinal,
     std::size_t contextOrdinal,
     std::unique_ptr<ProjectOopHirNode> receiver)
@@ -615,10 +616,18 @@ void ProjectOopHirModel::appendAllocatorPreamble(
     auto allocate = makeNode(ProjectOopHirNodeKind::InstanceCall, expression, "builtin:byte*");
     allocate->memberOrdinal = *binding.allocatorAllocateMemberOrdinal;
     allocate->children.push_back(std::move(contextValue));
+    // EN: Freeze 3.0 C-08: IAllocator.Allocate(long bytes, int alignment) receives sizeof(T)
+    //     and alignof(T), so an over-aligned T is never placed at the allocator's default.
+    // ES: Congelamiento 3.0 C-08: IAllocator.Allocate(long bytes, int alignment) recibe
+    //     sizeof(T) y alignof(T); un T sobre-alineado nunca queda en la alineacion por omision.
     auto sizeArg = makeNode(
-        ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
+        ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:long");
     sizeArg->integerValue = computedSize;
     allocate->children.push_back(std::move(sizeArg));
+    auto alignmentArg = makeNode(
+        ProjectOopHirNodeKind::IntegerConstant, expression, "builtin:int");
+    alignmentArg->integerValue = computedAlignment;
+    allocate->children.push_back(std::move(alignmentArg));
     auto allocationDecl = makeNode(
         ProjectOopHirNodeKind::LocalDeclaration, expression, "builtin:byte*");
     allocationDecl->localOrdinal = temporaryOrdinal;
@@ -768,6 +777,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishAllocatorConstructi
     const ObjectConstructionBinding& binding,
     std::size_t constructionOrdinal,
     std::size_t computedSize,
+    std::size_t computedAlignment,
     std::size_t temporaryOrdinal,
     std::size_t contextOrdinal,
     std::optional<std::size_t> allocatorTypeOrdinal,
@@ -787,6 +797,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishAllocatorConstructi
         expression,
         binding,
         computedSize,
+        computedAlignment,
         temporaryOrdinal,
         contextOrdinal,
         std::move(receiver));

@@ -96,11 +96,40 @@ namespace NativeSharp.Core
             return (valor + 7) / 8 * 8;
         }
 
+        // Contrato historico de `Allocator`: alineado a 8. Es la misma asignacion que la del
+        // protocolo `IAllocator` con alineacion 8.
+        // EN: Historic `Allocator` contract (8-byte alignment); same path as IAllocator with 8.
         public override byte* Allocate(int bytes)
         {
-            if (bytes <= 0) { return null; }
+            return Allocate((long)bytes, 8);
+        }
 
-            int pedido = Alinear(bytes);
+        // Bytes de relleno que necesita la siguiente asignacion de `bloque` para quedar alineada a
+        // `alineacion`. Se calcula sobre la DIRECCION real y no sobre `usado`: el almacen del bloque
+        // es un arreglo del heap cuya base solo garantiza 8, asi que una alineacion de 32 o 64 no
+        // se puede deducir del desplazamiento.
+        // EN: Padding the next allocation in `bloque` needs to reach `alineacion`, computed from
+        //     the real address because the block storage base only guarantees 8-byte alignment.
+        private static int Relleno(ArenaBlock bloque, int alineacion)
+        {
+            long direccion = (long)Spans.Of<byte>(bloque.almacen).Data() + (long)bloque.usado;
+            long resto = direccion % (long)alineacion;
+            if (resto == 0) { return 0; }
+            return (int)((long)alineacion - resto);
+        }
+
+        // NS304-T13-F01 / congelamiento 3.0 C-08. `IAllocator.Allocate`: un bloque de `bytes`
+        // alineado a `alignment` (potencia de dos). La arena nunca alinea a menos de 8.
+        // EN: `IAllocator.Allocate`: `bytes` aligned to the power-of-two `alignment` (never < 8).
+        public byte* Allocate(long bytes, int alignment)
+        {
+            if (bytes <= 0 || bytes > 2147483647) { return null; }
+            if (alignment < 1 || (alignment & (alignment - 1)) != 0) { return null; }
+            int alineacion = alignment;
+            if (alineacion < 8) { alineacion = 8; }
+            if (bytes + (long)alineacion > 2147483647) { return null; }
+
+            int pedido = Alinear((int)bytes);
 
             // PRIMERO SE APROVECHAN LOS BLOQUES QUE YA EXISTEN, y este bucle es una CORRECCION,
             // no una optimizacion. Sin el, la version anterior hacia directamente
@@ -119,21 +148,25 @@ namespace NativeSharp.Core
             // Avanzar y no retroceder es lo normal en un asignador por incremento: el hueco que
             // quede en un bloque que se salta se pierde. Eso es el desperdicio que BytesUsed y
             // BytesReserved juntos permiten medir.
-            while (actual.usado + pedido > actual.almacen.Length && actual.siguiente != null)
+            while (actual.usado + Relleno(actual, alineacion) + pedido > actual.almacen.Length &&
+                   actual.siguiente != null)
             {
                 actual = actual.siguiente;
             }
 
             // Si NINGUNO de los que hay sirve, ahora si se encadena uno nuevo -- al final de la
             // cadena, porque el bucle de arriba dejo `actual` en el ultimo.
-            if (actual.usado + pedido > actual.almacen.Length)
+            if (actual.usado + Relleno(actual, alineacion) + pedido > actual.almacen.Length)
             {
                 // El bloque nuevo es el mayor entre el tamano por omision y lo pedido, para que una
                 // peticion mas grande que un bloque no falle NUNCA. Sin esto, pedir 100 KiB a una
                 // arena de bloques de 64 KiB devolveria null para siempre, y el fallo apareceria
                 // muy lejos de aqui.
+                // Con una alineacion mayor que la del almacen el relleno puede llegar a
+                // `alineacion - 1`; el bloque nuevo lo cubre siempre.
+                // EN: an over-aligned request may need up to `alineacion - 1` padding bytes.
                 int tamanoNuevo = tamanoBloque;
-                if (pedido > tamanoNuevo) { tamanoNuevo = pedido; }
+                if (pedido + alineacion > tamanoNuevo) { tamanoNuevo = pedido + alineacion; }
 
                 owned ArenaBlock nuevo = new ArenaBlock(tamanoNuevo);
                 actual.siguiente = move(nuevo);
@@ -141,9 +174,10 @@ namespace NativeSharp.Core
                 cuantosBloques = cuantosBloques + 1;
             }
 
+            int relleno = Relleno(actual, alineacion);
             byte* baseDelBloque = Spans.Of<byte>(actual.almacen).Data();
-            byte* entregado = baseDelBloque + actual.usado;
-            actual.usado = actual.usado + pedido;
+            byte* entregado = baseDelBloque + actual.usado + relleno;
+            actual.usado = actual.usado + relleno + pedido;
             asignacionesTotales = asignacionesTotales + 1;
             asignacionesActivas = asignacionesActivas + 1;
             return entregado;
@@ -153,22 +187,32 @@ namespace NativeSharp.Core
         // `newBytes <= oldBytes` puede conservar el puntero tal cual; un crecimiento no puede
         // ampliarse en el sitio, asi que reparte un bloque nuevo, copia min(old,new) y consume el
         // puntero viejo (la memoria fisica vieja queda en la arena hasta Reset).
-        public byte* Resize(byte* ptr, int oldBytes, int newBytes)
+        // Congelamiento 3.0 C-08: un bloque que se conserva en el sitio tambien tiene que cumplir
+        // la alineacion pedida; si no la cumple se reparte uno nuevo.
+        // EN: an in-place result must also satisfy the requested alignment.
+        public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment)
         {
             if (ptr == null || oldBytes < 0 || newBytes < 0) { return null; }
-            if (newBytes <= oldBytes) { return ptr; }
+            if (oldBytes > 2147483647 || newBytes > 2147483647) { return null; }
+            if (alignment < 1 || (alignment & (alignment - 1)) != 0) { return null; }
+            if (newBytes <= oldBytes && (long)ptr % (long)alignment == 0) { return ptr; }
 
-            byte* nuevo = Allocate(newBytes);
+            byte* nuevo = Allocate(newBytes, alignment);
             if (nuevo == null) { return null; }
 
-            Spans.OfRaw<byte>(ptr, oldBytes).CopyTo(Spans.OfRaw<byte>(nuevo, oldBytes));
+            long copiados = oldBytes;
+            if (newBytes < copiados) { copiados = newBytes; }
+            Spans.OfRaw<byte>(ptr, (int)copiados).CopyTo(Spans.OfRaw<byte>(nuevo, (int)copiados));
             asignacionesActivas = asignacionesActivas - 1;
             return nuevo;
         }
 
         // NS304-T13-F04. `IAllocator.Deallocate`. Termina la obligacion logica de la asignacion; la
         // arena no recupera bytes individuales (solo Reset lo hace de golpe).
-        public void Deallocate(byte* ptr)
+        // Congelamiento 3.0 C-08: recibe el tamano y la alineacion de la asignacion; la arena no
+        // los necesita porque no libera por pieza.
+        // EN: receives the allocation size and alignment; an arena does not need them.
+        public void Deallocate(byte* ptr, long bytes, int alignment)
         {
             if (ptr != null && asignacionesActivas > 0)
             {

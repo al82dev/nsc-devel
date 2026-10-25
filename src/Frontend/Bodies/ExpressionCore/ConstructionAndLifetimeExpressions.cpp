@@ -35,6 +35,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <chrono>
@@ -57,6 +58,21 @@ using method_body_detail::writeMethodBodyTrace;
 namespace
 {
 constexpr std::string_view kGenericRawNewAuxiliary = "stage52-generic-raw-new";
+
+// EN: True when `member` takes exactly the parameter types in `expected`, in order.
+// ES: Verdadero cuando `member` recibe exactamente los tipos de `expected`, en orden.
+template <std::size_t Count>
+bool allocatorMemberHasParameters(
+    const ClassMemberSymbol& member,
+    const std::array<std::string_view, Count>& expected)
+{
+    if (member.parameters.size() != Count) return false;
+    for (std::size_t index = 0; index < Count; ++index)
+    {
+        if (member.parameters[index].typeKey != expected[index]) return false;
+    }
+    return true;
+}
 }
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindOffsetofExpression(
@@ -294,11 +310,23 @@ void ProjectMethodBodyModel::configureAllocatorConstruction(
         !interfaceModel_->classImplementsInterface(*storageType, *allocatorTrait)) return;
     site.kind = ProjectConstructionSiteKind::Allocator;
     site.allocatorTypeKey = storage.typeKey;
+    // EN: Freeze 3.0 C-08: select the members that implement the frozen IAllocator protocol by
+    //     signature -- Allocate(long, int) and Deallocate(byte*, long, int). A class may also keep
+    //     other overloads (ArenaAllocator keeps the historic Allocator.Allocate(int)), and taking
+    //     the first member named "Allocate" would call the wrong one.
+    // ES: Congelamiento 3.0 C-08: se eligen por firma los miembros que implementan el protocolo
+    //     congelado de IAllocator -- Allocate(long, int) y Deallocate(byte*, long, int). Una clase
+    //     puede conservar otras sobrecargas (ArenaAllocator conserva Allocate(int) de Allocator), y
+    //     tomar el primer miembro llamado "Allocate" llamaria al equivocado.
+    const std::array<std::string_view, 2> allocateParameters = {"builtin:long", "builtin:int"};
+    const std::array<std::string_view, 3> deallocateParameters = {
+        "builtin:byte*", "builtin:long", "builtin:int"};
     for (const std::size_t memberOrdinal :
          memberModel_->findMembers(*storageType, "Allocate"))
     {
         if (memberOrdinal >= memberModel_->members().size()) continue;
-        if (memberModel_->members()[memberOrdinal].isStatic) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.isStatic || !allocatorMemberHasParameters(member, allocateParameters)) continue;
         site.allocatorAllocateMemberOrdinal = memberOrdinal;
         break;
     }
@@ -308,7 +336,8 @@ void ProjectMethodBodyModel::configureAllocatorConstruction(
          memberModel_->findMembers(*storageType, "Deallocate"))
     {
         if (memberOrdinal >= memberModel_->members().size()) continue;
-        if (memberModel_->members()[memberOrdinal].isStatic) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.isStatic || !allocatorMemberHasParameters(member, deallocateParameters)) continue;
         site.allocatorDeallocateMemberOrdinal = memberOrdinal;
         break;
     }

@@ -454,14 +454,23 @@ bool ProjectOopHirModel::initializeAllocatorConstructionFrame(
         {
             const auto* layout = objectLayoutModel_->structLayoutForType(
                 binding->targetTypeOrdinal);
-            if (layout != nullptr) construction.computedSize = layout->size;
+            if (layout != nullptr)
+            {
+                construction.computedSize = layout->size;
+                construction.computedAlignment = static_cast<std::size_t>(layout->alignment);
+            }
         }
         else
         {
             const auto* layout = objectLayoutModel_->layoutForType(
                 binding->targetTypeOrdinal);
-            if (layout != nullptr) construction.computedSize = layout->size;
+            if (layout != nullptr)
+            {
+                construction.computedSize = layout->size;
+                construction.computedAlignment = static_cast<std::size_t>(layout->alignment);
+            }
         }
+        if (construction.computedAlignment == 0U) construction.computedAlignment = 1U;
     }
     const bool trailingConstruction = frame.syntax->auxiliaryText() == "trailing";
     if (trailingConstruction && !frame.syntax->children().empty())
@@ -570,6 +579,7 @@ ProjectOopHirModel::finishAllocatorConstructionFrame(
         *construction.binding,
         construction.constructionOrdinal,
         construction.computedSize,
+        construction.computedAlignment,
         construction.temporaryOrdinal,
         construction.contextOrdinal,
         construction.allocatorTypeOrdinal,

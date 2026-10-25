@@ -2796,9 +2796,17 @@ private:
     // void(void* context, void* ptr) { <T>::Deallocate(context, ptr); }. Internal linkage, so each
     // module carries its own copy; the function pointer stored in the descriptor sidecar stays
     // valid in the final binary.
+    // EN: Freeze 3.0 C-08: one thunk per (allocator type, object size, object alignment); the
+    //     thunk keeps the frozen (context, object) sidecar ABI and passes the size and alignment
+    //     to IAllocator.Deallocate(byte*, long, int) as constants.
+    // ES: Congelamiento 3.0 C-08: un thunk por (tipo de allocator, tamano, alineacion del
+    //     objeto); conserva el ABI congelado (context, objeto) del sidecar y pasa tamano y
+    //     alineacion a IAllocator.Deallocate(byte*, long, int) como constantes.
     LLVMValueRef allocatorDeallocateThunk(
         std::size_t allocatorTypeOrdinal,
         std::string_view deallocateCalleeName,
+        std::uint64_t objectSize,
+        std::uint64_t objectAlignment,
         std::string& error);
 
     bool isStructValue(std::string_view typeKey) const noexcept;
@@ -3296,7 +3304,7 @@ private:
     LLVMTypeRef destructionEntryFunctionType_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> descriptorGlobals_;
     // NS304-T13-F07: per-allocator-type deallocate thunks (void(void* context, void* ptr)).
-    std::unordered_map<std::size_t, LLVMValueRef> allocatorThunks_;
+    std::unordered_map<std::string, LLVMValueRef> allocatorThunks_;
     std::unordered_map<std::size_t, FunctionInfo> descriptorAccessorFunctions_;
     // Imported descriptors are only promised through their PE-safe accessor. Local descendants
     // of those descriptors also use their accessors so the complete base chain is initialized

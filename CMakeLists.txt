@@ -5920,6 +5920,14 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item392_incremental_link_tests)
     add_test(NAME nsc.item392-incremental-link COMMAND nsc_item392_incremental_link_tests)
 
+    add_executable(nsc_freeze30_contract_tests tests/unit/Freeze30ContractTests.cpp)
+    target_link_libraries(nsc_freeze30_contract_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_freeze30_contract_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_freeze30_contract_tests PRIVATE
+        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}" NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_freeze30_contract_tests)
+    add_test(NAME nsc.freeze30-contracts COMMAND nsc_freeze30_contract_tests)
+
     add_executable(nsc_item393_compatibility_matrix_tests tests/unit/Item393CompatibilityMatrixTests.cpp)
     target_link_libraries(nsc_item393_compatibility_matrix_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_item393_compatibility_matrix_tests PRIVATE cxx_std_20)

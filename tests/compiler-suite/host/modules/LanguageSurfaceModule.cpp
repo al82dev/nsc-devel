@@ -4855,10 +4855,10 @@ class Program
         byte* p = arena.Allocate(8);
         Span<byte> s = Spans.OfRaw<byte>(p, 8);
         s[0] = 1; s[1] = 2; s[7] = 8;
-        byte* q = arena.Resize(p, 8, 64);
+        byte* q = arena.Resize(p, 8, 64, 8);
         Span<byte> t = Spans.OfRaw<byte>(q, 64);
         if (t[0] != 1 || t[1] != 2 || t[7] != 8) return 2;
-        arena.Deallocate(q);
+        arena.Deallocate(q, 64, 8);
         return arena.ActiveAllocationCount() == 1 ? 0 : 3;
     }
 }
@@ -4902,9 +4902,9 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
@@ -4961,9 +4961,9 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
@@ -5015,9 +5015,9 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
@@ -5069,9 +5069,9 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
@@ -5121,9 +5121,9 @@ class BlockAllocator : IAllocator
     private owned byte[] pool;
     public int Deallocs;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { Deallocs = Deallocs + 1; }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { Deallocs = Deallocs + 1; }
 }
 class Program
 {
@@ -5170,9 +5170,9 @@ class BlockAllocator : IAllocator
     private owned byte[] pool;
     public int Deallocs;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { Deallocs = Deallocs + 1; }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { Deallocs = Deallocs + 1; }
 }
 class Program
 {
@@ -5222,9 +5222,9 @@ public class BlockAllocator : IAllocator
     private owned byte[] pool;
     public int Deallocs;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { Deallocs = Deallocs + 1; }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { Deallocs = Deallocs + 1; }
 }
 public class ProductFactory
 {
@@ -5295,15 +5295,15 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class NullAllocator : IAllocator
 {
-    public byte* Allocate(int bytes) { return null; }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return null; }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
@@ -5347,9 +5347,9 @@ using NativeSharp.Core;
 class A { public int X; public A(int x) { X = x; } }
 class NullAllocator : IAllocator
 {
-    public byte* Allocate(int bytes) { return null; }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return null; }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
@@ -5392,9 +5392,9 @@ using NativeSharp.Core;
 class A { public int X; public A(int x) { X = x; } }
 class NullAllocator : IAllocator
 {
-    public byte* Allocate(int bytes) { return null; }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return null; }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
@@ -5438,15 +5438,15 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class NullAllocator : IAllocator
 {
-    public byte* Allocate(int bytes) { return null; }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return null; }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
@@ -5492,9 +5492,9 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
@@ -6046,9 +6046,9 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
@@ -6503,7 +6503,7 @@ class BlockAllocator : IAllocator
         used = new bool[blockCount];
     }
 
-    public byte* Allocate(int bytes)
+    public byte* Allocate(long bytes, int alignment)
     {
         if (bytes <= 0 || bytes > blockSize) return null;
         for (int i = 0; i < blockCount; i++)
@@ -6513,14 +6513,14 @@ class BlockAllocator : IAllocator
         return null;
     }
 
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes)
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment)
     {
         if (ptr == null || newBytes <= 0) return null;
         if (newBytes <= blockSize) return ptr;
         return null;
     }
 
-    public void Deallocate(byte* ptr)
+    public void Deallocate(byte* ptr, long bytes, int alignment)
     {
         if (ptr == null) return;
         byte* base0 = Spans.Of<byte>(pool).Data();
@@ -6536,18 +6536,18 @@ class Program
     public static int Main()
     {
         BlockAllocator a = new BlockAllocator(16, 8);
-        if (a.Allocate(0) != null) return 1;
-        if (a.Allocate(20) != null) return 2;
-        byte* p = a.Allocate(8);
+        if (a.Allocate(0, 8) != null) return 1;
+        if (a.Allocate(20, 8) != null) return 2;
+        byte* p = a.Allocate(8, 8);
         if (p == null) return 3;
         p[0] = 42;
         p[1] = 7;
-        byte* q = a.Resize(p, 8, 12);
+        byte* q = a.Resize(p, 8, 12, 8);
         if (q == null) return 4;
         if (q[0] != 42 || q[1] != 7) return 5;
-        if (a.Resize(p, 8, 20) != null) return 6;
-        a.Deallocate(q);
-        byte* r = a.Allocate(8);
+        if (a.Resize(p, 8, 20, 8) != null) return 6;
+        a.Deallocate(q, 12, 8);
+        byte* r = a.Allocate(8, 8);
         if (r == null) return 7;
         if (r != q) return 8;
         return 0;
@@ -9344,9 +9344,9 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {

@@ -212,9 +212,14 @@ LLVMBasicBlockRef OopLlvmImplementation::emitAllocatorConstructionFailureCleanup
 LLVMValueRef OopLlvmImplementation::allocatorDeallocateThunk(
         std::size_t allocatorTypeOrdinal,
         std::string_view deallocateCalleeName,
+        std::uint64_t objectSize,
+        std::uint64_t objectAlignment,
         std::string& error)
 {
-        const auto existing = allocatorThunks_.find(allocatorTypeOrdinal);
+        const std::string thunkName =
+            "__nativesharp_allocator_deallocate_" + std::to_string(allocatorTypeOrdinal) + "_" +
+            std::to_string(objectSize) + "_" + std::to_string(objectAlignment);
+        const auto existing = allocatorThunks_.find(thunkName);
         if (existing != allocatorThunks_.end()) return existing->second;
         const auto target = functions_.find(std::string(deallocateCalleeName));
         if (target == functions_.end())
@@ -228,19 +233,21 @@ LLVMValueRef OopLlvmImplementation::allocatorDeallocateThunk(
             LLVMPointerTypeInContext(context_, 0), LLVMPointerTypeInContext(context_, 0)};
         LLVMTypeRef thunkType =
             LLVMFunctionType(LLVMVoidTypeInContext(context_), thunkParams, 2, 0);
-        const std::string thunkName =
-            "__nativesharp_allocator_deallocate_" + std::to_string(allocatorTypeOrdinal);
         LLVMValueRef thunk = LLVMAddFunction(module_, thunkName.c_str(), thunkType);
         LLVMSetLinkage(thunk, LLVMInternalLinkage);
         LLVMValueRef contextParam = LLVMGetParam(thunk, 0);
         LLVMValueRef pointerParam = LLVMGetParam(thunk, 1);
         LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context_, thunk, "entry");
         enterBlock(entry);
-        LLVMValueRef args[] = {contextParam, pointerParam};
-        LLVMBuildCall2(builder_, target->second.functionType, target->second.function, args, 2, "");
+        LLVMValueRef args[] = {
+            contextParam,
+            pointerParam,
+            LLVMConstInt(LLVMInt64TypeInContext(context_), objectSize, 0),
+            LLVMConstInt(LLVMInt32TypeInContext(context_), objectAlignment, 0)};
+        LLVMBuildCall2(builder_, target->second.functionType, target->second.function, args, 4, "");
         LLVMBuildRetVoid(builder_);
         applyFunctionAttribute(thunk, "nounwind");
-        allocatorThunks_[allocatorTypeOrdinal] = thunk;
+        allocatorThunks_[thunkName] = thunk;
         if (savedBlock != nullptr)
             enterBlock(savedBlock);
         return thunk;

@@ -3961,6 +3961,7 @@ private:
         const ObjectConstructionBinding& binding,
         std::size_t constructionOrdinal,
         std::size_t computedSize,
+        std::size_t computedAlignment,
         std::size_t temporaryOrdinal,
         std::size_t contextOrdinal,
         std::optional<std::size_t> allocatorTypeOrdinal,
@@ -3973,6 +3974,7 @@ private:
         const ast::AstNode* expression,
         const ObjectConstructionBinding& binding,
         std::size_t computedSize,
+        std::size_t computedAlignment,
         std::size_t temporaryOrdinal,
         std::size_t contextOrdinal,
         std::unique_ptr<ProjectOopHirNode> receiver);

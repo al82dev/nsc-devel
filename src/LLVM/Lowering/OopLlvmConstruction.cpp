@@ -591,9 +591,15 @@ bool OopLlvmImplementation::initializePlacementStorage(
                         "NS304-T13-F07 allocator provenance has no context storage");
                 LLVMValueRef context = LLVMBuildLoad2(
                     builder_, pointerType, found->second, "allocator.context.load");
+                // EN: the object was allocated with Allocate(sizeof(T), alignof(T)), which is the
+                //     layout size and alignment this node carries (C-08).
+                // ES: el objeto se pidio con Allocate(sizeof(T), alignof(T)), que son el tamano y
+                //     la alineacion del layout que lleva este nodo (C-08).
                 LLVMValueRef thunk = allocatorDeallocateThunk(
                     *node->allocatorTypeOrdinal,
                     node->allocatorDeallocateCalleeName,
+                    node->immediate,
+                    node->alignment,
                     error);
                 if (thunk == nullptr) return false;
                 if (!installAllocatorDescriptorSidecar(
