@@ -79,6 +79,15 @@ struct MethodLocalSymbol final
     // transitive escapes (`ref alias = ref local; return ref alias`) without guessing again at
     // the return site and also propagates through reference-returning calls.
     MethodEscapeOrigin referenceEscapeOrigin;
+    // ES: Para un local puntero por valor: el origen más inseguro de cualquier dirección que se le
+    // haya asignado (inicializador y asignaciones; unión sin flujo). `p = &local` lo marca como
+    // almacenamiento del marco; `p = Allocate(n)` o `p = Global` no. Al pasar `p` a un parámetro
+    // retenido se valida este origen, no el del propio slot de `p`.
+    // EN: For a by-value pointer local: the least safe origin of any address ever assigned to it
+    // (initializer and assignments; flow-insensitive join). `p = &local` marks it as frame
+    // storage; `p = Allocate(n)` or `p = Global` does not. Passing `p` to a retained parameter
+    // validates this origin, not the one of `p`'s own slot.
+    MethodEscapeOrigin pointerValueOrigin;
     std::optional<std::size_t> referenceLifetimeScopeOrdinal;
     // NativeSharp 3.0 T06-F03. Mutable reference locals are exclusive borrows of a canonical
     // storage place.  The key is rooted in a local/parameter (L#/P#) and contains field/index

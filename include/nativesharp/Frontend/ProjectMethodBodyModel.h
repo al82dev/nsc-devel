@@ -4701,6 +4701,15 @@ private:
     MethodEscapeOrigin referenceEscapeOriginOfExpression(
         const ast::AstNode* expression,
         std::size_t scopeOrdinal) const;
+    // ES: Origen del VALOR de una expresión puntero (a dónde apunta), ver
+    // MethodLocalSymbol::pointerValueOrigin. EN: Origin of a pointer expression's VALUE (where it
+    // points), see MethodLocalSymbol::pointerValueOrigin.
+    MethodEscapeOrigin pointerValueEscapeOriginOfExpression(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal) const;
+    static void joinPointerValueOrigin(
+        MethodEscapeOrigin& target,
+        const MethodEscapeOrigin& source) noexcept;
     bool aggregateIsBorrowedView(std::string_view typeKey) const noexcept;
     bool typeKeyIsViewLike(std::string_view typeKey) const noexcept;
     bool typeKeyCarriesLifetime(std::string_view typeKey) const noexcept;

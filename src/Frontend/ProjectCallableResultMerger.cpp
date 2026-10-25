@@ -108,6 +108,7 @@ void remapLocal(
 {
     remapCommon(local, scopeBase, localBase, 0, lambdaBase, localBorrowBase);
     remapEscapeOrigin(local.referenceEscapeOrigin, scopeBase, localBase);
+    remapEscapeOrigin(local.pointerValueOrigin, scopeBase, localBase);
 }
 
 void remapLambdaCapture(MethodLambdaCapture& capture, std::size_t localBase) noexcept

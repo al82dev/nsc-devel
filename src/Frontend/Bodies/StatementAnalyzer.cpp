@@ -3755,6 +3755,10 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     if (!isVariableLengthArray && variable->first() != nullptr && typeKey.ends_with("*"))
         local.variableLengthArrayRootLocalOrdinal =
             variableArrayRootLocalOfExpression(variable->first(), scopeOrdinal);
+    if (!isReferenceLocal && !isVariableLengthArray && variable->first() != nullptr &&
+        typeKey.ends_with("*"))
+        local.pointerValueOrigin =
+            pointerValueEscapeOriginOfExpression(variable->first(), scopeOrdinal);
     local.isConst = variable->flag();
     local.isVolatile = isVolatile;
     local.onePastEndPointer = pendingOnePastEndPointer;

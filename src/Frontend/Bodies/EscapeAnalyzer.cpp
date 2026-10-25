@@ -52,6 +52,57 @@ MethodEscapeOrigin ProjectMethodBodyModel::referenceEscapeOriginOfExpression(
     return ProjectReferenceEscapeEvaluator(*this, scopeOrdinal).evaluate(expression);
 }
 
+namespace
+{
+int originUnsafeRank(MethodEscapeOriginKind kind) noexcept
+{
+    switch (kind)
+    {
+        case MethodEscapeOriginKind::VariableLengthArray: return 4;
+        case MethodEscapeOriginKind::CurrentFrameLocal: return 3;
+        case MethodEscapeOriginKind::CurrentFrameParameter: return 2;
+        case MethodEscapeOriginKind::CurrentReceiver: return 1;
+        case MethodEscapeOriginKind::ExternalStorage: return 0;
+    }
+    return 0;
+}
+}
+
+// ES: El evaluador de referencias responde a qué almacenamiento NOMBRA una expresión. Para un
+// identificador de un local puntero por valor, eso es el slot del propio local, no a dónde apunta:
+// pasar `block` (que guarda una dirección de un arreglo global) a un parámetro retenido no entrega
+// el marco actual. Aquí, ese caso usa el origen registrado del valor del puntero.
+// EN: The reference evaluator answers which storage an expression NAMES. For an identifier of a
+// by-value pointer local that is the local's own slot, not where it points: passing `block` (which
+// holds an address into a global array) to a retained parameter does not hand over the current
+// frame. Here that case uses the recorded origin of the pointer's value.
+MethodEscapeOrigin ProjectMethodBodyModel::pointerValueEscapeOriginOfExpression(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal) const
+{
+    if (expression != nullptr && expression->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
+        if (name.has_value() && name->kind == ScopeNameKind::Local &&
+            name->semanticOrdinal < locals_.size())
+        {
+            const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
+            if (!local.isReference && !local.isVariableLengthArray &&
+                !local.variableLengthArrayRootLocalOrdinal.has_value() &&
+                local.typeKey.ends_with("*"))
+                return local.pointerValueOrigin;
+        }
+    }
+    return referenceEscapeOriginOfExpression(expression, scopeOrdinal);
+}
+
+void ProjectMethodBodyModel::joinPointerValueOrigin(
+    MethodEscapeOrigin& target,
+    const MethodEscapeOrigin& source) noexcept
+{
+    if (originUnsafeRank(source.kind) > originUnsafeRank(target.kind)) target = source;
+}
+
 bool ProjectMethodBodyModel::parameterMayCarryEscape(
     const MethodParameterSymbol& parameter) const noexcept
 {
@@ -294,8 +345,14 @@ void ProjectMethodBodyModel::validateEscapeCall(
             continue;
         const language::EscapeClass contract = callee[targetParameter];
         if (contract != language::EscapeClass::Global) continue;
-        const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
-            argumentSyntaxes[argumentOrdinal], scopeOrdinal);
+        const ClassMemberSymbol* calleeSymbol = methodSymbol(calleeOrdinal);
+        const bool pointerValue = calleeSymbol != nullptr &&
+            targetParameter < calleeSymbol->parameters.size() &&
+            calleeSymbol->parameters[targetParameter].passKind == ParameterPassKind::Value &&
+            calleeSymbol->parameters[targetParameter].typeKey.ends_with("*");
+        const MethodEscapeOrigin origin = pointerValue
+            ? pointerValueEscapeOriginOfExpression(argumentSyntaxes[argumentOrdinal], scopeOrdinal)
+            : referenceEscapeOriginOfExpression(argumentSyntaxes[argumentOrdinal], scopeOrdinal);
         if (origin.kind != MethodEscapeOriginKind::CurrentFrameLocal &&
             origin.kind != MethodEscapeOriginKind::VariableLengthArray) continue;
         diagnostics.report(

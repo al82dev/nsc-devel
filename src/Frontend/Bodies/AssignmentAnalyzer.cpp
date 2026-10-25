@@ -1007,6 +1007,13 @@ bool ProjectMethodBodyModel::validateAssignmentTargetStorage(
         // a pointer readonly or one-past, later dereference must remain conservative.
         locals_[*assignmentTargetLocal].onePastEndPointer =
             locals_[*assignmentTargetLocal].onePastEndPointer || right.onePastEndPointer;
+        // ES: La dirección asignada se une al origen del valor del puntero (ver
+        // MethodLocalSymbol::pointerValueOrigin). EN: The assigned address joins the pointer's value
+        // origin (see MethodLocalSymbol::pointerValueOrigin).
+        if (!target.isReference)
+            joinPointerValueOrigin(
+                locals_[*assignmentTargetLocal].pointerValueOrigin,
+                pointerValueEscapeOriginOfExpression(expression->second(), scopeOrdinal));
     }
     const std::optional<std::size_t> assignedVlaRoot =
         variableArrayRootLocalOfExpression(expression->second(), scopeOrdinal);
