@@ -967,6 +967,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/SignedDivisionCorrection.cpp
     src/LLVM/LlvmTargetMachine.cpp
     src/LLVM/Internal/ThinLtoBackend.cpp
+    src/LLVM/ThinLtoLibrarySidecarCodec.cpp
     src/LLVM/CoffObjectVerifier.cpp)
 # ThinLtoBackend.cpp is the only file that uses LLVM's C++ API (llvm::lto); it is compiled without RTTI
 # like the LLVM libraries it links. ThinLtoBackend.cpp es el unico archivo con la API C++ de LLVM; se
@@ -1098,6 +1099,7 @@ add_library(nsc_driver STATIC
     src/Driver/PromotionAct.cpp
     src/Driver/ReleaseCandidateFreeze.cpp
     src/Driver/RuntimeClosurePackaging.cpp
+    src/Driver/ThinLtoLibraryLinking.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
     src/Interop/LibraryCapabilityAudit.cpp

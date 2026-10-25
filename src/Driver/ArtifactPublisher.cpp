@@ -1,6 +1,7 @@
 #include "ArtifactPublisher.h"
 
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
+#include "nativesharp/LLVM/ThinLtoLibrarySidecarCodec.h"
 
 #include <system_error>
 
@@ -116,10 +117,20 @@ bool ArtifactPublisher::prepareStaticLibrary(
     }
     publication.productSidecarStage =
         compilation::precompiledProductSidecarPath(publication.metadataStage);
+    publication.thinLtoSidecarDestination = llvm_backend::ThinLtoLibrarySidecarCodec::pathFor(destination);
+    publication.thinLtoSidecarStage = llvm_backend::ThinLtoLibrarySidecarCodec::pathFor(publication.stage);
     return transaction_.addStaged(
         publication.productSidecarDestination,
         publication.productSidecarStage,
         error);
+}
+
+bool ArtifactPublisher::addStaticLibraryThinLtoSidecar(
+    const StaticLibraryPublication& publication,
+    std::string& error)
+{
+    return transaction_.addStaged(
+        publication.thinLtoSidecarDestination, publication.thinLtoSidecarStage, error);
 }
 
 bool ArtifactPublisher::prepareDynamicLibrary(

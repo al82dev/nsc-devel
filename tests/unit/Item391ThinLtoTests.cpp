@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -151,6 +152,123 @@ class Program
         tests.expect(!executables[0].empty() && executables[0] == executables[1] &&
                 !pdbs[0].empty() && pdbs[0] == pdbs[1],
             "identical -O2 -g ThinLTO builds write the same executable and PDB");
+    }
+    {
+        // A static library built with ThinLTO publishes its sidecar, and a ThinLTO consumer at the same
+        // options imports from its units; another level keeps the native library (item 48). Una
+        // biblioteca estatica construida con ThinLTO publica su sidecar y un consumidor ThinLTO con las
+        // mismas opciones importa de sus unidades; otro nivel conserva la biblioteca nativa (punto 48).
+        const auto build = [](std::span<const std::string_view> arguments, std::string& output) {
+            nativesharp::driver::Driver driver;
+            std::ostringstream out;
+            std::ostringstream err;
+            const nativesharp::ExitCode result = driver.run(arguments, out, err);
+            output = out.str() + err.str();
+            return result == nativesharp::ExitCode::Success;
+        };
+        const auto readBytes = [](const std::filesystem::path& path) {
+            std::ifstream stream(path, std::ios::binary);
+            return std::string(std::istreambuf_iterator<char>(stream), {});
+        };
+        for (const std::string_view variant : {std::string_view("Producer"), std::string_view("ProducerDebug")})
+        {
+            const std::filesystem::path producer = root / variant;
+            writeFile(producer / "ThinProducer.nsproj",
+                "<Project><PropertyGroup><Name>ThinProducer</Name><OutputType>StaticLibrary</OutputType>"
+                "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+            writeFile(producer / "Api.ns", R"NS(
+namespace ThinLibrary
+{
+    public static class Steps
+    {
+        public static int Add(int value) { return value + 1; }
+        public static int Twice(int value) { return Add(Add(value)); }
+    }
+}
+)NS");
+            const std::filesystem::path consumer = root / ("Consumer" + std::string(variant));
+            writeFile(consumer / "ThinConsumer.nsproj",
+                "<Project><PropertyGroup><Name>ThinConsumer</Name></PropertyGroup>"
+                "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup><ItemGroup>"
+                "<LibraryReference Include=\"" + (producer / "ThinProducer.lib").generic_string() +
+                "\" Metadata=\"" + (producer / "ThinProducer.nsmeta").generic_string() +
+                "\" /></ItemGroup></Project>");
+            writeFile(consumer / "Program.ns", R"NS(
+using ThinLibrary;
+
+class Program
+{
+    public static int Main() { return Steps.Twice(40); }
+}
+)NS");
+        }
+        std::string text;
+        const std::string library = (root / "Producer" / "ThinProducer.lib").string();
+        const std::string producerProject = (root / "Producer" / "ThinProducer.nsproj").string();
+        const std::array<std::string_view, 6> producerArguments = {
+            "-O2", "-flto=thin", "--emit-project-oop-lib", producerProject, "-o", library};
+        tests.expect(build(producerArguments, text) &&
+                text.find("thinlto-library-sidecar: ") != std::string::npos &&
+                std::filesystem::is_regular_file(root / "Producer" / "ThinProducer.nsthinlto"),
+            "a ThinLTO static library publishes its bitcode sidecar: " + text);
+        const std::string consumerProject = (root / "ConsumerProducer" / "ThinConsumer.nsproj").string();
+        const std::string consumed = (root / "ConsumerProducer" / "Consumed.exe").string();
+        const std::array<std::string_view, 6> consumedArguments = {
+            "-O2", "-flto=thin", "--emit-project-oop-exe", consumerProject, "-o", consumed};
+        const bool consumedBuilt = build(consumedArguments, text);
+        const std::string imports = valueAfter(text, "thinlto-imports: ");
+        tests.expect(consumedBuilt && text.find("thinlto-libraries: 1") != std::string::npos &&
+                text.find("thinlto-library-fallback: ") == std::string::npos &&
+                !imports.empty() && imports != "0",
+            "a ThinLTO consumer at the same options imports from the library sidecar: " + text);
+        if (consumedBuilt)
+        {
+            const std::string command = "\"" + consumed + "\"";
+            tests.expect(std::system(command.c_str()) == 42,
+                "an executable that consumed a library sidecar preserves program behavior");
+        }
+        const std::string fallback = (root / "ConsumerProducer" / "Fallback.exe").string();
+        const std::array<std::string_view, 6> fallbackArguments = {
+            "-O3", "-flto=thin", "--emit-project-oop-exe", consumerProject, "-o", fallback};
+        const bool fallbackBuilt = build(fallbackArguments, text);
+        tests.expect(fallbackBuilt && text.find("thinlto-libraries: 0") != std::string::npos &&
+                text.find("thinlto-library-fallback: ThinProducer.lib: built with another LLVM version, target or "
+                          "options") != std::string::npos,
+            "a ThinLTO consumer at another level keeps the native library and says why: " + text);
+        if (fallbackBuilt)
+        {
+            const std::string command = "\"" + fallback + "\"";
+            tests.expect(std::system(command.c_str()) == 42,
+                "an executable linked with the native library fallback preserves program behavior");
+        }
+
+        // Consuming a -g sidecar stays reproducible: the replacement archive path depends only on its
+        // objects. Consumir un sidecar -g sigue siendo reproducible: la ruta del archivo de reemplazo
+        // solo depende de sus objetos.
+        const std::string debugLibrary = (root / "ProducerDebug" / "ThinProducer.lib").string();
+        const std::string debugProducerProject = (root / "ProducerDebug" / "ThinProducer.nsproj").string();
+        const std::array<std::string_view, 7> debugProducerArguments = {
+            "-O2", "-g", "-flto=thin", "--emit-project-oop-lib", debugProducerProject, "-o", debugLibrary};
+        tests.expect(build(debugProducerArguments, text),
+            "a -O2 -g ThinLTO static library builds: " + text);
+        const std::string debugConsumerProject = (root / "ConsumerProducerDebug" / "ThinConsumer.nsproj").string();
+        std::string executables[2];
+        std::string pdbs[2];
+        for (int run = 0; run < 2; ++run)
+        {
+            const std::filesystem::path directory = root / "ConsumerProducerDebug" / ("out" + std::to_string(run));
+            std::filesystem::create_directories(directory);
+            const std::string executable = (directory / "Consumed.exe").string();
+            const std::array<std::string_view, 8> arguments = {"-O2", "-g", "-flto=thin", "--no-artifact-cache",
+                "--emit-project-oop-exe", debugConsumerProject, "-o", executable};
+            tests.expect(build(arguments, text) && text.find("thinlto-libraries: 1") != std::string::npos,
+                "a -O2 -g ThinLTO consumer imports from the -g library sidecar: " + text);
+            executables[run] = readBytes(directory / "Consumed.exe");
+            pdbs[run] = readBytes(directory / "Consumed.pdb");
+        }
+        tests.expect(!executables[0].empty() && executables[0] == executables[1] &&
+                !pdbs[0].empty() && pdbs[0] == pdbs[1],
+            "identical -O2 -g builds that consume a library sidecar write the same executable and PDB");
     }
     {
         // At -O0 thin keeps the ordinary partitioned build and says so (optimization part 2, item 44).

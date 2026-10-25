@@ -18,7 +18,7 @@ opcional) no cambia, NSMETA no se versiona y el objeto nativo sigue siendo siemp
 
 | Caso | Decisión |
 |---|---|
-| Productor: biblioteca estática con ThinLTO efectivo | Publica `<Biblioteca>.nsthinlto`. |
+| Productor: biblioteca estática con ThinLTO efectivo | Publica `<Biblioteca>.nsthinlto` (ver sección 3). |
 | Productor: DLL | No publica sidecar: el límite de la DLL es un contrato binario y no debe importar cuerpos. |
 | Consumidor: ejecutable o DLL con ThinLTO efectivo | Consume cada sidecar compatible de sus referencias estáticas. |
 | Consumidor: biblioteca estática | No consume: su `.lib` lleva sólo su código; el enlace final ve cada referencia. |
@@ -29,6 +29,10 @@ opcional) no cambia, NSMETA no se versiona y el objeto nativo sigue siendo siemp
 ThinLTO efectivo significa `-flto=thin`, nivel `-O1` a `-O3` y host STATIC (`ThinLtoBackend::available()`).
 
 ## 3. Ubicación
+
+El productor sólo publica sidecar cuando su `.lib` contiene exactamente los objetos de sus unidades, es decir,
+cuando el runtime de NativeSharp está configurado como biblioteca aparte; si el runtime se empaqueta dentro de la
+`.lib`, no hay sidecar. El digest de biblioteca liga esa garantía al archivo publicado.
 
 El sidecar vive junto a la biblioteca: `Biblioteca.lib` → `Biblioteca.nsthinlto` (`replace_extension`). Se publica
 en la misma transacción de artefactos que la `.lib`, el `.h`, la `.nsmeta` y el `.nsproducts`. Cuando una
@@ -88,8 +92,6 @@ Para cada referencia estática del grafo de proyectos, en orden del grafo y sin 
 3. Identidad de compatibilidad distinta a la del consumidor: respaldo nativo.
 4. Digest de biblioteca distinto al SHA-256 de la `.lib` referida: respaldo nativo.
 5. Digest de metadata distinto al SHA-256 de la `.nsmeta` referida: respaldo nativo.
-6. Número de miembros del archivo COFF distinto al número de unidades: respaldo nativo. Esto garantiza que el
-   archivo no tiene objetos (por ejemplo un runtime empaquetado) que el bitcode no reemplaza.
 
 Cada respaldo con sidecar presente se informa como `thinlto-library-fallback: <archivo>: <motivo>` en la salida
 del comando. Un respaldo nunca es un error de compilación.
@@ -105,12 +107,25 @@ del comando. Un respaldo nunca es un error de compilación.
   posición de la lista de enlace. Conservar un archivo, y no pasar los objetos sueltos, mantiene la semántica de
   extracción bajo demanda: un miembro que nada referencia no entra al binario.
 - El archivo de reemplazo vive en `%TEMP%\nativesharp-thinlto-libraries\<digest>\<nombre original>.lib`, con
-  `<digest>` = 16 hexadecimales del SHA-256 de sus objetos. NSLink escribe la ruta de cada archivo en la tabla de
-  módulos del PDB y en el hash de su GUID; una ruta direccionada por contenido mantiene reproducibles los builds
-  `-g`. El archivo se escribe como `.partial` y se renombra; entradas sin uso por más de una semana se podan.
+  `<digest>` = 16 hexadecimales del SHA-256 del nombre de la biblioteca y del tamaño y digest de cada objeto. NSLink
+  escribe la ruta de cada archivo en la tabla de módulos del PDB y en el hash de su GUID; una ruta direccionada por
+  contenido mantiene reproducibles los builds `-g`. El archivo se escribe como `.partial` y se renombra; entradas sin
+  uso por más de una semana se podan.
 - La salida informa `thinlto-libraries: <n>` con el número de bibliotecas consumidas.
 
-## 8. Riesgos y decisiones
+## 8. Implementación (punto 48)
+
+| Pieza | Archivo |
+|---|---|
+| Contenido y códec v1 | `ThinLtoLibrarySidecar.h`, `ThinLtoLibrarySidecarCodec.h/.cpp` |
+| Bitcode, identidad y unidades | `ThinLtoBackend` (`unitBitcode`, `compatibilityIdentity`, `appendBitcodeUnit`) |
+| Generador | `ProjectOopObjectGenerator` (`thinLtoRuns`, `thinLtoCompatibility`, captura y unidades de biblioteca) |
+| Validación, archivo de reemplazo y escritura | `src/Driver/ThinLtoLibraryLinking.h/.cpp` |
+| Publicación transaccional | `ArtifactPublisher::addStaticLibraryThinLtoSidecar` |
+| Salida requerida del bundle | `addCompilationCodegenIdentity` |
+| Prueba | `tests/unit/Item391ThinLtoTests.cpp` |
+
+## 9. Riesgos y decisiones
 
 - Las funciones de una biblioteca que su NSMETA ya transporta como cuerpo inline siguen llegando como `weak_odr`
   al consumidor. Su copia en el consumidor prevalece por ser la primera definición; LLVM descarta la de la unidad de
