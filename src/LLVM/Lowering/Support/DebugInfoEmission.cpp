@@ -271,9 +271,16 @@ bool emitThisDebugInfo(
     }
     const auto flags = static_cast<LLVMDIFlags>(LLVMDIFlagArtificial | LLVMDIFlagObjectPointer);
     static constexpr std::string_view thisName = "this";
+    // ES: `this` es el argumento 1. Antes se pasaba 0 como numero de argumento (y 1 en
+    // AlwaysPreserve), asi que LLVM lo trataba como un local: el PDB no lo marcaba como
+    // parametro y el depurador lo listaba en Locals.
+    // EN: `this` is argument 1. It used to pass 0 as the argument number (and 1 as
+    // AlwaysPreserve), so LLVM treated it as a local: the PDB did not flag it as a parameter and
+    // the debugger listed it in Locals.
+    static constexpr unsigned thisArgumentNumber = 1;
     LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
-        debugBuilder, currentDebugSubprogram, thisName.data(), thisName.size(), 0,
-        file, position.line, type, 1, flags);
+        debugBuilder, currentDebugSubprogram, thisName.data(), thisName.size(),
+        thisArgumentNumber, file, position.line, type, 1, flags);
     LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder, nullptr, 0);
     LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
         context, position.line, position.column, currentDebugSubprogram, nullptr);
@@ -419,9 +426,14 @@ bool emitParameterDebugInfo(
                 function.parameterTypeKeys[index], ownership, false, range);
     if (file == nullptr || type == nullptr) return true;
     const source::SourcePosition position = sourceManager->getPosition(range.begin());
+    // ES: En un metodo de instancia `this` ocupa el argumento 1, asi que los parametros del
+    // codigo fuente empiezan en el 2.
+    // EN: In an instance method `this` takes argument 1, so the source parameters start at 2.
+    const std::size_t firstArgumentNumber = !function.isStatic && !function.isLambda ? 2U : 1U;
     LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
         debugBuilder, currentDebugSubprogram, name.data(), name.size(),
-        static_cast<unsigned>(index + 1), file, position.line, type, 1, LLVMDIFlagZero);
+        static_cast<unsigned>(index + firstArgumentNumber), file, position.line, type, 1,
+        LLVMDIFlagZero);
     LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder, nullptr, 0);
     LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
         context, position.line, position.column, currentDebugSubprogram, nullptr);
