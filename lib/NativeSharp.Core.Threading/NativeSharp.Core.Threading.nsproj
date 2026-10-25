@@ -6,7 +6,6 @@
   </PropertyGroup>
   <ItemGroup><Compile Include="**/*.ns" /></ItemGroup>
   <ItemGroup>
-    <LibraryReference Include="NativeSharpCore.lib"
-                      Metadata="NativeSharpCore.nsmeta" />
+    <ProjectReference Include="../NativeSharp.Core/NativeSharp.Core.nsproj" />
   </ItemGroup>
 </Project>

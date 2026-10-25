@@ -1215,12 +1215,18 @@ add_custom_command(TARGET nsc POST_BUILD
 # Core.IO y Core.Diagnostics siguen disponibles dentro del arbol del compilador para sus pruebas
 # internas y el self-host historico, pero ya no forman parte de la stdlib modular distribuida de
 # Language 3. Mantener el inventario explicito impide volver a publicarlos accidentalmente.
+#
+# ES: NativeSharp.Win32.Compiler tampoco se distribuye: usa NativeSharp.Core.IO y NativeSharp.Core.Diagnostics,
+# asi que en la distribucion no compilaba ("referenced project does not exist"). Como ellos, sigue en el arbol
+# del compilador para el self-host y sus pruebas.
+# EN: NativeSharp.Win32.Compiler is not distributed either: it uses NativeSharp.Core.IO and
+# NativeSharp.Core.Diagnostics, so it did not compile in the distribution ("referenced project does not
+# exist"). Like them, it stays in the compiler tree for the self-host and its tests.
 set(NSC_DISTRIBUTION_LIBRARY_DIRECTORIES
     NativeSharp.Core
     NativeSharp.Core.Collections.Generic
     NativeSharp.Core.Threading
-    NativeSharp.LLVM.C
-    NativeSharp.Win32.Compiler)
+    NativeSharp.LLVM.C)
 set(NSC_INSTALLATION_LIBRARY_FILES)
 foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
     file(GLOB_RECURSE _nsc_library_files
