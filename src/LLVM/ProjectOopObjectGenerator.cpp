@@ -1137,9 +1137,11 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     // planner no longer consumes it.  Keep it only for the two features whose keys/summaries
     // are intentionally based on IR.  Ordinary EXE/DLL/LIB production already fingerprints
     // the emitted objects when incremental linking is enabled.
-    const bool preserveModuleText =
-        (cache != nullptr && cache->enabled() && !usePreLlvmCache) ||
-        linkTimeOptimization == LinkTimeOptimizationMode::Thin;
+    // -flto=thin was the second of those features; its index hashes the emitted objects since
+    // optimization part 2 item 7, so it no longer prints every module (item 8).
+    // -flto=thin era la segunda de esas funciones; desde el punto 7 su indice hace hash de los
+    // objetos emitidos, asi que ya no imprime cada modulo (punto 8).
+    const bool preserveModuleText = cache != nullptr && cache->enabled() && !usePreLlvmCache;
     // Process one code unit end to end. The LLVM module and target machine are destroyed as soon
     // as its object is emitted instead of retaining every partition through three global waves.
     // Every code unit that lowers with debug information hashed each source file it touches.
