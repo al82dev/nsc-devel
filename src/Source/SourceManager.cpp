@@ -1,4 +1,5 @@
 #include "nativesharp/Source/SourceManager.h"
+#include "nativesharp/Source/SourceAccessRecording.h"
 
 #include <fstream>
 #include <iterator>
@@ -69,6 +70,10 @@ const SourceFile* SourceManager::getFile(FileId id) const noexcept
         return nullptr;
     }
 
+    // Every position, path and text goes through here, so a recording sees each file a code unit
+    // reads (optimization part 2, item 51). Toda posicion, ruta y texto pasa por aqui, asi que una
+    // grabacion ve cada archivo que lee una unidad de codigo (parte 2, punto 51).
+    SourceAccessRecording::noteAccess(id);
     return &files_[id.value() - 1];
 }
 

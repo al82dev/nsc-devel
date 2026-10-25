@@ -129,6 +129,135 @@ void testEditedBodyMatchesCleanBuild(
     tests.expect(std::system(command.c_str()) == expectedExit,
         std::string(name) + ": the reused build runs the edited body");
 }
+
+/// EN: Builds `project` with the artifact cache at `cache` and --time, and returns the driver
+///     output, whose code-unit lines tell which units lowered.
+/// ES: Compila `project` con el cache de artefactos en `cache` y --time, y devuelve la salida del
+///     driver, cuyas lineas code-unit dicen que unidades se bajaron.
+std::string compileTimed(
+    const std::filesystem::path& project,
+    const std::filesystem::path& executable,
+    const std::filesystem::path& cache,
+    std::string_view level,
+    std::string_view debug,
+    nativesharp::ExitCode& code,
+    std::string& diagnostic)
+{
+    const std::string projectText = project.string();
+    const std::string executableText = executable.string();
+    const std::string cacheOption = "--artifact-cache=" + cache.string();
+    const std::array<std::string_view, 8> arguments = {
+        level, debug, "--time", cacheOption, "--emit-project-oop-exe", projectText, "-o", executableText};
+    nativesharp::driver::Driver driver;
+    std::ostringstream output;
+    std::ostringstream error;
+    code = driver.run(arguments, output, error);
+    diagnostic = error.str();
+    return output.str();
+}
+
+/// EN: Counts the code-unit lines of `output` and those whose lowering took time.
+/// ES: Cuenta las lineas code-unit de `output` y las que tardaron en el lowering.
+void countLoweredUnits(std::string_view output, std::size_t& units, std::size_t& lowered)
+{
+    units = 0;
+    lowered = 0;
+    std::size_t begin = 0;
+    while (begin < output.size())
+    {
+        std::size_t end = output.find('\n', begin);
+        if (end == std::string_view::npos) end = output.size();
+        const std::string_view line = output.substr(begin, end - begin);
+        if (line.starts_with("code-unit "))
+        {
+            ++units;
+            if (line.find(" lowering-us=0 ") == std::string_view::npos) ++lowered;
+        }
+        begin = end + 1;
+    }
+}
+
+/// EN: Optimization part 2, item 51. With debug information, editing one body re-lowers only the
+///     code units whose objects read the edited file, and the result still equals a clean build.
+/// ES: Parte 2, punto 51. Con depuracion, editar un cuerpo vuelve a bajar solo las unidades cuyos
+///     objetos leen el archivo editado, y el resultado sigue igual a un build limpio.
+void testDebugEditLowersOnlyAffectedUnits(nativesharp::tests::TestContext& tests, const std::filesystem::path& root,
+    std::string_view helpers)
+{
+    const std::filesystem::path project = root / "Edit.nsproj";
+    writeFile(project,
+        "<Project><PropertyGroup><Name>Edit</Name></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    writeFile(root / "Library.ns", helpers);
+    for (const std::string_view debug : {std::string_view("-g"), std::string_view("-gline-tables-only")})
+    {
+        const std::filesystem::path cache = root / ("cache" + std::string(debug));
+        writeFile(root / "Program.ns",
+            "class Program { public static int Main() { int first = Helpers.H1(3); return first; } }\n");
+        nativesharp::ExitCode code{};
+        std::string error;
+        compileTimed(project, root / "Edit.exe", cache, "-O0", debug, code, error);
+        tests.expect(code == nativesharp::ExitCode::Success, "the first debug build fills the cache: " + error);
+        writeFile(root / "Program.ns",
+            "class Program { public static int Main() { int first = Helpers.H1(3); int second = Helpers.H2(1);"
+            " return first + second; } }\n");
+        const std::string warm = compileTimed(project, root / "Edit.exe", cache, "-O0", debug, code, error);
+        std::size_t units = 0;
+        std::size_t lowered = 0;
+        countLoweredUnits(warm, units, lowered);
+        tests.expect(code == nativesharp::ExitCode::Success && units > 2 && lowered > 0 && lowered < units,
+            std::string(debug) + ": a body edit re-lowers only the units that read the edited file (" +
+                std::to_string(lowered) + " of " + std::to_string(units) + "): " + error);
+    }
+}
+
+/// EN: Optimization part 2, item 51. A panic site embeds its file, line and column in the code even
+///     without debug information. Shifting its lines must reach the cached object: before item 51
+///     the pre-LLVM key ignored source positions and the warm build reported the old line.
+/// ES: Parte 2, punto 51. Un sitio de panic incrusta su archivo, linea y columna en el codigo aun
+///     sin depuracion. Mover sus lineas debe llegar al objeto del cache: antes del punto 51 la llave
+///     pre-LLVM ignoraba las posiciones y el build caliente informaba la linea vieja.
+void testPanicLineFollowsEdit(nativesharp::tests::TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path project = root / "Panic.nsproj";
+    writeFile(project,
+        "<Project><PropertyGroup><Name>Panic</Name><OutputType>Exe</OutputType><PanicProfile>abort</PanicProfile>"
+        "<PanicHandler>Hooks.OnPanic</PanicHandler></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" />"
+        "</ItemGroup></Project>");
+    writeFile(root / "Hooks.ns", R"NS(using NativeSharp.Core;
+namespace NativeSharp.Core
+{
+    public class Environment
+    {
+        public static void Exit(int exitCode) { }
+    }
+}
+namespace Hooks
+{
+    public void OnPanic(string message, string file, int line, int column)
+    {
+        Environment.Exit(line);
+    }
+}
+public class Program
+{
+    public static int Main() { return Failing.Fail(); }
+}
+)NS");
+    for (int blankLines = 0; blankLines <= 3; blankLines += 3)
+    {
+        const std::string blank(static_cast<std::size_t>(blankLines), '\n');
+        writeFile(root / "Failing.ns",
+            "public class Failing\n{\n" + blank + "    public static int Fail() { panic(\"x\"); }\n}\n");
+        nativesharp::ExitCode code{};
+        std::string error;
+        compileTimed(project, root / "Panic.exe", root / "cache", "-O0", "-g0", code, error);
+        tests.expect(code == nativesharp::ExitCode::Success, "the panic program builds: " + error);
+        const std::string command = "\"" + (root / "Panic.exe").string() + "\"";
+        tests.expect(std::system(command.c_str()) == 3 + blankLines,
+            "a cached build reports the current line of a panic site after its lines shift");
+    }
+}
 }
 
 int main()
@@ -195,5 +324,7 @@ int main()
         "class Tools { public static int Weight<T>(T value) { return 5; } }\n"
         "class Program { public static int Main() { return Tools.Weight(1) + Helpers.H0(1); } }\n",
         7);
+    testDebugEditLowersOnlyAffectedUnits(tests, root / "debug-edit", helpers);
+    testPanicLineFollowsEdit(tests, root / "panic-line");
     return tests.resultKeeping(root);
 }

@@ -21,6 +21,7 @@
 #include "nativesharp/LLVM/ProjectOopCodePartition.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 #include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
+#include "nativesharp/Source/SourceAccessRecording.h"
 #include "nativesharp/Source/SourceManager.h"
 
 #include "Internal/ColdLlvmPreambleTelemetry.h"
@@ -29,6 +30,7 @@
 #include "Internal/CodeUnitProgress.h"
 #include "Internal/CodeViewProcedureRanges.h"
 #include "Internal/PhaseClock.h"
+#include "Internal/SourceDependencyIndex.h"
 #include "Internal/ThinLtoBackend.h"
 
 #include <algorithm>
@@ -78,46 +80,24 @@ std::optional<std::filesystem::path> createTemporaryDirectory(std::string& error
 
 
 
-void appendNodeSourceRanges(
-    const frontend::ProjectOopMirNode* root,
-    std::vector<SourceRange>& ranges)
+/// EN: The part of the source identity that every code unit shares with debug information: the
+///     debug prefix maps that remap the recorded paths. The files themselves enter each unit's
+///     object key through SourceDependencyIndex (optimization part 2, item 51); before that item
+///     every unit hashed the ranges and files of the whole project, so any edit missed every unit.
+/// ES: La parte de la identidad de fuentes que comparten todas las unidades con depuracion: los
+///     prefix maps que reescriben las rutas grabadas. Los archivos mismos entran a la llave de
+///     objeto de cada unidad por SourceDependencyIndex (parte 2, punto 51); antes de ese punto cada
+///     unidad hacia hash de los rangos y archivos de todo el proyecto, asi que cualquier edicion
+///     fallaba todas las unidades.
+std::string debugPrefixMapIdentity(std::span<const DebugPrefixMap> debugPrefixMaps)
 {
-    std::vector<const frontend::ProjectOopMirNode*> work;
-    work.push_back(root);
-    while (!work.empty())
+    std::string identity = "debug-prefix-maps " + std::to_string(debugPrefixMaps.size()) + "\n";
+    for (const DebugPrefixMap& map : debugPrefixMaps)
     {
-        const frontend::ProjectOopMirNode* node = work.back();
-        work.pop_back();
-        if (node == nullptr) continue;
-        if (node->syntax != nullptr) ranges.push_back(node->syntax->range());
-        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
-            work.push_back(child->get());
+        identity += map.sourcePrefix.lexically_normal().generic_string() + "\n";
+        identity += map.replacementPrefix.lexically_normal().generic_string() + "\n";
     }
-}
-
-std::vector<SourceRange> collectLineTableSourceRanges(
-    const frontend::ProjectNameLookup& nameLookup,
-    const frontend::ProjectMemberModel& memberModel,
-    const frontend::ProjectOopMirModel& mirModel)
-{
-    std::vector<SourceRange> ranges;
-    for (const frontend::NamedTypeDeclaration& type : nameLookup.namedTypes())
-        ranges.push_back(type.range);
-    for (const frontend::ClassMemberSymbol& member : memberModel.members())
-        ranges.push_back(member.range);
-    for (const frontend::ProjectOopMirStaticField& field : mirModel.staticFields())
-        ranges.push_back(field.sourceRange);
-    for (const frontend::ProjectOopMirFieldInitializer& initializer : mirModel.fieldInitializers())
-        appendNodeSourceRanges(initializer.value.get(), ranges);
-    for (const frontend::ProjectOopMirFunction& function : mirModel.functions())
-    {
-        appendNodeSourceRanges(function.body.get(), ranges);
-        for (const frontend::ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
-            appendNodeSourceRanges(cleanup.action, ranges);
-        for (const frontend::ProjectOopMirNonlocalExit& exit : function.exceptionFlow.nonlocalExits)
-            appendNodeSourceRanges(exit.node, ranges);
-    }
-    return ranges;
+    return identity;
 }
 
 std::string combineLineTableCacheIdentity(
@@ -132,18 +112,60 @@ std::string combineLineTableCacheIdentity(
     return combined;
 }
 
+/// EN: Removes from the model dumps what a function body alone changes and debug metadata never
+///     reads: the type-name bindings of the name lookup (one per type name written anywhere,
+///     bodies included) and the inferred effects of each member (optimization part 2, item 51).
+/// ES: Quita de los volcados de modelo lo que cambia un cuerpo por si solo y la metadata de
+///     depuracion nunca lee: los bindings de nombres de tipo (uno por nombre de tipo escrito en
+///     cualquier lugar, cuerpos incluidos) y los efectos inferidos de cada miembro (parte 2, punto 51).
+std::string withoutBodyDerivedModelData(std::string lookupText, std::string memberText)
+{
+    const std::size_t bindings = lookupText.find("\nbindings:\n");
+    if (bindings != std::string::npos) lookupText.erase(bindings + 1);
+    const std::size_t count = lookupText.find("type-bindings: ");
+    if (count != std::string::npos)
+    {
+        const std::size_t end = lookupText.find('\n', count);
+        lookupText.erase(count, end == std::string::npos ? std::string::npos : end - count + 1);
+    }
+    std::string filtered;
+    filtered.reserve(memberText.size());
+    std::size_t position = 0;
+    while (position < memberText.size())
+    {
+        const std::size_t effects = memberText.find(" effects=", position);
+        if (effects == std::string::npos)
+        {
+            filtered.append(memberText, position, std::string::npos);
+            break;
+        }
+        filtered.append(memberText, position, effects - position);
+        std::size_t end = effects + 9;
+        while (end < memberText.size() && memberText[end] >= '0' && memberText[end] <= '9') ++end;
+        position = end;
+    }
+    return lookupText + filtered;
+}
+
 /// Digest of the model data that full debug metadata reads besides the MIR and the source
 /// files: the dumps of the name lookup (type identities, ranges, imported types) and of the
 /// member model (members, signatures, parameters, ranges). It covers more than the metadata
 /// uses on purpose: a cache key may hold more than needed, never less.
+/// Since optimization part 2 item 51 it leaves out the body-derived data of
+/// withoutBodyDerivedModelData; otherwise editing one body changed the key of every unit. The files
+/// each unit reads are bound to its object key through SourceDependencyIndex.
+/// Desde el punto 51 de la parte 2 deja fuera los datos derivados de cuerpos de
+/// withoutBodyDerivedModelData; si no, editar un cuerpo cambiaba la llave de todas las unidades. Los
+/// archivos que lee cada unidad se ligan a su llave de objeto por SourceDependencyIndex.
 std::string fullDebugModelIdentity(
     const frontend::ProjectNameLookup& nameLookup,
     const frontend::ProjectMemberModel& memberModel)
 {
-    std::ostringstream output;
-    frontend::ProjectNameLookupDumper{}.dump(nameLookup, output);
-    frontend::ProjectMemberModelDumper{}.dump(memberModel, nameLookup, output);
-    const std::string text = output.str();
+    std::ostringstream lookupOutput;
+    frontend::ProjectNameLookupDumper{}.dump(nameLookup, lookupOutput);
+    std::ostringstream memberOutput;
+    frontend::ProjectMemberModelDumper{}.dump(memberModel, nameLookup, memberOutput);
+    const std::string text = withoutBodyDerivedModelData(lookupOutput.str(), memberOutput.str());
     const auto bytes = std::span(
         reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
     return basic::sha256Hex(basic::sha256(bytes));
@@ -153,6 +175,10 @@ std::string fullDebugModelIdentity(
 /// the unit, the source identity used for line tables (every range, the path, size and
 /// content digest of each file holding one, so also each DIFile checksum, and the debug prefix
 /// maps that remap the paths) and the model digest of fullDebugModelIdentity.
+/// Since optimization part 2 item 51 the source identity is debugPrefixMapIdentity; the files the
+/// unit reads enter its object key through SourceDependencyIndex.
+/// Desde el punto 51 de la parte 2 la identidad de fuentes es debugPrefixMapIdentity; los archivos
+/// que lee la unidad entran a su llave de objeto por SourceDependencyIndex.
 std::string combineFullDebugCacheIdentity(
     std::string mirIdentity,
     std::string_view sourceIdentity,
@@ -212,10 +238,20 @@ std::vector<std::uint8_t> prepareCodeUnitTelemetry(
     return selectedStaticFields;
 }
 
+/// EN: Restores the object of a code unit before lowering. `unitKey` is the unit's MIR identity
+///     key; the manifest stored under it lists the source files the last lowering read, and the
+///     object key adds their current path, size and digest (SourceDependencyIndex, optimization
+///     part 2 item 51). No manifest, or a listed file that is no longer a source, is a miss.
+/// ES: Restaura el objeto de una unidad de codigo antes del lowering. `unitKey` es la llave de
+///     identidad MIR de la unidad; el manifiesto guardado con ella lista los archivos fuente que
+///     leyo el ultimo lowering, y la llave del objeto agrega su ruta, tamano y digest actuales
+///     (SourceDependencyIndex, parte 2 punto 51). Sin manifiesto, o con un archivo listado que ya no
+///     es fuente, es un fallo.
 bool restorePreLlvmObject(
     const CompilationArtifactCache* cache,
     bool usePreLlvmCache,
-    const std::string& cacheKey,
+    const std::string& unitKey,
+    const SourceDependencyIndex* sourceDependencies,
     const std::filesystem::path& objectFile,
     CodeUnitTelemetry& telemetry,
     std::uint8_t& cacheHit,
@@ -226,11 +262,20 @@ bool restorePreLlvmObject(
     bool& complete)
 {
     complete = false;
-    if (!usePreLlvmCache) return true;
+    if (!usePreLlvmCache || sourceDependencies == nullptr) return true;
     bool hit = false;
     CacheMissReason reason = CacheMissReason::Cold;
     const PhaseClock lookup;
-    if (!cache->restoreObject(cacheKey, objectFile, hit, moduleError, &reason)) return false;
+    std::string manifest;
+    bool manifestHit = false;
+    if (!cache->restoreCodePartitionPlan(
+            SourceDependencyIndex::manifestKey(unitKey), manifest, manifestHit, moduleError)) return false;
+    std::vector<FileId> sourceFiles;
+    if (manifestHit && sourceDependencies->manifestFiles(manifest, sourceFiles))
+    {
+        const std::string objectKey = sourceDependencies->objectKey(unitKey, sourceFiles);
+        if (!cache->restoreObject(objectKey, objectFile, hit, moduleError, &reason)) return false;
+    }
     telemetry.lookupMicros += lookup.elapsedMicros();
     telemetry.missReason = reason;
     if (hit)
@@ -625,6 +670,33 @@ void storePreOptimizationObject(
     telemetry.storeMicros += store.elapsedMicros();
 }
 
+/// EN: Publishes what the next build needs to restore this unit before lowering: the manifest of
+///     the files its lowering read, under `unitKey`, and the object under `objectKey` (item 51).
+///     `storeObject` is false when the object was already stored under that key. Failures are
+///     reported in `moduleError`, as every other store.
+/// ES: Publica lo que el siguiente build necesita para restaurar esta unidad antes del lowering: el
+///     manifiesto de los archivos que leyo su lowering, con `unitKey`, y el objeto con `objectKey`
+///     (punto 51). `storeObject` es false cuando el objeto ya se guardo con esa llave. Las fallas
+///     se informan en `moduleError`, como cualquier otro guardado.
+void storeSourceBoundObject(
+    const CompilationArtifactCache* cache,
+    const SourceDependencyIndex* sourceDependencies,
+    const std::string& unitKey,
+    const std::string& objectKey,
+    std::span<const FileId> sourceFiles,
+    bool storeObject,
+    const std::filesystem::path& objectFile,
+    CodeUnitTelemetry& telemetry,
+    std::string& moduleError)
+{
+    if (cache == nullptr || !cache->enabled() || sourceDependencies == nullptr || !moduleError.empty()) return;
+    const PhaseClock store;
+    if (storeObject && !cache->storeObject(objectKey, objectFile, moduleError)) return;
+    cache->storeCodePartitionPlan(
+        SourceDependencyIndex::manifestKey(unitKey), sourceDependencies->manifestText(sourceFiles), moduleError);
+    telemetry.storeMicros += store.elapsedMicros();
+}
+
 void processObjectCodeUnit(
     std::size_t ordinal,
     bool usePartitions,
@@ -645,6 +717,7 @@ void processObjectCodeUnit(
     const ProjectOopFunctionReachabilityAnalysis& functionAnalysis,
     std::span<const std::string> sourceChecksums,
     const CompilationArtifactCache* cache,
+    const SourceDependencyIndex* sourceDependencies,
     const std::string& codeGenerationPolicy,
     ThinLtoBackend* thinLto,
     const std::filesystem::path& objectFile,
@@ -671,14 +744,27 @@ void processObjectCodeUnit(
         progressSink, completedModules, moduleProgressMutex, moduleCount, moduleName);
     bool complete = false;
     if (!restorePreLlvmObject(
-            cache, usePreLlvmCache, cacheKey, objectFile, telemetry,
+            cache, usePreLlvmCache, cacheKey, sourceDependencies, objectFile, telemetry,
             cacheHit, cacheMiss, moduleError, progressSink, moduleName, complete) || complete) return;
-    std::unique_ptr<LlvmModule> module = lowerCodeUnit(
-        ordinal, usePartitions, nameLookup, memberModel, mirModel, sourceManager,
-        debugInformation, optimizationLevel, debugPrefixMaps, reachableDefinitions,
-        selectedStaticFields, coordinatorFunctionDeclarations, partition, sourceChecksums,
-        moduleError, telemetry);
+    // The lowering runs inside a recording of the source files it reads; with the pre-LLVM cache
+    // the object is stored under the unit key bound to those files (item 51).
+    // El lowering corre dentro de una grabacion de los archivos fuente que lee; con el cache
+    // pre-LLVM el objeto se guarda con la llave de unidad ligada a esos archivos (punto 51).
+    const std::string unitKey = cacheKey;
+    std::vector<FileId> sourceFiles;
+    std::unique_ptr<LlvmModule> module;
+    {
+        const source::SourceAccessRecording recording;
+        module = lowerCodeUnit(
+            ordinal, usePartitions, nameLookup, memberModel, mirModel, sourceManager,
+            debugInformation, optimizationLevel, debugPrefixMaps, reachableDefinitions,
+            selectedStaticFields, coordinatorFunctionDeclarations, partition, sourceChecksums,
+            moduleError, telemetry);
+        sourceFiles = recording.files();
+    }
     if (module == nullptr) return;
+    const bool sourceBound = usePreLlvmCache && sourceDependencies != nullptr;
+    if (sourceBound) cacheKey = sourceDependencies->objectKey(unitKey, sourceFiles);
     std::unique_ptr<LlvmTargetMachine> targetMachine = configureCodeUnitTarget(
         *module, optimizationLevel, moduleError, telemetry);
     if (targetMachine == nullptr) return;
@@ -699,7 +785,18 @@ void processObjectCodeUnit(
     if (!restorePreOptimizationObject(
             cache, usePreOptimizationCache, *module, *targetMachine, codeGenerationPolicy,
             optimizationLevel, debugInformation, requiresWholeModuleRequiredInlining, objectFile,
-            irKey, telemetry, cacheHit, cacheMiss, moduleError, complete) || complete) return;
+            irKey, telemetry, cacheHit, cacheMiss, moduleError, complete)) return;
+    if (complete)
+    {
+        // The same IR was compiled before: keep its object under this unit's source-bound key too,
+        // so the next build skips the lowering as well.
+        // El mismo IR ya se compilo: su objeto se guarda tambien con la llave ligada a fuentes de esta
+        // unidad, para que el siguiente build se salte tambien el lowering.
+        if (sourceBound)
+            storeSourceBoundObject(
+                cache, sourceDependencies, unitKey, cacheKey, sourceFiles, true, objectFile, telemetry, moduleError);
+        return;
+    }
     if (!optimizeConfiguredCodeUnit(
             *module, *targetMachine, optimizationLevel, requiresWholeModuleRequiredInlining,
             moduleError, telemetry)) return;
@@ -711,6 +808,9 @@ void processObjectCodeUnit(
     emitAndStoreCodeUnit(
         *module, *targetMachine, cache, cacheKey, objectFile, telemetry, moduleError);
     storePreOptimizationObject(cache, irKey, objectFile, telemetry, moduleError);
+    if (sourceBound)
+        storeSourceBoundObject(
+            cache, sourceDependencies, unitKey, cacheKey, sourceFiles, false, objectFile, telemetry, moduleError);
 }
 
 /// EN: Builds the code partition of one generation with the DeterministicIncremental policy, for
@@ -785,7 +885,6 @@ void composeModuleCacheKeys(
     const frontend::ProjectNameLookup& nameLookup,
     const frontend::ProjectMemberModel& memberModel,
     const frontend::ProjectOopMirModel& mirModel,
-    const source::SourceManager& sourceManager,
     std::span<const DebugPrefixMap> debugPrefixMaps,
     std::span<const std::uint8_t> reachableDefinitions,
     std::span<const std::size_t> coordinatorFunctionDeclarations,
@@ -805,15 +904,17 @@ void composeModuleCacheKeys(
     // ES: Los digests por función corren en el pool de unidades antes de encolar unidades.
     const ProjectOopMirCacheIdentityIndex identityIndex(mirModel, workerPool);
     telemetry.identityIndexBuildMicros = identityIndexClock.elapsedMicros();
-    // Line tables and full debug information both depend on the sources and their paths.
+    // Line tables and full debug information both depend on the sources and their paths: the
+    // prefix maps are shared here, and the files each unit reads join its object key after the
+    // lookup (SourceDependencyIndex, optimization part 2 item 51).
+    // Las tablas de lineas y la depuracion completa dependen de las fuentes y sus rutas: los prefix
+    // maps se comparten aqui, y los archivos que lee cada unidad se suman a su llave de objeto
+    // despues (SourceDependencyIndex, parte 2 punto 51).
     std::string lineTableSourceIdentity;
     if (debugInformation != DebugInformationKind::None)
     {
         const PhaseClock lineTableIdentityClock;
-        const std::vector<SourceRange> sourceRanges =
-            collectLineTableSourceRanges(nameLookup, memberModel, mirModel);
-        lineTableSourceIdentity = projectOopLineTableSourceIdentity(
-            sourceManager, debugPrefixMaps, sourceRanges);
+        lineTableSourceIdentity = debugPrefixMapIdentity(debugPrefixMaps);
         telemetry.lineTableIdentityMicros = lineTableIdentityClock.elapsedMicros();
     }
     std::string debugModelIdentity;
@@ -1271,7 +1372,7 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     std::vector<std::string> cacheKeys(moduleCount);
     if (usePreLlvmCache)
         composeModuleCacheKeys(
-            nameLookup, memberModel, mirModel, sourceManager, debugPrefixMaps,
+            nameLookup, memberModel, mirModel, debugPrefixMaps,
             reachableDefinitions, coordinatorFunctionDeclarations, partition, usePartitions,
             debugInformation, optimizationLevel, *cache, codeGenerationPolicy,
             cacheKeys, codeUnitTelemetry, preambleTelemetry, workerPool);
@@ -1298,6 +1399,10 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     std::vector<std::string> sourceChecksums;
     if (usePartitions && debugInformation != DebugInformationKind::None && !usePreLlvmCache)
         sourceChecksums = computeSourceChecksums(sourceManager);
+    // With the pre-LLVM cache every unit's object key is bound to the files its lowering reads.
+    // Con el cache pre-LLVM la llave de objeto de cada unidad se liga a los archivos que lee su lowering.
+    std::optional<SourceDependencyIndex> sourceDependencies;
+    if (usePreLlvmCache) sourceDependencies.emplace(sourceManager);
     std::atomic_size_t completedModules = 0;
     std::mutex moduleProgressMutex;
     const auto processModule = [&](std::size_t ordinal) {
@@ -1306,7 +1411,8 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
             requiresWholeModuleRequiredInlining, nameLookup, memberModel, mirModel,
             sourceManager, debugInformation, optimizationLevel, debugPrefixMaps,
             reachableDefinitions, coordinatorFunctionDeclarations, partition,
-            functionAnalysis, sourceChecksums, cache, codeGenerationPolicy,
+            functionAnalysis, sourceChecksums, cache,
+            sourceDependencies.has_value() ? &*sourceDependencies : nullptr, codeGenerationPolicy,
             thinLto.has_value() ? &*thinLto : nullptr, result.objectFiles_[ordinal],
             moduleTexts[ordinal], moduleErrors[ordinal], cacheKeys[ordinal],
             cacheHits[ordinal], cacheMisses[ordinal], codeUnitTelemetry[ordinal],

@@ -323,6 +323,7 @@ nsc_enable_warnings(nsc_target)
 add_library(nsc_frontend STATIC
     src/Basic/Sha256.cpp
     src/Source/SourceFile.cpp
+    src/Source/SourceAccessRecording.cpp
     src/Source/SourceManager.cpp
     src/Diagnostics/Diagnostic.cpp
     src/Diagnostics/DiagnosticEngine.cpp
@@ -966,6 +967,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/ProjectOopLlvmLowerer.cpp
     src/LLVM/SignedDivisionCorrection.cpp
     src/LLVM/LlvmTargetMachine.cpp
+    src/LLVM/Internal/SourceDependencyIndex.cpp
     src/LLVM/Internal/ThinLtoBackend.cpp
     src/LLVM/ThinLtoLibrarySidecarCodec.cpp
     src/LLVM/CoffObjectVerifier.cpp)
