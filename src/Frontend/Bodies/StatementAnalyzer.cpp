@@ -3270,15 +3270,12 @@ void ProjectMethodBodyModel::validateVariableLifetimeQualifiers(
             std::string(ownerSpelling) +
                 " requires a NativeSharp class/interface reference, managed delegate, native "
                 "string, or native array buffer");
-    if (isForeachEnumerator && typeKeyIsStruct(typeKey) &&
-        !elementTypeHasTrivialLifetime(typeKey) &&
-        !typeKey.starts_with("iterator:") && !typeKey.starts_with("async-iterator:"))
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidType,
-            diagnostics::DiagnosticSeverity::Error,
-            variable->range(),
-            "foreach struct enumerator '" + std::string(typeKey) +
-                "' must have a trivial lifetime; automatic destruction of value locals is not yet supported");
+    // EN: Freeze 3.0 C-11: a struct enumerator with a non-trivial lifetime is an ordinary value
+    //     local of the lowered loop; its scope destroys it on every exit, like any value local.
+    // ES: Congelamiento 3.0 C-11: un enumerador struct con lifetime no trivial es un local de
+    //     valor comun del ciclo bajado; su scope lo destruye en cada salida, como a cualquier
+    //     local de valor.
+    (void)isForeachEnumerator;
     if (isRaii && variable->first() == nullptr)
         diagnostics.report(
             diagnostics::DiagnosticId::ExpectedToken,

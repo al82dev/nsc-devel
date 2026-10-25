@@ -354,6 +354,7 @@ void writeDispatchTables(IdentityWriter& output, const frontend::ProjectOopMirMo
             output.text(step.destructorCalleeName); output.scalar(step.ownedField.memberOrdinal);
             output.scalar(step.ownedField.offset); output.scalar(step.ownedField.isNativeString);
             output.scalar(step.isFieldRelease);
+            output.scalar(step.isValueFieldDrop); output.text(step.valueFieldTypeKey);
         }
         output.text(table.interfaceMapName); output.scalar(table.interfaceTables.size());
         for (const auto& interfaceTable : table.interfaceTables)

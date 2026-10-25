@@ -879,6 +879,16 @@ bool OopLlvmImplementation::emitObjectDestructionSteps(
 {
         for (const frontend::ProjectOopMirDispatchTable::DestructionStep& step : table.destructionSteps)
         {
+            // EN: Freeze 3.0 C-11: a value field with a non-trivial lifetime is dropped in place.
+            // ES: Congelamiento 3.0 C-11: un campo de valor con lifetime no trivial se destruye en
+            //     su lugar.
+            if (step.isValueFieldDrop)
+            {
+                LLVMValueRef fieldAddress = byteOffset(object, step.ownedField.offset, "value.field.addr");
+                if (!emitValueDropAddress(fieldAddress, step.valueFieldTypeKey, "value.field", error))
+                    return false;
+                continue;
+            }
             if (!step.isFieldRelease)
             {
                 const auto bodyFound = functions_.find(step.destructorCalleeName);

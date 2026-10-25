@@ -1556,6 +1556,7 @@ bool ProjectOopHirModel::appendRegularCoroutineFunctions(
     std::unique_ptr<ProjectOopHirFunction> poll;
     std::unique_ptr<ProjectOopHirFunction> moveNext;
     std::unique_ptr<ProjectOopHirFunction> drop;
+    if (function.body != nullptr) ownDroppableTemporaries(function.body.get());
     // NS304-T07-F02: an async generator is ONE machine (await + yield) — the async-generator
     // split produces MoveNext (future) + poll + drop. A precompiled declaration (no lowered
     // body) is NOT re-split: its facade symbols live in the referenced .lib, so the consumer
@@ -1828,6 +1829,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
     function.body = lowerBlock(symbol.definitionSyntax->first(), callableOrdinal, error);
     activeHirCleanupRegions_.clear();
     if (function.body == nullptr) return false;
+    ownDroppableTemporaries(function.body.get());
     if (!cleanupNodes.empty())
     {
         function.body->children.insert(
@@ -1970,6 +1972,7 @@ bool ProjectOopHirModel::buildLambdaFunction(
         lowerExpressionLambdaBody(function, lambda, error);
     currentLambda_ = nullptr;
     if (function.body == nullptr || !error.empty()) return false;
+    ownDroppableTemporaries(function.body.get());
     if (lambda.lambdaOrdinal >= functionByLambda_.size())
         functionByLambda_.resize(lambda.lambdaOrdinal + 1U);
     if (!functionByLambda_[lambda.lambdaOrdinal].has_value())

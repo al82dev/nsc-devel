@@ -4197,6 +4197,12 @@ private:
         std::unique_ptr<ProjectOopHirNode> value,
         const ast::AstNode* syntax,
         bool hasOwnedTemporary);
+    // EN: Freeze 3.0 C-11: owned and non-trivial temporaries (HirExceptionAndCleanup.cpp).
+    // ES: Congelamiento 3.0 C-11: temporales owned y no triviales (HirExceptionAndCleanup.cpp).
+    void ownDroppableTemporaries(ProjectOopHirNode* root);
+    bool ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>& consumer);
+    bool isFreshDroppableTemporary(const ProjectOopHirNode* node) const;
+    std::unique_ptr<ProjectOopHirNode> ownTemporary(std::unique_ptr<ProjectOopHirNode> value);
     void applyStructuredExitBinding(
         ProjectOopHirNode& node,
         const ast::AstNode* syntax) const;

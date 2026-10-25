@@ -1096,6 +1096,276 @@ class Program
 )ns", "a variable outside every namespace is not supported in NativeSharp 3.0");
 }
 
+/// EN: C-11. A struct with a destructor or owned fields, used as a local, is destroyed exactly
+///     once on every way out of its scope (in reverse declaration order), and not at all after a
+///     move.
+/// ES: C-11. Un struct con destructor o campos owned, usado como local, se destruye exactamente
+///     una vez en cada salida de su scope (en orden inverso de declaracion), y nunca despues de
+///     un move.
+constexpr std::string_view kGuardPrelude = R"ns(
+using NativeSharp.Core;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    public int GetId() { return Id; }
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+}
+)ns";
+
+void testValueLocalLifetimes(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C11ScopeOrder", std::string(kGuardPrelude) + R"ns(
+class Program
+{
+    private static int Scope()
+    {
+        Guard a;
+        a.Id = 1;
+        {
+            Guard b;
+            b.Id = 2;
+        }
+        return 7;
+    }
+    public static int Main()
+    {
+        int r = Scope();
+        return Counter.Drops * 10 + r;
+    }
+}
+)ns", 217);
+    expectRun(tests, root, "C11EarlyReturn", std::string(kGuardPrelude) + R"ns(
+class Program
+{
+    private static int Pick(bool early)
+    {
+        Guard g;
+        g.Id = 6;
+        if (early) { return 1; }
+        Guard h;
+        h.Id = 7;
+        return 2;
+    }
+    public static int Main()
+    {
+        int a = Pick(true);
+        int b = Pick(false);
+        return Counter.Drops * 10 + a + b;
+    }
+}
+)ns", 6763);
+    expectRun(tests, root, "C11Exception", std::string(kGuardPrelude) + R"ns(
+class Boom : Exception { public Boom() { } }
+class Program
+{
+    private static void Risky() throws Boom
+    {
+        Guard g;
+        g.Id = 5;
+        throw new Boom();
+    }
+    public static int Main()
+    {
+        try { Risky(); }
+        catch (Boom problem) { return Counter.Drops; }
+        return 99;
+    }
+}
+)ns", 5);
+    expectRun(tests, root, "C11ConditionalMove", R"ns(
+class Widget
+{
+    public static int Drops;
+    public int Id;
+    public Widget(int id) { Id = id; }
+    ~Widget() { Drops = Drops * 10 + Id; }
+}
+struct Holder
+{
+    public owned Widget Item;
+}
+class Program
+{
+    private static void Take(Holder h) { }
+    private static void Run(bool give, int id)
+    {
+        Holder x;
+        x.Item = new Widget(id);
+        if (give) { Take(move(x)); }
+    }
+    public static int Main()
+    {
+        Run(true, 5);
+        Run(false, 6);
+        return Widget.Drops;
+    }
+}
+)ns", 56);
+}
+
+/// EN: C-11 (found while probing). A struct with a destructor used to be copied silently, so a
+///     returned local was destroyed in the callee and again in the caller. It is move-only now:
+///     `return move(g)` hands it over once, assignment destroys the old value once, and a plain
+///     copy is rejected.
+/// ES: C-11 (hallazgo de la sonda). Un struct con destructor se copiaba en silencio, asi que un
+///     local retornado se destruia en el llamado y otra vez en el llamador. Ahora es move-only:
+///     `return move(g)` lo entrega una vez, la asignacion destruye el valor anterior una vez, y
+///     una copia simple se rechaza.
+void testValueMoves(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C11ReturnAndAssign", std::string(kGuardPrelude) + R"ns(
+class Program
+{
+    private static Guard Make(int id)
+    {
+        Guard g;
+        g.Id = id;
+        return move(g);
+    }
+    private static int Run()
+    {
+        Guard x = Make(1);
+        x = Make(2);
+        return Counter.Drops * 10 + x.Id;
+    }
+    public static int Main()
+    {
+        int seen = Run();
+        return seen * 100 + Counter.Drops;
+    }
+}
+)ns", 1212);
+    expectReject(tests, root, "C11CopyRejected", std::string(kGuardPrelude) + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        Guard x;
+        x.Id = 3;
+        Guard y = x;
+        return y.Id;
+    }
+}
+)ns", "cannot be copied into local 'y'; use move(source)");
+}
+
+/// EN: C-11. A struct enumerator with a destructor is accepted by `foreach` and destroyed once on
+///     the natural end, on `break` and on `return`.
+/// ES: C-11. Un enumerador struct con destructor se acepta en `foreach` y se destruye una vez al
+///     terminar, con `break` y con `return`.
+void testStructEnumerator(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C11StructEnumerator", R"ns(
+class Counter { public static int Drops; }
+struct RangeEnumerator
+{
+    public int Value;
+    public int Limit;
+    public int Current { get { return Value; } }
+    public bool MoveNext()
+    {
+        Value = Value + 1;
+        return Value <= Limit;
+    }
+    ~RangeEnumerator() { Counter.Drops = Counter.Drops + 1; }
+}
+struct Range
+{
+    public int Limit;
+    public RangeEnumerator GetEnumerator()
+    {
+        RangeEnumerator e;
+        e.Value = 0;
+        e.Limit = Limit;
+        return move(e);
+    }
+}
+class Program
+{
+    private static int FirstOver(Range r, int bound)
+    {
+        foreach (var x in r)
+        {
+            if (x > bound) { return x; }
+        }
+        return 0;
+    }
+    public static int Main()
+    {
+        Range r;
+        r.Limit = 5;
+        int all = 0;
+        foreach (var x in r) { all = all + x; }
+        int some = 0;
+        foreach (var x in r)
+        {
+            if (x == 3) { break; }
+            some = some + x;
+        }
+        int first = FirstOver(r, 1);
+        return all * 1000 + some * 100 + first * 10 + Counter.Drops;
+    }
+}
+)ns", 15323);
+}
+
+/// EN: C-11 (found while probing). A struct field with a destructor is destroyed with its object,
+///     and the result of a call that hands over something to destroy (a struct with a destructor
+///     or an owned object) is destroyed when it is discarded or only used as a receiver.
+/// ES: C-11 (hallazgo de la sonda). Un campo struct con destructor se destruye con su objeto, y el
+///     resultado de una llamada que entrega algo que destruir (un struct con destructor o un
+///     objeto owned) se destruye cuando se descarta o solo se usa como receptor.
+void testValueFieldsAndTemporaries(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C11ObjectValueField", std::string(kGuardPrelude) + R"ns(
+class Holder
+{
+    public Guard Item;
+    public Holder(int id) { Item.Id = id; }
+}
+class Program
+{
+    public static int Main()
+    {
+        {
+            raii Holder h = new Holder(8);
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 8);
+    expectRun(tests, root, "C11Temporaries", std::string(kGuardPrelude) + R"ns(
+class Widget
+{
+    public int Id;
+    public Widget(int id) { Id = id; }
+    public int GetId() { return Id; }
+    ~Widget() { Counter.Drops = Counter.Drops * 10 + Id; }
+}
+class Program
+{
+    private static Guard Make(int id)
+    {
+        Guard g;
+        g.Id = id;
+        return move(g);
+    }
+    private static owned Widget MakeWidget(int id) { return new Widget(id); }
+    public static int Main()
+    {
+        int a = Make(1).GetId();
+        int b = Make(2).Id;
+        Make(3);
+        int c = MakeWidget(4).GetId();
+        int d = MakeWidget(5).Id;
+        MakeWidget(6);
+        return Counter.Drops + a + b + c + d - 12;
+    }
+}
+)ns", 123456);
+}
+
 int main()
 {
     TestContext tests;
@@ -1120,5 +1390,9 @@ int main()
     testCaptureSurvivesSuspension(tests, root);
     testMissingReturn(tests, root);
     testGlobalDeclarationsRejected(tests, root);
+    testValueLocalLifetimes(tests, root);
+    testValueMoves(tests, root);
+    testStructEnumerator(tests, root);
+    testValueFieldsAndTemporaries(tests, root);
     return tests.resultKeeping(root);
 }

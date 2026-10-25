@@ -189,6 +189,15 @@ bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) cons
         {
             if (memberOrdinal >= members_.size()) continue;
             const ClassMemberSymbol& field = members_[memberOrdinal];
+            // EN: Freeze 3.0 C-11: a destructor is a non-trivial lifetime. A plain copy of such a
+            //     value ran the destructor once per copy (a returned local was destroyed in the
+            //     callee and again in the caller), so the value is move-only, as with an owned
+            //     field.
+            // ES: Congelamiento 3.0 C-11: un destructor es un lifetime no trivial. Una copia simple
+            //     de ese valor corria el destructor una vez por copia (un local retornado se
+            //     destruia en el llamado y otra vez en el llamador), asi que el valor es move-only,
+            //     igual que con un campo owned.
+            if (field.kind == ClassMemberKind::Destructor && !field.isStatic) return false;
             if (field.kind != ClassMemberKind::Field || field.isStatic || field.isConst) continue;
             if (field.declaredOwnership == sema::OwnershipKind::Owned) return false;
             pending.push_back(field.declaredTypeKey);

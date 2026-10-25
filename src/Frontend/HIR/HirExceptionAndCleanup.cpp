@@ -1,9 +1,11 @@
 #include "HirLoweringSupport.h"
 
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -48,6 +50,108 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapFullExpressionCleanup
     auto fullExpression = makeNode(ProjectOopHirNodeKind::FullExpressionCleanup, syntax, value->typeKey);
     fullExpression->children.push_back(std::move(value));
     return fullExpression;
+}
+
+// EN: Freeze 3.0 C-11 (found while probing value lifetimes): the result of a call that hands its
+//     caller a value to destroy (an owned object or string, or a struct with a destructor or
+//     owned fields) leaked when it was discarded (`Make();`) or only used as a receiver
+//     (`Make().Count`, `Make().Id()`). Such a temporary now gets a hidden owner that the full
+//     expression destroys. A receiver is owned only when its consumer yields a plain scalar,
+//     because a reference or a string taken from the temporary could outlive it.
+// ES: Congelamiento 3.0 C-11 (hallazgo al sondear lifetimes de valores): el resultado de una
+//     llamada que entrega al llamador un valor que destruir (un objeto o string owned, o un
+//     struct con destructor o campos owned) se fugaba cuando se descartaba (`Make();`) o solo se
+//     usaba como receptor (`Make().Count`, `Make().Id()`). Ese temporal recibe ahora un dueno
+//     oculto que la expresion completa destruye. Un receptor solo se posee cuando su consumidor
+//     produce un escalar simple, porque una referencia o un string tomado del temporal podria
+//     sobrevivirle.
+namespace
+{
+bool hasPlainResult(const ProjectOopHirNode& node)
+{
+    if (node.referenceResult) return false;
+    const std::string& type = node.typeKey;
+    return type == "builtin:void" ||
+        (type.starts_with("builtin:") && type != "builtin:string" && !type.ends_with("*") &&
+         !type.ends_with("[]"));
+}
+
+bool consumesReceiver(const ProjectOopHirNode& node)
+{
+    return !node.children.empty() &&
+        (node.kind == ProjectOopHirNodeKind::InstanceCall ||
+         node.kind == ProjectOopHirNodeKind::FieldValue ||
+         node.kind == ProjectOopHirNodeKind::StringLength ||
+         node.kind == ProjectOopHirNodeKind::StringElementValue);
+}
+}
+
+bool ProjectOopHirModel::isFreshDroppableTemporary(const ProjectOopHirNode* node) const
+{
+    if (node == nullptr || node->referenceResult || memberModel_ == nullptr) return false;
+    const bool producer = node->kind == ProjectOopHirNodeKind::InstanceCall ||
+        node->kind == ProjectOopHirNodeKind::StaticCall ||
+        node->kind == ProjectOopHirNodeKind::DelegateInvoke ||
+        node->kind == ProjectOopHirNodeKind::StringConcat ||
+        node->kind == ProjectOopHirNodeKind::StringSubstring;
+    if (!producer) return false;
+    if (memberModel_->typeRequiresValueDrop(node->typeKey)) return true;
+    if (!isReferenceType(node->typeKey) && node->typeKey != "builtin:string") return false;
+    const MethodExpressionTypeBinding* binding = expressionType(node->syntax);
+    return binding != nullptr && binding->ownership == sema::OwnershipKind::Owned &&
+        binding->ownershipTransfer && !binding->ownershipSourceLocalOrdinal.has_value() &&
+        !binding->ownershipSourceParameterOrdinal.has_value();
+}
+
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::ownTemporary(
+    std::unique_ptr<ProjectOopHirNode> value)
+{
+    auto temporary = makeNode(ProjectOopHirNodeKind::OwnedTemporaryBorrow, value->syntax, value->typeKey);
+    temporary->localOrdinal = nextSyntheticLocalOrdinal_++;
+    temporary->cleanupRegionOrdinal = nextSyntheticCleanupRegionOrdinal_++;
+    temporary->children.push_back(std::move(value));
+    return temporary;
+}
+
+bool ProjectOopHirModel::ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>& consumer)
+{
+    if (!consumesReceiver(*consumer) || !hasPlainResult(*consumer)) return false;
+    std::unique_ptr<ProjectOopHirNode>* receiver = &consumer->children.front();
+    if (*receiver != nullptr && (*receiver)->kind == ProjectOopHirNodeKind::TemporaryAddress &&
+        (*receiver)->children.size() == 1)
+        receiver = &(*receiver)->children.front();
+    if (!isFreshDroppableTemporary(receiver->get())) return false;
+    *receiver = ownTemporary(std::move(*receiver));
+    const ast::AstNode* syntax = consumer->syntax;
+    consumer = wrapFullExpressionCleanup(std::move(consumer), syntax, true);
+    return true;
+}
+
+void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
+{
+    std::vector<ProjectOopHirNode*> pending{root};
+    while (!pending.empty())
+    {
+        ProjectOopHirNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        for (std::unique_ptr<ProjectOopHirNode>& child : node->children)
+        {
+            if (child == nullptr) continue;
+            if (node->kind == ProjectOopHirNodeKind::ExpressionStatement &&
+                isFreshDroppableTemporary(child.get()))
+            {
+                ProjectOopHirNode* producer = child.get();
+                const ast::AstNode* syntax = producer->syntax;
+                child = wrapFullExpressionCleanup(ownTemporary(std::move(child)), syntax, true);
+                pending.push_back(producer);
+                continue;
+            }
+            ProjectOopHirNode* original = child.get();
+            ownReceiverTemporary(child);
+            pending.push_back(original);
+        }
+    }
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExceptionOrExitStatement(

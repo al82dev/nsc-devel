@@ -369,10 +369,16 @@ bool ProjectOopMirModel::appendOwnedFieldDestructionSteps(
             const std::size_t memberOrdinal = *memberIt;
             const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
             if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
-            if (member.declaredOwnership != sema::OwnershipKind::Owned) continue;
-            if (member.declaredTypeKey != "builtin:string" &&
-                !destroyableClassTypeKeys.contains(member.declaredTypeKey))
+            const bool releasesHeap = member.declaredOwnership == sema::OwnershipKind::Owned &&
+                (member.declaredTypeKey == "builtin:string" ||
+                 destroyableClassTypeKeys.contains(member.declaredTypeKey));
+            if (!releasesHeap)
+            {
+                if (!appendValueFieldDropStep(
+                        table, memberModel, objectLayoutModel, member, memberOrdinal, error))
+                    return false;
                 continue;
+            }
             const ObjectFieldLayout* layout = objectLayoutModel.fieldLayoutForMember(memberOrdinal);
             if (layout == nullptr)
             {
@@ -388,6 +394,36 @@ bool ProjectOopMirModel::appendOwnedFieldDestructionSteps(
             table.destructionSteps.push_back(std::move(fieldStep));
         }
     }
+    return true;
+}
+
+// EN: Freeze 3.0 C-11 (found while probing value lifetimes): an object's struct field with a
+//     destructor or owned fields was never destroyed when the object was, so its resources
+//     leaked. It is dropped in place, in the same reverse declaration order as owned fields.
+// ES: Congelamiento 3.0 C-11 (hallazgo al sondear lifetimes de valores): un campo struct de un
+//     objeto con destructor o campos owned nunca se destruia junto con el objeto, asi que sus
+//     recursos se fugaban. Se destruye en su lugar, en el mismo orden inverso de declaracion que
+//     los campos owned.
+bool ProjectOopMirModel::appendValueFieldDropStep(
+    ProjectOopMirDispatchTable& table,
+    const ProjectMemberModel& memberModel,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ClassMemberSymbol& member,
+    std::size_t memberOrdinal,
+    std::string& error)
+{
+    if (!memberModel.typeRequiresValueDrop(member.declaredTypeKey)) return true;
+    const ObjectFieldLayout* layout = objectLayoutModel.fieldLayoutForMember(memberOrdinal);
+    if (layout == nullptr)
+    {
+        error = "Freeze 3.0 C-11 value field has no object layout";
+        return false;
+    }
+    ProjectOopMirDispatchTable::DestructionStep step;
+    step.ownedField = ProjectOopMirDispatchTable::OwnedField{memberOrdinal, layout->offset, false};
+    step.isValueFieldDrop = true;
+    step.valueFieldTypeKey = member.declaredTypeKey;
+    table.destructionSteps.push_back(std::move(step));
     return true;
 }
 
