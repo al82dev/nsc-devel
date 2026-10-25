@@ -2472,12 +2472,20 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
             *compilation.nameLookup(), *compilation.memberModel(), mir,
             compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
             nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 4, {}, objectGenerationError);
-        tests.expect(objectBundle != nullptr && objectGenerationError.empty() &&
-                objectBundle->codeUnitCount() == serialPartition.units().size() &&
-                objectBundle->objectFiles().size() == serialPartition.units().size() + 1 &&
+        // EN: O0 asks for eight code units whatever the worker count, so the expected count is the
+        //     size of an eight-unit partition of the same MIR. ES: O0 pide ocho unidades sea cual sea
+        //     el numero de workers; lo esperado es el tamano de una particion de ocho del mismo MIR.
+        nativesharp::llvm_backend::ProjectOopCodePartition eightUnitPartition;
+        std::string eightUnitError;
+        const bool eightUnitOk = eightUnitPartition.build(
+            mir, 8, eightUnitError,
+            nativesharp::llvm_backend::ProjectOopCodePartitionPolicy::DeterministicIncremental);
+        tests.expect(eightUnitOk && objectBundle != nullptr && objectGenerationError.empty() &&
+                objectBundle->codeUnitCount() == eightUnitPartition.units().size() &&
+                objectBundle->objectFiles().size() == eightUnitPartition.units().size() + 1 &&
                 objectBundle->cacheHitCount() == 0 &&
                 objectBundle->cacheMissCount() == objectBundle->objectFiles().size(),
-            "four-worker code generation emits one verified coordinator object and one object per code unit");
+            "four-worker code generation emits one verified coordinator object and one object per stable code unit");
         if (objectBundle != nullptr)
         {
             objectGenerationError.clear();
