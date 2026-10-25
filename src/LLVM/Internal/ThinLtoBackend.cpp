@@ -273,8 +273,12 @@ bool ThinLtoBackend::run(
             return false;
         }
     }
-    std::string streamError;
-    std::mutex streamErrorMutex;
+    // The backends write objects without an object path: LLVM records a stream's path as the
+    // CodeView object name (S_OBJNAME), which made two identical -g builds differ by the stamp of
+    // the temporary directory and a cached build differ from an uncached one.
+    // Los backends escriben objetos sin ruta de objeto: LLVM guarda la ruta del stream como nombre
+    // de objeto CodeView (S_OBJNAME), lo que hacia diferir dos builds -g identicos por el sello del
+    // directorio temporal y un build con cache de uno sin cache.
     const llvm::AddStreamFn addStream = [&](unsigned task, const llvm::Twine& moduleName)
         -> llvm::Expected<std::unique_ptr<llvm::CachedFileStream>>
     {
@@ -285,35 +289,43 @@ bool ThinLtoBackend::run(
         auto output = std::make_unique<llvm::raw_fd_ostream>(
             objectFiles[ordinal].string(), openError, llvm::sys::fs::OF_None);
         if (openError) return llvm::errorCodeToError(openError);
-        return std::make_unique<llvm::CachedFileStream>(std::move(output), objectFiles[ordinal].string());
+        return std::make_unique<llvm::CachedFileStream>(std::move(output));
     };
+    // The backend cache keeps one raw object per LLVM cache key, named llvmcache-<key> so that
+    // llvm::pruneCache bounds it. A hit copies the entry to the unit's object; a miss lets the
+    // backend write the object and stores a copy after the run.
+    // El cache de backends guarda un objeto crudo por llave de LLVM, llamado llvmcache-<llave> para
+    // que llvm::pruneCache lo acote. Un acierto copia la entrada al objeto de la unidad; un fallo deja
+    // que el backend escriba el objeto y guarda una copia al terminar.
+    std::mutex missesMutex;
+    std::vector<std::pair<std::size_t, std::string>> misses;
     llvm::FileCache backendCache;
     if (!cacheDirectory.empty())
     {
-        const llvm::AddBufferFn addBuffer =
-            [&](unsigned task, const llvm::Twine& moduleName, std::unique_ptr<llvm::MemoryBuffer> buffer)
+        std::error_code createError;
+        std::filesystem::create_directories(cacheDirectory, createError);
+        if (createError)
         {
-            const std::size_t ordinal = ordinalFor(task, moduleName);
-            std::error_code openError;
-            llvm::raw_fd_ostream output(
-                ordinal < objectFiles.size() ? objectFiles[ordinal].string() : std::string(),
-                openError, llvm::sys::fs::OF_None);
-            if (ordinal >= objectFiles.size() || openError)
-            {
-                const std::lock_guard lock(streamErrorMutex);
-                streamError = "ThinLTO cannot restore a cached backend object";
-                return;
-            }
-            output << buffer->getBuffer();
-        };
-        llvm::Expected<llvm::FileCache> created =
-            llvm::localCache("NativeSharp ThinLTO", "nativesharp-thinlto", cacheDirectory.string(), addBuffer);
-        if (!created)
-        {
-            error = "ThinLTO cannot open its backend cache: " + llvm::toString(created.takeError());
+            error = "ThinLTO cannot create its backend cache: " + createError.message();
             return false;
         }
-        backendCache = std::move(*created);
+        backendCache = llvm::FileCache(
+            [&](unsigned task, llvm::StringRef key, const llvm::Twine& moduleName) -> llvm::Expected<llvm::AddStreamFn>
+            {
+                const std::size_t ordinal = ordinalFor(task, moduleName);
+                if (ordinal >= objectFiles.size())
+                    return llvm::createStringError("ThinLTO produced an unexpected task " + std::to_string(task));
+                const std::filesystem::path entry = cacheDirectory / ("llvmcache-" + key.str());
+                std::error_code copyError;
+                if (std::filesystem::is_regular_file(entry, copyError) &&
+                    std::filesystem::copy_file(
+                        entry, objectFiles[ordinal], std::filesystem::copy_options::overwrite_existing, copyError))
+                    return llvm::AddStreamFn();
+                const std::lock_guard lock(missesMutex);
+                misses.emplace_back(ordinal, key.str());
+                return addStream;
+            },
+            cacheDirectory.string());
     }
     if (llvm::Error failed = lto.run(addStream, backendCache))
     {
@@ -322,6 +334,22 @@ bool ThinLtoBackend::run(
         return false;
     }
     cachedBackends_ = bitcode_.size() - std::min<std::size_t>(backendRuns_, bitcode_.size());
+    if (!cacheDirectory.empty() && diagnostics_.empty())
+    {
+        // Publishing is best effort: a failed copy only costs a future miss.
+        // Publicar es mejor esfuerzo: una copia fallida solo cuesta un fallo futuro.
+        for (const auto& [ordinal, key] : misses)
+        {
+            const std::filesystem::path entry = cacheDirectory / ("llvmcache-" + key);
+            std::filesystem::path temporary = entry;
+            temporary += ".partial-" + std::to_string(ordinal);
+            std::error_code storeError;
+            if (std::filesystem::copy_file(
+                    objectFiles[ordinal], temporary, std::filesystem::copy_options::overwrite_existing, storeError))
+                std::filesystem::rename(temporary, entry, storeError);
+            if (storeError) std::filesystem::remove(temporary, storeError);
+        }
+    }
     if (!cacheDirectory.empty())
     {
         // The backend cache lives beside the artifact cache but outside its pruning index, so it is
@@ -336,9 +364,9 @@ bool ThinLtoBackend::run(
         llvm::Expected<bool> pruned = llvm::pruneCache(cacheDirectory.string(), policy);
         if (!pruned) llvm::consumeError(pruned.takeError());
     }
-    if (!streamError.empty() || !diagnostics_.empty())
+    if (!diagnostics_.empty())
     {
-        error = !streamError.empty() ? streamError : "ThinLTO reported errors: " + diagnostics_;
+        error = "ThinLTO reported errors: " + diagnostics_;
         return false;
     }
     return true;

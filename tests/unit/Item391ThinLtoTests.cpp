@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -123,6 +124,33 @@ class Program
                     "an executable linked from cached ThinLTO backends preserves program behavior");
             }
         }
+    }
+    {
+        // Two identical -O2 -g ThinLTO builds write the same executable and PDB: the backends record
+        // no object path in CodeView. Dos builds ThinLTO -O2 -g identicos escriben el mismo ejecutable
+        // y PDB: los backends no guardan ruta de objeto en CodeView.
+        std::string executables[2];
+        std::string pdbs[2];
+        for (int run = 0; run < 2; ++run)
+        {
+            const std::filesystem::path directory = root / ("debug" + std::to_string(run));
+            std::filesystem::create_directories(directory);
+            const std::string executable = (directory / "Thin.exe").string();
+            const std::array<std::string_view, 9> arguments = {"-O2", "-g", "-j4", "-flto=thin",
+                "--no-artifact-cache", "--emit-project-oop-exe", project, "-o", executable};
+            nativesharp::driver::Driver driver;
+            std::ostringstream output;
+            std::ostringstream error;
+            tests.expect(driver.run(arguments, output, error) == nativesharp::ExitCode::Success,
+                "a -O2 -g ThinLTO build succeeds: " + error.str());
+            std::ifstream executableStream(directory / "Thin.exe", std::ios::binary);
+            executables[run].assign(std::istreambuf_iterator<char>(executableStream), {});
+            std::ifstream pdbStream(directory / "Thin.pdb", std::ios::binary);
+            pdbs[run].assign(std::istreambuf_iterator<char>(pdbStream), {});
+        }
+        tests.expect(!executables[0].empty() && executables[0] == executables[1] &&
+                !pdbs[0].empty() && pdbs[0] == pdbs[1],
+            "identical -O2 -g ThinLTO builds write the same executable and PDB");
     }
     {
         // At -O0 thin keeps the ordinary partitioned build and says so (optimization part 2, item 44).
