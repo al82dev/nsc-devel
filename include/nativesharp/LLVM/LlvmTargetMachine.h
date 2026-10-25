@@ -21,6 +21,7 @@ class LlvmModule;
 class LlvmNativeSanitizer;
 class LlvmOptimizer;
 class ProjectOopObjectGenerator;
+class ThinLtoBackend;
 
 class LlvmTargetMachine final
 {
@@ -62,6 +63,7 @@ private:
     friend class LlvmOptimizer;
     friend class LlvmNativeSanitizer;
     friend class ProjectOopObjectGenerator;
+    friend class ThinLtoBackend;
     friend void emitAndStoreCodeUnit(
         LlvmModule& module,
         LlvmTargetMachine& targetMachine,

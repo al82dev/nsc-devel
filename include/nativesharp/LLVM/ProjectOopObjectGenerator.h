@@ -45,6 +45,9 @@ class ProjectOopObjectGenerator final
 {
 public:
     void setProgressSink(std::function<void(const basic::CompilationEvent&)> sink);
+    // EN: Keeps the optimized IR of every ThinLTO code unit in the bundle (tests and dumps).
+    // ES: Conserva en el paquete el IR optimizado de cada unidad ThinLTO (pruebas y volcados).
+    void setThinLtoFinalModuleTextCapture(bool capture) noexcept;
 
     std::unique_ptr<ProjectOopObjectBundle> generate(
         const frontend::ProjectNameLookup& nameLookup,
@@ -146,5 +149,6 @@ private:
         driver::CompilationWorkerPool* workerPool) const;
 
     std::function<void(const basic::CompilationEvent&)> progressSink_;
+    bool captureThinLtoFinalModuleTexts_ = false;
 };
 }

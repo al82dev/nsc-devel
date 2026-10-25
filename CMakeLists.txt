@@ -866,6 +866,7 @@ if(LLVM_FOUND)
             target
             nativecodegen
             passes
+            lto
             X86
             X86Disassembler
             MCDisassembler
@@ -965,7 +966,20 @@ add_library(nsc_llvm STATIC
     src/LLVM/ProjectOopLlvmLowerer.cpp
     src/LLVM/SignedDivisionCorrection.cpp
     src/LLVM/LlvmTargetMachine.cpp
+    src/LLVM/Internal/ThinLtoBackend.cpp
     src/LLVM/CoffObjectVerifier.cpp)
+# ThinLtoBackend.cpp is the only file that uses LLVM's C++ API (llvm::lto); it is compiled without RTTI
+# like the LLVM libraries it links. ThinLtoBackend.cpp es el unico archivo con la API C++ de LLVM; se
+# compila sin RTTI, igual que las bibliotecas de LLVM que enlaza.
+if(MSVC)
+    set_source_files_properties(src/LLVM/Internal/ThinLtoBackend.cpp PROPERTIES COMPILE_OPTIONS "/GR-")
+else()
+    set_source_files_properties(src/LLVM/Internal/ThinLtoBackend.cpp PROPERTIES COMPILE_OPTIONS "-fno-rtti")
+endif()
+if(NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
+    set_source_files_properties(src/LLVM/Internal/ThinLtoBackend.cpp PROPERTIES
+        COMPILE_DEFINITIONS NSC_THINLTO_UNAVAILABLE=1)
+endif()
 
 target_include_directories(nsc_llvm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(LLVM_FOUND)

@@ -27,6 +27,14 @@ public:
     std::size_t cacheMissCount() const noexcept;
     std::size_t thinLtoSummaryCount() const noexcept;
     const std::string& thinLtoIndexDigest() const noexcept;
+    // Function definitions the ThinLTO backends imported across code units, and the backends served
+    // by the backend cache. Funciones que los backends ThinLTO importaron entre unidades y backends
+    // que sirvio el cache de backends.
+    std::size_t thinLtoImportCount() const noexcept;
+    std::size_t thinLtoCachedBackendCount() const noexcept;
+    // Optimized IR of every code unit after its ThinLTO backend, when the generator was asked to
+    // capture it; empty otherwise. IR optimizado de cada unidad tras su backend ThinLTO.
+    std::span<const std::string> thinLtoFinalModuleTexts() const noexcept;
     std::span<const CodeUnitTelemetry> codeUnitTelemetry() const noexcept;
 
 private:
@@ -42,6 +50,9 @@ private:
     std::size_t cacheMissCount_ = 0;
     std::size_t thinLtoSummaryCount_ = 0;
     std::string thinLtoIndexDigest_;
+    std::size_t thinLtoImportCount_ = 0;
+    std::size_t thinLtoCachedBackendCount_ = 0;
+    std::vector<std::string> thinLtoFinalModuleTexts_;
     std::vector<CodeUnitTelemetry> codeUnitTelemetry_;
 };
 }

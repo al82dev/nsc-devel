@@ -14,6 +14,7 @@ class LlvmNativeSanitizer;
 class ProjectOopLlvmLowerer;
 class LlvmOptimizer;
 class LlvmTargetMachine;
+class ThinLtoBackend;
 
 class LlvmModule final
 {
@@ -32,6 +33,7 @@ private:
     friend class LlvmOptimizer;
     friend class LlvmTargetMachine;
     friend class runtime::WindowsRuntimeBuilder;
+    friend class ThinLtoBackend;
 
     LlvmModule(void* context, void* module) noexcept;
 

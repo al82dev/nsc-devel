@@ -27,7 +27,9 @@
 #include "Internal/ColdLlvmTrace.h"
 #include "Internal/ColdLlvmTraceScope.h"
 #include "Internal/CodeUnitProgress.h"
+#include "Internal/CodeViewProcedureRanges.h"
 #include "Internal/PhaseClock.h"
+#include "Internal/ThinLtoBackend.h"
 
 #include <algorithm>
 #include <atomic>
@@ -644,6 +646,7 @@ void processObjectCodeUnit(
     std::span<const std::string> sourceChecksums,
     const CompilationArtifactCache* cache,
     const std::string& codeGenerationPolicy,
+    ThinLtoBackend* thinLto,
     const std::filesystem::path& objectFile,
     std::string& moduleText,
     std::string& moduleError,
@@ -679,6 +682,19 @@ void processObjectCodeUnit(
     std::unique_ptr<LlvmTargetMachine> targetMachine = configureCodeUnitTarget(
         *module, optimizationLevel, moduleError, telemetry);
     if (targetMachine == nullptr) return;
+    if (thinLto != nullptr)
+    {
+        // ThinLTO: the unit leaves here as summary bitcode; its object is written by the backend
+        // after every unit is indexed (runThinLtoBackends).
+        // ThinLTO: la unidad sale de aqui como bitcode con resumen; su objeto lo escribe el backend
+        // cuando todas las unidades ya estan en el indice (runThinLtoBackends).
+        const PhaseClock prelink;
+        const bool added = thinLto->addModule(
+            ordinal, *module, *targetMachine, optimizationLevel, moduleError);
+        telemetry.optimizationMicros += prelink.elapsedMicros();
+        if (added) cacheMiss = 1;
+        return;
+    }
     std::string irKey;
     if (!restorePreOptimizationObject(
             cache, usePreOptimizationCache, *module, *targetMachine, codeGenerationPolicy,
@@ -957,12 +973,52 @@ bool thinLtoIndexDigest(
     return true;
 }
 
+/// EN: Runs the ThinLTO backends of one generation and finishes their objects like an ordinary
+///     emission: CodeView procedure ranges, then the COFF verifier. Returns false with `error`.
+/// ES: Ejecuta los backends ThinLTO de una generacion y termina sus objetos como una emision
+///     normal: rangos de procedimientos CodeView y luego el verificador COFF. Devuelve false con
+///     `error`.
+bool runThinLtoBackends(
+    ThinLtoBackend& thinLto,
+    std::span<const std::filesystem::path> objectFiles,
+    LlvmOptimizationLevel optimizationLevel,
+    std::size_t workerCount,
+    const std::filesystem::path& cacheDirectory,
+    std::string& error)
+{
+    std::unique_ptr<LlvmTargetMachine> targetMachine =
+        LlvmTargetMachine::createWindowsX64(optimizationLevel, error);
+    if (targetMachine == nullptr) return false;
+    if (!thinLto.run(objectFiles, *targetMachine, optimizationLevel, workerCount, cacheDirectory, error))
+        return false;
+    for (const std::filesystem::path& objectFile : objectFiles)
+    {
+        std::string rangesError;
+        if (!CodeViewProcedureRanges::apply(objectFile, rangesError))
+        {
+            error = "cannot write CodeView procedure ranges: " + rangesError;
+            return false;
+        }
+        CoffObjectVerifier verifier;
+        if (!verifier.verify(objectFile))
+        {
+            error = verifier.error();
+            return false;
+        }
+    }
+    return true;
+}
 }
 
 void ProjectOopObjectGenerator::setProgressSink(
     std::function<void(const basic::CompilationEvent&)> sink)
 {
     progressSink_ = std::move(sink);
+}
+
+void ProjectOopObjectGenerator::setThinLtoFinalModuleTextCapture(bool capture) noexcept
+{
+    captureThinLtoFinalModuleTexts_ = capture;
 }
 
 ProjectOopObjectBundle::ProjectOopObjectBundle(
@@ -1016,6 +1072,21 @@ std::size_t ProjectOopObjectBundle::thinLtoSummaryCount() const noexcept
 const std::string& ProjectOopObjectBundle::thinLtoIndexDigest() const noexcept
 {
     return thinLtoIndexDigest_;
+}
+
+std::size_t ProjectOopObjectBundle::thinLtoImportCount() const noexcept
+{
+    return thinLtoImportCount_;
+}
+
+std::size_t ProjectOopObjectBundle::thinLtoCachedBackendCount() const noexcept
+{
+    return thinLtoCachedBackendCount_;
+}
+
+std::span<const std::string> ProjectOopObjectBundle::thinLtoFinalModuleTexts() const noexcept
+{
+    return thinLtoFinalModuleTexts_;
 }
 
 std::span<const CodeUnitTelemetry> ProjectOopObjectBundle::codeUnitTelemetry() const noexcept
@@ -1117,10 +1188,18 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     // policy in every key already separates its cache domain (optimization part 2, item 7).
     // -flto=thin conserva ambos caches: su indice hace hash de los objetos emitidos y la politica
     // de generacion de codigo de cada llave ya separa su dominio de cache (parte 2, punto 7).
-    const bool usePreLlvmCache = cache != nullptr && cache->enabled();
+    // Real ThinLTO (O1-O3, item 44) is the exception: a unit's object then depends on what it
+    // imports from the others, so a per-unit key is not enough; its backend cache keys on the
+    // module, the index and the import set instead (item 45). At O0 thin stays partitioned.
+    // El ThinLTO real (O1-O3, punto 44) es la excepcion: el objeto de una unidad depende de lo que
+    // importa de las demas, asi que una llave por unidad no basta; su cache de backends usa el
+    // modulo, el indice y el conjunto de imports (punto 45). En O0 thin sigue particionado.
+    const bool useThinLto = linkTimeOptimization == LinkTimeOptimizationMode::Thin &&
+        optimizationLevel != LlvmOptimizationLevel::O0 && ThinLtoBackend::available();
+    const bool usePreLlvmCache = cache != nullptr && cache->enabled() && !useThinLto;
     // Reuse by pre-optimization IR does not depend on the MIR identity, so it also covers full
     // debug information: lowering is still paid, optimization and emission are skipped on a hit.
-    const bool usePreOptimizationCache = cache != nullptr && cache->enabled();
+    const bool usePreOptimizationCache = cache != nullptr && cache->enabled() && !useThinLto;
     ColdLlvmTrace coldLlvmTrace(
         kCodegenCacheIdentity, functionAnalysis.projectFingerprint(), debugInformation,
         optimizationLevel, moduleCount, usePartitions, usePreLlvmCache,
@@ -1141,7 +1220,13 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     // optimization part 2 item 7, so it no longer prints every module (item 8).
     // -flto=thin era la segunda de esas funciones; desde el punto 7 su indice hace hash de los
     // objetos emitidos, asi que ya no imprime cada modulo (punto 8).
-    const bool preserveModuleText = cache != nullptr && cache->enabled() && !usePreLlvmCache;
+    const bool preserveModuleText = cache != nullptr && cache->enabled() && !usePreLlvmCache && !useThinLto;
+    std::optional<ThinLtoBackend> thinLto;
+    if (useThinLto)
+    {
+        thinLto.emplace(moduleCount);
+        thinLto->setCaptureFinalModuleTexts(captureThinLtoFinalModuleTexts_);
+    }
     // Process one code unit end to end. The LLVM module and target machine are destroyed as soon
     // as its object is emitted instead of retaining every partition through three global waves.
     // Every code unit that lowers with debug information hashed each source file it touches.
@@ -1159,7 +1244,7 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
             sourceManager, debugInformation, optimizationLevel, debugPrefixMaps,
             reachableDefinitions, coordinatorFunctionDeclarations, partition,
             functionAnalysis, sourceChecksums, cache, codeGenerationPolicy,
-            result.objectFiles_[ordinal],
+            thinLto.has_value() ? &*thinLto : nullptr, result.objectFiles_[ordinal],
             moduleTexts[ordinal], moduleErrors[ordinal], cacheKeys[ordinal],
             cacheHits[ordinal], cacheMisses[ordinal], codeUnitTelemetry[ordinal],
             coldLlvmTrace, progressSink_, completedModules, moduleProgressMutex, moduleCount);
@@ -1168,6 +1253,21 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     if (!executeCodeUnits(
             workerCount, moduleCount, usePartitions, workerFloatingPointState,
             processModule, moduleErrors, error, workerPool)) return false;
+    if (thinLto.has_value())
+    {
+        bool unitsReady = true;
+        for (const std::string& moduleError : moduleErrors) unitsReady = unitsReady && moduleError.empty();
+        if (unitsReady)
+        {
+            if (!runThinLtoBackends(*thinLto, result.objectFiles_, optimizationLevel, workerCount, {}, error))
+                return false;
+            result.thinLtoImportCount_ = thinLto->importedFunctionCount();
+            result.thinLtoCachedBackendCount_ = thinLto->cachedBackendCount();
+            const std::span<const std::string> finalTexts = thinLto->finalModuleTexts();
+            if (captureThinLtoFinalModuleTexts_)
+                result.thinLtoFinalModuleTexts_.assign(finalTexts.begin(), finalTexts.end());
+        }
+    }
     preambleTelemetry.workerWallMicros = workerWallClock.elapsedMicros();
     for (const CodeUnitTelemetry& telemetry : codeUnitTelemetry)
         preambleTelemetry.staticFieldMaskMicros += telemetry.staticFieldMaskMicros;

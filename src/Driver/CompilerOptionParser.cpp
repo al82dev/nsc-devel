@@ -145,19 +145,8 @@ OptionResult handleLinkTimeOptimization(OptionContext& context)
         context.invocation.linkTimeOptimization =
             llvm_backend::LinkTimeOptimizationMode::Full;
     else if (context.argument == "-flto=thin")
-    {
         context.invocation.linkTimeOptimization =
             llvm_backend::LinkTimeOptimizationMode::Thin;
-        // Thin has no summaries, imports or ThinLTO backends yet (LTO audit 2026-10-24); say so
-        // instead of letting the name promise cross-partition optimization.
-        // Thin aun no tiene resumenes, imports ni backends ThinLTO (auditoria LTO 2026-10-24);
-        // se dice en lugar de dejar que el nombre prometa optimizacion entre particiones.
-        context.error << "nsc: warning: " << compilerText(
-            "-flto=thin does not run ThinLTO yet; it builds the same partitioned code as a normal "
-            "build and only reports a reproducible index\n",
-            "-flto=thin todavía no ejecuta ThinLTO; compila el mismo código particionado que un "
-            "build normal y sólo reporta un índice reproducible\n");
-    }
     else
     {
         context.error << "nsc: error: " << compilerText(
@@ -779,6 +768,19 @@ ExitCode parseCompilerOptions(
             break;
         }
         if (!recognized) invocation.arguments.push_back(argument);
+    }
+    // ThinLTO runs its summaries, imports and backends at -O1 to -O3 (optimization part 2, item 44).
+    // At -O0 it would only add cost, so the build stays partitioned; say so instead of letting the
+    // option promise cross-partition optimization. The level is known only after every option.
+    // ThinLTO ejecuta resumenes, imports y backends de -O1 a -O3 (parte 2, punto 44). En -O0 solo
+    // agregaria costo, asi que el build sigue particionado; se dice en lugar de dejar que la opcion
+    // prometa optimizacion entre particiones. El nivel solo se conoce despues de todas las opciones.
+    if (invocation.linkTimeOptimization == llvm_backend::LinkTimeOptimizationMode::Thin &&
+        invocation.optimizationLevel == llvm_backend::LlvmOptimizationLevel::O0)
+    {
+        error << "nsc: warning: " << compilerText(
+            "-flto=thin at -O0 builds the ordinary partitioned code; ThinLTO runs at -O1 to -O3\n",
+            "-flto=thin en -O0 compila el código particionado normal; ThinLTO se ejecuta de -O1 a -O3\n");
     }
     return ExitCode::Success;
 }
