@@ -154,6 +154,7 @@ bool loadSidecar(const fs::path& project, Sidecar& sidecar, std::string& error, 
         sidecar.build.optimization = stringMember(*build, "optimization", "O0");
         sidecar.build.debugInformation = stringMember(*build, "debug_information", "full");
         sidecar.build.linker = stringMember(*build, "linker", "NSLink");
+        sidecar.build.linkTimeOptimization = stringMember(*build, "link_time_optimization", "none");
         sidecar.build.target = stringMember(*build, "target", "x86_64-pc-windows-msvc");
         sidecar.build.restoreBeforeBuild = boolMember(*build, "restore_before_build", true);
     }
@@ -186,7 +187,12 @@ std::string renderSidecar(const Sidecar& sidecar)
     std::ostringstream stream;
     stream << "{\n  \"build\": {\n"
            << "    \"configuration\": \"" << jsonEscape(sidecar.build.configuration) << "\",\n"
-           << "    \"debug_information\": \"" << jsonEscape(sidecar.build.debugInformation) << "\",\n"
+           << "    \"debug_information\": \"" << jsonEscape(sidecar.build.debugInformation) << "\",\n";
+    // The key is written only when it is not the default, so existing sidecars render unchanged.
+    // La llave solo se escribe cuando no es el valor por omision; los sidecars existentes no cambian.
+    if (sidecar.build.linkTimeOptimization != "none")
+        stream << "    \"link_time_optimization\": \"" << jsonEscape(sidecar.build.linkTimeOptimization) << "\",\n";
+    stream
            << "    \"linker\": \"" << jsonEscape(sidecar.build.linker) << "\",\n"
            << "    \"optimization\": \"" << jsonEscape(sidecar.build.optimization) << "\",\n"
            << "    \"restore_before_build\": " << (sidecar.build.restoreBeforeBuild ? "true" : "false") << ",\n"
@@ -983,6 +989,14 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
             options.configuration = std::string(arguments[++index]);
         else if (argument == "--linker" && index + 1 < arguments.size())
             options.linker = std::string(arguments[++index]);
+        else if (argument == "-flto" || argument.starts_with("-flto="))
+        {
+            if (options.linkTimeOptimization.has_value())
+            { error = "duplicate link-time optimization mode"; return false; }
+            options.linkTimeOptimization = argument == "-flto"
+                ? std::string("full")
+                : std::string(argument.substr(std::string_view("-flto=").size()));
+        }
         else if (argument == "--no-restore") options.noRestore = true;
         else if (argument == "--precompiled-only") options.precompiledOnly = true;
         else if (argument == "--dependency-report") options.dependencyReport = true;
@@ -1224,6 +1238,7 @@ bool resolveBuildSettings(
     std::string& optimization,
     std::string& debug,
     std::string& linker,
+    std::string& linkTimeOptimization,
     std::optional<fs::path>& libraryReferenceRoot,
     std::optional<std::size_t>& compilerJobs,
     std::string& message)
@@ -1253,6 +1268,12 @@ bool resolveBuildSettings(
     if (linker != "NSLink")
     {
         message = "linker must be NSLink";
+        return false;
+    }
+    linkTimeOptimization = options.linkTimeOptimization.value_or(sidecar.build.linkTimeOptimization);
+    if (linkTimeOptimization != "none" && linkTimeOptimization != "full" && linkTimeOptimization != "thin")
+    {
+        message = "link-time optimization must be none, full, or thin";
         return false;
     }
     if (options.libraryReferenceRoot.has_value() &&
@@ -1474,6 +1495,7 @@ ExitCode executeConfiguredBuild(
     const std::string& optimization,
     const std::string& debug,
     const std::string& linker,
+    const std::string& linkTimeOptimization,
     const std::optional<fs::path>& libraryReferenceRoot,
     const std::optional<std::size_t>& compilerJobs,
     const fs::path& generated,
@@ -1498,6 +1520,7 @@ ExitCode executeConfiguredBuild(
             ExitCode::InternalError);
 
     std::vector<std::string> owned{action, generated.string(), "-" + optimization, debug};
+    if (linkTimeOptimization != "none") owned.push_back("-flto=" + linkTimeOptimization);
     appendNestedCompilerOptions(options, libraryReferenceRoot, compilerJobs, owned);
     owned.push_back("-o");
     owned.push_back(artifact.string());
@@ -1559,11 +1582,11 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
     if (!loadSidecar(project, sidecar, message, false))
         return result.failure(error, message);
 
-    std::string configuration, optimization, debug, linker;
+    std::string configuration, optimization, debug, linker, linkTimeOptimization;
     std::optional<fs::path> libraryReferenceRoot;
     std::optional<std::size_t> compilerJobs;
     if (!resolveBuildSettings(options, *projectSettings, sidecar,
-            configuration, optimization, debug, linker,
+            configuration, optimization, debug, linker, linkTimeOptimization,
             libraryReferenceRoot, compilerJobs, message))
         return result.failure(error, message);
 
@@ -1609,6 +1632,7 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
         optimization,
         debug,
         linker,
+        linkTimeOptimization,
         libraryReferenceRoot,
         compilerJobs,
         generated,
