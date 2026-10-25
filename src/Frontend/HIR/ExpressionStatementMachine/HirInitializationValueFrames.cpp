@@ -251,10 +251,17 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledDestructionFrame(
     {
         const bool nativeString =
             frame.operandType->typeKey == "builtin:string";
+        // EN: Freeze 3.0 C-12: a struct element that needs a drop is deleted through its address.
+        // ES: Congelamiento 3.0 C-12: un elemento struct que requiere drop se borra por su direccion.
+        const bool dropsValueElement = !current->flag() && elementBinding != nullptr &&
+            elementBinding->kind == MethodCoreOperationKind::ArrayElement &&
+            !isReferenceType(frame.operandType->typeKey) && !nativeString &&
+            !frame.operandType->typeKey.ends_with("*") && memberModel_ != nullptr &&
+            memberModel_->typeRequiresValueDrop(frame.operandType->typeKey);
         frame.operandAddressContext = current->flag()
             ? directElement
-            : directElement &&
-                (isReferenceType(frame.operandType->typeKey) || nativeString);
+            : (directElement &&
+                (isReferenceType(frame.operandType->typeKey) || nativeString)) || dropsValueElement;
     }
 
     return LoopBlockAdvance::Complete;

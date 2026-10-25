@@ -290,8 +290,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerScalarDeleteExpressi
     const bool directElement = elementBinding != nullptr &&
         (elementBinding->kind == MethodCoreOperationKind::ArrayElement ||
          elementBinding->kind == MethodCoreOperationKind::RawElement);
-    const bool clearsElementSlot = directElement &&
-        (isReferenceType(operandType.typeKey) || nativeString);
+    // EN: Freeze 3.0 C-12: `delete items[i]` of a struct element with a destructor or owned
+    //     fields drops that element in place, so a generic container's cleanup releases its
+    //     value elements too; the slot is left zeroed. Other value types stay a no-op.
+    // ES: Congelamiento 3.0 C-12: `delete items[i]` de un elemento struct con destructor o campos
+    //     owned destruye ese elemento en su lugar, asi la limpieza de un contenedor generico libera
+    //     tambien sus elementos valor; el slot queda en cero. Los demas tipos valor siguen sin efecto.
+    const bool dropsValueElement = !deletable && elementBinding != nullptr &&
+        elementBinding->kind == MethodCoreOperationKind::ArrayElement &&
+        memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(operandType.typeKey);
+    const bool clearsElementSlot = (directElement &&
+        (isReferenceType(operandType.typeKey) || nativeString)) || dropsValueElement;
     auto operand = lowerExpression(
         expression->first(), memberOrdinal, clearsElementSlot, error);
     if (operand == nullptr) return nullptr;

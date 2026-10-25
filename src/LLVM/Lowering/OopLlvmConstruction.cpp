@@ -815,6 +815,10 @@ LLVMValueRef OopLlvmImplementation::lowerDeallocation(
         // allocator, which would misbehave or fail LLVM verification.
         if (node->valueTypeNoOpDeletion)
         {
+            // EN: Freeze 3.0 C-12: an addressed struct element is dropped in place, then zeroed.
+            // ES: Congelamiento 3.0 C-12: un elemento struct con direccion se destruye y queda en cero.
+            if (node->booleanValue && !emitValueElementDelete(loweredOperand, node->elementTypeKey, error))
+                return nullptr;
             return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
         }
 

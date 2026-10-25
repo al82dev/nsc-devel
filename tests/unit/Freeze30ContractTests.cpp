@@ -39,18 +39,27 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
     stream << text;
 }
 
-/// EN: Writes `directory/<name>.nsproj` compiling every .ns file and referencing NativeSharp.Core.
-/// ES: Escribe `directory/<name>.nsproj`, que compila todo .ns y referencia NativeSharp.Core.
-std::filesystem::path writeProject(const std::filesystem::path& directory, std::string_view name)
+/// EN: Writes `directory/<name>.nsproj` compiling every .ns file and referencing NativeSharp.Core
+///     (and NativeSharp.Core.Collections.Generic when `collections` is set).
+/// ES: Escribe `directory/<name>.nsproj`, que compila todo .ns y referencia NativeSharp.Core
+///     (y NativeSharp.Core.Collections.Generic cuando `collections` esta activo).
+std::filesystem::path writeProject(
+    const std::filesystem::path& directory,
+    std::string_view name,
+    bool collections = false)
 {
-    const std::filesystem::path core =
-        std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/NativeSharp.Core.nsproj";
+    const std::filesystem::path lib = std::filesystem::path(NSC_SOURCE_DIR) / "lib";
+    const std::filesystem::path core = lib / "NativeSharp.Core/NativeSharp.Core.nsproj";
+    const std::filesystem::path generic =
+        lib / "NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj";
+    std::string references = "<ProjectReference Include=\"" + core.generic_string() + "\" />";
+    if (collections)
+        references += "<ProjectReference Include=\"" + generic.generic_string() + "\" />";
     const std::filesystem::path project = directory / (std::string(name) + ".nsproj");
     writeFile(project,
         "<Project><PropertyGroup><Name>" + std::string(name) +
             "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup>"
-            "<ItemGroup><ProjectReference Include=\"" + core.generic_string() +
-            "\" /></ItemGroup></Project>");
+            "<ItemGroup>" + references + "</ItemGroup></Project>");
     return project;
 }
 
@@ -83,10 +92,11 @@ void expectRun(
     const std::filesystem::path& root,
     std::string_view name,
     std::string_view source,
-    int expected)
+    int expected,
+    bool collections = false)
 {
     const std::filesystem::path directory = root / std::string(name);
-    const std::filesystem::path project = writeProject(directory, name);
+    const std::filesystem::path project = writeProject(directory, name, collections);
     writeFile(directory / "Main.ns", source);
     const std::array<std::string_view, 2> levels = {"-O0", "-O2"};
     for (const std::string_view level : levels)
@@ -1366,6 +1376,127 @@ class Program
 )ns", 123456);
 }
 
+void testValueArrayElements(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C12RaiiStruct", std::string(kGuardPrelude) + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        {
+            raii Guard[] arr = new Guard[2];
+            arr[0].Id = 1;
+            arr[1].Id = 2;
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 21);
+    expectRun(tests, root, "C12Delete", std::string(kGuardPrelude) + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        Guard[] arr = new Guard[2];
+        arr[0].Id = 1;
+        arr[1].Id = 2;
+        delete[] arr;
+        return Counter.Drops;
+    }
+}
+)ns", 21);
+    expectRun(tests, root, "C12OwnedField", std::string(kGuardPrelude) + R"ns(
+class Widget
+{
+    public int Id;
+    public Widget(int id) { Id = id; }
+    ~Widget() { Counter.Drops = Counter.Drops * 10 + Id; }
+}
+struct Box
+{
+    public owned Widget Item;
+}
+class Program
+{
+    public static int Main()
+    {
+        {
+            raii Box[] arr = new Box[2];
+            arr[0].Item = new Widget(1);
+            arr[1].Item = new Widget(2);
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 21);
+    expectRun(tests, root, "C12AssignAndMove", std::string(kGuardPrelude) + R"ns(
+class Program
+{
+    private static Guard Make(int id)
+    {
+        Guard g;
+        g.Id = id;
+        return move(g);
+    }
+    public static int Main()
+    {
+        {
+            raii Guard[] arr = new Guard[2];
+            arr[0] = Make(1);
+            arr[0] = Make(2);
+            arr[1] = Make(4);
+            Guard taken = move(arr[1]);
+            taken.Id = 3;
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 10302);
+}
+
+// EN: List<T> of a struct with a destructor drops each live element exactly once, also across
+//     growth and RemoveAt; a removed slot is left with the default value (Id 0).
+// ES: List<T> de un struct con destructor destruye cada elemento vivo una sola vez, tambien al
+//     crecer y en RemoveAt; un slot removido queda con el valor por defecto (Id 0).
+void testValueListElements(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude = "using NativeSharp.Core.Collections.Generic;" +
+        std::string(kGuardPrelude) +
+        "class Factory { public static Guard Make(int id) { Guard g; g.Id = id; return move(g); } }\n";
+    expectRun(tests, root, "C12ListGrow", prelude + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        {
+            raii List<Guard> list = new List<Guard>();
+            int i = 1;
+            while (i <= 5) { list.Add(Factory.Make(i)); i = i + 1; }
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 12345, true);
+    expectRun(tests, root, "C12ListRemove", prelude + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int afterRemove = 0;
+        {
+            raii List<Guard> list = new List<Guard>();
+            list.Add(Factory.Make(1));
+            list.Add(Factory.Make(2));
+            list.Add(Factory.Make(3));
+            list.RemoveAt(1);
+            afterRemove = Counter.Drops;
+        }
+        return afterRemove * 1000 + Counter.Drops;
+    }
+}
+)ns", 22013, true);
+}
+
 int main()
 {
     TestContext tests;
@@ -1394,5 +1525,7 @@ int main()
     testValueMoves(tests, root);
     testStructEnumerator(tests, root);
     testValueFieldsAndTemporaries(tests, root);
+    testValueArrayElements(tests, root);
+    testValueListElements(tests, root);
     return tests.resultKeeping(root);
 }

@@ -559,11 +559,98 @@ bool OopLlvmImplementation::emitNativeArrayDestroy(
             if (!emitNativeArrayElementDestruction(
                     array, arrayTypeKey, *elementType, prefix, destroyBlock, error)) return false;
         }
+        else if (destroyElements && memberModel_ != nullptr &&
+                 memberModel_->typeRequiresValueDrop(*elementType))
+        {
+            if (!emitNativeArrayValueElementDrop(array, arrayTypeKey, *elementType, prefix, error))
+                return false;
+        }
 
         LLVMValueRef arguments[] = {array};
         buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
         enterBlock(doneBlock);
+        return true;
+    }
+
+// EN: Freeze 3.0 C-12: an owning array of structs with a destructor or owned fields destroyed only
+//     its buffer, so every element's resources leaked. The elements are dropped in place, last
+//     to first, before the buffer is released; a moved-out element was left zeroed by its move.
+// ES: Congelamiento 3.0 C-12: un arreglo dueno de structs con destructor o campos owned solo
+//     liberaba su buffer, asi que los recursos de cada elemento se fugaban. Los elementos se
+//     destruyen en su lugar, del ultimo al primero, antes de liberar el buffer; un elemento movido
+//     quedo en cero por su move.
+bool OopLlvmImplementation::emitNativeArrayValueElementDrop(
+        LLVMValueRef array,
+        std::string_view arrayTypeKey,
+        std::string_view elementType,
+        const std::string& prefix,
+        std::string& error)
+{
+        const auto [elementSize, elementAlignment] = captureValueLayout(elementType, error);
+        if (!error.empty()) return false;
+        if (elementSize == 0 || elementAlignment == 0)
+            return fail(error, "Freeze 3.0 C-12 array element has no value layout");
+        const std::size_t rank = frontend::ProjectTypeConversion::nativeArrayRank(arrayTypeKey);
+        const std::uint64_t header = rank > 1 ? 8U * (1U + 2U * rank) : 8U;
+        const std::uint64_t dataOffset = (header + elementAlignment - 1U) / elementAlignment * elementAlignment;
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMValueRef length = LLVMBuildLoad2(builder_, i64, array, (prefix + ".values.length").c_str());
+        LLVMBasicBlockRef entryBlock = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef conditionBlock = appendBlock(prefix + ".values.cond");
+        LLVMBasicBlockRef bodyBlock = appendBlock(prefix + ".values.body");
+        LLVMBasicBlockRef doneBlock = appendBlock(prefix + ".values.done");
+        LLVMBuildBr(builder_, conditionBlock);
+
+        enterBlock(conditionBlock);
+        LLVMValueRef remaining = LLVMBuildPhi(builder_, i64, (prefix + ".values.remaining").c_str());
+        LLVMAddIncoming(remaining, &length, &entryBlock, 1);
+        LLVMValueRef more = LLVMBuildICmp(
+            builder_, LLVMIntNE, remaining, LLVMConstInt(i64, 0, 0), (prefix + ".values.more").c_str());
+        LLVMBuildCondBr(builder_, more, bodyBlock, doneBlock);
+
+        enterBlock(bodyBlock);
+        LLVMValueRef index = LLVMBuildSub(
+            builder_, remaining, LLVMConstInt(i64, 1, 0), (prefix + ".values.index").c_str());
+        LLVMValueRef offset = LLVMBuildAdd(
+            builder_,
+            LLVMBuildMul(builder_, index, LLVMConstInt(i64, elementSize, 0), (prefix + ".values.scaled").c_str()),
+            LLVMConstInt(i64, dataOffset, 0), (prefix + ".values.offset").c_str());
+        LLVMValueRef indices[] = {offset};
+        LLVMValueRef address = LLVMBuildGEP2(
+            builder_, LLVMInt8TypeInContext(context_), array, indices, 1, (prefix + ".values.addr").c_str());
+        if (!emitValueDropAddress(address, elementType, prefix + ".value", error)) return false;
+        LLVMBasicBlockRef latch = LLVMGetInsertBlock(builder_);
+        if (!terminated())
+        {
+            LLVMBuildBr(builder_, conditionBlock);
+            LLVMAddIncoming(remaining, &index, &latch, 1);
+        }
+        enterBlock(doneBlock);
+        return true;
+    }
+
+// EN: Freeze 3.0 C-12: `delete items[i]` of a struct element that needs a drop destroys the element
+//     in place and zeroes its slot, so the slot holds the default value afterwards.
+// ES: Congelamiento 3.0 C-12: `delete items[i]` de un elemento struct que requiere drop destruye el
+//     elemento en su lugar y pone su slot en cero, asi el slot queda con el valor por defecto.
+bool OopLlvmImplementation::emitValueElementDelete(
+        LLVMValueRef address,
+        std::string_view elementType,
+        std::string& error)
+{
+        const auto [elementSize, elementAlignment] = captureValueLayout(elementType, error);
+        if (!error.empty()) return false;
+        if (elementSize == 0 || elementAlignment == 0 || memsetFunction_ == nullptr)
+            return fail(error, "Freeze 3.0 C-12 deleted element has no value layout");
+        if (!emitValueDropAddress(address, elementType, "delete.value", error)) return false;
+        if (terminated()) return true;
+        LLVMValueRef arguments[] = {
+            address,
+            LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+            LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0),
+            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, arguments, 4, "");
         return true;
     }
 

@@ -770,6 +770,14 @@ private:
         bool destroyElements,
         std::string& error);
 
+    bool emitNativeArrayValueElementDrop(
+        LLVMValueRef array,
+        std::string_view arrayTypeKey,
+        std::string_view elementType,
+        const std::string& prefix,
+        std::string& error);
+    bool emitValueElementDelete(LLVMValueRef address, std::string_view elementType, std::string& error);
+
     bool emitNativeArrayElementDestruction(
         LLVMValueRef array,
         std::string_view arrayTypeKey,

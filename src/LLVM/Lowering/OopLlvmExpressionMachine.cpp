@@ -1380,7 +1380,12 @@ bool OopLlvmImplementation::lowerExpressionFrame029MoveArrayElement(
     LLVMTypeRef elementType = llvmType(current->typeKey, error);
     if (elementType == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef value = LLVMBuildLoad2(builder_, elementType, address, "move.array.element.load");
-    if (current->booleanValue)
+    // EN: Freeze 3.0 C-12: a moved-out struct with a destructor or owned fields leaves a zeroed
+    //     slot, so dropping the array later destroys an empty value instead of the moved one.
+    // ES: Congelamiento 3.0 C-12: un struct movido con destructor o campos owned deja el slot en
+    //     cero, asi que destruir el arreglo despues destruye un valor vacio y no el movido.
+    if (current->booleanValue ||
+        (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(current->typeKey)))
     {
         LLVMBuildStore(builder_, LLVMConstNull(elementType), address);
     }
