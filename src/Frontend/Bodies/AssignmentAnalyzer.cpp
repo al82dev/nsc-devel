@@ -2260,6 +2260,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     recordReferenceFieldAssignmentOrigin(
         expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
     reportScopeAssignmentEscape(expression, scopeOrdinal, diagnostics);
+    // ES: Un literal de cadena guardado en un elemento de un array local: ese slot no pertenece al
+    // array (el literal dura todo el proceso), así que un `delete[]` posterior libera sólo el bloque.
+    // EN: A string literal stored into an element of a local array: that slot does not belong to
+    // the array (the literal lasts for the whole process), so a later `delete[]` releases the
+    // block only.
+    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
+        expression->second() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
+        expression->first()->first() != nullptr &&
+        expression->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        expression->second()->kind() == ast::AstNodeKind::StringLiteralExpression)
+    {
+        const std::optional<ScopeName> arrayName =
+            lookupScopeName(scopeOrdinal, expression->first()->first()->text());
+        if (arrayName.has_value() && arrayName->kind == ScopeNameKind::Local &&
+            arrayName->semanticOrdinal < locals_.size())
+            locals_[arrayName->semanticOrdinal].borrowedElementSlots = true;
+    }
     if (assignmentConflictsWithIterationBorrow(expression, scopeOrdinal, diagnostics)) return {};
     if (expression->tokenKind() == TokenKind::QuestionQuestionEqual)
     {

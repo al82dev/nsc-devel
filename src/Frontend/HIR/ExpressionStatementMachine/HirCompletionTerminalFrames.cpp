@@ -199,6 +199,10 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledDestructionFrame(
             {
                 deallocation->dynamicDestruction = false;
                 deallocation->storageOwnership = frame.operandType->storageOwnership;
+                // ES: Los slots que guardan literales no pertenecen al array: sólo se libera el bloque.
+                // EN: Slots holding literals do not belong to the array: only the block is released.
+                if (frame.operandType->borrowedElementSlots)
+                    deallocation->storageOwnership = sema::OwnershipKind::None;
             }
             else
             {

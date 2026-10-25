@@ -54,6 +54,11 @@ struct ExpressionResult final
     bool ownsStorageDestination = false;
     sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
     sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
+    // ES: Array cuyo inicializador guardó literales de cadena: esos slots no le pertenecen (los
+    // literales duran todo el proceso), así que `delete[]` libera sólo el bloque.
+    // EN: Array whose initializer stored string literals: it does not own those slots (literals
+    // last for the whole process), so `delete[]` releases the block only.
+    bool borrowedElementSlots = false;
     std::optional<std::size_t> borrowedLocalOrdinal;
     const ast::AstNode* receiverSyntax = nullptr;
     std::string receiverTypeKey;

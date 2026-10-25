@@ -120,6 +120,7 @@ MethodExpressionTypeBinding ProjectMethodBodyModel::makeExpressionTypeBinding(
     binding.ownsStorageDestination = result.ownsStorageDestination;
     binding.objectLifetimeOwnership = result.objectLifetimeOwnership;
     binding.storageOwnership = result.storageOwnership;
+    binding.borrowedElementSlots = result.borrowedElementSlots;
     binding.flowProvenNonNull = result.flowProvenNonNull;
     binding.flowIntegerExcludesZero = result.flowIntegerExcludesZero;
     binding.flowIntegerMinimum = result.flowIntegerMinimum;

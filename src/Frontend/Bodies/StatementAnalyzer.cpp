@@ -97,6 +97,27 @@ bool isErrorType(std::string_view key) noexcept
     return key.empty() || key == "<error>";
 }
 
+// ES: Verdadero si `initializer` es un inicializador inferido de array (`new T[] { ... }` o
+// `[ ... ]`) que guarda al menos un literal de cadena. El literal dura todo el proceso: el array
+// no es dueño de ese slot y `delete[]` no debe liberarlo.
+// EN: True when `initializer` is an inferred array initializer (`new T[] { ... }` or `[ ... ]`)
+// that stores at least one string literal. The literal lasts for the whole process: the array
+// does not own that slot and `delete[]` must not release it.
+bool initializerStoresStringLiterals(const ast::AstNode* initializer) noexcept
+{
+    if (initializer == nullptr || initializer->auxiliaryText() != "inferred-array-initializer")
+        return false;
+    if (initializer->kind() != ast::AstNodeKind::NewExpression &&
+        initializer->kind() != ast::AstNodeKind::CollectionExpression)
+        return false;
+    for (const ast::AstNode* element : initializer->children())
+    {
+        if (element != nullptr && element->kind() == ast::AstNodeKind::StringLiteralExpression)
+            return true;
+    }
+    return false;
+}
+
 sema::OwnershipKind ownershipKindFromSyntax(const ast::TypeSyntax* syntax) noexcept
 {
     if (syntax == nullptr)
@@ -3752,6 +3773,7 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     local.ownership = isBorrowed ? sema::OwnershipKind::Borrowed : sema::OwnershipKind::None;
     local.objectLifetimeOwnership = pendingObjectLifetimeOwnership;
     local.storageOwnership = pendingStorageOwnership;
+    local.borrowedElementSlots = initializerStoresStringLiterals(variable->first());
     // NS304-T13-F03: the frame object owns object destruction (exactly once at scope exit) while its
     // storage is the frame itself, so there is no heap deallocator to call.
     if (isScope)

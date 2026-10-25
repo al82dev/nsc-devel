@@ -92,6 +92,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeLocalIde
     applyIdentifierFlowFacts(result, scopeName.semanticOrdinal * 2U);
     result.objectLifetimeOwnership = local.objectLifetimeOwnership;
     result.storageOwnership = local.storageOwnership;
+    result.borrowedElementSlots = local.borrowedElementSlots;
     if (!applyLocalIdentifierOwnership(result, expression, scopeName, local, diagnostics)) return {};
     completeLocalIdentifier(
         result, expression, scopeName, local, methodMemberOrdinal, scopeOrdinal);
