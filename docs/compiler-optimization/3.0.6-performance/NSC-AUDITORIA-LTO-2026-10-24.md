@@ -238,29 +238,35 @@ No se recomienda priorizar LTO antes de cerrar la reutilización incremental del
 el binario producido y puede encarecer la construcción, mientras que el problema principal de latencia interactiva
 continúa estando en el trabajo semántico que se repite después de editar una fuente.
 
-## 11. Estado al cierre de la optimización parte 2
+## 11. Estado final: LTO congelado
 
 **Fecha:** 2026-10-25
-**Rama:** `development-fixes-debug-ide`
-**Puntos del plan:** 41 a 48 de `NSC-PLAN-OPTIMIZACION-PARTE-2.md`
+**Rama:** `development-release-candidate`
+**Puntos del plan:** 41 a 55 de `NSC-PLAN-OPTIMIZACION-PARTE-2.md`
 
 Esta sección no reescribe la auditoría anterior: registra qué quedó implementado sobre ella. Las cifras de tiempo,
 memoria y tamaño se registran sólo en `NSC-MEDICION-PARTE-2.md`.
 
+LTO queda **congelado**: implementado y validado. Cualquier cambio posterior a ThinLTO, al sidecar o a su identidad
+es un trabajo nuevo con su propia auditoría, no una continuación de este plan.
+
 ### 11.1 Veredicto actualizado
 
-| Área | Estado al auditar | Estado al cierre | Commits |
+| Área | Estado al auditar | Estado final | Commits |
 |---|---|---|---|
 | `-flto` / `-flto=full` | PARCIAL REAL | Sin cambios: módulo monolítico intraproyecto. | — |
-| `-flto=thin` en `-O1`–`-O3` | SUPERFICIE SIN THINLTO REAL | ThinLTO REAL intraproyecto (sección 11.2). | `d3ebd8397` |
-| `-flto=thin` en `-O0` | Superficie | Build particionado normal, con aviso bilingüe. | `d3ebd8397` |
-| Caché de backends ThinLTO | NO EXISTE | Por módulo, índice, imports, target, opciones y LLVM. | `bf7396961` |
-| ThinLTO con `-g` | — | Reproducible: objetos sin ruta de objeto en CodeView. | `694bcd2ee` |
-| LTO entre bibliotecas | NO EXISTE | Estáticas, mediante el sidecar `.nsthinlto`. | `d73ce08a6`, `13252a587` |
-| LTO desde `nsc build` | NO EXPUESTO | `-flto` con sus tres modos y `link_time_optimization`. | `61748bb3e`, `b4d39315c` |
+| `-flto=thin` en `-O1`–`-O3` | SUPERFICIE SIN THINLTO REAL | ThinLTO REAL intraproyecto (sección 11.2). | `83b0aaef4` |
+| `-flto=thin` en `-O0` | Superficie | Build particionado normal, con aviso bilingüe. | `83b0aaef4` |
+| Caché de backends ThinLTO | NO EXISTE | Por módulo, índice, imports, target, opciones y LLVM. | `ebd178263` |
+| ThinLTO con `-g` | — | Reproducible: objetos sin ruta de objeto en CodeView. | `6563c2f6c` |
+| Internalización y definiciones duplicadas | NO EXISTE | HECHO: internaliza lo que ningún objeto nativo pide y el enlace descarta secciones sin referencia. | `adaf21e5a` |
+| Estabilidad de `-g` ante ediciones | — | HECHO: una edición sólo invalida las unidades que leen el archivo editado. | `5cb347f25` |
+| LTO entre bibliotecas | NO EXISTE | Estáticas, mediante el sidecar `.nsthinlto` v2; nunca entre DLL. | `36a99d973`, `7c4d6f58d`, `6286ae820` |
+| Sidecar en `nsc restore` | — | HECHO: se restaura con su paquete estático y entra al lock. | `0bac53813` |
+| LTO desde `nsc build` | NO EXPUESTO | `-flto` con sus tres modos y `link_time_optimization`. | `58d063e82`, `9debff0c3` |
 | LTO desde el IDE | — | Campo `-flto` en la configuración de build. | IDE `4cf2ca6` |
-| Integración con NSLink | NO EXISTE | No requerida: NSC corre LLVM y NSLink recibe COFF. | — |
-| Pruebas de beneficio | INSUFICIENTES | Imports, inlining en el IR final, caché, `-g` y sidecars. | ver 11.4 |
+| Integración con NSLink | NO EXISTE | Sólo `/opt:ref` cuando hubo internalización; NSC corre LLVM y NSLink recibe COFF. | `adaf21e5a` |
+| Pruebas de beneficio | INSUFICIENTES | Pruebas unitarias y matriz de línea de comandos (sección 11.5). | ver 11.5 |
 
 ### 11.2 ThinLTO intraproyecto
 
@@ -277,16 +283,29 @@ Respecto de la lista de la sección 5.2:
 | Resolución de símbolos prevalecientes | HECHO: prevalece la primera definición. |
 | Selección de imports y exports | HECHO (LLVM). |
 | Importación selectiva de cuerpos | HECHO (LLVM). |
-| Internalización global | NO HECHO, por decisión: todo símbolo queda visible para objetos nativos. |
+| Internalización global | HECHO (ver abajo). |
 | Promoción de símbolos locales | HECHO (LLVM, al importar). |
 | Optimización posterior a la importación | HECHO (pipeline de post-enlace del backend). |
 | Caché de backends | HECHO (`<caché>/thinlto-backends/<identidad de codegen>`, poda de una semana y 1 GiB). |
 | Coordinación entre aplicación y bibliotecas | HECHO para bibliotecas estáticas con sidecar compatible. |
 
-La falta de internalización es deliberada: el runtime, las bibliotecas y los exports de DLL pueden referirse a
-cualquier símbolo, y NSC no tiene todavía la lista completa de referencias nativas para decidir cuáles son
-internos. Consecuencia: ThinLTO importa e inlinea, pero no elimina las definiciones originales, y el binario puede
-crecer respecto del build particionado normal.
+**Internalización.** Un símbolo queda visible para objetos nativos (`VisibleToRegularObj`) sólo si lo preserva el
+build: el punto de entrada o los exports de la DLL, y todo símbolo indefinido del runtime configurado y de las
+bibliotecas de enlace que no se consumieron por sidecar, leídos con `llvm::object`. Lo demás se internaliza; LLVM
+elimina lo que quedó sin uso, los objetos se emiten con secciones por función y por dato, y el enlace recibe
+`/opt:ref`. La caché de backends internalizados vive en el subdirectorio `internalized`. No se internaliza al
+producir bibliotecas estáticas, cuando el runtime no es una biblioteca aparte ni cuando alguna entrada no se puede
+leer: en esos casos todo símbolo queda visible, como antes. Con esto desaparece el crecimiento del binario que la
+versión sin internalización tenía respecto del build particionado.
+
+**Estabilidad de `-g`.** `SourceManager::getFile` avisa a un registro por hilo (`SourceAccessRecording`) qué archivos
+lee el lowering de cada unidad. La llave del objeto previo a LLVM es la de la unidad más ruta, tamaño y SHA-256 de
+esos archivos (`SourceDependencyIndex`), y el manifiesto de archivos se guarda junto con el plan de particiones. La
+identidad global de tabla de líneas se reemplazó por la del mapa de prefijos de depuración, y la identidad del
+modelo de depuración completa ya no incluye datos derivados de los cuerpos (vínculos de búsqueda de nombres y
+efectos inferidos). Una edición sólo vuelve a bajar a LLVM las unidades que leen el archivo editado, con `-g` y con
+`-gline-tables-only`. Al hacerlo apareció y se corrigió un defecto previo: un sitio de pánico conservaba su línea
+vieja en un build con caché.
 
 En un host DYNAMIC (sólo `LLVM-C.dll`) no hay `llvm::lto`; `-flto=thin` conserva allí el build particionado.
 
@@ -295,22 +314,52 @@ En un host DYNAMIC (sólo `LLVM-C.dll`) no hay `llvm::lto`; `-flto=thin` conserv
 El contrato está en `NSC-DISENO-SIDECAR-THINLTO-BIBLIOTECAS.md`. Una biblioteca estática con ThinLTO efectivo y
 runtime aparte publica `<Biblioteca>.nsthinlto`: bitcode de pre-enlace de cada unidad, identidad de compatibilidad
 y SHA-256 de la `.lib` y la `.nsmeta`. Un ejecutable o una DLL con ThinLTO efectivo lo consume sólo si todo
-coincide byte a byte; en otro caso enlaza la `.lib` nativa e informa `thinlto-library-fallback`. Las unidades
-consumidas se enlazan como un archivo COFF de reemplazo con ruta direccionada por contenido.
+coincide byte a byte; en otro caso enlaza la `.lib` nativa e informa `thinlto-library-fallback` con su motivo. Las
+unidades consumidas se enlazan como un archivo COFF de reemplazo con ruta direccionada por contenido.
 
-Fuera de alcance en v1: referencias a DLL, paquetes restaurados por `nsc restore` (no copian el sidecar),
-bibliotecas que consumen otras bibliotecas y `full`.
+El formato v2 agrega a la identidad:
 
-### 11.4 Pruebas
+- la `.nsmeta` de cada dependencia de la biblioteca, por nombre y SHA-256; una dependencia ausente o distinta en el
+  build consumidor provoca el respaldo nativo;
+- la revisión de LLVM (`LLVM_REVISION` cuando el host la expone);
+- el runtime configurado, por SHA-256;
+- la auditoría de opciones de ABI: nombre y versión del pipeline y modo de punto flotante, FMA, redondeo y
+  denormales, además del target, el data layout, la optimización y la depuración que ya formaban parte de ella.
+
+Un sidecar v1 se rechaza por su versión y cae al respaldo nativo. Los sidecars son entradas del manifiesto del
+bundle consumidor, así que alterarlos invalida el bundle en vez de restaurar un ejecutable viejo.
+
+`nsc restore` copia el sidecar junto con el paquete estático y lo registra en el lock y en la procedencia. Nunca se
+publica ni se consume entre DLL: una referencia a DLL enlaza siempre su biblioteca de importación.
+
+Fuera de alcance: referencias a DLL (por diseño) y `full`.
+
+### 11.4 Pruebas unitarias
 
 | Prueba | Qué demuestra |
 |---|---|
-| `Item391ThinLtoTests` | Backends reales sin aviso en `-O2`, índice reproducible, segundo build con caché que restaura cada backend, ejecutable y PDB idénticos con `-O2 -g`, aviso en `-O0`, sidecar publicado, consumo con imports, respaldo nativo con motivo y consumo `-g` reproducible. |
+| `Item391ThinLtoTests` | Backends reales sin aviso en `-O2`, índice reproducible, segundo build con caché que restaura cada backend, ejecutable y PDB idénticos con `-O2 -g`, aviso en `-O0`, sidecar publicado, consumo con imports, respaldo nativo con motivo, consumo `-g` reproducible, ejecutable thin no mayor que el particionado y cadena de bibliotecas con dependencia alterada y sidecar v1. |
 | `ProjectOopLoweringTests` (`thinlto-cross-partition-inlining`) | En el IR final de `Main` no queda ninguna llamada a funciones definidas en otra partición. |
+| `ProjectOopLoweringTests` (`thinlto-internalization`) | Una función huérfana desaparece sólo cuando se preserva únicamente `Main`. |
+| `Item392IncrementalLinkTests` | Editar un archivo con `-g` y `-gline-tables-only` vuelve a bajar menos unidades que el total; la línea de un pánico sigue a la edición. |
+| `ProjectCommandsTests` (restauración thin) | El sidecar de un paquete estático se restaura y entra al lock; el de una DLL no. |
 
-### 11.5 Pendiente
+El usuario ejecutó las suites completas en Debug y Release, con todas sus variantes, sin fallos.
 
-- LTO-05: certificar beneficio y costo por configuración (aplicación, biblioteca estática y DLL; O1, O2 y O3; caché
-  fría y caliente). Corresponde a `NSC-MEDICION-PARTE-2.md`, no a esta auditoría.
-- Internalización con la lista de referencias nativas, si la medición muestra que el crecimiento del binario importa.
-- Sidecar en paquetes (`nsc restore`) y en `full`.
+### 11.5 Matriz de línea de comandos
+
+Ejecutada sobre `nsc.exe` con 58 comprobaciones, todas correctas:
+
+- `-O2` y `-O3`, cada uno con `-g0` y `-g`, cada uno con `-j1` y `-j16`, en caché fría y caliente: la salida del
+  programa es la del build particionado, el ejecutable y el PDB calientes son idénticos a los fríos y `-j1` escribe
+  el mismo ejecutable y el mismo PDB que `-j16`;
+- biblioteca estática por referencia directa: sidecar consumido, respaldo nativo con motivo y build `-g`
+  reproducible;
+- biblioteca restaurada por `nsc restore`: lock con sidecar y sidecar consumido;
+- cadena de bibliotecas: dos sidecars consumidos y respaldo cuando la `.nsmeta` de una dependencia difiere;
+- DLL con ThinLTO: conserva sus tres exports y su consumidor funciona.
+
+### 11.6 Pendiente
+
+Nada dentro del alcance de LTO. Las cifras de beneficio y costo por configuración (LTO-05) pertenecen a
+`NSC-MEDICION-PARTE-2.md`.
