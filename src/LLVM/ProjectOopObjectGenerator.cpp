@@ -1259,7 +1259,17 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
         for (const std::string& moduleError : moduleErrors) unitsReady = unitsReady && moduleError.empty();
         if (unitsReady)
         {
-            if (!runThinLtoBackends(*thinLto, result.objectFiles_, optimizationLevel, workerCount, {}, error))
+            // LLVM keys each backend on its module, the combined index, its import and export sets, the
+            // resolutions, the target and options and the exact LLVM version (computeLTOCacheKey); the
+            // directory adds the codegen identity of this compiler (optimization part 2, item 45).
+            // LLVM identifica cada backend por su modulo, el indice combinado, sus imports y exports,
+            // las resoluciones, el target, las opciones y la version exacta de LLVM; el directorio
+            // agrega la identidad de codegen de este compilador (parte 2, punto 45).
+            const std::filesystem::path backendCache = cache != nullptr && cache->enabled()
+                ? cache->root() / "thinlto-backends" / std::string(kCodegenCacheIdentity)
+                : std::filesystem::path{};
+            if (!runThinLtoBackends(
+                    *thinLto, result.objectFiles_, optimizationLevel, workerCount, backendCache, error))
                 return false;
             result.thinLtoImportCount_ = thinLto->importedFunctionCount();
             result.thinLtoCachedBackendCount_ = thinLto->cachedBackendCount();

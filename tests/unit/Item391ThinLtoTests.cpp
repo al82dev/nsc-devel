@@ -92,6 +92,39 @@ class Program
         }
     }
     {
+        // The second build with the same artifact cache restores every ThinLTO backend (item 45).
+        // El segundo build con el mismo cache de artefactos restaura cada backend ThinLTO (punto 45).
+        const std::string cache = "--artifact-cache=" + (root / "cache").string();
+        std::string firstObjectIndex;
+        for (int run = 0; run < 2; ++run)
+        {
+            const std::string executable = (root / ("Cached" + std::to_string(run) + ".exe")).string();
+            const std::array<std::string_view, 8> arguments = {
+                "-O2", "-j4", "-flto=thin", cache, "--emit-project-oop-exe", project, "-o", executable};
+            nativesharp::driver::Driver driver;
+            std::ostringstream output;
+            std::ostringstream error;
+            const nativesharp::ExitCode result = driver.run(arguments, output, error);
+            const std::string text = output.str();
+            const std::string cached = valueAfter(text, "thinlto-cached-backends: ");
+            const std::string summaries = valueAfter(text, "thinlto-summaries: ");
+            tests.expect(result == nativesharp::ExitCode::Success &&
+                    (run == 0 ? cached == "0" : (!cached.empty() && cached == summaries)),
+                run == 0 ? "the first cached ThinLTO build runs every backend: " + error.str()
+                         : "the second cached ThinLTO build restores every backend: " + error.str());
+            const std::string index = valueAfter(text, "thinlto-index: ");
+            if (run == 0) firstObjectIndex = index;
+            else tests.expect(index == firstObjectIndex && index.size() == 64,
+                "restored ThinLTO backends produce the same objects");
+            if (result == nativesharp::ExitCode::Success)
+            {
+                const std::string command = "\"" + executable + "\"";
+                tests.expect(std::system(command.c_str()) == 42,
+                    "an executable linked from cached ThinLTO backends preserves program behavior");
+            }
+        }
+    }
+    {
         // At -O0 thin keeps the ordinary partitioned build and says so (optimization part 2, item 44).
         // En -O0 thin conserva el build particionado normal y lo dice (parte 2, punto 44).
         const std::string executable = (root / "ThinO0.exe").string();
