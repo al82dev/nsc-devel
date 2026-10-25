@@ -92,7 +92,7 @@ public class Program
 
     public static int Run()
     {
-        BoxOf<int> box = new BoxOf<int>(40);
+        raii BoxOf<int> box = new BoxOf<int>(40);
         Pointer<int> pointer = null;
         Quad<int> values;
         values[0] = box.Get();

@@ -69,11 +69,9 @@ class Probe
 {
     public static int Run()
     {
-        Box<int> box = new Box<int>(35);
-        IValue value = new Device();
+        raii Box<int> box = new Box<int>(35);
+        raii IValue value = new Device();
         int result = box.Get() + value.Get();
-        delete box;
-        delete value;
         return result;
     }
 }

@@ -36,7 +36,7 @@ namespace Suite
             return total;
         }
     }
-    public int Run() { Item value = new Item(3); return value.Sum(2); }
+    public int Run() { raii Item value = new Item(3); return value.Sum(2); }
 }
 )ns";
 }

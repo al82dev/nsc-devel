@@ -49,9 +49,12 @@ namespace Tutorial.ListaPilaColaManual
         // ser la cabeza el mismo.
         public void PushFront(int value)
         {
-            Node node = new Node(value);
-            node.Next = head;
-            head = node;
+            // Congelamiento 3.0 (C-01): un `new` guardado en un local sin `raii` no tiene dueno y es
+            // error de compilacion; por eso el nodo nuevo se guarda directo en el campo que lo
+            // enlaza (la lista es su dueno manual).
+            Node oldHead = head;
+            head = new Node(value);
+            head.Next = oldHead;
             count = count + 1;
         }
 
@@ -104,9 +107,9 @@ namespace Tutorial.ListaPilaColaManual
 
         public void Push(int value)
         {
-            Node node = new Node(value);
-            node.Next = top;
-            top = node;
+            Node oldTop = top;
+            top = new Node(value);
+            top.Next = oldTop;
             count = count + 1;
         }
 
@@ -147,16 +150,15 @@ namespace Tutorial.ListaPilaColaManual
 
         public void Enqueue(int value)
         {
-            Node node = new Node(value);
             if (head == null)
             {
-                head = node;
-                tail = node;
+                head = new Node(value);
+                tail = head;
             }
             else
             {
-                tail.Next = node;
-                tail = node;
+                tail.Next = new Node(value);
+                tail = tail.Next;
             }
             count = count + 1;
         }
@@ -189,7 +191,7 @@ namespace Tutorial.ListaPilaColaManual
         public static int Main()
         {
             // --- Lista enlazada manual ---
-            ManualLinkedList list = new ManualLinkedList();
+            raii ManualLinkedList list = new ManualLinkedList();
             list.PushFront(30);
             list.PushFront(20);
             list.PushFront(10);
@@ -200,7 +202,7 @@ namespace Tutorial.ListaPilaColaManual
             bool listHas99 = list.Contains(99); // false
 
             // --- Pila manual (LIFO): el ultimo en entrar es el primero en salir) ---
-            ManualStack stack = new ManualStack();
+            raii ManualStack stack = new ManualStack();
             stack.Push(1);
             stack.Push(2);
             stack.Push(3);
@@ -209,7 +211,7 @@ namespace Tutorial.ListaPilaColaManual
             int stackRemaining = stack.Count(); // 1 (queda el "1")
 
             // --- Cola manual (FIFO): el primero en entrar es el primero en salir ---
-            ManualQueue queue = new ManualQueue();
+            raii ManualQueue queue = new ManualQueue();
             queue.Enqueue(100);
             queue.Enqueue(200);
             queue.Enqueue(300);

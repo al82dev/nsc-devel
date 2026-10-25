@@ -127,9 +127,12 @@ namespace NativeSharp.Core.Collections.Generic
         // brand-new SortedSet<T> with its own copies instead. Uses T's own `<` for the bounds test
         // even when this set was constructed with a custom comparer (a documented simplification --
         // see the class comment on T needing only `<`).
-        public SortedSet<T> GetViewBetween(T lowerValue, T upperValue)
+        //
+        // Freeze 3.0 (C-01): the snapshot is a new set the caller owns, so the return is `owned`
+        // and the caller binds it to a raii local.
+        public owned SortedSet<T> GetViewBetween(T lowerValue, T upperValue)
         {
-            SortedSet<T> result = new SortedSet<T>();
+            raii SortedSet<T> result = new SortedSet<T>();
             const T[] snapshot = items.Keys();
             int i = 0;
             while (i < snapshot.Length)
@@ -141,7 +144,7 @@ namespace NativeSharp.Core.Collections.Generic
                 i = i + 1;
             }
             delete[] snapshot;
-            return result;
+            return move(result);
         }
 
         // Mirrors SortedSet<T>.RemoveWhere: removes every element matching `predicate`, returns how

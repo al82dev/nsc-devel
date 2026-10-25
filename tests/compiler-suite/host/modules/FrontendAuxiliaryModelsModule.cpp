@@ -32,7 +32,7 @@ namespace Suite
         public int extra;
         public Item(int source, int second) : base(source) { extra = second; }
     }
-    public int Run() { Item value = new Item(2, 3); return value.value + value.extra; }
+    public int Run() { raii Item value = new Item(2, 3); return value.value + value.extra; }
 }
 )ns";
 }

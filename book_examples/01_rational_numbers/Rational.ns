@@ -21,9 +21,9 @@ namespace NativeSharp.BookExamples.RationalNumbers
         {
             if (initialDenominator == 0)
             {
-                ZeroDenominatorException problem = new ZeroDenominatorException();
+                raii ZeroDenominatorException problem = new ZeroDenominatorException();
                 problem.Message = String.Copy("A rational number cannot have denominator zero.");
-                throw problem;
+                throw move(problem);
             }
 
             numerator = initialNumerator;
@@ -109,39 +109,39 @@ namespace NativeSharp.BookExamples.RationalNumbers
             return (double)numerator / (double)denominator;
         }
 
-        public static Rational operator +(Rational left, Rational right)
+        public static owned Rational operator +(Rational left, Rational right)
         {
             int n = left.numerator * right.denominator + right.numerator * left.denominator;
             int d = left.denominator * right.denominator;
             return new Rational(n, d);
         }
 
-        public static Rational operator -(Rational left, Rational right)
+        public static owned Rational operator -(Rational left, Rational right)
         {
             int n = left.numerator * right.denominator - right.numerator * left.denominator;
             int d = left.denominator * right.denominator;
             return new Rational(n, d);
         }
 
-        public static Rational operator -(Rational value)
+        public static owned Rational operator -(Rational value)
         {
             return new Rational(-value.numerator, value.denominator);
         }
 
-        public static Rational operator *(Rational left, Rational right)
+        public static owned Rational operator *(Rational left, Rational right)
         {
             return new Rational(
                 left.numerator * right.numerator,
                 left.denominator * right.denominator);
         }
 
-        public static Rational operator /(Rational left, Rational right)
+        public static owned Rational operator /(Rational left, Rational right)
         {
             if (right.numerator == 0)
             {
-                ZeroDenominatorException problem = new ZeroDenominatorException();
+                raii ZeroDenominatorException problem = new ZeroDenominatorException();
                 problem.Message = String.Copy("Division by the rational value zero is undefined.");
-                throw problem;
+                throw move(problem);
             }
 
             return new Rational(

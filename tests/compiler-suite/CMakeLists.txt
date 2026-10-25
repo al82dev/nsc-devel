@@ -865,6 +865,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmConditionalsAndNullAware.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmConstruction.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmControlFlow.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmCoroutines.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmDebugInfo.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmDeclarations.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmExpressionDispatch.cpp"

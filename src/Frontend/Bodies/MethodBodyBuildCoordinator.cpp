@@ -755,6 +755,7 @@ bool ProjectMethodBodyModel::build(
     writeMethodBodyTrace("POST-ANALYSIS-BEGIN");
     verifyOutParameterAssignments(diagnostics);
     verifyRequiredFieldAssignments(diagnostics);
+    verifySynchronousAwaits(diagnostics);
     validateRequiredInliningCycles(memberModel, diagnostics);
     writeMethodBodyTrace("ESCAPE-SUMMARIES-BEGIN");
     finalizeEscapeSummaries(diagnostics);

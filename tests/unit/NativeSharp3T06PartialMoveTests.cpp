@@ -296,8 +296,8 @@ public class Program
 {
     public static int Main()
     {
-        Source<int> source = new Source<int>(42);
-        Enumerator<int> iterator = new Enumerator<int>(source);
+        raii Source<int> source = new Source<int>(42);
+        raii Enumerator<int> iterator = new Enumerator<int>(source);
         return iterator.Current();
     }
 }

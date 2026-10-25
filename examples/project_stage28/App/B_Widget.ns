@@ -7,21 +7,21 @@ public partial class Widget
         this.Value = 0;
     }
 
-    public Widget MakeInt()
+    public owned Widget MakeInt()
     {
-        Widget result = new Widget(1);
-        return result;
+        raii Widget result = new Widget(1);
+        return move(result);
     }
 
-    public Widget MakeFloat()
+    public owned Widget MakeFloat()
     {
-        Widget result = new Widget(1.0f);
-        return result;
+        raii Widget result = new Widget(1.0f);
+        return move(result);
     }
 
-    public Empty MakeEmpty()
+    public owned Empty MakeEmpty()
     {
-        Empty result = new Empty();
-        return result;
+        raii Empty result = new Empty();
+        return move(result);
     }
 }

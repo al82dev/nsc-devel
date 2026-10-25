@@ -172,8 +172,8 @@ namespace DebugFixture
             }
             try
             {
-                OtherProblem problem = new OtherProblem();
-                throw problem;
+                raii OtherProblem problem = new OtherProblem();
+                throw move(problem);
             }
             catch
             {
@@ -203,12 +203,12 @@ namespace DebugFixture
             int captured = answer;
             raii Reader reader = () => captured;
             answer = Read(reader);
-            DispatchSource dispatch = new DispatchSource(answer);
-            ValueSource virtualView = dispatch;
-            IValueSource interfaceView = dispatch;
+            raii DispatchSource dispatch = new DispatchSource(answer);
+            borrowed ValueSource virtualView = dispatch;
+            borrowed IValueSource interfaceView = dispatch;
             answer = virtualView.ReadValue();
             answer = interfaceView.ReadValue();
-            HandlerHost handler = new HandlerHost();
+            raii HandlerHost handler = new HandlerHost();
             StaticChanged += OnStaticChanged;
             StaticChanged += handler.OnChanged;
             StaticChanged(answer);
@@ -222,8 +222,8 @@ namespace DebugFixture
             resource.Value = answer;
             answer = ExerciseEh();
             answer = TypeSurface.ExerciseTypes(resource.Value);
-            delete handler;
-            delete dispatch;
+
+
             return answer;
         }
     }

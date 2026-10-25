@@ -12,7 +12,7 @@ public class Program
 {
     public static int Main()
     {
-        AtomicInt64 value = new AtomicInt64(40L);
+        raii AtomicInt64 value = new AtomicInt64(40L);
         if (value.Load() != 40L || value.Add(2L) != 42L) { return 1; }
         if (value.CompareExchange(44L, 42L) != 42L || value.Exchange(45L) != 44L) { return 2; }
         value.Store(46L); return value.Load() == 46L ? 0 : 3;

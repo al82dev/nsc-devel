@@ -99,7 +99,7 @@ class Runner
 {
     public static void ThrowFromCallee(Exception problem)
     {
-        throw problem;
+        throw new Exception();
     }
 
     public static void CallThroughUsing(Resource input, Exception problem)
@@ -125,7 +125,7 @@ class Runner
     {
         try
         {
-            throw problem;
+            throw new Exception();
         }
         catch
         {
@@ -144,7 +144,7 @@ class Runner
     {
         try
         {
-            throw problem;
+            throw new Exception();
         }
         catch
         {
@@ -262,7 +262,7 @@ class Runner
 {
     public static void Run(Problem problem)
     {
-        try { throw problem; }
+        try { throw new Problem(); }
         catch (Problem caught) { }
     }
 }

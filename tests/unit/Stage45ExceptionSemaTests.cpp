@@ -62,7 +62,7 @@ class Handler
     {
         try
         {
-            throw file;
+            throw new FileException();
         }
         catch (FileException specific)
         {

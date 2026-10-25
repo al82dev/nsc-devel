@@ -914,6 +914,21 @@ private:
         bool isVarInferred,
         bool isRaii,
         bool isMoveOnly);
+    // EN: Freeze 3.0 C-01. True when `syntax` is `new T(...)` of an ownable type whose result
+    //     is a fresh owner. A local without raii/owned and a discarded expression give it no
+    //     owner, so it leaks deterministically. A parameter, return or field without `owned`
+    //     stays the manual-ownership form (the receiver may `delete` it), see ExpressionResult.
+    // ES: Congelamiento 3.0 C-01. Verdadero cuando `syntax` es `new T(...)` de un tipo poseible
+    //     cuyo resultado es un dueno nuevo. Un local sin raii/owned y una expresion descartada no
+    //     le dan dueno, asi que se fuga siempre. Un parametro, retorno o campo sin `owned` sigue
+    //     siendo la forma de propiedad manual (quien lo recibe puede hacer `delete`).
+    bool isFreshObjectCreation(
+        const ast::AstNode* syntax,
+        const ExpressionResult& result) const;
+    void reportLostOwnership(
+        const ast::AstNode* syntax,
+        std::string_view context,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void validateVariableOwnershipInitializer(
         const ExpressionResult& initializer,
         const ast::AstNode* variable,
@@ -1425,7 +1440,7 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
-    void validateUsingInitializer(
+    bool validateUsingInitializer(
         const ast::AstNode* statement,
         std::string_view resourceTypeKey,
         std::size_t methodMemberOrdinal,
@@ -1468,6 +1483,13 @@ private:
     void analyzeThrow(
         const ast::AstNode* statement,
         std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    // Freeze 3.0 C-01: throw operand ownership (see StatementAnalyzer.cpp).
+    bool isCatchLocalExpression(const ast::AstNode* expression, std::size_t scopeOrdinal) const;
+    void validateThrowOwnership(
+        const ast::AstNode* operand,
+        const ExpressionResult& value,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
     std::string delegateErrorTypeKey(std::string_view delegateTypeKey) const;
@@ -4630,6 +4652,24 @@ private:
     std::unordered_set<std::size_t> analyzedCallableMembers_;
     void verifyOutParameterAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
     void verifyRequiredFieldAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 C-02. A synchronous `await` (outside an async callable) polls its future
+    //     once, so its producer must complete without suspending. The producer suspends when its
+    //     body has `yield;`, awaits a producer that suspends, or awaits a future whose origin is
+    //     not a direct call to a source async callable. `memo` holds 1 (does not suspend),
+    //     2 (suspends) or 0 (being visited, treated as not suspending so cycles terminate).
+    // ES: Congelamiento 3.0 C-02. Un `await` sincrono (fuera de un callable async) hace un solo
+    //     poll de su future, asi que su productor debe terminar sin suspenderse. El productor se
+    //     suspende si su cuerpo tiene `yield;`, espera a un productor que se suspende o espera un
+    //     future cuyo origen no es una llamada directa a un callable async de fuente.
+    void verifySynchronousAwaits(diagnostics::DiagnosticEngine& diagnostics) const;
+    bool awaitProducerCanSuspend(
+        std::size_t producerOrdinal,
+        std::unordered_map<std::size_t, int>& memo) const;
+    bool awaitOperandCanSuspend(
+        const ast::AstNode* operand,
+        const ast::AstNode* callerBody,
+        std::size_t callerOrdinal,
+        std::unordered_map<std::size_t, int>& memo) const;
     // C7 "definite assignment". Three questions, one per helper:
     //
     //  - is this local's type one the analysis reports on at all? (see the definition: aggregates

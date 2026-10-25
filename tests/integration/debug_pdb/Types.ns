@@ -41,10 +41,10 @@ namespace DebugFixture
             values[0] = input;
             values[1] = 0;
             string label = "PDB";
-            DerivedRecord derived = new DerivedRecord();
+            raii DerivedRecord derived = new DerivedRecord();
             derived.BaseValue = values[0];
             derived.DerivedValue = LabelLength(label);
-            Box<int> box = new Box<int>();
+            raii Box<int> box = new Box<int>();
             box.Value = derived.BaseValue;
             NumberBits bits;
             bits.Whole = 42;
@@ -52,8 +52,8 @@ namespace DebugFixture
             raii Reader typedReader = () => capturedTypeValue;
             int result = typedReader();
             if (mode != DebugMode.Answer) { result = 0; }
-            delete box;
-            delete derived;
+
+
             delete[] values;
             return result;
         }

@@ -140,6 +140,7 @@ namespace NullAware
     public class Program
     {
         private static Node probeValue = null;
+        private static Link linkStorage = null;
         private static int receiverCalls = 0;
         private static int argumentTrace = 0;
         private static int fallbackCalls = 0;
@@ -174,10 +175,11 @@ namespace NullAware
 
         public static int Main()
         {
-            Node tail = new Node(null);
-            Node head = new Node(tail);
-
-            probeValue = head;
+            // Freeze 3.0 (C-01): the nodes are created in the static field that keeps them; `head`
+            // and `tail` are aliases and the final `destroy` releases them by hand.
+            probeValue = new Node(new Node(null));
+            Node head = probeValue;
+            Node tail = head.Link;
             Node propertyValue = Probe()?.Next;
             if (propertyValue != tail || receiverCalls != 1 || Node.getterCalls != 1) { return 1; }
 
@@ -203,14 +205,14 @@ namespace NullAware
             Node fieldValue = Probe()?.Link;
             if (fieldValue != tail || receiverCalls != 6) { return 10; }
 
-            Link linkObject = new Link();
-            ILink link = linkObject;
+            linkStorage = new Link();
+            ILink link = linkStorage;
             ILink interfaceValue = link?.Step(Mark(4));
             if (interfaceValue == null || argumentTrace != 234 || Link.calls != 4) { return 11; }
             link = null;
             interfaceValue = link?.Step(Mark(9));
             if (interfaceValue != null || argumentTrace != 234 || Link.calls != 4) { return 12; }
-            destroy linkObject;
+            destroy linkStorage;
 
             unsafe("the local pointer remains live throughout the coalescing checks")
             {

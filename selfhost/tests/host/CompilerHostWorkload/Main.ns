@@ -122,8 +122,8 @@ namespace NativeSharp.SelfHost.HostWorkload
             if (arena.ActiveAllocationCount() != (long)totalBytes) { return 9; }
             if (!arena.HasOutstandingAllocations() || arena.BytesUsed() <= 0) { return 10; }
 
-            ByteBuffer buffer = new ByteBuffer();
-            BinaryWriter writer = new BinaryWriter(buffer);
+            raii ByteBuffer buffer = new ByteBuffer();
+            raii BinaryWriter writer = new BinaryWriter(buffer);
             writer.WriteUInt32(1397248562u);
             writer.WriteInt32(fileCount);
             writer.WriteInt32(tokens.Count());

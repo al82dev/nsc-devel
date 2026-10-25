@@ -212,8 +212,8 @@ namespace GuardFlow
 
         public static int Main()
         {
-            Node leaf = new Node(null);
-            Node root = new Node(leaf);
+            raii Node leaf = new Node(null);
+            raii Node root = new Node(leaf);
             if (Proven(root) != leaf) return 1;
             if (InvalidatedByAssignment(root) != null) return 2;
             if (InvalidatedByCall(root) != null) return 3;

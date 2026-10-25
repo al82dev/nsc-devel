@@ -166,10 +166,18 @@ ProjectMethodBodyModel::beginUsing(
         MethodScopeKind::Using, methodMemberOrdinal, scopeOrdinal);
     const std::string resourceTypeKey =
         memberModel_->canonicalTypeKey(statement->typeSyntax(), *nameLookup_);
-    validateUsingInitializer(
+    const bool freshResource = validateUsingInitializer(
         statement, resourceTypeKey, methodMemberOrdinal, usingScope, diagnostics);
     const std::size_t localOrdinal = addUsingLocal(
         statement, resourceTypeKey, methodMemberOrdinal, usingScope, diagnostics);
+    // EN: Freeze 3.0 C-01: `using (T x = new T())` creates the resource, so nothing else could
+    //     ever destroy it. The using local becomes its owner; its UsingDispose cleanup then runs
+    //     Dispose and the destructor right after it (HIR marks the region automaticDestruction).
+    // ES: Congelamiento 3.0 C-01: `using (T x = new T())` crea el recurso, asi que nadie mas
+    //     podria destruirlo. El local del using pasa a ser su dueno; su cleanup UsingDispose
+    //     corre Dispose y justo despues el destructor (HIR marca la region automaticDestruction).
+    if (freshResource && localOrdinal != static_cast<std::size_t>(-1))
+        locals_[localOrdinal].isRaii = true;
     std::optional<std::size_t> disposableOrdinal;
     std::optional<std::size_t> disposeContract;
     std::optional<std::size_t> resourceTypeOrdinal;
@@ -201,26 +209,30 @@ ProjectMethodBodyModel::beginUsing(
     return UsingAnalysisState{statement->second(), usingScope, true};
 }
 
-void ProjectMethodBodyModel::validateUsingInitializer(
+bool ProjectMethodBodyModel::validateUsingInitializer(
     const ast::AstNode* statement,
     std::string_view resourceTypeKey,
     std::size_t methodMemberOrdinal,
     std::size_t usingScope,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (statement->first() == nullptr) return;
+    if (statement->first() == nullptr) return false;
     const ExpressionResult initializer = analyzeExpression(
         statement->first(), methodMemberOrdinal, usingScope, diagnostics);
-    if (!initializer.valid) return;
+    if (!initializer.valid) return false;
     const ProjectImplicitConversion conversion = classifyImplicit(
         initializer.typeKey, resourceTypeKey, initializer.integerConstant);
     if (!conversion.exists())
+    {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error,
             statement->first()->range(),
             "cannot initialize using resource '" + statement->text() + "' of type '" +
                 std::string(resourceTypeKey) + "' from '" + initializer.typeKey + "'");
+        return false;
+    }
+    return isFreshObjectCreation(statement->first(), initializer);
 }
 
 bool ProjectMethodBodyModel::resolveUsingDispose(
@@ -2093,6 +2105,8 @@ bool ProjectMethodBodyModel::analyzeStandaloneStatement(
                 statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
             if (expression.valid && expression.typeKey == "builtin:never")
                 ownershipFlowReachable_ = false;
+            if (isFreshObjectCreation(statement->first(), expression))
+                reportLostOwnership(statement->first(), "a discarded expression", diagnostics);
             return true;
         }
         case ast::AstNodeKind::FunctionDeclaration:
@@ -2622,6 +2636,45 @@ void ProjectMethodBodyModel::analyzeTry(
         finishFinally(*state);
     }
 }
+
+bool ProjectMethodBodyModel::isCatchLocalExpression(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal) const
+{
+    if (expression == nullptr || expression->kind() != ast::AstNodeKind::IdentifierExpression)
+        return false;
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
+    if (!name.has_value() || name->kind != ScopeNameKind::Local ||
+        name->semanticOrdinal >= locals_.size()) return false;
+    const ast::AstNode* syntax = locals_[name->semanticOrdinal].syntax;
+    return syntax != nullptr && syntax->kind() == ast::AstNodeKind::CatchClause;
+}
+
+void ProjectMethodBodyModel::validateThrowOwnership(
+    const ast::AstNode* operand,
+    const ExpressionResult& value,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    // EN: Freeze 3.0 C-01: accepted operands give the exception exactly one owner: a fresh
+    //     `new`, a transfer (`move(owner)` or an owned return), or the exception this catch
+    //     already owns. Anything else is a borrow, and destroying it in the catch would free an
+    //     object that still belongs to someone else.
+    // ES: Congelamiento 3.0 C-01: los operandos aceptados dan a la excepcion un solo dueno: un
+    //     `new` recien creado, una transferencia (`move(owner)` o un retorno owned) o la
+    //     excepcion que este catch ya posee. Lo demas es un prestamo, y destruirlo en el catch
+    //     liberaria un objeto que todavia es de alguien mas.
+    if (value.ownershipFreshOwner) return;
+    if (value.ownershipTransfer && value.ownership == sema::OwnershipKind::Owned) return;
+    if (isCatchLocalExpression(operand, scopeOrdinal)) return;
+    diagnostics.report(
+        diagnostics::DiagnosticId::LostOwnership,
+        diagnostics::DiagnosticSeverity::Error,
+        operand->range(),
+        "throw hands the exception object to the catch that handles it, and that catch "
+        "destroys it; throw a new object, move(owner), an owned return, or the caught exception");
+}
+
 void ProjectMethodBodyModel::analyzeThrow(
     const ast::AstNode* statement,
     std::size_t methodMemberOrdinal,
@@ -2659,8 +2712,15 @@ void ProjectMethodBodyModel::analyzeThrow(
     }
 
     binding.kind = MethodExceptionOperationKind::Throw;
+    // EN: Freeze 3.0 C-01: the throw operand is a consuming context. The catch that handles
+    //     the exception owns it and destroys it, so `throw move(owner)` is the way to hand a
+    //     raii owner over.
+    // ES: Congelamiento 3.0 C-01: el operando de throw es un contexto que consume. El catch que
+    //     maneja la excepcion es su dueno y la destruye, asi que `throw move(owner)` es la forma
+    //     de entregar un owner raii.
     const ExpressionResult value = analyzeExpression(
-        statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+        /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
     if (value.valid)
     {
         binding.exceptionTypeKey = value.typeKey;
@@ -2684,6 +2744,9 @@ void ProjectMethodBodyModel::analyzeThrow(
                     statement->first()->range(),
                     "throw operand type '" + value.typeKey + "' must be NativeSharp.Core.Exception or derive from it");
             }
+            // Ownership is only meaningful once the operand is an exception object.
+            // La propiedad solo tiene sentido cuando el operando ya es una excepcion.
+            else validateThrowOwnership(statement->first(), value, scopeOrdinal, diagnostics);
         }
     }
     exceptionBindings_.push_back(std::move(binding));
@@ -3223,6 +3286,29 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::evaluateVariabl
     return initializer;
 }
 
+bool ProjectMethodBodyModel::isFreshObjectCreation(
+    const ast::AstNode* syntax,
+    const ExpressionResult& result) const
+{
+    return syntax != nullptr && syntax->kind() == ast::AstNodeKind::ObjectCreationExpression &&
+        result.valid && result.ownershipFreshOwner && !result.ownershipTransfer &&
+        typeKeyIsOwnable(result.typeKey);
+}
+
+void ProjectMethodBodyModel::reportLostOwnership(
+    const ast::AstNode* syntax,
+    std::string_view context,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    diagnostics.report(
+        diagnostics::DiagnosticId::LostOwnership,
+        diagnostics::DiagnosticSeverity::Error,
+        syntax->range(),
+        "the object created by 'new' reaches no owner through " + std::string(context) +
+            " and would leak; store it in a raii or owned local, pass it to an owned parameter, "
+            "or return it through an owned return type");
+}
+
 void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     const ExpressionResult& initializer,
     const ast::AstNode* variable,
@@ -3255,7 +3341,12 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
             variable->first()->range(),
             "move-only value of type '" + std::string(typeKey) +
                 "' cannot be copied into local '" + variable->text() + "'; use move(source)");
-    if (!isRaii && !isBorrowed &&
+    // EN: Freeze 3.0 C-01: only a local that can hold the reference copies the owner. A local
+    //     of a value type (`int primitive = sum;` through a user conversion) reads it.
+    // ES: Congelamiento 3.0 C-01: solo un local que puede guardar la referencia copia al owner.
+    //     Un local de tipo valor (`int primitive = sum;` por una conversion de usuario) lo lee.
+    const bool localHoldsReference = isReferenceTypeKey(typeKey) || typeKey == "builtin:string";
+    if (!isRaii && !isBorrowed && localHoldsReference &&
         variable->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
         const std::optional<ScopeName> sourceName =
@@ -3278,6 +3369,17 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     // local's own declared type actually needs ownership tracking.
     const bool localTypeOwnable = isReferenceTypeKey(typeKey) || typeKey == "builtin:string" ||
         managedDelegate || raiiOwnsNativeArrayBuffer;
+    // EN: Freeze 3.0 C-01: `T x = new T();` without raii/owned makes x a non-owning alias of an
+    //     object nobody owns. Compiler-generated snapshots ($-prefixed) never hold a `new`.
+    // ES: Congelamiento 3.0 C-01: `T x = new T();` sin raii/owned deja a x como alias no dueno de
+    //     un objeto que nadie posee. Los snapshots del compilador (prefijo $) nunca llevan `new`.
+    // A `scope` local is itself the owner: its object lives in the frame and dies with it.
+    // Un local `scope` es el dueno: su objeto vive en el marco y muere con el.
+    if (!isRaii && !variable->text().starts_with("$") &&
+        variable->auxiliaryText() != "local:scope" &&
+        isFreshObjectCreation(variable->first(), initializer))
+        reportLostOwnership(
+            variable->first(), "the non-owning local '" + variable->text() + "'", diagnostics);
     if (!isRaii && initializer.valid && initializer.ownership == sema::OwnershipKind::Owned &&
         initializer.ownershipTransfer && !isBorrowed && localTypeOwnable)
         diagnostics.report(

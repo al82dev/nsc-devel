@@ -33,21 +33,21 @@ namespace Tutorial.GenericCollectionsTour
             int listFirst = list[0];      // 10
 
             // Queue<T> -- FIFO.
-            Queue<int> queue = new Queue<int>();
+            raii Queue<int> queue = new Queue<int>();
             queue.Enqueue(1);
             queue.Enqueue(2);
             queue.Enqueue(3);
             int dequeued = queue.Dequeue(); // 1 -- el primero en entrar
 
             // Stack<T> -- LIFO.
-            Stack<int> stack = new Stack<int>();
+            raii Stack<int> stack = new Stack<int>();
             stack.Push(1);
             stack.Push(2);
             stack.Push(3);
             int popped = stack.Pop(); // 3 -- el ultimo en entrar
 
             // LinkedList<T> -- lista doblemente enlazada real (nodos, no arreglo).
-            LinkedList<int> chain = new LinkedList<int>();
+            raii LinkedList<int> chain = new LinkedList<int>();
             chain.AddLast(2);
             chain.AddLast(3);
             chain.AddFirst(1);
@@ -56,7 +56,7 @@ namespace Tutorial.GenericCollectionsTour
             // HashSet<T> -- elementos unicos, sin orden garantizado; requiere HashFunc<T>
             // explicito (ver el comentario de cabecera).
             HashFunc<int> intHash = HashInt;
-            HashSet<int> unique = new HashSet<int>(intHash);
+            raii HashSet<int> unique = new HashSet<int>(intHash);
             unique.Add(5);
             unique.Add(5); // duplicado, se ignora
             unique.Add(7);
@@ -64,7 +64,7 @@ namespace Tutorial.GenericCollectionsTour
 
             // SortedSet<T> -- como HashSet, pero mantiene orden; usa comparacion natural de int,
             // no necesita HashFunc.
-            SortedSet<int> sorted = new SortedSet<int>();
+            raii SortedSet<int> sorted = new SortedSet<int>();
             sorted.Add(30);
             sorted.Add(10);
             sorted.Add(20);
@@ -73,21 +73,21 @@ namespace Tutorial.GenericCollectionsTour
             delete[] sortedArray;
 
             // Dictionary<TKey,TValue> -- tabla hash clave/valor; tambien requiere HashFunc<TKey>.
-            Dictionary<int, string> ages = new Dictionary<int, string>(intHash);
+            raii Dictionary<int, string> ages = new Dictionary<int, string>(intHash);
             raii string aliceName = String.Copy("Alice");
             ages.Add(1, move(aliceName));
             bool hasKey1 = ages.ContainsKey(1); // true
 
             // SortedDictionary<TKey,TValue> -- como Dictionary, pero recorrible en orden de
             // clave; no necesita HashFunc (usa comparacion natural).
-            SortedDictionary<int, int> scoreByRank = new SortedDictionary<int, int>();
+            raii SortedDictionary<int, int> scoreByRank = new SortedDictionary<int, int>();
             scoreByRank.Add(2, 200);
             scoreByRank.Add(1, 100);
             int rankOneScore = scoreByRank[1]; // 100
 
             // SortedList<TKey,TValue> -- almacenamiento por arreglos paralelos ordenados por
             // clave (mas eficiente en memoria que SortedDictionary para colecciones chicas).
-            SortedList<int, int> sortedPairs = new SortedList<int, int>();
+            raii SortedList<int, int> sortedPairs = new SortedList<int, int>();
             sortedPairs.Add(3, 300);
             sortedPairs.Add(1, 100);
             sortedPairs.Add(2, 200);
@@ -96,19 +96,12 @@ namespace Tutorial.GenericCollectionsTour
             // PriorityQueue<TElement,TPriority> -- binary min-heap; Dequeue/Peek siempre dan el
             // elemento de MENOR prioridad numerica primero (ver tutorial_23 para un uso real:
             // codificacion de Huffman).
-            PriorityQueue<int, int> tasks = new PriorityQueue<int, int>();
+            raii PriorityQueue<int, int> tasks = new PriorityQueue<int, int>();
             tasks.Enqueue(100, 5); // elemento 100, prioridad 5
             tasks.Enqueue(200, 1); // elemento 200, prioridad 1 -- la mas urgente
             tasks.Enqueue(300, 3);
             int mostUrgent = tasks.Dequeue(); // 200
 
-            delete chain;
-            delete unique;
-            delete sorted;
-            delete ages;
-            delete scoreByRank;
-            delete sortedPairs;
-            delete tasks;
 
             raii string label = String.Copy("list/queue/stack/chain = ");
             raii string sep = String.Copy(" / ");

@@ -167,7 +167,7 @@ class Program
         // Nadie mas toca este Monitor concurrentemente: un timeout corto sobre una condicion que
         // nunca se vuelve verdadera SIEMPRE debe expirar (false), nunca bloquear para siempre.
 
-        Monitor soloMonitor = new Monitor();
+        raii Monitor soloMonitor = new Monitor();
         soloMonitor.Enter();
         bool waited = soloMonitor.Wait(50);
         soloMonitor.Exit();
@@ -179,7 +179,7 @@ class Program
 
         // ==== Seccion 3: Pulse()/PulseAll() son no-ops seguros si nadie esta esperando =========
 
-        Monitor idleMonitor = new Monitor();
+        raii Monitor idleMonitor = new Monitor();
         idleMonitor.Enter();
         idleMonitor.Pulse();
         idleMonitor.PulseAll();

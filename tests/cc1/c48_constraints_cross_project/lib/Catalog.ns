@@ -41,7 +41,7 @@ namespace ConstraintLibrary
     {
         public int Read(T value)
         {
-            Reader<T> reader = new Reader<T>();
+            raii Reader<T> reader = new Reader<T>();
             return reader.Read(value);
         }
     }

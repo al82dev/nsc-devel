@@ -182,6 +182,11 @@ bool OopLlvmImplementation::lowerStructuredExit(
             // would create invalid IR and a fictitious value.
             if (terminated()) return true;
         }
+        // EN: Freeze 3.0 C-02: a MoveNext that returns has finished; marking it keeps a later drop
+        //     from unwinding it a second time. An error state (-2) is kept.
+        // ES: Congelamiento 3.0 C-02: un MoveNext que regresa ha terminado; marcarlo evita que un
+        //     drop posterior lo desenrede otra vez. Un estado de error (-2) se conserva.
+        if (isReturn && !markCoroutineFinished(error)) return false;
         if (isBreak && !node->children.empty())
         {
             if (node->children.size() != 1 || node->children.front() == nullptr)
@@ -212,7 +217,8 @@ bool OopLlvmImplementation::lowerStructuredExit(
         // current exception, and clearing afterwards would wipe that one instead of this one.
         if (structuredExitLeavesCatchBody(isReturn, targetLoopIndex))
         {
-            emitCatchBodyExceptionClear();
+            if (!emitCatchBodyExceptionClear(isReturn, targetLoopIndex, error)) return false;
+            if (terminated()) return true;
         }
 
         if (!complexExit)
@@ -282,6 +288,8 @@ bool OopLlvmImplementation::lowerExceptionalTransfer(
         const frontend::ProjectOopMirNode* node,
         std::string& error)
 {
+        if (!emitCatchOwnershipOnThrow(exception, error)) return false;
+        if (terminated()) return true;
         LLVMBasicBlockRef finalTarget = nullptr;
         bool targetIsLocalToCurrentFunclet = false;
         if (node->exceptionTargetRegionOrdinal.has_value())

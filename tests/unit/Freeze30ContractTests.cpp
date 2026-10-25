@@ -105,7 +105,7 @@ void expectRun(
 
 /// EN: `source` must be rejected and the diagnostic must contain `fragment`.
 /// ES: `source` debe rechazarse y el diagnostico debe contener `fragment`.
-[[maybe_unused]] void expectReject(
+void expectReject(
     TestContext& tests,
     const std::filesystem::path& root,
     std::string_view name,
@@ -244,6 +244,592 @@ class Program
 }
 }
 
+/// EN: C-01. A `new` that reaches no owner is a compile error: a local without raii/owned
+///     (declared with a type or with var, or assigned later), a discarded expression, and a
+///     throw operand that is a borrow or a raii owner without move.
+/// ES: C-01. Un `new` que no llega a ningun dueno es error de compilacion: un local sin
+///     raii/owned (con tipo o con var, o asignado despues), una expresion descartada y un operando
+///     de throw que es un prestamo o un owner raii sin move.
+void testLostOwnershipRejected(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string_view box = "class Box { public int V; }\n";
+    const std::string lost = "reaches no owner";
+    expectReject(tests, root, "C01TypedLocal", std::string(box) +
+        "class Program { public static int Main() { Box b = new Box(); return b.V; } }\n", lost);
+    expectReject(tests, root, "C01VarLocal", std::string(box) +
+        "class Program { public static int Main() { var b = new Box(); return b.V; } }\n", lost);
+    expectReject(tests, root, "C01Assigned", std::string(box) +
+        "class Program { public static int Main() { Box b = null; b = new Box(); return 0; } }\n",
+        lost);
+    expectReject(tests, root, "C01Discarded", std::string(box) +
+        "class Program { public static int Main() { new Box(); return 0; } }\n", lost);
+    const std::string_view boom = "using NativeSharp.Core;\nclass Boom : Exception { }\n";
+    const std::string thrown = "throw hands the exception object";
+    expectReject(tests, root, "C01ThrowRaii", std::string(boom) +
+        "class Program { public static int Main() { raii Boom b = new Boom(); throw b; } }\n",
+        thrown);
+    expectReject(tests, root, "C01ThrowBorrow", std::string(boom) +
+        "class Program { public static void Fail(Boom given) { throw given; }\n"
+        "public static int Main() { return 0; } }\n", thrown);
+}
+
+/// EN: C-01. Every owning form compiles and destroys its object exactly once: raii and owned
+///     locals, an owned return, an owned parameter, an owned field, a user operator and
+///     conversion with an owned return, and an owning `using` (Dispose, then the destructor).
+/// ES: C-01. Cada forma con dueno compila y destruye su objeto exactamente una vez: locales raii
+///     y owned, un retorno owned, un parametro owned, un campo owned, un operador y una
+///     conversion de usuario con retorno owned, y un `using` dueno (Dispose y luego destructor).
+void testOwningFormsAccepted(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C01OwningForms", R"ns(
+using NativeSharp.Core;
+
+class Res : IDisposable
+{
+    public static int Live = 0;
+    public static int Disposed = 0;
+    public int X;
+    public Res(int x) { X = x; Live = Live + 1; }
+    ~Res() { Live = Live - 1; }
+    public void Dispose() { Disposed = Disposed + 1; }
+    public static owned Res operator +(Res left, Res right) { return new Res(left.X + right.X); }
+    public static explicit operator owned Res(int value) { return new Res(value); }
+}
+
+class Holder
+{
+    public owned Res Item;
+    public Holder(owned Res item) { Item = move(item); }
+}
+
+class Program
+{
+    public static owned Res Make() { return new Res(1); }
+    public static int Take(owned Res r) { return r.X; }
+
+    public static int Scope(bool early)
+    {
+        using (Res r = new Res(3))
+        {
+            if (early) { return 1; }
+        }
+        return 2;
+    }
+
+    public static int Main()
+    {
+        int sum = 0;
+        {
+            raii Res a = new Res(1);
+            owned Res b = new Res(2);
+            raii Res c = Make();
+            raii Holder h = new Holder(new Res(4));
+            raii Res added = a + b;
+            raii Res cast = (Res)5;
+            sum = added.X + cast.X + c.X + h.Item.X;
+        }
+        sum = sum + Take(new Res(6));
+        Scope(true);
+        Scope(false);
+        if (Res.Disposed != 2) { return 100 + Res.Disposed; }
+        if (Res.Live != 0) { return 200 + Res.Live; }
+        return sum;
+    }
+}
+)ns", 3 + 5 + 1 + 4 + 6);
+}
+
+/// EN: C-01. The catch owns the exception it handles and destroys it once: on normal completion,
+///     on `break`/`continue`/`return` out of the body, and when the body throws a new exception.
+///     A rethrow (`throw;` or `throw e;`) hands it over, also to a catch nested in the same body.
+/// ES: C-01. El catch es dueno de la excepcion que maneja y la destruye una vez: al terminar
+///     normal, con `break`/`continue`/`return` fuera del cuerpo y cuando el cuerpo lanza una
+///     excepcion nueva. Un rethrow (`throw;` o `throw e;`) la entrega, tambien a un catch anidado.
+void testCatchOwnsException(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C01CatchOwnership", R"ns(
+using NativeSharp.Core;
+
+class Boom : Exception
+{
+    public static int Destroyed = 0;
+    public Boom(string message) : base(message) { }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+
+class Program
+{
+    public static void Fail() { throw new Boom("bad"); }
+
+    public static void FailOwned()
+    {
+        raii Boom problem = new Boom("owned");
+        throw move(problem);
+    }
+
+    public static void Middle()
+    {
+        try { Fail(); }
+        catch (Boom b) { throw; }
+    }
+
+    public static void Again()
+    {
+        try { Fail(); }
+        catch (Boom b) { throw b; }
+    }
+
+    public static void Wrap()
+    {
+        try { Fail(); }
+        catch (Boom b) { throw new Boom("wrapped"); }
+    }
+
+    public static int Inner()
+    {
+        int seen = 0;
+        try { Fail(); }
+        catch (Boom b)
+        {
+            try { throw; }
+            catch (Boom c) { seen = 1; }
+        }
+        return seen;
+    }
+
+    public static int Leave()
+    {
+        for (int i = 0; i < 3; i = i + 1)
+        {
+            try { Fail(); }
+            catch (Boom b) { if (i == 1) break; continue; }
+        }
+        try { Fail(); }
+        catch (Boom b) { return Boom.Destroyed; }
+        return 0;
+    }
+
+    public static int Main()
+    {
+        try { FailOwned(); }
+        catch (Boom b) { if (Boom.Destroyed != 0) { return 101; } }
+        if (Boom.Destroyed != 1) { return 102; }
+        try { Middle(); }
+        catch (Boom b) { }
+        if (Boom.Destroyed != 2) { return 103; }
+        try { Again(); }
+        catch (Boom b) { }
+        if (Boom.Destroyed != 3) { return 104; }
+        if (Inner() != 1 || Boom.Destroyed != 4) { return 105; }
+        try { Wrap(); }
+        catch (Boom b) { if (Boom.Destroyed != 5) { return 106; } }
+        if (Boom.Destroyed != 6) { return 107; }
+        if (Leave() != 8 || Boom.Destroyed != 9) { return 108; }
+        return 0;
+    }
+}
+)ns", 0);
+}
+
+/// EN: C-02. A synchronous await polls its future once, so a producer that can suspend is a
+///     compile error: directly (`yield;`), transitively (it awaits one that suspends) or through
+///     a future of unknown origin (a local that is reassigned).
+/// ES: C-02. Un await sincrono hace un solo poll, asi que un productor que puede suspenderse es
+///     error de compilacion: directo (`yield;`), transitivo (espera a uno que se suspende) o por
+///     un future de origen desconocido (un local reasignado).
+void testSynchronousAwaitRejected(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string_view producer =
+        "    public static async int Producer() { yield; return 5; }\n";
+    const std::string suspends = "synchronous await of a producer that can suspend";
+    expectReject(tests, root, "C02Direct", "class Program\n{\n" + std::string(producer) +
+        "    public static int Main() { return await Producer(); }\n}\n", suspends);
+    expectReject(tests, root, "C02Transitive", "class Program\n{\n" + std::string(producer) +
+        "    public static async int Middle() { int value = await Producer(); return value + 1; }\n"
+        "    public static int Main() { return await Middle(); }\n}\n", suspends);
+    expectReject(tests, root, "C02UnknownOrigin", "class Program\n{\n" + std::string(producer) +
+        "    public static async int Quick() { return 1; }\n"
+        "    public static int Main()\n    {\n        Future<int> later = Quick();\n"
+        "        later = Producer();\n        return await later;\n    }\n}\n", suspends);
+}
+
+/// EN: C-02. A synchronous await of producers that complete without suspending still works,
+///     through a direct call, a chain of awaits and a local initialized by the call.
+/// ES: C-02. El await sincrono de productores que terminan sin suspenderse sigue funcionando:
+///     por llamada directa, por una cadena de awaits y por un local inicializado con la llamada.
+void testSynchronousAwaitAccepted(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C02SynchronousProducers", R"ns(
+class Program
+{
+    public static async int Inner() { return 5; }
+
+    public static async int Read()
+    {
+        int value = await Inner();
+        return value + 1;
+    }
+
+    public static int Main()
+    {
+        Future<int> direct = Inner();
+        int first = await direct;
+        int second = await Read();
+        return first * 10 + second;
+    }
+}
+)ns", 56);
+}
+
+/// EN: C-02. `static async int Main()` is an entry point and drives a suspending producer to
+///     completion, also through Future<void> and through a child holding a `ref` to a local.
+/// ES: C-02. `static async int Main()` es punto de entrada y lleva a su fin a un productor que
+///     se suspende, tambien por Future<void> y por un hijo que guarda un `ref` a un local.
+void testAsyncMainEntryPoint(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C02AsyncMain", R"ns(
+class Program
+{
+    public static int Hits;
+
+    public static async int Producer()
+    {
+        yield;
+        return 5;
+    }
+
+    public static async void Tick()
+    {
+        yield;
+        Hits = Hits + 1;
+    }
+
+    public static async void Bump(ref int value)
+    {
+        yield;
+        value = value + 1;
+    }
+
+    public static async int Main()
+    {
+        int value = await Producer();
+        Future<void> tick = Tick();
+        await tick;
+        int counter = 40;
+        Future<void> bump = Bump(ref counter);
+        await bump;
+        return value * 100 + Hits * 10 + counter - 41;
+    }
+}
+)ns", 510);
+}
+
+/// EN: C-02. A resumed poll continues where it suspended: code before the suspension does not run
+///     again, two awaits keep separate state and storage, a parameter read inside a loop
+///     survives every suspension, and awaits nest and repeat inside loops.
+/// ES: C-02. Un poll reanudado sigue donde se suspendio: el codigo previo no se repite, dos await
+///     guardan estado y almacenamiento propios, un parametro leido en un ciclo sobrevive cada
+///     suspension, y los await se anidan y se repiten dentro de ciclos.
+void testCoroutineResume(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C02ResumeTwoAwaits", R"ns(
+class Program
+{
+    public static int Hits;
+    public static async int A()
+    {
+        yield;
+        return 1;
+    }
+    public static async int B()
+    {
+        yield;
+        yield;
+        return 2;
+    }
+    public static async int Main()
+    {
+        Hits = Hits + 1;
+        int v = await A() * 10 + await B();
+        return Hits * 100 + v;
+    }
+}
+)ns", 112);
+    expectRun(tests, root, "C02ResumeParameterLoop", R"ns(
+class Program
+{
+    public static async int Rep(int n)
+    {
+        int t = 0;
+        while (t < n)
+        {
+            yield;
+            t = t + 1;
+        }
+        return t * 10 + n;
+    }
+    public static async int Main()
+    {
+        return await Rep(3);
+    }
+}
+)ns", 33);
+    expectRun(tests, root, "C02ResumeNested", R"ns(
+class Program
+{
+    public static async int Leaf(int x)
+    {
+        yield;
+        return x * 2;
+    }
+    public static async int Mid(int x)
+    {
+        int a = await Leaf(x);
+        int b = await Leaf(a);
+        return a + b;
+    }
+    public static async int Main()
+    {
+        int total = 0;
+        for (int i = 1; i <= 2; i = i + 1) { total = total + await Mid(i); }
+        return total;
+    }
+}
+)ns", 18);
+    expectRun(tests, root, "C02ResumeLoopAwait", R"ns(
+class Program
+{
+    public static async int One(int i)
+    {
+        yield;
+        return i + 1;
+    }
+    public static async int Sum()
+    {
+        int s = 0;
+        for (int i = 0; i < 3; i = i + 1)
+        {
+            s = s + await One(i);
+        }
+        return s;
+    }
+    public static async int Main()
+    {
+        return await Sum();
+    }
+}
+)ns", 6);
+}
+
+/// EN: C-02. A local of a coroutine lives in its frame: a raii local is destroyed once after the
+///     resume, and a borrowed view of it stays valid across the suspension.
+/// ES: C-02. Un local de una corrutina vive en su frame: un local raii se destruye una vez tras
+///     la reanudacion, y una vista prestada de el sigue valida a traves de la suspension.
+void testCoroutineFrameLocals(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C02FrameRaii", R"ns(
+class Box
+{
+    public static int Drops;
+    public Box() { }
+    ~Box() { Drops = Drops + 1; }
+}
+class Program
+{
+    public static async int Read()
+    {
+        raii Box box = new Box();
+        yield;
+        return 42;
+    }
+
+    public static async int Main()
+    {
+        int result = await Read();
+        return Box.Drops * 100 + result;
+    }
+}
+)ns", 142);
+    expectRun(tests, root, "C02FrameBorrow", R"ns(
+class Box { public int Value; public Box() { Value = 10; } }
+class Program
+{
+    public static async int Read()
+    {
+        raii Box box = new Box();
+        borrowed Box view = box;
+        yield;
+        return view.Value;
+    }
+
+    public static async int Main()
+    {
+        return await Read();
+    }
+}
+)ns", 10);
+}
+
+/// EN: C-02. A generator resumes after its yield: the prefix runs once and a yield inside a loop
+///     ends the iteration.
+/// ES: C-02. Un generador reanuda tras su yield: el prefijo corre una vez y un yield dentro de un
+///     ciclo termina la iteracion.
+void testGeneratorResume(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C02GeneratorPrefix", R"ns(
+class Program
+{
+    public static int Log;
+    public static Iterator<int> Gen()
+    {
+        Log = Log + 1;
+        yield return 1;
+        Log = Log + 10;
+        yield return 2;
+        Log = Log + 100;
+    }
+    public static int Main()
+    {
+        int sum = 0;
+        foreach (var x in Gen()) { sum = sum * 10 + x; }
+        return sum * 1000 + Log;
+    }
+}
+)ns", 12111);
+    expectRun(tests, root, "C02GeneratorLoop", R"ns(
+class Program
+{
+    public static int Log;
+    public static Iterator<int> Gen()
+    {
+        Log = Log + 1;
+        for (int i = 1; i < 4; i = i + 1)
+        {
+            yield return i;
+        }
+    }
+    public static int Main()
+    {
+        int sum = 0;
+        foreach (var x in Gen()) { sum = sum * 10 + x; }
+        return sum * 10 + Log;
+    }
+}
+)ns", 1231);
+}
+
+/// EN: C-02. An abandoned generator runs the finally blocks and destructions active at its yield
+///     exactly once; one never started runs none; a natural end or `yield break` runs them once.
+/// ES: C-02. Un generador abandonado corre una sola vez los finally y destrucciones activos en su
+///     yield; uno que nunca empezo no corre ninguno; un fin natural o `yield break` los corre una
+///     vez.
+void testGeneratorEarlyStop(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C02GeneratorBreak", R"ns(
+class Program
+{
+    public static int Fin;
+    public static Iterator<int> Gen()
+    {
+        try
+        {
+            for (int i = 1; i < 10; i = i + 1) { yield return i; }
+        }
+        finally { Fin = Fin + 1; }
+    }
+    public static int Main()
+    {
+        int sum = 0;
+        foreach (var x in Gen()) { if (x == 4) break; sum = sum + x; }
+        return sum * 10 + Fin;
+    }
+}
+)ns", 61);
+    expectRun(tests, root, "C02GeneratorNotStarted", R"ns(
+class Program
+{
+    public static int Fin;
+    public static Iterator<int> Gen()
+    {
+        try { yield return 1; }
+        finally { Fin = Fin + 1; }
+    }
+    public static int Main()
+    {
+        Iterator<int> it = Gen();
+        it.Drop();
+        return Fin + 5;
+    }
+}
+)ns", 5);
+    expectRun(tests, root, "C02GeneratorNatural", R"ns(
+class Program
+{
+    public static int Fin;
+    public static Iterator<int> Gen()
+    {
+        try
+        {
+            for (int i = 1; i < 4; i = i + 1) { yield return i; }
+        }
+        finally { Fin = Fin + 1; }
+    }
+    public static int Main()
+    {
+        int sum = 0;
+        foreach (var x in Gen()) { sum = sum + x; }
+        return sum * 10 + Fin;
+    }
+}
+)ns", 61);
+    expectRun(tests, root, "C02GeneratorRaii", R"ns(
+class Res
+{
+    public static int Drops;
+    public Res() { }
+    ~Res() { Drops = Drops + 1; }
+}
+class Program
+{
+    public static Iterator<int> Gen()
+    {
+        raii Res r = new Res();
+        yield return 1;
+        yield return 2;
+    }
+    public static int Main()
+    {
+        int seen = 0;
+        foreach (var x in Gen()) { seen = seen + x; break; }
+        int after = Res.Drops;
+        foreach (var y in Gen()) { seen = seen + y; }
+        return seen * 100 + after * 10 + Res.Drops;
+    }
+}
+)ns", 412);
+    expectRun(tests, root, "C02GeneratorYieldBreak", R"ns(
+class Program
+{
+    public static int Fin;
+    public static Iterator<int> Gen()
+    {
+        try
+        {
+            yield return 1;
+            yield break;
+        }
+        finally { Fin = Fin + 1; }
+    }
+    public static int Main()
+    {
+        int sum = 0;
+        foreach (var x in Gen()) { sum = sum + x; }
+        return sum * 10 + Fin;
+    }
+}
+)ns", 11);
+}
+
 int main()
 {
     TestContext tests;
@@ -254,5 +840,15 @@ int main()
 
     testAllocatorAlignment(tests, root);
     testCoreDisposable(tests, root);
+    testLostOwnershipRejected(tests, root);
+    testOwningFormsAccepted(tests, root);
+    testCatchOwnsException(tests, root);
+    testSynchronousAwaitRejected(tests, root);
+    testSynchronousAwaitAccepted(tests, root);
+    testAsyncMainEntryPoint(tests, root);
+    testCoroutineResume(tests, root);
+    testCoroutineFrameLocals(tests, root);
+    testGeneratorResume(tests, root);
+    testGeneratorEarlyStop(tests, root);
     return tests.resultKeeping(root);
 }

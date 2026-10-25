@@ -66,7 +66,7 @@ namespace Tutorial.PropiedadesIndexadoresOperadores
 
         // Operadores sobrecargados -- "+" entre dos Vector2 produce un Vector2 nuevo; "=="/"!="
         // comparan por valor (componente a componente), no por identidad de objeto.
-        public static Vector2 operator +(Vector2 left, Vector2 right)
+        public static owned Vector2 operator +(Vector2 left, Vector2 right)
         {
             return new Vector2(left.X + right.X, left.Y + right.Y);
         }
@@ -97,8 +97,13 @@ namespace Tutorial.PropiedadesIndexadoresOperadores
             // retorno -- por eso NO se puede escribir `raii Vector2 sum = a + b;` todavia (falla
             // con "RAII ownership cannot be copied or borrowed"). Es un hueco real, no una
             // limitacion inventada para este ejemplo.
-            Vector2 a = new Vector2(3, 4);
-            Vector2 b = new Vector2(1, 2);
+            //
+            // Actualizacion (congelamiento 3.0, C-01): el hueco se cerro. Un `new` que no llega a
+            // ningun dueno es ahora un error de compilacion, y el resultado de un operador que
+            // declara `owned` SI transfiere la propiedad. Por eso todos estos locales son `raii`
+            // y `operator +` declara `owned Vector2`.
+            raii Vector2 a = new Vector2(3, 4);
+            raii Vector2 b = new Vector2(1, 2);
 
             int lengthA = a.ManhattanLength; // 7, se lee como campo, corre como metodo
 
@@ -107,9 +112,9 @@ namespace Tutorial.PropiedadesIndexadoresOperadores
             a[1] = 40;                  // muta Y a traves del indexador
             int mutatedY = a.Y;         // 40
 
-            Vector2 sum = a + b; // operator+ -- (3+1, 40+2) = (4, 42)
+            raii Vector2 sum = a + b; // operator+ -- (3+1, 40+2) = (4, 42)
 
-            Vector2 same = new Vector2(4, 42);
+            raii Vector2 same = new Vector2(4, 42);
             bool equalsSum = sum == same;   // operator==, por valor -> true
             bool differsFromA = sum != a;   // operator!=, por valor -> true (Y distinto: 42 vs 40)
 

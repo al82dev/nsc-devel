@@ -1574,12 +1574,19 @@ bool ProjectOopHirModel::appendRegularCoroutineFunctions(
             drop = std::move(split.second);
         }
     }
+    std::unique_ptr<ProjectOopHirFunction> entry;
+    if (poll && isAsyncEntryMain(function))
+    {
+        entry = createAsyncEntryFunction(function, error);
+        if (entry == nullptr) return false;
+    }
     if (!functionByMember_.empty())
         functionByMember_[function.memberOrdinal] = functions_.size();
     functions_.push_back(std::move(function));
     if (poll) functions_.push_back(std::move(*poll));
     if (moveNext) functions_.push_back(std::move(*moveNext));
     if (drop) functions_.push_back(std::move(*drop));
+    if (entry) functions_.push_back(std::move(*entry));
     return true;
 }
 

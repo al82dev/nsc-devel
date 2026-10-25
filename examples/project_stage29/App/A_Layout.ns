@@ -23,7 +23,7 @@ public partial class Payload
         this.Count = 0;
     }
 
-    public Payload Make()
+    public owned Payload Make()
     {
         return new Payload();
     }

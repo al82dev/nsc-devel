@@ -319,12 +319,12 @@ namespace BoxAddClear
         {
             raii Payload p1 = new Payload();
             raii Payload p2 = new Payload();
-            Box<Payload> refBox = new Box<Payload>(4);
+            raii Box<Payload> refBox = new Box<Payload>(4);
             refBox.Add(move(p1));
             refBox.Add(move(p2));
             refBox.Clear();
 
-            Box<int> valueBox = new Box<int>(4);
+            raii Box<int> valueBox = new Box<int>(4);
             valueBox.Add(1);
             valueBox.Add(2);
             valueBox.Add(3);
@@ -397,11 +397,11 @@ namespace MoveArrayElement
         {
             raii Payload p = new Payload();
             p.Value = 11;
-            RefSlot<Payload> refSlot = new RefSlot<Payload>(2);
+            raii RefSlot<Payload> refSlot = new RefSlot<Payload>(2);
             refSlot.Put(move(p));
             raii Payload taken = refSlot.Take();
 
-            ValueSlot<int> valueSlot = new ValueSlot<int>(2);
+            raii ValueSlot<int> valueSlot = new ValueSlot<int>(2);
             valueSlot.Put(31);
             int takenValue = valueSlot.Take();
 
@@ -451,7 +451,7 @@ namespace MoveRejectsIndexer
     {
         public static int Main()
         {
-            Indexed ix = new Indexed();
+            raii Indexed ix = new Indexed();
             raii Payload taken = move(ix[0]);
             return 0;
         }
@@ -578,7 +578,7 @@ namespace CrossProjectAppB
         {
             // Fix 6: Predicate<int> -- a cross-project generic delegate closed over a builtin.
             Predicate<int> intPredicate = IsPositive;
-            Holder<int> intHolder = new Holder<int>();
+            raii Holder<int> intHolder = new Holder<int>();
             intHolder.Put(5);
             bool intMatch = intHolder.Matches(intPredicate);
 
@@ -588,7 +588,7 @@ namespace CrossProjectAppB
             raii Payload p = new Payload();
             p.Value = 9;
             Predicate<Payload> payloadPredicate = PayloadIsPositive;
-            Holder<Payload> payloadHolder = new Holder<Payload>();
+            raii Holder<Payload> payloadHolder = new Holder<Payload>();
             payloadHolder.Put(move(p));
             bool payloadMatch = payloadHolder.Matches(payloadPredicate);
 
@@ -802,10 +802,10 @@ namespace Limit023.Game
     {
         public static int Main()
         {
-            Dictionary<string, Texture2D> textures = new Dictionary<string, Texture2D>();
-            Dictionary<string, Song> songs = new Dictionary<string, Song>();
-            Dictionary<string, IAsset> assets = new Dictionary<string, IAsset>();
-            Dictionary<string, Programs.ShaderProgram> shaders =
+            raii Dictionary<string, Texture2D> textures = new Dictionary<string, Texture2D>();
+            raii Dictionary<string, Song> songs = new Dictionary<string, Song>();
+            raii Dictionary<string, IAsset> assets = new Dictionary<string, IAsset>();
+            raii Dictionary<string, Programs.ShaderProgram> shaders =
                 new Dictionary<string, Programs.ShaderProgram>();
             return 42;
         }
@@ -870,7 +870,7 @@ namespace Limit011Lib
         // original consumer context for its substituted constraint argument.
         public static int Choose<T>(int value) where T : INever
         {
-            Reader<T> ignored = new Reader<T>();
+            raii Reader<T> ignored = new Reader<T>();
             return value;
         }
 
@@ -889,7 +889,7 @@ namespace Limit011Lib
     {
         public int Read(T value)
         {
-            Reader<T> nested = new Reader<T>();
+            raii Reader<T> nested = new Reader<T>();
             return nested.Read(value);
         }
     }
@@ -913,7 +913,7 @@ namespace Limit011Game
         public static int Main()
         {
             raii Payload payload = new Payload();
-            Envelope<Payload> envelope = new Envelope<Payload>();
+            raii Envelope<Payload> envelope = new Envelope<Payload>();
             if (Catalog.Choose<Payload>(payload) != 42) { return 1; }
             return Catalog.Read<Payload>(payload) + envelope.Read(payload) - 42;
         }
@@ -1203,12 +1203,12 @@ namespace MoveIntoArrayElementTarget
         {
             raii Payload p1 = new Payload();
             raii Payload p2 = new Payload();
-            Grower<Payload> refGrower = new Grower<Payload>(2);
+            raii Grower<Payload> refGrower = new Grower<Payload>(2);
             refGrower.Add(move(p1));
             refGrower.Add(move(p2));
             refGrower.Grow(8);
 
-            Grower<int> valueGrower = new Grower<int>(2);
+            raii Grower<int> valueGrower = new Grower<int>(2);
             valueGrower.Add(1);
             valueGrower.Add(2);
             valueGrower.Grow(8);
@@ -1254,10 +1254,10 @@ namespace DefaultValueExpression
     {
         public static int Main()
         {
-            Box<Payload> refBox = new Box<Payload>();
+            raii Box<Payload> refBox = new Box<Payload>();
             Payload refDefault = refBox.Default();
 
-            Box<int> valueBox = new Box<int>();
+            raii Box<int> valueBox = new Box<int>();
             int valueDefault = valueBox.Default();
 
             if (refDefault == null && valueDefault == 0) { return 1; }
@@ -1363,10 +1363,10 @@ namespace MoveOwnedParameterAsCallArgument
         public static int Main()
         {
             raii Payload p = new Payload();
-            Holder<Payload> refHolder = new Holder<Payload>();
+            raii Holder<Payload> refHolder = new Holder<Payload>();
             raii Box<Payload> refBox = refHolder.Wrap(move(p));
 
-            Holder<int> valueHolder = new Holder<int>();
+            raii Holder<int> valueHolder = new Holder<int>();
             raii Box<int> valueBox = valueHolder.Wrap(42);
 
             if (refBox != null && valueBox != null) { return 1; }
@@ -1413,7 +1413,7 @@ namespace DeleteBoundsCheck
     {
         public static int Main()
         {
-            IntBox<int> box = new IntBox<int>(4);
+            raii IntBox<int> box = new IntBox<int>(4);
             box.DeleteAt(0);
             return 0;
         }

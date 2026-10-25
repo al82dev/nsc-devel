@@ -94,7 +94,7 @@ class Program
         // Semaforo con contador inicial 0 -- nadie lo va a liberar, un timeout corto SIEMPRE debe
         // expirar (false), nunca bloquear para siempre.
 
-        Semaphore neverSignaled = new Semaphore(0, 1);
+        raii Semaphore neverSignaled = new Semaphore(0, 1);
         bool acquired = neverSignaled.Wait(50);
         if (acquired) { return 2; }
 
@@ -176,7 +176,7 @@ class Program
 
         // ==== Seccion 7: Event.Reset() explicito sobre un evento manual-reset ==================
 
-        Event resetTarget = new Event(true, false);
+        raii Event resetTarget = new Event(true, false);
         resetTarget.Set();
         bool firstWait = resetTarget.Wait(-1);
         if (!firstWait) { return 10; }

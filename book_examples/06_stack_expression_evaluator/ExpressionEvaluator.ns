@@ -47,9 +47,9 @@ namespace NativeSharp.BookExamples.StackEvaluator
 
         private void Fail(string message)
         {
-            ExpressionException problem = new ExpressionException();
+            raii ExpressionException problem = new ExpressionException();
             problem.Message = String.Copy(message);
-            throw problem;
+            throw move(problem);
         }
 
         private void ApplyTopOperator()

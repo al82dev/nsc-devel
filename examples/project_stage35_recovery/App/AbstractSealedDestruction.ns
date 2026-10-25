@@ -48,9 +48,8 @@ public class Harness
 {
     public static int Run()
     {
-        Device device = new Sensor(7, 35);
+        raii Device device = new Sensor(7, 35);
         int value = device.Read();
-        delete device;
         return value;
     }
 }

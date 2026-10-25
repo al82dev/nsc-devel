@@ -135,8 +135,8 @@ public class Program
 {
     public static int Main()
     {
-        Number number = new Number(40);
-        dyn IScore score = number;
+        raii Number number = new Number(40);
+        borrowed dyn IScore score = number;
         return score.Bonus();
     }
 }
@@ -166,8 +166,8 @@ class Program
 {
     public static int Main()
     {
-        Number left = new Number(20);
-        Number right = new Number(22);
+        raii Number left = new Number(20);
+        raii Number right = new Number(22);
         Number sum = left + right;
         return sum.Value + Number.Zero;
     }
@@ -220,8 +220,8 @@ class Program
 {
     public static int Main()
     {
-        Item item = new Item();
-        dyn ICombined value = item;
+        raii Item item = new Item();
+        borrowed dyn ICombined value = item;
         return value.Value();
     }
 }
@@ -239,8 +239,8 @@ class Program
 {
     public static int Main()
     {
-        Item item = new Item();
-        dyn ICombined value = item;
+        raii Item item = new Item();
+        borrowed dyn ICombined value = item;
         return value.Value();
     }
 }
@@ -266,10 +266,10 @@ class Program
 {
     public static int Main()
     {
-        TraitItem traitItem = new TraitItem();
-        dyn ITraitDefaults traitView = traitItem;
-        InterfaceItem interfaceItem = new InterfaceItem();
-        IInterfaceDefaults interfaceView = interfaceItem;
+        raii TraitItem traitItem = new TraitItem();
+        borrowed dyn ITraitDefaults traitView = traitItem;
+        raii InterfaceItem interfaceItem = new InterfaceItem();
+        borrowed IInterfaceDefaults interfaceView = interfaceItem;
         return traitView.Value + traitView[0] + interfaceView.Value + interfaceView[0];
     }
 }
@@ -373,8 +373,8 @@ class Program
 {
     public static int Main()
     {
-        Number number = new Number(40);
-        dyn IScore score = number;
+        raii Number number = new Number(40);
+        borrowed dyn IScore score = number;
         return score.Bonus() + Number.Zero;
     }
 }

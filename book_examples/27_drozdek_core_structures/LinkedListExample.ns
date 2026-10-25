@@ -37,28 +37,29 @@ namespace NativeSharp.BookExamples.DrozdekCore
 
         public void AddToHead(int value)
         {
-            IntListNode node = new IntListNode(value);
-            node.Next = head;
-            head = node;
+            // Congelamiento 3.0 (C-01): el `new` va directo al campo que lo guarda; la lista es su
+            // dueno manual y lo libera con `delete` al quitarlo.
+            IntListNode oldHead = head;
+            head = new IntListNode(value);
+            head.Next = oldHead;
             if (tail == null)
             {
-                tail = node;
+                tail = head;
             }
             count = count + 1;
         }
 
         public void AddToTail(int value)
         {
-            IntListNode node = new IntListNode(value);
             if (tail == null)
             {
-                head = node;
-                tail = node;
+                head = new IntListNode(value);
+                tail = head;
             }
             else
             {
-                tail.Next = node;
-                tail = node;
+                tail.Next = new IntListNode(value);
+                tail = tail.Next;
             }
             count = count + 1;
         }

@@ -1021,6 +1021,13 @@ const ProjectOopMirFunction* ProjectOopMirModel::executableEntryPoint(
             candidate = member.kind == ClassMemberKind::Method && member.name == "Main" &&
                 member.isStatic && member.parameters.empty() &&
                 member.declaredTypeKey == "builtin:int";
+            // Freeze 3.0 C-02: `static async int Main()` enters through its synthesized
+            // `Main$entry`, never through the future constructor or the poll.
+            // Congelamiento 3.0 C-02: `static async int Main()` entra por su `Main$entry`.
+            if (!candidate && member.kind == ClassMemberKind::Method && member.name == "Main" &&
+                member.isStatic && member.parameters.empty() &&
+                function.mangledName.ends_with("$entry"))
+                candidate = true;
         }
         if (!candidate) continue;
         if (result != nullptr)

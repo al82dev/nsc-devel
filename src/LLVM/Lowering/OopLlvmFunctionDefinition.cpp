@@ -33,7 +33,11 @@ bool OopLlvmImplementation::defineFunction(const frontend::ProjectOopMirFunction
         // (offset 0) so a debugger can inspect 0/-1/1..N. Only for the poll (self = parameter 0).
         emitPollStateDebugVariable(function);
         if (!prepareFunctionCleanupState(function, error)) return false;
+        // EN: Freeze 3.0 C-02: a poll/MoveNext dispatches on its state before the body.
+        // ES: Congelamiento 3.0 C-02: un poll/MoveNext despacha sobre su estado antes del cuerpo.
+        if (!beginCoroutineDispatch(function, error)) return false;
         if (!lowerStatement(function.body.get(), error)) return false;
+        if (!finishCoroutineDispatch(error)) return false;
         return finishFunctionDefinition(function, error);
     }
 

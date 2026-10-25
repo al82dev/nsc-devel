@@ -195,7 +195,7 @@ class Res : IDisposable
     public Res(int initial) { value = initial; }
     ~Res() { destructions = destructions + 1; }
     public void Dispose() { disposals = disposals + 1; }
-    public void Fail() { Boom problem = new Boom(); problem.Code = 7; throw problem; }
+    public void Fail() { raii Boom problem = new Boom(); problem.Code = 7; throw move(problem); }
     public int Value() { return value; }
     public static int Destructions() { return destructions; }
     public static int Disposals() { return disposals; }
@@ -215,7 +215,7 @@ void testFinallyRunsWhenExceptionEscapes(TestContext& tests, const std::filesyst
         private static int marks;
         public static void Inner()
         {
-            try { Boom problem = new Boom(); throw problem; }
+            try { raii Boom problem = new Boom(); throw move(problem); }
             finally { marks = marks + 1; }
         }
         public static int Main()
@@ -242,7 +242,7 @@ void testFinallyRunsWhenThrowComesFromInlinedHelper(
     class Program
     {
         private static int marks;
-        public static void Thrower() { Boom problem = new Boom(); throw problem; }
+        public static void Thrower() { raii Boom problem = new Boom(); throw move(problem); }
         public static void Inner()
         {
             try { Thrower(); }
@@ -274,7 +274,7 @@ void testNestedFinallyBothRunWhenExceptionEscapes(
         {
             try
             {
-                try { Boom problem = new Boom(); throw problem; }
+                try { raii Boom problem = new Boom(); throw move(problem); }
                 finally { marks = marks + 1; }
             }
             finally { marks = marks + 10; }
@@ -304,7 +304,7 @@ void testInnerFinallyOuterCatchAndOuterFinally(
         {
             try
             {
-                try { Boom problem = new Boom(); throw problem; }
+                try { raii Boom problem = new Boom(); throw move(problem); }
                 finally { marks = marks + 1; }
             }
             catch (Boom problem) { marks = marks + 10; }
@@ -329,7 +329,7 @@ void testFinallyInsideCatchHandlerBody(TestContext& tests, const std::filesystem
         private static int marks;
         public static int Main()
         {
-            try { Boom problem = new Boom(); throw problem; }
+            try { raii Boom problem = new Boom(); throw move(problem); }
             catch (Boom problem)
             {
                 try { marks = marks + 3; }
@@ -354,8 +354,7 @@ void testUsingDisposesExactlyOnceOnThrow(TestContext& tests, const std::filesyst
     {
         public static void Inner()
         {
-            Res resource = new Res(1);
-            using (Res scoped = resource) { scoped.Fail(); }
+            using (Res scoped = new Res(1)) { scoped.Fail(); }
         }
         public static int Main()
         {
@@ -379,8 +378,7 @@ void testUsingEnclosingCatchingTryDisposesOnce(
     {
         public static void Inner()
         {
-            Res resource = new Res(1);
-            using (Res scoped = resource)
+            using (Res scoped = new Res(1))
             {
                 try { scoped.Fail(); } catch (Boom problem) { }
             }
@@ -476,14 +474,14 @@ void testThrowFromConstructorDestroysLiveRaiiOnce(
     TestContext& tests, const std::filesystem::path& root)
 {
     const std::string source = std::string(kPrelude) + R"NS(
-    class Failing { public Failing() { Boom problem = new Boom(); throw problem; } }
+    class Failing { public Failing() { raii Boom problem = new Boom(); throw move(problem); } }
 
     class Program
     {
         public static void Inner()
         {
             raii Res guard = new Res(1);
-            Failing bad = new Failing();
+            raii Failing bad = new Failing();
         }
         public static int Main()
         {
@@ -509,7 +507,7 @@ void testRaiiSurvivesRepeatedCatchInLoop(TestContext& tests, const std::filesyst
         public Account(int initial) { balance = initial; }
         public void Withdraw(int amount)
         {
-            if (amount > balance) { Boom problem = new Boom(); throw problem; }
+            if (amount > balance) { raii Boom problem = new Boom(); throw move(problem); }
             balance = balance - amount;
         }
         public int Balance() { return balance; }

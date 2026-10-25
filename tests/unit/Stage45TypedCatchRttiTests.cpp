@@ -164,7 +164,7 @@ class Runner
     {
         try
         {
-            throw problem;
+            throw new Exception();
         }
         catch (DerivedProblem derived)
         {
@@ -319,7 +319,7 @@ class Runner
 {
     public static void Run(Exception problem)
     {
-        try { throw problem; }
+        try { throw new Exception(); }
         catch (BaseProblem caught) { int handled = 1; }
     }
 }
@@ -360,8 +360,8 @@ class Runner
         {
             try
             {
-                RaisedProblem problem = new RaisedProblem();
-                throw problem;
+                raii RaisedProblem problem = new RaisedProblem();
+                throw move(problem);
             }
             catch (OtherProblem other)
             {
@@ -405,7 +405,7 @@ class Runner
 {
     public static void Run(Exception problem)
     {
-        try { throw problem; }
+        try { throw new Exception(); }
         catch (BaseProblem first) { }
         catch (DerivedProblem unreachable) { }
     }

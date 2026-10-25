@@ -21,9 +21,9 @@ namespace bugtriage
     {
         public static int Main()
         {
-            GL value = new GL();
+            raii GL value = new GL();
             value.Value = GL.Kind + 2;
-            Holder holder = new Holder(value);
+            raii Holder holder = new Holder(value);
             return holder.Read();
         }
     }

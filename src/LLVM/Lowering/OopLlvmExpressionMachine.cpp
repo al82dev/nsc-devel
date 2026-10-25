@@ -1292,6 +1292,15 @@ bool OopLlvmImplementation::lowerExpressionFrame026AwaitFuture(
             values.push_back(failValue(error, "await future requires one operand"));
             return true;
         }
+        // EN: Freeze 3.0 C-02: a suspending await lowers its operand itself, on the path that
+        //     creates the child; evaluating it here would call the producer again on every resume.
+        // ES: Congelamiento 3.0 C-02: un await que suspende baja su operando el mismo, en la ruta
+        //     que crea el hijo; evaluarlo aqui llamaria otra vez al productor en cada reanudacion.
+        if (current->integerValue == 1)
+        {
+            values.push_back(lowerAwaitExpression(current, error, nullptr));
+            return true;
+        }
         frames.push_back({current, 1, nullptr, 0});
         frames.push_back({current->children.front().get(), 0, nullptr});
         return true;

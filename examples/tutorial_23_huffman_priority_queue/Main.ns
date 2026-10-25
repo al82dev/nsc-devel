@@ -69,7 +69,7 @@ namespace Tutorial.HuffmanPriorityQueue
         public static int BuildTree(HuffmanNode[] pool, char[] symbols, int[] frequencies,
             int alphabetSize)
         {
-            PriorityQueue<int, int> queue = new PriorityQueue<int, int>();
+            raii PriorityQueue<int, int> queue = new PriorityQueue<int, int>();
             int nextIndex = 0;
 
             // Paso 1: cada simbolo entra como una hoja propia, con prioridad = su frecuencia (el
@@ -98,7 +98,6 @@ namespace Tutorial.HuffmanPriorityQueue
             }
 
             int rootIndex = queue.Dequeue(); // el ultimo sobreviviente es la raiz del arbol
-            delete queue;
             return rootIndex;
         }
 

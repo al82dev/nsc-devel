@@ -29,6 +29,7 @@
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
+#include "nativesharp/Language/IterationSemantics.h"
 #include "nativesharp/Language/MemoryModel.h"
 #include "nativesharp/Language/SumTypeSemantics.h"
 #include "nativesharp/Language/TraitSemantics.h"
@@ -44,6 +45,7 @@
 #include <limits>
 #include <ranges>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -369,6 +371,152 @@ void ProjectMethodBodyModel::verifyOutParameterAssignments(
                 member.parameters[index].range,
                 "out parameter '" + member.parameters[index].name +
                     "' is never assigned in the body of '" + member.name + "'");
+        }
+    }
+}
+
+namespace
+{
+// EN: Collects the await expressions and reports whether a bare `yield;` appears in `root`,
+//     without entering lambdas (each lambda is a callable of its own).
+// ES: Reune las expresiones await e informa si aparece un `yield;` en `root`, sin entrar en
+//     lambdas (cada lambda es un callable propio).
+void collectAwaitSites(
+    const ast::AstNode* root,
+    std::vector<const ast::AstNode*>& awaits,
+    bool& suspends)
+{
+    std::unordered_set<const ast::AstNode*> visited;
+    std::vector<const ast::AstNode*> pending = {root};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::SuspendStatement) suspends = true;
+        if (node->kind() == ast::AstNodeKind::AwaitExpression) awaits.push_back(node);
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+    }
+    std::sort(awaits.begin(), awaits.end(), [](const ast::AstNode* left, const ast::AstNode* right)
+    {
+        return left->range().begin().offset() < right->range().begin().offset();
+    });
+}
+
+// EN: The initializer of the only local named `name` in `body`, when no assignment writes it; that
+//     initializer is then the future's origin. Anything else is an unknown origin.
+// ES: El inicializador del unico local llamado `name` en `body`, si ninguna asignacion lo escribe;
+//     ese inicializador es el origen del future. Cualquier otro caso es origen desconocido.
+const ast::AstNode* uniqueLocalInitializer(const ast::AstNode* body, std::string_view name)
+{
+    const ast::AstNode* initializer = nullptr;
+    std::size_t declarations = 0;
+    std::unordered_set<const ast::AstNode*> visited;
+    std::vector<const ast::AstNode*> pending = {body};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::VariableDeclarationStatement && node->text() == name)
+        {
+            ++declarations;
+            initializer = node->first();
+        }
+        if (node->kind() == ast::AstNodeKind::AssignmentExpression && node->first() != nullptr &&
+            node->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+            node->first()->text() == name) return nullptr;
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+    }
+    return declarations == 1 ? initializer : nullptr;
+}
+}
+
+bool ProjectMethodBodyModel::awaitOperandCanSuspend(
+    const ast::AstNode* operand,
+    const ast::AstNode* callerBody,
+    std::size_t callerOrdinal,
+    std::unordered_map<std::size_t, int>& memo) const
+{
+    if (operand != nullptr && operand->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        operand = uniqueLocalInitializer(callerBody, operand->text());
+        if (operand == nullptr) return true;
+    }
+    // EN: `it.MoveNextAsync()` over a local iterator suspends only when the generator that
+    //     created `it` can suspend; the iterator's origin is its unique initializer.
+    // ES: `it.MoveNextAsync()` sobre un iterador local solo se suspende si el generador que
+    //     creo `it` puede suspenderse; el origen del iterador es su inicializador unico.
+    if (operand != nullptr && operand->kind() == ast::AstNodeKind::CallExpression &&
+        operand->first() != nullptr && operand->first()->kind() == ast::AstNodeKind::MemberExpression &&
+        operand->first()->text() == "MoveNextAsync" && operand->first()->first() != nullptr &&
+        operand->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        return awaitOperandCanSuspend(operand->first()->first(), callerBody, callerOrdinal, memo);
+    const MethodCallBinding* binding = callBinding(operand, callerOrdinal);
+    if (binding == nullptr || binding->resolution != MethodCallResolutionKind::Resolved ||
+        !binding->selectedMemberOrdinal.has_value()) return true;
+    return awaitProducerCanSuspend(*binding->selectedMemberOrdinal, memo);
+}
+
+bool ProjectMethodBodyModel::awaitProducerCanSuspend(
+    std::size_t producerOrdinal,
+    std::unordered_map<std::size_t, int>& memo) const
+{
+    const auto known = memo.find(producerOrdinal);
+    if (known != memo.end()) return known->second == 2;
+    memo[producerOrdinal] = 0;
+    const ClassMemberSymbol* producer = methodSymbol(producerOrdinal);
+    bool suspends = true;
+    if (producer != nullptr && producer->syntax != nullptr && producer->syntax->first() != nullptr &&
+        !producer->isPrecompiled &&
+        (producer->effects.contains(sema::Effect::Async) ||
+            language::asyncIteratorInnerTypeKey(producer->declaredTypeKey).has_value()) &&
+        analyzedCallableMembers_.contains(producerOrdinal))
+    {
+        std::vector<const ast::AstNode*> awaits;
+        suspends = false;
+        collectAwaitSites(producer->syntax->first(), awaits, suspends);
+        for (const ast::AstNode* await : awaits)
+        {
+            if (suspends) break;
+            suspends = awaitOperandCanSuspend(
+                await->first(), producer->syntax->first(), producerOrdinal, memo);
+        }
+    }
+    memo[producerOrdinal] = suspends ? 2 : 1;
+    return suspends;
+}
+
+void ProjectMethodBodyModel::verifySynchronousAwaits(
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    std::vector<std::size_t> callers(analyzedCallableMembers_.begin(), analyzedCallableMembers_.end());
+    std::sort(callers.begin(), callers.end());
+    std::unordered_map<std::size_t, int> memo;
+    for (const std::size_t callerOrdinal : callers)
+    {
+        const ClassMemberSymbol* caller = methodSymbol(callerOrdinal);
+        if (caller == nullptr || caller->syntax == nullptr || caller->syntax->first() == nullptr ||
+            caller->isPrecompiled || caller->effects.contains(sema::Effect::Async)) continue;
+        std::vector<const ast::AstNode*> awaits;
+        bool ignored = false;
+        collectAwaitSites(caller->syntax->first(), awaits, ignored);
+        for (const ast::AstNode* await : awaits)
+        {
+            if (!awaitOperandCanSuspend(
+                    await->first(), caller->syntax->first(), callerOrdinal, memo)) continue;
+            diagnostics.report(
+                diagnostics::DiagnosticId::SynchronousAwaitCanSuspend,
+                diagnostics::DiagnosticSeverity::Error,
+                await->range(),
+                "synchronous await of a producer that can suspend: the producer must be awaited "
+                "from an async context; declare '" + caller->name + "' async (an entry point "
+                "can be 'static async int Main()')");
         }
     }
 }

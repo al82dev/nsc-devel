@@ -99,8 +99,8 @@ namespace Demo
 
         public static int Run()
         {
-            Listener listener = new Listener();
-            Publisher publisher = new Publisher();
+            raii Listener listener = new Listener();
+            raii Publisher publisher = new Publisher();
             Transform first = Increment;
             Transform second = listener.Double;
             Transform empty = null;
@@ -347,8 +347,8 @@ class Harness
 {
     public static int Run()
     {
-        Listener listener = new Listener();
-        Publisher publisher = new Publisher();
+        raii Listener listener = new Listener();
+        raii Publisher publisher = new Publisher();
         publisher.Changed += Listener.OnStatic;
         publisher.Changed += listener.OnInstance;
         Payload value;

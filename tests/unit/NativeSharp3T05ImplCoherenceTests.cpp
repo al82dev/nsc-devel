@@ -130,8 +130,8 @@ class Program
 {
     public static int Main()
     {
-        Number number = new Number(40);
-        dyn IScore score = number;
+        raii Number number = new Number(40);
+        borrowed dyn IScore score = number;
         return score.Bonus();
     }
 }
@@ -167,8 +167,8 @@ class Program
 {
     public static int Main()
     {
-        Box<int> box = new Box<int>();
-        dyn IScore<int> score = box;
+        raii Box<int> box = new Box<int>();
+        borrowed dyn IScore<int> score = box;
         return score.Score();
     }
 }
@@ -234,8 +234,8 @@ class Program
 {
     public static int Main()
     {
-        Local local = new Local();
-        dyn IScore score = local;
+        raii Local local = new Local();
+        borrowed dyn IScore score = local;
         return score.Score();
     }
 }
@@ -262,8 +262,8 @@ class Program
 {
     public static int Main()
     {
-        Box<int> box = new Box<int>();
-        dyn IScore score = box;
+        raii Box<int> box = new Box<int>();
+        borrowed dyn IScore score = box;
         return score.Score();
     }
 }

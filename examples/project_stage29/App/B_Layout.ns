@@ -4,7 +4,7 @@ public partial class Payload
 {
     double Weight;
 
-    public Empty MakeEmpty()
+    public owned Empty MakeEmpty()
     {
         return new Empty();
     }

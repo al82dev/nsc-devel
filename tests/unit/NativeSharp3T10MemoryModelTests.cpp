@@ -121,7 +121,7 @@ public class Program
 {
     public static int Main()
     {
-        AtomicInt32 value = new AtomicInt32(1);
+        raii AtomicInt32 value = new AtomicInt32(1);
         value.Store(40, MemoryOrder.Release);
         AtomicFence.Thread(MemoryOrder.AcquireRelease);
         if (value.Load(MemoryOrder.Acquire) != 40) { return 1; }
@@ -169,7 +169,7 @@ public class Program
 {
     public static int Main()
     {
-        AtomicInt32 value = new AtomicInt32(0);
+        raii AtomicInt32 value = new AtomicInt32(0);
         value.Load(MemoryOrder.Release);
         value.Store(1, MemoryOrder.Acquire);
         value.CompareExchange(2, 1, MemoryOrder.Relaxed, MemoryOrder.Acquire);

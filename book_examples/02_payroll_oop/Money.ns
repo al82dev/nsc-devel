@@ -52,12 +52,12 @@ namespace NativeSharp.BookExamples.Payroll
             return String.Copy(body4);
         }
 
-        public static Money operator +(Money left, Money right)
+        public static owned Money operator +(Money left, Money right)
         {
             return new Money(left.cents + right.cents);
         }
 
-        public static Money operator -(Money left, Money right)
+        public static owned Money operator -(Money left, Money right)
         {
             return new Money(left.cents - right.cents);
         }

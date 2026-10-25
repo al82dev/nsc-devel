@@ -570,7 +570,7 @@ namespace DllP0
 
         public static int Run()
         {
-            Box<int> box = new Box<int>(42);
+            raii Box<int> box = new Box<int>(42);
             ValueBox<int> answer = new ValueBox<int>(Read(box));
             return answer.Read();
         }
@@ -857,7 +857,7 @@ namespace PrecompiledEventConsumer
 
         public static int Main()
         {
-            Source source = new Source();
+            raii Source source = new Source();
             source.Changed += OnChanged;
             source.Raise(42);
             return observed;
@@ -1009,10 +1009,10 @@ namespace ImportedBaseConsumer
 
         public static int Main()
         {
-            Derived value = new Derived();
-            Base asBase = value;
-            IScore asScore = value;
-            IExtended extended = value;
+            raii Derived value = new Derived();
+            borrowed Base asBase = value;
+            borrowed IScore asScore = value;
+            borrowed IExtended extended = value;
             if (asBase.Value() != 42 || asScore.Score() != 42 || extended.Extra() != 42) { return 1; }
             value.BaseChanged += OnChanged;
             value.RaiseBaseChanged(42);
@@ -1020,7 +1020,7 @@ namespace ImportedBaseConsumer
 
             Payload payload;
             payload.Number = 42;
-            ContractSurface surface = new ContractSurface(payload);
+            raii ContractSurface surface = new ContractSurface(payload);
             Payload echoed = surface.Echo(surface.Stored);
             if (echoed.Number != 42 || surface.CurrentMode() != Mode.Answer) { return 2; }
             surface.Changed += OnChanged;
@@ -1301,7 +1301,7 @@ namespace ProtectedVirtualConsumer
     {
         public static int Main()
         {
-            Leaf value = new Leaf();
+            raii Leaf value = new Leaf();
             if (value.Read() != 42 || value.ReadBaseOverride() != 42 || value.ReadProtectedPlain() != 41)
             {
                 return 1;
@@ -1422,12 +1422,12 @@ namespace ProtectedAccessorConsumer
     {
         public static int Main()
         {
-            Leaf value = new Leaf();
+            raii Leaf value = new Leaf();
             if (value.ReadProperty() != 40) { return 10; }
             if (value.GetProtected() != 40) { return 11; }
             if (value.ReadIndex(2) != 42) { return 12; }
             if (value.GetProtectedIndex(2) != 42) { return 13; }
-            AutoSurface automatic = new AutoSurface(42);
+            raii AutoSurface automatic = new AutoSurface(42);
             if (automatic.Automatic != 42) { return 14; }
             value.SetProtected(41);
             value.SetProtectedIndex(1, 43);
@@ -1534,8 +1534,8 @@ public class Program
 {
     public static int Main()
     {
-        FromA left = new FromA();
-        FromB right = new FromB();
+        raii FromA left = new FromA();
+        raii FromB right = new FromB();
         return left.Value() + right.Value();
     }
 }
@@ -1666,7 +1666,7 @@ public class Program
     {
         raii Base value = new Derived();
         raii Problem problem = new Problem();
-        throw problem;
+        throw move(problem);
     }
 
     public static int Main()
@@ -2366,7 +2366,7 @@ public class Program
 {
     public static int Main()
     {
-        Utilities invalid = new Utilities();
+        raii Utilities invalid = new Utilities();
         return Utilities.Answer();
     }
 }
@@ -2659,11 +2659,11 @@ public class Program
 {
     public static int Main()
     {
-        Initialized initialized = new Initialized();
-        ZeroInitialized zero = new ZeroInitialized();
+        raii Initialized initialized = new Initialized();
+        raii ZeroInitialized zero = new ZeroInitialized();
         int result = initialized.Value + zero.Value;
-        delete initialized;
-        delete zero;
+
+
         return result;
     }
 }
@@ -3447,7 +3447,7 @@ namespace Precompiled
 
     public class CrossModuleExceptions
     {
-        public static void Raise(borrowed Problem problem) { throw problem; }
+        public static void Raise(owned Problem problem) { throw move(problem); }
     }
 
     public class Counter
@@ -3948,7 +3948,7 @@ public class Program
         raii Precompiled.Problem problem = new Precompiled.Problem(40);
         try
         {
-            Precompiled.CrossModuleExceptions.Raise(problem);
+            Precompiled.CrossModuleExceptions.Raise(move(problem));
         }
         catch (Problem caught)
         {
@@ -4827,7 +4827,7 @@ public class Program
         raii Problem problem = new Problem(40);
         try
         {
-            CrossModuleExceptions.Raise(problem);
+            CrossModuleExceptions.Raise(move(problem));
         }
         catch (Problem caught)
         {

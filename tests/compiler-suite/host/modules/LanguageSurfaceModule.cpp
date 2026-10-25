@@ -1126,10 +1126,10 @@ class Program
 {
     public static int Main()
     {
-        TraitItem traitItem = new TraitItem();
-        dyn ITraitDefaults traitView = traitItem;
-        InterfaceItem interfaceItem = new InterfaceItem();
-        IInterfaceDefaults interfaceView = interfaceItem;
+        raii TraitItem traitItem = new TraitItem();
+        borrowed dyn ITraitDefaults traitView = traitItem;
+        raii InterfaceItem interfaceItem = new InterfaceItem();
+        borrowed IInterfaceDefaults interfaceView = interfaceItem;
         return traitView.Method() + traitView.Value + traitView[1]
             + interfaceView.Method() + interfaceView.Value + interfaceView[1];
     }
@@ -1189,12 +1189,12 @@ class Program
 {
     public static int Main()
     {
-        ExplicitItem explicitItem = new ExplicitItem();
-        dyn IExplicit explicitView = explicitItem;
-        NominalItem nominalItem = new NominalItem();
-        dyn INominal nominalView = nominalItem;
-        DefaultItem defaultItem = new DefaultItem();
-        ICombined defaultView = defaultItem;
+        raii ExplicitItem explicitItem = new ExplicitItem();
+        borrowed dyn IExplicit explicitView = explicitItem;
+        raii NominalItem nominalItem = new NominalItem();
+        borrowed dyn INominal nominalView = nominalItem;
+        raii DefaultItem defaultItem = new DefaultItem();
+        borrowed ICombined defaultView = defaultItem;
         if (explicitView.Value() != 42) return 11;
         if (nominalView.Value() != 42) return 12;
         if (defaultView.Value() != 42) return 13;
@@ -1257,8 +1257,8 @@ class Program
 {
     public static int Main()
     {
-        Item item = new Item();
-        IResolved value = item;
+        raii Item item = new Item();
+        borrowed IResolved value = item;
         return value.Value();
     }
 }
@@ -1323,8 +1323,8 @@ class Program
 {
     public static int Main()
     {
-        Local local = new Local();
-        dyn IScore score = local;
+        raii Local local = new Local();
+        borrowed dyn IScore score = local;
         return score.Score();
     }
 }
@@ -1387,8 +1387,8 @@ class Program
 
     public static int Main()
     {
-        Number number = new Number();
-        dyn IValue<int> erased = number;
+        raii Number number = new Number();
+        borrowed dyn IValue<int> erased = number;
         var opaque = Factory.Make();
         if (Echo<Number>(42) != 42) return 11;
         if (erased.Score() != 42) return 12;
@@ -1525,8 +1525,8 @@ class Program
 {
     public static int Main()
     {
-        Local local = new Local();
-        dyn IDefaults value = local;
+        raii Local local = new Local();
+        borrowed dyn IDefaults value = local;
         return value.Method() + value.Value + value[1];
     }
 }
@@ -1631,8 +1631,8 @@ class Program
 
     public static int Main()
     {
-        Local local = new Local();
-        dyn IDefaults dynamicValue = local;
+        raii Local local = new Local();
+        borrowed dyn IDefaults dynamicValue = local;
         return StaticRead<Local>(local) + dynamicValue.First() + dynamicValue.Second();
     }
 }
@@ -3559,7 +3559,7 @@ class Program
 {
     public static int Main()
     {
-        Box b = new Box();
+        raii Box b = new Box();
         int value = b?[3];
         Box n = null;
         int none = n?[3];
@@ -3678,7 +3678,7 @@ class Program
 {
     public static int Main()
     {
-        External e = new External();
+        raii External e = new External();
         return e.F();
     }
 }
@@ -3793,7 +3793,7 @@ class Program
 {
     public static int Main()
     {
-        External e = new External();
+        raii External e = new External();
         return e.F();
     }
 }
@@ -3849,7 +3849,7 @@ class Program
 {
     public static int Main()
     {
-        C c = new C();
+        raii C c = new C();
         return 0;
     }
 }
@@ -4147,7 +4147,7 @@ class Program
 {
     public static int Main()
     {
-        Foo f = new Foo();
+        raii Foo f = new Foo();
         return f.M();
     }
 }
@@ -4185,7 +4185,7 @@ class Program
 {
     public static int Main()
     {
-        Foo f = new Foo();
+        raii Foo f = new Foo();
         return f.P;
     }
 }
@@ -4224,7 +4224,7 @@ class Program
 {
     public static int Main()
     {
-        Foo f = new Foo();
+        raii Foo f = new Foo();
         return f.X;
     }
 }
@@ -4268,7 +4268,7 @@ class Program
 {
     public static int Main()
     {
-        Foo f = new Foo();
+        raii Foo f = new Foo();
         f.Changed += (int x) => { };
         f.Changed -= (int x) => { };
         return f.Result;
@@ -4816,7 +4816,7 @@ class Program
 {
     public static int Main()
     {
-        Holder h = new Holder();
+        raii Holder h = new Holder();
         { scope Enemy temporary = new Enemy(42); h.e = temporary; }
         return 0;
     }
@@ -4849,7 +4849,7 @@ class Program
 {
     public static int Main()
     {
-        scope ArenaAllocator arena = new ArenaAllocator();
+        raii scope ArenaAllocator arena = new ArenaAllocator();
         A a = new (arena) A(42);
         if (a.X != 42) return 1;
         byte* p = arena.Allocate(8);
@@ -4910,7 +4910,7 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         Packet p = new (alloc, trailing: 8) Packet(4, 8);
         if (p.Length != 4) return 1;
         if (p.Capacity != 8) return 2;
@@ -4969,7 +4969,7 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         Packet p = new (alloc, trailing: 8) Packet(4, 8);
         p.Data[4] = 7;
         return 0;
@@ -5023,7 +5023,7 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         Packet p = new (alloc, trailing: 8) Packet(2, 8);
         p.Data[1] = 3;
         if (p.Data[1] != 3) return 9;
@@ -5078,7 +5078,7 @@ class Program
     public static int Main()
     {
         try { S s1 = new S(1); } catch { }
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         try { S* s2 = new (alloc) S(1); } catch { }
         byte[] buf = new byte[64];
         S* storage = (S*)Spans.Of<byte>(buf).Data();
@@ -5129,7 +5129,7 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(4096);
+        raii BlockAllocator alloc = new BlockAllocator(4096);
         { owned B b = new (alloc) B(3, 4); }
         { owned A a = new (alloc) A(8); }
         // two objects, two destructor runs (B's base A + A), two Deallocate calls, no double-free.
@@ -5178,7 +5178,7 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         try { owned Failing value = new (alloc) Failing(); } catch { }
         return alloc.Deallocs == 1 ? 0 : 1;
     }
@@ -5251,7 +5251,7 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         {
             owned Product product = ProductFactory.Make(alloc, 42);
             if (product.Value != 42) return 2;
@@ -5309,9 +5309,9 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator ba = new BlockAllocator(1024);
+        raii BlockAllocator ba = new BlockAllocator(1024);
         A ok = new (ba, failure: null) A(7);
-        NullAllocator na = new NullAllocator();
+        raii NullAllocator na = new NullAllocator();
         A fail = new (na, failure: null) A(9);
         return (ok != null && ok.X == 7 && fail == null && A.Ctors == 1) ? 0 : 1;
     }
@@ -5355,7 +5355,7 @@ class Program
 {
     public static int Main()
     {
-        NullAllocator na = new NullAllocator();
+        raii NullAllocator na = new NullAllocator();
         try { A a = new (na, failure: throws) A(42); }
         catch (AllocationFailureException) { return 0; }
         return 1;
@@ -5400,7 +5400,7 @@ class Program
 {
     public static int Main()
     {
-        NullAllocator na = new NullAllocator();
+        raii NullAllocator na = new NullAllocator();
         A a = new (na, failure: panic) A(42);
         return 0;
     }
@@ -5452,9 +5452,9 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator ba = new BlockAllocator(1024);
+        raii BlockAllocator ba = new BlockAllocator(1024);
         Result<A, AllocationFailure> ok = new (ba, failure: result) A(7);
-        NullAllocator na = new NullAllocator();
+        raii NullAllocator na = new NullAllocator();
         Result<A, AllocationFailure> fail = new (na, failure: result) A(9);
         return (ok.IsOk() && fail.IsError()) ? 0 : 1;
     }
@@ -5501,8 +5501,8 @@ class Program
     public static int Main()
     {
         { scope A s = new A(1); }
-        A h = new A(2);
-        BlockAllocator ba = new BlockAllocator(1024);
+        raii A h = new A(2);
+        raii BlockAllocator ba = new BlockAllocator(1024);
         A a = new (ba) A(3);
         return h.X + a.X;
     }
@@ -6009,7 +6009,7 @@ class Program
 {
     public static int Main()
     {
-        Foo f = new Foo();
+        raii Foo f = new Foo();
         return f.Twice();
     }
 }
@@ -6058,7 +6058,7 @@ class Program
     }
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         A a = new (alloc) A(42);
         int* stack = stackalloc int[2];
         stack[0] = a.X;
@@ -6535,7 +6535,7 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator a = new BlockAllocator(16, 8);
+        raii BlockAllocator a = new BlockAllocator(16, 8);
         if (a.Allocate(0, 8) != null) return 1;
         if (a.Allocate(20, 8) != null) return 2;
         byte* p = a.Allocate(8, 8);
@@ -6771,7 +6771,7 @@ class Program
         return value + 1;
     }
 
-    public static int Main()
+    public static async int Main()
     {
         int result = await Read();
         return result;
@@ -6860,7 +6860,7 @@ class Program
         return 42;
     }
 
-    public static int Main()
+    public static async int Main()
     {
         int result = await Read();
         return Box.Drops * 100 + result;
@@ -6899,7 +6899,7 @@ class Program
         return value;
     }
 
-    public static int Main()
+    public static async int Main()
     {
         int result = await Read();
         return result;
@@ -6939,7 +6939,7 @@ class Program
         return live;
     }
 
-    public static int Main()
+    public static async int Main()
     {
         return await Read();
     }
@@ -6979,7 +6979,7 @@ class Program
         return view.Value;
     }
 
-    public static int Main()
+    public static async int Main()
     {
         return await Read();
     }
@@ -7258,7 +7258,7 @@ class Program
         return await Inner();
     }
 
-    public static int Main()
+    public static async int Main()
     {
         int a = await Inner();
         int b = await Outer();
@@ -7303,7 +7303,7 @@ public class Async
                 "T05FutureConsumer", "Exe", R"ns(
 class Program
 {
-    public static int Main()
+    public static async int Main()
     {
         return await Async.Make();
     }
@@ -8508,7 +8508,7 @@ class Program
         yield;
         value = value + 1;
     }
-    public static int Main()
+    public static async int Main()
     {
         int value = 41;
         Future<void> f = Child(ref value);
@@ -9004,7 +9004,7 @@ public class Lib
                 "T07AsyncIterMetadataConsumer", "Exe", R"ns(
 class Program
 {
-    public static int Main()
+    public static async int Main()
     {
         AsyncIterator<int, int> it = Lib.Gen();
         bool has = await it.MoveNextAsync();
@@ -9352,7 +9352,7 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         A a = new (alloc) A(42);
         return a.X;
     }
@@ -9811,7 +9811,7 @@ class Program
 
     public static int Main()
     {
-        Program p = new Program();
+        raii Program p = new Program();
         return p.Value;
     }
 }
@@ -9838,7 +9838,7 @@ class Program
 
     public static int Main()
     {
-        Program p = new Program();
+        raii Program p = new Program();
         p.Value = 42;
         return p.Value;
     }
@@ -9896,7 +9896,7 @@ class Program
     {
         if (first) { Value = 42; } else { Value = 7; }
     }
-    public static int Main() { Program p = new Program(true); return p.Value; }
+    public static int Main() { raii Program p = new Program(true); return p.Value; }
 }
 )ns");
     context.expect(
@@ -9919,7 +9919,7 @@ namespace RequiredFlow
             if (fail) { throw new ConstructionFailure(); }
             Value = 42;
         }
-        public static int Main() { Program p = new Program(false); return p.Value; }
+        public static int Main() { raii Program p = new Program(false); return p.Value; }
     }
 }
 )ns");
@@ -9962,7 +9962,7 @@ class Program
 
     public static int Main()
     {
-        Program p = new Program();
+        raii Program p = new Program();
         return p.Value;
     }
 }
@@ -10106,7 +10106,7 @@ class Program
 
     public static int Main()
     {
-        Program p = new Program();
+        raii Program p = new Program();
         p.Changed += Handle;
         p.Fire();
         return Result;
@@ -10208,7 +10208,7 @@ class Program
     {
         Box b = null;
         int skipped = (Receiver(b)?.Value = NextValue(1));
-        Box c = new Box();
+        raii Box c = new Box();
         int stored = (Receiver(c)?.Value = NextValue(42));
         if (skipped != 0) return 100;
         if (stored != 42 || c.Value != 42) return 101;
@@ -10258,7 +10258,7 @@ class Program
 
     public static int Main()
     {
-        Program p = new Program();
+        raii Program p = new Program();
         p.Changed += Handle;
         p.Changed -= Handle;
         return Result;
@@ -10311,7 +10311,7 @@ class Program
     {
         Box b = null;
         int skipped = (Receiver(b)?.Value += Addend(1));
-        Box c = new Box();
+        raii Box c = new Box();
         c.Value = 10;
         int stored = (Receiver(c)?.Value += Addend(5));
         if (skipped != 0) return 100;
@@ -10352,7 +10352,7 @@ class Program
 {
     public static int Main()
     {
-        Box b = new Box();
+        raii Box b = new Box();
         return b?[0];
     }
 }
@@ -10389,7 +10389,7 @@ class Program
 {
     public static int Main()
     {
-        Point p = new Point(3, 4);
+        raii Point p = new Point(3, 4);
         return p.Sum();
     }
 }

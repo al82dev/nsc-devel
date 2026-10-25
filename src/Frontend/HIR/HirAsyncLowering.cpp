@@ -410,6 +410,50 @@ std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitAsyncFunction(
     return poll;
 }
 
+bool ProjectOopHirModel::isAsyncEntryMain(const ProjectOopHirFunction& function) const
+{
+    if (function.namespaceFunctionOrdinal.has_value() || function.isLambda ||
+        function.constructor || function.destructor || memberModel_ == nullptr ||
+        function.memberOrdinal >= memberModel_->members().size()) return false;
+    const ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
+    const auto inner = language::futureInnerTypeKey(function.returnTypeKey);
+    return member.kind == ClassMemberKind::Method && member.name == "Main" && member.isStatic &&
+        member.parameters.empty() && !member.isPrecompiled && inner.has_value() &&
+        *inner == "builtin:int" && !function.effects.contains(sema::Effect::Generator);
+}
+
+std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::createAsyncEntryFunction(
+    const ProjectOopHirFunction& asyncFunction,
+    std::string& error)
+{
+    // `int Main$entry() { return await Main(); }`, whose await (integerValue 2) polls until the
+    // future is ready instead of polling once.
+    const ast::AstNode* syntax = memberModel_->members()[asyncFunction.memberOrdinal].syntax;
+    auto entry = std::make_unique<ProjectOopHirFunction>();
+    entry->memberOrdinal = asyncFunction.memberOrdinal;
+    entry->declaringTypeOrdinal = asyncFunction.declaringTypeOrdinal;
+    entry->isStatic = true;
+    entry->mangledName = asyncFunction.mangledName + "$entry";
+    entry->debugDisplayName = asyncFunction.debugDisplayName + "$entry";
+    entry->returnTypeKey = "builtin:int";
+    entry->returnOwnership = sema::OwnershipKind::None;
+    auto call = makeNode(ProjectOopHirNodeKind::StaticCall, syntax, asyncFunction.returnTypeKey);
+    call->memberOrdinal = asyncFunction.memberOrdinal;
+    const bool savedAsyncBody = loweringAsyncBody_;
+    loweringAsyncBody_ = false;
+    auto await = lowerAwaitExpression(
+        syntax, std::move(call), asyncFunction.memberOrdinal, {}, std::nullopt, error);
+    loweringAsyncBody_ = savedAsyncBody;
+    if (await == nullptr) return nullptr;
+    await->integerValue = 2;
+    auto ret = makeNode(ProjectOopHirNodeKind::Return, syntax, "builtin:int");
+    ret->children.push_back(std::move(await));
+    auto body = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    body->children.push_back(std::move(ret));
+    entry->body = std::move(body);
+    return entry;
+}
+
 std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::createGeneratorMoveNext(
     ProjectOopHirFunction& function,
     const std::string& iteratorKey,
@@ -867,6 +911,9 @@ bool ProjectOopHirModel::awaitProducerCanSuspend(std::size_t rootMemberOrdinal) 
             if (*awaited < memberModel_->members().size()) pendingMembers.push_back(*awaited);
     }
     // Preserve the effective Stage 34 policy: the scan is cycle-safe but currently never rejects.
+    // Freeze 3.0 C-02: the semantic check ProjectMethodBodyModel::verifySynchronousAwaits now
+    // rejects a synchronous await of a producer that can suspend, with its own diagnostic, before
+    // HIR runs; this guard stays as the lowering-side invariant.
     return false;
 }
 
@@ -948,6 +995,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCoroutineStatement(
             // regions (defer/drop) exactly once before returning false.
             auto node = makeNode(ProjectOopHirNodeKind::YieldBreak, statement, "builtin:void");
             attachStructuredExit(*node);
+            // EN: Freeze 3.0 C-02: `yield break` leaves the whole generator, so every region active
+            //     here runs, finally blocks included (the exit binding alone skipped them), in the
+            //     same outer-to-inner order a `yield return` records.
+            // ES: Congelamiento 3.0 C-02: `yield break` sale de todo el generador, asi que corre
+            //     toda region activa aqui, finally incluidos (el binding de salida los omitia), en
+            //     el mismo orden de afuera hacia adentro que registra un `yield return`.
+            node->cleanupRegionOrdinals.assign(
+                activeHirCleanupRegions_.begin(), activeHirCleanupRegions_.end());
             node->cleanupContinuationKind = MethodCleanupContinuationKind::Return;
             return node;
         }

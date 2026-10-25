@@ -293,7 +293,13 @@ bool OopLlvmImplementation::emitOneTryCatchBody(
         // CC1 EH-001: loopStack_.size() is recorded HERE, before the body is lowered, so
         // a `break`/`continue` inside it can tell "leaves this catch" from "leaves a loop
         // or switch opened inside this catch".
-        activeCatchExceptions_.push_back(ActiveCatchBody{caughtException, loopStack_.size()});
+        // EN: Freeze 3.0 C-01: the owner slot makes this catch the owner of the exception.
+        // ES: Congelamiento 3.0 C-01: el slot de dueno hace a este catch dueno de la excepcion.
+        LLVMValueRef ownerSlot = entryBlockAlloca(
+            LLVMPointerTypeInContext(context_, 0), 8U, "eh.catch.owner");
+        LLVMBuildStore(builder_, caughtException, ownerSlot);
+        activeCatchExceptions_.push_back(ActiveCatchBody{
+            caughtException, loopStack_.size(), ownerSlot, exceptionHandlerStack_.size()});
         const std::size_t bodyIndex = catchNode->catchHasFilter ? 1U : 0U;
         const bool handlerOk = lowerStatement(catchNode->children[bodyIndex].get(), error);
         const bool handlerTerminated = terminated();
@@ -330,7 +336,16 @@ bool OopLlvmImplementation::emitOneTryCatchBody(
         ScopedDebugLocation catchCompletionLocation(
             builder_, catchEnd != nullptr ? catchEnd : debugLocation(catchNode));
         buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
-        LLVMBuildBr(builder_, hasFinally ? normalFinallyBlock : continueBlock);
+        // EN: Freeze 3.0 C-01: the handled catch destroys the exception it owns. After the clear,
+        //     so a destructor that throws publishes its own exception.
+        // ES: Congelamiento 3.0 C-01: el catch manejado destruye la excepcion que posee. Despues
+        //     del clear, para que un destructor que lanza publique su propia excepcion.
+        if (!emitCaughtExceptionRelease(ownerSlot, error))
+        {
+            if (hasFinally) activeCleanupRegions_.pop_back();
+            return false;
+        }
+        if (!terminated()) LLVMBuildBr(builder_, hasFinally ? normalFinallyBlock : continueBlock);
         return true;
     }
 

@@ -13,6 +13,10 @@ bool OopLlvmImplementation::lowerStatement(
 {
         if (node == nullptr) return true;
         ScopedDebugLocation scopedDebugLocation(builder_, debugLocation(node));
+        // EN: Freeze 3.0 C-02: a statement around a suspension point is a resume target.
+        // ES: Congelamiento 3.0 C-02: una sentencia alrededor de un punto de suspension es destino
+        //     de reanudacion.
+        enterCoroutineResumeTarget(node);
         switch (node->kind)
         {
             case frontend::ProjectOopMirNodeKind::Block:
@@ -175,6 +179,9 @@ bool OopLlvmImplementation::lowerGeneratorFrameInitStatement(
                 if (frame == nullptr)
                     return fail(error, "generator constructor frame allocation failed");
                 LLVMBuildStore(builder_, frame, byteOffset(selfAlloca, 8, "gen.self.frame"));
+                // EN: Freeze 3.0 C-02: the frame's drop guards start cleared.
+                // ES: Congelamiento 3.0 C-02: las guardas de destruccion del frame inician en cero.
+                zeroCoroutineDropFlags(frame, *currentMirFunction_);
                 for (const auto& [paramOrdinal, offset, typeKey] :
                      currentMirFunction_->asyncFrameParameters)
                 {
@@ -330,6 +337,7 @@ bool OopLlvmImplementation::lowerSuspendPointStatement(
         const frontend::ProjectOopMirNode* node, std::string& error)
 {
                 // NS304-T05-F09: a bare `yield;` suspends the poll once. self is parameter 0.
+                if (coroutine_.active) return lowerCoroutineSuspendPoint(node, error);
                 if (parameterStorage_.empty())
                     return fail(error, "suspend point has no poll self parameter");
                 LLVMValueRef self = LLVMBuildLoad2(
@@ -395,6 +403,7 @@ bool OopLlvmImplementation::lowerYieldValueStatement(
 {
                 // NS304-T06-F03: `yield return v` produces the item and returns true on the entry
                 // state; on a later state it falls through (the next yield or the terminal return).
+                if (coroutine_.active) return lowerCoroutineYieldValue(node, error);
                 if (parameterStorage_.empty())
                     return fail(error, "yield value has no MoveNext self parameter");
                 LLVMValueRef self = LLVMBuildLoad2(
@@ -413,6 +422,19 @@ bool OopLlvmImplementation::lowerYieldValueStatement(
 
                 LLVMValueRef framePhi = prepareYieldValueFrame(self, entryBlock, error);
                 if (framePhi == nullptr) return false;
+                if (!storeYieldValueItem(node, self, error)) return false;
+                LLVMBuildStore(
+                    builder_, LLVMConstInt(intType, node->integerValue, 0), self);
+                LLVMBuildRet(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0));
+
+                // Resume: restore the live locals and fall through to the next yield.
+                enterBlock(resumeBlock);
+                return restoreYieldValueFrame(self, error);
+}
+
+bool OopLlvmImplementation::storeYieldValueItem(
+        const frontend::ProjectOopMirNode* node, LLVMValueRef self, std::string& error)
+{
                 LLVMValueRef item = node->children.empty()
                     ? nullptr : lowerExpression(node->children.front().get(), error);
                 if (!node->children.empty() && item == nullptr) return false;
@@ -429,13 +451,7 @@ bool OopLlvmImplementation::lowerYieldValueStatement(
                     if (itemType == nullptr) return false;
                     LLVMBuildStore(builder_, item, byteOffset(self, 16, "yield.item"));
                 }
-                LLVMBuildStore(
-                    builder_, LLVMConstInt(intType, node->integerValue, 0), self);
-                LLVMBuildRet(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0));
-
-                // Resume: restore the live locals and fall through to the next yield.
-                enterBlock(resumeBlock);
-                return restoreYieldValueFrame(self, error);
+                return true;
 }
 
 LLVMValueRef OopLlvmImplementation::prepareYieldValueFrame(
@@ -762,6 +778,15 @@ bool OopLlvmImplementation::lowerDropFrameStatement(
                 LLVMValueRef self = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
                     "drop.self");
+                // EN: Freeze 3.0 C-02: a synchronous generator unwinds through its MoveNext, which
+                //     runs the finally blocks and destructions active at its yield; its frame
+                //     locals are never destroyed blindly (they may be dead or never initialized).
+                // ES: Congelamiento 3.0 C-02: un generador sincrono se desenreda por su MoveNext,
+                //     que corre los finally y destrucciones activas en su yield; los locales del
+                //     frame nunca se destruyen a ciegas (pueden estar muertos o sin inicializar).
+                if (currentMirFunction_ != nullptr && !currentMirFunction_->parameterTypeKeys.empty() &&
+                    !currentMirFunction_->parameterTypeKeys[0].starts_with("async-iterator:"))
+                    return lowerSyncGeneratorDrop(self, error);
                 LLVMValueRef frame = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0),
                     byteOffset(self, 8, "drop.frame.addr"), "drop.frame");

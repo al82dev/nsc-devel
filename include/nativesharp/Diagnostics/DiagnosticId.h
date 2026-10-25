@@ -78,6 +78,12 @@ enum class DiagnosticId
     MissingMain,
     InvalidMainSignature,
     InvalidExternCSignature,
+    // EN: Freeze 3.0 C-01: a `new` object whose result reaches no owner (a deterministic leak).
+    // ES: Congelamiento 3.0 C-01: un objeto `new` cuyo resultado no llega a ningun dueno.
+    LostOwnership,
+    // EN: Freeze 3.0 C-02: a synchronous `await` whose producer can suspend.
+    // ES: Congelamiento 3.0 C-02: un `await` sincrono cuyo productor puede suspenderse.
+    SynchronousAwaitCanSuspend,
 
     NS3010InvalidCompilationStage,
     NS3020InvalidValueCategory,
@@ -187,6 +193,8 @@ constexpr std::string_view diagnosticIdNamePart2(DiagnosticId id) noexcept
         NSC_DIAGNOSTIC_NAME(MissingMain);
         NSC_DIAGNOSTIC_NAME(InvalidMainSignature);
         NSC_DIAGNOSTIC_NAME(InvalidExternCSignature);
+        NSC_DIAGNOSTIC_NAME(LostOwnership);
+        NSC_DIAGNOSTIC_NAME(SynchronousAwaitCanSuspend);
 #undef NSC_DIAGNOSTIC_NAME
         default: return {};
     }

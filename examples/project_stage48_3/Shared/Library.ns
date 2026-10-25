@@ -85,7 +85,7 @@ namespace NativeSharp.Stage48_3
             return StoredCallback(value);
         }
 
-        public static export extern C Counter NS48_Counter_Create(int initialValue)
+        public static export extern C owned Counter NS48_Counter_Create(int initialValue)
         {
             return new Counter(initialValue);
         }

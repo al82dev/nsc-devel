@@ -107,19 +107,17 @@ namespace Stage52Collections
         // Queue<T>/Stack<T> -- FIFO and LIFO over a circular/dynamic backing array.
         public static int RunQueueAndStack()
         {
-            Queue<int> queue = new Queue<int>();
+            raii Queue<int> queue = new Queue<int>();
             queue.Enqueue(1);
             queue.Enqueue(2);
             queue.Enqueue(3);
             int fifo = queue.Dequeue() + queue.Dequeue();
-            delete queue;
 
-            Stack<int> stack = new Stack<int>();
+            raii Stack<int> stack = new Stack<int>();
             stack.Push(1);
             stack.Push(2);
             stack.Push(3);
             int lifo = stack.Pop();
-            delete stack;
 
             return fifo + lifo;
         }
@@ -127,7 +125,7 @@ namespace Stage52Collections
         // Queue<T>/Stack<T> -- Stage 52.x additions: Try*/capacity management/CopyTo.
         public static int RunQueueAndStackAdditions()
         {
-            Queue<int> queue = new Queue<int>(2);
+            raii Queue<int> queue = new Queue<int>(2);
             queue.Enqueue(1);
             queue.Enqueue(2);
             queue.Enqueue(3);
@@ -138,9 +136,8 @@ namespace Stage52Collections
             bool peeked = queue.TryPeek(dequeued);
             int[] queueCopy = new int[queue.Count()];
             queue.CopyTo(queueCopy, 0);
-            delete queue;
 
-            Stack<int> stack = new Stack<int>(2);
+            raii Stack<int> stack = new Stack<int>(2);
             stack.Push(1);
             stack.Push(2);
             stack.EnsureCapacity(10);
@@ -150,7 +147,6 @@ namespace Stage52Collections
             bool peekedTop = stack.TryPeek(popped);
             int[] stackCopy = new int[stack.Count()];
             stack.CopyTo(stackCopy, 0);
-            delete stack;
 
             return dequeued[0] + popped[0] + queueCopy.Length + stackCopy.Length;
         }
@@ -158,21 +154,20 @@ namespace Stage52Collections
         // LinkedList<T> -- a doubly-linked list; each node owns its Value and its Next node.
         public static int RunLinkedList()
         {
-            LinkedList<int> chain = new LinkedList<int>();
+            raii LinkedList<int> chain = new LinkedList<int>();
             chain.AddLast(2);
             chain.AddLast(3);
             chain.AddFirst(1);
             int first = chain.RemoveFirst();
             int last = chain.RemoveLast();
             int remaining = chain.Count();
-            delete chain;
             return first + last + remaining;
         }
 
         // LinkedList<T> -- Stage 52.x additions: AddAfter/AddBefore/Find/FindLast/Remove(node).
         public static int RunLinkedListAdditions()
         {
-            LinkedList<int> chain = new LinkedList<int>();
+            raii LinkedList<int> chain = new LinkedList<int>();
             LinkedListNode<int> one = chain.AddLast(1);
             LinkedListNode<int> three = chain.AddLast(3);
             LinkedListNode<int> two = chain.AddAfter(one, 2);
@@ -181,7 +176,6 @@ namespace Stage52Collections
             LinkedListNode<int> foundLast = chain.FindLast(2);
             chain.Remove(three);
             int remaining = chain.Count();
-            delete chain;
             return remaining;
         }
 
@@ -192,7 +186,7 @@ namespace Stage52Collections
         public static int RunDictionary()
         {
             HashFunc<int> intHash = HashInt;
-            Dictionary<int, string> ages = new Dictionary<int, string>(intHash);
+            raii Dictionary<int, string> ages = new Dictionary<int, string>(intHash);
             // A string literal cannot initialize a `raii string` directly (NativeSharp's RAII
             // locals only accept `new`, `null`, `move(other)`, or an owned-returning call) --
             // String.Copy is the owned-returning call that turns a literal into a real owned
@@ -210,7 +204,6 @@ namespace Stage52Collections
             delete[] outSlot;
 
             int count = ages.Count();
-            delete ages;
 
             int result = count;
             if (hasTwo) { result = result + 1; }
@@ -222,13 +215,12 @@ namespace Stage52Collections
         public static int RunDictionaryAdditions()
         {
             HashFunc<int> intHash = HashInt;
-            Dictionary<int, int> counts = new Dictionary<int, int>(intHash);
+            raii Dictionary<int, int> counts = new Dictionary<int, int>(intHash);
             bool added = counts.TryAdd(1, 100);
             bool dupAdded = counts.TryAdd(1, 999);
             counts.EnsureCapacity(32);
             counts.TrimExcess();
             int count = counts.Count();
-            delete counts;
 
             int result = count;
             if (added) { result = result + 1; }
@@ -240,12 +232,11 @@ namespace Stage52Collections
         public static int RunHashSet()
         {
             HashFunc<int> intHash = HashInt;
-            HashSet<int> unique = new HashSet<int>(intHash);
+            raii HashSet<int> unique = new HashSet<int>(intHash);
             unique.Add(1);
             unique.Add(2);
             unique.Add(1);
             int count = unique.Count();
-            delete unique;
             return count;
         }
 
@@ -254,14 +245,14 @@ namespace Stage52Collections
         public static int RunHashSetAdditions()
         {
             HashFunc<int> intHash = HashInt;
-            HashSet<int> a = new HashSet<int>(intHash);
+            raii HashSet<int> a = new HashSet<int>(intHash);
             a.Add(1);
             a.Add(2);
             a.Add(3);
             a.EnsureCapacity(16);
             a.TrimExcess();
 
-            HashSet<int> b = new HashSet<int>(intHash);
+            raii HashSet<int> b = new HashSet<int>(intHash);
             b.Add(2);
             b.Add(3);
             b.Add(4);
@@ -271,7 +262,7 @@ namespace Stage52Collections
             bool isSuperset = a.IsSupersetOf(b);
             bool setsEqual = a.SetEquals(b);
 
-            HashSet<int> merged = new HashSet<int>(intHash);
+            raii HashSet<int> merged = new HashSet<int>(intHash);
             merged.Add(1);
             merged.UnionWith(a);
             merged.IntersectWith(b);
@@ -284,9 +275,6 @@ namespace Stage52Collections
             int[] got = new int[1];
             bool foundIt = a.TryGetValue(1, got);
 
-            delete a;
-            delete b;
-            delete merged;
 
             int result = removed;
             if (overlaps) { result = result + 1; }
@@ -304,7 +292,7 @@ namespace Stage52Collections
         // instead of a balanced tree.
         public static int RunSortedCollections()
         {
-            SortedList<int, string> ranked = new SortedList<int, string>();
+            raii SortedList<int, string> ranked = new SortedList<int, string>();
             raii string third = String.Copy("third");
             ranked.Add(3, move(third));
             raii string firstPlace = String.Copy("first");
@@ -313,15 +301,13 @@ namespace Stage52Collections
             ranked.Add(2, move(second));
             string best = ranked.ValueAt(0);
             int bestKey = ranked.KeyAt(0);
-            delete ranked;
 
-            SortedSet<int> unique = new SortedSet<int>();
+            raii SortedSet<int> unique = new SortedSet<int>();
             unique.Add(5);
             unique.Add(1);
             unique.Add(3);
             int min = unique.Min();
             int max = unique.Max();
-            delete unique;
 
             int score = bestKey + min + max;
             if (best == "first") { score = score + 1; }
@@ -341,7 +327,7 @@ namespace Stage52Collections
         {
             Comparison<int> descending = DescendingOrder;
 
-            SortedList<int, int> descList = new SortedList<int, int>(descending);
+            raii SortedList<int, int> descList = new SortedList<int, int>(descending);
             descList.Add(1, 10);
             descList.Add(3, 30);
             descList.Add(2, 20);
@@ -350,22 +336,20 @@ namespace Stage52Collections
             int valueIndex = descList.IndexOfValue(20);
             descList.EnsureCapacity(16);
             descList.TrimExcess();
-            delete descList;
 
-            SortedDictionary<int, int> descDict = new SortedDictionary<int, int>(descending);
+            raii SortedDictionary<int, int> descDict = new SortedDictionary<int, int>(descending);
             descDict.Add(1, 100);
             descDict.EnsureCapacity(8);
             descDict.TrimExcess();
-            delete descDict;
 
-            SortedSet<int> setA = new SortedSet<int>();
+            raii SortedSet<int> setA = new SortedSet<int>();
             setA.Add(1);
             setA.Add(2);
             setA.Add(3);
             setA.EnsureCapacity(16);
             setA.TrimExcess();
 
-            SortedSet<int> setB = new SortedSet<int>();
+            raii SortedSet<int> setB = new SortedSet<int>();
             setB.Add(2);
             setB.Add(3);
             setB.Add(4);
@@ -374,7 +358,7 @@ namespace Stage52Collections
             bool isSubset = setA.IsSubsetOf(setB);
             bool setsEqual = setA.SetEquals(setB);
 
-            SortedSet<int> merged = new SortedSet<int>();
+            raii SortedSet<int> merged = new SortedSet<int>();
             merged.Add(1);
             merged.UnionWith(setA);
             merged.IntersectWith(setB);
@@ -382,14 +366,10 @@ namespace Stage52Collections
             merged.SymmetricExceptWith(setA);
 
             int[] reversed = setA.Reverse();
-            SortedSet<int> view = setA.GetViewBetween(1, 2);
+            raii SortedSet<int> view = setA.GetViewBetween(1, 2);
             Predicate<int> positive = IsPositive;
             int removedCount = setA.RemoveWhere(positive);
 
-            delete setA;
-            delete setB;
-            delete merged;
-            delete view;
             delete[] reversed;
 
             int result = highestKey + valueIndex + removedCount;
@@ -404,7 +384,7 @@ namespace Stage52Collections
         // reusable first-class wrappers around Comparison<T>/HashFunc<T>.
         public static int RunPriorityQueueAndComparers()
         {
-            PriorityQueue<int, int> tasks = new PriorityQueue<int, int>();
+            raii PriorityQueue<int, int> tasks = new PriorityQueue<int, int>();
             tasks.Enqueue(100, 5);
             tasks.Enqueue(200, 1);
             tasks.Enqueue(300, 3);
@@ -416,26 +396,22 @@ namespace Stage52Collections
             bool got = tasks.TryDequeue(elementOut, priorityOut);
             bool peeked = tasks.TryPeek(elementOut, priorityOut);
             int nextTask = tasks.Dequeue();
-            delete tasks;
 
             raii List<Payload> owners = new List<Payload>();
-            PriorityQueue<Payload, int> payloadQueue = new PriorityQueue<Payload, int>();
+            raii PriorityQueue<Payload, int> payloadQueue = new PriorityQueue<Payload, int>();
             raii Payload urgent = new Payload();
             urgent.Value = 1;
             payloadQueue.Enqueue(move(urgent), 0);
             raii Payload dequeuedPayload = payloadQueue.Dequeue();
             int payloadValue = dequeuedPayload.Value;
-            delete payloadQueue;
 
-            Comparer<int> naturalOrder = new Comparer<int>();
+            raii Comparer<int> naturalOrder = new Comparer<int>();
             int compared = naturalOrder.Compare(1, 2);
-            delete naturalOrder;
 
             HashFunc<int> intHash = HashInt;
-            EqualityComparer<int> equality = new EqualityComparer<int>(intHash);
+            raii EqualityComparer<int> equality = new EqualityComparer<int>(intHash);
             bool areEqual = equality.Equals(5, 5);
             int computedHash = equality.GetHashCode(5);
-            delete equality;
 
             int result = highestPriorityTask + nextTask + elementOut[0] + priorityOut[0] +
                 payloadValue + compared + computedHash;

@@ -481,23 +481,6 @@ void collectLivePollLocalNodes(
     }
 }
 
-void closeLiveBorrowSources(
-    const std::unordered_map<std::size_t, std::size_t>& borrowSource,
-    OrdinalSet& liveSet)
-{
-    bool changed = true;
-    while (changed)
-    {
-        changed = false;
-        for (const auto& [borrowedLocal, sourceLocal] : borrowSource)
-        {
-            if (!liveSet.contains(borrowedLocal) || liveSet.contains(sourceLocal)) continue;
-            liveSet.insert(sourceLocal);
-            changed = true;
-        }
-    }
-}
-
 bool validateNonLocalBorrowSources(
     const OrdinalSet& borrowNonLocalSource,
     const PositionMap& localDefinition,
@@ -588,27 +571,113 @@ void appendMoveNextFrameLocalNodes(
     }
 }
 
-void appendLiveFrameParameters(
-    const PositionMap& parameterLastUse,
-    std::span<const std::uint64_t> boundaries,
+// EN: Freeze 3.0 C-02 (D2): each await keeps its child future in a slot of its own at the start of
+//     the frame (secondaryImmediate holds the offset), so two awaits never share storage.
+// ES: Congelamiento 3.0 C-02 (D2): cada await guarda su future hijo en un slot propio al inicio del
+//     frame (secondaryImmediate lleva el offset), asi dos awaits nunca comparten almacenamiento.
+void assignAwaitFrameSlotNodes(
+    ProjectOopMirNode* root,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    std::vector<ProjectOopMirNode*> work{root};
+    while (!work.empty())
+    {
+        ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind == ProjectOopMirNodeKind::AwaitFuture)
+        {
+            if (const ProjectOopMirStructLayout* layout =
+                    functionStructLayout(indexes, layouts, node->elementTypeKey))
+            {
+                frameSize = alignFrameOffset(frameSize, 8);
+                node->secondaryImmediate = frameSize;
+                frameSize += layout->size;
+            }
+        }
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
+    }
+}
+
+// EN: Freeze 3.0 C-02 (D1/D4): every local of a coroutine lives in its heap frame, so a resumed
+//     poll sees the values it left and an address taken before a suspension stays valid. Linear
+//     liveness missed locals reused by a later loop iteration; keeping them all is exact.
+// ES: Congelamiento 3.0 C-02 (D1/D4): todo local de una corrutina vive en su frame del heap, asi el
+//     poll reanudado ve los valores que dejo y una direccion tomada antes de suspender sigue
+//     valida. La vivacidad lineal perdia locales que reusa la siguiente vuelta de un ciclo.
+void appendCoroutineFrameLocalNodes(
+    const ProjectOopMirNode* root,
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup,
     ProjectOopMirFunction& function,
     std::uint64_t& frameSize)
 {
+    OrdinalSet seen;
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
+    {
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        const bool declares = (node->kind == ProjectOopMirNodeKind::LocalDeclaration ||
+                node->kind == ProjectOopMirNodeKind::UsingRegion) &&
+            node->localOrdinal.has_value() && !node->staticLocal;
+        const std::string& typeKey = node->kind == ProjectOopMirNodeKind::UsingRegion
+            ? node->elementTypeKey : node->typeKey;
+        if (declares && !typeKey.empty() && typeKey != "builtin:never" &&
+            seen.insert(*node->localOrdinal).second)
+        {
+            // EN: A reference local stores an address; its slot is a pointer.
+            // ES: Un local referencia guarda una direccion; su slot es un puntero.
+            const bool pointerSlot = node->referenceLocal || typeKey.ends_with("*");
+            const std::string storageKey = node->referenceLocal ? typeKey + "*" : typeKey;
+            std::optional<std::pair<std::uint64_t, std::uint64_t>> layout;
+            if (pointerSlot) layout = std::pair<std::uint64_t, std::uint64_t>{8, 8};
+            else layout = objectLayoutModel.valueLayoutForTypeKey(nameLookup, storageKey);
+            if (layout.has_value())
+            {
+                frameSize = alignFrameOffset(frameSize, layout->second);
+                function.asyncFrameLocals.emplace_back(*node->localOrdinal, frameSize, storageKey);
+                frameSize += layout->first;
+            }
+        }
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
+    }
+}
+
+// EN: Freeze 3.0 C-02 (D3): every parameter the body reads or addresses is captured into the
+//     frame by the constructor; a use inside a loop is needed again after any suspension.
+// ES: Congelamiento 3.0 C-02 (D3): todo parametro que el cuerpo lee o direcciona lo captura el
+//     constructor en el frame; un uso dentro de un ciclo se necesita tras cualquier suspension.
+void appendUsedFrameParameterNodes(
+    const ProjectOopMirNode* root,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    ProjectOopMirFunction& function,
+    std::uint64_t& frameSize)
+{
+    OrdinalSet used;
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
+    {
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if ((node->kind == ProjectOopMirNodeKind::ParameterValue ||
+             node->kind == ProjectOopMirNodeKind::ParameterAddress) &&
+            node->parameterOrdinal.has_value())
+            used.insert(*node->parameterOrdinal);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
+    }
     for (std::size_t parameter = 0;
          parameter < function.generatorParameterTypeKeys.size(); ++parameter)
     {
-        const auto lastUse = parameterLastUse.find(parameter);
-        if (lastUse == parameterLastUse.end()) continue;
-        bool live = false;
-        for (const std::uint64_t boundary : boundaries)
-        {
-            if (boundary >= lastUse->second) continue;
-            live = true;
-            break;
-        }
-        if (!live) continue;
+        if (!used.contains(parameter)) continue;
         const std::string& typeKey = function.generatorParameterTypeKeys[parameter];
         const auto layout = objectLayoutModel.valueLayoutForTypeKey(nameLookup, typeKey);
         if (!layout.has_value()) continue;
@@ -616,6 +685,18 @@ void appendLiveFrameParameters(
         function.asyncFrameParameters.emplace_back(parameter, frameSize, typeKey);
         frameSize += layout->first;
     }
+}
+
+// EN: Freeze 3.0 C-02: one drop-flag byte per frame local closes the frame, 8-aligned, so a
+//     destructor guard survives a suspension too. The backend finds the area at
+//     asyncFrameSize - align8(locals); the constructor zeroes it.
+// ES: Congelamiento 3.0 C-02: un byte de bandera de destruccion por local del frame cierra el
+//     frame, alineado a 8, para que la guarda del destructor tambien sobreviva una suspension. El
+//     backend halla el area en asyncFrameSize - align8(locales); el constructor la pone en cero.
+void appendCoroutineDropFlags(const ProjectOopMirFunction& function, std::uint64_t& frameSize) noexcept
+{
+    if (function.asyncFrameLocals.empty()) return;
+    frameSize = alignFrameOffset(frameSize, 8) + function.asyncFrameLocals.size();
 }
 
 bool buildPollFrame(
@@ -627,7 +708,7 @@ bool buildPollFrame(
     std::string& error)
 {
     std::uint64_t frameSize = 0;
-    sumAwaitedFrameSizeNodes(function.body.get(), indexes, layouts, frameSize);
+    assignAwaitFrameSlotNodes(function.body.get(), indexes, layouts, frameSize);
     std::uint64_t order = 0;
     PositionMap localDefinition;
     PositionMap localLastUse;
@@ -639,17 +720,16 @@ bool buildPollFrame(
     std::unordered_map<std::size_t, std::size_t> borrowSource;
     OrdinalSet borrowNonLocalSource;
     collectBorrowSourcesNodes(function.body.get(), borrowSource, borrowNonLocalSource);
-    OrdinalSet liveSet;
-    collectLivePollLocalNodes(
-        function.body.get(), localDefinition, localLastUse, suspendOrders, liveSet);
-    closeLiveBorrowSources(borrowSource, liveSet);
+    // EN: Liveness still decides the borrow rule; the frame itself keeps every local (C-02).
+    // ES: La vivacidad aun decide la regla de prestamos; el frame guarda todo local (C-02).
     if (!validateNonLocalBorrowSources(
             borrowNonLocalSource, localDefinition, localLastUse, suspendOrders, error))
         return false;
-    appendPollFrameLocalNodes(
-        function.body.get(), liveSet, objectLayoutModel, nameLookup, function, frameSize);
-    appendLiveFrameParameters(
-        parameterLastUse, suspendOrders, objectLayoutModel, nameLookup, function, frameSize);
+    appendCoroutineFrameLocalNodes(
+        function.body.get(), objectLayoutModel, nameLookup, function, frameSize);
+    appendUsedFrameParameterNodes(
+        function.body.get(), objectLayoutModel, nameLookup, function, frameSize);
+    appendCoroutineDropFlags(function, frameSize);
     function.asyncFrameSize = alignFrameOffset(frameSize, 8);
     return true;
 }
@@ -659,20 +739,16 @@ void buildMoveNextFrame(
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup)
 {
-    std::uint64_t order = 0;
-    PositionMap localDefinition;
-    PositionMap localLastUse;
-    PositionMap parameterLastUse;
-    std::vector<std::uint64_t> yieldOrders;
-    collectMoveNextLivenessNodes(
-        function.body.get(), order, localDefinition, localLastUse,
-        parameterLastUse, yieldOrders);
+    // EN: Freeze 3.0 C-02: like a poll, a MoveNext keeps every local and every used parameter in
+    //     the frame; the linear liveness this replaced lost values across loop iterations.
+    // ES: Congelamiento 3.0 C-02: como un poll, un MoveNext guarda todo local y todo parametro
+    //     usado en el frame; la vivacidad lineal que esto sustituye perdia valores entre vueltas.
     std::uint64_t frameSize = 0;
-    appendMoveNextFrameLocalNodes(
-        function.body.get(), localDefinition, localLastUse, yieldOrders,
-        objectLayoutModel, nameLookup, function, frameSize);
-    appendLiveFrameParameters(
-        parameterLastUse, yieldOrders, objectLayoutModel, nameLookup, function, frameSize);
+    appendCoroutineFrameLocalNodes(
+        function.body.get(), objectLayoutModel, nameLookup, function, frameSize);
+    appendUsedFrameParameterNodes(
+        function.body.get(), objectLayoutModel, nameLookup, function, frameSize);
+    appendCoroutineDropFlags(function, frameSize);
     function.asyncFrameSize = alignFrameOffset(frameSize, 8);
 }
 

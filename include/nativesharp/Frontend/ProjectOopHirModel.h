@@ -4082,6 +4082,16 @@ private:
         ProjectOopHirFunction& function,
         const std::string& futureKey,
         const ast::AstNode* syntax);
+    // EN: Freeze 3.0 C-02: `static async int Main()` is an entry point. The executable enters
+    //     through a synthesized `Main$entry` that awaits Main's future and drives it to
+    //     completion: the one place where a synchronous await loops over a suspending producer.
+    // ES: Congelamiento 3.0 C-02: `static async int Main()` es un punto de entrada. El ejecutable
+    //     entra por un `Main$entry` sintetizado que espera el future de Main y lo lleva hasta el
+    //     final: el unico lugar donde un await sincrono itera sobre un productor que se suspende.
+    bool isAsyncEntryMain(const ProjectOopHirFunction& function) const;
+    std::unique_ptr<ProjectOopHirFunction> createAsyncEntryFunction(
+        const ProjectOopHirFunction& asyncFunction,
+        std::string& error);
 
     // NS304-T06-F03: splits a generator into a lazy constructor (function.body becomes
     // `return default(iterator:<T>)`) and a MoveNext function (returned; `bool(self)` runs the body

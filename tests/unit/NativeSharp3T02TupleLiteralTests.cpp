@@ -118,8 +118,8 @@ namespace TupleLiterals
             (long, double) converted = ConvertedReturn();
             if (trace != 42 || ConsumeWide(converted) != 42) { return 3; }
 
-            Derived first = new Derived();
-            Derived second = new Derived();
+            raii Derived first = new Derived();
+            raii Derived second = new Derived();
             if (ConsumeReferences((first, second)) != 42) { return 4; }
 
             if (Pick((20, 22)) != 42) { return 5; }

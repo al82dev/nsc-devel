@@ -1,6 +1,6 @@
 public class Box { public int Value; }
 public class Program
 {
-    public static noheap int Work() { Box value = new Box(); return value.Value; }
+    public static noheap int Work() { raii Box value = new Box(); return value.Value; }
     public static int Main() { return 0; }
 }

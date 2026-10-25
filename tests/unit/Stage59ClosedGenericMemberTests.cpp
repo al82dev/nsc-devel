@@ -115,11 +115,12 @@ public class Caja<T>
 {
     public T Item;
     public static int Cuenta;
+    public Caja() { }
+    public Caja(T value) { Item = value; }
+    // Congelamiento 3.0 (C-01): el `new` va directo al retorno; quien llama es el dueno manual.
     public static Caja<T> Make(T value)
     {
-        Caja<T> c = new Caja<T>();
-        c.Item = value;
-        return c;
+        return new Caja<T>(value);
     }
 }
 
@@ -218,7 +219,7 @@ int main()
         "        return 0;"));
 
     expectValid(tests, root, "declaracion_de_local_generico", program(
-        "        Caja<int> c = new Caja<int>();\n"
+        "        raii Caja<int> c = new Caja<int>();\n"
         "        c.Item = 4;\n"
         "        return c.Item;"));
 

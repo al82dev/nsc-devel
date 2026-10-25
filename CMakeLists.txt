@@ -937,6 +937,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/Lowering/OopLlvmConditionalsAndNullAware.cpp
     src/LLVM/Lowering/OopLlvmConstruction.cpp
     src/LLVM/Lowering/OopLlvmControlFlow.cpp
+    src/LLVM/Lowering/OopLlvmCoroutines.cpp
     src/LLVM/Lowering/OopLlvmDebugInfo.cpp
     src/LLVM/Lowering/OopLlvmDeclarations.cpp
     src/LLVM/Lowering/OopLlvmExpressionDispatch.cpp

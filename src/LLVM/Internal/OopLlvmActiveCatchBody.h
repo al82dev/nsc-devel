@@ -17,5 +17,15 @@ struct ActiveCatchBody final
 {
     LLVMValueRef exception = nullptr;
     std::size_t loopDepthAtEntry = 0;
+    // EN: Freeze 3.0 C-01: the catch owns the exception it handles. `ownerSlot` holds it until
+    //     the catch releases it or hands it to a rethrow (which stores null). A throw leaves this
+    //     body when no try opened inside it is active: exceptionHandlerStack_.size() is still
+    //     `handlerDepthAtEntry`.
+    // ES: Congelamiento 3.0 C-01: el catch es dueno de la excepcion que maneja. `ownerSlot` la
+    //     guarda hasta que el catch la libera o se la entrega a un rethrow (que guarda null). Un
+    //     throw sale de este cuerpo cuando no hay activo ningun try abierto dentro de el:
+    //     exceptionHandlerStack_.size() sigue valiendo `handlerDepthAtEntry`.
+    LLVMValueRef ownerSlot = nullptr;
+    std::size_t handlerDepthAtEntry = 0;
 };
 }

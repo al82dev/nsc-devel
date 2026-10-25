@@ -500,6 +500,32 @@ bool OopLlvmImplementation::emitUsingDispose(const frontend::ProjectOopMirNode* 
                 return false;
             }
         }
+        // EN: Freeze 3.0 C-01: an owning using local (initialized by `new`) is destroyed right
+        //     after Dispose. The slot is cleared before the release entry runs, the same guard
+        //     emitRaiiDestroy uses, so a cleanup entered twice disposes and destroys once.
+        // ES: Congelamiento 3.0 C-01: un local de using dueno (inicializado con `new`) se destruye
+        //     justo despues de Dispose. El slot se limpia antes de la entrada de liberacion, la
+        //     misma guarda de emitRaiiDestroy, asi que un cleanup que entra dos veces lo hace una.
+        if (node->automaticDestruction && !terminated())
+        {
+            if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
+                return fail(error, "freeze 3.0 owning using cleanup has no descriptor ABI");
+            LLVMBasicBlockRef releaseBlock = appendBlock("using.release");
+            emitCleanupGuardBranch(
+                localFound->second, resource, releaseBlock, doneBlock, "using.owner");
+            LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, resource, "using.descriptor");
+            LLVMValueRef entryAddress = LLVMBuildStructGEP2(
+                builder_, descriptorType_, descriptor, 5U, "using.release.entry.addr");
+            LLVMValueRef releaseEntry = LLVMBuildLoad2(
+                builder_, ptr, entryAddress, "using.release.entry");
+            LLVMValueRef releaseArguments[] = {resource};
+            if (buildPotentiallyThrowingCall(
+                    destructionEntryFunctionType_, releaseEntry, releaseArguments, 1, "", error) ==
+                    nullptr && !error.empty())
+            {
+                return false;
+            }
+        }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
         enterBlock(doneBlock);
         return true;
@@ -1227,12 +1253,77 @@ bool OopLlvmImplementation::structuredExitLeavesCatchBody(
         return targetLoopIndex < activeCatchExceptions_.back().loopDepthAtEntry;
     }
 
-void OopLlvmImplementation::emitCatchBodyExceptionClear()
+bool OopLlvmImplementation::emitCatchBodyExceptionClear(
+        bool isReturn, std::size_t targetLoopIndex, std::string& error)
 {
         LLVMBasicBlockRef leaveBlock = appendBlock("eh.catch.leave");
         LLVMBuildBr(builder_, leaveBlock);
         enterBlock(leaveBlock);
         buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+        // EN: Freeze 3.0 C-01: every catch body this exit leaves releases its exception. The
+        //     copy keeps the frames stable while the release calls are lowered.
+        // ES: Congelamiento 3.0 C-01: cada cuerpo de catch que esta salida abandona libera su
+        //     excepcion. La copia mantiene estables los marcos mientras se bajan las liberaciones.
+        const std::vector<ActiveCatchBody> frames = activeCatchExceptions_;
+        for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
+        {
+            if (!isReturn && targetLoopIndex >= frame->loopDepthAtEntry) break;
+            if (frame->ownerSlot == nullptr) continue;
+            if (!emitCaughtExceptionRelease(frame->ownerSlot, error)) return false;
+            if (terminated()) return true;
+        }
+        return true;
+    }
+
+bool OopLlvmImplementation::emitCaughtExceptionRelease(LLVMValueRef ownerSlot, std::string& error)
+{
+        if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
+            return fail(error, "freeze 3.0 catch ownership has no descriptor ABI");
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef owned = LLVMBuildLoad2(builder_, ptr, ownerSlot, "eh.catch.owned");
+        LLVMBasicBlockRef releaseBlock = appendBlock("eh.catch.release");
+        LLVMBasicBlockRef doneBlock = appendBlock("eh.catch.release.done");
+        emitCleanupGuardBranch(ownerSlot, owned, releaseBlock, doneBlock, "eh.catch.owner");
+        LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, owned, "eh.catch.descriptor");
+        LLVMValueRef entryAddress = LLVMBuildStructGEP2(
+            builder_, descriptorType_, descriptor, 5U, "eh.catch.release.entry.addr");
+        LLVMValueRef releaseEntry = LLVMBuildLoad2(builder_, ptr, entryAddress, "eh.catch.release.entry");
+        LLVMValueRef arguments[] = {owned};
+        if (buildPotentiallyThrowingCall(
+                destructionEntryFunctionType_, releaseEntry, arguments, 1, "", error) == nullptr &&
+            !error.empty()) return false;
+        if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+        enterBlock(doneBlock);
+        return true;
+    }
+
+bool OopLlvmImplementation::emitCatchOwnershipOnThrow(LLVMValueRef exception, std::string& error)
+{
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        const std::vector<ActiveCatchBody> frames = activeCatchExceptions_;
+        for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
+        {
+            if (frame->ownerSlot == nullptr) continue;
+            // EN: Throwing the caught object itself (`throw;` or `throw e;`) hands it over.
+            // ES: Lanzar el mismo objeto atrapado (`throw;` o `throw e;`) lo entrega.
+            LLVMValueRef owned = LLVMBuildLoad2(builder_, ptr, frame->ownerSlot, "eh.catch.owned");
+            LLVMValueRef same = LLVMBuildICmp(builder_, LLVMIntEQ, owned, exception, "eh.catch.rethrown");
+            LLVMBasicBlockRef handOver = appendBlock("eh.catch.handover");
+            LLVMBasicBlockRef next = appendBlock("eh.catch.handover.done");
+            LLVMBuildCondBr(builder_, same, handOver, next);
+            enterBlock(handOver);
+            LLVMBuildStore(builder_, LLVMConstNull(ptr), frame->ownerSlot);
+            LLVMBuildBr(builder_, next);
+            enterBlock(next);
+            // EN: A throw with no try of its own inside this body leaves it: the catch releases
+            //     the exception it still owns before the new one propagates.
+            // ES: Un throw sin un try propio dentro de este cuerpo sale de el: el catch libera la
+            //     excepcion que todavia posee antes de que la nueva se propague.
+            if (frame->handlerDepthAtEntry != exceptionHandlerStack_.size()) continue;
+            if (!emitCaughtExceptionRelease(frame->ownerSlot, error)) return false;
+            if (terminated()) return true;
+        }
+        return true;
     }
 
 }

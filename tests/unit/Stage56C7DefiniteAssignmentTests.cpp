@@ -599,7 +599,7 @@ namespace proj {
     class Program {
         static Vec2 shared = {30, 1};
         public static int Main() {
-            Holder holder = new Holder();
+            raii Holder holder = new Holder();
             return shared.x + shared.y + holder.offset.x + holder.offset.y;
         }
     }

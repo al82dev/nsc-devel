@@ -5722,6 +5722,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishSynthetic
         call.staticCall = memberPtr->isStatic;
         result.assignable = memberPtr->isReferenceReturn;
         result.addressable = memberPtr->isReferenceReturn;
+        // EN: Freeze 3.0 C-01: a user operator or conversion that declares an `owned` return
+        //     transfers ownership exactly like an ordinary owned-returning call, so
+        //     `raii T sum = a + b;` takes ownership of the operator's new object.
+        // ES: Congelamiento 3.0 C-01: un operador o conversion de usuario con retorno `owned`
+        //     transfiere la propiedad igual que una llamada ordinaria, asi que
+        //     `raii T sum = a + b;` toma la propiedad del objeto nuevo del operador.
+        if (memberPtr->declaredOwnership == sema::OwnershipKind::Owned)
+        {
+            result.ownership = sema::OwnershipKind::Owned;
+            result.ownershipTransfer = true;
+            result.ownershipFreshOwner = true;
+        }
         if (call.staticCall)
         {
             call.implicitThis = false;

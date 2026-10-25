@@ -11,8 +11,10 @@ namespace NativeSharp.Core
     //     Dispose and the destructor are two different obligations. `Dispose()` releases what the
     //     object controls (a handle, a lock, a buffer it lends out) at the end of the `using`
     //     block; the destructor still runs when the object's owner ends its lifetime. A type may
-    //     implement both: `using` does not destroy the object, it only disposes it, and a type
-    //     whose Dispose already released everything keeps a destructor that tolerates that.
+    //     implement both. When the using header creates the resource (`using (T x = new T())`),
+    //     the using local is its owner: Dispose runs first and the destructor right after it.
+    //     When the header names an existing object, `using` only disposes it and its owner
+    //     still destroys it later, so a destructor must tolerate a disposed object.
     //
     // ES: La sentencia `using (T x = e) { ... }` llama `Dispose()` sobre `x` exactamente una vez
     //     al salir del bloque -- normalmente, por return/break/continue o por una excepcion. El
@@ -23,8 +25,11 @@ namespace NativeSharp.Core
     //     Dispose y el destructor son obligaciones distintas. `Dispose()` libera lo que el objeto
     //     controla (un handle, un candado, un buffer que presta) al final del bloque `using`; el
     //     destructor sigue corriendo cuando el dueno del objeto termina su vida. Un tipo puede
-    //     implementar ambos: `using` no destruye el objeto, solo lo dispone, y un tipo cuyo
-    //     Dispose ya libero todo conserva un destructor que lo tolera.
+    //     implementar ambos. Cuando la cabecera del using crea el recurso
+    //     (`using (T x = new T())`), el local del using es su dueno: primero corre Dispose y
+    //     justo despues el destructor. Cuando la cabecera nombra un objeto existente, `using`
+    //     solo lo dispone y su dueno lo destruye despues, asi que el destructor debe tolerar un
+    //     objeto ya dispuesto.
     public interface IDisposable
     {
         void Dispose();

@@ -350,7 +350,7 @@ namespace ForeachTrait
         public static int Disposals = 0;
         public static int Main()
         {
-            Sequence sequence = new Sequence(40);
+            raii Sequence sequence = new Sequence(40);
             int result = 0;
             foreach (int value in sequence)
             {
@@ -385,7 +385,7 @@ namespace ForeachNonRefCurrent
     {
         public static int Main()
         {
-            Sequence sequence = new Sequence();
+            raii Sequence sequence = new Sequence();
             foreach (ref mut int value in sequence) { value = 1; }
             return 0;
         }

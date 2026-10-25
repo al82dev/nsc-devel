@@ -1985,6 +1985,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishPlainAssi
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (!validatePlainAssignmentConversion(expression, left, right, diagnostics)) return {};
+    // EN: Freeze 3.0 C-01: `x = new T();` into a local that is neither raii nor owned leaves the
+    //     object without an owner.
+    // ES: Congelamiento 3.0 C-01: `x = new T();` sobre un local que no es raii ni owned deja al
+    //     objeto sin dueno.
+    if (assignmentTargetLocal.has_value() && !raiiTargetLocal.has_value() &&
+        *assignmentTargetLocal < locals_.size() && !locals_[*assignmentTargetLocal].isRaii &&
+        isFreshObjectCreation(expression->second(), right))
+    {
+        reportLostOwnership(
+            expression->second(),
+            "the non-owning local '" + locals_[*assignmentTargetLocal].name + "'", diagnostics);
+    }
     updatePlainAssignmentState(
         expression, right, raiiTargetLocal, assignmentTargetLocal, moveOnlyTargetLocal,
         moveOnlyTargetParameter, assignedUnionStorage, assignedUnionMember,

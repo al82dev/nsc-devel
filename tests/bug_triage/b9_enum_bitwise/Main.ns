@@ -35,7 +35,7 @@ namespace bugtriage
             Mask inverted = ~Mask.None;
             if ((uint)inverted != 4294967295u) { return 4; }
 
-            Holder holder = new Holder();
+            raii Holder holder = new Holder();
             holder.Value = Mask.A;
             holder.Value |= Mask.C;
             if ((uint)holder.Value != 5u) { return 5; }

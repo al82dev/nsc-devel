@@ -498,6 +498,13 @@ bool ProjectOopHirModel::initializeUsingStatementFrame(
     state.node->disposeImplementationMemberOrdinal =
         binding->disposeImplementationMemberOrdinal;
     state.node->interfaceCleanupDispatch = binding->interfaceDispatch;
+    // EN: Freeze 3.0 C-01: a using local initialized by `new` owns its resource, so the using
+    //     cleanup destroys it after Dispose.
+    // ES: Congelamiento 3.0 C-01: un local de using inicializado con `new` posee su recurso, asi
+    //     que el cleanup del using lo destruye despues de Dispose.
+    state.node->automaticDestruction = methodBodyModel_ != nullptr &&
+        binding->resourceLocalOrdinal < methodBodyModel_->locals().size() &&
+        methodBodyModel_->locals()[binding->resourceLocalOrdinal].isRaii;
     return true;
 }
 

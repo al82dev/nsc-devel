@@ -42,7 +42,7 @@ namespace Stage47.Sample
             return value;
         }
 
-        public static export extern C Counter NS_Counter_Create(int initialValue)
+        public static export extern C owned Counter NS_Counter_Create(int initialValue)
         {
             return new Counter(initialValue);
         }

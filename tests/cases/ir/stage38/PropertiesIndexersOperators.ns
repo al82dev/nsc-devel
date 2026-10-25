@@ -98,24 +98,24 @@ namespace Stage38.Demo
     {
         public static int Run()
         {
-            Number first = new Number(10);
-            Number second = new Number(20);
+            raii Number first = new Number(10);
+            raii Number second = new Number(20);
             Number sum = first + second;
             Number negative = -sum;
             bool same = first == second;
             int primitive = sum;
-            Holder holder = new Holder(sum);
+            raii Holder holder = new Holder(sum);
             Number casted = (Number)primitive;
             IValue interfaceValue = casted;
             interfaceValue[2] = primitive;
             int indexed = interfaceValue[2];
             int multi = casted[1, 2];
             int result = holder.Read() + indexed + multi + negative.Value;
-            delete first;
-            delete second;
+
+
             delete sum;
             delete negative;
-            delete holder;
+
             delete casted;
             return result;
         }

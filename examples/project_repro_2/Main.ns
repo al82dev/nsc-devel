@@ -12,9 +12,8 @@ class Repro2
 {
     public static int Main()
     {
-        Holder2 h = new Holder2();
+        raii Holder2 h = new Holder2();
         h.Consume(7);
-        delete h;
         return 5;
     }
 }

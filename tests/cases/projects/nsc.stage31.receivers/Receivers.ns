@@ -41,7 +41,7 @@ public class ReceiverHarness
 
     public int Local()
     {
-        Counter counter = new Counter(3);
+        raii Counter counter = new Counter(3);
         return counter.Add(4);
     }
 

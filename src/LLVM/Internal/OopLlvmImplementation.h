@@ -3,6 +3,7 @@
 #include "DropCase.h"
 #include "OopLlvmActiveCatchBody.h"
 #include "OopLlvmCachedCleanup.h"
+#include "OopLlvmCoroutineState.h"
 #include "OopLlvmExceptionHandlerContext.h"
 #include "OopLlvmFuncletContext.h"
 #include "OopLlvmFuncletKind.h"
@@ -870,7 +871,14 @@ private:
     // The clear is emitted into a block of its own rather than inline, so that what the obligation
     // produced is NAMEABLE in the emitted IR and can be asserted by a test instead of reasoned
     // about. -O2 folds the block away; the call survives.
-    void emitCatchBodyExceptionClear();
+    // Freeze 3.0 C-01: the clear is followed by the release of every caught exception whose catch
+    // body this exit leaves (see ActiveCatchBody::ownerSlot).
+    bool emitCatchBodyExceptionClear(bool isReturn, std::size_t targetLoopIndex, std::string& error);
+    // Freeze 3.0 C-01: destroys and frees the exception held by a catch owner slot, if any.
+    bool emitCaughtExceptionRelease(LLVMValueRef ownerSlot, std::string& error);
+    // Freeze 3.0 C-01: before a throw, a catch whose exception is the thrown one hands it over,
+    // and a catch the throw leaves releases the exception it still owns.
+    bool emitCatchOwnershipOnThrow(LLVMValueRef exception, std::string& error);
 
     bool lowerStructuredExit(
         const frontend::ProjectOopMirNode* node,
@@ -1251,6 +1259,7 @@ private:
         LLVMValueRef pollFunction,
         LLVMTypeRef pollFunctionType,
         LLVMTypeRef intType,
+        bool driveToCompletion,
         LLVMBasicBlockRef& loopDone,
         LLVMBasicBlockRef& loopError,
         std::string& error);
@@ -1316,6 +1325,46 @@ private:
         const frontend::ProjectOopMirNode* node,
         std::string& error,
         LLVMValueRef childOverride);
+    // EN: Freeze 3.0 C-02: attaches a frame to the awaited future only when its constructor left
+    //     none; the constructor's frame already holds the captured parameters.
+    // ES: Congelamiento 3.0 C-02: adjunta un frame al future esperado solo si su constructor no
+    //     dejo ninguno; el frame del constructor ya guarda los parametros capturados.
+    bool attachAwaitFrameIfMissing(
+        LLVMValueRef futureSlot,
+        std::uint64_t frameSize,
+        bool frameOnHeap,
+        std::string& error);
+    // EN: Freeze 3.0 C-02 resume machinery (OopLlvmCoroutines.cpp): frame-resident locals, the
+    //     entry dispatch, and the suspension points of a poll or MoveNext.
+    // ES: Maquinaria de reanudacion del Congelamiento 3.0 C-02 (OopLlvmCoroutines.cpp): locales
+    //     en el frame, el despacho de entrada y los puntos de suspension de un poll o MoveNext.
+    bool isFrameResidentCoroutine(const frontend::ProjectOopMirFunction& function) const;
+    bool beginCoroutineDispatch(const frontend::ProjectOopMirFunction& function, std::string& error);
+    void collectCoroutineSuspensions(const frontend::ProjectOopMirNode* root);
+    LLVMValueRef ensureCoroutineFrame(
+        const frontend::ProjectOopMirFunction& function, std::string& error);
+    void aliasCoroutineFrameLocals(const frontend::ProjectOopMirFunction& function);
+    void zeroCoroutineDropFlags(LLVMValueRef frame, const frontend::ProjectOopMirFunction& function);
+    bool emitCoroutineDoneReturn(const frontend::ProjectOopMirFunction& function, std::string& error);
+    bool finishCoroutineDispatch(std::string& error);
+    void enterCoroutineResumeTarget(const frontend::ProjectOopMirNode* statement);
+    LLVMValueRef coroutineResumeMatches(
+        const frontend::ProjectOopMirNode* node, std::int64_t& id, std::string& error);
+    bool lowerCoroutineSuspendPoint(const frontend::ProjectOopMirNode* node, std::string& error);
+    bool lowerCoroutineYieldValue(const frontend::ProjectOopMirNode* node, std::string& error);
+    bool emitCoroutineYieldCancel(
+        const frontend::ProjectOopMirNode* node, LLVMBasicBlockRef cancel, std::string& error);
+    bool lowerSyncGeneratorDrop(LLVMValueRef self, std::string& error);
+    bool markCoroutineFinished(std::string& error);
+    bool storeYieldValueItem(
+        const frontend::ProjectOopMirNode* node, LLVMValueRef self, std::string& error);
+    LLVMValueRef lowerCoroutineAwait(
+        const frontend::ProjectOopMirNode* node, std::string& error, LLVMValueRef childOverride);
+    LLVMValueRef pollCoroutineAwaitChild(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef childSlot,
+        LLVMTypeRef intType,
+        std::string& error);
     // NSC305-L04. The iterative expression machine's trampoline (first family: unary/binary). The
     // unary/binary self-calls are replaced by frame pushes; the sub-expressions receive their
     // values from a ValueStack. The remaining families still use the recursive lowerExpression and
@@ -3354,6 +3403,9 @@ private:
     std::unordered_map<std::string, FunctionInfo> callbackGuardThunks_;
     LLVMValueRef currentFunction_ = nullptr;
     const frontend::ProjectOopMirFunction* currentMirFunction_ = nullptr;
+    // EN: Freeze 3.0 C-02: resume state of the poll/MoveNext being defined (inactive otherwise).
+    // ES: Congelamiento 3.0 C-02: estado de reanudacion del poll/MoveNext en definicion.
+    OopLlvmCoroutineState coroutine_;
     LLVMMetadataRef currentDebugSubprogram_ = nullptr;
     LLVMMetadataRef currentDebugScope_ = nullptr;
     // ES: Ámbito léxico de la declaración que se está bajando. La variable pertenece a él, pero las

@@ -47,10 +47,10 @@ namespace Tutorial.Excepciones
         {
             if (amount > balance)
             {
-                InsufficientFundsException problem = new InsufficientFundsException();
+                raii InsufficientFundsException problem = new InsufficientFundsException();
                 problem.Requested = amount;
                 problem.Available = balance;
-                throw problem;
+                throw move(problem);
             }
             balance = balance - amount;
         }

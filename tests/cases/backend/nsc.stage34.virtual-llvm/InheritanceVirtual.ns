@@ -54,7 +54,7 @@ public class Harness
 
     public int Run()
     {
-        Animal a = new Dog(5, 20);
+        raii Animal a = new Dog(5, 20);
         return a.Speak();
     }
 

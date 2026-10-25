@@ -113,7 +113,7 @@ public class Program
         void* first = slots;
         void* second = slots + 1;
         void* third = slots + 2;
-        AtomicPointer value = new AtomicPointer(first);
+        raii AtomicPointer value = new AtomicPointer(first);
 
         if (value.Load() != first) { return 1; }
         value.Store(second, MemoryOrder.Release);
@@ -186,7 +186,7 @@ public class Program
 {
     public static int Main()
     {
-        AtomicPointer value = new AtomicPointer(null);
+        raii AtomicPointer value = new AtomicPointer(null);
         MemoryOrder dynamicOrder = MemoryOrder.Relaxed;
         value.Load(MemoryOrder.Release);
         value.Store(null, MemoryOrder.Acquire);

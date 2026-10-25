@@ -146,7 +146,7 @@ public class Program
         ThreadStart start = Worker;
         ReferenceCountHook destroyHook = Destroy;
         ReferenceCountHook deallocateHook = Deallocate;
-        Thread worker = new Thread(start);
+        raii Thread worker = new Thread(start);
         Counts.ReleaseStrongAndDestroy(destroyHook, deallocateHook);
         worker.Join();
         if (Destroyed.Load(MemoryOrder.Acquire) != 1) { return 1; }

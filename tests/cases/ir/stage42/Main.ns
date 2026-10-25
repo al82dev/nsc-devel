@@ -37,8 +37,8 @@ namespace Stage42.Sample
 
         public static int Run()
         {
-            Listener listener = new Listener();
-            Publisher publisher = new Publisher();
+            raii Listener listener = new Listener();
+            raii Publisher publisher = new Publisher();
             Transform first = Increment;
             Transform second = listener.Double;
             int a = first(10);

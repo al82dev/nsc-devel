@@ -236,7 +236,7 @@ class Program
 {
     public static bool Run()
     {
-        Monitor m = new Monitor();
+        raii Monitor m = new Monitor();
         m.Enter();
         bool waited = m.Wait(5);
         m.Pulse();
@@ -523,7 +523,7 @@ class Program
     {
         // Nobody else touches this Monitor -- a condition that never becomes true, with a short
         // real timeout, must always expire (false), never block forever.
-        Monitor m = new Monitor();
+        raii Monitor m = new Monitor();
         m.Enter();
         bool waited1 = m.Wait(10);
         bool waited2 = m.Wait(50);

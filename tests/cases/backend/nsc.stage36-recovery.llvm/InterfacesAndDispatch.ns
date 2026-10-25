@@ -84,14 +84,14 @@ namespace Stage36.Demo
 
         public static int Run()
         {
-            IAdvanced advanced = new Sensor(21);
-            IReadable readable = advanced;
-            Holder holder = new Holder(readable);
+            raii IAdvanced advanced = new Sensor(21);
+            borrowed IReadable readable = advanced;
+            raii Holder holder = new Holder(advanced);
 
             int result = advanced.Scale(2) + advanced.Status() + holder.Invoke();
 
-            delete advanced;
-            delete holder;
+
+
 
             return result;
         }

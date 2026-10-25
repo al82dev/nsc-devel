@@ -145,8 +145,12 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (parser_.at(TokenKind::KwStaticAssert)) return StatementKind::StaticAssert;
     if (parser_.at(TokenKind::KwVar) && parser_.peek().kind() == TokenKind::LeftParen)
         return StatementKind::Deconstruction;
+    // Freeze 3.0 C-02: `await` is tested first. `await F(ref x);` otherwise looked like a local
+    // function whose return type is `await`, and failed with "expected parameter name".
+    // Congelamiento 3.0 C-02: `await` se prueba antes; `await F(ref x);` parecia una funcion local.
+    if (parser_.atContextualKeyword("await") && parser_.peek().kind() != TokenKind::Equal)
+        return StatementKind::AwaitExpression;
     if (parser_.looksLikeLocalFunction()) return StatementKind::LocalFunction;
-    if (parser_.atContextualKeyword("await")) return StatementKind::AwaitExpression;
     if (declarationStatementStarts()) return StatementKind::VariableDeclaration;
     return StatementKind::Expression;
 }

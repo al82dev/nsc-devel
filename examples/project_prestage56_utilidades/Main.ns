@@ -104,8 +104,8 @@ class Program
         // ---- 4. Random: semilla explicita determinista, rangos respetados, Next()/NextDouble()/
         // NextBool()/NextInt64() dentro de sus contratos declarados en Random.ns. --------------
 
-        Random seeded1 = new Random(424242);
-        Random seeded2 = new Random(424242);
+        raii Random seeded1 = new Random(424242);
+        raii Random seeded2 = new Random(424242);
         int firstFromSeeded1 = seeded1.Next();
         int firstFromSeeded2 = seeded2.Next();
         if (firstFromSeeded1 != firstFromSeeded2)
@@ -113,7 +113,7 @@ class Program
             return 14;
         }
 
-        Random rng = new Random(123456789);
+        raii Random rng = new Random(123456789);
         int i = 0;
         while (i < 200)
         {

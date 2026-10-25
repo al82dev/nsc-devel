@@ -56,8 +56,8 @@ namespace c60ns3genericsolver
             Item constrained = ConstrainedDefault();
             if (constrained == null) { score = score + 5; }
 
-            Item live = new Item(42);
-            ConstrainedBox<Item> box = new ConstrainedBox<Item>();
+            raii Item live = new Item(42);
+            raii ConstrainedBox<Item> box = new ConstrainedBox<Item>();
             if (box.Read(live) == 42) { score = score + 0; }
 
             return score;

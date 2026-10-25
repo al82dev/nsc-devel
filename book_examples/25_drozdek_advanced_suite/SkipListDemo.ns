@@ -61,8 +61,13 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
             if (current == null || current.Key != key)
             {
                 int nodeLevels = LevelFor(key);
-                SkipNode node = new SkipNode(key, nodeLevels);
-                level = 0;
+                // Congelamiento 3.0 (C-01): el nodo nuevo se guarda primero en el enlace del nivel 0
+                // que lo posee; la lista es su dueno manual y lo libera con `delete`.
+                SkipNode following = update[0].Next[0];
+                update[0].Next[0] = new SkipNode(key, nodeLevels);
+                SkipNode node = update[0].Next[0];
+                node.Next[0] = following;
+                level = 1;
                 while (level < nodeLevels)
                 {
                     node.Next[level] = update[level].Next[level];

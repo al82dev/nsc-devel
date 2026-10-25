@@ -79,15 +79,15 @@ namespace T39FrontendAbi
             if (pair.Left != 20 || pair.Right != 22 ||
                 snapshot.Left != 20 || snapshot.Right != 22) return 4;
 
-            Box original = new Box(1);
-            Box replacement = new Box(42);
-            Box current = original;
+            raii Box original = new Box(1);
+            raii Box replacement = new Box(42);
+            borrowed Box current = original;
             if (!ReplaceBox(ref current, replacement, &current)) return 5;
             if (current.Value != 42 || original.Value != 1) return 6;
             Box nullableBox = true ? replacement : null;
             if (nullableBox == null || nullableBox.Value != 42) return 12;
-            delete original;
-            delete replacement;
+
+
 
             int copied = GenericBox<int>.Copy(value);
             if (copied != 21) return 7;

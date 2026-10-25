@@ -246,9 +246,9 @@ class CountingAccount
     {
         if (amount > balance)
         {
-            InsufficientFundsException problem = new InsufficientFundsException();
+            raii InsufficientFundsException problem = new InsufficientFundsException();
             problem.Requested = amount;
-            throw problem;
+            throw move(problem);
         }
         balance = balance - amount;
     }
@@ -281,9 +281,9 @@ class Account
     {
         if (amount > balance)
         {
-            InsufficientFundsException problem = new InsufficientFundsException();
+            raii InsufficientFundsException problem = new InsufficientFundsException();
             problem.Requested = amount;
-            throw problem;
+            throw move(problem);
         }
         balance = balance - amount;
     }
@@ -521,9 +521,9 @@ class CountingAccount
     {
         if (amount > balance)
         {
-            InsufficientFundsException problem = new InsufficientFundsException();
+            raii InsufficientFundsException problem = new InsufficientFundsException();
             problem.Requested = amount;
-            throw problem;
+            throw move(problem);
         }
         balance = balance - amount;
     }
@@ -591,7 +591,7 @@ void testRaiiObjectStillUsableAfterCatchWithHeapChurn(
                 int index = 0;
                 while (index < 40)
                 {
-                    InsufficientFundsException filler = new InsufficientFundsException();
+                    raii InsufficientFundsException filler = new InsufficientFundsException();
                     filler.Requested = 987654321;
                     index = index + 1;
                 }
@@ -757,7 +757,7 @@ void testSecondCatchClauseMatches(TestContext& tests, const std::filesystem::pat
     {
         public static int Main()
         {
-            Account account = new Account(100);
+            raii Account account = new Account(100);
             int hit = 0;
             try
             {
@@ -858,9 +858,9 @@ class Program
 
     public static void Thrower()
     {
-        InsufficientFundsException problem = new InsufficientFundsException();
+        raii InsufficientFundsException problem = new InsufficientFundsException();
         problem.Requested = 1;
-        throw problem;
+        throw move(problem);
     }
 
     // The catch MATCHES: the finally must still run on the way out of the try.
