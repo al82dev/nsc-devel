@@ -194,6 +194,13 @@ bool emitGlobalDebugInfo(
         debugCompileUnit == nullptr || global == nullptr || field.isImported ||
         !field.sourceRange.isValid())
         return true;
+    // Un miembro de enum es un enumerador del tipo enum (LF_ENUMERATE), no una variable: su
+    // global solo materializa el valor. Describirlo tambien como variable global hacia que el
+    // depurador listara `StringComparison.Ordinal` entre los globales del programa.
+    // An enum member is an enumerator of the enum type (LF_ENUMERATE), not a variable: its
+    // global only materializes the value. Describing it as a global variable too made the
+    // debugger list `StringComparison.Ordinal` among the program's globals.
+    if (field.isEnumConstant) return true;
     LLVMMetadataRef file = debugFileLookup(field.sourceRange.begin());
     const std::string& displayName =
         field.debugDisplayName.empty() ? field.name : field.debugDisplayName;
