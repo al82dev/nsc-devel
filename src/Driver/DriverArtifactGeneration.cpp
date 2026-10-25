@@ -158,6 +158,7 @@ void printExecutableGenerationResult(const frontend::ProjectOopMirFunction &entr
            << "thinlto-index: "
            << (objectBundle.thinLtoIndexDigest().empty() ? "none" : objectBundle.thinLtoIndexDigest()) << '\n'
            << "thinlto-imports: " << objectBundle.thinLtoImportCount() << '\n'
+           << "thinlto-cached-backends: " << objectBundle.thinLtoCachedBackendCount() << '\n'
            << "incremental-link: "
            << (incrementalLink ? (builder.reusedIncrementalLink() ? "hit" : "miss") : "disabled") << '\n'
            << "linked-libraries: " << linkedLibraryCount << '\n'
@@ -490,6 +491,7 @@ void printStaticLibraryGenerationResult(const llvm_backend::ProjectOopObjectBund
            << "thinlto-index: "
            << (objectBundle.thinLtoIndexDigest().empty() ? "none" : objectBundle.thinLtoIndexDigest()) << '\n'
            << "thinlto-imports: " << objectBundle.thinLtoImportCount() << '\n'
+           << "thinlto-cached-backends: " << objectBundle.thinLtoCachedBackendCount() << '\n'
            << "debug-companion: "
            << (debugInformation == llvm_backend::DebugInformationKind::None ? "none"
                                                                             : "CodeView in COFF archive members")

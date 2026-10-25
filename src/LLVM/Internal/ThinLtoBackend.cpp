@@ -18,6 +18,7 @@
 #include "llvm/IR/ModuleSummaryIndex.h"
 #include "llvm/LTO/Config.h"
 #include "llvm/LTO/LTO.h"
+#include "llvm/Support/CachePruning.h"
 #include "llvm/Support/Caching.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
@@ -28,6 +29,7 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -155,7 +157,11 @@ bool ThinLtoBackend::addModule(
     const llvm::ModuleSummaryIndex index = llvm::buildModuleSummaryIndex(unwrapped, nullptr, &profile);
     std::string bytes;
     llvm::raw_string_ostream stream(bytes);
-    llvm::WriteBitcodeToFile(unwrapped, stream, false, &index);
+    // The module hash (GenerateHash) is what lets LLVM cache this unit's backend; without it the
+    // in-process backend always runs.
+    // El hash de modulo (GenerateHash) es lo que permite a LLVM cachear el backend de esta unidad;
+    // sin el, el backend en proceso siempre corre.
+    llvm::WriteBitcodeToFile(unwrapped, stream, false, &index, true);
     stream.flush();
     bitcode_[ordinal] = std::move(bytes);
     // ThinLTO keys modules by identifier, so it is the stable ordinal and never a path.
@@ -316,6 +322,20 @@ bool ThinLtoBackend::run(
         return false;
     }
     cachedBackends_ = bitcode_.size() - std::min<std::size_t>(backendRuns_, bitcode_.size());
+    if (!cacheDirectory.empty())
+    {
+        // The backend cache lives beside the artifact cache but outside its pruning index, so it is
+        // bounded here: entries unused for a week go, and the directory stays under 1 GiB.
+        // El cache de backends vive junto al cache de artefactos pero fuera de su indice de poda, asi
+        // que se acota aqui: salen las entradas sin uso en una semana y el directorio queda bajo 1 GiB.
+        llvm::CachePruningPolicy policy;
+        policy.Expiration = std::chrono::hours(24 * 7);
+        policy.MaxSizeBytes = 1024ULL * 1024ULL * 1024ULL;
+        // Pruning is housekeeping: a failure keeps the cache and never fails the build.
+        // La poda es mantenimiento: si falla se conserva el cache y el build no falla.
+        llvm::Expected<bool> pruned = llvm::pruneCache(cacheDirectory.string(), policy);
+        if (!pruned) llvm::consumeError(pruned.takeError());
+    }
     if (!streamError.empty() || !diagnostics_.empty())
     {
         error = !streamError.empty() ? streamError : "ThinLTO reported errors: " + diagnostics_;
