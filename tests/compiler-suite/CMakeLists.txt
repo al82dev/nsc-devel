@@ -423,6 +423,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Version.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/Sha256.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Basic/ArtifactTransaction.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceAccessRecording.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceManager.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LanguageService/ProtocolTypes.cpp"
@@ -855,6 +856,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmTargetMachine.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/LlvmVersion.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/ProjectOopFunctionReachability.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/ThinLtoLibrarySidecarCodec.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmAggregatesAndStrings.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmArraysAndStores.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/LLVM/Lowering/OopLlvmCalls.cpp"
@@ -969,6 +971,7 @@ add_executable(
     host/src/TestRegistry.cpp
     host/modules/SourceFileOwnershipModule.cpp
     host/modules/SourceFileReadModule.cpp
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceAccessRecording.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Source/SourceFile.cpp")
 
 target_include_directories(
