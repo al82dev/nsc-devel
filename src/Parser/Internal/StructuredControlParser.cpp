@@ -16,17 +16,6 @@ namespace nativesharp::parser
 namespace
 {
 using lexer::TokenKind;
-void reportDeferredLanguage3(
-    diagnostics::DiagnosticEngine& diagnostics,
-    SourceRange range,
-    language::Language3Feature feature)
-{
-    diagnostics.report(
-        diagnostics::DiagnosticId::NS3049DeferredLanguageSurface,
-        diagnostics::DiagnosticSeverity::Error,
-        range,
-        language::language3SurfaceDiagnostic(feature));
-}
 }
 
 Parser::StructuredControlParser::StructuredControlParser(Parser& parser) noexcept
@@ -836,11 +825,18 @@ void Parser::StructuredControlParser::appendSwitchLabel(ast::AstNode* section)
         const std::size_t beginIndex = parser_.index_;
         const bool isDefault = parser_.at(TokenKind::KwDefault);
         parser_.consume();
+        // EN: Freeze 3.0 C-06: list patterns are implemented in `match` and `is`; a `case`
+        //     label is a constant label by design, so `case [ ... ]:` is a deliberate rejection,
+        //     not a planned feature.
+        // ES: Congelamiento 3.0 C-06: los list patterns estan implementados en `match` e `is`;
+        //     una etiqueta `case` es constante por diseno, asi que `case [ ... ]:` es un rechazo
+        //     deliberado, no una capacidad planeada.
         if (!isDefault && parser_.at(TokenKind::LeftBracket))
-            reportDeferredLanguage3(
-                parser_.diagnostics_,
+            parser_.diagnostics_.report(
+                diagnostics::DiagnosticId::UnexpectedToken,
+                diagnostics::DiagnosticSeverity::Error,
                 parser_.current().range(),
-                language::Language3Feature::ListPatterns);
+                std::string(language::kListPatternCaseLabelMessage));
         ast::AstNode* value = isDefault ? nullptr : parser_.parseExpression();
         parser_.expect(
             TokenKind::Colon,

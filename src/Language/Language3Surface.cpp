@@ -13,17 +13,23 @@ constexpr std::array<Language3SurfaceEntry, 16> kSurface = {{
      "lowered to ordinary fields and constructors before name binding"},
     {Language3Feature::RawStringLiterals, "raw-string-literals", Language3Disposition::Implemented,
      "delimiter-aware UTF-8 literal with exact multiline contents"},
-    {Language3Feature::AsyncAwait, "async-await", Language3Disposition::PlannedFor304,
-     "requires productive state-machine lowering, cleanup, pinning, cancellation and debugger metadata"},
-    {Language3Feature::AsyncStreams, "async-streams", Language3Disposition::PlannedFor304,
-     "requires an async iterator ABI with backpressure, cancellation and deterministic cleanup"},
-    {Language3Feature::YieldGenerators, "yield-generators", Language3Disposition::PlannedFor304,
-     "requires productive generator frames, suspension ownership and deterministic cleanup"},
+    // EN: Freeze 3.0 C-06: these five entries were published as planned-3.0.4 while their
+    //     productive lowering already shipped; each disposition below was confirmed by compiling
+    //     and running a program that uses the feature.
+    // ES: Congelamiento 3.0 C-06: estas cinco entradas se publicaban como planned-3.0.4 cuando su
+    //     lowering productivo ya existia; cada disposicion se confirmo compilando y ejecutando un
+    //     programa que usa la capacidad.
+    {Language3Feature::AsyncAwait, "async-await", Language3Disposition::Implemented,
+     "async callables lower to a future constructor and a poll state machine; await suspends, resumes and propagates errors"},
+    {Language3Feature::AsyncStreams, "async-streams", Language3Disposition::Implemented,
+     "AsyncIterator<T, E> with MoveNextAsync, cooperative cancellation and deterministic cleanup of active finally regions"},
+    {Language3Feature::YieldGenerators, "yield-generators", Language3Disposition::Implemented,
+     "Iterator<T> generator frames with MoveNext, yield break and early-stop destruction of live locals"},
     {Language3Feature::DefaultInterfaceImplementations, "default-interface-implementations",
-     Language3Disposition::PlannedFor304,
-     "requires versioned dispatch, coherence and metadata rules for interface bodies"},
-    {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::PlannedFor304,
-     "requires exhaustiveness and usefulness analysis integrated with borrow and move semantics"},
+     Language3Disposition::Implemented,
+     "interface and trait method bodies dispatched through the interface map, most-derived default wins"},
+    {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::Implemented,
+     "list patterns in match and is with length-domain exhaustiveness and redundancy analysis; not in case labels"},
     {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::Implemented,
      "thread-safe once initialization with reentrancy and terminal failure"},
     {Language3Feature::Decimal, "decimal", Language3Disposition::Implemented,
@@ -32,8 +38,16 @@ constexpr std::array<Language3SurfaceEntry, 16> kSurface = {{
      "static namespace extensions with deterministic import lookup and no receiver-type mutation"},
     {Language3Feature::TraitOperators, "trait-operators", Language3Disposition::Implemented,
      "stable lang-item witnesses with builtin precedence and intrinsic short-circuit control flow"},
+    // EN: Freeze 3.0 C-06: the published rule said every value type required an explicit Copy;
+    //     the implemented rule (ProjectMemberModel::typeIsImplicitlyCopyable) copies a struct
+    //     whose fields are all copyable and makes a struct with an owned field, a variant or an
+    //     opaque type move-only. The manifest now publishes the implemented rule.
+    // ES: Congelamiento 3.0 C-06: la regla publicada decia que todo tipo valor exigia Copy
+    //     explicito; la implementada (ProjectMemberModel::typeIsImplicitlyCopyable) copia un
+    //     struct cuyos campos son todos copiables y hace move-only a un struct con un campo owned,
+    //     a un variant o a un tipo opaco. El manifiesto publica ahora la regla implementada.
     {Language3Feature::MoveOnlyDefaults, "move-only-defaults", Language3Disposition::Implemented,
-     "value types require explicit Copy and named consuming reads require move(value)"},
+     "structs whose fields are all copyable copy implicitly; structs with owned fields, variants and opaque types are move-only and named consuming reads require move(value)"},
     {Language3Feature::LongDouble, "long-double", Language3Disposition::RejectedFor3,
      "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp 3.0"},
     {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::Implemented,
