@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -60,6 +61,21 @@ public:
     //     importan y que escriben como objetos despues de las unidades del proyecto (punto 48). Se
     //     ignoran cuando ThinLTO no corre.
     void setThinLtoLibraryUnits(std::vector<ThinLtoLibraryUnits> libraries);
+    // EN: For an executable or a DLL (item 50): the symbols that native objects of the link need from
+    //     the program. With a value, every other definition may be internalized and every function
+    //     gets its own section; without one (a static library) every definition stays visible.
+    // ES: Para un ejecutable o una DLL (punto 50): los simbolos que los objetos nativos del enlace
+    //     necesitan del programa. Con valor, toda otra definicion puede internalizarse y cada funcion
+    //     recibe su propia seccion; sin valor (una biblioteca estatica) toda definicion queda visible.
+    void setThinLtoPreservedSymbols(std::optional<std::vector<std::string>> symbols);
+    // EN: Appends the undefined symbols of the COFF object or archive `file` to `symbols`; false with
+    //     `error` when it cannot be read or the host has no ThinLTO.
+    // ES: Agrega a `symbols` los simbolos indefinidos del objeto o archivo COFF `file`; false con
+    //     `error` si no se puede leer o el host no tiene ThinLTO.
+    static bool collectUndefinedSymbols(
+        const std::filesystem::path& file,
+        std::vector<std::string>& symbols,
+        std::string& error);
 
     // EN: Whether a generation with `mode` at `level` runs real ThinLTO backends: thin, -O1 to -O3
     //     and a host with llvm::lto.
@@ -181,5 +197,6 @@ private:
     bool captureThinLtoFinalModuleTexts_ = false;
     bool captureThinLtoUnitBitcode_ = false;
     std::vector<ThinLtoLibraryUnits> thinLtoLibraries_;
+    std::optional<std::vector<std::string>> thinLtoPreservedSymbols_;
 };
 }

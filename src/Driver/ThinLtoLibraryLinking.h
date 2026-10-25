@@ -7,7 +7,9 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <ostream>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -52,6 +54,22 @@ public:
         llvm_backend::LlvmOptimizationLevel level,
         llvm_backend::DebugInformationKind debugInformation,
         std::string& error);
+
+    /// EN: For an executable or a DLL whose ThinLTO runs (item 50): the program symbols the native
+    ///     inputs of the link may need, that is `roots` (entry point or exports) plus every undefined
+    ///     symbol of the NativeSharp runtime and of each library in `linkLibraries` that is not
+    ///     consumed by sidecar. Empty when ThinLTO does not run, when the runtime is built into the
+    ///     program, or when an input cannot be read: every definition then stays visible. Call it
+    ///     before takeLibraries().
+    /// ES: Para un ejecutable o una DLL con ThinLTO (punto 50): los simbolos del programa que pueden
+    ///     necesitar las entradas nativas del enlace, es decir `roots` (punto de entrada o exports) mas
+    ///     cada simbolo indefinido del runtime de NativeSharp y de cada biblioteca de `linkLibraries`
+    ///     que no se consume por sidecar. Vacio cuando ThinLTO no corre, cuando el runtime se construye
+    ///     con el programa o cuando no se puede leer una entrada: toda definicion queda visible
+    ///     entonces. Se llama antes de takeLibraries().
+    std::optional<std::vector<std::string>> preservedSymbols(
+        std::span<const std::filesystem::path> linkLibraries,
+        std::span<const std::string> roots) const;
 
     /// EN: Hands the accepted units to the object generator; the instance keeps only the report.
     /// ES: Entrega las unidades aceptadas al generador de objetos; la instancia conserva el informe.

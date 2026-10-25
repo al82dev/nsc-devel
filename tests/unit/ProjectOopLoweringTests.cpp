@@ -3239,6 +3239,84 @@ void testThinLtoCrossPartitionInlining(TestContext& tests, const std::filesystem
     tests.expect(everyCallInlined, "ThinLTO inlines every callee into Main, across code units");
 }
 
+// Optimization part 2, item 50: with the symbols native objects need (here only Main), ThinLTO may
+// internalize every other definition, so a function nothing reaches leaves no definition behind.
+// Without them every definition stays visible, as a static library needs.
+// Parte 2, punto 50: con los simbolos que necesitan los objetos nativos (aqui solo Main), ThinLTO
+// puede internalizar toda otra definicion, asi que una funcion que nada alcanza no deja definicion.
+// Sin ellos toda definicion queda visible, como necesita una biblioteca estatica.
+bool thinLtoTextDefines(const std::string& text, std::string_view name)
+{
+    std::istringstream stream(text);
+    std::string line;
+    while (std::getline(stream, line))
+    {
+        if (line.rfind("define ", 0) == 0 && line.find(name) != std::string::npos) return true;
+    }
+    return false;
+}
+
+void testThinLtoInternalization(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "ThinLtoInternalization";
+    writeProject(directory, "ThinInternal");
+    std::string source = "public class Work\n{\n";
+    for (int index = 0; index < 24; ++index)
+    {
+        source += "    public static int F" + std::to_string(index) + "(int value) { return value * " +
+            std::to_string(index + 2) + " + " + std::to_string(index) + "; }\n";
+    }
+    source += "    public static int Orphan(int value) { return value * 97 + 13; }\n";
+    source += "    public static int Main()\n    {\n        int total = 0;\n";
+    for (int index = 0; index < 24; ++index)
+        source += "        total = total + F" + std::to_string(index) + "(" + std::to_string(index) + ");\n";
+    source += "        return total;\n    }\n}\n";
+    writeFile(directory / "Work.ns", source);
+
+    ProjectCompilation compilation;
+    compilation.setCompilationJobs(4);
+    std::string error;
+    const bool compiled = compilation.compileProjectOopMir(directory / "ThinInternal.nsproj", error);
+    tests.expect(compiled && compilation.oopMirModel() != nullptr,
+        "ThinLTO internalization fixture produces OOP MIR (" + error + ")");
+    if (!compiled || compilation.oopMirModel() == nullptr) return;
+    std::string mainSymbol;
+    for (const auto& function : compilation.oopMirModel()->functions())
+    {
+        if (function.mangledName.find("Work__Main") != std::string::npos) mainSymbol = function.mangledName;
+    }
+    tests.expect(!mainSymbol.empty(), "the internalization fixture exposes the mangled name of Main");
+    if (mainSymbol.empty()) return;
+
+    for (int internalize = 0; internalize < 2; ++internalize)
+    {
+        nativesharp::llvm_backend::ProjectOopObjectGenerator generator;
+        generator.setThinLtoFinalModuleTextCapture(true);
+        if (internalize == 1) generator.setThinLtoPreservedSymbols(std::vector<std::string>{mainSymbol});
+        error.clear();
+        const auto bundle = generator.generate(
+            *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+            compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O2, 4, {},
+            nativesharp::llvm_backend::LinkTimeOptimizationMode::Thin, error);
+        tests.expect(bundle != nullptr && bundle->thinLtoInternalized() == (internalize == 1),
+            "the ThinLTO bundle reports whether it internalized (" + error + ")");
+        if (bundle == nullptr) continue;
+        bool orphanDefined = false;
+        bool mainDefined = false;
+        for (const std::string& text : bundle->thinLtoFinalModuleTexts())
+        {
+            orphanDefined = orphanDefined || thinLtoTextDefines(text, "Work__Orphan");
+            mainDefined = mainDefined || thinLtoTextDefines(text, mainSymbol);
+        }
+        tests.expect(mainDefined, "a preserved entry point keeps its definition after ThinLTO");
+        if (internalize == 1)
+            tests.expect(!orphanDefined, "an internalizing ThinLTO link deletes a function nothing reaches");
+        else
+            tests.expect(orphanDefined, "without preserved symbols every ThinLTO definition stays visible");
+    }
+}
+
 void testPartitionStaticFieldReachability(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path directory = root / "PartitionStaticFieldReachability";
@@ -21635,6 +21713,10 @@ int main()
     {
         testThinLtoCrossPartitionInlining(tests, root);
     }
+    else if (focusValue == "thinlto-internalization")
+    {
+        testThinLtoInternalization(tests, root);
+    }
     else if (focusValue == "hir-default-argument-depth")
     {
         testDeepOptionalDefaultHir(tests, root);
@@ -22011,6 +22093,7 @@ int main()
         testPreciseIncrementalInvalidation(tests, root);
         testWorkerIndependentPartitions(tests, root);
         testThinLtoCrossPartitionInlining(tests, root);
+        testThinLtoInternalization(tests, root);
         testPartitionStaticFieldReachability(tests, root);
         testImportedConstantCoordinatorReachability(tests);
         testSharedLlvmAnalysis(tests, root);

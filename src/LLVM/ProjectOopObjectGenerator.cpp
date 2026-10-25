@@ -1031,6 +1031,19 @@ void ProjectOopObjectGenerator::setThinLtoLibraryUnits(std::vector<ThinLtoLibrar
     thinLtoLibraries_ = std::move(libraries);
 }
 
+void ProjectOopObjectGenerator::setThinLtoPreservedSymbols(std::optional<std::vector<std::string>> symbols)
+{
+    thinLtoPreservedSymbols_ = std::move(symbols);
+}
+
+bool ProjectOopObjectGenerator::collectUndefinedSymbols(
+    const std::filesystem::path& file,
+    std::vector<std::string>& symbols,
+    std::string& error)
+{
+    return ThinLtoBackend::collectUndefinedSymbols(file, symbols, error);
+}
+
 bool ProjectOopObjectGenerator::thinLtoRuns(LinkTimeOptimizationMode mode, LlvmOptimizationLevel level) noexcept
 {
     return mode == LinkTimeOptimizationMode::Thin && level != LlvmOptimizationLevel::O0 &&
@@ -1133,6 +1146,11 @@ const std::string& ProjectOopObjectBundle::thinLtoCompatibility() const noexcept
 std::span<const ThinLtoLibraryObjects> ProjectOopObjectBundle::thinLtoLibraryObjects() const noexcept
 {
     return thinLtoLibraryObjects_;
+}
+
+bool ProjectOopObjectBundle::thinLtoInternalized() const noexcept
+{
+    return thinLtoInternalized_;
 }
 
 std::span<const CodeUnitTelemetry> ProjectOopObjectBundle::codeUnitTelemetry() const noexcept
@@ -1310,9 +1328,19 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
             // LLVM identifica cada backend por su modulo, el indice combinado, sus imports y exports,
             // las resoluciones, el target, las opciones y la version exacta de LLVM; el directorio
             // agrega la identidad de codegen de este compilador (parte 2, punto 45).
-            const std::filesystem::path backendCache = cache != nullptr && cache->enabled()
+            std::filesystem::path backendCache = cache != nullptr && cache->enabled()
                 ? cache->root() / "thinlto-backends" / std::string(kCodegenCacheIdentity)
                 : std::filesystem::path{};
+            // A final link internalizes what native objects do not need and gives every function its
+            // own section (item 50); those objects live in their own cache directory.
+            // Un enlace final internaliza lo que no necesitan los objetos nativos y da a cada funcion
+            // su propia seccion (punto 50); esos objetos viven en su propio directorio de cache.
+            if (thinLtoPreservedSymbols_.has_value())
+            {
+                thinLto->setPreservedSymbols(*thinLtoPreservedSymbols_);
+                result.thinLtoInternalized_ = true;
+                if (!backendCache.empty()) backendCache /= "internalized";
+            }
             // A static library keeps its units for its sidecar before any library unit joins them.
             // Una biblioteca estatica guarda sus unidades para su sidecar antes de que se sumen otras.
             if (captureThinLtoUnitBitcode_)

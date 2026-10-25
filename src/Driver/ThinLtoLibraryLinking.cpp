@@ -201,6 +201,33 @@ bool ThinLtoLibraryLinking::collect(
     return true;
 }
 
+std::optional<std::vector<std::string>> ThinLtoLibraryLinking::preservedSymbols(
+    std::span<const std::filesystem::path> linkLibraries,
+    std::span<const std::string> roots) const
+{
+    if (!active_) return std::nullopt;
+    const std::filesystem::path runtime = linker::configuredWindowsRuntimeLibrary();
+    // Without a separate runtime library the runtime module is built with the program after
+    // ThinLTO, and nothing can scan what it references.
+    // Sin biblioteca de runtime aparte, el modulo de runtime se construye con el programa despues de
+    // ThinLTO y nada puede revisar lo que referencia.
+    if (runtime.empty()) return std::nullopt;
+    std::unordered_set<std::string> consumed;
+    for (const llvm_backend::ThinLtoLibraryUnits& library : libraries_)
+        consumed.insert(foldedPathKey(library.libraryPath));
+    std::vector<std::filesystem::path> inputs = {runtime};
+    for (const std::filesystem::path& library : linkLibraries)
+        if (!consumed.contains(foldedPathKey(library))) inputs.push_back(library);
+    std::vector<std::string> symbols(roots.begin(), roots.end());
+    for (const std::filesystem::path& input : inputs)
+    {
+        std::string ignored;
+        if (!llvm_backend::ProjectOopObjectGenerator::collectUndefinedSymbols(input, symbols, ignored))
+            return std::nullopt;
+    }
+    return symbols;
+}
+
 std::vector<llvm_backend::ThinLtoLibraryUnits> ThinLtoLibraryLinking::takeLibraries()
 {
     return std::move(libraries_);

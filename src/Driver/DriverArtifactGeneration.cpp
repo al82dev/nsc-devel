@@ -52,12 +52,14 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
     llvm_backend::LinkTimeOptimizationMode linkTimeOptimization, std::string &error,
-    bool captureThinLtoUnits = false, std::vector<llvm_backend::ThinLtoLibraryUnits> thinLtoLibraries = {})
+    bool captureThinLtoUnits = false, std::vector<llvm_backend::ThinLtoLibraryUnits> thinLtoLibraries = {},
+    std::optional<std::vector<std::string>> thinLtoPreservedSymbols = std::nullopt)
 {
     llvm_backend::ProjectOopObjectGenerator objectGenerator;
     configureObjectGeneratorProgress(objectGenerator);
     objectGenerator.setThinLtoUnitBitcodeCapture(captureThinLtoUnits);
     objectGenerator.setThinLtoLibraryUnits(std::move(thinLtoLibraries));
+    objectGenerator.setThinLtoPreservedSymbols(std::move(thinLtoPreservedSymbols));
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle =
         measureDriverPhase("llvm-object-generation",
                            [&]
@@ -328,15 +330,10 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
         error << "nsc: error: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;
     }
-    std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
-        compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError,
-        false, thinLtoLibraries.takeLibraries());
-    if (objectBundle == nullptr)
-    {
-        error << "nsc: error: " << codeGenerationError << '\n';
-        return ExitCode::CompilationError;
-    }
-
+    // The link inputs are known before code generation, so ThinLTO can keep visible exactly the
+    // program symbols they need and internalize the rest (item 50).
+    // Las entradas del enlace se conocen antes de generar codigo, asi que ThinLTO puede dejar visibles
+    // exactamente los simbolos del programa que necesitan e internalizar el resto (punto 50).
     std::vector<std::filesystem::path> linkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     linker::WindowsExecutableBuilder builder;
@@ -344,12 +341,24 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     if (!prepareExecutableBuilder(compilation, extraLinkLibraries, debugInformation, incrementalLink, subsystem,
                                   linkLibraries, runtimeLibraries, builder, error))
         return ExitCode::CompilationError;
+    const std::vector<std::string> entrySymbols = {entryFunction->mangledName};
+    std::optional<std::vector<std::string>> preservedSymbols =
+        thinLtoLibraries.preservedSymbols(linkLibraries, entrySymbols);
+    std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
+        compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError,
+        false, thinLtoLibraries.takeLibraries(), std::move(preservedSymbols));
+    if (objectBundle == nullptr)
+    {
+        error << "nsc: error: " << codeGenerationError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!thinLtoLibraries.replaceLinkLibraries(*objectBundle, linkLibraries, codeGenerationError))
     {
         error << "nsc: error: ThinLTO library linking failed: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;
     }
     builder.setExtraLinkLibraries(linkLibraries);
+    builder.setRemoveUnreferencedSections(objectBundle->thinLtoInternalized());
     if (!publishExecutableArtifact(outputPath, *entryFunction, *objectBundle, optimizationLevel, debugInformation,
                                    incrementalLink, runtimeLibraries, builder, packagedRuntimes, error))
         return ExitCode::CompilationError;
@@ -1030,27 +1039,32 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         error << "nsc: error: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;
     }
-    std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
-        compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError,
-        false, thinLtoLibraries.takeLibraries());
-    if (objectBundle == nullptr)
-    {
-        error << "nsc: error: " << codeGenerationError << '\n';
-        return ExitCode::CompilationError;
-    }
-
+    // As for an executable, the link inputs come first so ThinLTO knows what to keep visible (item 50).
+    // Igual que en un ejecutable, las entradas del enlace van primero para que ThinLTO sepa que dejar
+    // visible (punto 50).
     const std::filesystem::path destination = pathFromUtf8(outputPath);
     std::vector<std::filesystem::path> linkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     linker::WindowsLibraryBuilder builder;
     if (!prepareDynamicLibraryBuilder(compilation, extraLinkLibraries, linkLibraries, runtimeLibraries, builder, error))
         return ExitCode::CompilationError;
+    std::optional<std::vector<std::string>> preservedSymbols =
+        thinLtoLibraries.preservedSymbols(linkLibraries, exportSymbols);
+    std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
+        compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError,
+        false, thinLtoLibraries.takeLibraries(), std::move(preservedSymbols));
+    if (objectBundle == nullptr)
+    {
+        error << "nsc: error: " << codeGenerationError << '\n';
+        return ExitCode::CompilationError;
+    }
     if (!thinLtoLibraries.replaceLinkLibraries(*objectBundle, linkLibraries, codeGenerationError))
     {
         error << "nsc: error: ThinLTO library linking failed: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;
     }
     builder.setExtraLinkLibraries(linkLibraries);
+    builder.setRemoveUnreferencedSections(objectBundle->thinLtoInternalized());
 
     std::string buildError;
     ArtifactPublisher artifactPublisher;

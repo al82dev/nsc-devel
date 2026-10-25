@@ -21,6 +21,12 @@ public:
     const std::filesystem::path& executablePath() const noexcept;
     std::filesystem::path librarianExecutablePath() const;
 
+    // EN: Executable and DLL links pass /opt:ref, so the linker drops every COMDAT section nothing
+    //     reachable references (optimization part 2, item 50: ThinLTO objects of a final link).
+    // ES: Los enlaces de ejecutable y DLL pasan /opt:ref, asi que el enlazador tira toda seccion
+    //     COMDAT que nada alcanzable referencia (parte 2, punto 50: objetos ThinLTO de enlace final).
+    void setRemoveUnreferencedSections(bool remove) noexcept;
+
     bool createImportLibrary(
         std::string_view dllName,
         std::span<const std::string_view> symbols,
@@ -67,5 +73,6 @@ private:
         const std::filesystem::path& workingDirectory = {}) const;
 
     std::filesystem::path executablePath_;
+    bool removeUnreferencedSections_ = false;
 };
 }

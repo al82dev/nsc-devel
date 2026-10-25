@@ -161,6 +161,7 @@ std::string incrementalLinkKey(
     llvm_backend::DebugInformationKind debugInformation,
     WindowsExecutableSubsystem subsystem,
     std::string_view mainSymbol,
+    bool removeUnreferencedSections,
     std::string& error)
 {
     // v4: NSLink receives stable input and PDB spellings, so a v3 product embeds temporary paths.
@@ -169,6 +170,9 @@ std::string incrementalLinkKey(
     material += std::to_string(static_cast<unsigned>(optimizationLevel)) + ":" +
         std::to_string(static_cast<unsigned>(debugInformation)) + ":" +
         std::to_string(static_cast<unsigned>(subsystem)) + ":" + std::string(mainSymbol) + "\n";
+    // Only links with /opt:ref add the line, so every other key stays as before (item 50).
+    // Solo los enlaces con /opt:ref agregan la linea; toda otra llave queda como antes (punto 50).
+    if (removeUnreferencedSections) material += "opt:ref\n";
     material.append(programLlvmText);
     material.push_back('\n');
     material.append(runtimeKey);
@@ -670,6 +674,7 @@ bool prepareIncrementalExecutable(
     llvm_backend::DebugInformationKind debugInformation,
     WindowsExecutableSubsystem subsystem,
     std::string_view mainSymbol,
+    bool removeUnreferencedSections,
     const std::filesystem::path& outputPath,
     bool incrementalLink,
     std::string& incrementalKey,
@@ -685,7 +690,8 @@ bool prepareIncrementalExecutable(
     if (!runtimeLibrary.empty()) runtimeAwareLibraries.push_back(runtimeLibrary);
     incrementalKey = incrementalLinkKey(
         programObjects, programLlvmText, runtimeKey, runtimeAwareLibraries,
-        externalImports, optimizationLevel, debugInformation, subsystem, mainSymbol, error);
+        externalImports, optimizationLevel, debugInformation, subsystem, mainSymbol,
+        removeUnreferencedSections, error);
     if (incrementalKey.empty()) return false;
     std::filesystem::path pdbPath = outputPath;
     pdbPath.replace_extension(".pdb");
@@ -723,7 +729,7 @@ bool WindowsExecutableBuilder::buildObjects(
     if (!prepareIncrementalExecutable(
             programObjects, programLlvmText, runtimeKey, extraLinkLibraries_, runtimeLibrary_,
             externalImports_, optimizationLevel, debugInformation_, subsystem_, mainSymbol,
-            outputPath, incrementalLink_, incrementalKey, statePath, info_,
+            removeUnreferencedSections_, outputPath, incrementalLink_, incrementalKey, statePath, info_,
             reusedIncrementalLink_, error)) return false;
     if (reusedIncrementalLink_) return true;
     const bool independentRuntime = executableUsesIndependentRuntime(runtimeLibrary_);
@@ -740,6 +746,7 @@ bool WindowsExecutableBuilder::buildObjects(
     if (!discoverExecutableImports(
             temporaryDirectory->path(), {}, externalImports_, extraLinkLibraries_,
             runtimeLibrary_, independentRuntime, linker, importLibraries, error)) return false;
+    linker->setRemoveUnreferencedSections(removeUnreferencedSections_);
     std::vector<std::filesystem::path> objectFiles(programObjects.begin(), programObjects.end());
     objectFiles.push_back(runtimeObject);
     const std::filesystem::path pdbPath = executablePdbPath(outputPath, debugInformation_);
@@ -774,6 +781,11 @@ void WindowsExecutableBuilder::setDebugInformation(
 void WindowsExecutableBuilder::setIncrementalLink(bool enabled) noexcept
 {
     incrementalLink_ = enabled;
+}
+
+void WindowsExecutableBuilder::setRemoveUnreferencedSections(bool remove) noexcept
+{
+    removeUnreferencedSections_ = remove;
 }
 
 void WindowsExecutableBuilder::setProgramObjectsVerified(bool verified) noexcept

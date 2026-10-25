@@ -19,6 +19,9 @@
 #include "llvm/IR/ModuleSummaryIndex.h"
 #include "llvm/LTO/Config.h"
 #include "llvm/LTO/LTO.h"
+#include "llvm/Object/Archive.h"
+#include "llvm/Object/Binary.h"
+#include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CachePruning.h"
 #include "llvm/Support/Caching.h"
 #include "llvm/Support/CodeGen.h"
@@ -31,6 +34,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -74,6 +78,13 @@ std::string ThinLtoBackend::compatibilityIdentity(const LlvmTargetMachine&, Llvm
 {
     return {};
 }
+
+bool ThinLtoBackend::collectUndefinedSymbols(
+    const std::filesystem::path&, std::vector<std::string>&, std::string& error)
+{
+    error = "ThinLTO needs the STATIC LLVM host";
+    return false;
+}
 #else
 namespace
 {
@@ -112,6 +123,32 @@ std::vector<std::string> splitFeatures(const std::string& features)
     return result;
 }
 
+// Appends the undefined symbols of one COFF object. Agrega los simbolos indefinidos de un objeto COFF.
+bool appendUndefinedSymbols(
+    const llvm::object::ObjectFile& object,
+    std::vector<std::string>& symbols,
+    std::string& error)
+{
+    for (const llvm::object::SymbolRef& symbol : object.symbols())
+    {
+        llvm::Expected<std::uint32_t> flags = symbol.getFlags();
+        if (!flags)
+        {
+            error = llvm::toString(flags.takeError());
+            return false;
+        }
+        if ((*flags & llvm::object::SymbolRef::SF_Undefined) == 0) continue;
+        llvm::Expected<llvm::StringRef> name = symbol.getName();
+        if (!name)
+        {
+            error = llvm::toString(name.takeError());
+            return false;
+        }
+        symbols.push_back(name->str());
+    }
+    return true;
+}
+
 std::size_t importedDefinitions(const llvm::Module& module) noexcept
 {
     std::size_t count = 0;
@@ -130,6 +167,50 @@ ThinLtoBackend::ThinLtoBackend(std::size_t moduleCount)
 
 bool ThinLtoBackend::available() noexcept
 {
+    return true;
+}
+
+bool ThinLtoBackend::collectUndefinedSymbols(
+    const std::filesystem::path& file,
+    std::vector<std::string>& symbols,
+    std::string& error)
+{
+    llvm::Expected<llvm::object::OwningBinary<llvm::object::Binary>> binary =
+        llvm::object::createBinary(file.string());
+    if (!binary)
+    {
+        error = "cannot read '" + file.string() + "': " + llvm::toString(binary.takeError());
+        return false;
+    }
+    llvm::object::Binary* contents = binary->getBinary();
+    if (const auto* object = llvm::dyn_cast<llvm::object::ObjectFile>(contents))
+        return appendUndefinedSymbols(*object, symbols, error);
+    const auto* archive = llvm::dyn_cast<llvm::object::Archive>(contents);
+    // Any other format (an import-only file, for instance) references nothing of the program.
+    // Cualquier otro formato (un archivo solo de imports, por ejemplo) no referencia al programa.
+    if (archive == nullptr) return true;
+    llvm::Error childError = llvm::Error::success();
+    for (const llvm::object::Archive::Child& child : archive->children(childError))
+    {
+        llvm::Expected<std::unique_ptr<llvm::object::Binary>> member = child.getAsBinary();
+        if (!member)
+        {
+            error = "cannot read a member of '" + file.string() + "': " + llvm::toString(member.takeError());
+            llvm::consumeError(std::move(childError));
+            return false;
+        }
+        const auto* object = llvm::dyn_cast<llvm::object::ObjectFile>(member->get());
+        if (object != nullptr && !appendUndefinedSymbols(*object, symbols, error))
+        {
+            llvm::consumeError(std::move(childError));
+            return false;
+        }
+    }
+    if (childError)
+    {
+        error = "cannot list the members of '" + file.string() + "': " + llvm::toString(std::move(childError));
+        return false;
+    }
     return true;
 }
 
@@ -214,6 +295,11 @@ bool ThinLtoBackend::run(
     // modelos efectivos en lugar de los valores por omision de LTO.
     config.RelocModel = std::nullopt;
     config.CodeModel = std::nullopt;
+    // A final link drops what nothing references only when each function and data object has its
+    // own section (item 50). Un enlace final solo tira lo que nadie referencia cuando cada funcion y
+    // dato tiene su propia seccion (punto 50).
+    config.Options.FunctionSections = internalize_;
+    config.Options.DataSections = internalize_;
     config.DiagHandler = [this](const llvm::DiagnosticInfo& info)
     {
         if (info.getSeverity() != llvm::DS_Error) return;
@@ -278,7 +364,8 @@ bool ThinLtoBackend::run(
             {
                 resolution.Prevailing = prevailing.insert(symbol.getName().str()).second;
                 resolution.FinalDefinitionInLinkageUnit = resolution.Prevailing;
-                resolution.VisibleToRegularObj = true;
+                resolution.VisibleToRegularObj =
+                    !internalize_ || preservedSymbols_.contains(symbol.getName().str());
             }
             resolutions.push_back(resolution);
         }
@@ -400,6 +487,13 @@ void ThinLtoBackend::appendBitcodeUnit(std::string bitcode, std::string identifi
 std::span<const std::string> ThinLtoBackend::unitBitcode() const noexcept
 {
     return bitcode_;
+}
+
+void ThinLtoBackend::setPreservedSymbols(std::vector<std::string> symbols)
+{
+    internalize_ = true;
+    preservedSymbols_.clear();
+    for (std::string& symbol : symbols) preservedSymbols_.insert(std::move(symbol));
 }
 
 void ThinLtoBackend::setCaptureFinalModuleTexts(bool capture) noexcept

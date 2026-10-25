@@ -8,6 +8,7 @@
 #include <mutex>
 #include <span>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace nativesharp::llvm_backend
@@ -22,7 +23,9 @@ class LlvmTargetMachine;
 ///     Every defined symbol stays visible to native objects (the runtime, libraries and DLL
 ///     exports may reference any of them), so nothing is internalized; the gain is cross-unit
 ///     importing and inlining. Thread safety: addModule() is safe from several threads for
-///     distinct ordinals; run() is called once, after every addModule().
+///     distinct ordinals; run() is called once, after every addModule(). Since item 50 a final
+///     link passes the symbols native objects need (setPreservedSymbols) and the rest is
+///     internalized.
 /// ES: ThinLTO intraproyecto sobre las unidades de codigo de una generacion (parte 2, punto 44).
 ///     Cada unidad pasa por el pipeline de pre-enlace de ThinLTO y se escribe como bitcode con su
 ///     resumen de modulo; run() deja que LLVM arme el indice combinado, elija los imports entre
@@ -30,7 +33,9 @@ class LlvmTargetMachine;
 ///     COFF nativo por unidad. Todo simbolo definido sigue visible para los objetos nativos (el
 ///     runtime, las bibliotecas y los exports de DLL pueden usar cualquiera), asi que nada se
 ///     internaliza; la ganancia es importar e inlinear entre unidades. Hilos: addModule() es seguro
-///     desde varios hilos con ordinales distintos; run() se llama una vez, despues de todos.
+///     desde varios hilos con ordinales distintos; run() se llama una vez, despues de todos. Desde
+///     el punto 50 un enlace final pasa los simbolos que necesitan los objetos nativos
+///     (setPreservedSymbols) y el resto se internaliza.
 class ThinLtoBackend final
 {
 public:
@@ -95,6 +100,29 @@ public:
     void setCaptureFinalModuleTexts(bool capture) noexcept;
     std::span<const std::string> finalModuleTexts() const noexcept;
 
+    /// EN: Final links only (executables and DLLs, optimization part 2 item 50): only `symbols` stay
+    ///     visible to native objects. Every other definition may be internalized, so the backends
+    ///     delete what nothing uses after importing, and every function and data object gets its own
+    ///     COMDAT section so the linker can drop the originals nothing references any more. Without
+    ///     this call every defined symbol stays visible, as a static library needs.
+    /// ES: Solo enlaces finales (ejecutables y DLL, parte 2 punto 50): solo `symbols` queda visible
+    ///     para los objetos nativos. Toda otra definicion puede internalizarse, asi que los backends
+    ///     borran lo que nadie usa despues de importar, y cada funcion y dato recibe su propia
+    ///     seccion COMDAT para que el enlazador tire los originales que ya nadie referencia. Sin esta
+    ///     llamada todo simbolo definido queda visible, como necesita una biblioteca estatica.
+    void setPreservedSymbols(std::vector<std::string> symbols);
+
+    /// EN: Appends to `symbols` every undefined symbol of the COFF object or archive `file`: what a
+    ///     native input of the link may need from the program. Returns false with `error` when the
+    ///     file, or one member of it, cannot be read.
+    /// ES: Agrega a `symbols` cada simbolo indefinido del objeto o archivo COFF `file`: lo que una
+    ///     entrada nativa del enlace puede necesitar del programa. Devuelve false con `error` cuando no
+    ///     se puede leer el archivo o uno de sus miembros.
+    static bool collectUndefinedSymbols(
+        const std::filesystem::path& file,
+        std::vector<std::string>& symbols,
+        std::string& error);
+
     /// EN: Function definitions the backends imported from other units (available_externally).
     /// ES: Definiciones de funcion que los backends importaron de otras unidades.
     std::size_t importedFunctionCount() const noexcept;
@@ -108,6 +136,8 @@ private:
     std::vector<std::string> identifiers_;
     std::vector<std::string> finalModuleTexts_;
     bool captureFinalModuleTexts_ = false;
+    bool internalize_ = false;
+    std::unordered_set<std::string> preservedSymbols_;
     std::atomic_size_t importedFunctions_ = 0;
     std::atomic_size_t cachedBackends_ = 0;
     std::atomic_size_t backendRuns_ = 0;

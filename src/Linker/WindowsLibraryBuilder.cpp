@@ -819,6 +819,7 @@ bool WindowsLibraryBuilder::buildDynamicObjects(
     if (!discoverDynamicLibraryImports(
             temporaryDirectory->path(), {}, externalImports_, extraLinkLibraries_,
             runtimeLibrary_, independentRuntime, linker, importLibraries, error)) return false;
+    linker->setRemoveUnreferencedSections(removeUnreferencedSections_);
     std::vector<std::filesystem::path> objects(programObjects.begin(), programObjects.end());
     if (runtimeModule != nullptr) objects.push_back(runtimeObject);
     if (independentRuntime)
@@ -848,6 +849,11 @@ void WindowsLibraryBuilder::setExtraLinkLibraries(std::vector<std::filesystem::p
 void WindowsLibraryBuilder::setRuntimeLibrary(std::filesystem::path runtimeLibrary)
 {
     runtimeLibrary_ = std::move(runtimeLibrary);
+}
+
+void WindowsLibraryBuilder::setRemoveUnreferencedSections(bool remove) noexcept
+{
+    removeUnreferencedSections_ = remove;
 }
 
 void WindowsLibraryBuilder::setProgramObjectsVerified(bool verified) noexcept

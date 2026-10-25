@@ -538,6 +538,11 @@ const std::filesystem::path& LldLinker::executablePath() const noexcept
     return executablePath_;
 }
 
+void LldLinker::setRemoveUnreferencedSections(bool remove) noexcept
+{
+    removeUnreferencedSections_ = remove;
+}
+
 std::filesystem::path LldLinker::librarianExecutablePath() const
 {
     return findLibrarian(executablePath_);
@@ -1048,11 +1053,13 @@ std::vector<std::string> dynamicLibraryArguments(
     std::span<const std::string> exportSymbols,
     const std::filesystem::path& outputPath,
     const std::filesystem::path& importLibraryPath,
-    const std::filesystem::path& pdbPath)
+    const std::filesystem::path& pdbPath,
+    bool removeUnreferencedSections)
 {
     std::vector<std::string> arguments = {
         "/dll", "/noentry", "/nodefaultlib", "/machine:x64", "/dynamicbase", "/nxcompat",
         "/highentropyva", responsePathArgument("/out:", outputPath)};
+    if (removeUnreferencedSections) arguments.push_back("/opt:ref");
     // NSLink ya fija TimeDateStamp=0 y deliberadamente rechaza switches desconocidos. /Brepro
     // sólo pertenece a lld-link; allí elimina el reloj de pared sin reescribir el PE después.
     if (!pdbPath.empty())
@@ -1152,7 +1159,8 @@ bool LldLinker::linkDynamicLibrary(
     if (!prepareStableLinkInputs(outputPath, objectFiles, linkDirectory, stableObjects, error))
         return false;
     const std::vector<std::string> arguments = dynamicLibraryArguments(
-        stableObjects, importLibraries, exportSymbols, outputPath, importLibraryPath, pdbPath);
+        stableObjects, importLibraries, exportSymbols, outputPath, importLibraryPath, pdbPath,
+        removeUnreferencedSections_);
     std::error_code cleanupError;
     if (!writeResponseFile(responsePath, arguments, error))
         return finishStableLinkInputs(linkDirectory, {}, false, error);
@@ -1195,7 +1203,8 @@ std::vector<std::string> executableArguments(
     std::span<const std::filesystem::path> importLibraries,
     const std::filesystem::path& outputPath,
     WindowsExecutableSubsystem subsystem,
-    const std::filesystem::path& pdbPath)
+    const std::filesystem::path& pdbPath,
+    bool removeUnreferencedSections)
 {
     std::vector<std::string> arguments = {
         "/nodefaultlib",
@@ -1208,6 +1217,7 @@ std::vector<std::string> executableArguments(
         "/nxcompat",
         "/highentropyva",
         responsePathArgument("/out:", outputPath)};
+    if (removeUnreferencedSections) arguments.push_back("/opt:ref");
     if (!pdbPath.empty())
     {
         arguments.push_back("/debug:full");
@@ -1283,7 +1293,7 @@ bool LldLinker::linkExecutable(
     if (!prepareStableLinkInputs(outputPath, objectFiles, linkDirectory, stableObjects, error))
         return false;
     const std::vector<std::string> arguments = executableArguments(
-        stableObjects, importLibraries, outputPath, subsystem, pdbPath);
+        stableObjects, importLibraries, outputPath, subsystem, pdbPath, removeUnreferencedSections_);
     std::error_code cleanupError;
     if (!writeResponseFile(responsePath, arguments, error))
         return finishStableLinkInputs(linkDirectory, {}, false, error);

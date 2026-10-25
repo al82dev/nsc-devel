@@ -5,6 +5,7 @@
 #include "../support/TestContext.h"
 
 #include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -92,6 +93,25 @@ class Program
             tests.expect(std::system(command.c_str()) == 42,
                 "ThinLTO executable preserves native program behavior");
         }
+    }
+    {
+        // A final ThinLTO link keeps visible only what native objects need and drops what nothing
+        // references, so it is not larger than the partitioned build (item 50). Un enlace final
+        // ThinLTO deja visible solo lo que necesitan los objetos nativos y tira lo que nada referencia,
+        // asi que no es mas grande que el build particionado (punto 50).
+        const std::string plain = (root / "Plain.exe").string();
+        const std::array<std::string_view, 6> arguments = {
+            "-O2", "-j4", "--emit-project-oop-exe", project, "-o", plain};
+        nativesharp::driver::Driver driver;
+        std::ostringstream output;
+        std::ostringstream error;
+        const bool built = driver.run(arguments, output, error) == nativesharp::ExitCode::Success;
+        std::error_code sizeError;
+        const std::uintmax_t plainSize = std::filesystem::file_size(plain, sizeError);
+        const std::uintmax_t thinSize = std::filesystem::file_size(root / "Thin0.exe", sizeError);
+        tests.expect(built && !sizeError && thinSize <= plainSize,
+            "a ThinLTO executable is not larger than the partitioned one (" + std::to_string(thinSize) + " <= " +
+                std::to_string(plainSize) + "): " + error.str());
     }
     {
         // The second build with the same artifact cache restores every ThinLTO backend (item 45).

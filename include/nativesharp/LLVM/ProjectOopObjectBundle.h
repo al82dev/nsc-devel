@@ -46,6 +46,10 @@ public:
     // them (item 48). Objetos de las unidades de cada sidecar de biblioteca consumido, en el orden
     // en que los recibio el generador (punto 48).
     std::span<const ThinLtoLibraryObjects> thinLtoLibraryObjects() const noexcept;
+    // True when the ThinLTO backends internalized for a final link; the linker must then drop the
+    // sections nothing references (item 50). Verdadero cuando los backends ThinLTO internalizaron
+    // para un enlace final; el enlazador debe tirar entonces las secciones sin referencia (punto 50).
+    bool thinLtoInternalized() const noexcept;
     std::span<const CodeUnitTelemetry> codeUnitTelemetry() const noexcept;
 
 private:
@@ -67,6 +71,7 @@ private:
     std::vector<std::string> thinLtoUnitBitcode_;
     std::string thinLtoCompatibility_;
     std::vector<ThinLtoLibraryObjects> thinLtoLibraryObjects_;
+    bool thinLtoInternalized_ = false;
     std::vector<CodeUnitTelemetry> codeUnitTelemetry_;
 };
 }
