@@ -81,11 +81,11 @@ std::uint64_t reportedCount(std::string_view output, std::string_view prefix)
     return std::strtoull(std::string(output.substr(begin + prefix.size(), 20)).c_str(), nullptr, 10);
 }
 
-/// EN: Optimization part 2, item 21. Builds `before` with a warm artifact cache,
+/// EN: Optimization part 2, items 21 and 23. Builds `before` with a warm artifact cache,
 ///     edits one body of `editedFile` into `after` (`fixedFile` keeps `fixedText`), rebuilds with
 ///     the same cache and compares the executable with a clean build of `after`. The warm
 ///     rebuild must reuse cached code units, produce the same bytes and run the edited program.
-/// ES: Punto 21 de la parte 2. Compila `before` con un cache caliente, edita un cuerpo
+/// ES: Puntos 21 y 23 de la parte 2. Compila `before` con un cache caliente, edita un cuerpo
 ///     de `editedFile` a `after` (`fixedFile` conserva `fixedText`), recompila con el mismo cache y
 ///     compara el ejecutable con un build limpio de `after`. La recompilacion caliente debe
 ///     reutilizar unidades del cache, dar los mismos bytes y ejecutar el programa editado.
@@ -183,5 +183,14 @@ int main()
         "class Program { public static int Main() { int first = Helpers.H1(3); int second = Helpers.H2(1);"
         " return first + second; } }\n",
         14);
+    // A generic body edit must reach the specialization the program uses (item 23).
+    // Una edicion en un cuerpo generico debe llegar a la especializacion que usa el programa (punto 23).
+    testEditedBodyMatchesCleanBuild(tests, root / "generic-edit", "generic body edit", "Library.ns", helpers,
+        "Program.ns",
+        "class Tools { public static int Weight<T>(T value) { return 3; } }\n"
+        "class Program { public static int Main() { return Tools.Weight(1) + Helpers.H0(1); } }\n",
+        "class Tools { public static int Weight<T>(T value) { return 5; } }\n"
+        "class Program { public static int Main() { return Tools.Weight(1) + Helpers.H0(1); } }\n",
+        7);
     return tests.resultKeeping(root);
 }
