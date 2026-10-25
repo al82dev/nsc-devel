@@ -157,6 +157,44 @@ int main()
                      "project envelope retains technical output without duplicating progress events");
     }
 
+    // Optimization part 2, items 41 and 43: nsc build forwards -flto and reports the mode.
+    // Puntos 41 y 43 de la parte 2: nsc build reenvia -flto y reporta el modo.
+    {
+        std::ostringstream output;
+        std::ostringstream error;
+        const std::vector<std::string> owned{
+            "build", project.string(), "--no-restore", "-flto=thin", "--output-format=json"};
+        std::vector<std::string_view> arguments;
+        for (const std::string& value : owned) arguments.push_back(value);
+        bool sawThin = false;
+        const auto compiler = [&](std::span<const std::string_view> compilerArguments,
+                                  std::ostream&, std::ostream&) {
+            for (std::size_t index = 0; index < compilerArguments.size(); ++index)
+            {
+                if (compilerArguments[index] == "-flto=thin") sawThin = true;
+                if (compilerArguments[index] == "-o" && index + 1U < compilerArguments.size())
+                    writeFile(fs::path(compilerArguments[index + 1U]), "executable");
+            }
+            return ExitCode::Success;
+        };
+        const ExitCode code = nativesharp::driver::runProjectCommand(arguments, output, error, compiler);
+        tests.expect(code == ExitCode::Success && sawThin,
+                     "build forwards -flto=thin to the nested compiler invocation");
+        tests.expect(output.str().find("\"linkTimeOptimization\":\"thin\"") != std::string::npos,
+                     "the build result names the link-time optimization mode");
+
+        std::ostringstream rejectedOutput;
+        std::ostringstream rejectedError;
+        const std::vector<std::string> rejectedOwned{
+            "build", project.string(), "--no-restore", "-flto=partial"};
+        std::vector<std::string_view> rejectedArguments;
+        for (const std::string& value : rejectedOwned) rejectedArguments.push_back(value);
+        tests.expect(nativesharp::driver::runProjectCommand(
+                         rejectedArguments, rejectedOutput, rejectedError, compiler) != ExitCode::Success &&
+                         rejectedError.str().find("none, full, or thin") != std::string::npos,
+                     "build rejects an unknown link-time optimization mode");
+    }
+
     const fs::path package = root / "packages" / "NativeSharp.Test" / "2.0.0";
     writeFile(package / "NativeSharp.Test.lib", "archive");
     writeFile(package / "NativeSharp.Test.nsmeta", "metadata");

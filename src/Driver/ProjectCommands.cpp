@@ -1554,6 +1554,7 @@ ExitCode executeConfiguredBuild(
         "\"artifact\":\"" + jsonEscape(pathText(artifact)) +
         "\",\"configuration\":\"" + jsonEscape(configuration) +
         "\",\"optimization\":\"" + jsonEscape(optimization) +
+        "\",\"linkTimeOptimization\":\"" + jsonEscape(linkTimeOptimization) +
         "\",\"linker\":\"" + jsonEscape(linker) +
         "\",\"contentFiles\":" + std::to_string(contentFiles) +
         (options.dependencyReport
