@@ -27,6 +27,7 @@ bool OopLlvmImplementation::defineFunction(const frontend::ProjectOopMirFunction
         if (!initializeFunctionReceiver(function, error) ||
             !initializeCapturedThis(function, error) ||
             !initializeFunctionParameters(function, sretReturn, error)) return false;
+        emitClosureCaptureDebugVariables(function);
 
         // NS304-T05-F10: expose the future's state discriminant as an artificial debug variable
         // (offset 0) so a debugger can inspect 0/-1/1..N. Only for the poll (self = parameter 0).
@@ -46,6 +47,7 @@ void OopLlvmImplementation::prepareFunctionDefinitionState(
         currentDebugScope_ = currentDebugSubprogram_;
         debugDeclaredLocals_.clear();
         debugCaptureVariables_.clear();
+        closureCaptureAddresses_.clear();
         currentDebugFileKey_ = 0;
         if (function.namespaceFunctionOrdinal.has_value() && function.body != nullptr &&
             function.body->syntax != nullptr && function.body->syntax->range().isValid())

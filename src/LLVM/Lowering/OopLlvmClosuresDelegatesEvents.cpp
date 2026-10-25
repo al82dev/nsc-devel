@@ -502,12 +502,16 @@ bool OopLlvmImplementation::emitDelegateDestroy(LLVMValueRef cell, std::string_v
 
 LLVMValueRef OopLlvmImplementation::closureCaptureCell(const frontend::ProjectOopMirNode* node, std::string& error)
 {
+        return closureCaptureCellAt(static_cast<std::size_t>(node->immediate), error);
+    }
+
+LLVMValueRef OopLlvmImplementation::closureCaptureCellAt(std::size_t capture, std::string& error)
+{
         if (currentMirFunction_ == nullptr || !currentMirFunction_->isLambda ||
             !currentMirFunction_->hasClosureEnvironment || closureEnvironment_ == nullptr)
         {
             return failValue(error, "E11 closure capture has no environment receiver");
         }
-        const std::size_t capture = static_cast<std::size_t>(node->immediate);
         if (capture >= currentMirFunction_->captureTypeKeys.size())
             return failValue(error, "E11 closure capture ordinal is invalid");
         LLVMValueRef slot = byteOffset(
@@ -519,49 +523,107 @@ LLVMValueRef OopLlvmImplementation::closureCaptureCell(const frontend::ProjectOo
 
 LLVMValueRef OopLlvmImplementation::closureCaptureAddress(const frontend::ProjectOopMirNode* node, std::string& error)
 {
-        LLVMValueRef cell = closureCaptureCell(node, error);
+        const std::size_t capture = static_cast<std::size_t>(node->immediate);
+        if (const auto cached = closureCaptureAddresses_.find(capture);
+            cached != closureCaptureAddresses_.end())
+            return cached->second;
+        return closureCaptureValueAddress(capture, node->typeKey, error);
+    }
+
+LLVMValueRef OopLlvmImplementation::closureCaptureValueAddress(
+        std::size_t capture,
+        std::string_view typeKey,
+        std::string& error)
+{
+        LLVMValueRef cell = closureCaptureCellAt(capture, error);
         if (cell == nullptr) return nullptr;
-        const auto [valueSize, valueAlignment] = captureValueLayout(node->typeKey, error);
+        const auto [valueSize, valueAlignment] = captureValueLayout(typeKey, error);
         if (valueSize == 0 || valueAlignment == 0) return nullptr;
         const std::uint64_t valueOffset =
             ((8U + valueAlignment - 1U) / valueAlignment) * valueAlignment;
-        LLVMValueRef address = byteOffset(cell, valueOffset, "closure.capture.value.addr");
-        const std::size_t capture = static_cast<std::size_t>(node->immediate);
-        if (debugInformation_ == DebugInformationKind::Full &&
-            currentDebugSubprogram_ != nullptr &&
-            !debugCaptureVariables_.contains(capture))
+        return byteOffset(cell, valueOffset, "closure.capture.value.addr");
+    }
+
+// ES: La dirección de cada captura se calcula aquí, al entrar a la lambda, y la reutilizan todos
+// los accesos (closureCaptureAddress); así sigue viva en todo el cuerpo y la variable de
+// depuración tiene ubicación en todo él.
+// EN: Each capture's address is computed here, on entry to the lambda, and every access reuses it
+// (closureCaptureAddress); it therefore stays live across the whole body and the debug variable
+// has a location throughout it.
+//
+// ES: Antes, la variable de depuración de una captura se declaraba en su primer uso, sobre una
+// dirección calculada ahí, y cada lectura añadía además un dbg.value con el valor cargado. LLVM
+// mezclaba ambas descripciones: en DeepFunctional, dentro de la lambda, `calls` aparecía como
+// `<optimized out>` y `bias` no aparecía antes de su primera lectura. Ahora cada captura se declara
+// una sola vez al entrar a la lambda, sobre la dirección de su valor dentro de la celda compartida,
+// así el depurador lee el valor vivo (las capturas son por referencia) en todo el cuerpo.
+// EN: The debug variable of a capture used to be declared at its first use, over an address computed
+// there, and every read also added a dbg.value with the loaded value. LLVM mixed both descriptions:
+// in DeepFunctional, inside the lambda, `calls` showed as `<optimized out>` and `bias` did not exist
+// before its first read. Each capture is now declared once on entry to the lambda, over the address
+// of its value inside the shared cell, so the debugger reads the live value (captures are by
+// reference) throughout the body.
+void OopLlvmImplementation::emitClosureCaptureDebugVariables(
+        const frontend::ProjectOopMirFunction& function)
+{
+        if (!function.isLambda || !function.hasClosureEnvironment || closureEnvironment_ == nullptr)
+            return;
+        for (std::size_t capture = 0; capture < function.captureTypeKeys.size(); ++capture)
         {
-            const std::string name = capture < currentMirFunction_->captureNames.size() &&
-                    !currentMirFunction_->captureNames[capture].empty()
-                ? currentMirFunction_->captureNames[capture]
-                : "capture#" + std::to_string(capture);
-            LLVMMetadataRef type = debugType(currentMirFunction_->captureTypeKeys[capture]);
-            SourceRange range;
-            if (node->syntax != nullptr) range = node->syntax->range();
-            if (!range.isValid() && currentMirFunction_->body != nullptr &&
-                currentMirFunction_->body->syntax != nullptr)
-                range = currentMirFunction_->body->syntax->range();
-            if (type != nullptr && range.isValid())
-            {
-                LLVMMetadataRef file = debugFile(range.begin());
-                const source::SourcePosition position = sourceManager_->getPosition(range.begin());
-                LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
-                    debugBuilder_, currentDebugSubprogram_, name.data(), name.size(), file,
-                    position.line, type, 1, LLVMDIFlagZero, 0);
-                LLVMMetadataRef expression =
-                    LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
-                LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
-                    context_, position.line, position.column, currentDebugSubprogram_, nullptr);
-                if (variable == nullptr || expression == nullptr || location == nullptr ||
-                    LLVMDIBuilderInsertDeclareRecordAtEnd(
-                        debugBuilder_, address, variable, expression, location,
-                        LLVMGetInsertBlock(builder_)) == nullptr)
-                    return failValue(error, "failed to emit debug storage for captured variable '" +
-                        name + "'");
-                debugCaptureVariables_.emplace(capture, variable);
-            }
+            std::string ignored;
+            LLVMValueRef address =
+                closureCaptureValueAddress(capture, function.captureTypeKeys[capture], ignored);
+            if (address != nullptr) closureCaptureAddresses_.emplace(capture, address);
         }
-        return address;
+        if (debugInformation_ != DebugInformationKind::Full || currentDebugSubprogram_ == nullptr ||
+            function.body == nullptr || function.body->syntax == nullptr ||
+            !function.body->syntax->range().isValid())
+            return;
+        const SourceRange range = function.body->syntax->range();
+        LLVMMetadataRef file = debugFile(range.begin());
+        if (file == nullptr) return;
+        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        // ES: En orden de captura, para que la salida sea determinista.
+        // EN: In capture order, so the output is deterministic.
+        for (std::size_t capture = 0; capture < function.captureTypeKeys.size(); ++capture)
+        {
+            const auto cached = closureCaptureAddresses_.find(capture);
+            if (cached == closureCaptureAddresses_.end()) continue;
+            LLVMValueRef address = cached->second;
+            const std::string name = capture < function.captureNames.size() &&
+                    !function.captureNames[capture].empty()
+                ? function.captureNames[capture]
+                : "capture#" + std::to_string(capture);
+            LLVMMetadataRef type = debugType(function.captureTypeKeys[capture]);
+            if (type == nullptr) continue;
+            // ES: La dirección se guarda en una ranura del bloque de entrada y la variable se declara
+            // sobre esa ranura con DW_OP_deref: la variable vive en la dirección guardada. Así tiene
+            // ubicación en memoria durante todo el cuerpo (una dirección en registro dura sólo hasta
+            // que el registro se reutiliza) y CodeView la describe como referencia al tipo de la
+            // captura, que es lo que es: las capturas son por referencia.
+            // EN: The address is stored in an entry-block slot and the variable is declared over that
+            // slot with DW_OP_deref: the variable lives at the stored address. It thus has a memory
+            // location throughout the body (an address held in a register only lasts until the
+            // register is reused) and CodeView describes it as a reference to the capture's type,
+            // which is what it is: captures are by reference.
+            LLVMValueRef slot = entryBlockAlloca(
+                LLVMPointerTypeInContext(context_, 0), 8,
+                ("capture" + std::to_string(capture) + ".debug.addr").c_str());
+            LLVMBuildStore(builder_, address, slot);
+            LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
+                debugBuilder_, currentDebugSubprogram_, name.data(), name.size(), file,
+                position.line, type, 1, LLVMDIFlagZero, 0);
+            std::uint64_t dereference[] = {0x06};
+            LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, dereference, 1);
+            LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
+                context_, position.line, position.column, currentDebugSubprogram_, nullptr);
+            if (variable == nullptr || expression == nullptr || location == nullptr ||
+                LLVMDIBuilderInsertDeclareRecordAtEnd(
+                    debugBuilder_, slot, variable, expression, location,
+                    LLVMGetInsertBlock(builder_)) == nullptr)
+                continue;
+            debugCaptureVariables_.emplace(capture, variable);
+        }
     }
 
 LLVMValueRef OopLlvmImplementation::lowerClosureCaptureLoad(const frontend::ProjectOopMirNode* node, std::string& error)
@@ -572,19 +634,7 @@ LLVMValueRef OopLlvmImplementation::lowerClosureCaptureLoad(const frontend::Proj
         LLVMTypeRef type = llvmType(currentMirFunction_->captureTypeKeys[capture], error);
         if (type == nullptr || type == LLVMVoidTypeInContext(context_))
             return failValue(error, "E11 closure capture has invalid LLVM type");
-        LLVMValueRef value = LLVMBuildLoad2(builder_, type, address, "closure.capture.load");
-        const auto debugVariable = debugCaptureVariables_.find(capture);
-        if (debugVariable != debugCaptureVariables_.end())
-        {
-            LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
-            LLVMMetadataRef location = LLVMGetCurrentDebugLocation2(builder_);
-            if (expression == nullptr || location == nullptr ||
-                LLVMDIBuilderInsertDbgValueRecordAtEnd(
-                    debugBuilder_, value, debugVariable->second, expression, location,
-                    LLVMGetInsertBlock(builder_)) == nullptr)
-                return failValue(error, "failed to emit the loaded value of a captured variable");
-        }
-        return value;
+        return LLVMBuildLoad2(builder_, type, address, "closure.capture.load");
     }
 
 LLVMValueRef OopLlvmImplementation::lowerCaptureCellReference(

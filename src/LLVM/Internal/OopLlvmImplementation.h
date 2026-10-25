@@ -1747,7 +1747,24 @@ private:
 
     LLVMValueRef closureCaptureCell(const frontend::ProjectOopMirNode* node, std::string& error);
 
+    // ES: Celda compartida de la captura `capture`, leída del entorno de la lambda.
+    // EN: Shared cell of capture `capture`, read from the lambda's environment.
+    LLVMValueRef closureCaptureCellAt(std::size_t capture, std::string& error);
+
     LLVMValueRef closureCaptureAddress(const frontend::ProjectOopMirNode* node, std::string& error);
+
+    // ES: Dirección del valor de la captura `capture` dentro de su celda compartida.
+    // EN: Address of capture `capture`'s value inside its shared cell.
+    LLVMValueRef closureCaptureValueAddress(
+        std::size_t capture,
+        std::string_view typeKey,
+        std::string& error);
+
+    // ES: Declara, al entrar a una lambda, una variable de depuración por cada captura. Ver la
+    // definición en OopLlvmClosuresDelegatesEvents.cpp.
+    // EN: Declares, on entry to a lambda, one debug variable per capture. See the definition in
+    // OopLlvmClosuresDelegatesEvents.cpp.
+    void emitClosureCaptureDebugVariables(const frontend::ProjectOopMirFunction& function);
 
     LLVMValueRef lowerClosureCaptureLoad(const frontend::ProjectOopMirNode* node, std::string& error);
 
@@ -3023,6 +3040,11 @@ private:
     std::unordered_map<std::string, LLVMMetadataRef> debugPointeeTypes_;
     std::unordered_set<std::size_t> debugDeclaredLocals_;
     std::unordered_map<std::size_t, LLVMMetadataRef> debugCaptureVariables_;
+    // ES: Dirección del valor de cada captura, calculada una vez al entrar a la lambda. Todas las
+    // lecturas y escrituras la reutilizan, y es la ubicación de la variable de depuración.
+    // EN: Address of each capture's value, computed once on entry to the lambda. Every read and
+    // write reuses it, and it is the debug variable's location.
+    std::unordered_map<std::size_t, LLVMValueRef> closureCaptureAddresses_;
     LLVMValueRef trapFunction_ = nullptr;
     LLVMTypeRef trapFunctionType_ = nullptr;
     LLVMValueRef rttiClassTestFunction_ = nullptr;
