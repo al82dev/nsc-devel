@@ -1021,6 +1021,37 @@ void ProjectOopObjectGenerator::setThinLtoFinalModuleTextCapture(bool capture) n
     captureThinLtoFinalModuleTexts_ = capture;
 }
 
+void ProjectOopObjectGenerator::setThinLtoUnitBitcodeCapture(bool capture) noexcept
+{
+    captureThinLtoUnitBitcode_ = capture;
+}
+
+void ProjectOopObjectGenerator::setThinLtoLibraryUnits(std::vector<ThinLtoLibraryUnits> libraries)
+{
+    thinLtoLibraries_ = std::move(libraries);
+}
+
+bool ProjectOopObjectGenerator::thinLtoRuns(LinkTimeOptimizationMode mode, LlvmOptimizationLevel level) noexcept
+{
+    return mode == LinkTimeOptimizationMode::Thin && level != LlvmOptimizationLevel::O0 &&
+        ThinLtoBackend::available();
+}
+
+bool ProjectOopObjectGenerator::thinLtoCompatibility(
+    LlvmOptimizationLevel level,
+    DebugInformationKind debugInformation,
+    std::string& identity,
+    std::string& error)
+{
+    std::unique_ptr<LlvmTargetMachine> targetMachine = LlvmTargetMachine::createWindowsX64(level, error);
+    if (targetMachine == nullptr) return false;
+    identity = ThinLtoBackend::compatibilityIdentity(*targetMachine, level) +
+        "debug " + std::string(debugInformationKindName(debugInformation)) + "\n" +
+        "codegen " + std::string(kCodegenCacheIdentity) + "\n" +
+        "policy " + codeGenerationPolicyIdentity(LinkTimeOptimizationMode::Thin) + "\n";
+    return true;
+}
+
 ProjectOopObjectBundle::ProjectOopObjectBundle(
     std::filesystem::path temporaryDirectory) noexcept
     : temporaryDirectory_(std::move(temporaryDirectory))
@@ -1087,6 +1118,21 @@ std::size_t ProjectOopObjectBundle::thinLtoCachedBackendCount() const noexcept
 std::span<const std::string> ProjectOopObjectBundle::thinLtoFinalModuleTexts() const noexcept
 {
     return thinLtoFinalModuleTexts_;
+}
+
+std::span<const std::string> ProjectOopObjectBundle::thinLtoUnitBitcode() const noexcept
+{
+    return thinLtoUnitBitcode_;
+}
+
+const std::string& ProjectOopObjectBundle::thinLtoCompatibility() const noexcept
+{
+    return thinLtoCompatibility_;
+}
+
+std::span<const ThinLtoLibraryObjects> ProjectOopObjectBundle::thinLtoLibraryObjects() const noexcept
+{
+    return thinLtoLibraryObjects_;
 }
 
 std::span<const CodeUnitTelemetry> ProjectOopObjectBundle::codeUnitTelemetry() const noexcept
@@ -1194,8 +1240,7 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     // El ThinLTO real (O1-O3, punto 44) es la excepcion: el objeto de una unidad depende de lo que
     // importa de las demas, asi que una llave por unidad no basta; su cache de backends usa el
     // modulo, el indice y el conjunto de imports (punto 45). En O0 thin sigue particionado.
-    const bool useThinLto = linkTimeOptimization == LinkTimeOptimizationMode::Thin &&
-        optimizationLevel != LlvmOptimizationLevel::O0 && ThinLtoBackend::available();
+    const bool useThinLto = thinLtoRuns(linkTimeOptimization, optimizationLevel);
     const bool usePreLlvmCache = cache != nullptr && cache->enabled() && !useThinLto;
     // Reuse by pre-optimization IR does not depend on the MIR identity, so it also covers full
     // debug information: lowering is still paid, optimization and emission are skipped on a hit.
@@ -1268,8 +1313,37 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
             const std::filesystem::path backendCache = cache != nullptr && cache->enabled()
                 ? cache->root() / "thinlto-backends" / std::string(kCodegenCacheIdentity)
                 : std::filesystem::path{};
+            // A static library keeps its units for its sidecar before any library unit joins them.
+            // Una biblioteca estatica guarda sus unidades para su sidecar antes de que se sumen otras.
+            if (captureThinLtoUnitBitcode_)
+            {
+                const std::span<const std::string> units = thinLto->unitBitcode();
+                result.thinLtoUnitBitcode_.assign(units.begin(), units.end());
+                if (!thinLtoCompatibility(optimizationLevel, debugInformation, result.thinLtoCompatibility_, error))
+                    return false;
+            }
+            // The units of accepted library sidecars follow the project's own units; their objects are
+            // written beside the project's and linked in place of each library (item 48).
+            // Las unidades de los sidecars de biblioteca aceptados van despues de las del proyecto; sus
+            // objetos se escriben junto a los del proyecto y se enlazan en lugar de cada biblioteca.
+            std::vector<std::filesystem::path> backendObjects(result.objectFiles_.begin(), result.objectFiles_.end());
+            result.thinLtoLibraryObjects_.clear();
+            for (std::size_t library = 0; library < thinLtoLibraries_.size(); ++library)
+            {
+                ThinLtoLibraryObjects objects;
+                objects.libraryPath = thinLtoLibraries_[library].libraryPath;
+                for (std::size_t unit = 0; unit < thinLtoLibraries_[library].units.size(); ++unit)
+                {
+                    const std::string name =
+                        "thinlto-library-" + std::to_string(library) + "-unit-" + std::to_string(unit);
+                    thinLto->appendBitcodeUnit(thinLtoLibraries_[library].units[unit], "nativesharp-" + name);
+                    objects.objectFiles.push_back(result.temporaryDirectory_ / (name + ".obj"));
+                    backendObjects.push_back(objects.objectFiles.back());
+                }
+                result.thinLtoLibraryObjects_.push_back(std::move(objects));
+            }
             if (!runThinLtoBackends(
-                    *thinLto, result.objectFiles_, optimizationLevel, workerCount, backendCache, error))
+                    *thinLto, backendObjects, optimizationLevel, workerCount, backendCache, error))
                 return false;
             result.thinLtoImportCount_ = thinLto->importedFunctionCount();
             result.thinLtoCachedBackendCount_ = thinLto->cachedBackendCount();

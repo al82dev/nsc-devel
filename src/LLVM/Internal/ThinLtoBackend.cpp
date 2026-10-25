@@ -12,6 +12,7 @@
 #include "llvm/Analysis/ModuleSummaryAnalysis.h"
 #include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/Module.h"
@@ -67,6 +68,11 @@ bool ThinLtoBackend::run(
 {
     error = "ThinLTO needs the STATIC LLVM host";
     return false;
+}
+
+std::string ThinLtoBackend::compatibilityIdentity(const LlvmTargetMachine&, LlvmOptimizationLevel)
+{
+    return {};
 }
 #else
 namespace
@@ -125,6 +131,16 @@ ThinLtoBackend::ThinLtoBackend(std::size_t moduleCount)
 bool ThinLtoBackend::available() noexcept
 {
     return true;
+}
+
+std::string ThinLtoBackend::compatibilityIdentity(const LlvmTargetMachine& targetMachine, LlvmOptimizationLevel level)
+{
+    return std::string("llvm ") + LLVM_VERSION_STRING + "\n" +
+        "triple " + targetMachine.triple() + "\n" +
+        "cpu " + targetMachine.cpuName() + "\n" +
+        "features " + targetMachine.featureString() + "\n" +
+        "layout " + targetMachine.dataLayout() + "\n" +
+        "optimization O" + std::to_string(levelNumber(level)) + "\n";
 }
 
 bool ThinLtoBackend::addModule(
@@ -373,6 +389,18 @@ bool ThinLtoBackend::run(
 }
 
 #endif
+
+void ThinLtoBackend::appendBitcodeUnit(std::string bitcode, std::string identifier)
+{
+    bitcode_.push_back(std::move(bitcode));
+    identifiers_.push_back(std::move(identifier));
+    finalModuleTexts_.emplace_back();
+}
+
+std::span<const std::string> ThinLtoBackend::unitBitcode() const noexcept
+{
+    return bitcode_;
+}
 
 void ThinLtoBackend::setCaptureFinalModuleTexts(bool capture) noexcept
 {

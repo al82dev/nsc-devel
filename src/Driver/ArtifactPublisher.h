@@ -44,6 +44,11 @@ public:
         const std::filesystem::path& destination,
         StaticLibraryPublication& publication,
         std::string& error);
+    // Adds the ThinLTO sidecar written at `publication.thinLtoSidecarStage` to the transaction.
+    // Agrega a la transaccion el sidecar ThinLTO escrito en `publication.thinLtoSidecarStage`.
+    bool addStaticLibraryThinLtoSidecar(
+        const StaticLibraryPublication& publication,
+        std::string& error);
     bool prepareDynamicLibrary(
         const std::filesystem::path& destination,
         bool publishPdb,

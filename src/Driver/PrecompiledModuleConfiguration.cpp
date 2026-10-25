@@ -3,6 +3,7 @@
 
 #include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
+#include "nativesharp/LLVM/ThinLtoLibrarySidecarCodec.h"
 #include "nativesharp/Linker/LldLinker.h"
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
@@ -122,6 +123,17 @@ void addCompilationCodegenIdentity(
         manifest.addIdentityField(
             prefix + "-replacement",
             debugPrefixMaps[index].replacementPrefix.generic_string());
+    }
+    // A static library with real ThinLTO publishes its sidecar, so restoring the bundle requires it
+    // (optimization part 2, item 48). Una biblioteca estatica con ThinLTO real publica su sidecar, asi
+    // que restaurar el bundle lo exige (parte 2, punto 48).
+    if (manifest.bundleProductKind() == "static-library" &&
+        llvm_backend::ProjectOopObjectGenerator::thinLtoRuns(linkTimeOptimization, optimizationLevel) &&
+        !linker::configuredWindowsRuntimeLibrary().empty() &&
+        !manifest.requiredBundleOutputNames().empty())
+    {
+        manifest.addRequiredBundleOutput(llvm_backend::ThinLtoLibrarySidecarCodec::pathFor(
+            manifest.requiredBundleOutputNames().front()));
     }
     if (debugInformation != llvm_backend::DebugInformationKind::None)
     {

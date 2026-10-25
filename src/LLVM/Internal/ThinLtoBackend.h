@@ -55,6 +55,28 @@ public:
         LlvmOptimizationLevel level,
         std::string& error);
 
+    /// EN: Adds a unit that arrives already as summary bitcode (a library sidecar, optimization part
+    ///     2 item 48) under module identifier `identifier`. Called after every addModule(); the unit
+    ///     takes the next ordinal, so its object is the next entry of the list given to run().
+    /// ES: Agrega una unidad que llega ya como bitcode con resumen (un sidecar de biblioteca, parte 2
+    ///     punto 48) con el identificador de modulo `identifier`. Se llama despues de todos los
+    ///     addModule(); la unidad toma el siguiente ordinal y su objeto es la siguiente entrada de la
+    ///     lista que recibe run().
+    void appendBitcodeUnit(std::string bitcode, std::string identifier);
+
+    /// EN: Summary bitcode of every unit as addModule() wrote it: what a library sidecar publishes.
+    /// ES: Bitcode con resumen de cada unidad tal como lo escribio addModule(): lo que publica un
+    ///     sidecar de biblioteca.
+    std::span<const std::string> unitBitcode() const noexcept;
+
+    /// EN: What must match byte for byte before summary bitcode written by another build is reused:
+    ///     the exact LLVM version, the target triple, CPU, features and data layout, and `level`.
+    ///     Empty in a host without ThinLTO.
+    /// ES: Lo que debe coincidir byte a byte antes de reutilizar bitcode con resumen escrito por otro
+    ///     build: la version exacta de LLVM, el triple, CPU, features y data layout del target, y
+    ///     `level`. Vacio en un host sin ThinLTO.
+    static std::string compatibilityIdentity(const LlvmTargetMachine& targetMachine, LlvmOptimizationLevel level);
+
     /// EN: Builds the index, imports across units and writes unit i to `objectFiles[i]`, with at
     ///     most `threads` backends at once and `cacheDirectory` as the backend cache (empty: none).
     /// ES: Arma el indice, importa entre unidades y escribe la unidad i en `objectFiles[i]`, con a
