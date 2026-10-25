@@ -18,7 +18,7 @@ bool OopLlvmImplementation::defineFunction(const frontend::ProjectOopMirFunction
         }
         prepareFunctionDefinitionState(function, found->second);
         LLVMBasicBlockRef entry = appendBlock("entry");
-        LLVMPositionBuilderAtEnd(builder_, entry);
+        enterBlock(entry);
         constructionThisOverride_ = nullptr;
         if (!emitRuntimeDebugTrace(1U, runtimeDebugCallableRecord(function, "ENTER"), error))
             return false;

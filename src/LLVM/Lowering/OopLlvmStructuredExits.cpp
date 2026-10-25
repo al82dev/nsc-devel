@@ -102,7 +102,7 @@ bool OopLlvmImplementation::emitStructuredExitFunclets(
             LLVMBasicBlockRef catchExit = appendBlock("eh.catch.exit");
             LLVMBuildCatchRet(builder_, current.pad, catchExit);
             funcletStack_.pop_back();
-            LLVMPositionBuilderAtEnd(builder_, catchExit);
+            enterBlock(catchExit);
             buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
         }
         return true;
@@ -339,7 +339,7 @@ bool OopLlvmImplementation::lowerExceptionalTransfer(
                 nativeThrowFunctionType_, nativeThrowFunction_, arguments, 1,
                 normalBlock, unwindTarget, "");
             if (invoke == nullptr) return fail(error, "Stage 45.10 failed to create exceptional invoke");
-            LLVMPositionBuilderAtEnd(builder_, normalBlock);
+            enterBlock(normalBlock);
             // This block is unreachable in principle -- __nativesharp_throw ends in RaiseException
             // and never returns -- but it must NOT be left as a bare `unreachable`, which emits
             // ZERO bytes. Bug found by real execution (see
@@ -431,7 +431,7 @@ bool OopLlvmImplementation::lowerNativePanicTransfer(
                 normalBlock, unwindTarget, "");
             if (invoke == nullptr)
                 return fail(error, "T07-F06 failed to create native panic invoke");
-            LLVMPositionBuilderAtEnd(builder_, normalBlock);
+            enterBlock(normalBlock);
         }
         else
         {

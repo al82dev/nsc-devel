@@ -161,7 +161,7 @@ LLVMValueRef OopLlvmImplementation::checkedReceiver(LLVMValueRef receiver, std::
         LLVMBasicBlockRef trapBlock = appendBlock("receiver.null");
         LLVMBuildCondBr(builder_, valid, okBlock, trapBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, trapBlock);
+        enterBlock(trapBlock);
         LLVMValueRef reason = LLVMConstInt(
             LLVMInt32TypeInContext(context_),
             static_cast<std::uint64_t>(LlvmTrapReason::NullReference),
@@ -170,7 +170,7 @@ LLVMValueRef OopLlvmImplementation::checkedReceiver(LLVMValueRef receiver, std::
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
         LLVMBuildUnreachable(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, okBlock);
+        enterBlock(okBlock);
         return receiver;
     }
 
@@ -362,13 +362,13 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToInteger(
         LLVMValueRef one = LLVMConstInt(lane, 1, 0);
         LLVMValueRef ten = LLVMConstInt(lane, 10, 0);
         LLVMBuildBr(builder_, header);
-        LLVMPositionBuilderAtEnd(builder_, header);
+        enterBlock(header);
         LLVMValueRef divisor = LLVMBuildPhi(builder_, lane, "decimal.pow10.div");
         LLVMValueRef remaining = LLVMBuildPhi(builder_, lane, "decimal.pow10.scale");
         LLVMValueRef done = LLVMBuildICmp(
             builder_, LLVMIntEQ, remaining, LLVMConstInt(lane, 0, 0), "decimal.pow10.done");
         LLVMBuildCondBr(builder_, done, exit, body);
-        LLVMPositionBuilderAtEnd(builder_, body);
+        enterBlock(body);
         LLVMValueRef nextDivisor = LLVMBuildMul(builder_, divisor, ten, "decimal.pow10.mul");
         LLVMValueRef nextRemaining = LLVMBuildSub(builder_, remaining, one, "decimal.pow10.dec");
         LLVMBuildBr(builder_, header);
@@ -376,7 +376,7 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToInteger(
         LLVMAddIncoming(divisor, &nextDivisor, &body, 1);
         LLVMAddIncoming(remaining, &scaleLane, &preheader, 1);
         LLVMAddIncoming(remaining, &nextRemaining, &body, 1);
-        LLVMPositionBuilderAtEnd(builder_, exit);
+        enterBlock(exit);
         LLVMValueRef quotient = LLVMBuildUDiv(builder_, coefficientLane, divisor, "decimal.quotient");
         LLVMValueRef truncated = LLVMBuildTrunc(builder_, quotient, destination, "decimal.trunc");
         LLVMValueRef negated = LLVMBuildSub(
@@ -450,7 +450,7 @@ LLVMValueRef OopLlvmImplementation::convertFloatingToDecimal(
         LLVMBasicBlockRef okBlock = appendBlock("decimal.from.ok");
         LLVMBasicBlockRef trapBlock = appendBlock("decimal.from.trap");
         LLVMBuildCondBr(builder_, invalid, trapBlock, okBlock);
-        LLVMPositionBuilderAtEnd(builder_, trapBlock);
+        enterBlock(trapBlock);
         if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
             return failValue(error, "decimal float conversion rejects non-finite input but no trap is configured");
         LLVMValueRef reason = LLVMConstInt(
@@ -459,7 +459,7 @@ LLVMValueRef OopLlvmImplementation::convertFloatingToDecimal(
         LLVMValueRef trapArgs[] = { reason };
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArgs, 1, "");
         LLVMBuildUnreachable(builder_);
-        LLVMPositionBuilderAtEnd(builder_, okBlock);
+        enterBlock(okBlock);
         LLVMValueRef scaled = LLVMBuildFMul(
             builder_, abs, LLVMConstReal(sourceFp, 1e6), "decimal.from.scaled");
         LLVMValueRef rounded = LLVMBuildFPToSI(

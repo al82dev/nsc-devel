@@ -2895,6 +2895,22 @@ private:
 
     LLVMBasicBlockRef appendBlock(const std::string& stem);
 
+    // ES: Posiciona el builder al final de `block`. Si el bloque todavía está vacío (se creó antes y
+    // recibe ahora su primera instrucción) se mueve detrás del último bloque de su función, como
+    // hace clang en EmitBlock: el orden de los bloques sigue al orden en que se emite el código, no
+    // al orden en que se crearon. Sin esto, la continuación de una sentencia (tras una comprobación
+    // de null, por ejemplo) quedaba detrás de bloques creados antes (else, fin de if, despacho y
+    // finally de un try) y la sentencia aparecía en dos tramos de la tabla de líneas: el depurador
+    // se detenía dos veces en ella. El bloque de entrada nunca se mueve.
+    // EN: Positions the builder at the end of `block`. When the block is still empty (it was created
+    // earlier and now receives its first instruction) it is moved after the last block of its
+    // function, as clang does in EmitBlock: block order follows the order in which code is emitted,
+    // not the order in which blocks were created. Without this, the continuation of a statement
+    // (after a null check, for example) landed after blocks created earlier (else, if end, the
+    // dispatch and finally of a try) and the statement appeared as two runs of the line table: the
+    // debugger stopped on it twice. The entry block is never moved.
+    void enterBlock(LLVMBasicBlockRef block);
+
     // NS304-T15-F04: 10^exponent as a runtime i64 loop (exponent 0..28).
     // NS304-T15-F04: the decimal scale must stay 0..28. `mul` adds scales and `div` can bump the
     // scale by one guard, so either can exceed 28; that is a decimal overflow, not silent wrap.

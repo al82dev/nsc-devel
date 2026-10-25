@@ -98,7 +98,7 @@ bool OopLlvmImplementation::declareRuntimeAllocatorDebug(
             applyFunctionAttribute(allocationWrapper, "nounwind");
             LLVMBasicBlockRef allocationEntry = LLVMAppendBasicBlockInContext(
                 context_, allocationWrapper, "entry");
-            LLVMPositionBuilderAtEnd(builder_, allocationEntry);
+            enterBlock(allocationEntry);
             LLVMValueRef allocationArguments[] = {LLVMGetParam(allocationWrapper, 0)};
             LLVMValueRef allocated = LLVMBuildCall2(
                 builder_, allocationFunctionType_, runtimeAllocationFunction,
@@ -119,7 +119,7 @@ bool OopLlvmImplementation::declareRuntimeAllocatorDebug(
             applyFunctionAttribute(deallocationWrapper, "nounwind");
             LLVMBasicBlockRef deallocationEntry = LLVMAppendBasicBlockInContext(
                 context_, deallocationWrapper, "entry");
-            LLVMPositionBuilderAtEnd(builder_, deallocationEntry);
+            enterBlock(deallocationEntry);
             LLVMValueRef deallocationTraceArguments[] = {
                 LLVMConstInt(i32, 2U, 0),
                 deallocationRecord,

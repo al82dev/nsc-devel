@@ -351,7 +351,7 @@ bool OopLlvmImplementation::lowerSuspendPointStatement(
                     : std::vector<std::tuple<std::size_t, std::uint64_t, std::string>>{};
 
                 // Suspend: save the live locals into the frame, then state = N and return.
-                LLVMPositionBuilderAtEnd(builder_, suspendBlock);
+                enterBlock(suspendBlock);
                 LLVMValueRef suspendFrame = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0),
                     byteOffset(self, 8, "suspend.self.frame.addr"), "suspend.self.frame");
@@ -370,7 +370,7 @@ bool OopLlvmImplementation::lowerSuspendPointStatement(
                 LLVMBuildRetVoid(builder_);
 
                 // Resume: restore the live locals from the frame and continue.
-                LLVMPositionBuilderAtEnd(builder_, resumeBlock);
+                enterBlock(resumeBlock);
                 LLVMValueRef resumeFrame = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0),
                     byteOffset(self, 8, "suspend.self.frame.addr2"), "suspend.self.frame");
@@ -434,7 +434,7 @@ bool OopLlvmImplementation::lowerYieldValueStatement(
                 LLVMBuildRet(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0));
 
                 // Resume: restore the live locals and fall through to the next yield.
-                LLVMPositionBuilderAtEnd(builder_, resumeBlock);
+                enterBlock(resumeBlock);
                 return restoreYieldValueFrame(self, error);
 }
 
@@ -447,7 +447,7 @@ LLVMValueRef OopLlvmImplementation::prepareYieldValueFrame(
 
                 // Entry: allocate the frame once (if null), save live locals, store item + state,
                 // return true.
-                LLVMPositionBuilderAtEnd(builder_, entryBlock);
+                enterBlock(entryBlock);
                 LLVMValueRef frame = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0),
                     byteOffset(self, 8, "yield.frame.addr"), "yield.frame");
@@ -459,14 +459,14 @@ LLVMValueRef OopLlvmImplementation::prepareYieldValueFrame(
                         builder_, LLVMIntEQ, frame,
                         LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "yield.frame.null"),
                     allocFrame, haveFrame);
-                LLVMPositionBuilderAtEnd(builder_, allocFrame);
+                enterBlock(allocFrame);
                 LLVMTypeRef frameType = LLVMArrayType2(
                     LLVMInt8TypeInContext(context_), currentMirFunction_ != nullptr
                         ? currentMirFunction_->asyncFrameSize : 0);
                 LLVMValueRef newFrame = entryBlockAlloca(frameType, 8, "yield.frame.storage");
                 LLVMBuildStore(builder_, newFrame, byteOffset(self, 8, "yield.frame.addr2"));
                 LLVMBuildBr(builder_, haveFrame);
-                LLVMPositionBuilderAtEnd(builder_, haveFrame);
+                enterBlock(haveFrame);
                 LLVMValueRef framePhi = LLVMBuildPhi(
                     builder_, LLVMPointerTypeInContext(context_, 0), "yield.frame.phi");
                 LLVMValueRef frameIncoming[] = { frame, newFrame };
@@ -579,7 +579,7 @@ bool OopLlvmImplementation::lowerAsyncYieldValueStatement(
                     builder_, LLVMConstInt(intType, node->integerValue, 0), asyncIter);
                 LLVMBuildRetVoid(builder_);
 
-                LLVMPositionBuilderAtEnd(builder_, resumeBlock);
+                enterBlock(resumeBlock);
                 return restoreAsyncYieldFrame(asyncIter, error);
 }
 
@@ -605,7 +605,7 @@ bool OopLlvmImplementation::prepareAsyncYieldRun(
                         builder_, LLVMIntEQ, iteratorState, cancelledConst,
                         "ayield.is.cancelled"),
                     cancelledBlock, runBlock);
-                LLVMPositionBuilderAtEnd(builder_, cancelledBlock);
+                enterBlock(cancelledBlock);
                 // NS304-T07-F05: a cooperative cancellation runs the active finally/defer once
                 // before parking the iterator, exactly like the terminal return.
                 // NS304-T17-F09: emitOneStructuredCleanup mutates the SHARED lowerer state
@@ -645,7 +645,7 @@ bool OopLlvmImplementation::prepareAsyncYieldRun(
                 LLVMBuildStore(
                     builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1), asyncIterator);
                 LLVMBuildRetVoid(builder_);
-                LLVMPositionBuilderAtEnd(builder_, runBlock);
+                enterBlock(runBlock);
                 return true;
 }
 
@@ -656,7 +656,7 @@ LLVMValueRef OopLlvmImplementation::prepareAsyncYieldFrame(
                     ? currentMirFunction_->asyncFrameLocals
                     : std::vector<std::tuple<std::size_t, std::uint64_t, std::string>>{};
 
-                LLVMPositionBuilderAtEnd(builder_, entryBlock);
+                enterBlock(entryBlock);
                 // NS304-T07-F04: the async-generator's locals live in the async-iterator's PERSISTENT
                 // frame (allocated by the constructor via GeneratorFrameInit). A null frame here is an
                 // internal invariant violation, never recoverable with a stack alloca.
@@ -671,7 +671,7 @@ LLVMValueRef OopLlvmImplementation::prepareAsyncYieldFrame(
                         builder_, LLVMIntEQ, frame,
                         LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "ayield.frame.null"),
                     frameTrap, frameOk);
-                LLVMPositionBuilderAtEnd(builder_, frameTrap);
+                enterBlock(frameTrap);
                 if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
                     return failValue(error, "async yield frame invariant trap is unavailable");
                 {
@@ -681,7 +681,7 @@ LLVMValueRef OopLlvmImplementation::prepareAsyncYieldFrame(
                     buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
                     LLVMBuildUnreachable(builder_);
                 }
-                LLVMPositionBuilderAtEnd(builder_, frameOk);
+                enterBlock(frameOk);
                 for (const auto& [localOrdinal, offset, typeKey] : frameLocals)
                 {
                     const auto localFound = localStorage_.find(localOrdinal);
@@ -773,7 +773,7 @@ bool OopLlvmImplementation::lowerDropFrameStatement(
                         builder_, LLVMIntEQ, frame,
                         LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "drop.frame.null"),
                     noFrame, doDrop);
-                LLVMPositionBuilderAtEnd(builder_, doDrop);
+                enterBlock(doDrop);
                 const auto& frameLocals = currentMirFunction_ != nullptr
                     ? currentMirFunction_->asyncFrameLocals
                     : std::vector<std::tuple<std::size_t, std::uint64_t, std::string>>{};
@@ -812,7 +812,7 @@ bool OopLlvmImplementation::lowerDropFrameStatement(
                         self);
                 }
                 LLVMBuildBr(builder_, noFrame);
-                LLVMPositionBuilderAtEnd(builder_, noFrame);
+                enterBlock(noFrame);
                 return true;
 }
 

@@ -121,7 +121,7 @@ bool OopLlvmImplementation::beginTryCatchDispatch(
         LLVMBasicBlockRef& unmatchedBlock,
         std::string& error)
 {
-        LLVMPositionBuilderAtEnd(builder_, dispatchBlock);
+        enterBlock(dispatchBlock);
         LLVMValueRef catchSwitch = LLVMBuildCatchSwitch(
             builder_, activeFuncletPad(), nullptr, 1, "eh.catchswitch");
         if (catchSwitch == nullptr)
@@ -132,7 +132,7 @@ bool OopLlvmImplementation::beginTryCatchDispatch(
         LLVMBasicBlockRef padBlock = appendBlock("eh.catchpad.entry");
         LLVMAddHandler(catchSwitch, padBlock);
         LLVMBasicBlockRef selectBlock = appendBlock("eh.catch.select");
-        LLVMPositionBuilderAtEnd(builder_, padBlock);
+        enterBlock(padBlock);
         LLVMValueRef catchArguments[] = {ehFilterFunction_};
         LLVMValueRef catchPad = LLVMBuildCatchPad(
             builder_, catchSwitch, catchArguments, 1, "eh.catchpad");
@@ -142,7 +142,7 @@ bool OopLlvmImplementation::beginTryCatchDispatch(
             return fail(error, "Stage 45.11 failed to create catchpad");
         }
         LLVMBuildCatchRet(builder_, catchPad, selectBlock);
-        LLVMPositionBuilderAtEnd(builder_, selectBlock);
+        enterBlock(selectBlock);
         caughtException = buildNoUnwindCall(
             exceptionCurrentFunctionType_, exceptionCurrentFunction_, nullptr, 0,
             "eh.caught.exception");
@@ -169,7 +169,7 @@ bool OopLlvmImplementation::emitTryCatchClauseTests(
         for (std::size_t index = 0; index < catchNodes.size(); ++index)
         {
             const frontend::ProjectOopMirNode* catchNode = catchNodes[index];
-            LLVMPositionBuilderAtEnd(builder_, clauseTestBlocks[index]);
+            enterBlock(clauseTestBlocks[index]);
             LLVMBasicBlockRef nextTest = index + 1U < catchNodes.size()
                 ? clauseTestBlocks[index + 1U] : unmatchedBlock;
             if (catchNode->catchAll)
@@ -203,7 +203,7 @@ bool OopLlvmImplementation::emitUnmatchedTryCatch(
         bool hasFinally,
         std::string& error)
 {
-        LLVMPositionBuilderAtEnd(builder_, unmatchedBlock);
+        enterBlock(unmatchedBlock);
         const std::vector<std::size_t> unmatchedCleanupPath = activeCleanupRegions_;
         for (auto ordinal = unmatchedCleanupPath.rbegin();
              ordinal != unmatchedCleanupPath.rend(); ++ordinal)
@@ -256,7 +256,7 @@ bool OopLlvmImplementation::emitOneTryCatchBody(
         bool hasFinally,
         std::string& error)
 {
-        LLVMPositionBuilderAtEnd(builder_, catchBlock);
+        enterBlock(catchBlock);
         LLVMMetadataRef catchScope = createDebugLexicalScope(catchNode, currentDebugScope_);
         ScopedDebugScope scopedCatchDebugScope(currentDebugScope_, catchScope);
         if (catchNode->localOrdinal.has_value())
@@ -287,7 +287,7 @@ bool OopLlvmImplementation::emitOneTryCatchBody(
             LLVMBuildCondBr(builder_, filter, handlerBlock, nextTest);
         }
         else LLVMBuildBr(builder_, handlerBlock);
-        LLVMPositionBuilderAtEnd(builder_, handlerBlock);
+        enterBlock(handlerBlock);
         // `rethrow` inside this body used to find its exception by walking funcletStack_ for
         // an active catch funclet. The body is ordinary parent code now, so it looks here.
         // CC1 EH-001: loopStack_.size() is recorded HERE, before the body is lowered, so
@@ -304,7 +304,7 @@ bool OopLlvmImplementation::emitOneTryCatchBody(
             return false;
         }
         if (!handlerTerminated) LLVMBuildBr(builder_, handledBlock);
-        LLVMPositionBuilderAtEnd(builder_, handledBlock);
+        enterBlock(handledBlock);
         // The O0 SEH legalization pass has to run mem2reg on this whole function (see
         // LlvmOptimizer.cpp).  A catch-local assignment can consequently disappear into
         // a PHI and leave the machine block with only this mandatory exception-clear
@@ -364,7 +364,7 @@ bool OopLlvmImplementation::lowerTryRegion(const frontend::ProjectOopMirNode* no
 
         if (!catchNodes.empty())
         {
-            LLVMPositionBuilderAtEnd(builder_, dispatchBlock);
+            enterBlock(dispatchBlock);
             // NOTE: no buildCurrentUnwindDestination() call here any more. The catchswitch below
             // deliberately unwinds to caller, and the enclosing cleanups are run explicitly on the
             // "no clause matched" path instead -- see the long comment on the catchswitch for why.
@@ -447,12 +447,12 @@ bool OopLlvmImplementation::lowerTryRegion(const frontend::ProjectOopMirNode* no
         if (hasFinally)
         {
             activeCleanupRegions_.pop_back();
-            LLVMPositionBuilderAtEnd(builder_, normalFinallyBlock);
+            enterBlock(normalFinallyBlock);
             if (!emitCleanupAction(*node->cleanupRegionOrdinal, error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, continueBlock);
         }
 
-        LLVMPositionBuilderAtEnd(builder_, continueBlock);
+        enterBlock(continueBlock);
         return true;
     }
 
@@ -477,17 +477,17 @@ bool OopLlvmImplementation::lowerIf(const frontend::ProjectOopMirNode* node, std
         LLVMBasicBlockRef endBlock = appendBlock("if.end");
         LLVMBuildCondBr(builder_, condition, thenBlock, elseBlock != nullptr ? elseBlock : endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, thenBlock);
+        enterBlock(thenBlock);
         if (!lowerStatement(node->children[1].get(), error)) return false;
         if (!terminated()) LLVMBuildBr(builder_, endBlock);
 
         if (elseBlock != nullptr)
         {
-            LLVMPositionBuilderAtEnd(builder_, elseBlock);
+            enterBlock(elseBlock);
             if (!lowerStatement(node->children[2].get(), error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, endBlock);
         }
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         return true;
     }
 
@@ -498,23 +498,23 @@ bool OopLlvmImplementation::lowerWhile(const frontend::ProjectOopMirNode* node, 
         LLVMBasicBlockRef bodyBlock = appendBlock("while.body");
         LLVMBasicBlockRef endBlock = appendBlock("while.end");
         LLVMBuildBr(builder_, condBlock);
-        LLVMPositionBuilderAtEnd(builder_, condBlock);
+        enterBlock(condBlock);
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return false;
         if (terminated())
         {
-            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            enterBlock(endBlock);
             return true;
         }
         LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
         loopStack_.push_back({
             endBlock, condBlock, funcletStack_.size(), funcletStack_.size(), {}, nullptr});
-        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        enterBlock(bodyBlock);
         const bool ok = lowerStatement(node->children[1].get(), error);
         if (ok && !terminated()) LLVMBuildBr(builder_, condBlock);
         loopStack_.pop_back();
         if (!ok) return false;
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         return true;
     }
 
@@ -539,7 +539,7 @@ LLVMValueRef OopLlvmImplementation::lowerLoopExpression(
         LLVMBasicBlockRef bodyBlock = appendBlock("loop.body");
         LLVMBasicBlockRef endBlock = appendBlock("loop.end");
         LLVMBuildBr(builder_, bodyBlock);
-        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        enterBlock(bodyBlock);
         loopStack_.push_back({
             endBlock,
             bodyBlock,
@@ -552,7 +552,7 @@ LLVMValueRef OopLlvmImplementation::lowerLoopExpression(
         loopStack_.pop_back();
         if (!ok) return nullptr;
 
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         if (node->typeKey == "builtin:never")
         {
             LLVMBuildUnreachable(builder_);
@@ -570,18 +570,18 @@ bool OopLlvmImplementation::lowerDoWhile(const frontend::ProjectOopMirNode* node
         LLVMBasicBlockRef condBlock = appendBlock("dowhile.cond");
         LLVMBasicBlockRef endBlock = appendBlock("dowhile.end");
         LLVMBuildBr(builder_, bodyBlock);
-        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        enterBlock(bodyBlock);
         loopStack_.push_back({
             endBlock, condBlock, funcletStack_.size(), funcletStack_.size(), {}, nullptr});
         const bool ok = lowerStatement(node->children[1].get(), error);
         if (ok && !terminated()) LLVMBuildBr(builder_, condBlock);
         loopStack_.pop_back();
         if (!ok) return false;
-        LLVMPositionBuilderAtEnd(builder_, condBlock);
+        enterBlock(condBlock);
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return false;
         if (!terminated()) LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         return true;
     }
 
@@ -663,7 +663,7 @@ bool OopLlvmImplementation::lowerSwitch(const frontend::ProjectOopMirNode* node,
         for (std::size_t index = 0; index < sectionCount && ok; ++index)
         {
             const frontend::ProjectOopMirNode* section = node->children[index + 1].get();
-            LLVMPositionBuilderAtEnd(builder_, sectionBlocks[index]);
+            enterBlock(sectionBlocks[index]);
             if (section->children.empty() || section->children.front() == nullptr)
             {
                 // Labels with no statements. Legal, and it means "match these values and do
@@ -677,7 +677,7 @@ bool OopLlvmImplementation::lowerSwitch(const frontend::ProjectOopMirNode* node,
         loopStack_.pop_back();
         if (!ok) return false;
 
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         return true;
     }
 
@@ -707,7 +707,7 @@ bool OopLlvmImplementation::lowerFor(const frontend::ProjectOopMirNode* node, st
         LLVMBasicBlockRef incBlock = appendBlock("for.inc");
         LLVMBasicBlockRef endBlock = appendBlock("for.end");
         LLVMBuildBr(builder_, condBlock);
-        LLVMPositionBuilderAtEnd(builder_, condBlock);
+        enterBlock(condBlock);
         if (node->children[1] != nullptr)
         {
             LLVMValueRef condition = lowerExpression(node->children[1].get(), error);
@@ -718,13 +718,13 @@ bool OopLlvmImplementation::lowerFor(const frontend::ProjectOopMirNode* node, st
 
         loopStack_.push_back({
             endBlock, incBlock, funcletStack_.size(), funcletStack_.size(), {}, nullptr});
-        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        enterBlock(bodyBlock);
         const bool bodyOk = lowerStatement(node->children[3].get(), error);
         if (bodyOk && !terminated()) LLVMBuildBr(builder_, incBlock);
         loopStack_.pop_back();
         if (!bodyOk) return false;
 
-        LLVMPositionBuilderAtEnd(builder_, incBlock);
+        enterBlock(incBlock);
         if (node->children[2] != nullptr)
         {
             if (node->children[2]->kind == frontend::ProjectOopMirNodeKind::Block)
@@ -737,7 +737,7 @@ bool OopLlvmImplementation::lowerFor(const frontend::ProjectOopMirNode* node, st
             }
         }
         if (!terminated()) LLVMBuildBr(builder_, condBlock);
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         if (!terminated())
         {
             while (activeCleanupRegions_.size() > cleanupDepthAtEntry)

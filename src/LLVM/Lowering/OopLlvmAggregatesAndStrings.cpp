@@ -152,11 +152,11 @@ LLVMValueRef OopLlvmImplementation::lowerObjectTypeName(const frontend::ProjectO
         LLVMBasicBlockRef doneBlock = appendBlock("typename.done");
         LLVMBuildCondBr(builder_, isNull, nullBlock, valueBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, nullBlock);
+        enterBlock(nullBlock);
         LLVMBuildBr(builder_, doneBlock);
         LLVMBasicBlockRef nullIncoming = LLVMGetInsertBlock(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        enterBlock(valueBlock);
         LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, value, "typename.descriptor");
         LLVMValueRef nameAddress = LLVMBuildStructGEP2(
             builder_, descriptorType_, descriptor, 6, "descriptor.type_name.addr");
@@ -164,7 +164,7 @@ LLVMValueRef OopLlvmImplementation::lowerObjectTypeName(const frontend::ProjectO
         LLVMBuildBr(builder_, doneBlock);
         LLVMBasicBlockRef valueIncoming = LLVMGetInsertBlock(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         LLVMValueRef phi = LLVMBuildPhi(builder_, ptr, "typename.phi");
         LLVMValueRef incomingValues[] = {LLVMConstNull(ptr), name};
         LLVMBasicBlockRef incomingBlocks[] = {nullIncoming, valueIncoming};
@@ -258,7 +258,7 @@ LLVMValueRef OopLlvmImplementation::lowerEnumName(const frontend::ProjectOopMirN
         incomingValues.reserve(cases.size() + 1U);
         incomingBlocks.reserve(cases.size() + 1U);
 
-        LLVMPositionBuilderAtEnd(builder_, fallbackBlock);
+        enterBlock(fallbackBlock);
         LLVMValueRef fallback = lowerExpression(node->children[1].get(), error);
         if (fallback == nullptr) return nullptr;
         incomingValues.push_back(fallback);
@@ -267,7 +267,7 @@ LLVMValueRef OopLlvmImplementation::lowerEnumName(const frontend::ProjectOopMirN
 
         for (std::size_t index = 0; index < cases.size(); ++index)
         {
-            LLVMPositionBuilderAtEnd(builder_, caseBlocks[index]);
+            enterBlock(caseBlocks[index]);
             LLVMValueRef name =
                 lowerExpression(node->children[cases[index].second + 1U].get(), error);
             if (name == nullptr) return nullptr;
@@ -281,7 +281,7 @@ LLVMValueRef OopLlvmImplementation::lowerEnumName(const frontend::ProjectOopMirN
             LLVMBuildBr(builder_, joinBlock);
         }
 
-        LLVMPositionBuilderAtEnd(builder_, joinBlock);
+        enterBlock(joinBlock);
         LLVMValueRef result = LLVMBuildPhi(builder_, stringType, "enum.name");
         LLVMAddIncoming(
             result,
@@ -391,18 +391,18 @@ LLVMValueRef OopLlvmImplementation::nullableStringLength(LLVMValueRef value, std
         LLVMBasicBlockRef doneBlock = appendBlock(std::string(stem) + ".done");
         LLVMBuildCondBr(builder_, isNull, nullBlock, valueBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, nullBlock);
+        enterBlock(nullBlock);
         LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
         LLVMBuildBr(builder_, doneBlock);
         LLVMBasicBlockRef nullIncoming = LLVMGetInsertBlock(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        enterBlock(valueBlock);
         LLVMValueRef length = LLVMBuildLoad2(
             builder_, i64, value, (std::string(stem) + ".length").c_str());
         LLVMBuildBr(builder_, doneBlock);
         LLVMBasicBlockRef valueIncoming = LLVMGetInsertBlock(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         LLVMValueRef phi = LLVMBuildPhi(builder_, i64, (std::string(stem) + ".length.phi").c_str());
         LLVMValueRef incomingValues[] = {zero, length};
         LLVMBasicBlockRef incomingBlocks[] = {nullIncoming, valueIncoming};
@@ -436,7 +436,7 @@ bool OopLlvmImplementation::emitMemcpyBytes(
         LLVMBasicBlockRef copyBlock = appendBlock(std::string(stem) + ".copy");
         LLVMBasicBlockRef doneBlock = appendBlock(std::string(stem) + ".done");
         LLVMBuildCondBr(builder_, hasBytes, copyBlock, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, copyBlock);
+        enterBlock(copyBlock);
         LLVMValueRef args[] = {
             destination,
             source,
@@ -444,7 +444,7 @@ bool OopLlvmImplementation::emitMemcpyBytes(
             LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
         buildNoUnwindCall(memcpyFunctionType_, memcpyFunction_, args, 4, "");
         LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -529,7 +529,7 @@ void OopLlvmImplementation::emitEqualLengthStringComparison(
         LLVMBuildBr(builder_, loopBlock);
         LLVMBasicBlockRef loopEntryIncoming = LLVMGetInsertBlock(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, loopBlock);
+        enterBlock(loopBlock);
         LLVMValueRef index = LLVMBuildPhi(builder_, i64, "string.eq.index");
         LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
         LLVMValueRef initialValues[] = {zero};
@@ -538,7 +538,7 @@ void OopLlvmImplementation::emitEqualLengthStringComparison(
         LLVMValueRef finished = LLVMBuildICmp(builder_, LLVMIntEQ, index, leftLength, "string.eq.finished");
         LLVMBuildCondBr(builder_, finished, equalBlock, compareBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, compareBlock);
+        enterBlock(compareBlock);
         LLVMValueRef leftData = byteOffset(left, 8, "string.eq.left.data");
         LLVMValueRef rightData = byteOffset(right, 8, "string.eq.right.data");
         LLVMValueRef leftAddress = dynamicByteOffset(leftData, index, "string.eq.left.addr");
@@ -548,11 +548,11 @@ void OopLlvmImplementation::emitEqualLengthStringComparison(
         LLVMValueRef byteEqual = LLVMBuildICmp(builder_, LLVMIntEQ, leftByte, rightByte, "string.eq.byte.equal");
         LLVMBuildCondBr(builder_, byteEqual, matchBlock, mismatchByteBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, mismatchByteBlock);
+        enterBlock(mismatchByteBlock);
         LLVMBuildBr(builder_, doneBlock);
         byteMismatchIncoming = LLVMGetInsertBlock(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, matchBlock);
+        enterBlock(matchBlock);
         LLVMValueRef next = LLVMBuildAdd(builder_, index, LLVMConstInt(i64, 1, 0), "string.eq.next");
         LLVMBuildBr(builder_, loopBlock);
         LLVMBasicBlockRef matchIncoming = LLVMGetInsertBlock(builder_);
@@ -560,7 +560,7 @@ void OopLlvmImplementation::emitEqualLengthStringComparison(
         LLVMBasicBlockRef nextBlocks[] = {matchIncoming};
         LLVMAddIncoming(index, nextValues, nextBlocks, 1);
 
-        LLVMPositionBuilderAtEnd(builder_, equalBlock);
+        enterBlock(equalBlock);
         LLVMBuildBr(builder_, doneBlock);
         equalIncoming = LLVMGetInsertBlock(builder_);
     }
@@ -581,36 +581,36 @@ LLVMValueRef OopLlvmImplementation::lowerStringEquals(
         LLVMBasicBlockRef distinctBlock = appendBlock("string.eq.distinct");
         LLVMBasicBlockRef doneBlock = appendBlock("string.eq.done");
         LLVMBuildCondBr(builder_, samePointer, sameBlock, distinctBlock);
-        LLVMPositionBuilderAtEnd(builder_, sameBlock);
+        enterBlock(sameBlock);
         LLVMBuildBr(builder_, doneBlock);
         LLVMBasicBlockRef sameIncoming = LLVMGetInsertBlock(builder_);
-        LLVMPositionBuilderAtEnd(builder_, distinctBlock);
+        enterBlock(distinctBlock);
         LLVMValueRef leftNull = LLVMBuildICmp(builder_, LLVMIntEQ, left, LLVMConstNull(ptr), "string.eq.leftnull");
         LLVMValueRef rightNull = LLVMBuildICmp(builder_, LLVMIntEQ, right, LLVMConstNull(ptr), "string.eq.rightnull");
         LLVMValueRef anyNull = LLVMBuildOr(builder_, leftNull, rightNull, "string.eq.anynull");
         LLVMBasicBlockRef nullBlock = appendBlock("string.eq.null");
         LLVMBasicBlockRef lengthBlock = appendBlock("string.eq.length");
         LLVMBuildCondBr(builder_, anyNull, nullBlock, lengthBlock);
-        LLVMPositionBuilderAtEnd(builder_, nullBlock);
+        enterBlock(nullBlock);
         LLVMBuildBr(builder_, doneBlock);
         LLVMBasicBlockRef nullIncoming = LLVMGetInsertBlock(builder_);
-        LLVMPositionBuilderAtEnd(builder_, lengthBlock);
+        enterBlock(lengthBlock);
         LLVMValueRef leftLength = LLVMBuildLoad2(builder_, i64, left, "string.eq.left.length");
         LLVMValueRef rightLength = LLVMBuildLoad2(builder_, i64, right, "string.eq.right.length");
         LLVMValueRef sameLength = LLVMBuildICmp(builder_, LLVMIntEQ, leftLength, rightLength, "string.eq.samelen");
         LLVMBasicBlockRef mismatchLengthBlock = appendBlock("string.eq.length.mismatch");
         LLVMBasicBlockRef loopEntryBlock = appendBlock("string.eq.loop.entry");
         LLVMBuildCondBr(builder_, sameLength, loopEntryBlock, mismatchLengthBlock);
-        LLVMPositionBuilderAtEnd(builder_, mismatchLengthBlock);
+        enterBlock(mismatchLengthBlock);
         LLVMBuildBr(builder_, doneBlock);
         LLVMBasicBlockRef lengthMismatchIncoming = LLVMGetInsertBlock(builder_);
-        LLVMPositionBuilderAtEnd(builder_, loopEntryBlock);
+        enterBlock(loopEntryBlock);
         LLVMBasicBlockRef byteMismatchIncoming = nullptr;
         LLVMBasicBlockRef equalIncoming = nullptr;
         emitEqualLengthStringComparison(
             left, right, leftLength, doneBlock, byteMismatchIncoming, equalIncoming);
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         LLVMValueRef result = LLVMBuildPhi(builder_, LLVMInt1TypeInContext(context_), "string.eq.result");
         LLVMValueRef trueValue = LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0);
         LLVMValueRef falseValue = LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);

@@ -67,7 +67,7 @@ LLVMValueRef OopLlvmImplementation::lowerNullConditionalCall(
         LLVMBasicBlockRef endBlock = appendBlock("nullcall.end");
         LLVMBuildCondBr(builder_, hasReceiver, callBlock, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, callBlock);
+        enterBlock(callBlock);
         LLVMValueRef value = nullptr;
         switch (node->kind)
         {
@@ -87,7 +87,7 @@ LLVMValueRef OopLlvmImplementation::lowerNullConditionalCall(
         LLVMBasicBlockRef callExit = LLVMGetInsertBlock(builder_);
         if (!terminated()) LLVMBuildBr(builder_, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
         // Semantic analysis admits only physical nullable carriers here; every such carrier uses
         // the opaque-pointer ABI.  Do not depend on LLVM's type-introspection C API merely to
@@ -661,7 +661,7 @@ LLVMValueRef OopLlvmImplementation::loadInterfaceTarget(
             builder_, LLVMIntNE, map, LLVMConstNull(ptr), "interface.map.nonnull");
         LLVMBuildCondBr(builder_, hasMap, mapBlock, missingBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, mapBlock);
+        enterBlock(mapBlock);
         LLVMValueRef countAddress = LLVMBuildStructGEP2(
             builder_, interfaceMapType_, map, 0, "interface.map.count.addr");
         LLVMValueRef count = LLVMBuildLoad2(builder_, i64, countAddress, "interface.map.count");
@@ -670,7 +670,7 @@ LLVMValueRef OopLlvmImplementation::loadInterfaceTarget(
         LLVMValueRef entries = LLVMBuildLoad2(builder_, ptr, entriesAddress, "interface.map.entries");
         LLVMBuildBr(builder_, searchBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, searchBlock);
+        enterBlock(searchBlock);
         LLVMValueRef index = LLVMBuildPhi(builder_, i64, "interface.map.index");
         LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
         LLVMValueRef initialValues[] = {zero};
@@ -679,7 +679,7 @@ LLVMValueRef OopLlvmImplementation::loadInterfaceTarget(
         LLVMValueRef inRange = LLVMBuildICmp(builder_, LLVMIntULT, index, count, "interface.map.inrange");
         LLVMBuildCondBr(builder_, inRange, probeBlock, missingBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, probeBlock);
+        enterBlock(probeBlock);
         LLVMValueRef entryIndices[] = {index};
         LLVMValueRef entry = LLVMBuildGEP2(
             builder_, interfaceMapEntryType_, entries, entryIndices, 1, "interface.entry");
@@ -690,7 +690,7 @@ LLVMValueRef OopLlvmImplementation::loadInterfaceTarget(
         LLVMValueRef matches = LLVMBuildICmp(builder_, LLVMIntEQ, id, wantedId, "interface.entry.matches");
         LLVMBuildCondBr(builder_, matches, foundBlock, nextBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, nextBlock);
+        enterBlock(nextBlock);
         LLVMValueRef one = LLVMConstInt(i64, 1, 0);
         LLVMValueRef nextIndex = LLVMBuildAdd(builder_, index, one, "interface.map.next");
         LLVMBuildBr(builder_, searchBlock);
@@ -698,10 +698,10 @@ LLVMValueRef OopLlvmImplementation::loadInterfaceTarget(
         LLVMBasicBlockRef nextBlocks[] = {nextBlock};
         LLVMAddIncoming(index, nextValues, nextBlocks, 1);
 
-        LLVMPositionBuilderAtEnd(builder_, missingBlock);
+        enterBlock(missingBlock);
         emitInterfaceDispatchTrap();
 
-        LLVMPositionBuilderAtEnd(builder_, foundBlock);
+        enterBlock(foundBlock);
         return loadInterfaceMethodSlot(node, entry, ptr, i64);
     }
 

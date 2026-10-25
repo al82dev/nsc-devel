@@ -311,7 +311,7 @@ bool OopLlvmImplementation::lowerShortCircuitBinaryFrame(
         LLVMBuildCondBr(
             builder_, left, isAnd ? rhsBlock : endBlock,
             isAnd ? endBlock : rhsBlock);
-        LLVMPositionBuilderAtEnd(builder_, rhsBlock);
+        enterBlock(rhsBlock);
         frames.push_back(
             {current, 4, nullptr, 0, {}, nullptr, nullptr, leftBlock, endBlock});
         frames.push_back({current->children[1].get(), 0, nullptr});
@@ -327,7 +327,7 @@ bool OopLlvmImplementation::lowerShortCircuitBinaryFrame(
     LLVMBasicBlockRef rightBlock = LLVMGetInsertBlock(builder_);
     const bool rightReachesEnd = !terminated();
     if (rightReachesEnd) LLVMBuildBr(builder_, frame.endBlock);
-    LLVMPositionBuilderAtEnd(builder_, frame.endBlock);
+    enterBlock(frame.endBlock);
     const bool isAnd = current->operation == lexer::TokenKind::AmpAmp;
     LLVMValueRef shortValue = LLVMConstInt(
         LLVMInt1TypeInContext(context_), isAnd ? 0U : 1U, 0);
@@ -905,7 +905,7 @@ bool OopLlvmImplementation::lowerExpressionFrame016IteratorMoveNext(
             builder_,
             LLVMBuildICmp(builder_, LLVMIntEQ, state, erroredConst, "iterator.movenext.errored"),
             errorBlock, normalBlock);
-        LLVMPositionBuilderAtEnd(builder_, errorBlock);
+        enterBlock(errorBlock);
         std::uint64_t errorOffset = 0;
         if (const frontend::ProjectOopMirStructLayout* layout =
                 findStructLayout(mirModel_, current->elementTypeKey))
@@ -927,7 +927,7 @@ bool OopLlvmImplementation::lowerExpressionFrame016IteratorMoveNext(
             values.push_back(nullptr);
             return true;
         }
-        LLVMPositionBuilderAtEnd(builder_, normalBlock);
+        enterBlock(normalBlock);
     }
     values.push_back(result);
     return true;
@@ -1137,7 +1137,7 @@ bool OopLlvmImplementation::lowerExpressionFrame021ObjectDestroy(
     LLVMBasicBlockRef destroyBlock = appendBlock("destroy.object");
     LLVMBasicBlockRef doneBlock = appendBlock("destroy.object.done");
     LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
-    LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+    enterBlock(destroyBlock);
     LLVMValueRef descriptor = LLVMBuildLoad2(
         builder_, ptr, object, "destroy.object.descriptor");
     LLVMValueRef entryAddress = LLVMBuildStructGEP2(
@@ -1153,7 +1153,7 @@ bool OopLlvmImplementation::lowerExpressionFrame021ObjectDestroy(
         return true;
     }
     if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-    LLVMPositionBuilderAtEnd(builder_, doneBlock);
+    enterBlock(doneBlock);
     values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
     return true;
 }

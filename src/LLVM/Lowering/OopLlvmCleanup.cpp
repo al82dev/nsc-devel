@@ -21,7 +21,7 @@ void OopLlvmImplementation::emitCleanupGuardBranch(
             (std::string(namePrefix) + ".isnull").c_str());
         LLVMBuildCondBr(builder_, skip, doneBlock, destroyBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
         // Cleared BEFORE the destructor runs: that is what makes a cleanup entered twice destroy
         // only once, and it keeps the slot from holding a dangling pointer afterwards on any path
         // that legitimately survives the cleanup.
@@ -160,14 +160,14 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
             {
                 activeCleanupRegions_.push_back(savedActive[index]);
             }
-            LLVMPositionBuilderAtEnd(builder_, block);
+            enterBlock(block);
             LLVMValueRef cleanupPad = LLVMBuildCleanupPad(
                 builder_, parentPad, nullptr, 0, "eh.cleanuppad");
             if (cleanupPad == nullptr)
             {
                 activeCleanupRegions_ = savedActive;
                 funcletStack_ = savedFunclets;
-                LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+                enterBlock(sourceBlock);
                 error = "Stage 45.10 failed to create cleanuppad";
                 return nullptr;
             }
@@ -178,7 +178,7 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
             {
                 activeCleanupRegions_ = savedActive;
                 funcletStack_ = savedFunclets;
-                LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+                enterBlock(sourceBlock);
                 return nullptr;
             }
             if (!terminated())
@@ -192,7 +192,7 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
 
         activeCleanupRegions_ = savedActive;
         funcletStack_ = savedFunclets;
-        LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+        enterBlock(sourceBlock);
         return next;
     }
 
@@ -214,7 +214,7 @@ bool OopLlvmImplementation::resolveExceptionalCleanupPath(
             if (cleanupFound == cleanupRegions_.end() || cleanupFound->second == nullptr ||
                 !regionIndex.has_value())
             {
-                LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+                enterBlock(sourceBlock);
                 error = "Stage 45.10 exceptional cleanup path references an inactive MIR cleanup region";
                 return false;
             }
@@ -306,7 +306,7 @@ LLVMValueRef OopLlvmImplementation::buildPotentiallyThrowingCall(
             error = "Stage 45.10 failed to emit invoke for a potentially throwing call";
             return nullptr;
         }
-        LLVMPositionBuilderAtEnd(builder_, normalBlock);
+        enterBlock(normalBlock);
         return invoke;
     }
 
@@ -365,7 +365,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
             builder_, LLVMIntNE, map, LLVMConstNull(ptr), "dispose.interface.map.nonnull");
         LLVMBuildCondBr(builder_, hasMap, mapBlock, missingBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, mapBlock);
+        enterBlock(mapBlock);
         LLVMValueRef countAddress = LLVMBuildStructGEP2(
             builder_, interfaceMapType_, map, 0, "dispose.interface.map.count.addr");
         LLVMValueRef count = LLVMBuildLoad2(builder_, i64, countAddress, "dispose.interface.map.count");
@@ -374,7 +374,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
         LLVMValueRef entries = LLVMBuildLoad2(builder_, ptr, entriesAddress, "dispose.interface.map.entries");
         LLVMBuildBr(builder_, searchBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, searchBlock);
+        enterBlock(searchBlock);
         LLVMValueRef index = LLVMBuildPhi(builder_, i64, "dispose.interface.map.index");
         LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
         LLVMValueRef initialValues[] = {zero};
@@ -384,7 +384,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
             builder_, LLVMIntULT, index, count, "dispose.interface.map.inrange");
         LLVMBuildCondBr(builder_, inRange, probeBlock, missingBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, probeBlock);
+        enterBlock(probeBlock);
         LLVMValueRef entryIndices[] = {index};
         LLVMValueRef entry = LLVMBuildGEP2(
             builder_, interfaceMapEntryType_, entries, entryIndices, 1, "dispose.interface.entry");
@@ -396,7 +396,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
             builder_, LLVMIntEQ, id, wanted, "dispose.interface.entry.matches");
         LLVMBuildCondBr(builder_, matches, foundBlock, nextBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, nextBlock);
+        enterBlock(nextBlock);
         LLVMValueRef one = LLVMConstInt(i64, 1, 0);
         LLVMValueRef nextIndex = LLVMBuildAdd(builder_, index, one, "dispose.interface.map.next");
         LLVMBuildBr(builder_, searchBlock);
@@ -404,7 +404,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
         LLVMBasicBlockRef nextBlocks[] = {nextBlock};
         LLVMAddIncoming(index, nextValues, nextBlocks, 1);
 
-        LLVMPositionBuilderAtEnd(builder_, missingBlock);
+        enterBlock(missingBlock);
         LLVMValueRef reason = LLVMConstInt(
             LLVMInt32TypeInContext(context_),
             static_cast<std::uint64_t>(LlvmTrapReason::InterfaceDispatchFailure), 0);
@@ -412,7 +412,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
         LLVMBuildUnreachable(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, foundBlock);
+        enterBlock(foundBlock);
         return emitInterfaceDisposeTarget(receiver, entry, slot, doneBlock, error);
     }
 
@@ -443,7 +443,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeTarget(
             return false;
         }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -470,7 +470,7 @@ bool OopLlvmImplementation::emitUsingDispose(const frontend::ProjectOopMirNode* 
         LLVMBasicBlockRef doneBlock = appendBlock("using.dispose.done");
         LLVMBuildCondBr(builder_, isNull, doneBlock, disposeBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, disposeBlock);
+        enterBlock(disposeBlock);
         if (node->interfaceCleanupDispatch)
         {
             if (!emitInterfaceDispose(resource, *node->disposeContractMemberOrdinal, error)) return false;
@@ -501,7 +501,7 @@ bool OopLlvmImplementation::emitUsingDispose(const frontend::ProjectOopMirNode* 
             }
         }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -526,7 +526,7 @@ bool OopLlvmImplementation::emitNativeArrayDestroy(
         LLVMBasicBlockRef destroyBlock = appendBlock(prefix + ".destroy");
         LLVMBasicBlockRef doneBlock = appendBlock(prefix + ".done");
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
 
         if (destroyElements && requiresOwnedDestruction(*elementType))
         {
@@ -537,7 +537,7 @@ bool OopLlvmImplementation::emitNativeArrayDestroy(
         LLVMValueRef arguments[] = {array};
         buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -557,7 +557,7 @@ bool OopLlvmImplementation::emitNativeArrayElementDestruction(
         LLVMBasicBlockRef releaseBlock = appendBlock(prefix + ".release");
         LLVMBuildBr(builder_, conditionBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, conditionBlock);
+        enterBlock(conditionBlock);
         LLVMValueRef index = LLVMBuildPhi(builder_, i64, (prefix + ".index").c_str());
         LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
         LLVMAddIncoming(index, &zero, &destroyBlock, 1);
@@ -565,7 +565,7 @@ bool OopLlvmImplementation::emitNativeArrayElementDestruction(
             builder_, LLVMIntULT, index, length, (prefix + ".inrange").c_str());
         LLVMBuildCondBr(builder_, inRange, bodyBlock, releaseBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        enterBlock(bodyBlock);
         LLVMValueRef scaled = LLVMBuildMul(
             builder_, index, LLVMConstInt(i64, 8, 0), (prefix + ".scaled").c_str());
         const std::size_t rank = frontend::ProjectTypeConversion::nativeArrayRank(arrayTypeKey);
@@ -591,7 +591,7 @@ bool OopLlvmImplementation::emitNativeArrayElementDestruction(
             LLVMAddIncoming(index, &next, &incrementBlock, 1);
         }
 
-        LLVMPositionBuilderAtEnd(builder_, releaseBlock);
+        enterBlock(releaseBlock);
         return true;
     }
 
@@ -611,7 +611,7 @@ bool OopLlvmImplementation::emitOwnedPointerDestroy(
         LLVMBasicBlockRef destroyBlock = appendBlock(prefix + ".destroy");
         LLVMBasicBlockRef doneBlock = appendBlock(prefix + ".done");
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
 
         if (isDelegateReferenceType(nameLookup_, typeKey))
         {
@@ -639,7 +639,7 @@ bool OopLlvmImplementation::emitOwnedPointerDestroy(
                 return false;
         }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -721,7 +721,7 @@ bool OopLlvmImplementation::emitVariantDropCases(
         for (std::size_t ordinal = 0; ordinal < dropCases.size(); ++ordinal)
         {
             const DropCase& item = dropCases[ordinal];
-            LLVMPositionBuilderAtEnd(builder_, blocks[ordinal]);
+            enterBlock(blocks[ordinal]);
             LLVMValueRef payloadAddress = byteOffset(
                 address, payloadField.offset + item.field->offset,
                 (std::string(stem) + ".payload.addr").c_str());
@@ -745,7 +745,7 @@ bool OopLlvmImplementation::emitVariantDropCases(
                 return false;
             if (!terminated()) LLVMBuildBr(builder_, done);
         }
-        LLVMPositionBuilderAtEnd(builder_, done);
+        enterBlock(done);
         return true;
     }
 
@@ -941,11 +941,11 @@ bool OopLlvmImplementation::emitValueDrop(
         LLVMBasicBlockRef destroyBlock = appendBlock(std::string(stem) + ".destroy");
         LLVMBasicBlockRef doneBlock = appendBlock(std::string(stem) + ".done");
         LLVMBuildCondBr(builder_, live, destroyBlock, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
         LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag);
         if (!emitValueDropAddress(storage, node->typeKey, stem, error)) return false;
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -1030,7 +1030,7 @@ bool OopLlvmImplementation::emitRaiiDestroy(const frontend::ProjectOopMirNode* n
             return true;
         }
         LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -1060,7 +1060,7 @@ bool OopLlvmImplementation::emitRaiiSpecialDestroy(
             LLVMValueRef arguments[] = {value};
             buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
             LLVMBuildBr(builder_, doneBlock);
-            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            enterBlock(doneBlock);
             return true;
         }
         else
@@ -1069,7 +1069,7 @@ bool OopLlvmImplementation::emitRaiiSpecialDestroy(
             return true;
         }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -1132,7 +1132,7 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
         {
             if (!emitDelegateDestroy(value, "owned.param.delegate", error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            enterBlock(doneBlock);
             return true;
         }
         if (frontend::ProjectTypeConversion::isNativeArray(node->typeKey))
@@ -1140,7 +1140,7 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
             if (!emitNativeArrayDestroy(
                     value, node->typeKey, "owned.param.array", true, error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            enterBlock(doneBlock);
             return true;
         }
         if (node->typeKey == "builtin:string")
@@ -1148,7 +1148,7 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
             LLVMValueRef arguments[] = {value};
             buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
             LLVMBuildBr(builder_, doneBlock);
-            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            enterBlock(doneBlock);
             return true;
         }
         if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
@@ -1168,7 +1168,7 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
             return false;
         }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -1231,7 +1231,7 @@ void OopLlvmImplementation::emitCatchBodyExceptionClear()
 {
         LLVMBasicBlockRef leaveBlock = appendBlock("eh.catch.leave");
         LLVMBuildBr(builder_, leaveBlock);
-        LLVMPositionBuilderAtEnd(builder_, leaveBlock);
+        enterBlock(leaveBlock);
         buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
     }
 

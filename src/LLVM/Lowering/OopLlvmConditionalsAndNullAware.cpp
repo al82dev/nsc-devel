@@ -129,7 +129,7 @@ LLVMValueRef OopLlvmImplementation::finishMatchResult(
         std::vector<LLVMBasicBlockRef>& incomingBlocks,
         std::string& error)
 {
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         if (incomingValues.empty())
         {
             LLVMBuildUnreachable(builder_);
@@ -195,12 +195,12 @@ LLVMValueRef OopLlvmImplementation::lowerSwitchMatchExpression(
         }
         for (std::size_t armIndex = 1; armIndex < node->children.size(); ++armIndex)
         {
-            LLVMPositionBuilderAtEnd(builder_, armBlocks[armIndex - 1U]);
+            enterBlock(armBlocks[armIndex - 1U]);
             if (!lowerSelectedMatchArm(
                     node->children[armIndex].get(), outerCleanups, endBlock,
                     incomingValues, incomingBlocks, error)) return nullptr;
         }
-        LLVMPositionBuilderAtEnd(builder_, defaultBlock);
+        enterBlock(defaultBlock);
         LLVMBuildUnreachable(builder_);
         return finishMatchResult(node, endBlock, incomingValues, incomingBlocks, error);
 }
@@ -222,7 +222,7 @@ bool OopLlvmImplementation::lowerGuardedMatchArm(
         if (terminated())
         {
             activeCleanupRegions_ = outerCleanups;
-            LLVMPositionBuilderAtEnd(builder_, nextBlock);
+            enterBlock(nextBlock);
             return true;
         }
         const std::vector<std::size_t> armCleanups(
@@ -237,13 +237,13 @@ bool OopLlvmImplementation::lowerGuardedMatchArm(
         if (terminated())
         {
             activeCleanupRegions_ = outerCleanups;
-            LLVMPositionBuilderAtEnd(builder_, nextBlock);
+            enterBlock(nextBlock);
             return true;
         }
         LLVMBasicBlockRef valueBlock = appendBlock("match.value");
         LLVMBasicBlockRef guardFailedBlock = appendBlock("match.guard.failed");
         LLVMBuildCondBr(builder_, guard, valueBlock, guardFailedBlock);
-        LLVMPositionBuilderAtEnd(builder_, guardFailedBlock);
+        enterBlock(guardFailedBlock);
         activeCleanupRegions_ = outerCleanups;
         activeCleanupRegions_.insert(
             activeCleanupRegions_.end(), armCleanups.begin(), armCleanups.end());
@@ -253,7 +253,7 @@ bool OopLlvmImplementation::lowerGuardedMatchArm(
             return false;
         }
         if (!terminated()) LLVMBuildBr(builder_, nextBlock);
-        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        enterBlock(valueBlock);
         activeCleanupRegions_ = outerCleanups;
         activeCleanupRegions_.insert(
             activeCleanupRegions_.end(), armCleanups.begin(), armCleanups.end());
@@ -289,7 +289,7 @@ bool OopLlvmImplementation::lowerPatternMatchArm(
         LLVMBasicBlockRef bindingBlock = appendBlock("match.bind");
         LLVMBasicBlockRef nextBlock = appendBlock("match.next");
         LLVMBuildCondBr(builder_, condition, bindingBlock, nextBlock);
-        LLVMPositionBuilderAtEnd(builder_, bindingBlock);
+        enterBlock(bindingBlock);
         std::size_t cleanupDepth = 0;
         if (!lowerGuardedMatchArm(arm, outerCleanups, nextBlock, cleanupDepth, error)) return false;
         if (LLVMGetInsertBlock(builder_) == nextBlock) return true;
@@ -312,7 +312,7 @@ bool OopLlvmImplementation::lowerPatternMatchArm(
             incomingBlocks.push_back(exit);
         }
         activeCleanupRegions_ = outerCleanups;
-        LLVMPositionBuilderAtEnd(builder_, nextBlock);
+        enterBlock(nextBlock);
         return true;
 }
 
@@ -349,21 +349,21 @@ LLVMValueRef OopLlvmImplementation::lowerConditional(const frontend::ProjectOopM
         LLVMBasicBlockRef endBlock = appendBlock("cond.end");
         LLVMBuildCondBr(builder_, condition, trueBlock, falseBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, trueBlock);
+        enterBlock(trueBlock);
         LLVMValueRef whenTrue = lowerExpression(node->children[1].get(), error);
         if (whenTrue == nullptr) return nullptr;
         LLVMBasicBlockRef trueExit = LLVMGetInsertBlock(builder_);
         const bool trueReachesEnd = !terminated();
         if (trueReachesEnd) LLVMBuildBr(builder_, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, falseBlock);
+        enterBlock(falseBlock);
         LLVMValueRef whenFalse = lowerExpression(node->children[2].get(), error);
         if (whenFalse == nullptr) return nullptr;
         LLVMBasicBlockRef falseExit = LLVMGetInsertBlock(builder_);
         const bool falseReachesEnd = !terminated();
         if (falseReachesEnd) LLVMBuildBr(builder_, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         if (!trueReachesEnd && !falseReachesEnd)
         {
             LLVMBuildUnreachable(builder_);
@@ -396,14 +396,14 @@ LLVMValueRef OopLlvmImplementation::lowerNullCoalescing(
         LLVMBasicBlockRef endBlock = appendBlock("coalesce.end");
         LLVMBuildCondBr(builder_, hasValue, endBlock, fallbackBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, fallbackBlock);
+        enterBlock(fallbackBlock);
         LLVMValueRef fallback = lowerExpression(node->children[1].get(), error);
         if (fallback == nullptr) return nullptr;
         LLVMBasicBlockRef fallbackExit = LLVMGetInsertBlock(builder_);
         const bool fallbackReachesEnd = !terminated();
         if (fallbackReachesEnd) LLVMBuildBr(builder_, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         if (!fallbackReachesEnd) return left;
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
         if (resultType == nullptr) return nullptr;
@@ -449,21 +449,21 @@ LLVMValueRef OopLlvmImplementation::lowerOptionalCoalescing(
         LLVMBasicBlockRef endBlock = appendBlock("optional.end");
         LLVMBuildCondBr(builder_, hasValue, valueBlock, fallbackBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        enterBlock(valueBlock);
         LLVMValueRef presentValue = lowerOptionalPresentValue(
             node, carrierSlot, uncheckedValueTarget->second, error);
         if (presentValue == nullptr) return nullptr;
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
         if (!terminated()) LLVMBuildBr(builder_, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, fallbackBlock);
+        enterBlock(fallbackBlock);
         LLVMValueRef fallback = lowerExpression(node->children[1].get(), error);
         if (fallback == nullptr) return nullptr;
         LLVMBasicBlockRef fallbackExit = LLVMGetInsertBlock(builder_);
         const bool fallbackReachesEnd = !terminated();
         if (fallbackReachesEnd) LLVMBuildBr(builder_, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         if (!fallbackReachesEnd) return presentValue;
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
         if (resultType == nullptr) return nullptr;
@@ -566,7 +566,7 @@ LLVMValueRef OopLlvmImplementation::lowerResultPropagation(
         LLVMBasicBlockRef errorBlock = appendBlock("result.error");
         LLVMBuildCondBr(builder_, isSuccess, successBlock, errorBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, errorBlock);
+        enterBlock(errorBlock);
         LLVMValueRef errorValue = lowerResultPropagationInstanceCall(
             node, carrierSlot, node->resultErrorExtractorCalleeName,
             node->resultSourceErrorTypeKey, "result.error.value", error);
@@ -597,7 +597,7 @@ LLVMValueRef OopLlvmImplementation::lowerResultPropagation(
         returnNode.targetScopeOrdinal = node->targetScopeOrdinal;
         if (!lowerStructuredExit(&returnNode, error, returnCarrier)) return nullptr;
 
-        LLVMPositionBuilderAtEnd(builder_, successBlock);
+        enterBlock(successBlock);
         return lowerResultPropagationInstanceCall(
             node, carrierSlot, node->resultSuccessExtractorCalleeName,
             node->typeKey, "result.ok.value", error);
@@ -664,13 +664,13 @@ LLVMValueRef OopLlvmImplementation::lowerNullCoalescingStore(
         LLVMBasicBlockRef endBlock = appendBlock("coalesce.store.end");
         LLVMBuildCondBr(builder_, hasValue, endBlock, fallbackBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, fallbackBlock);
+        enterBlock(fallbackBlock);
         LLVMValueRef fallback = lowerExpression(node->children[1].get(), error);
         if (fallback == nullptr) return nullptr;
         const bool fallbackReachesEnd = !terminated();
         if (!fallbackReachesEnd)
         {
-            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            enterBlock(endBlock);
             return current;
         }
         LLVMValueRef store = LLVMBuildStore(builder_, fallback, address);
@@ -678,7 +678,7 @@ LLVMValueRef OopLlvmImplementation::lowerNullCoalescingStore(
         LLVMBasicBlockRef fallbackExit = LLVMGetInsertBlock(builder_);
         LLVMBuildBr(builder_, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         LLVMValueRef phi = LLVMBuildPhi(builder_, pointerType, "coalesce.store");
         LLVMValueRef values[] = {current, fallback};
         LLVMBasicBlockRef blocks[] = {currentBlock, fallbackExit};
@@ -705,7 +705,7 @@ LLVMValueRef OopLlvmImplementation::lowerNullConditionalField(
         LLVMBasicBlockRef endBlock = appendBlock("nullcond.end");
         LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        enterBlock(valueBlock);
         LLVMValueRef offset = LLVMConstInt(
             LLVMInt64TypeInContext(context_), node->immediate, 0);
         LLVMValueRef indices[] = {offset};
@@ -719,7 +719,7 @@ LLVMValueRef OopLlvmImplementation::lowerNullConditionalField(
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
         if (!terminated()) LLVMBuildBr(builder_, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcond");
         LLVMValueRef values[] = {LLVMConstNull(resultType), value};
         LLVMBasicBlockRef blocks[] = {nullBlock, valueExit};
@@ -752,7 +752,7 @@ bool OopLlvmImplementation::prepareNullConditionalFieldStore(
         endBlock = appendBlock("nullcond.store.end");
         LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        enterBlock(valueBlock);
         LLVMValueRef offset = LLVMConstInt(
             LLVMInt64TypeInContext(context_), node->immediate, 0);
         LLVMValueRef indices[] = {offset};
@@ -821,7 +821,7 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalFieldStore(
 {
         if (terminated())
         {
-            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            enterBlock(endBlock);
             return LLVMConstNull(resultType);
         }
         // NS304-T10-F06: compute and ownership remain inside the non-null branch.
@@ -833,7 +833,7 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalFieldStore(
         const bool valueReachesEnd = !terminated();
         if (valueReachesEnd) LLVMBuildBr(builder_, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         if (!valueReachesEnd) return LLVMConstNull(resultType);
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcond.store.result");
         LLVMValueRef values[] = {LLVMConstNull(resultType), storedValue};
@@ -865,7 +865,7 @@ bool OopLlvmImplementation::prepareNullConditionalArrayLoad(
         LLVMBasicBlockRef valueBlock = appendBlock("nullcond.index");
         endBlock = appendBlock("nullcond.index.end");
         LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
-        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        enterBlock(valueBlock);
         return true;
     }
 
@@ -913,7 +913,7 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalArrayLoad(
 {
         if (terminated())
         {
-            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            enterBlock(endBlock);
             return LLVMConstNull(resultType);
         }
         LLVMValueRef address = nullConditionalArrayLoadAddress(node, receiver, index, error);
@@ -923,7 +923,7 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalArrayLoad(
         LLVMBasicBlockRef valueExit = LLVMGetInsertBlock(builder_);
         if (!terminated()) LLVMBuildBr(builder_, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcond.index.phi");
         LLVMValueRef values[] = {LLVMConstNull(resultType), element};
         LLVMBasicBlockRef blocks[] = {nullBlock, valueExit};
@@ -953,7 +953,7 @@ bool OopLlvmImplementation::prepareNullConditionalArrayStore(
         LLVMBasicBlockRef valueBlock = appendBlock("nullcond.index.store");
         endBlock = appendBlock("nullcond.index.store.end");
         LLVMBuildCondBr(builder_, hasReceiver, valueBlock, endBlock);
-        LLVMPositionBuilderAtEnd(builder_, valueBlock);
+        enterBlock(valueBlock);
         return true;
     }
 
@@ -1002,7 +1002,7 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalArrayStore(
 {
         if (terminated())
         {
-            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            enterBlock(endBlock);
             return LLVMConstNull(resultType);
         }
         LLVMValueRef address = nullConditionalArrayStoreAddress(node, receiver, index, error);
@@ -1012,7 +1012,7 @@ LLVMValueRef OopLlvmImplementation::finishNullConditionalArrayStore(
         const bool valueReachesEnd = !terminated();
         if (valueReachesEnd) LLVMBuildBr(builder_, endBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, endBlock);
+        enterBlock(endBlock);
         if (!valueReachesEnd) return LLVMConstNull(resultType);
         LLVMValueRef phi = LLVMBuildPhi(builder_, resultType, "nullcond.index.store.result");
         LLVMValueRef values[] = {LLVMConstNull(resultType), value};

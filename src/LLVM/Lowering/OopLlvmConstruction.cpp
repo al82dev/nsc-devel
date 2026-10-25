@@ -432,7 +432,7 @@ LLVMValueRef OopLlvmImplementation::allocateConstructionStorage(
             LLVMBasicBlockRef initBlock = appendBlock("object.init");
             endBlock = appendBlock("object.end");
             LLVMBuildCondBr(builder_, isNull, endBlock, initBlock);
-            LLVMPositionBuilderAtEnd(builder_, initBlock);
+            enterBlock(initBlock);
         }
         if (node->zeroInitialize)
         {
@@ -535,7 +535,7 @@ LLVMValueRef OopLlvmImplementation::lowerConstruction(
         if (!node->stackPromotedObject)
         {
             if (!terminated()) LLVMBuildBr(builder_, endBlock);
-            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            enterBlock(endBlock);
         }
         return object;
     }
@@ -656,7 +656,7 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                 if (invoke == nullptr)
                     return fail(error,
                         "NS304-T13-F07 failed to emit allocator constructor invoke");
-                LLVMPositionBuilderAtEnd(builder_, normalBlock);
+                enterBlock(normalBlock);
             }
             else if (buildPotentiallyThrowingCall(
                          constructor->second.functionType,
@@ -765,7 +765,7 @@ LLVMValueRef OopLlvmImplementation::lowerObjectDestruction(
         LLVMBasicBlockRef doneBlock = appendBlock("destroy.object.done");
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
         LLVMValueRef descriptor = LLVMBuildLoad2(
             builder_, ptr, object, "destroy.object.descriptor");
         LLVMValueRef entryAddress = LLVMBuildStructGEP2(
@@ -781,7 +781,7 @@ LLVMValueRef OopLlvmImplementation::lowerObjectDestruction(
         }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 
@@ -863,7 +863,7 @@ LLVMValueRef OopLlvmImplementation::lowerDeallocation(
         LLVMBasicBlockRef doneBlock = appendBlock("delete.done");
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
         LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, pointer, "delete.descriptor");
         LLVMValueRef entryAddress = LLVMBuildStructGEP2(
             builder_, descriptorType_, descriptor, 5, "delete.entry.addr");
@@ -881,7 +881,7 @@ LLVMValueRef OopLlvmImplementation::lowerDeallocation(
             LLVMBuildBr(builder_, doneBlock);
         }
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 

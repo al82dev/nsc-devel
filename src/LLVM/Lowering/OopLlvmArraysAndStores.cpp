@@ -342,7 +342,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             LLVMBasicBlockRef readyBlock = appendBlock("owned.field.ready");
             LLVMBuildCondBr(builder_, previousIsNull, readyBlock, releaseBlock);
 
-            LLVMPositionBuilderAtEnd(builder_, releaseBlock);
+            enterBlock(releaseBlock);
             LLVMBuildStore(builder_, LLVMConstNull(ptrType), address);
             if (node->typeKey == "builtin:string")
             {
@@ -372,7 +372,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
                     destructionEntryFunctionType_, previousEntry, releaseArguments, 1, "");
             }
             LLVMBuildBr(builder_, readyBlock);
-            LLVMPositionBuilderAtEnd(builder_, readyBlock);
+            enterBlock(readyBlock);
         }
         LLVMValueRef store = LLVMBuildStore(builder_, value, address);
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
@@ -596,10 +596,10 @@ LLVMValueRef OopLlvmImplementation::lowerArrayAllocate(const frontend::ProjectOo
         LLVMBasicBlockRef initBlock = appendBlock("array.alloc.init");
         LLVMBasicBlockRef mergeBlock = appendBlock("array.alloc.merge");
         LLVMBuildCondBr(builder_, isNull, nullBlock, initBlock);
-        LLVMPositionBuilderAtEnd(builder_, nullBlock);
+        enterBlock(nullBlock);
         LLVMBuildBr(builder_, mergeBlock);
         LLVMBasicBlockRef nullIncoming = LLVMGetInsertBlock(builder_);
-        LLVMPositionBuilderAtEnd(builder_, initBlock);
+        enterBlock(initBlock);
         LLVMValueRef memsetArgs[] = {
             memory,
             LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
@@ -615,7 +615,7 @@ LLVMValueRef OopLlvmImplementation::lowerArrayAllocate(const frontend::ProjectOo
                 node, memory, dataOffset, segmentValues, segmentLengths, error)) return nullptr;
         LLVMBuildBr(builder_, mergeBlock);
         LLVMBasicBlockRef initIncoming = LLVMGetInsertBlock(builder_);
-        LLVMPositionBuilderAtEnd(builder_, mergeBlock);
+        enterBlock(mergeBlock);
         LLVMValueRef phi = LLVMBuildPhi(builder_, LLVMPointerTypeInContext(context_, 0), "array.result");
         LLVMValueRef incomingValues[] = {LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), memory};
         LLVMBasicBlockRef incomingBlocks[] = {nullIncoming, initIncoming};
@@ -735,15 +735,15 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayAllocate(
         LLVMBasicBlockRef initBlock = appendBlock("range.alloc.init");
         LLVMBasicBlockRef mergeBlock = appendBlock("range.alloc.merge");
         LLVMBuildCondBr(builder_, isNull, nullBlock, initBlock);
-        LLVMPositionBuilderAtEnd(builder_, nullBlock);
+        enterBlock(nullBlock);
         LLVMBuildBr(builder_, mergeBlock);
         LLVMBasicBlockRef nullIncoming = LLVMGetInsertBlock(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, initBlock);
+        enterBlock(initBlock);
         initializeRangeArrayHeader(memory, totalBytes, totalCount, dimensions);
         LLVMBuildBr(builder_, mergeBlock);
         LLVMBasicBlockRef initIncoming = LLVMGetInsertBlock(builder_);
-        LLVMPositionBuilderAtEnd(builder_, mergeBlock);
+        enterBlock(mergeBlock);
         LLVMValueRef result = LLVMBuildPhi(
             builder_, LLVMPointerTypeInContext(context_, 0), "range.result");
         LLVMValueRef incomingValues[] = {

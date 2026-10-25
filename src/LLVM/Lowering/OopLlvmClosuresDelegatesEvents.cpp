@@ -23,13 +23,13 @@ bool OopLlvmImplementation::emitGuard(
         LLVMBasicBlockRef okBlock = appendBlock(std::string(stem) + ".ok");
         LLVMBasicBlockRef trapBlock = appendBlock(std::string(stem) + ".trap");
         LLVMBuildCondBr(builder_, valid, okBlock, trapBlock);
-        LLVMPositionBuilderAtEnd(builder_, trapBlock);
+        enterBlock(trapBlock);
         LLVMValueRef reasonValue = LLVMConstInt(
             LLVMInt32TypeInContext(context_), static_cast<std::uint64_t>(reason), 0);
         LLVMValueRef args[] = {reasonValue};
         buildNoUnwindCall(trapFunctionType_, trapFunction_, args, 1, "");
         LLVMBuildUnreachable(builder_);
-        LLVMPositionBuilderAtEnd(builder_, okBlock);
+        enterBlock(okBlock);
         return true;
     }
 
@@ -214,13 +214,13 @@ LLVMBasicBlockRef OopLlvmImplementation::captureCellExceptionalCleanup(std::stri
 
         const std::vector<FuncletContext> savedFunclets = funcletStack_;
         captureCellExceptionalCleanupBlock_ = appendBlock("eh.capture.cells");
-        LLVMPositionBuilderAtEnd(builder_, captureCellExceptionalCleanupBlock_);
+        enterBlock(captureCellExceptionalCleanupBlock_);
         LLVMValueRef cleanupPad = LLVMBuildCleanupPad(
             builder_, nullptr, nullptr, 0, "eh.capture.cells.pad");
         if (cleanupPad == nullptr)
         {
             captureCellExceptionalCleanupBlock_ = nullptr;
-            LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+            enterBlock(sourceBlock);
             error = "E11 failed to create the function-level capture-cell cleanuppad";
             return nullptr;
         }
@@ -234,7 +234,7 @@ LLVMBasicBlockRef OopLlvmImplementation::captureCellExceptionalCleanup(std::stri
         releaseOwnedCaptureCells();
         LLVMBuildCleanupRet(builder_, cleanupPad, nullptr);
         funcletStack_ = savedFunclets;
-        LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+        enterBlock(sourceBlock);
         return captureCellExceptionalCleanupBlock_;
     }
 
@@ -383,7 +383,7 @@ bool OopLlvmImplementation::emitClosureContextDestroyFunctionBody(
             captureCellExceptionalCleanupBlock_ = savedCaptureCellCleanup;
         };
         LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context_, function, "entry");
-        LLVMPositionBuilderAtEnd(builder_, entry);
+        enterBlock(entry);
         {
             ScopedDebugLocation generatedLocation(
                 builder_, debugSubprogramLocation(debugRange, subprogram));
@@ -460,7 +460,7 @@ bool OopLlvmImplementation::emitDelegateDestroy(LLVMValueRef cell, std::string_v
         LLVMValueRef isNull = LLVMBuildICmp(builder_, LLVMIntEQ, cell, LLVMConstNull(ptr),
                                             (std::string(stem) + ".isnull").c_str());
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
 
         LLVMValueRef context = LLVMBuildLoad2(
             builder_, ptr, byteOffset(cell, 8, "delegate.destroy.context.addr"),
@@ -478,13 +478,13 @@ bool OopLlvmImplementation::emitDelegateDestroy(LLVMValueRef cell, std::string_v
         LLVMBasicBlockRef freeCellBlock = appendBlock(std::string(stem) + ".cell");
         LLVMBuildCondBr(builder_, destroyEnvironment, environmentBlock, freeCellBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, environmentBlock);
+        enterBlock(environmentBlock);
         LLVMValueRef contextArguments[] = {context};
         buildNoUnwindCall(
             deallocationFunctionType_, destroyContext, contextArguments, 1, "");
         LLVMBuildBr(builder_, freeCellBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, freeCellBlock);
+        enterBlock(freeCellBlock);
         LLVMValueRef freeCell = LLVMBuildLoad2(
             builder_, ptr, byteOffset(cell, 24, "delegate.destroy.cell.callback.addr"),
             "delegate.destroy.cell.callback");
@@ -492,11 +492,11 @@ bool OopLlvmImplementation::emitDelegateDestroy(LLVMValueRef cell, std::string_v
             builder_, LLVMIntNE, freeCell, LLVMConstNull(ptr), "delegate.destroy.cell.callback.present");
         LLVMBasicBlockRef callbackBlock = appendBlock(std::string(stem) + ".cell.callback");
         LLVMBuildCondBr(builder_, callbackPresent, callbackBlock, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, callbackBlock);
+        enterBlock(callbackBlock);
         LLVMValueRef cellArguments[] = {cell};
         buildNoUnwindCall(deallocationFunctionType_, freeCell, cellArguments, 1, "");
         LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return error.empty();
     }
 
@@ -873,7 +873,7 @@ LLVMValueRef OopLlvmImplementation::emitDelegateCall(
             instanceIncoming, error);
         if (instanceResult == nullptr) return nullptr;
 
-        LLVMPositionBuilderAtEnd(builder_, mergeBlock);
+        enterBlock(mergeBlock);
         if (sretSlot != nullptr)
         {
             LLVMTypeRef carrier = llvmType(returnTypeKey, error);
@@ -904,7 +904,7 @@ LLVMValueRef OopLlvmImplementation::emitDelegateBranchCall(
         LLVMBasicBlockRef& incomingBlock,
         std::string& error)
 {
-        LLVMPositionBuilderAtEnd(builder_, branchBlock);
+        enterBlock(branchBlock);
         std::vector<LLVMValueRef> arguments;
         arguments.reserve(argumentValues.size() + 2);
         if (receiver != nullptr) arguments.push_back(receiver);
@@ -1146,11 +1146,11 @@ LLVMValueRef OopLlvmImplementation::lowerEventAdd(const frontend::ProjectOopMirN
             builder_, LLVMIntEQ, head, LLVMConstNull(ptr), "event.add.is.empty");
         LLVMBuildCondBr(builder_, empty, emptyBlock, loopBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, emptyBlock);
+        enterBlock(emptyBlock);
         LLVMBuildStore(builder_, eventNode, backingAddress);
         LLVMBuildBr(builder_, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, loopBlock);
+        enterBlock(loopBlock);
         LLVMValueRef current = LLVMBuildPhi(builder_, ptr, "event.add.current");
         LLVMValueRef initialValues[] = {head};
         LLVMBasicBlockRef initialBlocks[] = {preheader};
@@ -1163,17 +1163,17 @@ LLVMValueRef OopLlvmImplementation::lowerEventAdd(const frontend::ProjectOopMirN
         LLVMBasicBlockRef advanceBlock = appendBlock("event.add.advance");
         LLVMBuildCondBr(builder_, atTail, appendBlockRef, advanceBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, advanceBlock);
+        enterBlock(advanceBlock);
         LLVMBuildBr(builder_, loopBlock);
         LLVMValueRef nextValues[] = {currentNext};
         LLVMBasicBlockRef nextBlocks[] = {advanceBlock};
         LLVMAddIncoming(current, nextValues, nextBlocks, 1);
 
-        LLVMPositionBuilderAtEnd(builder_, appendBlockRef);
+        enterBlock(appendBlockRef);
         LLVMBuildStore(builder_, eventNode, currentNextAddress);
         LLVMBuildBr(builder_, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 
@@ -1197,7 +1197,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventRemove(const frontend::ProjectOopM
         LLVMBasicBlockRef doneBlock = appendBlock("event.remove.done");
         LLVMBuildBr(builder_, loopBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, loopBlock);
+        enterBlock(loopBlock);
         LLVMValueRef currentPhi = LLVMBuildPhi(builder_, ptr, "event.remove.current");
         LLVMValueRef linkPhi = LLVMBuildPhi(builder_, ptr, "event.remove.link");
         LLVMValueRef initialValues[] = {initial};
@@ -1209,12 +1209,12 @@ LLVMValueRef OopLlvmImplementation::lowerEventRemove(const frontend::ProjectOopM
             builder_, LLVMIntNE, currentPhi, LLVMConstNull(ptr), "event.remove.has.current");
         LLVMBuildCondBr(builder_, hasCurrent, bodyBlock, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        enterBlock(bodyBlock);
         LLVMValueRef currentHandler = LLVMBuildLoad2(builder_, ptr, currentPhi, "event.remove.handler");
         LLVMValueRef equal = delegateCellsEqual(currentHandler, target);
         LLVMBuildCondBr(builder_, equal, removeBlock, advanceBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, removeBlock);
+        enterBlock(removeBlock);
         LLVMValueRef removeNextAddress = byteOffset(currentPhi, 8, "event.remove.next.addr");
         LLVMValueRef removeNext = LLVMBuildLoad2(builder_, ptr, removeNextAddress, "event.remove.next");
         LLVMBuildStore(builder_, removeNext, linkPhi);
@@ -1222,7 +1222,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventRemove(const frontend::ProjectOopM
         buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
         LLVMBuildBr(builder_, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, advanceBlock);
+        enterBlock(advanceBlock);
         LLVMValueRef nextAddress = byteOffset(currentPhi, 8, "event.advance.next.addr");
         LLVMValueRef next = LLVMBuildLoad2(builder_, ptr, nextAddress, "event.advance.next");
         LLVMBuildBr(builder_, loopBlock);
@@ -1232,7 +1232,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventRemove(const frontend::ProjectOopM
         LLVMValueRef linkValues[] = {nextAddress};
         LLVMAddIncoming(linkPhi, linkValues, advanceIncoming, 1);
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 
@@ -1266,7 +1266,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventInvoke(
         LLVMBasicBlockRef bodyBlock = appendBlock("event.invoke.body");
         LLVMBasicBlockRef doneBlock = appendBlock("event.invoke.done");
         LLVMBuildBr(builder_, loopBlock);
-        LLVMPositionBuilderAtEnd(builder_, loopBlock);
+        enterBlock(loopBlock);
         LLVMValueRef currentPhi = LLVMBuildPhi(builder_, ptr, "event.invoke.current");
         LLVMValueRef initialValues[] = {head};
         LLVMBasicBlockRef initialBlocks[] = {preheader};
@@ -1275,7 +1275,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventInvoke(
             builder_, LLVMIntNE, currentPhi, LLVMConstNull(ptr), "event.invoke.has.current");
         LLVMBuildCondBr(builder_, hasCurrent, bodyBlock, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        enterBlock(bodyBlock);
         LLVMValueRef handler = LLVMBuildLoad2(builder_, ptr, currentPhi, "event.invoke.handler");
         LLVMValueRef next = LLVMBuildLoad2(
             builder_, ptr, byteOffset(currentPhi, 8, "event.invoke.next.addr"), "event.invoke.next");
@@ -1302,7 +1302,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventInvoke(
         LLVMBasicBlockRef nextBlocks[] = {afterCall};
         LLVMAddIncoming(currentPhi, nextValues, nextBlocks, 1);
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 

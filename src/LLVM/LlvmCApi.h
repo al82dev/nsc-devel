@@ -670,6 +670,11 @@ void LLVMSetFastMathFlags(LLVMValueRef floatingPointInstruction, LLVMFastMathFla
 LLVMBool LLVMCanValueUseFastMathFlags(LLVMValueRef instruction);
 
 LLVMBasicBlockRef LLVMGetEntryBasicBlock(LLVMValueRef function);
+// ES: Orden de bloques en el orden de emisión (OopLlvmImplementation::enterBlock).
+// EN: Block order in emission order (OopLlvmImplementation::enterBlock).
+LLVMBasicBlockRef LLVMGetLastBasicBlock(LLVMValueRef function);
+LLVMValueRef LLVMGetBasicBlockParent(LLVMBasicBlockRef block);
+void LLVMMoveBasicBlockAfter(LLVMBasicBlockRef block, LLVMBasicBlockRef movePosition);
 LLVMValueRef LLVMGetFirstInstruction(LLVMBasicBlockRef block);
 void LLVMPositionBuilderBefore(LLVMBuilderRef builder, LLVMValueRef instruction);
 

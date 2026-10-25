@@ -115,7 +115,7 @@ bool OopLlvmImplementation::emitCallbackBoundaryHandler(std::string& error)
         {
             LLVMBasicBlockRef padBlock = appendBlock(std::string(stem) + ".catchpad");
             LLVMAddHandler(catchSwitch, padBlock);
-            LLVMPositionBuilderAtEnd(builder_, padBlock);
+            enterBlock(padBlock);
             LLVMValueRef catchArguments[] = {filter};
             LLVMValueRef catchPad = LLVMBuildCatchPad(
                 builder_, catchSwitch, catchArguments, 1,
@@ -276,7 +276,7 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
         {
             currentFunction_ = savedFunction;
             blockCounter_ = savedBlockCounter;
-            if (savedBlock != nullptr) LLVMPositionBuilderAtEnd(builder_, savedBlock);
+            if (savedBlock != nullptr) enterBlock(savedBlock);
         };
         currentFunction_ = thunk;
         blockCounter_ = 0;
@@ -285,7 +285,7 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
         LLVMBasicBlockRef entryBlock = appendBlock("boundary.entry");
         LLVMBasicBlockRef returnBlock = appendBlock("boundary.return");
         LLVMBasicBlockRef unwindBlock = appendBlock("boundary.unwind");
-        LLVMPositionBuilderAtEnd(builder_, entryBlock);
+        enterBlock(entryBlock);
         std::vector<LLVMValueRef> forwarded;
         LLVMValueRef internalSretSlot = nullptr;
         if (!prepareCallbackGuardArguments(
@@ -308,7 +308,7 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
                 { LLVMAddCallSiteAttribute(result, index, attribute); },
                 0U, function.returnTypeKey);
         }
-        LLVMPositionBuilderAtEnd(builder_, returnBlock);
+        enterBlock(returnBlock);
         if (vectorReturnType != nullptr)
         {
             LLVMValueRef externalResult = LLVMBuildLoad2(
@@ -318,7 +318,7 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
         else if (externalSretReturn || function.returnTypeKey == "builtin:void")
             LLVMBuildRetVoid(builder_);
         else LLVMBuildRet(builder_, result);
-        LLVMPositionBuilderAtEnd(builder_, unwindBlock);
+        enterBlock(unwindBlock);
         if (!emitCallbackBoundaryHandler(error))
         {
             restore();
@@ -459,13 +459,13 @@ bool OopLlvmImplementation::defineRuntimeBoundImport(
         LLVMBasicBlockRef entryBlock = appendBlock("import.entry");
         LLVMBasicBlockRef bindBlock = appendBlock("import.bind");
         LLVMBasicBlockRef callBlock = appendBlock("import.call");
-        LLVMPositionBuilderAtEnd(builder_, entryBlock);
+        enterBlock(entryBlock);
         LLVMValueRef cached = LLVMBuildLoad2(builder_, ptr, cache, "import.cached");
         LLVMValueRef needsBinding =
             LLVMBuildICmp(builder_, LLVMIntEQ, cached, LLVMConstNull(ptr), "import.unbound");
         LLVMBuildCondBr(builder_, needsBinding, bindBlock, callBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, bindBlock);
+        enterBlock(bindBlock);
         LLVMValueRef loadArguments[] = {libraryName};
         LLVMValueRef moduleHandle = LLVMBuildCall2(
             builder_, loadLibraryFunctionType_, loadLibraryFunction_, loadArguments, 1,
@@ -477,7 +477,7 @@ bool OopLlvmImplementation::defineRuntimeBoundImport(
         LLVMBuildStore(builder_, address, cache);
         LLVMBuildBr(builder_, callBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, callBlock);
+        enterBlock(callBlock);
         LLVMValueRef target = LLVMBuildPhi(builder_, ptr, "import.target");
         LLVMValueRef incomingValues[] = {cached, address};
         LLVMBasicBlockRef incomingBlocks[] = {entryBlock, bindBlock};
@@ -718,7 +718,7 @@ bool OopLlvmImplementation::defineCAbiWrapper(
         ScopedDebugLocation generatedDebugLocation(
             builder_, debugSubprogramLocation(function, subprogram));
         LLVMBasicBlockRef entry = appendBlock("cabi.entry");
-        LLVMPositionBuilderAtEnd(builder_, entry);
+        enterBlock(entry);
         std::vector<LLVMValueRef> arguments;
         arguments.reserve(function.parameterTypeKeys.size() + 1);
         // The internal function shares this exact ABI (declareFunctions applies the same
@@ -758,10 +758,10 @@ bool OopLlvmImplementation::defineCAbiWrapper(
                 { LLVMAddCallSiteAttribute(result, index, attribute); },
                 0U, function.returnTypeKey);
         }
-        LLVMPositionBuilderAtEnd(builder_, returnBlock);
+        enterBlock(returnBlock);
         if (returnType == LLVMVoidTypeInContext(context_)) LLVMBuildRetVoid(builder_);
         else LLVMBuildRet(builder_, result);
-        LLVMPositionBuilderAtEnd(builder_, unwindBlock);
+        enterBlock(unwindBlock);
         return emitCallbackBoundaryHandler(error);
     }
 
@@ -798,7 +798,7 @@ bool OopLlvmImplementation::defineValueDropEntries(std::string& error)
             blockCounter_ = 0;
 
             LLVMBasicBlockRef entry = appendBlock("value.drop.entry");
-            LLVMPositionBuilderAtEnd(builder_, entry);
+            enterBlock(entry);
             LLVMValueRef storage = LLVMGetParam(currentFunction_, 0);
             LLVMSetValueName2(storage, "storage", 7);
             if (layout.typeKey.starts_with("iterator:") ||
@@ -866,7 +866,7 @@ LLVMValueRef OopLlvmImplementation::beginObjectDestructionEntry(
             if (debugRange.isValid()) currentDebugFileKey_ = debugRange.begin().fileId().value();
         }
         LLVMBasicBlockRef entry = appendBlock("destroy.entry");
-        LLVMPositionBuilderAtEnd(builder_, entry);
+        enterBlock(entry);
         LLVMValueRef object = LLVMGetParam(currentFunction_, 0);
         LLVMSetValueName2(object, "object", 6);
         return object;
@@ -907,7 +907,7 @@ bool OopLlvmImplementation::emitObjectDestructionSteps(
             LLVMBasicBlockRef destroyBlock = appendBlock("owned.field.destroy");
             LLVMBasicBlockRef doneBlock = appendBlock("owned.field.done");
             LLVMBuildCondBr(builder_, fieldIsNull, doneBlock, destroyBlock);
-            LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+            enterBlock(destroyBlock);
             LLVMBuildStore(builder_, LLVMConstNull(ptr), fieldAddress);
             if (ownedField.isNativeString)
             {
@@ -930,7 +930,7 @@ bool OopLlvmImplementation::emitObjectDestructionSteps(
                     destructionEntryFunctionType_, destructionEntry, arguments, 1, "");
             }
             LLVMBuildBr(builder_, doneBlock);
-            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            enterBlock(doneBlock);
         }
         return true;
     }
@@ -972,7 +972,7 @@ void OopLlvmImplementation::emitReleasingDestructionEntry(
         currentDebugScope_ = currentDebugSubprogram_;
         blockCounter_ = 0;
         LLVMBasicBlockRef releasingEntry = appendBlock("destroy-and-free.entry");
-        LLVMPositionBuilderAtEnd(builder_, releasingEntry);
+        enterBlock(releasingEntry);
         ScopedDebugLocation releasingLocation(
             builder_, debugSubprogramLocation(debugRange, currentDebugSubprogram_));
         LLVMValueRef object = LLVMGetParam(currentFunction_, 0);

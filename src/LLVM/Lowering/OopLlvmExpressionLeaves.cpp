@@ -552,7 +552,7 @@ bool OopLlvmImplementation::emitBlockingAwaitPollLoop(
         loopDone = appendBlock("await.poll.done");
         loopError = appendBlock("await.poll.error");
         LLVMBuildBr(builder_, pollLoop);
-        LLVMPositionBuilderAtEnd(builder_, pollLoop);
+        enterBlock(pollLoop);
         // NS304-T07-F02: check the state BEFORE polling so an already-ready future
         // (state == -1, e.g. MoveNextAsync's eager demand) skips the poll entirely.
         LLVMValueRef ready = LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1);
@@ -560,7 +560,7 @@ bool OopLlvmImplementation::emitBlockingAwaitPollLoop(
         LLVMBuildCondBr(
             builder_, LLVMBuildICmp(builder_, LLVMIntEQ, preState, ready, "await.pre.ready"),
             loopDone, notReady);
-        LLVMPositionBuilderAtEnd(builder_, notReady);
+        enterBlock(notReady);
         LLVMValueRef arguments[] = { futureSlot };
         if (LLVMBuildCall2(
                 builder_, pollFunctionType, pollFunction, arguments, 1U, "") == nullptr)
@@ -569,7 +569,7 @@ bool OopLlvmImplementation::emitBlockingAwaitPollLoop(
         LLVMBuildCondBr(
             builder_, LLVMBuildICmp(builder_, LLVMIntEQ, state, ready, "await.ready"),
             loopDone, checkError);
-        LLVMPositionBuilderAtEnd(builder_, checkError);
+        enterBlock(checkError);
         LLVMValueRef errored = LLVMConstInt(intType, static_cast<unsigned long long>(-2), 1);
         LLVMBuildCondBr(
             builder_, LLVMBuildICmp(builder_, LLVMIntEQ, state, errored, "await.errored"),
@@ -627,7 +627,7 @@ LLVMValueRef OopLlvmImplementation::finishBlockingAwait(
         std::string& error)
 {
         // Ready: load the result and merge with the error path.
-        LLVMPositionBuilderAtEnd(builder_, loopDone);
+        enterBlock(loopDone);
         // NS304-T07-F06: `await future;` on a Future<void> has no result slot to read —
         // the poll runs the future to completion and the statement discards the value.
         const bool voidResult = node->typeKey == "builtin:void";
@@ -644,11 +644,11 @@ LLVMValueRef OopLlvmImplementation::finishBlockingAwait(
         LLVMBasicBlockRef loopMerge = appendBlock("await.poll.merge");
         releaseAwaitHeapFrame(heapFrame);
         LLVMBuildBr(builder_, loopMerge);
-        LLVMPositionBuilderAtEnd(builder_, loopError);
+        enterBlock(loopError);
         bool transfersException = false;
         if (!emitBlockingAwaitErrorPath(
                 node, futureSlot, heapFrame, loopMerge, transfersException, error)) return nullptr;
-        LLVMPositionBuilderAtEnd(builder_, loopMerge);
+        enterBlock(loopMerge);
         if (voidResult)
         {
             // A blocking await of a Future<void> runs it to completion and yields no
@@ -742,7 +742,7 @@ bool OopLlvmImplementation::emitAwaitChildSelection(
             LLVMBuildICmp(builder_, LLVMIntEQ, selfState, LLVMConstInt(intType, 0, 0), "await.is.entry"),
             entryBlock, resumeBlock);
         // Entry: lower the child call → store in childSlot.
-        LLVMPositionBuilderAtEnd(builder_, entryBlock);
+        enterBlock(entryBlock);
         LLVMValueRef fresh = childOverride != nullptr
             ? childOverride
             : lowerExpression(node->children.front().get(), error);
@@ -762,14 +762,14 @@ bool OopLlvmImplementation::emitAwaitChildSelection(
         }
         LLVMBuildBr(builder_, pollBlock);
         // Resume: load self->frame (offset 8) → childSlot.
-        LLVMPositionBuilderAtEnd(builder_, resumeBlock);
+        enterBlock(resumeBlock);
         LLVMValueRef framePtr = LLVMBuildLoad2(
             builder_, LLVMPointerTypeInContext(context_, 0),
             byteOffset(self, 8, "await.self.frame.addr"), "await.self.frame");
         LLVMBuildStore(
             builder_, LLVMBuildLoad2(builder_, carrier, framePtr, "await.saved.child"), childSlot);
         LLVMBuildBr(builder_, pollBlock);
-        LLVMPositionBuilderAtEnd(builder_, pollBlock);
+        enterBlock(pollBlock);
         return true;
 }
 
@@ -782,7 +782,7 @@ void OopLlvmImplementation::emitAwaitSuspendPath(
         LLVMBasicBlockRef suspendBlock)
 {
         // Suspend: save child in self->frame + state=N + ret void.
-        LLVMPositionBuilderAtEnd(builder_, suspendBlock);
+        enterBlock(suspendBlock);
         LLVMValueRef suspendFrame = LLVMBuildLoad2(
             builder_, LLVMPointerTypeInContext(context_, 0),
             byteOffset(self, 8, "await.self.frame.addr2"), "await.self.frame");
@@ -814,7 +814,7 @@ void OopLlvmImplementation::emitSuspendingAwaitErrorPath(
 {
         // ReadyError: child errored. Propagate the carried error into the parent
         // future's error slot and mark the parent errored (state == -2) — no unwind.
-        LLVMPositionBuilderAtEnd(builder_, errorBlock);
+        enterBlock(errorBlock);
         LLVMValueRef childError = LLVMBuildLoad2(
             builder_, errorType,
             byteOffset(childSlot, errorOffset, "await.child.error.addr"), "await.child.error");
@@ -863,7 +863,7 @@ LLVMValueRef OopLlvmImplementation::finishSuspendingAwait(
             LLVMBuildCondBr(
                 builder_, LLVMBuildICmp(builder_, LLVMIntEQ, childState, readyConst, "await.is.ready"),
                 readyBlock, errorCheckBlock);
-            LLVMPositionBuilderAtEnd(builder_, errorCheckBlock);
+            enterBlock(errorCheckBlock);
             LLVMBuildCondBr(
                 builder_, LLVMBuildICmp(builder_, LLVMIntEQ, childState, errorConst, "await.is.error"),
                 errorBlock, suspendBlock);
@@ -872,7 +872,7 @@ LLVMValueRef OopLlvmImplementation::finishSuspendingAwait(
         }
         emitAwaitSuspendPath(node, self, childSlot, intType, carrier, suspendBlock);
         // Ready: load result (immediate = result offset).
-        LLVMPositionBuilderAtEnd(builder_, readyBlock);
+        enterBlock(readyBlock);
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
         if (resultType == nullptr) return nullptr;
         if (childFrameOnHeap) releaseAwaitChildFrame(childSlot);
