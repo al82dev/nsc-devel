@@ -145,8 +145,19 @@ OptionResult handleLinkTimeOptimization(OptionContext& context)
         context.invocation.linkTimeOptimization =
             llvm_backend::LinkTimeOptimizationMode::Full;
     else if (context.argument == "-flto=thin")
+    {
         context.invocation.linkTimeOptimization =
             llvm_backend::LinkTimeOptimizationMode::Thin;
+        // Thin has no summaries, imports or ThinLTO backends yet (LTO audit 2026-10-24); say so
+        // instead of letting the name promise cross-partition optimization.
+        // Thin aun no tiene resumenes, imports ni backends ThinLTO (auditoria LTO 2026-10-24);
+        // se dice en lugar de dejar que el nombre prometa optimizacion entre particiones.
+        context.error << "nsc: warning: " << compilerText(
+            "-flto=thin does not run ThinLTO yet; it builds the same partitioned code as a normal "
+            "build and only reports a reproducible index\n",
+            "-flto=thin todavía no ejecuta ThinLTO; compila el mismo código particionado que un "
+            "build normal y sólo reporta un índice reproducible\n");
+    }
     else
     {
         context.error << "nsc: error: " << compilerText(

@@ -72,6 +72,8 @@ class Program
         const nativesharp::ExitCode result = driver.run(arguments, output, error);
         tests.expect(result == nativesharp::ExitCode::Success,
             "ThinLTO project emits successfully: " + error.str());
+        tests.expect(error.str().find("nsc: warning: -flto=thin") != std::string::npos,
+            "ThinLTO warns that it still builds the normal partitioned code");
         const std::string text = output.str();
         const std::string index = valueAfter(text, "thinlto-index: ");
         tests.expect(text.find("link-time-optimization: thin") != std::string::npos &&
