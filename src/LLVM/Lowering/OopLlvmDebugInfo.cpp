@@ -1035,6 +1035,34 @@ LLVMMetadataRef OopLlvmImplementation::debugType(std::string_view typeKey)
         {
             type = debugPointerType(typeKey);
         }
+        else if (const std::optional<std::string> element =
+                     frontend::ProjectMemberModel::fixedArrayElementTypeKey(typeKey);
+                 element.has_value())
+        {
+            // ES: `T[N]` es almacenamiento en línea (su portador LLVM es `[N x T]`), así que su tipo
+            // de depuración es un arreglo de N elementos de T. Antes caía en el tipo sin especificar
+            // del final: el PDB no daba tipo al local o al campo, el depurador leía 8 bytes crudos y
+            // no podía expandir ni indexar el arreglo.
+            // EN: `T[N]` is inline storage (its LLVM carrier is `[N x T]`), so its debug type is an
+            // array of N elements of T. It used to fall into the unspecified type at the end: the
+            // PDB gave the local or field no type, the debugger read 8 raw bytes and could neither
+            // expand nor index the array.
+            const std::optional<std::uint64_t> count =
+                frontend::ProjectMemberModel::fixedArrayCount(typeKey);
+            LLVMMetadataRef elementType = debugType(*element);
+            const std::uint64_t elementBits =
+                elementType != nullptr ? LLVMDITypeGetSizeInBits(elementType) : 0;
+            LLVMMetadataRef subrange = count.has_value() && *count > 0 && elementBits > 0
+                ? LLVMDIBuilderGetOrCreateSubrange(
+                    debugBuilder_, 0, static_cast<std::int64_t>(*count))
+                : nullptr;
+            if (subrange != nullptr)
+            {
+                type = LLVMDIBuilderCreateArrayType(
+                    debugBuilder_, elementBits * *count, LLVMDITypeGetAlignInBits(elementType),
+                    elementType, &subrange, 1);
+            }
+        }
         else if (const frontend::NamedTypeDeclaration* named = debugNamedType(typeKey);
                  named != nullptr)
         {

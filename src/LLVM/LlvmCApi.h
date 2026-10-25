@@ -330,6 +330,10 @@ LLVMMetadataRef LLVMDIBuilderCreateUnionType(
     unsigned runtimeLanguage,
     const char* uniqueId,
     std::size_t uniqueIdLength);
+// ES: Tamaño y alineación de un tipo de depuración (arreglos fijos en OopLlvmDebugInfo.cpp).
+// EN: Size and alignment of a debug type (fixed arrays in OopLlvmDebugInfo.cpp).
+std::uint64_t LLVMDITypeGetSizeInBits(LLVMMetadataRef type);
+std::uint32_t LLVMDITypeGetAlignInBits(LLVMMetadataRef type);
 LLVMMetadataRef LLVMDIBuilderGetOrCreateSubrange(
     LLVMDIBuilderRef builder,
     std::int64_t lowerBound,
