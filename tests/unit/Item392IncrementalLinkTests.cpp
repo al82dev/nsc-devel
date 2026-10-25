@@ -81,13 +81,13 @@ std::uint64_t reportedCount(std::string_view output, std::string_view prefix)
     return std::strtoull(std::string(output.substr(begin + prefix.size(), 20)).c_str(), nullptr, 10);
 }
 
-/// EN: Optimization part 2, items 21 and 23. Builds `before` with a warm artifact cache,
+/// EN: Optimization part 2, items 21, 23 and 24. Builds `before` with a warm artifact cache,
 ///     edits one body of `editedFile` into `after` (`fixedFile` keeps `fixedText`), rebuilds with
-///     the same cache and compares the executable with a clean build of `after`. The warm
+///     the same cache and compares the executable and PDB with a clean build of `after`. The warm
 ///     rebuild must reuse cached code units, produce the same bytes and run the edited program.
-/// ES: Puntos 21 y 23 de la parte 2. Compila `before` con un cache caliente, edita un cuerpo
+/// ES: Puntos 21, 23 y 24 de la parte 2. Compila `before` con un cache caliente, edita un cuerpo
 ///     de `editedFile` a `after` (`fixedFile` conserva `fixedText`), recompila con el mismo cache y
-///     compara el ejecutable con un build limpio de `after`. La recompilacion caliente debe
+///     compara ejecutable y PDB con un build limpio de `after`. La recompilacion caliente debe
 ///     reutilizar unidades del cache, dar los mismos bytes y ejecutar el programa editado.
 void testEditedBodyMatchesCleanBuild(
     nativesharp::tests::TestContext& tests,
@@ -120,8 +120,11 @@ void testEditedBodyMatchesCleanBuild(
     tests.expect(code == nativesharp::ExitCode::Success,
         std::string(name) + ": the clean build of the edited sources succeeds: " + error);
     const std::string warmExecutable = readBytes(root / "warm" / "Edit.exe");
+    const std::string warmPdb = readBytes(root / "warm" / "Edit.pdb");
     tests.expect(!warmExecutable.empty() && warmExecutable == readBytes(root / "clean" / "Edit.exe"),
         std::string(name) + ": the reused build links the same executable as the clean build");
+    tests.expect(!warmPdb.empty() && warmPdb == readBytes(root / "clean" / "Edit.pdb"),
+        std::string(name) + ": the reused build writes the same PDB as the clean build");
     const std::string command = "\"" + (root / "warm" / "Edit.exe").string() + "\"";
     tests.expect(std::system(command.c_str()) == expectedExit,
         std::string(name) + ": the reused build runs the edited body");
@@ -169,8 +172,8 @@ int main()
             "relinked executable contains the changed program");
     }
 
-    // A body edit in one method of a multi-method program (item 21).
-    // Una edicion de cuerpo en un metodo de un programa con varios metodos (punto 21).
+    // A body edit in one method of a multi-method program (items 21 and 24).
+    // Una edicion de cuerpo en un metodo de un programa con varios metodos (puntos 21 y 24).
     std::string helpers = "class Helpers\n{\n";
     for (int index = 0; index < 24; ++index)
     {
