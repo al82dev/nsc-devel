@@ -5366,6 +5366,34 @@ bool ProjectMethodBodyModel::rejectRefFieldReturn(
     return false;
 }
 
+// EN: Freeze 3.0 DEC-12: returning a field, an element or any other place of a move-only type copies
+//     it; the caller drops the copy and the owner drops the original (`list[i].Id` on List<Guard>
+//     destroyed the element twice). Only move(...) returns such a place by value; a reference
+//     return is analyzed earlier. A local or a by-value parameter is reported by
+//     reportDirectOwnerReturnWithoutMove.
+// ES: Congelamiento 3.0 DEC-12: devolver un campo, un elemento u otro lugar de tipo move-only lo
+//     copia; el llamador destruye la copia y el dueno destruye el original (`list[i].Id` sobre
+//     List<Guard> destruia el elemento dos veces). Solo move(...) devuelve ese lugar por valor; el
+//     retorno por referencia se analiza antes. Un local o un parametro por valor los reporta
+//     reportDirectOwnerReturnWithoutMove.
+bool ProjectMethodBodyModel::rejectMoveOnlyPlaceReturn(
+    const ast::AstNode* statement,
+    const ExpressionResult& value,
+    bool directOwnerReturnWithoutMove,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (directOwnerReturnWithoutMove || memberModel_ == nullptr || !value.addressable ||
+        statement->first()->kind() == ast::AstNodeKind::MoveExpression ||
+        !memberModel_->typeIsMoveOnly(value.typeKey)) return false;
+    diagnostics.report(
+        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+        diagnostics::DiagnosticSeverity::Error,
+        statement->first()->range(),
+        "move-only value of type '" + value.typeKey +
+            "' cannot be copied into the return value; use return move(source) or a ref return");
+    return true;
+}
+
 bool ProjectMethodBodyModel::rejectBoundMethodReturn(
     const ast::AstNode* statement,
     const ExpressionResult& value,
@@ -5852,6 +5880,7 @@ void ProjectMethodBodyModel::analyzeReturn(
     if (!value.valid) return;
     if (rejectRefFieldReturn(statement, value, diagnostics)) return;
     if (rejectBoundMethodReturn(statement, value, diagnostics)) return;
+    if (rejectMoveOnlyPlaceReturn(statement, value, directOwnerReturnWithoutMove, diagnostics)) return;
     const ProjectImplicitConversion conversion = classifyImplicit(
         value.typeKey, declaredReturnTypeKey, value.integerConstant);
     if (!conversion.exists())

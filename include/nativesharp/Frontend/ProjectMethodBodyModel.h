@@ -1360,6 +1360,11 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool rejectMoveOnlyPlaceReturn(
+        const ast::AstNode* statement,
+        const ExpressionResult& value,
+        bool directOwnerReturnWithoutMove,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     bool rejectRefFieldReturn(
         const ast::AstNode* statement,
         const ExpressionResult& value,

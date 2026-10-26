@@ -3575,6 +3575,58 @@ class Program { public static int Main() { return 0; } }
 )ns", "contains non-Copy field 'G'");
 }
 
+/// EN: Freeze 3.0 DEC-12. Returning a field, an element or another place of a move-only type by value
+///     copies it: the caller drops the copy and the owner drops the original. It is rejected with
+///     NS3020 like any other copy; `return move(...)` and a reference return stay valid.
+/// ES: Congelamiento 3.0 DEC-12. Devolver por valor un campo, un elemento u otro lugar de tipo
+///     move-only lo copia: el llamador destruye la copia y el dueno destruye el original. Se
+///     rechaza con NS3020 como cualquier otra copia; `return move(...)` y el retorno por referencia
+///     siguen siendo validos.
+void testMoveOnlyPlaceReturn(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string guard = R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+}
+)ns";
+    expectReject(tests, root, "P3FieldReturnCopy", guard + R"ns(
+class Holder
+{
+    public Guard Field;
+    public Guard Get() { return Field; }
+}
+class Program { public static int Main() { raii Holder h = new Holder(); return h.Get().Id; } }
+)ns", "cannot be copied into the return value");
+    expectReject(tests, root, "P3ElementReturnCopy", guard + R"ns(
+class Holder<T>
+{
+    private owned T[] items;
+    public Holder() { items = new T[1]; }
+    public T Get(int i) { return items[i]; }
+}
+class Program
+{
+    public static int Main() { raii Holder<Guard> h = new Holder<Guard>(); return h.Get(0).Id; }
+}
+)ns", "cannot be copied into the return value");
+    expectRun(tests, root, "P3PlaceReturnByRef", guard + R"ns(
+class Holder
+{
+    private owned Guard[] items;
+    public Holder() { items = new Guard[1]; Guard g; g.Id = 7; items[0] = move(g); }
+    public ref Guard Get(int i) { return ref items[i]; }
+}
+class Program
+{
+    private static int Run() { raii Holder h = new Holder(); return h.Get(0).Id; }
+    public static int Main() { int r = Run(); return r * 10 + Counter.Drops; }
+}
+)ns", 77);
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -5102,6 +5154,7 @@ int main()
     testRefReturnReceiver(tests, root);
     testRefReturnLibrary(tests, root);
     testConditionalGenericCopy(tests, root);
+    testMoveOnlyPlaceReturn(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);
