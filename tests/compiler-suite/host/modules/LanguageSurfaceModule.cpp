@@ -10131,6 +10131,12 @@ class Program
         }});
 }
 
+// EN: Freeze 3.0 DEC-02: a `new` stored in a local without `owned` or `raii` is a compile error
+//     (LostOwnership, C-01). The case keeps testing target-typed construction, so the local takes the
+//     object through an explicit `raii` owner and the type still comes only from the target.
+// ES: Congelamiento 3.0 DEC-02: un `new` guardado en un local sin `owned` ni `raii` es error de
+//     compilacion (LostOwnership, C-01). El caso sigue probando la construccion target-typed, asi que
+//     el local recibe el objeto con un dueno `raii` explicito y el tipo sigue saliendo solo del destino.
 void registerTargetTypedNewCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-339", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10155,7 +10161,7 @@ class Program
 {
     public static int Main()
     {
-        Point p = new(3, 4);
+        raii Point p = new(3, 4);
         return p.X + p.Y;
     }
 }
