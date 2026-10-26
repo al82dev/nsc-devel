@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <span>
 #include <sstream>
 #include <string>
@@ -46,7 +47,8 @@ void writeFile(const std::filesystem::path& path, std::string_view text)
 std::filesystem::path writeProject(
     const std::filesystem::path& directory,
     std::string_view name,
-    bool collections = false)
+    bool collections = false,
+    bool unwindPanics = false)
 {
     const std::filesystem::path lib = std::filesystem::path(NSC_SOURCE_DIR) / "lib";
     const std::filesystem::path core = lib / "NativeSharp.Core/NativeSharp.Core.nsproj";
@@ -57,8 +59,9 @@ std::filesystem::path writeProject(
         references += "<ProjectReference Include=\"" + generic.generic_string() + "\" />";
     const std::filesystem::path project = directory / (std::string(name) + ".nsproj");
     writeFile(project,
-        "<Project><PropertyGroup><Name>" + std::string(name) +
-            "</Name></PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup>"
+        "<Project><PropertyGroup><Name>" + std::string(name) + "</Name>" +
+            (unwindPanics ? "<PanicProfile>unwind-native</PanicProfile>" : "") +
+            "</PropertyGroup><ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup>"
             "<ItemGroup>" + references + "</ItemGroup></Project>");
     return project;
 }
@@ -112,6 +115,44 @@ void expectRun(
         const int observed = std::system(command.c_str());
         tests.expect(observed == expected,
             label + ": exits " + std::to_string(expected) + ", observed " + std::to_string(observed));
+    }
+}
+
+/// EN: Like expectRun, and the program's standard output must equal `output`. `unwindPanics`
+///     selects the unwind-native panic profile, so a panic runs the active cleanups.
+/// ES: Como expectRun, y la salida estandar del programa debe ser `output`. `unwindPanics` elige
+///     el perfil de panic unwind-native, para que un panic corra los cleanups activos.
+void expectRunOutput(
+    TestContext& tests,
+    const std::filesystem::path& root,
+    std::string_view name,
+    std::string_view source,
+    int expected,
+    std::string_view output,
+    bool unwindPanics)
+{
+    const std::filesystem::path directory = root / std::string(name);
+    const std::filesystem::path project = writeProject(directory, name, false, unwindPanics);
+    writeFile(directory / "Main.ns", source);
+    const std::array<std::string_view, 2> levels = {"-O0", "-O2"};
+    for (const std::string_view level : levels)
+    {
+        const std::string stem = std::string(name) + std::string(level.substr(1));
+        const std::filesystem::path executable = directory / (stem + ".exe");
+        const std::filesystem::path captured = directory / (stem + ".out");
+        std::string diagnostic;
+        const ExitCode code = compile(project, executable, level, diagnostic);
+        const std::string label = std::string(name) + " [" + std::string(level) + "]";
+        tests.expect(code == ExitCode::Success, label + ": compiles: " + diagnostic);
+        if (code != ExitCode::Success) continue;
+        const std::string command =
+            "\"\"" + executable.string() + "\" > \"" + captured.string() + "\"\"";
+        const int observed = std::system(command.c_str());
+        std::ifstream stream(captured, std::ios::binary);
+        const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+        tests.expect(observed == expected && text == output,
+            label + ": exits " + std::to_string(expected) + " printing '" + std::string(output) +
+                "', observed " + std::to_string(observed) + " printing '" + text + "'");
     }
 }
 
@@ -1939,6 +1980,189 @@ class Program
         "use of moved-from move-only local 'f'");
 }
 
+constexpr std::string_view kPrintPrelude = R"ns(
+using NativeSharp.Core;
+class Box
+{
+    public int Id;
+    public Box(int id) { Id = id; }
+    ~Box() { Console.Write("d"); Console.Write(Id); }
+}
+struct Guard
+{
+    public int Id;
+    ~Guard() { Console.Write("g"); Console.Write(Id); }
+}
+)ns";
+
+// EN: C-16. A generator destroys exactly the locals initialized when it is abandoned: a branch not
+//     taken, a value moved out or a finished loop iteration add nothing. With the unwind-native
+//     profile a panic in a generator, an async function or an async generator runs each active
+//     cleanup once.
+// ES: C-16. Un generador destruye exactamente los locales inicializados cuando se abandona: una
+//     rama no tomada, un valor movido o una vuelta de ciclo terminada no agregan nada. Con el perfil
+//     unwind-native un panic en un generador, una funcion async o un generador async corre cada
+//     cleanup activo una vez.
+void testGeneratorCleanup(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRunOutput(tests, root, "C16Cond", std::string(kPrintPrelude) + R"ns(
+class Program
+{
+    private static Iterator<int> Gen(bool make)
+    {
+        raii Box a = new Box(1);
+        yield return 1;
+        if (make)
+        {
+            raii Box b = new Box(2);
+            yield return 2;
+        }
+        raii Box c = new Box(3);
+        yield return 3;
+        yield return 4;
+    }
+    public static int Main()
+    {
+        int total = 0;
+        foreach (int x in Gen(false)) { total = total + x; if (x == 3) break; }
+        Console.Write("|");
+        foreach (int x in Gen(true)) { total = total + x; if (x == 2) break; }
+        Console.Write("|");
+        foreach (int x in Gen(true)) { total = total + x; if (x == 3) break; }
+        return total;
+    }
+}
+)ns",
+        13, "d3d1|d2d1|d2d3d1", false);
+    expectRunOutput(tests, root, "C16Shapes", std::string(kPrintPrelude) + R"ns(
+class Program
+{
+    private static void Sink(owned Box b) { Console.Write("s"); }
+    private static void Keep(Guard g) { Console.Write("k"); }
+    private static Iterator<int> Loop()
+    {
+        int i = 0;
+        while (i < 3)
+        {
+            raii Box b = new Box(i + 1);
+            yield return i;
+            i = i + 1;
+        }
+    }
+    private static Iterator<int> Moved(bool flag)
+    {
+        raii Box a = new Box(5);
+        if (flag) { Sink(move(a)); }
+        yield return 1;
+        yield return 2;
+    }
+    private static Iterator<int> Value(bool flag)
+    {
+        Guard g;
+        g.Id = 7;
+        if (flag) { Keep(move(g)); }
+        yield return 1;
+        yield return 2;
+    }
+    public static int Main()
+    {
+        foreach (int x in Loop()) { if (x == 1) break; }
+        Console.Write("|");
+        foreach (int x in Moved(true)) { break; }
+        Console.Write("|");
+        foreach (int x in Moved(false)) { break; }
+        Console.Write("|");
+        foreach (int x in Value(true)) { break; }
+        Console.Write("|");
+        foreach (int x in Value(false)) { break; }
+        return 0;
+    }
+}
+)ns",
+        0, "d1d2|sd5|d5|kg7|g7", false);
+    expectRunOutput(tests, root, "C16Panic", std::string(kPrintPrelude) + R"ns(
+class Program
+{
+    private static Iterator<int> Gen()
+    {
+        raii Box a = new Box(1);
+        yield return 1;
+        raii Box b = new Box(2);
+        panic("stop");
+        yield return 2;
+    }
+    public static int Main()
+    {
+        int total = 0;
+        foreach (int x in Gen()) { total = total + x; }
+        return total;
+    }
+}
+)ns",
+        142, "d2d1", true);
+    expectRunOutput(tests, root, "C16PanicCond", std::string(kPrintPrelude) + R"ns(
+class Program
+{
+    private static Iterator<int> Gen(bool make)
+    {
+        raii Box a = new Box(1);
+        yield return 1;
+        if (make)
+        {
+            raii Box b = new Box(2);
+            yield return 2;
+        }
+        Guard g;
+        g.Id = 3;
+        panic("stop");
+        yield return 3;
+    }
+    public static int Main()
+    {
+        foreach (int x in Gen(false)) { }
+        return 0;
+    }
+}
+)ns",
+        142, "g3d1", true);
+    expectRunOutput(tests, root, "C16PanicAsync", std::string(kPrintPrelude) + R"ns(
+class Program
+{
+    private static async int Work()
+    {
+        raii Box a = new Box(1);
+        yield;
+        raii Box b = new Box(2);
+        panic("stop");
+        return 1;
+    }
+    public static async int Main() { return await Work(); }
+}
+)ns",
+        142, "d2d1", true);
+    expectRunOutput(tests, root, "C16AsyncGenPanic", std::string(kPrintPrelude) + R"ns(
+class Program
+{
+    private static AsyncIterator<int, int> Gen()
+    {
+        raii Box a = new Box(1);
+        yield return 1;
+        raii Box b = new Box(2);
+        panic("stop");
+        yield return 2;
+    }
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen();
+        bool h1 = await it.MoveNextAsync();
+        bool h2 = await it.MoveNextAsync();
+        return 0;
+    }
+}
+)ns",
+        142, "d2d1", true);
+}
+
 int main()
 {
     TestContext tests;
@@ -1973,5 +2197,6 @@ int main()
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);
     testFutureMoveOnly(tests, root);
+    testGeneratorCleanup(tests, root);
     return tests.resultKeeping(root);
 }
