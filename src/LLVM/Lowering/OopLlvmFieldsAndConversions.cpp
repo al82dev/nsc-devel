@@ -289,8 +289,12 @@ LLVMValueRef OopLlvmImplementation::tryConvertSpanView(
             !terminalTypeKey(target).starts_with(readOnlySpanPrefix)) return nullptr;
         const frontend::ProjectOopMirStructLayout* sourceLayout = findStructLayout(mirModel_, source);
         const frontend::ProjectOopMirStructLayout* targetLayout = findStructLayout(mirModel_, target);
-        if (sourceLayout == nullptr || targetLayout == nullptr ||
-            sourceLayout->fields.size() != 2U || targetLayout->fields.size() != 2U) return nullptr;
+        // EN: Freeze 3.0 P4: Span and ReadOnlySpan have the same fields (four since P4); all are
+        //     carried, so the converted view keeps its array and first index.
+        // ES: Congelamiento 3.0 P4: Span y ReadOnlySpan tienen los mismos campos (cuatro desde P4); se
+        //     copian todos, asi la vista convertida conserva su arreglo y su primer indice.
+        if (sourceLayout == nullptr || targetLayout == nullptr || sourceLayout->fields.size() < 2U ||
+            sourceLayout->fields.size() != targetLayout->fields.size()) return nullptr;
         handled = true;
         std::string ignored;
         LLVMTypeRef sourceCarrier = llvmType(source, ignored);
@@ -305,7 +309,7 @@ LLVMValueRef OopLlvmImplementation::tryConvertSpanView(
         LLVMValueRef targetZero = LLVMBuildStore(builder_, LLVMConstNull(destination), targetSlot);
         if (targetLayout->alignment > 1U)
             LLVMSetAlignment(targetZero, static_cast<unsigned>(targetLayout->alignment));
-        for (std::size_t index = 0; index < 2U; ++index)
+        for (std::size_t index = 0; index < sourceLayout->fields.size(); ++index)
         {
             LLVMTypeRef sourceType = llvmType(sourceLayout->fields[index].typeKey, error);
             if (sourceType == nullptr) return nullptr;

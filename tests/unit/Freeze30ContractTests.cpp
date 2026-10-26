@@ -4113,6 +4113,357 @@ class Program
 }
 
 
+/// EN: Freeze 3.0 P4. A span made from an array keeps the array and its first index, so the array's
+///     liveness map applies through the span, its slices, AsReadOnly, the implicit array view and
+///     foreach: reading a dead slot traps (146), Put revives a dead slot and destroys a live one.
+///     Spans over int arrays, raw pointers, parameter packs and u8 literals behave as before.
+/// ES: Congelamiento 3.0 P4. Un span hecho de un arreglo guarda el arreglo y su primer indice, asi
+///     que el mapa de vida del arreglo se aplica por el span, sus Slice, AsReadOnly, la vista
+///     implicita del arreglo y foreach: leer un slot muerto atrapa (146), Put revive un slot muerto
+///     y destruye uno vivo. Los spans sobre arreglos de int, punteros crudos, paquetes de parametros
+///     y literales u8 se comportan como antes.
+void testSpanLivenessMap(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P4SpanDeadRead", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        Guard[] arr = new Guard[3];
+        arr[0] = Make.G(1);
+        Span<Guard> s = Spans.OfRange<Guard>(arr, 0, 3);
+        int v = s.RefAt(0).Id * 10 + s.RefAt(1).Id;
+        delete[] arr;
+        return v;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 146, true);
+    expectRun(tests, root, "P4SpanLiveRead", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        Guard[] arr = new Guard[3];
+        arr[0] = Make.G(1);
+        Span<Guard> s = Spans.OfRange<Guard>(arr, 0, 3);
+        int v = s.RefAt(0).Id * 10;
+        delete[] arr;
+        return v;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 1001, true);
+    expectRun(tests, root, "P4SpanPutRevives", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        Guard[] arr = new Guard[2];
+        Span<Guard> s = Spans.OfRange<Guard>(arr, 0, 2);
+        s.Put(1, Make.G(5));
+        s.Put(1, Make.G(6));
+        int during = Counter.Drops;
+        int v = arr[1].Id * 10 + during;
+        delete[] arr;
+        return v;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 6102, true);
+    expectRun(tests, root, "P4SliceKeepsMap", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        Guard[] arr = new Guard[3];
+        arr[1] = Make.G(4);
+        Span<Guard> s = Spans.OfRange<Guard>(arr, 0, 3).Slice(1);
+        int v = s.RefAt(0).Id;
+        v = v * 10 + s.RefAt(1).Id;
+        delete[] arr;
+        return v;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 146, true);
+    expectRun(tests, root, "P4AsReadOnlyKeepsMap", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        Guard[] arr = new Guard[2];
+        arr[0] = Make.G(3);
+        ReadOnlySpan<Guard> r = Spans.OfRange<Guard>(arr, 0, 2).AsReadOnly();
+        int v = r.RefAt(0).Id;
+        v = v * 10 + r.RefAt(1).Id;
+        delete[] arr;
+        return v;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 146, true);
+    expectRun(tests, root, "P4ForeachDeadSlot", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        Guard[] arr = new Guard[2];
+        arr[0] = Make.G(2);
+        Span<Guard> s = Spans.OfRange<Guard>(arr, 0, 2);
+        int v = 0;
+        foreach (ref Guard g in s) { v = v * 10 + g.Id + 1; }
+        delete[] arr;
+        return v;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 146, true);
+    expectRun(tests, root, "P4ForeachLiveSlots", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        Guard[] arr = new Guard[2];
+        arr[0] = Make.G(2);
+        arr[1] = Make.G(4);
+        Span<Guard> s = Spans.OfRange<Guard>(arr, 0, 2);
+        int v = 0;
+        foreach (ref Guard g in s) { v = v * 10 + g.Id + 1; }
+        delete[] arr;
+        return v;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 3502, true);
+    expectRun(tests, root, "P4ImplicitViewKeepsMap", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        Guard[] arr = new Guard[2];
+        arr[0] = Make.G(7);
+        Span<Guard> s = arr;
+        ReadOnlySpan<Guard> r = s;
+        int v = s.RefAt(0).Id * 10 + r.RefAt(0).Id;
+        v = v * 10 + r.RefAt(1).Id;
+        delete[] arr;
+        return v;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 146, true);
+    expectRun(tests, root, "P4IntSpanUnchanged", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        int[] nums = new int[4];
+        Span<int> t = Spans.OfRange<int>(nums, 0, 4);
+        t[0] = 4;
+        t.Fill(6);
+        t[1] = 7;
+        Span<int> u = t.Slice(2);
+        u[0] = 8;
+        ReadOnlySpan<int> ro = t.AsReadOnly();
+        int sum = 0;
+        foreach (int x in ro) { sum = sum * 10 + x; }
+        foreach (ref mut int y in t) { y = y + 1; }
+        Span<int> w = nums;
+        sum = sum * 10 + w[0] + t[5];
+        int[] other = new int[4];
+        int copied = t.CopyTo(Spans.OfRange<int>(other, 0, 4));
+        sum = sum * 10 + other[3] + copied;
+        delete[] other;
+        delete[] nums;
+        return sum % 1000000;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 67868100, true);
+    expectRun(tests, root, "P4RawSpanUnchanged", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        int[] nums = new int[3];
+        nums[1] = 5;
+        Span<int> raw = Spans.OfRaw<int>(&nums[0], 3);
+        raw[2] = 9;
+        int v = raw[1] * 10 + nums[2];
+        Span<int> part = raw.Slice(1);
+        v = v * 10 + part.RefAt(1);
+        delete[] nums;
+        return v;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 59900, true);
+    expectRun(tests, root, "P4PackAndUtf8Unchanged", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Pack
+{
+    public static int Sum(params ReadOnlySpan<int> values)
+    {
+        int s = 0;
+        foreach (int v in values) { s = s + v; }
+        return s;
+    }
+}
+class Program
+{
+    private static int Run()
+    {
+        ReadOnlySpan<byte> u = u8"abc";
+        return Pack.Sum(1, 2, 3) * 1000 + u.Length() * 100 + u[1] - 90;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 630800, true);
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -5645,6 +5996,7 @@ int main()
     testMoveOnlyReferenceLocal(tests, root);
     testCollectionReferences(tests, root);
     testCollectionReferencesSorted(tests, root);
+    testSpanLivenessMap(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

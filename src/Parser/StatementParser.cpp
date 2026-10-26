@@ -2244,10 +2244,13 @@ ast::AstNode* Parser::makeForeachSpanCandidate(
     const bool elementIsRaii = state.elementIsRaii;
     const bool elementMutableReference = state.elementMutableReference;
     // NativeSharp.Core Span<T>/ReadOnlySpan<T> are compiler-recognized borrowed views. Their
-    // iteration uses Length() once per loop condition and Data()[index] for the element place.
-    // Data() is a raw pointer, so the loop proof is the only bounds contract: no redundant
-    // managed-array/indexer guard is emitted for every element. ReadOnlySpan mutation is rejected
-    // semantically once the resolved source type is known.
+    // iteration uses Length() once per loop condition and RefAt(index) for the element place.
+    // ReadOnlySpan mutation is rejected semantically once the resolved source type is known.
+    // EN: Freeze 3.0 P4: RefAt, not Data()[index]: a span over an array with a liveness map reads
+    //     each element through that array, so a dead slot traps like a direct array read.
+    // ES: Congelamiento 3.0 P4: RefAt, no Data()[index]: un span sobre un arreglo con mapa de vida
+    //     lee cada elemento por ese arreglo, asi que un slot muerto atrapa igual que una lectura
+    //     directa del arreglo.
     ast::AstNode* spanCandidate;
     {
         ast::TypeSyntax* intType = arena_.make<ast::TypeSyntax>(
@@ -2266,14 +2269,13 @@ ast::AstNode* Parser::makeForeachSpanCandidate(
                 TokenKind::Plus,
                 makeIdentifierExpression(range, indexName),
                 makeIntegerLiteralExpression(range, 1)));
-        ast::AstNode* dataCall = makeZeroArgCallExpression(
-            makeMemberExpression(makeIdentifierExpression(range, sourceName), "Data"));
+        ast::AstNode* elementCall = makeZeroArgCallExpression(
+            makeMemberExpression(makeIdentifierExpression(range, sourceName), "RefAt"));
+        elementCall->addChild(makeIdentifierExpression(range, indexName));
         ast::AstNode* elementDecl = makeVariableDeclaration(
             elementType,
             elementName,
-            makeIndexExpression(
-                dataCall,
-                makeIdentifierExpression(range, indexName)),
+            elementCall,
             elementIsRaii,
             /*isConst=*/!elementMutableReference);
         configureForeachElementBinding(state, elementDecl);

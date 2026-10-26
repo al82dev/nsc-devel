@@ -372,6 +372,10 @@ LLVMValueRef OopLlvmImplementation::lowerUtf8StringLiteral(const frontend::Proje
         LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "utf8.span.init");
         if (slot == nullptr)
             return failValue(error, "utf8 literal could not reserve span storage");
+        // EN: Freeze 3.0 P4: the fields after start and count (array, first index) stay null.
+        // ES: Congelamiento 3.0 P4: los campos despues de start y count (arreglo, primer indice)
+        //     quedan nulos.
+        LLVMBuildStore(builder_, LLVMConstNull(carrier), slot);
         LLVMBuildStore(builder_, bytesField, byteOffset(slot, 0, "utf8.span.start.addr"));
         LLVMBuildStore(builder_, count, byteOffset(slot, 8, "utf8.span.count.addr"));
         LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "utf8.span.init.value");

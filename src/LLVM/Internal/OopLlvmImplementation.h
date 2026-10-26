@@ -1761,6 +1761,9 @@ private:
         const frontend::ProjectOopMirNode* current, LLVMValueRef object,
         LLVMValueRef index, LLVMValueRef count, LLVMValueRef countIsZero,
         std::vector<LLVMValueRef>& values, std::string& error);
+    void storeArraySpanSource(
+        std::string_view spanTypeKey, LLVMValueRef slot, LLVMValueRef countIsZero,
+        LLVMValueRef object, LLVMValueRef index);
     bool lowerExpressionFrame099SpanFromFixedArray(
         const LlvmExpressionFrame& frame, std::vector<LlvmExpressionFrame>& frames,
         std::vector<LLVMValueRef>& values, std::string& error);

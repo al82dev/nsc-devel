@@ -9,7 +9,7 @@ namespace NativeSharp.Core
     // ------------------------------------------------------------------------------------------
     // SON EL MISMO TIPO DOS VECES, Y ESO ES DELIBERADO.
     //
-    // `Span<T>` y `ReadOnlySpan<T>` tienen exactamente los mismos dos campos y la misma
+    // `Span<T>` y `ReadOnlySpan<T>` tienen exactamente los mismos campos y la misma
     // aritmetica. La unica diferencia es que el indexador de uno tiene `set` y el del otro no.
     // La alternativa era un solo tipo con un booleano `readOnly` comprobado en ejecucion, y es
     // peor por dos razones que no son de gusto:
@@ -39,11 +39,32 @@ namespace NativeSharp.Core
     {
         private T* start;
         private int count;
+        // EN: Freeze 3.0 P4: a span made from an array also keeps the array and the index of its first
+        //     element. Its accessors reach elements through that array, so an array with a liveness
+        //     map (DEC-11) applies it: a write revives the slot and a read of a dead slot traps.
+        //     Slice and AsReadOnly carry both. A raw span (OfRaw, stackalloc, Data()) has none.
+        // ES: Congelamiento 3.0 P4: un span hecho de un arreglo guarda tambien el arreglo y el indice
+        //     de su primer elemento. Sus accesos llegan a los elementos por ese arreglo, asi que un
+        //     arreglo con mapa de vida (DEC-11) lo aplica: escribir revive el slot y leer un slot
+        //     muerto atrapa. Slice y AsReadOnly conservan ambos. Un span crudo (OfRaw, stackalloc,
+        //     Data()) no tiene ninguno.
+        private T[] source;
+        private int offset;
 
         public Span(T* data, int length)
         {
             start = data;
             count = length;
+            source = null;
+            offset = 0;
+        }
+
+        public Span(T* data, int length, T[] array, int first)
+        {
+            start = data;
+            count = length;
+            source = array;
+            offset = first;
         }
 
         public readonly int Length()
@@ -56,8 +77,17 @@ namespace NativeSharp.Core
             return count == 0;
         }
 
+        // EN: Freeze 3.0 P4: a span made by Spans from an array keeps no pointer (taking `&items[i]` of a
+        //     dead slot traps); Data() takes it on demand. That address is a read of the first element.
+        // ES: Congelamiento 3.0 P4: un span que Spans hace de un arreglo no guarda puntero (tomar
+        //     `&items[i]` de un slot muerto atrapa); Data() lo toma cuando se pide. Esa direccion es una
+        //     lectura del primer elemento.
         public T* Data()
         {
+            if (start == null && source != null && count > 0)
+            {
+                return &source[offset];
+            }
             return start;
         }
 
@@ -78,12 +108,18 @@ namespace NativeSharp.Core
                 {
                     return default(T);
                 }
+                if (source != null) { return source[offset + index]; }
                 return start[index];
             }
             set where T : copy
             {
                 if (index < 0 || index >= count)
                 {
+                    return;
+                }
+                if (source != null)
+                {
+                    source[offset + index] = value;
                     return;
                 }
                 start[index] = value;
@@ -100,16 +136,43 @@ namespace NativeSharp.Core
             {
                 panic("Span index out of range");
             }
+            if (source != null) { return ref source[offset + index]; }
             return ref start[index];
+        }
+
+        // EN: Freeze 3.0 P4: moves `value` into an element, for any value type T. Through an array with
+        //     a liveness map a dead slot is revived and a live one is destroyed first, like `a[i] = v`.
+        //     Out of range panics.
+        // ES: Congelamiento 3.0 P4: mueve `value` a un elemento, para todo tipo valor T. Por un arreglo
+        //     con mapa de vida un slot muerto revive y uno vivo se destruye antes, como `a[i] = v`.
+        //     Fuera de rango hace panic.
+        public void Put(int index, owned T value)
+        {
+            if (index < 0 || index >= count)
+            {
+                panic("Span index out of range");
+            }
+            if (source != null)
+            {
+                source[offset + index] = move(value);
+                return;
+            }
+            start[index] = move(value);
         }
 
         public T UncheckedAt(int index) where T : copy
         {
+            if (source != null) { return source[offset + index]; }
             return start[index];
         }
 
         public void UncheckedSet(int index, T value) where T : copy
         {
+            if (source != null)
+            {
+                source[offset + index] = value;
+                return;
+            }
             start[index] = value;
         }
 
@@ -131,7 +194,11 @@ namespace NativeSharp.Core
             {
                 return new Span<T>(null, 0);
             }
-            return new Span<T>(this.start + begin, take);
+            if (this.start == null)
+            {
+                return new Span<T>(null, take, source, offset + begin);
+            }
+            return new Span<T>(this.start + begin, take, source, offset + begin);
         }
 
         public void Fill(T value) where T : copy
@@ -139,7 +206,7 @@ namespace NativeSharp.Core
             int index = 0;
             while (index < count)
             {
-                start[index] = value;
+                UncheckedSet(index, value);
                 index = index + 1;
             }
         }
@@ -154,7 +221,7 @@ namespace NativeSharp.Core
             int index = 0;
             while (index < limit)
             {
-                destination.UncheckedSet(index, start[index]);
+                destination.UncheckedSet(index, UncheckedAt(index));
                 index = index + 1;
             }
             return limit;
@@ -166,12 +233,12 @@ namespace NativeSharp.Core
         {
             int limit = count;
             if (destination.Length() < limit) { limit = destination.Length(); }
-            if (destination.Data() > start)
+            if (destination.Data() > Data())
             {
                 int index = limit - 1;
                 while (index >= 0)
                 {
-                    destination.UncheckedSet(index, start[index]);
+                    destination.UncheckedSet(index, UncheckedAt(index));
                     index = index - 1;
                 }
                 return limit;
@@ -179,7 +246,7 @@ namespace NativeSharp.Core
             int forward = 0;
             while (forward < limit)
             {
-                destination.UncheckedSet(forward, start[forward]);
+                destination.UncheckedSet(forward, UncheckedAt(forward));
                 forward = forward + 1;
             }
             return limit;
@@ -189,7 +256,7 @@ namespace NativeSharp.Core
         // no existe a proposito -- seria devolver permiso de escritura que nadie dio.
         public ReadOnlySpan<T> AsReadOnly()
         {
-            return new ReadOnlySpan<T>(start, count);
+            return new ReadOnlySpan<T>(start, count, source, offset);
         }
     }
 
@@ -198,11 +265,25 @@ namespace NativeSharp.Core
     {
         private T* start;
         private int count;
+        // EN: Freeze 3.0 P4: the array and first index, as in Span<T>.
+        // ES: Congelamiento 3.0 P4: el arreglo y el primer indice, como en Span<T>.
+        private T[] source;
+        private int offset;
 
         public ReadOnlySpan(T* data, int length)
         {
             start = data;
             count = length;
+            source = null;
+            offset = 0;
+        }
+
+        public ReadOnlySpan(T* data, int length, T[] array, int first)
+        {
+            start = data;
+            count = length;
+            source = array;
+            offset = first;
         }
 
         public readonly int Length()
@@ -215,8 +296,17 @@ namespace NativeSharp.Core
             return count == 0;
         }
 
+        // EN: Freeze 3.0 P4: a span made by Spans from an array keeps no pointer (taking `&items[i]` of a
+        //     dead slot traps); Data() takes it on demand. That address is a read of the first element.
+        // ES: Congelamiento 3.0 P4: un span que Spans hace de un arreglo no guarda puntero (tomar
+        //     `&items[i]` de un slot muerto atrapa); Data() lo toma cuando se pide. Esa direccion es una
+        //     lectura del primer elemento.
         public T* Data()
         {
+            if (start == null && source != null && count > 0)
+            {
+                return &source[offset];
+            }
             return start;
         }
 
@@ -232,6 +322,7 @@ namespace NativeSharp.Core
                 {
                     return default(T);
                 }
+                if (source != null) { return source[offset + index]; }
                 return start[index];
             }
         }
@@ -242,11 +333,13 @@ namespace NativeSharp.Core
             {
                 panic("ReadOnlySpan index out of range");
             }
+            if (source != null) { return ref source[offset + index]; }
             return ref start[index];
         }
 
         public T UncheckedAt(int index) where T : copy
         {
+            if (source != null) { return source[offset + index]; }
             return start[index];
         }
 
@@ -268,7 +361,11 @@ namespace NativeSharp.Core
             {
                 return new ReadOnlySpan<T>(null, 0);
             }
-            return new ReadOnlySpan<T>(this.start + begin, take);
+            if (this.start == null)
+            {
+                return new ReadOnlySpan<T>(null, take, source, offset + begin);
+            }
+            return new ReadOnlySpan<T>(this.start + begin, take, source, offset + begin);
         }
 
         public int CopyTo(Span<T> destination) where T : copy
@@ -278,7 +375,7 @@ namespace NativeSharp.Core
             int index = 0;
             while (index < limit)
             {
-                destination.UncheckedSet(index, start[index]);
+                destination.UncheckedSet(index, UncheckedAt(index));
                 index = index + 1;
             }
             return limit;
@@ -327,19 +424,18 @@ namespace NativeSharp.Core
             return new Span<T>(null, 0);
         }
 
-        // Sobre un arreglo nativo. `&items[0]` es legal para un arreglo (no lo es para una
-        // cadena, y por eso StringView necesito una operacion nucleo y esto no).
+        // Sobre un arreglo nativo. El span guarda el arreglo y el indice inicial, no un puntero:
+        // `&items[i]` lee el elemento, y un slot muerto (DEC-11) atraparia al crear el span
+        // (Congelamiento 3.0 P4). Data() toma la direccion cuando se pide.
         //
-        // El arreglo vacio se atiende antes: `&items[0]` de un arreglo de longitud cero pide la
-        // direccion de un elemento que no existe, y la comprobacion de rango del lenguaje lo
-        // atrapa. Correctamente.
+        // El arreglo vacio se atiende antes: no hay elemento al cual referirse.
         public static Span<T> Of<T>(T[] items)
         {
             if (items == null || items.Length == 0)
             {
                 return new Span<T>(null, 0);
             }
-            return new Span<T>(&items[0], items.Length);
+            return new Span<T>(null, items.Length, items, 0);
         }
 
         public static Span<T> OfRange<T>(T[] items, int start, int length)
@@ -359,7 +455,7 @@ namespace NativeSharp.Core
             {
                 return new Span<T>(null, 0);
             }
-            return new Span<T>(&items[begin], take);
+            return new Span<T>(null, take, items, begin);
         }
 
         // Sobre un bloque crudo -- `stackalloc`, `RawAlloc`, un puntero que vino de C. Es el
@@ -381,7 +477,7 @@ namespace NativeSharp.Core
             {
                 return new ReadOnlySpan<T>(null, 0);
             }
-            return new ReadOnlySpan<T>(&items[0], items.Length);
+            return new ReadOnlySpan<T>(null, items.Length, items, 0);
         }
 
         public static ReadOnlySpan<T> ReadOnlyOfRange<T>(T[] items, int start, int length)
@@ -401,7 +497,7 @@ namespace NativeSharp.Core
             {
                 return new ReadOnlySpan<T>(null, 0);
             }
-            return new ReadOnlySpan<T>(&items[begin], take);
+            return new ReadOnlySpan<T>(null, take, items, begin);
         }
 
         public static ReadOnlySpan<T> ReadOnlyOfRaw<T>(T* data, int length)

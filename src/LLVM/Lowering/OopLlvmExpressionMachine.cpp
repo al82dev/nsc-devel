@@ -4653,6 +4653,28 @@ bool OopLlvmImplementation::lowerExpressionFrame098SpanFromArray(
     return true;
 }
 
+// EN: Freeze 3.0 P4: a span over a native array also records the array and its first index (fields 2
+//     and 3 of NativeSharp.Core.Span/ReadOnlySpan), so the span's accessors reach elements through
+//     the array and its liveness map. An empty span keeps them null and zero, like a raw span; a
+//     layout without those fields (an older library) is left as it was.
+// ES: Congelamiento 3.0 P4: un span sobre un arreglo nativo guarda tambien el arreglo y su primer
+//     indice (campos 2 y 3 de NativeSharp.Core.Span/ReadOnlySpan), asi que sus accesos llegan a los
+//     elementos por el arreglo y su mapa de vida. Un span vacio los deja nulos y en cero, como un span
+//     crudo; un layout sin esos campos (una biblioteca anterior) queda como estaba.
+void OopLlvmImplementation::storeArraySpanSource(
+        std::string_view spanTypeKey, LLVMValueRef slot, LLVMValueRef countIsZero,
+        LLVMValueRef object, LLVMValueRef index)
+{
+    const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, spanTypeKey);
+    if (layout == nullptr || layout->fields.size() < 4U) return;
+    LLVMValueRef nullArray = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
+    LLVMValueRef source = LLVMBuildSelect(builder_, countIsZero, nullArray, object, "span.source");
+    LLVMBuildStore(builder_, source, byteOffset(slot, layout->fields[2].offset, "span.source.addr"));
+    LLVMValueRef first = LLVMBuildTrunc(
+        builder_, index, LLVMInt32TypeInContext(context_), "span.first");
+    LLVMBuildStore(builder_, first, byteOffset(slot, layout->fields[3].offset, "span.first.addr"));
+}
+
 void OopLlvmImplementation::finishArraySpanFrame(
         const frontend::ProjectOopMirNode* current, LLVMValueRef object,
         LLVMValueRef index, LLVMValueRef count, LLVMValueRef countIsZero,
@@ -4682,8 +4704,10 @@ void OopLlvmImplementation::finishArraySpanFrame(
         values.push_back(failValue(error, "Span rest capture could not reserve storage"));
         return;
     }
+    LLVMBuildStore(builder_, LLVMConstNull(carrier), slot);
     LLVMBuildStore(builder_, data, byteOffset(slot, 0, "span.start.addr"));
     LLVMBuildStore(builder_, count, byteOffset(slot, 8, "span.count.addr"));
+    storeArraySpanSource(current->typeKey, slot, countIsZero, object, index);
     LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "span.init.value");
     if (carrierAlignment > 1U) LLVMSetAlignment(loaded, carrierAlignment);
     values.push_back(loaded);
@@ -4803,6 +4827,7 @@ void OopLlvmImplementation::finishFixedArraySpanFrame(
         values.push_back(failValue(error, "fixed-array Span rest capture could not reserve storage"));
         return;
     }
+    LLVMBuildStore(builder_, LLVMConstNull(carrier), slot);
     LLVMBuildStore(builder_, data, byteOffset(slot, 0, "fixed.span.start.addr"));
     LLVMBuildStore(builder_, countNative, byteOffset(slot, 8, "fixed.span.count.addr"));
     LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "fixed.span.init.value");
