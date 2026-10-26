@@ -3260,6 +3260,57 @@ class Program
 )ns", 7098);
 }
 
+/// EN: P3. `return ref field[i]` of an array or pointer field returns with the receiver lifetime.
+/// ES: P3. `return ref campo[i]` de un arreglo o puntero campo se devuelve con la vida del receptor.
+void testRefToFieldElement(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P3RefFieldElement", R"ns(
+class Table
+{
+    private owned int[] data;
+    public Table() { data = new int[] { 4, 5, 6 }; }
+    public ref readonly int this[int i] { get { return ref data[i]; } }
+    public ref readonly int First { get { return ref data[0]; } }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Table t = new Table();
+        return t[2] * 100 + t[1] * 10 + t.First;
+    }
+}
+)ns", 654);
+    expectRun(tests, root, "P3RefFieldElementCurrent", R"ns(
+class Bag
+{
+    private owned int[] data;
+    public Bag() { data = new int[] { 1, 2, 3 }; }
+    public int Count() { return data.Length; }
+    public ref readonly int At(int i) { return ref data[i]; }
+    public owned BagEnumerator GetEnumerator() { return new BagEnumerator(this); }
+}
+class BagEnumerator
+{
+    private owned int[] data;
+    private int index;
+    public BagEnumerator(Bag b) { data = new int[] { b.At(0), b.At(1), b.At(2) }; index = -1; }
+    public bool MoveNext() { index = index + 1; return index < data.Length; }
+    public ref readonly int Current { get { return ref data[index]; } }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Bag b = new Bag();
+        int sum = 0;
+        foreach (ref int x in b) { sum = sum * 10 + x; }
+        return sum;
+    }
+}
+)ns", 123);
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -4783,6 +4834,7 @@ int main()
     testInDelegateOverloads(tests, root);
     testReadonlyReferenceReturns(tests, root);
     testInAcceptsReadonlyPlace(tests, root);
+    testRefToFieldElement(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

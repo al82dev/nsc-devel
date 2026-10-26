@@ -1316,6 +1316,14 @@ private:
         const ClassMemberSymbol& method,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 P3: true for `field[i]` (implicit or `this.field`) where the field is a native
+    //     array or a pointer of the receiver: storage the receiver owns or views.
+    // ES: Congelamiento 3.0 P3: verdadero para `campo[i]` (implicito o `this.campo`) cuando el campo
+    //     es un arreglo nativo o un puntero del receptor: almacenamiento que el receptor posee o ve.
+    bool indexesReceiverFieldStorage(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal) const;
     bool reportDirectOwnerReturnWithoutMove(
         const ast::AstNode* statement,
         const ClassMemberSymbol& method,

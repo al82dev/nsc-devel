@@ -5136,6 +5136,27 @@ bool ProjectMethodBodyModel::validateReferenceReturnLifetime(
     return false;
 }
 
+bool ProjectMethodBodyModel::indexesReceiverFieldStorage(
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal) const
+{
+    if (expression == nullptr || expression->kind() != ast::AstNodeKind::IndexExpression) return false;
+    const ast::AstNode* base = expression->first();
+    if (base == nullptr) return false;
+    const MethodExpressionTypeBinding* type = expressionTypeBinding(base, methodMemberOrdinal);
+    if (type == nullptr || (!ProjectTypeConversion::isNativeArray(type->typeKey) &&
+                            !ProjectTypeConversion::isPointer(type->typeKey))) return false;
+    if (base->kind() == ast::AstNodeKind::MemberExpression)
+        return base->first() != nullptr &&
+            (base->first()->kind() == ast::AstNodeKind::ThisExpression ||
+             base->first()->kind() == ast::AstNodeKind::BaseExpression);
+    if (base->kind() != ast::AstNodeKind::IdentifierExpression ||
+        lookupScopeName(scopeOrdinal, base->text()).has_value()) return false;
+    const MethodNameBinding* binding = nameBinding(base, methodMemberOrdinal);
+    return binding != nullptr && binding->kind == MethodNameBindingKind::ImplicitField;
+}
+
 bool ProjectMethodBodyModel::analyzeReferenceReturn(
     const ast::AstNode* statement,
     const ClassMemberSymbol& method,
@@ -5201,7 +5222,19 @@ bool ProjectMethodBodyModel::analyzeReferenceReturn(
             "ref return cannot expose a by-value or readonly parameter");
         return true;
     }
-    if (!validateReferenceReturnLifetime(statement, method, escape, diagnostics)) return true;
+    // EN: Freeze 3.0 P3: an element of an array or of a pointer the receiver keeps in a field
+    //     (`return ref items[i];` in a collection, `return ref start[i];` in a span) lives while
+    //     the receiver's storage does, so it may be returned with the receiver lifetime. The
+    //     escape evaluator itself still reports such an element as external storage.
+    // ES: Congelamiento 3.0 P3: un elemento de un arreglo o de un puntero que el receptor guarda en
+    //     un campo (`return ref items[i];` en una coleccion, `return ref start[i];` en un span) vive
+    //     mientras vive el almacenamiento del receptor, asi que puede devolverse con la vida del
+    //     receptor. El evaluador de escape sigue reportando ese elemento como almacenamiento externo.
+    const bool receiverElement = method.returnLifetimeName == "this" &&
+        escape.kind == MethodEscapeOriginKind::ExternalStorage && escape.lifetimeName.empty() &&
+        indexesReceiverFieldStorage(statement->first(), methodMemberOrdinal, scopeOrdinal);
+    if (!receiverElement &&
+        !validateReferenceReturnLifetime(statement, method, escape, diagnostics)) return true;
     if (escape.ordinal.has_value())
         noteParameterEscape(
             methodMemberOrdinal, *escape.ordinal, language::EscapeClass::Return);
