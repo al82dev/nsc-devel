@@ -2332,6 +2332,75 @@ bool ProjectMethodBodyModel::rejectCaughtExceptionAssignment(
     return true;
 }
 
+bool ProjectMethodBodyModel::parameterIsExceptionLoan(const MethodParameterSymbol& parameter) const
+{
+    if (parameter.ownership == sema::OwnershipKind::Owned || inheritanceModel_ == nullptr) return false;
+    const std::optional<std::size_t> type = inheritanceModel_->typeOrdinalForTypeKey(parameter.typeKey);
+    return type.has_value() && isExceptionTypeOrdinal(*type);
+}
+
+std::optional<std::size_t> ProjectMethodBodyModel::loanedExceptionParameterOfValue(
+    const ast::AstNode* value,
+    const ClassMemberSymbol* method,
+    std::size_t scopeOrdinal) const
+{
+    if (value == nullptr || value->kind() != ast::AstNodeKind::IdentifierExpression) return std::nullopt;
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, value->text());
+    if (!name.has_value()) return std::nullopt;
+    if (name->kind == ScopeNameKind::Local)
+        return name->semanticOrdinal < locals_.size()
+            ? locals_[name->semanticOrdinal].loanedExceptionParameterOrdinal : std::nullopt;
+    if (name->kind != ScopeNameKind::Parameter || method == nullptr ||
+        name->semanticOrdinal >= method->parameters.size() ||
+        !parameterIsExceptionLoan(method->parameters[name->semanticOrdinal])) return std::nullopt;
+    return name->semanticOrdinal;
+}
+
+bool ProjectMethodBodyModel::reportExceptionLoanReturn(
+    const ast::AstNode* value,
+    const ClassMemberSymbol& method,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!loanedExceptionParameterOfValue(value, &method, scopeOrdinal).has_value()) return false;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidReturn,
+        diagnostics::DiagnosticSeverity::Error,
+        value->range(),
+        "the exception in '" + value->text() + "' is a loan from the caller (it may be a caught "
+            "exception) and cannot be returned; declare the parameter owned to take it");
+    return true;
+}
+
+bool ProjectMethodBodyModel::rejectExceptionLoanAssignment(
+    const ast::AstNode* expression,
+    const std::optional<std::size_t>& assignmentTargetLocal,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const std::optional<std::size_t> loan = loanedExceptionParameterOfValue(
+        expression->second(), methodSymbol(methodMemberOrdinal), scopeOrdinal);
+    if (!loan.has_value()) return false;
+    // EN: A local of the same callable may hold it (not one of an enclosing callable); it inherits the loan.
+    // ES: Un local del mismo callable puede guardarlo (no uno de un callable exterior); hereda el prestamo.
+    if (expression->tokenKind() == TokenKind::Equal && assignmentTargetLocal.has_value() &&
+        *assignmentTargetLocal < locals_.size() &&
+        locals_[*assignmentTargetLocal].lambdaOrdinal == currentLambdaOrdinal_)
+    {
+        locals_[*assignmentTargetLocal].loanedExceptionParameterOrdinal = *loan;
+        return false;
+    }
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->second()->range(),
+        "the exception in '" + expression->second()->text() + "' is a loan from the caller (it may be "
+            "a caught exception); it cannot be stored where it outlives the call -- declare the "
+            "parameter owned to keep it");
+    return true;
+}
+
 bool ProjectMethodBodyModel::reportRethrowOfMovedCatch(
     const ast::AstNode* statement,
     std::size_t scopeOrdinal,
@@ -4006,6 +4075,10 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     // ES: Congelamiento 3.0 DEC-10: `T alias = e;` dentro de un handler tambien nombra la excepcion
     //     atrapada.
     local.caughtExceptionScopeOrdinal = caughtExceptionScopeOfValue(variable->first(), scopeOrdinal);
+    // EN: Freeze 3.0 P10: `T alias = e;` of an exception parameter loan inherits the loan.
+    // ES: Congelamiento 3.0 P10: `T alias = e;` de un prestamo de parametro de excepcion lo hereda.
+    local.loanedExceptionParameterOrdinal = loanedExceptionParameterOfValue(
+        variable->first(), methodSymbol(methodMemberOrdinal), scopeOrdinal);
     local.isStatic = isStaticLocal;
     local.isReference = isReferenceLocal;
     local.referenceMutable = isReferenceLocal && !isReadonlyReference;
@@ -5275,6 +5348,7 @@ bool ProjectMethodBodyModel::reportDirectOwnerReturnWithoutMove(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (reportCaughtExceptionReturn(statement->first(), scopeOrdinal, diagnostics)) return true;
+    if (reportExceptionLoanReturn(statement->first(), method, scopeOrdinal, diagnostics)) return true;
     if (method.declaredOwnership == sema::OwnershipKind::Borrowed ||
         statement->first()->kind() != ast::AstNodeKind::IdentifierExpression) return false;
     const std::optional<ScopeName> returnedName = lookupScopeName(

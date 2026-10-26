@@ -1354,6 +1354,29 @@ private:
         const ast::AstNode* statement,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 P10 (exception parameter loan). A non-owned parameter of an exception type is a
+    //     loan from the caller: it may not be stored in a field, a static, an element or another
+    //     parameter, captured by a lambda or returned. A local that copies it inherits the loan.
+    // ES: Congelamiento 3.0 P10 (prestamo del parametro de excepcion). Un parametro no owned de tipo
+    //     excepcion es un prestamo del llamador: no puede guardarse en un campo, un static, un
+    //     elemento u otro parametro, capturarse en un lambda ni retornarse. Un local que lo copia
+    //     hereda el prestamo.
+    bool parameterIsExceptionLoan(const MethodParameterSymbol& parameter) const;
+    std::optional<std::size_t> loanedExceptionParameterOfValue(
+        const ast::AstNode* value,
+        const ClassMemberSymbol* method,
+        std::size_t scopeOrdinal) const;
+    bool reportExceptionLoanReturn(
+        const ast::AstNode* value,
+        const ClassMemberSymbol& method,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool rejectExceptionLoanAssignment(
+        const ast::AstNode* expression,
+        const std::optional<std::size_t>& assignmentTargetLocal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     ExpressionResult analyzeReturnValue(
         const ast::AstNode* statement,
         const ClassMemberSymbol& method,

@@ -395,6 +395,18 @@ bool ProjectMethodBodyModel::validateLambdaLocalCaptureLifetime(
                 "' cannot be captured by a lambda because the delegate may outlive the referenced storage");
         safe = false;
     }
+    // EN: Freeze 3.0 P10: a local that copies an exception parameter loan.
+    // ES: Congelamiento 3.0 P10: un local que copia un prestamo de parametro de excepcion.
+    if (local.loanedExceptionParameterOrdinal.has_value())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            name.syntax->range(),
+            "the exception in '" + local.name + "' is a loan from the caller (it may be a caught "
+                "exception) and cannot be captured by a lambda");
+        safe = false;
+    }
     return safe;
 }
 
@@ -516,6 +528,19 @@ bool ProjectMethodBodyModel::validateLambdaParameterCaptureLifetime(
             name.syntax->range(),
             "reference parameter '" + parameter.name +
                 "' cannot be captured by a lambda because the delegate may outlive the referenced storage");
+        safe = false;
+    }
+    // EN: Freeze 3.0 P10: an exception parameter is a loan from the caller; a closure may outlive it.
+    // ES: Congelamiento 3.0 P10: un parametro de excepcion es un prestamo del llamador; un closure
+    //     puede sobrevivirlo.
+    if (parameterIsExceptionLoan(parameter))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            name.syntax->range(),
+            "the exception in '" + parameter.name + "' is a loan from the caller (it may be a caught "
+                "exception) and cannot be captured by a lambda");
         safe = false;
     }
     return safe;

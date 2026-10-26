@@ -133,6 +133,14 @@ struct MethodLocalSymbol final
     //     es error de compilacion.
     bool isCatchVariable = false;
     std::optional<std::size_t> caughtExceptionScopeOrdinal;
+    // EN: Freeze 3.0 P10. The ordinal of the exception parameter this local copies: a non-owned
+    //     parameter of an exception type is a loan from the caller (it may be a caught exception), so
+    //     neither it nor a local that copies it may be stored where it outlives the call.
+    // ES: Congelamiento 3.0 P10. El ordinal del parametro de excepcion que copia este local: un
+    //     parametro no owned de tipo excepcion es un prestamo del llamador (puede ser una excepcion
+    //     atrapada), asi que ni el ni un local que lo copia pueden guardarse donde sobreviven a la
+    //     llamada.
+    std::optional<std::size_t> loanedExceptionParameterOrdinal;
     // NS304-T13-F03: `scope T x = new T(...)` — the object's physical storage lives in the current
     // frame (stack), never heap; the destructor runs once at lexical-scope exit and never calls the
     // heap deallocator. Escape (return/capture/field/static) is rejected by Sema.

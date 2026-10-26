@@ -2175,6 +2175,10 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
     // ES: Congelamiento 3.0 DEC-10: la excepcion atrapada se queda en su handler.
     if (rejectCaughtExceptionAssignment(expression, assignmentTargetLocal, scopeOrdinal, diagnostics))
         return false;
+    // EN: Freeze 3.0 P10: an exception parameter is a loan that stays in its call.
+    // ES: Congelamiento 3.0 P10: un parametro de excepcion es un prestamo que se queda en su llamada.
+    if (rejectExceptionLoanAssignment(
+            expression, assignmentTargetLocal, methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
     if (rejectOwnerCopyAssignment(
             expression, borrowedReassignment, borrowedArrayElementTarget, raiiTargetLocal,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;

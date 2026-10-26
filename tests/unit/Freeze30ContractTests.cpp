@@ -4464,6 +4464,246 @@ class Program
 )ns", 630800, true);
 }
 
+/// EN: Freeze 3.0 P10. A non-owned parameter of an exception type is a loan from the caller (it may
+///     be a caught exception): storing it, or a local that copies it, in a field, a static or an
+///     element, returning it or capturing it in a lambda is rejected. Reading it, passing it on and
+///     keeping it in a local are allowed; an owned parameter takes it with move(...).
+/// ES: Congelamiento 3.0 P10. Un parametro no owned de tipo excepcion es un prestamo del llamador
+///     (puede ser una excepcion atrapada): guardarlo, o un local que lo copia, en un campo, un static
+///     o un elemento, retornarlo o capturarlo en un lambda se rechaza. Leerlo, pasarlo y tenerlo en
+///     un local se permite; un parametro owned lo toma con move(...).
+void testCaughtExceptionParameterLoan(TestContext& tests, const std::filesystem::path& root)
+{
+    expectReject(tests, root, "P10LoanStoredInField", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static void Store(Holder h, Boom b) { h.Saved = b; }
+    public static int Main()
+    {
+        raii Holder holder = new Holder();
+        try { throw new Boom(7); }
+        catch (Boom problem) { Store(holder, problem); }
+        return Boom.Destroyed;
+    }
+}
+)ns", "is a loan from the caller");
+    expectReject(tests, root, "P10LoanStoredInStatic", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static void Store(Holder h, Boom b) { Holder.Global = b; }
+    public static int Main()
+    {
+        raii Holder holder = new Holder();
+        try { throw new Boom(7); }
+        catch (Boom problem) { Store(holder, problem); }
+        return Boom.Destroyed;
+    }
+}
+)ns", "is a loan from the caller");
+    expectReject(tests, root, "P10LoanStoredInElement", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static void Store(Holder h, Boom b) { Boom[] a = new Boom[1]; a[0] = b; }
+    public static int Main()
+    {
+        raii Holder holder = new Holder();
+        try { throw new Boom(7); }
+        catch (Boom problem) { Store(holder, problem); }
+        return Boom.Destroyed;
+    }
+}
+)ns", "is a loan from the caller");
+    expectReject(tests, root, "P10LoanReturned", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static Boom Pass(Boom b) { return b; }
+    public static void Store(Holder h, Boom b) { Boom x = Pass(b); }
+    public static int Main()
+    {
+        raii Holder holder = new Holder();
+        try { throw new Boom(7); }
+        catch (Boom problem) { Store(holder, problem); }
+        return Boom.Destroyed;
+    }
+}
+)ns", "cannot be returned");
+    expectReject(tests, root, "P10LoanAliasStored", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static void Store(Holder h, Boom b) { Boom alias = b; h.Saved = alias; }
+    public static int Main()
+    {
+        raii Holder holder = new Holder();
+        try { throw new Boom(7); }
+        catch (Boom problem) { Store(holder, problem); }
+        return Boom.Destroyed;
+    }
+}
+)ns", "the exception in 'alias' is a loan");
+    expectReject(tests, root, "P10LoanCaptured", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+delegate int Getter();
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static void Store(Holder h, Boom b) { Getter f = () => b.Code; }
+    public static int Main()
+    {
+        raii Holder holder = new Holder();
+        try { throw new Boom(7); }
+        catch (Boom problem) { Store(holder, problem); }
+        return Boom.Destroyed;
+    }
+}
+)ns", "cannot be captured by a lambda");
+    expectReject(tests, root, "P10BaseExceptionLoan", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static void Store(Holder h, Exception b) { h.Saved = null; Exception e2 = b; }
+    public static void Keep(Holder h, Exception b) { Holder.Global = null; Exception[] a = new Exception[1]; a[0] = b; }
+    public static int Main()
+    {
+        raii Holder holder = new Holder();
+        try { throw new Boom(7); }
+        catch (Boom problem) { Store(holder, problem); }
+        return Boom.Destroyed;
+    }
+}
+)ns", "is a loan from the caller");
+    expectRun(tests, root, "P10LoanReadAndPassed", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static int Read(Boom b) { return b.Code; }
+    public static int Forward(Boom b) { Boom local = b; return Read(local) + Read(b); }
+    public static int Main()
+    {
+        int r = 0;
+        try { throw new Boom(7); }
+        catch (Boom problem) { r = Forward(problem); }
+        return r * 10 + Boom.Destroyed;
+    }
+}
+)ns", 141);
+    expectRun(tests, root, "P10OwnedTransfer", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static void Keep(Holder h, owned Boom b) { h.Kept = move(b); }
+    public static int Main()
+    {
+        int r = 0;
+        {
+            raii Holder holder = new Holder();
+            try { throw new Boom(7); }
+            catch (Boom problem) { Keep(holder, move(problem)); }
+            r = holder.Kept.Code * 10 + Boom.Destroyed;
+        }
+        return r * 10 + Boom.Destroyed;
+    }
+}
+)ns", 701);
+    expectRun(tests, root, "P10LoanLocal", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static int Use(Boom b) { Boom x = null; x = b; return x.Code; }
+    public static int Main()
+    {
+        int r = 0;
+        try { throw new Boom(7); }
+        catch (Boom problem) { r = Use(problem); }
+        return r * 10 + Boom.Destroyed;
+    }
+}
+)ns", 71);
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -5997,6 +6237,7 @@ int main()
     testCollectionReferences(tests, root);
     testCollectionReferencesSorted(tests, root);
     testSpanLivenessMap(tests, root);
+    testCaughtExceptionParameterLoan(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);
