@@ -603,11 +603,18 @@ bool ProjectMethodBodyModel::analyzeUserIndexer(
     const std::vector<std::size_t> setters = stage38AccessorCandidates(
         *receiverType, "set_Item", false, false, false,
         accessingTypeOrdinal, *receiverType);
+    // EN: Freeze 3.0 P3: a `ref readonly` getter (finishSyntheticCall marks it readonlyReceiver)
+    //     gives an addressable place even on a readonly receiver, but never an assignable one.
+    // ES: Congelamiento 3.0 P3: un getter `ref readonly` (finishSyntheticCall lo marca
+    //     readonlyReceiver) da un lugar direccionable aun sobre un receptor readonly, pero nunca
+    //     uno asignable.
     const bool referenceGetter = result.addressable;
+    const bool readonlyReference = referenceGetter && result.readonlyReceiver;
     result.assignable = result.valid && !base.readonlyReceiver &&
-        (referenceGetter || !setters.empty());
-    result.addressable = result.valid && !base.readonlyReceiver && referenceGetter;
-    result.readonlyReceiver = base.readonlyReceiver;
+        ((referenceGetter && !readonlyReference) || !setters.empty());
+    result.addressable = result.valid && referenceGetter &&
+        (readonlyReference || !base.readonlyReceiver);
+    result.readonlyReceiver = base.readonlyReceiver || readonlyReference;
     result.receiverSyntax = expression->first();
     result.receiverTypeKey = base.typeKey;
     result.receiverTypeOrdinal = receiverType;

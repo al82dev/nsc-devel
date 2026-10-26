@@ -1491,6 +1491,15 @@ bool verifyReferenceReturnMemberMetadata(
                 "' carries ref-return outside an ordinary method or indexer getter";
             return false;
         }
+        // EN: Freeze 3.0 P3: `ref readonly` qualifies a ref return and nothing else.
+        // ES: Congelamiento 3.0 P3: `ref readonly` califica un retorno ref y nada mas.
+        if ((member.flags & kMetadataMemberReadonlyReferenceReturn) != 0U &&
+            (member.flags & kMetadataMemberReferenceReturn) == 0U)
+        {
+            error = "metadata member '" + member.declaringTypeKey + "." + member.signatureKey +
+                "' carries ref readonly without ref-return";
+            return false;
+        }
     }
     return true;
 }

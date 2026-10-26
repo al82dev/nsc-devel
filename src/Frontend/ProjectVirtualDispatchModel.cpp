@@ -3,6 +3,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 
 #include <string>
@@ -244,7 +245,8 @@ bool ProjectVirtualDispatchModel::validateOverrideSignature(
         return false;
     }
     if (baseMethod.declaredTypeKey != method.declaredTypeKey ||
-        baseMethod.isReferenceReturn != method.isReferenceReturn)
+        baseMethod.isReferenceReturn != method.isReferenceReturn ||
+        isReadonlyReferenceReturn(baseMethod) != isReadonlyReferenceReturn(method))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOverride,

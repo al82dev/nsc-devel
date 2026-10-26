@@ -13,6 +13,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
@@ -877,11 +878,14 @@ bool ProjectMethodBodyModel::analyzePropertyMember(
         receiver.baseReceiver, interfaceCall, diagnostics, true, receiver.readonlyReceiver);
     result.assignable = !receiver.readonlyReceiver && !propertySetters.empty();
     // NS304-T08-F02: a ref-returning getter is assignable even without a setter.
+    // EN: Freeze 3.0 P3: a `ref readonly` getter is not.
+    // ES: Congelamiento 3.0 P3: un getter `ref readonly` no.
     const bool refGetter = std::any_of(
         propertyGetters.begin(), propertyGetters.end(), [&](std::size_t ordinal)
         {
             return ordinal < memberModel_->members().size() &&
-                memberModel_->members()[ordinal].isReferenceReturn;
+                memberModel_->members()[ordinal].isReferenceReturn &&
+                !isReadonlyReferenceReturn(memberModel_->members()[ordinal]);
         });
     if (refGetter) result.assignable = !receiver.readonlyReceiver;
     result.receiverSyntax = typeReceiver ? nullptr : expression->first();

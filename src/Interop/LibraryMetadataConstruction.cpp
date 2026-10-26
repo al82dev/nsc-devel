@@ -17,6 +17,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
@@ -435,6 +436,7 @@ std::uint32_t memberFlags(const frontend::ClassMemberSymbol& member) noexcept
     flags |= static_cast<std::uint32_t>(member.inliningPolicy) << kMetadataMemberInliningShift;
     if (member.isVolatile) flags |= kMetadataMemberVolatile;
     if (member.isReferenceReturn) flags |= kMetadataMemberReferenceReturn;
+    if (frontend::isReadonlyReferenceReturn(member)) flags |= kMetadataMemberReadonlyReferenceReturn;
     if (member.isNoHeap) flags |= kMetadataMemberNoHeap;
     if (member.isVariadic) flags |= kMetadataMemberVariadic;
     if (member.declaredTypeSyntax != nullptr && member.declaredTypeSyntax->isDynamicTrait())

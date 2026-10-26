@@ -811,6 +811,12 @@ private:
         std::string_view className,
         bool structContext,
         MemberParseState& state);
+    // EN: Freeze 3.0 P3: `ref readonly` before a member return type, and the marker it leaves on a
+    //     method, property or indexer (and on its getter).
+    // ES: Congelamiento 3.0 P3: `ref readonly` antes del tipo de retorno de un miembro, y el
+    //     marcador que deja en un metodo, propiedad o indexador (y en su accesor get).
+    bool atReadonlyReferenceReturn() const noexcept;
+    void applyReadonlyReferenceReturn(ast::AstNode* member, SourceRange range);
     ast::AstNode* parseUnnamedBitFieldMember(
         ast::TypeSyntax* type,
         bool isReferenceReturn,

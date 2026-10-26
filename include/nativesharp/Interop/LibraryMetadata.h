@@ -179,6 +179,12 @@ inline constexpr std::uint32_t kMetadataMemberVariadic = 1U << 29U;
 // NSMETA 1.31. The canonical key intentionally remains the trait/interface key because dyn uses
 // that ABI. This semantic bit preserves the explicit dynamic-dispatch spelling for consumers.
 inline constexpr std::uint32_t kMetadataMemberDynamicTrait = 1U << 30U;
+// EN: Freeze 3.0 P3. Bit 31 accompanies bit 24 on a callable declared `ref readonly T`: the alias it
+//     returns may be read but not written. Consumers rebuild the `ref readonly` spelling.
+// ES: Congelamiento 3.0 P3. El bit 31 acompana al bit 24 en un callable declarado `ref readonly T`:
+//     el alias que devuelve se puede leer pero no escribir. Los consumidores reconstruyen la forma
+//     `ref readonly`.
+inline constexpr std::uint32_t kMetadataMemberReadonlyReferenceReturn = 1U << 31U;
 
 // NSMETA 1.32. LibraryMetadataNamespaceFunction::flags bit 5 marks the declaration as an
 // extension method. Its first parameter is the implicit receiver and retains Value/ref/in in the

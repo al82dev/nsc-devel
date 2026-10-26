@@ -22,6 +22,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
@@ -5165,13 +5166,18 @@ bool ProjectMethodBodyModel::analyzeReferenceReturn(
                 "' but method returns ref '" + method.declaredTypeKey + "'");
         return true;
     }
-    if (!value.addressable || !value.assignable)
+    // EN: Freeze 3.0 P3: a `ref readonly` return may alias storage the method can only read.
+    // ES: Congelamiento 3.0 P3: un retorno `ref readonly` puede ser alias de almacenamiento que el
+    //     metodo solo puede leer.
+    const bool readonlyReference = isReadonlyReferenceReturn(method);
+    if (!value.addressable || (!value.assignable && !readonlyReference))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidReturn,
             diagnostics::DiagnosticSeverity::Error,
             statement->first()->range(),
-            "ref return requires a mutable addressable storage location");
+            readonlyReference ? "ref readonly return requires an addressable storage location"
+                              : "ref return requires a mutable addressable storage location");
         return true;
     }
     const MethodEscapeOrigin escape =

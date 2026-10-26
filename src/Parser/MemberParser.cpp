@@ -1,6 +1,8 @@
 #include "nativesharp/Parser/Parser.h"
 #include "KnownGenericTypeScope.h"
 
+#include "nativesharp/AST/ReadonlyReferenceMarker.h"
+
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Lexer/TokenKind.h"
@@ -111,12 +113,15 @@ ast::AstNode* Parser::parseInterfaceMemberImpl(bool isTrait)
         consume();
     }
 
-    const bool isReferenceReturn = atContextualKeyword("ref") &&
-        (canStartTypeAt(index_ + 1U) || peek().kind() == TokenKind::LeftBracket);
+    const SourceRange referenceRange = current().range();
+    const bool isReadonlyReferenceReturn = atReadonlyReferenceReturn();
+    const bool isReferenceReturn = isReadonlyReferenceReturn || (atContextualKeyword("ref") &&
+        (canStartTypeAt(index_ + 1U) || peek().kind() == TokenKind::LeftBracket));
     std::string returnLifetime;
     if (isReferenceReturn)
     {
         consume();
+        if (isReadonlyReferenceReturn) consume();
         returnLifetime = parseOptionalLifetimeAnnotation("ref return");
     }
 
@@ -142,9 +147,11 @@ ast::AstNode* Parser::parseInterfaceMemberImpl(bool isTrait)
 
     InterfaceMemberState state{
         accessibility, sawPublic, sawAbstract, sawNoHeap, sawStatic};
-    return parseInterfaceTypedMember(
+    ast::AstNode* member = parseInterfaceTypedMember(
         isTrait, beginIndex, state, returnType, isReferenceReturn,
         std::move(returnLifetime));
+    if (isReadonlyReferenceReturn) applyReadonlyReferenceReturn(member, referenceRange);
+    return member;
 }
 
 void Parser::parseInterfaceMemberModifiers(
@@ -1315,12 +1322,15 @@ ast::AstNode* Parser::parseTypedClassMember(
     bool structContext,
     MemberParseState& state)
 {
-    const bool isReferenceReturn = atContextualKeyword("ref") &&
-        (canStartTypeAt(index_ + 1U) || peek().kind() == TokenKind::LeftBracket);
+    const SourceRange referenceRange = current().range();
+    const bool isReadonlyReferenceReturn = atReadonlyReferenceReturn();
+    const bool isReferenceReturn = isReadonlyReferenceReturn || (atContextualKeyword("ref") &&
+        (canStartTypeAt(index_ + 1U) || peek().kind() == TokenKind::LeftBracket));
     std::string returnLifetime;
     if (isReferenceReturn)
     {
         consume();
+        if (isReadonlyReferenceReturn) consume();
         returnLifetime = parseOptionalLifetimeAnnotation("ref return");
     }
     if (!canStartTypeAt(index_) && !at(TokenKind::Identifier) &&
@@ -1336,15 +1346,51 @@ ast::AstNode* Parser::parseTypedClassMember(
         return nullptr;
     }
     ast::TypeSyntax* type = parseType();
+    ast::AstNode* member = nullptr;
     if (at(TokenKind::Colon))
-        return parseUnnamedBitFieldMember(type, isReferenceReturn, state);
-    if (at(TokenKind::KwOperator))
-        return parseOperatorClassMember(type, isReferenceReturn, state);
-    if (at(TokenKind::KwThis))
-        return parseIndexerClassMember(type, structContext, isReferenceReturn, state);
-    return parseNamedClassMember(
-        className, structContext, type, isReferenceReturn,
-        std::move(returnLifetime), state);
+        member = parseUnnamedBitFieldMember(type, isReferenceReturn, state);
+    else if (at(TokenKind::KwOperator))
+        member = parseOperatorClassMember(type, isReferenceReturn, state);
+    else if (at(TokenKind::KwThis))
+        member = parseIndexerClassMember(type, structContext, isReferenceReturn, state);
+    else
+        member = parseNamedClassMember(
+            className, structContext, type, isReferenceReturn,
+            std::move(returnLifetime), state);
+    if (isReadonlyReferenceReturn) applyReadonlyReferenceReturn(member, referenceRange);
+    return member;
+}
+
+bool Parser::atReadonlyReferenceReturn() const noexcept
+{
+    return atContextualKeyword("ref") && peek().kind() == TokenKind::KwReadonly &&
+        (canStartTypeAt(index_ + 2U) || peek(2U).kind() == TokenKind::LeftBracket);
+}
+
+// EN: Marks a `ref readonly` member and its reference-returning getter. Only a method, a property
+//     or an indexer returns a reference; a field, a bit-field or an operator cannot be readonly.
+// ES: Marca un miembro `ref readonly` y su accesor get que devuelve referencia. Solo un metodo, una
+//     propiedad o un indexador devuelven una referencia; un campo, un bit-field o un operador no
+//     pueden ser readonly.
+void Parser::applyReadonlyReferenceReturn(ast::AstNode* member, SourceRange range)
+{
+    if (member == nullptr) return;
+    const ast::AstNodeKind kind = member->kind();
+    if (kind != ast::AstNodeKind::MethodDeclaration && kind != ast::AstNodeKind::PropertyDeclaration &&
+        kind != ast::AstNodeKind::IndexerDeclaration)
+    {
+        diagnostics_.report(
+            diagnostics::DiagnosticId::ExpectedDeclaration,
+            diagnostics::DiagnosticSeverity::Error,
+            range,
+            "'ref readonly' is valid only on the return of a method, property or indexer");
+        return;
+    }
+    ast::addReadonlyReferenceMarker(*member);
+    for (ast::AstNode* child : member->children())
+        if (child != nullptr && child->kind() == ast::AstNodeKind::MethodDeclaration &&
+            child->isReference())
+            ast::addReadonlyReferenceMarker(*child);
 }
 
 ast::AstNode* Parser::parseUnnamedBitFieldMember(

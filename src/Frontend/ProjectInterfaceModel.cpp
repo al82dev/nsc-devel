@@ -4,6 +4,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "Internal/ProjectInterfaceImplementingType.h"
 
 #include <algorithm>
@@ -460,6 +461,7 @@ bool ProjectInterfaceModel::inheritInterfaceMethod(
     if (previous.declaredTypeKey != method.declaredTypeKey ||
         previous.declaredErrorTypeKey != method.declaredErrorTypeKey ||
         previous.isReferenceReturn != method.isReferenceReturn ||
+        isReadonlyReferenceReturn(previous) != isReadonlyReferenceReturn(method) ||
         lifetimeContractKey(previous) != lifetimeContractKey(method))
     {
         diagnostics.report(
@@ -673,6 +675,7 @@ bool ProjectInterfaceModel::mergeDeclaredInterfaceMethod(
     if (previous.declaredTypeKey != method.declaredTypeKey ||
         previous.declaredErrorTypeKey != method.declaredErrorTypeKey ||
         previous.isReferenceReturn != method.isReferenceReturn ||
+        isReadonlyReferenceReturn(previous) != isReadonlyReferenceReturn(method) ||
         lifetimeContractKey(previous) != lifetimeContractKey(method))
     {
         diagnostics.report(
@@ -1320,6 +1323,7 @@ std::optional<std::size_t> ProjectInterfaceModel::findImplementation(
             if (candidate.isStatic || candidate.accessibility != ClassMemberAccessibility::Public ||
                 candidate.declaredTypeKey != interfaceMethod.declaredTypeKey ||
                 candidate.isReferenceReturn != interfaceMethod.isReferenceReturn ||
+                isReadonlyReferenceReturn(candidate) != isReadonlyReferenceReturn(interfaceMethod) ||
                 lifetimeContractKey(candidate) != lifetimeContractKey(interfaceMethod) ||
                 candidate.isAbstract)
             {
@@ -1350,6 +1354,7 @@ std::optional<std::size_t> ProjectInterfaceModel::findStaticImplementation(
                 candidate.accessibility != ClassMemberAccessibility::Public ||
                 candidate.declaredTypeKey != requirement.declaredTypeKey ||
                 candidate.isReferenceReturn != requirement.isReferenceReturn ||
+                isReadonlyReferenceReturn(candidate) != isReadonlyReferenceReturn(requirement) ||
                 lifetimeContractKey(candidate) != lifetimeContractKey(requirement) ||
                 candidate.isAbstract)
                 return std::nullopt;

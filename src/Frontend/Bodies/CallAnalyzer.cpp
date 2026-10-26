@@ -14,6 +14,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
@@ -5019,8 +5020,14 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
         result.objectLifetimeOwnership = selectedMember.declaredOwnership;
         result.storageOwnership = selectedMember.declaredOwnership;
     }
-    result.assignable = selectedMember.isReferenceReturn;
+    // EN: Freeze 3.0 P3: a `ref readonly` result is an addressable place that cannot be written;
+    //     like an `in` parameter it admits reads and readonly members only.
+    // ES: Congelamiento 3.0 P3: un resultado `ref readonly` es un lugar direccionable que no se
+    //     puede escribir; como un parametro `in` solo admite lecturas y miembros readonly.
+    const bool readonlyReference = isReadonlyReferenceReturn(selectedMember);
+    result.assignable = selectedMember.isReferenceReturn && !readonlyReference;
     result.addressable = selectedMember.isReferenceReturn;
+    result.readonlyReceiver = result.readonlyReceiver || readonlyReference;
     result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
     // An owned return crosses the call boundary without a named owner. It is therefore a
     // fresh owner in the caller, just like `new T(...)`, and may participate in the
@@ -5732,8 +5739,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishSynthetic
     {
         call.resultTypeKey = memberPtr->declaredTypeKey;
         call.staticCall = memberPtr->isStatic;
-        result.assignable = memberPtr->isReferenceReturn;
+        // EN: Freeze 3.0 P3: an accessor declared `ref readonly` (see configureSelectedCallBinding).
+        // ES: Congelamiento 3.0 P3: un accesor declarado `ref readonly` (ver
+        //     configureSelectedCallBinding).
+        const bool readonlyReference = isReadonlyReferenceReturn(*memberPtr);
+        result.assignable = memberPtr->isReferenceReturn && !readonlyReference;
         result.addressable = memberPtr->isReferenceReturn;
+        result.readonlyReceiver = readonlyReference;
         // EN: Freeze 3.0 C-01: a user operator or conversion that declares an `owned` return
         //     transfers ownership exactly like an ordinary owned-returning call, so
         //     `raii T sum = a + b;` takes ownership of the operator's new object.

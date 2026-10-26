@@ -398,7 +398,9 @@ bool PublicSurfaceBuilder::emitAccessorContract(const AccessorContract &contract
     (*generated) << "    " << sourceAccessibility(accessibility) << ' ';
     emitAccessorModifiers(shape, interfaceContext, preserveStatic, declarationReadonly);
     if ((shape.flags & interop::kMetadataMemberReferenceReturn) != 0U)
-        (*generated) << "ref" << lifetimeAnnotation(shape.returnLifetimeName) << ' ';
+        (*generated) << "ref"
+                     << ((shape.flags & interop::kMetadataMemberReadonlyReferenceReturn) != 0U ? " readonly" : "")
+                     << lifetimeAnnotation(shape.returnLifetimeName) << ' ';
     (*generated) << ownershipPrefix(declaredOwnership)
                  << ((shape.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "") << declaredType << ' ';
     if (contract.isIndexer)
@@ -564,7 +566,9 @@ bool PublicSurfaceBuilder::emitInterfaceMethod(
     if ((member.flags & interop::kMetadataMemberNoHeap) != 0U)
         (*generated) << "noheap ";
     if ((member.flags & interop::kMetadataMemberReferenceReturn) != 0U)
-        (*generated) << "ref" << lifetimeAnnotation(member.returnLifetimeName) << ' ';
+        (*generated) << "ref"
+                     << ((member.flags & interop::kMetadataMemberReadonlyReferenceReturn) != 0U ? " readonly" : "")
+                     << lifetimeAnnotation(member.returnLifetimeName) << ' ';
     (*generated) << ownershipPrefix(member.declaredOwnership)
                  << ((member.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "") << returnType << ' '
                  << member.name;
@@ -1027,7 +1031,9 @@ bool PublicSurfaceBuilder::emitOrdinaryMethod(const interop::LibraryMetadataMemb
     if ((member.flags & interop::kMetadataMemberNoHeap) != 0U)
         (*generated) << "noheap ";
     if ((member.flags & interop::kMetadataMemberReferenceReturn) != 0U)
-        (*generated) << "ref" << lifetimeAnnotation(member.returnLifetimeName) << ' ';
+        (*generated) << "ref"
+                     << ((member.flags & interop::kMetadataMemberReadonlyReferenceReturn) != 0U ? " readonly" : "")
+                     << lifetimeAnnotation(member.returnLifetimeName) << ' ';
     (*generated) << ownershipPrefix(member.declaredOwnership)
                  << ((member.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "") << returnType << ' '
                  << member.name;

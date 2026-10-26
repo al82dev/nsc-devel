@@ -3025,6 +3025,201 @@ class Program
         "generic parameter 'TPriority' of 'PriorityQueue constructor' requires copyable storage", true);
 }
 
+/// EN: P3 (DEC-12). `ref readonly T` on a method, property or indexer returns an alias that may be
+///     read, passed to readonly members and bound by `foreach (ref ...)`, but not written, moved,
+///     bound to a mutable `ref` local, used by a mutating struct member or iterated with `ref mut`.
+///     An implementation or override must keep the mode.
+/// ES: P3 (DEC-12). `ref readonly T` en un metodo, propiedad o indexador devuelve un alias que se
+///     puede leer, pasar a miembros readonly y enlazar con `foreach (ref ...)`, pero no escribir,
+///     mover, enlazar a un local `ref` mutable, usar con un miembro mutante de struct ni recorrer con
+///     `ref mut`. Una implementacion o un override debe conservar el modo.
+void testReadonlyReferenceReturns(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P3RefReadonlyReads", R"ns(
+class Cell
+{
+    private int v;
+    public Cell() { v = 7; }
+    public ref readonly int Get() { return ref v; }
+    public ref int GetMut() { return ref v; }
+    public ref readonly int this[int i] { get { return ref v; } }
+    public ref readonly int Value { get { return ref v; } }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Cell c = new Cell();
+        int a = c.Get();
+        c.GetMut() = 9;
+        return a * 1000 + c.Get() * 100 + c[0] * 10 + c.Value - 9;
+    }
+}
+)ns", 7990);
+    expectRun(tests, root, "P3RefReadonlyInterface", R"ns(
+interface IGet { ref readonly int Get(); }
+class Cell : IGet
+{
+    private int v;
+    public Cell() { v = 3; }
+    public ref readonly int Get() { return ref v; }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Cell c = new Cell();
+        borrowed IGet g = c;
+        return g.Get();
+    }
+}
+)ns", 3);
+    expectRun(tests, root, "P3RefReadonlyForeach", R"ns(
+class Bag
+{
+    public owned BagEnumerator GetEnumerator() { return new BagEnumerator(); }
+}
+class BagEnumerator
+{
+    private int current;
+    public bool MoveNext() { current = current + 1; return current <= 3; }
+    public ref readonly int Current { get { return ref current; } }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Bag b = new Bag();
+        int sum = 0;
+        foreach (ref int x in b) { sum = sum * 10 + x; }
+        foreach (int y in b) { sum = sum * 10 + y; }
+        return sum;
+    }
+}
+)ns", 123123);
+    expectReject(tests, root, "P3RefReadonlyAssign", R"ns(
+class Cell
+{
+    private int v;
+    public ref readonly int Get() { return ref v; }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Cell c = new Cell();
+        c.Get() = 5;
+        return 0;
+    }
+}
+)ns", "left side of assignment is not assignable");
+    expectReject(tests, root, "P3RefReadonlyRefLocal", R"ns(
+class Cell
+{
+    private int v;
+    public ref readonly int Get() { return ref v; }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Cell c = new Cell();
+        ref int x = ref c.Get();
+        return x;
+    }
+}
+)ns", "reference-local initializer must be a mutable addressable storage location");
+    expectReject(tests, root, "P3RefReadonlyMutatingCall", R"ns(
+struct S
+{
+    public int A;
+    public void Bump() { A = A + 1; }
+}
+class Holder
+{
+    private S s;
+    public ref readonly S Get() { return ref s; }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Holder h = new Holder();
+        h.Get().Bump();
+        return 0;
+    }
+}
+)ns", "readonly receiver cannot invoke mutating struct member 'Bump'");
+    expectReject(tests, root, "P3RefReadonlyFieldWrite", R"ns(
+struct S { public int A; }
+class Holder
+{
+    private S s;
+    public ref readonly S Get() { return ref s; }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Holder h = new Holder();
+        h.Get().A = 3;
+        return 0;
+    }
+}
+)ns", "left side of assignment is not assignable");
+    expectReject(tests, root, "P3RefReadonlyPropertyWrite", R"ns(
+class Table
+{
+    private int v;
+    public ref readonly int First { get { return ref v; } }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Table t = new Table();
+        t.First = 1;
+        return 0;
+    }
+}
+)ns", "left side of assignment is not assignable");
+    expectReject(tests, root, "P3RefReadonlyInterfaceMode", R"ns(
+interface IGet { ref readonly int Get(); }
+class Cell : IGet
+{
+    private int v;
+    public ref int Get() { return ref v; }
+}
+class Program { public static int Main() { return 0; } }
+)ns", "does not implement interface method 'Get()'");
+    expectReject(tests, root, "P3RefReadonlyOnField", R"ns(
+struct S { public ref readonly int F; }
+class Program { public static int Main() { return 0; } }
+)ns", "'ref readonly' is valid only on the return of a method, property or indexer");
+    expectReject(tests, root, "P3RefReadonlyForeachRefMut", R"ns(
+class Bag
+{
+    public owned BagEnumerator GetEnumerator() { return new BagEnumerator(); }
+}
+class BagEnumerator
+{
+    private int current;
+    public bool MoveNext() { current = current + 1; return current <= 3; }
+    public ref readonly int Current { get { return ref current; } }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Bag b = new Bag();
+        int sum = 0;
+        foreach (ref mut int x in b) { x = 5; }
+        return sum;
+    }
+}
+)ns", "reference-local initializer must be a mutable addressable storage location");
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -4546,6 +4741,7 @@ int main()
     testMemberCopyConstraint(tests, root);
     testConstructorCopyConstraint(tests, root);
     testInDelegateOverloads(tests, root);
+    testReadonlyReferenceReturns(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);
