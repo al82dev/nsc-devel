@@ -81,6 +81,14 @@ std::string versionPair(std::uint16_t major, std::uint16_t minor)
 // objetos, la celda delegate o el transporte de excepciones. Esta funcion es la
 // unica tabla de compatibilidad del contrato 1.0 y la comparten el escritor de
 // modelos y el consumidor.
+// EN: Object ABI mismatch text. A library from another object ABI must be rebuilt, never mixed.
+// ES: Texto del desajuste de object ABI. Una biblioteca de otro object ABI se recompila, nunca se mezcla.
+std::string objectAbiMismatchMessage(std::uint16_t found)
+{
+    return "NativeSharp ABI contract mismatch: object ABI expected " + std::to_string(kObjectAbiVersion) +
+        ", found " + std::to_string(found) + "; recompile the library with the current compiler";
+}
+
 bool verifyFrozenAbiContract(const LibraryMetadata& metadata, std::string& error)
 {
     if (metadata.nativeAbiMajor != kNativeAbiMajor || metadata.nativeAbiMinor > kNativeAbiMinor)
@@ -103,9 +111,13 @@ bool verifyFrozenAbiContract(const LibraryMetadata& metadata, std::string& error
                 std::to_string(expected) + ", found " + std::to_string(found);
         return false;
     };
-    if (!exactVersion("mangling ABI", metadata.manglingAbiVersion, kManglingAbiVersion) ||
-        !exactVersion("object ABI", metadata.objectAbiVersion, kObjectAbiVersion) ||
-        !exactVersion("delegate ABI", metadata.delegateAbiVersion, kDelegateAbiVersion) ||
+    if (!exactVersion("mangling ABI", metadata.manglingAbiVersion, kManglingAbiVersion)) return false;
+    if (metadata.objectAbiVersion != kObjectAbiVersion)
+    {
+        error = objectAbiMismatchMessage(metadata.objectAbiVersion);
+        return false;
+    }
+    if (!exactVersion("delegate ABI", metadata.delegateAbiVersion, kDelegateAbiVersion) ||
         !exactVersion("exception ABI", metadata.exceptionAbiVersion, kExceptionAbiVersion))
     {
         return false;
@@ -760,6 +772,10 @@ bool authenticateDecodedMetadata(
         basic::sha256(encodeAbiProjection(decoded));
     if (sameFingerprint(recomputedAbi, decoded.abiFingerprint)) return true;
     error = "NativeSharp metadata ABI fingerprint mismatch";
+    // EN: A library from another object ABI also fails here once the projection changed; name the cause.
+    // ES: Una biblioteca de otro object ABI también falla aquí si la proyección cambió; se nombra la causa.
+    if (decoded.objectAbiVersion != kObjectAbiVersion)
+        error += "; " + objectAbiMismatchMessage(decoded.objectAbiVersion);
     return false;
 }
 

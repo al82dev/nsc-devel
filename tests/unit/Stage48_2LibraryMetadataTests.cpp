@@ -345,7 +345,7 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
             metadata.nativeAbiMinor == nativesharp::interop::kNativeAbiMinor &&
             metadata.runtimeAbiMajor == nativesharp::interop::kRuntimeAbiMajor &&
             metadata.runtimeAbiMinor == nativesharp::interop::kRuntimeAbiMinor &&
-            metadata.manglingAbiVersion == 1 && metadata.objectAbiVersion == 2 &&
+            metadata.manglingAbiVersion == 1 && metadata.objectAbiVersion == 3 &&
             metadata.delegateAbiVersion == 1 && metadata.exceptionAbiVersion == 1 &&
             metadata.managedDelegateCellSize == 32,
                  "NSMETA separates its file version from the frozen "
@@ -539,8 +539,9 @@ public class Api
     tests.expect(codec.read(goldenPath, goldenDecoded, error),
         "the ABI 1.0 golden metadata model round-trips");
     const std::string goldenHex = LibraryMetadataCodec::fingerprintHex(goldenDecoded.abiFingerprint);
-    tests.expect(goldenHex == "76fa6ca4e7bed7d22e1898ec6130509dc2d89b3350a78ba22e6401df0852e6af",
-        "ABI root contract with Object ABI 2 retains its reviewed golden fingerprint (" +
+    // Freeze 3.0 P8: Object ABI 3 changes the root contract, so the reviewed fingerprint changes with it.
+    tests.expect(goldenHex == "81d5bb9ceca1c22e507e4a66d9d305d414358a2fd00be9767973139d4d6cdea0",
+        "ABI root contract with Object ABI 3 retains its reviewed golden fingerprint (" +
             goldenHex + ")");
 }
 
@@ -1446,12 +1447,18 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                              " golden remains readable (" + error + ")");
             error.clear();
             const bool goldenCompatible = goldenRead && codec.verifyCurrentCompiler(golden, error);
-            if (minor >= 8 && minor < 15)
+            // Freeze 3.0 P8: Object ABI 3 (array liveness map, array-backed Span). Goldens with object ABI 1
+            // (1.8-1.14) and 2 (1.15 onwards) are rejected and asked to be recompiled.
+            if (minor >= 8)
             {
+                std::string foundAbi = "found 2";
+                if (minor < 15) foundAbi = "found 1";
                 tests.expect(!goldenCompatible &&
-                                 error.find("object ABI expected 2, found 1") != std::string::npos,
+                                 error.find("object ABI expected 3, " + foundAbi +
+                                            "; recompile the library with the current compiler") !=
+                                     std::string::npos,
                              "archived NSMETA 1." + std::to_string(minor) +
-                                 " golden is rejected at the explicit Object ABI 2 boundary (" + error + ")");
+                                 " golden is rejected at the explicit Object ABI 3 boundary (" + error + ")");
             }
             else
             {
@@ -1561,10 +1568,10 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                      error.find("mangling ABI expected 1, found 2") != std::string::npos,
                  "E5 identifies the mangling contract independently");
     incompatible = metadata;
-    incompatible.objectAbiVersion = 3;
+    incompatible.objectAbiVersion = 4;
     error.clear();
     tests.expect(!codec.verifyCurrentCompiler(incompatible, error) &&
-                     error.find("object ABI expected 2, found 3") != std::string::npos,
+                     error.find("object ABI expected 3, found 4") != std::string::npos,
                  "E5 identifies the object-layout contract independently");
     incompatible = metadata;
     incompatible.managedDelegateCellSize = 16;
@@ -1704,7 +1711,7 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
                          std::string::npos &&
                      output.find("native-abi: 1.0") != std::string::npos &&
                      output.find("runtime-abi: 1.2") != std::string::npos &&
-                     output.find("object-abi: 2") != std::string::npos &&
+                     output.find("object-abi: 3") != std::string::npos &&
                      output.find("delegate-cell-size: 32") != std::string::npos,
                  "driver verification prints the complete frozen ABI contract, "
                  "not only its fingerprint");

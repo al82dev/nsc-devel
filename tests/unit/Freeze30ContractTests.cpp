@@ -12,7 +12,10 @@
 //     futures, C-16 cleanup de generators y C-17 errores de async-generators.
 
 #include "nativesharp/Basic/ExitCode.h"
+#include "nativesharp/Basic/Version.h"
 #include "nativesharp/Driver/Driver.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Interop/LibraryMetadataCodec.h"
 
 #include "../support/TestContext.h"
 
@@ -4826,6 +4829,33 @@ class Program
 )ns", 3);
 }
 
+/// EN: Freeze 3.0 P8. Object ABI 3 marks the array and span layout of DEC-11 and P4. A library with object ABI 2 is
+///     rejected and the diagnostic asks for its recompilation; the NSMETA version is not consulted.
+/// ES: Congelamiento 3.0 P8. El object ABI 3 marca el layout de arreglos y spans de DEC-11 y P4. Una biblioteca con
+///     object ABI 2 se rechaza y el diagnostico pide recompilarla; no se consulta la version de NSMETA.
+void testObjectAbiBoundary(TestContext& tests, const std::filesystem::path& root)
+{
+    (void)root;
+    nativesharp::interop::LibraryMetadataCodec codec;
+    nativesharp::interop::LibraryMetadata metadata;
+    metadata.targetId = 1;
+    metadata.pointerSize = 8;
+    metadata.pointerAlignment = 8;
+    metadata.producerVersion = std::string(nativesharp::kCompilerVersion);
+    metadata.targetTriple = "x86_64-pc-windows-msvc";
+    metadata.moduleName = "OldObjectAbi";
+    metadata.objectAbiVersion = 2;
+    std::string error;
+    tests.expect(!codec.verifyCurrentCompiler(metadata, error) &&
+                     error.find("object ABI expected 3, found 2; recompile the library with the current compiler") !=
+                         std::string::npos,
+                 "P8: a library with object ABI 2 is rejected with a recompile request (" + error + ")");
+    metadata.objectAbiVersion = nativesharp::interop::kObjectAbiVersion;
+    error.clear();
+    tests.expect(codec.verifyCurrentCompiler(metadata, error),
+                 "P8: the same library with the current object ABI is accepted (" + error + ")");
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -6362,6 +6392,7 @@ int main()
     testCaughtExceptionParameterLoan(tests, root);
     testCaughtExceptionNotCaptured(tests, root);
     testReplacedAllocatorSignature(tests, root);
+    testObjectAbiBoundary(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

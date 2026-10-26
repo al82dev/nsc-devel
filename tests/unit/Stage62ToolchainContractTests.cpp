@@ -104,7 +104,7 @@ int main()
                      contract.find("mir_schema=" + mirSchema + "\n") != std::string::npos,
         "contract freezes the runtime symbol set and MIR schema");
     tests.expect(contract.find("mangling_abi=1\n") != std::string::npos &&
-                     contract.find("object_abi=2\n") != std::string::npos &&
+                     contract.find("object_abi=3\n") != std::string::npos &&
                      contract.find("delegate_abi=1\n") != std::string::npos &&
                      contract.find("exception_abi=1\n") != std::string::npos,
         "contract identifies every physical ABI sub-contract");

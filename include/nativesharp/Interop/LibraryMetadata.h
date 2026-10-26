@@ -211,7 +211,13 @@ inline constexpr std::uint16_t kRuntimeAbiMinor = runtime::kRuntimeAbiMinor;
 inline constexpr std::uint16_t kManglingAbiVersion = 1;
 // NativeSharp 2.0 item 319 appends the object-only destruction entry to every class descriptor.
 // Existing field offsets remain stable, but a producer without field 7 cannot satisfy `destroy`.
-inline constexpr std::uint16_t kObjectAbiVersion = 2;
+// EN: Freeze 3.0 P8 raises it to 3. An array whose element needs a value drop carries a liveness map
+//     after its data (DEC-11), and an array-backed Span/ReadOnlySpan carries its source array and
+//     offset (P4, 16 -> 32 bytes). A producer with object ABI 2 passes or receives the old layout.
+// ES: Congelamiento 3.0 P8 lo sube a 3. Un arreglo cuyo elemento requiere drop lleva un mapa de vida
+//     tras sus datos (DEC-11), y un Span/ReadOnlySpan sobre un arreglo lleva el arreglo y su
+//     desplazamiento (P4, de 16 a 32 bytes). Un productor con object ABI 2 usa el layout anterior.
+inline constexpr std::uint16_t kObjectAbiVersion = 3;
 inline constexpr std::uint16_t kDelegateAbiVersion = 1;
 inline constexpr std::uint16_t kExceptionAbiVersion = 1;
 inline constexpr std::uint32_t kManagedDelegateCellSize = 32;
