@@ -2333,6 +2333,7 @@ class Program
 }
 )ns", 43721);
     expectRun(tests, root, "C17SyncDrop", std::string(kAsyncErrorPrelude) + R"ns(
+class Program
 {
     private static AsyncIterator<int, MyError> Gen() throws MyError
     {
@@ -2357,6 +2358,7 @@ class Program
 }
 )ns", 415);
     expectRun(tests, root, "C17AsyncDrop", std::string(kAsyncErrorPrelude) + R"ns(
+class Program
 {
     private static AsyncIterator<int, MyError> Gen() throws MyError
     {
@@ -2381,6 +2383,7 @@ class Program
 }
 )ns", 415);
     expectRun(tests, root, "C17AsyncAwaitDrop", std::string(kAsyncErrorPrelude) + R"ns(
+class Program
 {
     private static async int Fail() throws MyError { yield; throw new MyError(4); }
     private static async int Walk() throws MyError
