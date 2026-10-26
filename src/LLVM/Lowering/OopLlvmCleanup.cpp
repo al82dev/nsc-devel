@@ -576,6 +576,7 @@ bool OopLlvmImplementation::emitNativeArrayDestroy(
 // EN: Freeze 3.0 C-12: an owning array of structs with a destructor or owned fields destroyed only
 //     its buffer, so every element's resources leaked. The elements are dropped in place, last
 //     to first, before the buffer is released; a moved-out element was left zeroed by its move.
+//     Freeze 3.0 DEC-11: only live elements are dropped (see the live bits after the data).
 // ES: Congelamiento 3.0 C-12: un arreglo dueno de structs con destructor o campos owned solo
 //     liberaba su buffer, asi que los recursos de cada elemento se fugaban. Los elementos se
 //     destruyen en su lugar, del ultimo al primero, antes de liberar el buffer; un elemento movido
@@ -619,13 +620,22 @@ bool OopLlvmImplementation::emitNativeArrayValueElementDrop(
         LLVMValueRef indices[] = {offset};
         LLVMValueRef address = LLVMBuildGEP2(
             builder_, LLVMInt8TypeInContext(context_), array, indices, 1, (prefix + ".values.addr").c_str());
+        // EN: Freeze 3.0 DEC-11: only a live element is dropped; a never-written, moved-out or
+        //     deleted one is skipped.
+        // ES: Congelamiento 3.0 DEC-11: solo se destruye un elemento vivo; uno nunca escrito, movido o
+        //     borrado se salta.
+        const OopLlvmArrayElementLiveness liveness =
+            arrayElementLiveness(array, index, dataOffset, elementSize);
+        LLVMBasicBlockRef dropBlock = appendBlock(prefix + ".values.drop");
+        LLVMBasicBlockRef nextBlock = appendBlock(prefix + ".values.next");
+        LLVMBuildCondBr(builder_, arrayElementIsAlive(liveness), dropBlock, nextBlock);
+        enterBlock(dropBlock);
         if (!emitValueDropAddress(address, elementType, prefix + ".value", error)) return false;
+        if (!terminated()) LLVMBuildBr(builder_, nextBlock);
+        enterBlock(nextBlock);
         LLVMBasicBlockRef latch = LLVMGetInsertBlock(builder_);
-        if (!terminated())
-        {
-            LLVMBuildBr(builder_, conditionBlock);
-            LLVMAddIncoming(remaining, &index, &latch, 1);
-        }
+        LLVMBuildBr(builder_, conditionBlock);
+        LLVMAddIncoming(remaining, &index, &latch, 1);
         enterBlock(doneBlock);
         return true;
     }
@@ -634,23 +644,42 @@ bool OopLlvmImplementation::emitNativeArrayValueElementDrop(
 //     in place and zeroes its slot, so the slot holds the default value afterwards.
 // ES: Congelamiento 3.0 C-12: `delete items[i]` de un elemento struct que requiere drop destruye el
 //     elemento en su lugar y pone su slot en cero, asi el slot queda con el valor por defecto.
+// EN: Freeze 3.0 DEC-11: with `liveness`, only a live element is dropped, zeroed and marked dead;
+//     deleting a dead one does nothing.
+// ES: Congelamiento 3.0 DEC-11: con `liveness`, solo un elemento vivo se destruye, se pone en cero
+//     y queda muerto; borrar uno muerto no hace nada.
 bool OopLlvmImplementation::emitValueElementDelete(
         LLVMValueRef address,
         std::string_view elementType,
+        const std::optional<OopLlvmArrayElementLiveness>& liveness,
         std::string& error)
 {
         const auto [elementSize, elementAlignment] = captureValueLayout(elementType, error);
         if (!error.empty()) return false;
         if (elementSize == 0 || elementAlignment == 0 || memsetFunction_ == nullptr)
             return fail(error, "Freeze 3.0 C-12 deleted element has no value layout");
+        LLVMBasicBlockRef doneBlock = nullptr;
+        if (liveness.has_value())
+        {
+            LLVMBasicBlockRef deleteBlock = appendBlock("delete.value.alive");
+            doneBlock = appendBlock("delete.value.done");
+            LLVMBuildCondBr(builder_, arrayElementIsAlive(*liveness), deleteBlock, doneBlock);
+            enterBlock(deleteBlock);
+        }
         if (!emitValueDropAddress(address, elementType, "delete.value", error)) return false;
-        if (terminated()) return true;
-        LLVMValueRef arguments[] = {
-            address,
-            LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
-            LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0),
-            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
-        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, arguments, 4, "");
+        if (!terminated())
+        {
+            LLVMValueRef arguments[] = {
+                address,
+                LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+                LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0),
+                LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+            buildNoUnwindCall(memsetFunctionType_, memsetFunction_, arguments, 4, "");
+            if (liveness.has_value()) setArrayElementAlive(*liveness, false);
+        }
+        if (doneBlock == nullptr) return true;
+        if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 

@@ -443,6 +443,7 @@ bool OopLlvmImplementation::emitTypeInitializerBody(
                 staticInitializationFailureUnwindBlock_ = nullptr;
                 return fail(error, "Stage 37 runtime static initializer lost its field global");
             }
+            classifyArrayElementAccesses(initializer.value.get());
             LLVMValueRef value = lowerExpression(initializer.value.get(), error);
             if (value == nullptr)
             {

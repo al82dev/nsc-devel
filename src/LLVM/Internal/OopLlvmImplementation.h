@@ -2,6 +2,8 @@
 
 #include "DropCase.h"
 #include "OopLlvmActiveCatchBody.h"
+#include "OopLlvmArrayElementAccess.h"
+#include "OopLlvmArrayElementLiveness.h"
 #include "OopLlvmCachedCleanup.h"
 #include "OopLlvmCoroutineState.h"
 #include "OopLlvmExceptionHandlerContext.h"
@@ -777,7 +779,11 @@ private:
         std::string_view elementType,
         const std::string& prefix,
         std::string& error);
-    bool emitValueElementDelete(LLVMValueRef address, std::string_view elementType, std::string& error);
+    bool emitValueElementDelete(
+        LLVMValueRef address,
+        std::string_view elementType,
+        const std::optional<OopLlvmArrayElementLiveness>& liveness,
+        std::string& error);
 
     bool emitNativeArrayElementDestruction(
         LLVMValueRef array,
@@ -1371,6 +1377,8 @@ private:
     void enterCoroutineResumeTarget(const frontend::ProjectOopMirNode* statement);
     // EN: Freeze 3.0 D-01: the replay slot of an operand next to a suspending await.
     // ES: Congelamiento 3.0 D-01: el slot de repeticion de un operando junto a un await que suspende.
+    void markCoroutineReplayOperands(
+        const frontend::ProjectOopMirNode* ancestor, const frontend::ProjectOopMirNode* onPath, std::int64_t id);
     bool beginCoroutineReplaySpill(
         const frontend::ProjectOopMirNode* node, OopLlvmReplaySpill& spill, std::string& error);
     LLVMValueRef finishCoroutineReplaySpill(
@@ -2230,6 +2238,40 @@ private:
 
     LLVMValueRef lowerRangeArrayElementAddress(
         const frontend::ProjectOopMirNode* node,
+        std::string& error);
+
+    // EN: Freeze 3.0 DEC-11: live/dead state per element of an array of structs with a destructor
+    //     (OopLlvmArraysAndStores.cpp).
+    // ES: Congelamiento 3.0 DEC-11: estado vivo/muerto por elemento de un arreglo de structs con
+    //     destructor (OopLlvmArraysAndStores.cpp).
+    bool arrayElementLivenessTracked(std::string_view elementType) const;
+    std::string arrayAllocationElementType(const frontend::ProjectOopMirNode* node) const;
+    std::string arrayAccessElementType(const frontend::ProjectOopMirNode* node) const;
+    void classifyArrayElementAccesses(const frontend::ProjectOopMirNode* root);
+    OopLlvmArrayElementAccess arrayElementAccessFor(
+        const frontend::ProjectOopMirNode* element,
+        const std::unordered_map<const frontend::ProjectOopMirNode*, const frontend::ProjectOopMirNode*>&
+            parents) const;
+    LLVMValueRef arrayLivenessByteCount(LLVMValueRef count);
+    OopLlvmArrayElementLiveness arrayElementLiveness(
+        LLVMValueRef array, LLVMValueRef linearIndex, std::uint64_t dataOffset, std::uint64_t elementSize);
+    LLVMValueRef arrayElementIsAlive(const OopLlvmArrayElementLiveness& liveness);
+    void setArrayElementAlive(const OopLlvmArrayElementLiveness& liveness, bool alive);
+    bool applyArrayElementAccess(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef array,
+        LLVMValueRef address,
+        std::uint64_t dataOffset,
+        std::uint64_t elementSize,
+        std::string& error);
+    bool reviveArrayElement(
+        const OopLlvmArrayElementLiveness& liveness, LLVMValueRef address, std::uint64_t elementSize);
+    std::optional<OopLlvmArrayElementLiveness> takeArrayElementLiveness(
+        const frontend::ProjectOopMirNode* node);
+    bool dropReplacedArrayElement(
+        LLVMValueRef address,
+        std::string_view typeKey,
+        const OopLlvmArrayElementLiveness& liveness,
         std::string& error);
 
     LLVMValueRef emitRuntimeTypeTest(
@@ -3489,6 +3531,12 @@ private:
     // T03-F03. The value/address pair for each nested match governing expression. The value is
     // computed once; generated MatchValue nodes select the representation their HIR context needs.
     std::vector<std::pair<LLVMValueRef, LLVMValueRef>> matchValueStack_;
+    // EN: Freeze 3.0 DEC-11: the access kind of every classified array element node, and the
+    //     liveness bit a store, move or delete takes from the element it just lowered.
+    // ES: Congelamiento 3.0 DEC-11: el tipo de acceso de cada nodo de elemento clasificado, y el bit
+    //     de vida que un store, move o delete toma del elemento que acaba de bajar.
+    std::unordered_map<const frontend::ProjectOopMirNode*, OopLlvmArrayElementAccess> arrayElementAccess_;
+    std::unordered_map<const frontend::ProjectOopMirNode*, OopLlvmArrayElementLiveness> arrayElementLiveness_;
     // NS304-T15-F05. Active overflow policy for the wrapped expression ("checked"/"saturating",
     // empty outside). The decimal arithmetic ops consult this single-threaded flag.
     std::string currentOverflowPolicy_;

@@ -575,6 +575,14 @@ void OopLlvmImplementation::finishArrayElementFrame(
         std::vector<LLVMValueRef>& values, std::string& error)
 {
     LLVMValueRef address = arrayElementAddressFromParts(current, object, index, stringValue, error);
+    // EN: Freeze 3.0 DEC-11: liveness work of an element of an array of structs with a destructor.
+    // ES: Congelamiento 3.0 DEC-11: trabajo de vida de un elemento de un arreglo de structs con
+    //     destructor.
+    if (address != nullptr && !stringValue && current->alignment != 0 &&
+        !applyArrayElementAccess(
+            current, object, address, (8U + current->alignment - 1U) / current->alignment * current->alignment,
+            current->immediate, error))
+        address = nullptr;
     if (current->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress ||
         current->kind == frontend::ProjectOopMirNodeKind::StringCharacterPointer)
     {
@@ -1430,6 +1438,11 @@ bool OopLlvmImplementation::lowerExpressionFrame029MoveArrayElement(
     {
         LLVMBuildStore(builder_, LLVMConstNull(elementType), address);
     }
+    // EN: Freeze 3.0 DEC-11: the moved-out slot is dead.
+    // ES: Congelamiento 3.0 DEC-11: el slot del que se movio queda muerto.
+    if (const std::optional<OopLlvmArrayElementLiveness> liveness =
+            takeArrayElementLiveness(current->children.front().get()))
+        setArrayElementAlive(*liveness, false);
     values.push_back(value);
     return true;
 }

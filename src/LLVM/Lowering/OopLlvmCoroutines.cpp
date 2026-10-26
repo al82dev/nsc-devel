@@ -101,10 +101,7 @@ void OopLlvmImplementation::collectCoroutineSuspensions(const frontend::ProjectO
                 for (auto parent = parents.find(onPath); parent != parents.end();
                      parent = parents.find(onPath))
                 {
-                    for (const auto& sibling : parent->second->children)
-                        if (sibling != nullptr && sibling.get() != onPath &&
-                            sibling->replaySpillOffset.has_value())
-                            coroutine_.replayIds[sibling.get()].push_back(id);
+                    markCoroutineReplayOperands(parent->second, onPath, id);
                     onPath = parent->second;
                 }
             }
@@ -344,6 +341,35 @@ void OopLlvmImplementation::enterCoroutineResumeTarget(const frontend::ProjectOo
         LLVMBuildBr(builder_, block);
         enterBlock(block);
         for (const std::int64_t id : found->second) coroutine_.resumeBlocks[id] = block;
+}
+
+void OopLlvmImplementation::markCoroutineReplayOperands(
+        const frontend::ProjectOopMirNode* ancestor, const frontend::ProjectOopMirNode* onPath, std::int64_t id)
+{
+        // EN: Freeze 3.0 D-01: every slotted child of `ancestor` off the path is loaded while the
+        //     replay toward `id` runs. Freeze 3.0 DEC-11: an array element address has no slot; its
+        //     operands do (MIR assignReplaySpillSlotsBeside), so the walk goes into it.
+        // ES: Congelamiento 3.0 D-01: todo hijo con slot de `ancestor` fuera del camino se carga
+        //     mientras corre la repeticion hacia `id`. Congelamiento 3.0 DEC-11: la direccion de un
+        //     elemento de arreglo no tiene slot; sus operandos si, asi que el recorrido entra en ella.
+        std::vector<const frontend::ProjectOopMirNode*> pending;
+        for (const auto& child : ancestor->children)
+            if (child != nullptr && child.get() != onPath) pending.push_back(child.get());
+        while (!pending.empty())
+        {
+            const frontend::ProjectOopMirNode* operand = pending.back();
+            pending.pop_back();
+            if (operand->replaySpillOffset.has_value())
+            {
+                coroutine_.replayIds[operand].push_back(id);
+                continue;
+            }
+            if (operand->kind != frontend::ProjectOopMirNodeKind::ArrayElementAddress &&
+                operand->kind != frontend::ProjectOopMirNodeKind::RangeArrayElementAddress)
+                continue;
+            for (const auto& inner : operand->children)
+                if (inner != nullptr) pending.push_back(inner.get());
+        }
 }
 
 bool OopLlvmImplementation::beginCoroutineReplaySpill(

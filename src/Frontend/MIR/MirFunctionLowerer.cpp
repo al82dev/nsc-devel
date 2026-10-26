@@ -825,9 +825,63 @@ bool replaySpillCandidateKind(ProjectOopMirNodeKind kind) noexcept
 bool replaySpillAddressKind(ProjectOopMirNodeKind kind) noexcept
 {
     return kind == ProjectOopMirNodeKind::FieldAddress ||
-        kind == ProjectOopMirNodeKind::ArrayElementAddress ||
-        kind == ProjectOopMirNodeKind::RangeArrayElementAddress ||
         kind == ProjectOopMirNodeKind::RawElementAddress;
+}
+
+// EN: Freeze 3.0 DEC-11: an array element address is not kept whole; its operands (the array and
+//     the indices) are, and the address is recomputed. Its store, move or delete then always sees
+//     the live bit computed next to it.
+// ES: Congelamiento 3.0 DEC-11: la direccion de un elemento de arreglo no se guarda entera; se
+//     guardan sus operandos (el arreglo y los indices) y la direccion se recalcula. Su store, move
+//     o delete siempre ve entonces el bit de vida calculado junto a ella.
+bool replaySpillDescends(ProjectOopMirNodeKind kind) noexcept
+{
+    return kind == ProjectOopMirNodeKind::ArrayElementAddress ||
+        kind == ProjectOopMirNodeKind::RangeArrayElementAddress;
+}
+
+// EN: Freeze 3.0 D-01: gives a frame slot to every child of `ancestor` other than `onPath` (an
+//     array element address passes the slot to its operands). A slot is at least 8 bytes and
+//     8-aligned; a node already slotted for another await keeps its slot. Iterative; O(subtree).
+// ES: Congelamiento 3.0 D-01: da un slot del frame a cada hijo de `ancestor` distinto de `onPath`
+//     (la direccion de un elemento de arreglo pasa el slot a sus operandos). Un slot mide al menos
+//     8 bytes, alineado a 8; un nodo con slot por otro await lo conserva. Iterativo; O(subarbol).
+void assignReplaySpillSlotsBeside(
+    ProjectOopMirNode* ancestor,
+    const ProjectOopMirNode* onPath,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    std::vector<ProjectOopMirNode*> pending;
+    for (const auto& child : ancestor->children)
+        if (child != nullptr && child.get() != onPath) pending.push_back(child.get());
+    while (!pending.empty())
+    {
+        ProjectOopMirNode* candidate = pending.back();
+        pending.pop_back();
+        if (replaySpillDescends(candidate->kind))
+        {
+            for (const auto& operand : candidate->children)
+                if (operand != nullptr) pending.push_back(operand.get());
+            continue;
+        }
+        if (candidate->replaySpillOffset.has_value() ||
+            !replaySpillCandidateKind(candidate->kind) || candidate->typeKey.empty() ||
+            candidate->typeKey == "builtin:void" || candidate->typeKey == "builtin:never")
+            continue;
+        std::optional<std::pair<std::uint64_t, std::uint64_t>> layout;
+        if (replaySpillAddressKind(candidate->kind))
+            layout = std::pair<std::uint64_t, std::uint64_t>{8, 8};
+        else
+            layout = frameValueLayout(objectLayoutModel, nameLookup, indexes, layouts, candidate->typeKey);
+        if (!layout.has_value()) continue;
+        frameSize = alignFrameOffset(frameSize, std::max<std::uint64_t>(8, layout->second));
+        candidate->replaySpillOffset = frameSize;
+        frameSize += std::max<std::uint64_t>(8, layout->first);
+    }
 }
 
 // EN: Freeze 3.0 D-01: a resumed poll re-enters the innermost statement around the await that
@@ -878,25 +932,8 @@ void assignReplaySpillSlotNodes(
         {
             ProjectOopMirNode* ancestor = parent->second;
             if (replayClimbStopsBefore(ancestor->kind)) break;
-            for (const auto& child : ancestor->children)
-            {
-                ProjectOopMirNode* candidate = child.get();
-                if (candidate == nullptr || candidate == onPath ||
-                    candidate->replaySpillOffset.has_value() ||
-                    !replaySpillCandidateKind(candidate->kind) || candidate->typeKey.empty() ||
-                    candidate->typeKey == "builtin:void" || candidate->typeKey == "builtin:never")
-                    continue;
-                std::optional<std::pair<std::uint64_t, std::uint64_t>> layout;
-                if (replaySpillAddressKind(candidate->kind))
-                    layout = std::pair<std::uint64_t, std::uint64_t>{8, 8};
-                else
-                    layout = frameValueLayout(
-                        objectLayoutModel, nameLookup, indexes, layouts, candidate->typeKey);
-                if (!layout.has_value()) continue;
-                frameSize = alignFrameOffset(frameSize, std::max<std::uint64_t>(8, layout->second));
-                candidate->replaySpillOffset = frameSize;
-                frameSize += std::max<std::uint64_t>(8, layout->first);
-            }
+            assignReplaySpillSlotsBeside(
+                ancestor, onPath, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
             if (replayClimbStopsAfter(ancestor->kind)) break;
             onPath = ancestor;
         }

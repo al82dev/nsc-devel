@@ -36,6 +36,9 @@ bool OopLlvmImplementation::defineFunction(const frontend::ProjectOopMirFunction
         // EN: Freeze 3.0 C-02: a poll/MoveNext dispatches on its state before the body.
         // ES: Congelamiento 3.0 C-02: un poll/MoveNext despacha sobre su estado antes del cuerpo.
         if (!beginCoroutineDispatch(function, error)) return false;
+        // EN: Freeze 3.0 DEC-11: element accesses of arrays with live bits, before the body.
+        // ES: Congelamiento 3.0 DEC-11: accesos a elementos de arreglos con bits de vida.
+        classifyArrayElementAccesses(function.body.get());
         if (!lowerStatement(function.body.get(), error)) return false;
         if (!finishCoroutineDispatch(error)) return false;
         return finishFunctionDefinition(function, error);

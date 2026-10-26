@@ -2113,6 +2113,10 @@ class Program
     }
 }
 )ns", 21);
+    // EN: Freeze 3.0 DEC-11: the first stores into the never-written slots and the moved-out slot
+    //     destroy nothing; this was 10302 while those zero values were destroyed too.
+    // ES: Congelamiento 3.0 DEC-11: los primeros stores en slots nunca escritos y el slot movido no
+    //     destruyen nada; daba 10302 mientras esos valores cero tambien se destruian.
     expectRun(tests, root, "C12AssignAndMove", std::string(kGuardPrelude) + R"ns(
 class Program
 {
@@ -2135,13 +2139,420 @@ class Program
         return Counter.Drops;
     }
 }
-)ns", 10302);
+)ns", 132);
+}
+
+/// EN: Freeze 3.0 DEC-11. An array of structs with a destructor keeps one live bit per element. The
+///     slots of `new T[n]` start dead; the first whole write or field write makes one alive (a field
+///     write zeroes the other fields first); move and delete make it dead; only live elements are
+///     destroyed; reading or moving a dead element traps (exit 146).
+/// ES: Congelamiento 3.0 DEC-11. Un arreglo de structs con destructor guarda un bit de vida por
+///     elemento. Los slots de `new T[n]` nacen muertos; la primera escritura completa o de campo
+///     revive uno (la de campo pone en cero los demas campos antes); move y delete lo matan; solo se
+///     destruyen los vivos; leer o mover un elemento muerto atrapa (exit 146).
+void testArrayElementLiveness(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "DEC11DeadSlotDrop", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    private static void Run()
+    {
+        raii Guard[] items = new Guard[2];
+        items[0].Id = 1;
+        items[1].Id = 2;
+        delete items[0];
+    }
+    public static int Main()
+    {
+        Run();
+        return Counter.Drops;
+    }
+}
+)ns", 23);
+    expectRun(tests, root, "DEC11Rectangular", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Program
+{
+    private static void Run()
+    {
+        raii Guard[,] grid = new Guard[2, 3];
+        grid[1, 2].Id = 5;
+    }
+    public static int Main()
+    {
+        Run();
+        return Counter.Drops;
+    }
+}
+)ns", 1);
+    expectRun(tests, root, "DEC11WholeStore", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    private static void Run()
+    {
+        raii Guard[] a = new Guard[3];
+        a[0].Id = 1;
+        Guard g;
+        g.Id = 7;
+        a[0] = move(g);
+    }
+    public static int Main()
+    {
+        Run();
+        return Counter.Drops;
+    }
+}
+)ns", 28);
+    expectRun(tests, root, "DEC11Move", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    private static void Run()
+    {
+        raii Guard[] a = new Guard[2];
+        a[0].Id = 1;
+        a[1].Id = 2;
+        Guard g = move(a[1]);
+    }
+    public static int Main()
+    {
+        Run();
+        return Counter.Drops;
+    }
+}
+)ns", 32);
+    expectRun(tests, root, "DEC11Revive", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    private static void Run()
+    {
+        raii Guard[] a = new Guard[2];
+        a[0].Id = 1;
+        a[1].Id = 2;
+        delete a[0];
+        Guard g;
+        g.Id = 5;
+        a[0] = move(g);
+    }
+    public static int Main()
+    {
+        Run();
+        return Counter.Drops;
+    }
+}
+)ns", 236);
+    expectRun(tests, root, "DEC11OwnedDelete", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    private static void Run()
+    {
+        owned Guard[] a = new Guard[2];
+        a[0].Id = 1;
+        a[1].Id = 2;
+        delete a[1];
+        delete[] a;
+    }
+    public static int Main()
+    {
+        Run();
+        return Counter.Drops;
+    }
+}
+)ns", 32);
+    expectRun(tests, root, "DEC11OwnedField", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Holder
+{
+    public owned Guard[] Items;
+    public Holder() { Items = new Guard[2]; }
+}
+class Program
+{
+    private static void Run()
+    {
+        raii Holder h = new Holder();
+        h.Items[0].Id = 1;
+        h.Items[1].Id = 2;
+        Guard g = move(h.Items[0]);
+    }
+    public static int Main()
+    {
+        Run();
+        return Counter.Drops;
+    }
+}
+)ns", 23);
+    expectRun(tests, root, "DEC11DeadRead", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    public int GetId() { return Id; }
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Guard[] a = new Guard[2];
+        a[0].Id = 4;
+        return a[1].Id;
+    }
+}
+)ns", 146);
+    expectRun(tests, root, "DEC11MoveDead", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    public int GetId() { return Id; }
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Guard[] a = new Guard[2];
+        Guard g = move(a[1]);
+        return 7;
+    }
+}
+)ns", 146);
+    expectRun(tests, root, "DEC11Initializer", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    public int GetId() { return Id; }
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    private static Guard Make(int id)
+    {
+        Guard g;
+        g.Id = id;
+        return move(g);
+    }
+    private static void Run()
+    {
+        raii Guard[] a = new Guard[] { Make(1), Make(2) };
+    }
+    public static int Main()
+    {
+        Run();
+        return Counter.Drops;
+    }
+}
+)ns", 32);
+    expectRun(tests, root, "DEC11DoubleDelete", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    public int GetId() { return Id; }
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    private static void Run()
+    {
+        raii Guard[] a = new Guard[2];
+        a[0].Id = 1;
+        delete a[0];
+        delete a[0];
+        delete a[1];
+    }
+    public static int Main()
+    {
+        Run();
+        return Counter.Drops;
+    }
+}
+)ns", 2);
+    expectRun(tests, root, "DEC11DeadReceiver", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    public int GetId() { return Id; }
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Guard[] a = new Guard[2];
+        a[0].Id = 5;
+        return a[0].GetId() * 10 + a[1].GetId();
+    }
+}
+)ns", 146);
+    expectRun(tests, root, "DEC11ListReverse", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; public static int Sum; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; Counter.Sum = Counter.Sum + Id; }
+}
+class Program
+{
+    private static Guard Make(int id)
+    {
+        Guard g;
+        g.Id = id;
+        return move(g);
+    }
+    public static int Main()
+    {
+        {
+            raii List<Guard> list = new List<Guard>();
+            list.Add(Make(3));
+            list.Add(Make(1));
+            list.Add(Make(2));
+            list.Reverse();
+        }
+        return Counter.Drops * 100 + Counter.Sum;
+    }
+}
+)ns", 306, true);
+    expectRun(tests, root, "DEC11ListAdd", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    private static Guard Make(int id)
+    {
+        Guard g;
+        g.Id = id;
+        return move(g);
+    }
+    public static int Main()
+    {
+        {
+            raii List<Guard> list = new List<Guard>();
+            list.Add(Make(3));
+            list.Add(Make(1));
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 42, true);
+    expectRun(tests, root, "DEC11AwaitFieldStore", R"ns(
+class Counter { public static int Drops; public static int Hits; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    public static int Next() { Counter.Hits = Counter.Hits + 1; return 1; }
+    public static async int Slow()
+    {
+        yield;
+        return 5;
+    }
+    public static async int Run()
+    {
+        raii Guard[] a = new Guard[2];
+        a[Next()].Id = await Slow();
+        return Counter.Hits * 10 + a[1].Id;
+    }
+    public static async int Main()
+    {
+        int r = await Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 1506);
+    expectRun(tests, root, "DEC11AwaitWholeStore", R"ns(
+class Counter { public static int Drops; public static int Hits; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id + 1; }
+}
+class Program
+{
+    public static int Next() { Counter.Hits = Counter.Hits + 1; return 1; }
+    public static async Guard Make()
+    {
+        yield;
+        Guard g;
+        g.Id = 5;
+        return move(g);
+    }
+    public static async int Run()
+    {
+        raii Guard[] a = new Guard[2];
+        a[Next()] = await Make();
+        return Counter.Hits * 10 + a[1].Id;
+    }
+    public static async int Main()
+    {
+        int r = await Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 1506);
 }
 
 // EN: List<T> of a struct with a destructor drops each live element exactly once, also across
-//     growth and RemoveAt; a removed slot is left with the default value (Id 0).
+//     growth and RemoveAt; a removed slot is left dead (Freeze 3.0 DEC-11), so shifting the next
+//     element into it destroys nothing: C12ListRemove is 2213 (it was 22013 while the dead slot's
+//     zero value was destroyed too).
 // ES: List<T> de un struct con destructor destruye cada elemento vivo una sola vez, tambien al
-//     crecer y en RemoveAt; un slot removido queda con el valor por defecto (Id 0).
+//     crecer y en RemoveAt; un slot removido queda muerto (Congelamiento 3.0 DEC-11), asi mover el
+//     siguiente elemento a el no destruye nada: C12ListRemove da 2213 (daba 22013 mientras el valor
+//     cero del slot muerto tambien se destruia).
 void testValueListElements(TestContext& tests, const std::filesystem::path& root)
 {
     const std::string prelude = "using NativeSharp.Core.Collections.Generic;" +
@@ -2178,7 +2589,7 @@ class Program
         return afterRemove * 1000 + Counter.Drops;
     }
 }
-)ns", 22013, true);
+)ns", 2213, true);
     // EN: LinkedList<T> keeps each value in an `owned T[]` slot of one element; the removed value
     //     belongs to the caller and every remaining value is dropped once by Clear().
     // ES: LinkedList<T> guarda cada valor en un slot `owned T[]` de un elemento; el valor removido
@@ -3720,6 +4131,7 @@ int main()
     testValueFieldsAndTemporaries(tests, root);
     testValueArrayElements(tests, root);
     testValueListElements(tests, root);
+    testArrayElementLiveness(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);
