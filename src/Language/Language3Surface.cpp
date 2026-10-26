@@ -46,8 +46,18 @@ constexpr std::array<Language3SurfaceEntry, 16> kSurface = {{
     //     explicito; la implementada (ProjectMemberModel::typeIsImplicitlyCopyable) copia un
     //     struct cuyos campos son todos copiables y hace move-only a un struct con un campo owned,
     //     a un variant o a un tipo opaco. El manifiesto publica ahora la regla implementada.
+    // EN: Freeze 3.0 DEC-07/DEC-08: C-11 made a struct with a destructor move-only and C-14 made a
+    //     future move-only with `await` consuming the local; both are kept, so the rule names them.
+    //     ProjectMemberModel::typeIsImplicitlyCopyable rejects a destructor, an owned field and a
+    //     move-only-value marker without `copy`; ProjectMemberModel::typeIsMoveOnly adds `future:`.
+    // ES: Congelamiento 3.0 DEC-07/DEC-08: C-11 hizo move-only a un struct con destructor y C-14 a un
+    //     future, con `await` consumiendo el local; ambos se conservan, asi que la regla los nombra.
+    //     ProjectMemberModel::typeIsImplicitlyCopyable rechaza un destructor, un campo owned y una
+    //     marca move-only-value sin `copy`; ProjectMemberModel::typeIsMoveOnly agrega `future:`.
     {Language3Feature::MoveOnlyDefaults, "move-only-defaults", Language3Disposition::Implemented,
-     "structs whose fields are all copyable copy implicitly; structs with owned fields, variants and opaque types are move-only and named consuming reads require move(value)"},
+     "structs without a destructor whose fields are all copyable copy implicitly; structs with a "
+     "destructor or owned fields, variants and opaque types without the copy modifier, and futures "
+     "are move-only; named consuming reads require move(value) and await consumes its future"},
     {Language3Feature::LongDouble, "long-double", Language3Disposition::RejectedFor3,
      "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp 3.0"},
     {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::Implemented,
