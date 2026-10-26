@@ -285,7 +285,8 @@ bool lowerSourceFileModule(
         diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
         renderer.renderAll(compilation.diagnostics(), error);
     }
-    if (!success || compilation.nameLookup() == nullptr || compilation.oopMirModel() == nullptr)
+    if (!success || compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr ||
+        compilation.oopMirModel() == nullptr)
     {
         error << "nsc: error: code generation requires a successful compilation\n";
         return false;
@@ -304,9 +305,17 @@ bool lowerSourceFileModule(
             : "OOP executable requires exactly one int Main() function or static method with no parameters\n");
         return false;
     }
+    // EN: Freeze 3.0 (plan item 114): the module is lowered with the member model, without debug information, as
+    //     the emission lowers it. The value drops of C-11 need that model; without it a destructible struct
+    //     failed with "value drop has no address/member model".
+    // ES: Congelamiento 3.0 (elemento 114 del plan): el módulo se baja con el modelo de miembros, sin información
+    //     de depuración, como lo baja la emisión. Los drops de valor de C-11 necesitan ese modelo; sin él un
+    //     struct con destructor fallaba con «value drop has no address/member model».
     llvm_backend::ProjectOopLlvmLowerer lowerer;
-    llvmModule = lowerer.lower(llvm_backend::ProjectOopLlvmLoweringRequest::withoutDebug(
-        *compilation.nameLookup(), *compilation.oopMirModel()));
+    llvmModule = lowerer.lower(llvm_backend::ProjectOopLlvmLoweringRequest::withDebug(
+        *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+        compilation.sourceManager(), llvm_backend::DebugInformationKind::None,
+        llvm_backend::LlvmOptimizationLevel::O0));
     if (llvmModule == nullptr)
     {
         error << "nsc: error: " << lowerer.error() << '\n';

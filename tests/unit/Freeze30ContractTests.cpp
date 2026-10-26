@@ -5388,6 +5388,44 @@ class Program
 )ns", "field type has no resolved named-type layout");
 }
 
+// EN: Plan item 114. The LLVM dump and verification actions lower a destructible struct as the emission does:
+//     with its value drop glue, instead of failing with "value drop has no address/member model".
+// ES: Elemento 114 del plan. Las acciones de volcado y verificación LLVM bajan un struct con destructor como lo
+//     baja la emisión: con su drop de valor, en vez de fallar con «value drop has no address/member model».
+void testValueDropVerification(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path directory = root / "F114ValueDropVerify";
+    const std::filesystem::path project = writeProject(directory, "F114ValueDropVerify");
+    writeFile(directory / "Main.ns", R"ns(
+using NativeSharp.Core;
+struct Guard
+{
+    public int Id;
+    ~Guard() { Console.Write(Id); }
+}
+class Program
+{
+    public static int Main() { Guard g = new Guard(); g.Id = 3; return 0; }
+}
+)ns");
+    const std::string projectText = project.string();
+    const std::array<std::string_view, 2> actions = {"--dump-project-oop-llvm", "--verify-project-oop-llvm-opt"};
+    for (const std::string_view action : actions)
+    {
+        const std::array<std::string_view, 2> arguments = {action, projectText};
+        Driver driver;
+        std::ostringstream output;
+        std::ostringstream error;
+        const ExitCode code = driver.run(arguments, output, error);
+        const std::string label = "F114ValueDropVerify " + std::string(action);
+        tests.expect(code == ExitCode::Success, label + ": succeeds: " + output.str() + error.str());
+        const std::string_view expected = action == "--dump-project-oop-llvm"
+            ? "__nsc_drop_value_" : "LLVM optimization verification: ok";
+        tests.expect(output.str().find(expected) != std::string::npos,
+            label + ": prints " + std::string(expected));
+    }
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -6511,6 +6549,7 @@ int main()
     testFutureDrops(tests, root);
     testFutureMoveOnly(tests, root);
     testFutureFields(tests, root);
+    testValueDropVerification(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

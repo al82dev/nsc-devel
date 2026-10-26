@@ -233,13 +233,19 @@ bool lowerProjectLlvm(std::string_view action, bool oopLlvmAction, bool success,
         projectCompilation.memberModel() == nullptr || projectCompilation.objectLayoutModel() == nullptr ||
         projectCompilation.oopMirModel() == nullptr)
         return true;
+    // EN: Freeze 3.0 (plan item 114): lowered with the member model, without debug information, as the emission
+    //     lowers it; the value drops of C-11 need that model.
+    // ES: Congelamiento 3.0 (elemento 114 del plan): se baja con el modelo de miembros, sin información de
+    //     depuración, como lo baja la emisión; los drops de valor de C-11 necesitan ese modelo.
     llvm_backend::ProjectOopLlvmLowerer lowerer;
     oopLlvmModule =
         measureDriverPhase("llvm-lowering",
                            [&]
                            {
-                               return lowerer.lower(llvm_backend::ProjectOopLlvmLoweringRequest::withoutDebug(
-                                   *projectCompilation.nameLookup(), *projectCompilation.oopMirModel()));
+                               return lowerer.lower(llvm_backend::ProjectOopLlvmLoweringRequest::withDebug(
+                                   *projectCompilation.nameLookup(), *projectCompilation.memberModel(),
+                                   *projectCompilation.oopMirModel(), projectCompilation.sourceManager(),
+                                   llvm_backend::DebugInformationKind::None, llvm_backend::LlvmOptimizationLevel::O0));
                            });
     if (oopLlvmModule == nullptr)
     {
