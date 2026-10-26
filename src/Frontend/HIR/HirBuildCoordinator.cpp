@@ -1580,6 +1580,7 @@ bool ProjectOopHirModel::appendRegularCoroutineFunctions(
         {
             poll = splitAsyncFunction(function, error);
             if (poll == nullptr) return false;
+            drop = createAsyncFunctionDrop(function, function.returnTypeKey, function.body->syntax);
         }
         if (hasBody && !function.constructor && !function.destructor &&
             function.effects.contains(sema::Effect::Generator))
@@ -1838,15 +1839,18 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             std::make_move_iterator(cleanupNodes.end()));
     }
     std::unique_ptr<ProjectOopHirFunction> poll;
+    std::unique_ptr<ProjectOopHirFunction> drop;
     if (function.effects.contains(sema::Effect::Async))
     {
         poll = splitAsyncFunction(function, error);
         if (poll == nullptr) return false;
+        drop = createAsyncFunctionDrop(function, function.returnTypeKey, function.body->syntax);
     }
     const std::size_t wrapperIndex = functions_.size();
     functionByNamespaceFunction_[functionOrdinal] = wrapperIndex;
     functions_.push_back(std::move(function));
     if (poll) functions_.push_back(std::move(*poll));
+    if (drop) functions_.push_back(std::move(*drop));
     recordCoroutineBody(wrapperIndex);
     return true;
 }

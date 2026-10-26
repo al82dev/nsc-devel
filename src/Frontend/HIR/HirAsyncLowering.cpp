@@ -380,6 +380,22 @@ void ProjectOopHirModel::buildAsyncConstructorBody(
     pollStore->children.push_back(std::move(pollAddress));
     constructorBody->children.push_back(std::move(pollStore));
 
+    // EN: Freeze 3.0 C-14: the future also carries its Drop function (member 5).
+    // ES: Congelamiento 3.0 C-14: el future tambien lleva su funcion Drop (miembro 5).
+    auto dropField = makeNode(ProjectOopHirNodeKind::FutureFieldAddress, syntax, "builtin:void*");
+    dropField->memberOrdinal = 5; // dropFn
+    dropField->elementTypeKey = futureKey;
+    auto dropSelfAddress = makeNode(ProjectOopHirNodeKind::LocalAddress, syntax, futureKey + "*");
+    dropSelfAddress->localOrdinal = selfOrdinal;
+    dropField->children.push_back(std::move(dropSelfAddress));
+    auto dropAddress = makeNode(ProjectOopHirNodeKind::PollAddress, syntax, "builtin:void*");
+    dropAddress->stringValue = function.mangledName + "$drop";
+    auto dropStore = makeNode(ProjectOopHirNodeKind::Assignment, syntax, "builtin:void*");
+    dropStore->operation = lexer::TokenKind::Equal;
+    dropStore->children.push_back(std::move(dropField));
+    dropStore->children.push_back(std::move(dropAddress));
+    constructorBody->children.push_back(std::move(dropStore));
+
     auto retSelf = makeNode(ProjectOopHirNodeKind::Return, syntax, futureKey);
     auto selfReturn = makeNode(ProjectOopHirNodeKind::LocalValue, syntax, futureKey);
     selfReturn->localOrdinal = selfOrdinal;
@@ -389,6 +405,39 @@ void ProjectOopHirModel::buildAsyncConstructorBody(
     // NS304-T07-F06: the original callable is now the async constructor — it allocates the frame
     // and stores the captured parameters (ref/in used after a yield), like the generator does.
     function.isGeneratorConstructor = true;
+}
+
+// EN: Freeze 3.0 C-14: `void F$drop(future<T>* self)` releases a future that did not complete: the
+//     owned parameters its constructor stored in the frame, and the frame itself.
+// ES: Congelamiento 3.0 C-14: `void F$drop(future<T>* self)` libera un future que no completo: los
+//     parametros owned que su constructor guardo en el frame, y el frame mismo.
+std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::createAsyncFunctionDrop(
+    const ProjectOopHirFunction& function,
+    const std::string& futureKey,
+    const ast::AstNode* syntax)
+{
+    auto drop = std::make_unique<ProjectOopHirFunction>();
+    drop->memberOrdinal = function.memberOrdinal;
+    drop->namespaceFunctionOrdinal = function.namespaceFunctionOrdinal;
+    drop->declaringTypeOrdinal = function.declaringTypeOrdinal;
+    drop->isStatic = true;
+    drop->inliningPolicy = function.inliningPolicy;
+    drop->mangledName = function.mangledName + "$drop";
+    drop->debugDisplayName = function.debugDisplayName + "$drop";
+    drop->returnTypeKey = "builtin:void";
+    drop->returnOwnership = sema::OwnershipKind::None;
+    drop->parameterNames.push_back("self");
+    drop->parameterTypeKeys.push_back(futureKey + "*");
+    drop->parameterPassKinds.push_back(ParameterPassKind::Value);
+    drop->parameterOwnerships.push_back(sema::OwnershipKind::None);
+    auto dropBody = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    auto dropFrame = makeNode(ProjectOopHirNodeKind::DropFrame, syntax, "builtin:void");
+    auto dropSelf = makeNode(ProjectOopHirNodeKind::ParameterValue, syntax, futureKey + "*");
+    dropSelf->parameterOrdinal = 0;
+    dropFrame->children.push_back(std::move(dropSelf));
+    dropBody->children.push_back(std::move(dropFrame));
+    drop->body = std::move(dropBody);
+    return drop;
 }
 
 std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitAsyncFunction(

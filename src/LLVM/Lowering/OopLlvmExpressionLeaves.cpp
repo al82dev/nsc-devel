@@ -526,6 +526,14 @@ bool OopLlvmImplementation::attachBlockingAwaitFrame(
         const bool frameOnHeap =
             found->second.asyncFrameStorage == language::FrameStorage::ExplicitHeap ||
             found->second.asyncFrameStorage == language::FrameStorage::CallerArena;
+        // EN: Freeze 3.0 C-14: a frame the constructor already allocated (heap) belongs to this
+        //     future and is released when the await ends; a stack frame attached here is not.
+        // ES: Congelamiento 3.0 C-14: un frame que el constructor ya reservo (heap) es de este
+        //     future y se libera al terminar el await; un frame de pila adjuntado aqui no.
+        if (!frameOnHeap)
+            heapFrame = LLVMBuildLoad2(
+                builder_, LLVMPointerTypeInContext(context_, 0),
+                byteOffset(futureSlot, 8, "await.frame.ctor.addr"), "await.frame.ctor");
         if (!attachAwaitFrameIfMissing(futureSlot, found->second.asyncFrameSize, frameOnHeap, error))
             return false;
         // EN: Freeze 3.0 C-02: the frame to release is whichever one the future holds now.
@@ -629,11 +637,69 @@ bool OopLlvmImplementation::emitBlockingAwaitPollLoop(
         return true;
 }
 
-void OopLlvmImplementation::releaseAwaitHeapFrame(LLVMValueRef heapFrame)
+void OopLlvmImplementation::releaseAwaitHeapFrame(
+        LLVMValueRef heapFrame, LLVMValueRef owned, LLVMValueRef forgetSlot)
 {
         if (heapFrame == nullptr) return;
+        // EN: Freeze 3.0 C-14: the frame may be absent (a constructor that stored nothing), and only
+        //     a future that owns its frame (it carries a Drop pointer) releases it. An async
+        //     iterator's demand future points at the iterator, which it does not own.
+        // ES: Congelamiento 3.0 C-14: el frame puede faltar (un constructor que no guardo nada), y
+        //     solo un future dueno de su frame (lleva puntero Drop) lo libera. El future de demanda
+        //     de un iterador async apunta al iterador, que no es suyo.
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef present = LLVMBuildICmp(
+            builder_, LLVMIntNE, heapFrame, LLVMConstNull(ptr), "await.frame.present.release");
+        if (owned != nullptr) present = LLVMBuildAnd(builder_, present, owned, "await.frame.owned");
+        LLVMBasicBlockRef release = appendBlock("await.frame.release");
+        LLVMBasicBlockRef kept = appendBlock("await.frame.kept");
+        LLVMBuildCondBr(builder_, present, release, kept);
+        enterBlock(release);
         LLVMValueRef freeArgs[] = {heapFrame};
         buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+        if (forgetSlot != nullptr) LLVMBuildStore(builder_, LLVMConstNull(ptr), forgetSlot);
+        LLVMBuildBr(builder_, kept);
+        enterBlock(kept);
+}
+
+LLVMValueRef OopLlvmImplementation::futureOwnsFrame(LLVMValueRef futureSlot, std::string_view futureKey)
+{
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        const std::uint64_t dropOffset = futureFieldOffset(futureKey, 5);
+        if (dropOffset == 0) return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+        LLVMValueRef dropFn = LLVMBuildLoad2(
+            builder_, ptr, byteOffset(futureSlot, dropOffset, "await.drop.fn.addr"), "await.drop.fn");
+        return LLVMBuildICmp(builder_, LLVMIntNE, dropFn, LLVMConstNull(ptr), "await.owns.frame");
+}
+
+// EN: Freeze 3.0 C-14: `await f` consumes the future local or parameter: the await works on its own
+//     copy, so the source is zeroed and its scope drop finds nothing to release a second time.
+// ES: Congelamiento 3.0 C-14: `await f` consume el future local o parametro: el await trabaja sobre
+//     su propia copia, asi que la fuente queda en cero y su drop de scope no libera nada otra vez.
+void OopLlvmImplementation::consumeAwaitedFuture(
+        const frontend::ProjectOopMirNode* operand, std::string& error)
+{
+        if (operand == nullptr || terminated()) return;
+        LLVMValueRef storage = nullptr;
+        if (operand->kind == frontend::ProjectOopMirNodeKind::LocalValue && operand->localOrdinal.has_value())
+        {
+            const auto found = localStorage_.find(*operand->localOrdinal);
+            if (found != localStorage_.end()) storage = found->second;
+        }
+        else if (operand->kind == frontend::ProjectOopMirNodeKind::ParameterValue &&
+                 operand->parameterOrdinal.has_value())
+        {
+            storage = capturedParameterSlot(*operand->parameterOrdinal, operand->typeKey);
+            if (storage == nullptr)
+            {
+                const auto found = parameterStorage_.find(*operand->parameterOrdinal);
+                if (found != parameterStorage_.end()) storage = found->second;
+            }
+        }
+        if (storage == nullptr) return;
+        LLVMTypeRef type = llvmType(operand->typeKey, error);
+        if (type == nullptr) return;
+        LLVMBuildStore(builder_, LLVMConstNull(type), storage);
 }
 
 bool OopLlvmImplementation::emitBlockingAwaitErrorPath(
@@ -642,12 +708,13 @@ bool OopLlvmImplementation::emitBlockingAwaitErrorPath(
         LLVMValueRef heapFrame,
         LLVMBasicBlockRef loopMerge,
         bool& transfersException,
+        LLVMBasicBlockRef& errorExit,
         std::string& error)
 {
         // NS304-T05-F07 rethrow: the future errored (state == -2). Load the carried
         // error slot and rethrow it into the enclosing catch (native unwind) instead of
         // the deterministic -1 signal.
-        releaseAwaitHeapFrame(heapFrame);
+        releaseAwaitHeapFrame(heapFrame, futureOwnsFrame(futureSlot, node->elementTypeKey));
         const std::optional<std::string_view> errorInner =
             language::futureErrorTypeKey(node->elementTypeKey);
         const std::string errorKey = errorInner.has_value()
@@ -666,6 +733,7 @@ bool OopLlvmImplementation::emitBlockingAwaitErrorPath(
         }
         // No enclosing catch (or a non-throwing future): keep the deterministic
         // signal, which the caller observes as the defined error exit.
+        errorExit = LLVMGetInsertBlock(builder_);
         LLVMBuildBr(builder_, loopMerge);
         return true;
 }
@@ -680,6 +748,14 @@ LLVMValueRef OopLlvmImplementation::finishBlockingAwait(
 {
         // Ready: load the result and merge with the error path.
         enterBlock(loopDone);
+        // EN: Freeze 3.0 C-14: a variable await attaches nothing, so the frame the future holds
+        //     now (its constructor's, or the one its poll allocated) is released here.
+        // ES: Congelamiento 3.0 C-14: un await de variable no adjunta nada, asi que el frame que el
+        //     future tiene ahora (el de su constructor, o el que reservo su poll) se libera aqui.
+        if (heapFrame == nullptr && node->calleeName.empty())
+            heapFrame = LLVMBuildLoad2(
+                builder_, LLVMPointerTypeInContext(context_, 0),
+                byteOffset(futureSlot, 8, "await.frame.held.addr"), "await.frame.held");
         // NS304-T07-F06: `await future;` on a Future<void> has no result slot to read —
         // the poll runs the future to completion and the statement discards the value.
         const bool voidResult = node->typeKey == "builtin:void";
@@ -694,12 +770,21 @@ LLVMValueRef OopLlvmImplementation::finishBlockingAwait(
                 byteOffset(futureSlot, node->immediate, "await.result.addr"), "await.result");
         }
         LLVMBasicBlockRef loopMerge = appendBlock("await.poll.merge");
-        releaseAwaitHeapFrame(heapFrame);
+        releaseAwaitHeapFrame(heapFrame, futureOwnsFrame(futureSlot, node->elementTypeKey));
+        // EN: Freeze 3.0 C-14: releasing the frame adds blocks; the phi takes the real exits.
+        // ES: Congelamiento 3.0 C-14: liberar el frame agrega bloques; el phi toma las salidas reales.
+        LLVMBasicBlockRef readyExit = LLVMGetInsertBlock(builder_);
         LLVMBuildBr(builder_, loopMerge);
         enterBlock(loopError);
+        if (node->calleeName.empty())
+            heapFrame = LLVMBuildLoad2(
+                builder_, LLVMPointerTypeInContext(context_, 0),
+                byteOffset(futureSlot, 8, "await.frame.held.addr"), "await.frame.held");
         bool transfersException = false;
+        LLVMBasicBlockRef errorExit = loopError;
         if (!emitBlockingAwaitErrorPath(
-                node, futureSlot, heapFrame, loopMerge, transfersException, error)) return nullptr;
+                node, futureSlot, heapFrame, loopMerge, transfersException, errorExit, error))
+            return nullptr;
         enterBlock(loopMerge);
         if (voidResult)
         {
@@ -710,13 +795,13 @@ LLVMValueRef OopLlvmImplementation::finishBlockingAwait(
         LLVMValueRef awaitPhi = LLVMBuildPhi(builder_, resultType, "await.value");
         if (transfersException)
         {
-            LLVMAddIncoming(awaitPhi, &readyValue, &loopDone, 1);
+            LLVMAddIncoming(awaitPhi, &readyValue, &readyExit, 1);
         }
         else
         {
             LLVMValueRef incomingValues[] = {
                 readyValue, LLVMConstInt(resultType, static_cast<unsigned long long>(-1), 1) };
-            LLVMBasicBlockRef incomingBlocks[] = { loopDone, loopError };
+            LLVMBasicBlockRef incomingBlocks[] = { readyExit, errorExit };
             LLVMAddIncoming(awaitPhi, incomingValues, incomingBlocks, 2);
         }
         return awaitPhi;
@@ -742,6 +827,8 @@ LLVMValueRef OopLlvmImplementation::lowerBlockingAwait(
         if (futureSlot == nullptr)
             return failValue(error, "await future could not reserve temporary storage");
         LLVMBuildStore(builder_, value, futureSlot);
+        consumeAwaitedFuture(node->children.front().get(), error);
+        if (!error.empty()) return nullptr;
         LLVMValueRef pollFunction = nullptr;
         LLVMTypeRef pollFunctionType = nullptr;
         if (!resolveAwaitPollTarget(
@@ -800,6 +887,8 @@ bool OopLlvmImplementation::emitAwaitChildSelection(
             : lowerExpression(node->children.front().get(), error);
         if (fresh == nullptr) return false;
         LLVMBuildStore(builder_, fresh, childSlot);
+        consumeAwaitedFuture(node->children.front().get(), error);
+        if (!error.empty()) return false;
         // NS304-T05-F04: attach the awaited producer's frame (holds its own awaited futures).
         if (!attachAwaitFrameIfMissing(childSlot, childFrameSize, childFrameOnHeap, error))
             return false;
@@ -849,20 +938,18 @@ void OopLlvmImplementation::emitAwaitSuspendPath(
         LLVMBuildRetVoid(builder_);
 }
 
-void OopLlvmImplementation::releaseAwaitChildFrame(LLVMValueRef childSlot)
+void OopLlvmImplementation::releaseAwaitChildFrame(LLVMValueRef childSlot, std::string_view futureKey)
 {
         LLVMValueRef childFramePtr = LLVMBuildLoad2(
             builder_, LLVMPointerTypeInContext(context_, 0),
             byteOffset(childSlot, 8, "await.child.frame.heapfree"),
             "await.child.frame.heapfree");
-        LLVMValueRef freeArgs[] = {childFramePtr};
-        buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
         // EN: Freeze 3.0 C-02: a released frame is forgotten, so re-reading a completed child
         //     never frees it twice.
         // ES: Congelamiento 3.0 C-02: un frame liberado se olvida, asi releer un hijo completado
         //     nunca lo libera dos veces.
-        LLVMBuildStore(
-            builder_, LLVMConstNull(LLVMPointerTypeInContext(context_, 0)),
+        releaseAwaitHeapFrame(
+            childFramePtr, futureOwnsFrame(childSlot, futureKey),
             byteOffset(childSlot, 8, "await.child.frame.forget"));
 }
 
@@ -883,7 +970,7 @@ bool OopLlvmImplementation::emitSuspendingAwaitErrorPath(
         LLVMValueRef childError = LLVMBuildLoad2(
             builder_, errorType,
             byteOffset(childSlot, errorOffset, "await.child.error.addr"), "await.child.error");
-        if (childFrameOnHeap) releaseAwaitChildFrame(childSlot);
+        if (childFrameOnHeap) releaseAwaitChildFrame(childSlot, node->elementTypeKey);
         // EN: Freeze 3.0 C-13: an await inside a try of this async body hands the error to that
         //     catch, as a synchronous await does. Before, it always left the poll, so the catch
         //     never ran and a non-throwing parent got a write past its future.
@@ -965,12 +1052,12 @@ LLVMValueRef OopLlvmImplementation::finishSuspendingAwait(
         //     descarta este marcador, igual que el await bloqueante. Cargar `void` tumbaba nsc.
         if (node->typeKey == "builtin:void")
         {
-            if (childFrameOnHeap) releaseAwaitChildFrame(childSlot);
+            if (childFrameOnHeap) releaseAwaitChildFrame(childSlot, node->elementTypeKey);
             return LLVMConstNull(LLVMInt8TypeInContext(context_));
         }
         LLVMTypeRef resultType = llvmType(node->typeKey, error);
         if (resultType == nullptr) return nullptr;
-        if (childFrameOnHeap) releaseAwaitChildFrame(childSlot);
+        if (childFrameOnHeap) releaseAwaitChildFrame(childSlot, node->elementTypeKey);
         return LLVMBuildLoad2(
             builder_, resultType, byteOffset(childSlot, node->immediate, "await.result.addr"),
             "await.result");

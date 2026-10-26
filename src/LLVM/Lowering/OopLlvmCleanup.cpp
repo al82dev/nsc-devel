@@ -1186,6 +1186,43 @@ bool OopLlvmImplementation::emitRaiiSpecialDestroy(
         return true;
     }
 
+// EN: Freeze 3.0 C-14: the frame slot of a parameter a $poll/$moveNext captured, or null. The poll's
+//     own parameter 0 is `self`; the original parameters live in the frame the constructor filled.
+// ES: Congelamiento 3.0 C-14: el slot del frame de un parametro capturado por un $poll/$moveNext, o
+//     null. El parametro 0 del poll es `self`; los parametros originales viven en el frame que llenó
+//     el constructor.
+LLVMValueRef OopLlvmImplementation::capturedParameterSlot(
+        std::size_t parameterOrdinal, std::string_view typeKey)
+{
+        if (currentMirFunction_ == nullptr || currentMirFunction_->asyncFrameParameters.empty() ||
+            parameterStorage_.empty()) return nullptr;
+        const auto* captured = mirModel_.asyncFrameParameter(
+            *currentMirFunction_, parameterOrdinal, std::string(typeKey));
+        if (captured == nullptr) return nullptr;
+        const auto& [ordinal, offset, capturedType] = *captured;
+        if (ordinal != parameterOrdinal || capturedType != typeKey) return nullptr;
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef self = LLVMBuildLoad2(builder_, ptr, parameterStorage_[0], "captured.self");
+        if (currentMirFunction_->mangledName.ends_with("$moveNext$poll"))
+            self = LLVMBuildLoad2(builder_, ptr, byteOffset(self, 8, "captured.iter.addr"), "captured.iter");
+        LLVMValueRef frame = LLVMBuildLoad2(
+            builder_, ptr, byteOffset(self, 8, "captured.frame.addr"), "captured.frame");
+        return byteOffset(frame, offset, "captured.slot");
+}
+
+bool OopLlvmImplementation::destroyCapturedOwnedParameter(
+        LLVMValueRef slot, std::string_view typeKey, std::string& error)
+{
+        if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(typeKey))
+            return emitValueDropAddress(slot, typeKey, "captured.value", error);
+        if (!requiresOwnedDestruction(typeKey)) return true;
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef value = LLVMBuildLoad2(builder_, ptr, slot, "captured.owned");
+        // Clear first: the slot never reaches a second destruction.
+        LLVMBuildStore(builder_, LLVMConstNull(ptr), slot);
+        return emitOwnedPointerDestroy(value, typeKey, "captured.owned.destroy", error);
+}
+
 bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOopMirNode* node, std::string& error)
 {
         if (node == nullptr || node->kind != frontend::ProjectOopMirNodeKind::OwnedParameterCleanup ||
@@ -1193,6 +1230,12 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
         {
             return fail(error, "Stage 50.8 owned-parameter cleanup is missing parameter/region identity");
         }
+        // EN: Freeze 3.0 C-14: in a poll the owned parameter lives in the frame; reading parameter
+        //     0 here destroyed the future itself as if it were the parameter (a crash).
+        // ES: Congelamiento 3.0 C-14: en un poll el parametro owned vive en el frame; leer el
+        //     parametro 0 aqui destruia el future mismo como si fuera el parametro (un crash).
+        if (LLVMValueRef captured = capturedParameterSlot(*node->parameterOrdinal, node->typeKey))
+            return destroyCapturedOwnedParameter(captured, node->typeKey, error);
         const auto found = parameterStorage_.find(*node->parameterOrdinal);
         if (found == parameterStorage_.end() || found->second == nullptr)
         {

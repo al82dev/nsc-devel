@@ -467,6 +467,60 @@ bool OopLlvmImplementation::lowerSyncGeneratorDrop(LLVMValueRef self, std::strin
         return true;
 }
 
+// EN: Freeze 3.0 C-14: F$drop releases a future that never ran: the owned parameters its constructor
+//     stored in the frame are destroyed, then the frame is freed and the future parked as done. A
+//     future cannot be left suspended from source (only await polls it, to completion), so a
+//     started one holds no frame of its own to release here.
+// ES: Congelamiento 3.0 C-14: F$drop libera un future que nunca corrio: se destruyen los
+//     parametros owned que su constructor guardo en el frame, luego se libera el frame y el future
+//     queda terminado. Desde el codigo fuente un future no puede quedar suspendido (solo await lo
+//     consulta, hasta completar), asi que uno ya iniciado no tiene aqui frame propio que liberar.
+bool OopLlvmImplementation::lowerFutureDrop(LLVMValueRef self, std::string& error)
+{
+        if (currentMirFunction_ == nullptr || !currentMirFunction_->mangledName.ends_with("$drop"))
+            return fail(error, "future drop has no owning function");
+        const std::string pollName =
+            currentMirFunction_->mangledName.substr(0, currentMirFunction_->mangledName.size() - 5) +
+            "$poll";
+        const frontend::ProjectOopMirFunction* poll = nullptr;
+        for (const frontend::ProjectOopMirFunction& candidate : mirModel_.functions())
+            if (candidate.mangledName == pollName) poll = &candidate;
+        if (poll == nullptr) return fail(error, "future drop cannot find '" + pollName + "'");
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef intType = llvmType("builtin:int", error);
+        if (intType == nullptr) return false;
+        LLVMValueRef state = LLVMBuildLoad2(builder_, intType, self, "drop.future.state");
+        LLVMValueRef frame = LLVMBuildLoad2(
+            builder_, ptr, byteOffset(self, 8, "drop.future.frame.addr"), "drop.future.frame");
+        LLVMBasicBlockRef release = appendBlock("drop.future.release");
+        LLVMBasicBlockRef done = appendBlock("drop.future.done");
+        LLVMValueRef unstarted = LLVMBuildAnd(
+            builder_,
+            LLVMBuildICmp(builder_, LLVMIntEQ, state, LLVMConstInt(intType, 0, 0), "drop.future.fresh"),
+            LLVMBuildICmp(builder_, LLVMIntNE, frame, LLVMConstNull(ptr), "drop.future.framed"),
+            "drop.future.unstarted");
+        LLVMBuildCondBr(builder_, unstarted, release, done);
+        enterBlock(release);
+        for (const frontend::ProjectOopMirCleanupRegion& region : poll->cleanupRegions)
+        {
+            if (region.kind != frontend::ProjectOopMirCleanupKind::OwnedParameter ||
+                !region.parameterOrdinal.has_value()) continue;
+            const auto* captured = mirModel_.asyncFrameParameter(
+                *poll, *region.parameterOrdinal, region.typeKey);
+            if (captured == nullptr) continue;
+            const auto& [ordinal, offset, typeKey] = *captured;
+            if (!destroyCapturedOwnedParameter(
+                    byteOffset(frame, offset, "drop.future.param"), typeKey, error)) return false;
+        }
+        LLVMValueRef freeArgs[] = {frame};
+        buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
+        LLVMBuildStore(builder_, LLVMConstNull(ptr), byteOffset(self, 8, "drop.future.frame.null"));
+        LLVMBuildStore(builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1), self);
+        LLVMBuildBr(builder_, done);
+        enterBlock(done);
+        return true;
+}
+
 LLVMValueRef OopLlvmImplementation::pollCoroutineAwaitChild(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef childSlot,
@@ -535,6 +589,8 @@ LLVMValueRef OopLlvmImplementation::lowerCoroutineAwait(
             : lowerExpression(node->children.front().get(), error);
         if (fresh == nullptr) return nullptr;
         LLVMBuildStore(builder_, fresh, childSlot);
+        consumeAwaitedFuture(node->children.front().get(), error);
+        if (!error.empty()) return nullptr;
         // EN: A heap frame when the constructor left none: the child may outlive this poll.
         // ES: Un frame en el heap si el constructor no dejo ninguno: el hijo puede sobrevivir.
         if (!attachAwaitFrameIfMissing(childSlot, childFrameSize, true, error)) return nullptr;
@@ -549,7 +605,12 @@ LLVMValueRef OopLlvmImplementation::lowerCoroutineAwait(
         LLVMBuildBr(builder_, selected);
         enterBlock(selected);
         if (pollCoroutineAwaitChild(node, childSlot, intType, error) == nullptr) return nullptr;
+        // EN: Freeze 3.0 C-14: every frame a coroutine child holds is heap (its constructor's, the
+        //     one attached above, or its poll's), so it is released when the child completes.
+        // ES: Congelamiento 3.0 C-14: todo frame que tiene un hijo de corrutina es heap (el de su
+        //     constructor, el adjuntado arriba, o el de su poll), asi que se libera al completar.
+        (void)childFrameOnHeap;
         return finishSuspendingAwait(
-            node, coroutine_.self, childSlot, intType, carrier, childFrameOnHeap, error);
+            node, coroutine_.self, childSlot, intType, carrier, true, error);
 }
 }

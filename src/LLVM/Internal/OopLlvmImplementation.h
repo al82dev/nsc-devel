@@ -1271,13 +1271,17 @@ private:
         LLVMBasicBlockRef& loopDone,
         LLVMBasicBlockRef& loopError,
         std::string& error);
-    void releaseAwaitHeapFrame(LLVMValueRef heapFrame);
+    void releaseAwaitHeapFrame(
+        LLVMValueRef heapFrame, LLVMValueRef owned = nullptr, LLVMValueRef forgetSlot = nullptr);
+    LLVMValueRef futureOwnsFrame(LLVMValueRef futureSlot, std::string_view futureKey);
+    void consumeAwaitedFuture(const frontend::ProjectOopMirNode* operand, std::string& error);
     bool emitBlockingAwaitErrorPath(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef futureSlot,
         LLVMValueRef heapFrame,
         LLVMBasicBlockRef loopMerge,
         bool& transfersException,
+        LLVMBasicBlockRef& errorExit,
         std::string& error);
     LLVMValueRef finishBlockingAwait(
         const frontend::ProjectOopMirNode* node,
@@ -1312,7 +1316,7 @@ private:
         LLVMTypeRef intType,
         LLVMTypeRef carrier,
         LLVMBasicBlockRef suspendBlock);
-    void releaseAwaitChildFrame(LLVMValueRef childSlot);
+    void releaseAwaitChildFrame(LLVMValueRef childSlot, std::string_view futureKey);
     bool emitSuspendingAwaitErrorPath(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef self,
@@ -1368,6 +1372,10 @@ private:
     bool emitCoroutineYieldCancel(
         const frontend::ProjectOopMirNode* node, LLVMBasicBlockRef cancel, std::string& error);
     bool lowerSyncGeneratorDrop(LLVMValueRef self, std::string& error);
+    bool lowerFutureDrop(LLVMValueRef self, std::string& error);
+    LLVMValueRef capturedParameterSlot(std::size_t parameterOrdinal, std::string_view typeKey);
+    bool destroyCapturedOwnedParameter(
+        LLVMValueRef slot, std::string_view typeKey, std::string& error);
     bool markCoroutineFinished(std::string& error);
     bool storeYieldValueItem(
         const frontend::ProjectOopMirNode* node, LLVMValueRef self, std::string& error);

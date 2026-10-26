@@ -202,6 +202,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     language::futureErrorTypeKey(operand.typeKey))
                 requireDeclaredErrorHandled(
                     expression, *error, "await", methodMemberOrdinal, diagnostics);
+            // EN: Freeze 3.0 C-14: awaiting a future local consumes it (the backend zeroes it), so
+            //     a second await or a read afterwards is a use of a moved value.
+            // ES: Congelamiento 3.0 C-14: esperar un future local lo consume (el backend lo pone en
+            //     cero), asi que un segundo await o una lectura despues usan un valor movido.
+            if (expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const std::optional<ScopeName> target =
+                    lookupScopeName(scopeOrdinal, expression->first()->text());
+                if (target.has_value() && target->kind == ScopeNameKind::Local &&
+                    target->semanticOrdinal < locals_.size() &&
+                    locals_[target->semanticOrdinal].isMoveOnly)
+                {
+                    maybeMovedRaiiLocals_.erase(target->semanticOrdinal);
+                    movedRaiiLocals_.insert(target->semanticOrdinal);
+                }
+            }
             awaitExpressions_.push_back(expression);
             break;
         }

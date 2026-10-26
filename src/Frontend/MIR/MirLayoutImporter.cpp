@@ -284,9 +284,19 @@ bool ProjectOopMirModel::appendFutureLayout(
     const std::uint64_t totalAlignment =
         std::max({stateAlignment, frameAlignment, resultLayout->second, pollFnAlignment,
                   errorLayout->second});
-    const std::uint64_t lastFieldEnd = errorInner.has_value() && errorLayout->first > 0
+    const std::uint64_t errorEnd = errorInner.has_value() && errorLayout->first > 0
         ? errorOffset + errorLayout->first
         : pollFnOffset + pollFnSize;
+    // EN: Freeze 3.0 C-14: the future carries its Drop function pointer (member 5) so a future
+    //     discarded, overwritten or out of scope before completing releases its frame and the
+    //     owned parameters stored in it.
+    // ES: Congelamiento 3.0 C-14: el future lleva su puntero a funcion Drop (miembro 5) para que un
+    //     future descartado, sobrescrito o fuera de scope antes de completar libere su frame y los
+    //     parametros owned guardados en el.
+    constexpr std::uint64_t dropFnSize = 8;
+    constexpr std::uint64_t dropFnAlignment = 8;
+    const std::uint64_t dropFnOffset = alignLayoutOffset(errorEnd, dropFnAlignment);
+    const std::uint64_t lastFieldEnd = dropFnOffset + dropFnSize;
     const std::uint64_t totalSize = alignLayoutOffset(lastFieldEnd, totalAlignment);
     std::vector<ObjectFieldLayout> fields;
     fields.push_back(ObjectFieldLayout{
@@ -304,10 +314,13 @@ bool ProjectOopMirModel::appendFutureLayout(
             4, errorOffset, errorLayout->first, errorLayout->second,
             std::string(*errorInner), std::nullopt, std::nullopt});
     }
+    fields.push_back(ObjectFieldLayout{
+        5, dropFnOffset, dropFnSize, dropFnAlignment, "builtin:void*", std::nullopt, std::nullopt});
     structLayouts_.push_back(ProjectOopMirStructLayout{
         (std::numeric_limits<std::size_t>::max)(), key, totalSize, totalAlignment,
-        false, 0, 0, false, abiPassingForSize(totalSize), false, false, {},
-        std::move(fields)});
+        false, 0, 0, false, abiPassingForSize(totalSize), false,
+        true,  // requiresDrop: the future carries a Drop function (member 5).
+        "__nsc_drop_value_" + sanitizeDispatchName(key), std::move(fields)});
     return true;
 }
 

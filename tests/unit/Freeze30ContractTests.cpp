@@ -1783,6 +1783,162 @@ class Program
 )ns", 1011);
 }
 
+constexpr std::string_view kBoxPrelude = R"ns(
+using NativeSharp.Core;
+class Counter { public static int Drops; }
+class Box
+{
+    public int Id;
+    public Box(int id) { Id = id; }
+    ~Box() { Counter.Drops = Counter.Drops * 10 + Id; }
+}
+)ns";
+
+// EN: C-14. A future that does not complete releases what its constructor stored: discarded,
+//     out of scope, overwritten or handed to a parameter that drops it, the owned parameter is
+//     destroyed once; an awaited future is consumed and destroys it at completion.
+// ES: C-14. Un future que no completa libera lo que su constructor guardo: descartado, fuera de
+//     scope, sobrescrito o entregado a un parametro que lo descarta, el parametro owned se destruye
+//     una vez; un future esperado se consume y lo destruye al completar.
+void testFutureDrops(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C14Discard", std::string(kBoxPrelude) + R"ns(
+class Program
+{
+    private static async int Take(owned Box b) { return b.Id; }
+    public static int Main() { Take(new Box(4)); return Counter.Drops; }
+}
+)ns", 4);
+    expectRun(tests, root, "C14Scope", std::string(kBoxPrelude) + R"ns(
+class Program
+{
+    private static async int Take(owned Box b) { return b.Id; }
+    public static int Main()
+    {
+        {
+            Future<int> f = Take(new Box(3));
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 3);
+    expectRun(tests, root, "C14Overwrite", std::string(kBoxPrelude) + R"ns(
+class Program
+{
+    private static async int Take(owned Box b) { return b.Id; }
+    public static async int Main()
+    {
+        Future<int> f = Take(new Box(1));
+        f = Take(new Box(2));
+        int r = await f;
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 212);
+    expectRun(tests, root, "C14Await", std::string(kBoxPrelude) + R"ns(
+class Program
+{
+    private static async int Take(owned Box b) { return b.Id; }
+    public static int Main() { int r = await Take(new Box(5)); return r * 100 + Counter.Drops; }
+}
+)ns", 505);
+    expectRun(tests, root, "C14MovedFuture", std::string(kBoxPrelude) + R"ns(
+class Program
+{
+    private static async int Take(owned Box b) { return b.Id; }
+    private static async int Pass(Future<int> f) { return await f; }
+    public static async int Main()
+    {
+        Future<int> f = Take(new Box(8));
+        Future<int> g = move(f);
+        int r = await Pass(move(g));
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 808);
+    expectRun(tests, root, "C14UnusedFutureParameter", std::string(kBoxPrelude) + R"ns(
+class Program
+{
+    private static async int Take(owned Box b) { return b.Id; }
+    private static async int Pass(Future<int> f) { return 3; }
+    public static async int Main()
+    {
+        int r = await Pass(Take(new Box(8)));
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 308);
+    expectRun(tests, root, "C14Hold", std::string(kBoxPrelude) + R"ns(
+class Program
+{
+    private static async int Take(owned Box b) { return b.Id; }
+    private static async int Tick() { yield; return 1; }
+    public static async int Main()
+    {
+        Future<int> f = Take(new Box(9));
+        Future<int> unused = Take(new Box(2));
+        int t = await Tick();
+        int r = await f;
+        return (r + t) * 100 + Counter.Drops;
+    }
+}
+)ns", 1009);
+    expectRun(tests, root, "C14Spawn", std::string(kBoxPrelude) + R"ns(
+struct InlineExecutor : IExecutor
+{
+    public int spawned;
+    public InlineExecutor() { spawned = 0; }
+    public int Spawn(Future<void> task) { spawned = spawned + 1; return spawned - 1; }
+    public int PollJoin(int handle) { return 0; }
+    public void Cancel(int handle) { }
+}
+class Program
+{
+    public static async void Child(owned Box b) { }
+    public static int Main()
+    {
+        {
+            TaskScope<InlineExecutor> scope = TaskScope<InlineExecutor>.Create(new InlineExecutor());
+            scope.Spawn(Child(new Box(7)));
+            scope.Join();
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 7);
+}
+
+void testFutureMoveOnly(TestContext& tests, const std::filesystem::path& root)
+{
+    expectReject(tests, root, "C14Copy", std::string(kBoxPrelude) + R"ns(
+class Program
+{
+    private static async int Take(owned Box b) { return b.Id; }
+    public static async int Main()
+    {
+        Future<int> f = Take(new Box(1));
+        Future<int> g = f;
+        return await g;
+    }
+}
+)ns",
+        "cannot be copied into local 'g'");
+    expectReject(tests, root, "C14DoubleAwait", std::string(kBoxPrelude) + R"ns(
+class Program
+{
+    private static async int Take(owned Box b) { return b.Id; }
+    public static async int Main()
+    {
+        Future<int> f = Take(new Box(1));
+        int a = await f;
+        int b = await f;
+        return a + b;
+    }
+}
+)ns",
+        "use of moved-from move-only local 'f'");
+}
+
 int main()
 {
     TestContext tests;
@@ -1815,5 +1971,7 @@ int main()
     testValueListElements(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
+    testFutureDrops(tests, root);
+    testFutureMoveOnly(tests, root);
     return tests.resultKeeping(root);
 }

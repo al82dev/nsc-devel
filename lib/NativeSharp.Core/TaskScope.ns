@@ -51,7 +51,9 @@ namespace NativeSharp.Core
                 handles = grown;
                 active = grownActive;
             }
-            handles[count] = executor.Spawn(task);
+            // EN: Freeze 3.0 C-14: a future is move-only; the executor takes it over.
+            // ES: Congelamiento 3.0 C-14: un future solo se mueve; el executor lo toma.
+            handles[count] = executor.Spawn(move(task));
             active[count] = true;
             count = count + 1;
         }

@@ -171,6 +171,12 @@ bool OopLlvmImplementation::lowerGeneratorFrameInitStatement(
                 LLVMValueRef selfAlloca = selfFound->second;
                 if (currentMirFunction_ == nullptr)
                     return fail(error, "generator frame init missing current function");
+                // EN: Freeze 3.0 C-14: an empty frame is not allocated; the future owns and later
+                //     frees whatever frame it holds, and a zero-byte block is not one to free.
+                // ES: Congelamiento 3.0 C-14: un frame vacio no se reserva; el future es dueno y luego
+                //     libera el frame que tenga, y un bloque de cero bytes no es uno para liberar.
+                if (currentMirFunction_->asyncFrameSize == 0 &&
+                    currentMirFunction_->returnTypeKey.starts_with("future:")) return true;
                 LLVMValueRef size = LLVMConstInt(
                     LLVMInt64TypeInContext(context_), currentMirFunction_->asyncFrameSize, 0);
                 LLVMValueRef allocArgs[] = {size};
@@ -784,6 +790,11 @@ bool OopLlvmImplementation::lowerDropFrameStatement(
                 // ES: Congelamiento 3.0 C-02: un generador sincrono se desenreda por su MoveNext,
                 //     que corre los finally y destrucciones activas en su yield; los locales del
                 //     frame nunca se destruyen a ciegas (pueden estar muertos o sin inicializar).
+                // EN: Freeze 3.0 C-14: an async function's future has its own drop.
+                // ES: Congelamiento 3.0 C-14: el future de una funcion async tiene su propio drop.
+                if (currentMirFunction_ != nullptr && !currentMirFunction_->parameterTypeKeys.empty() &&
+                    currentMirFunction_->parameterTypeKeys[0].starts_with("future:"))
+                    return lowerFutureDrop(self, error);
                 if (currentMirFunction_ != nullptr && !currentMirFunction_->parameterTypeKeys.empty() &&
                     !currentMirFunction_->parameterTypeKeys[0].starts_with("async-iterator:"))
                     return lowerSyncGeneratorDrop(self, error);

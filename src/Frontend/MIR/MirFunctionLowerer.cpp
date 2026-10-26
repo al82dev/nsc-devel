@@ -602,6 +602,27 @@ void assignAwaitFrameSlotNodes(
     }
 }
 
+// EN: Freeze 3.0 C-14: a frame slot's size and alignment. A future or iterator has no object
+//     layout, only a MIR struct layout; without this fallback a future local or parameter was left
+//     out of the frame (lost across a suspension, read as garbage by the poll).
+// ES: Congelamiento 3.0 C-14: tamano y alineacion de un slot del frame. Un future o iterator no
+//     tiene layout de objeto, solo layout MIR; sin este respaldo un future local o parametro quedaba
+//     fuera del frame (perdido tras una suspension, leido como basura por el poll).
+std::optional<std::pair<std::uint64_t, std::uint64_t>> frameValueLayout(
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    const std::string& typeKey)
+{
+    std::optional<std::pair<std::uint64_t, std::uint64_t>> layout =
+        objectLayoutModel.valueLayoutForTypeKey(nameLookup, typeKey);
+    if (layout.has_value()) return layout;
+    if (const ProjectOopMirStructLayout* mir = functionStructLayout(indexes, layouts, typeKey))
+        return std::pair<std::uint64_t, std::uint64_t>{mir->size, mir->alignment};
+    return std::nullopt;
+}
+
 // EN: Freeze 3.0 C-02 (D1/D4): every local of a coroutine lives in its heap frame, so a resumed
 //     poll sees the values it left and an address taken before a suspension stays valid. Linear
 //     liveness missed locals reused by a later loop iteration; keeping them all is exact.
@@ -612,6 +633,8 @@ void appendCoroutineFrameLocalNodes(
     const ProjectOopMirNode* root,
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
     ProjectOopMirFunction& function,
     std::uint64_t& frameSize)
 {
@@ -643,7 +666,7 @@ void appendCoroutineFrameLocalNodes(
                 captured || node->referenceLocal ? typeKey + "*" : typeKey;
             std::optional<std::pair<std::uint64_t, std::uint64_t>> layout;
             if (pointerSlot) layout = std::pair<std::uint64_t, std::uint64_t>{8, 8};
-            else layout = objectLayoutModel.valueLayoutForTypeKey(nameLookup, storageKey);
+            else layout = frameValueLayout(objectLayoutModel, nameLookup, indexes, layouts, storageKey);
             if (layout.has_value())
             {
                 frameSize = alignFrameOffset(frameSize, layout->second);
@@ -664,6 +687,8 @@ void appendUsedFrameParameterNodes(
     const ProjectOopMirNode* root,
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
     ProjectOopMirFunction& function,
     std::uint64_t& frameSize)
 {
@@ -674,8 +699,13 @@ void appendUsedFrameParameterNodes(
         const ProjectOopMirNode* node = work.back();
         work.pop_back();
         if (node == nullptr) continue;
+        // EN: Freeze 3.0 C-14: an owned parameter is captured even when unread, so its cleanup (or
+        //     the future's drop) destroys the value its caller handed over.
+        // ES: Congelamiento 3.0 C-14: un parametro owned se captura aunque no se lea, para que su
+        //     cleanup (o el drop del future) destruya el valor que entrego quien llama.
         if ((node->kind == ProjectOopMirNodeKind::ParameterValue ||
-             node->kind == ProjectOopMirNodeKind::ParameterAddress) &&
+             node->kind == ProjectOopMirNodeKind::ParameterAddress ||
+             node->kind == ProjectOopMirNodeKind::OwnedParameterCleanup) &&
             node->parameterOrdinal.has_value())
             used.insert(*node->parameterOrdinal);
         for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
@@ -686,7 +716,7 @@ void appendUsedFrameParameterNodes(
     {
         if (!used.contains(parameter)) continue;
         const std::string& typeKey = function.generatorParameterTypeKeys[parameter];
-        const auto layout = objectLayoutModel.valueLayoutForTypeKey(nameLookup, typeKey);
+        const auto layout = frameValueLayout(objectLayoutModel, nameLookup, indexes, layouts, typeKey);
         if (!layout.has_value()) continue;
         frameSize = alignFrameOffset(frameSize, layout->second);
         function.asyncFrameParameters.emplace_back(parameter, frameSize, typeKey);
@@ -733,9 +763,9 @@ bool buildPollFrame(
             borrowNonLocalSource, localDefinition, localLastUse, suspendOrders, error))
         return false;
     appendCoroutineFrameLocalNodes(
-        function.body.get(), objectLayoutModel, nameLookup, function, frameSize);
+        function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
     appendUsedFrameParameterNodes(
-        function.body.get(), objectLayoutModel, nameLookup, function, frameSize);
+        function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
     appendCoroutineDropFlags(function, frameSize);
     function.asyncFrameSize = alignFrameOffset(frameSize, 8);
     return true;
@@ -743,6 +773,8 @@ bool buildPollFrame(
 
 void buildMoveNextFrame(
     ProjectOopMirFunction& function,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup)
 {
@@ -752,9 +784,9 @@ void buildMoveNextFrame(
     //     usado en el frame; la vivacidad lineal que esto sustituye perdia valores entre vueltas.
     std::uint64_t frameSize = 0;
     appendCoroutineFrameLocalNodes(
-        function.body.get(), objectLayoutModel, nameLookup, function, frameSize);
+        function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
     appendUsedFrameParameterNodes(
-        function.body.get(), objectLayoutModel, nameLookup, function, frameSize);
+        function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
     appendCoroutineDropFlags(function, frameSize);
     function.asyncFrameSize = alignFrameOffset(frameSize, 8);
 }
@@ -958,8 +990,12 @@ ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(
     if (function.mangledName.ends_with("$poll") &&
         !buildPollFrame(function, indexes_, functionLayouts, objectLayoutModel, nameLookup, error))
         return function;
-    if (function.mangledName.ends_with("$moveNext"))
-        buildMoveNextFrame(function, objectLayoutModel, nameLookup);
+    // EN: Freeze 3.0 C-14: only a synchronous generator's MoveNext is a coroutine; an async
+    //     generator's $moveNext just builds the demand future, whose local must stay off the frame.
+    // ES: Congelamiento 3.0 C-14: solo el MoveNext de un generador sincrono es una corrutina; el
+    //     $moveNext de un generador async solo arma el future de demanda, cuyo local no va al frame.
+    if (function.mangledName.ends_with("$moveNext") && function.returnTypeKey == "builtin:bool")
+        buildMoveNextFrame(function, indexes_, functionLayouts, objectLayoutModel, nameLookup);
     if (function.body == nullptr)
     {
         error += "\n  while lowering '" + source.mangledName + "'";

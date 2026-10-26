@@ -141,9 +141,12 @@ bool ProjectMemberModel::typeRequiresValueDrop(std::string_view typeKey) const
 {
     // NS304-T06-F07: iterator/async-iterator carry a Drop function pointer and therefore always
     // require a value drop (the drop glue dispatches through it), like a custom-destructor struct.
+    // EN: Freeze 3.0 C-14: a future carries its Drop function pointer too.
+    // ES: Congelamiento 3.0 C-14: un future tambien lleva su puntero a funcion Drop.
     return typeTransitivelyOwnsStorage(typeKey) ||
         typeTransitivelyHasCustomDestructor(typeKey) ||
-        typeKey.starts_with("iterator:") || typeKey.starts_with("async-iterator:");
+        typeKey.starts_with("iterator:") || typeKey.starts_with("async-iterator:") ||
+        (typeKey.starts_with("future:") && !typeKey.ends_with("*"));
 }
 
 bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) const
@@ -217,6 +220,9 @@ bool ProjectMemberModel::typeIsMoveOnly(std::string_view typeKey) const
             candidate.starts_with("builtin:") || candidate.ends_with("*") ||
             candidate.ends_with("[]"))
             continue;
+        // EN: Freeze 3.0 C-14: a future owns its frame, so a copy would release it twice.
+        // ES: Congelamiento 3.0 C-14: un future es dueno de su frame; una copia lo liberaria dos veces.
+        if (candidate.starts_with("future:")) return true;
         if (const std::optional<std::vector<std::string>> tuple =
                 ProjectTypeConversion::tupleElementTypeKeys(candidate))
         {

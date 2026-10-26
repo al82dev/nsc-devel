@@ -4139,6 +4139,10 @@ private:
         const ProjectOopHirFunction& function,
         const std::string& iteratorKey,
         const ast::AstNode* syntax);
+    std::unique_ptr<ProjectOopHirFunction> createAsyncFunctionDrop(
+        const ProjectOopHirFunction& function,
+        const std::string& futureKey,
+        const ast::AstNode* syntax);
     void buildAsyncGeneratorConstructorBody(
         ProjectOopHirFunction& function,
         const std::string& iteratorKey,

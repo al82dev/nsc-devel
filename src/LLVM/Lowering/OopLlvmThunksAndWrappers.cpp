@@ -816,6 +816,32 @@ bool OopLlvmImplementation::defineValueDropEntries(std::string& error)
                     return fail(error, "iterator drop glue call failed");
                 LLVMBuildRetVoid(builder_);
             }
+            else if (layout.typeKey.starts_with("future:"))
+            {
+                // EN: Freeze 3.0 C-14: a future dispatches through its Drop pointer (member 5). A
+                //     default or consumed (zeroed) future has none and drops nothing.
+                // ES: Congelamiento 3.0 C-14: un future despacha por su puntero Drop (miembro 5).
+                //     Uno por defecto o consumido (en cero) no tiene y no destruye nada.
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef dropFn = LLVMBuildLoad2(
+                    builder_, ptr,
+                    byteOffset(storage, futureFieldOffset(layout.typeKey, 5), "drop.fn.addr"),
+                    "drop.fn");
+                LLVMBasicBlockRef call = appendBlock("future.drop.call");
+                LLVMBasicBlockRef done = appendBlock("future.drop.done");
+                LLVMBuildCondBr(
+                    builder_, LLVMBuildICmp(builder_, LLVMIntEQ, dropFn, LLVMConstNull(ptr), "drop.fn.none"),
+                    done, call);
+                enterBlock(call);
+                LLVMTypeRef fnParams[] = { ptr };
+                LLVMTypeRef fnType = LLVMFunctionType(LLVMVoidTypeInContext(context_), fnParams, 1, 0);
+                LLVMValueRef args[] = { storage };
+                if (LLVMBuildCall2(builder_, fnType, dropFn, args, 1U, "") == nullptr)
+                    return fail(error, "future drop glue call failed");
+                LLVMBuildBr(builder_, done);
+                enterBlock(done);
+                LLVMBuildRetVoid(builder_);
+            }
             else if (!emitValueDropAddress(
                     storage, layout.typeKey, "value.drop", error, false))
                 return false;
