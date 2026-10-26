@@ -7087,6 +7087,18 @@ class Program
         }});
 }
 
+// EN: Freeze 3.0 DEC-15: C-17 makes a synchronous `await` outside `try` propagate the future's error
+//     as an exception. The case proves that propagation with a stable result: Forward awaits outside
+//     any try, Main catches and returns 9. Exit 9 is reachable only through the catch, so neither the
+//     value after the await (142) nor a default (100) can pass. An error escaping Main ends the process
+//     with the native code 0xE04E5301, and Windows Error Reporting delayed that path intermittently at
+//     -O2, so the case does not depend on it.
+// ES: Congelamiento 3.0 DEC-15: C-17 hace que un `await` sincrono fuera de `try` propague el error del
+//     future como excepcion. El caso prueba esa propagacion con un resultado estable: Forward espera
+//     fuera de todo try, Main atrapa y devuelve 9. El 9 solo se alcanza por el catch, asi que ni el
+//     valor despues del await (142) ni un valor por defecto (100) pueden pasar. Un error que sale de
+//     Main termina el proceso con el codigo nativo 0xE04E5301 y el reporte de errores de Windows demoro
+//     esa ruta de forma intermitente en -O2, por eso el caso no depende de ella.
 void registerAsyncThrowErrorCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-376", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7114,10 +7126,22 @@ class Program
         return 42;
     }
 
-    public static int Main() throws Exception
+    public static int Forward() throws Exception
     {
         int result = await Read();
-        return result;
+        return result + 100;
+    }
+
+    public static int Main()
+    {
+        try
+        {
+            return Forward();
+        }
+        catch (Exception e)
+        {
+            return 9;
+        }
     }
 }
 )ns", "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"
@@ -7132,9 +7156,9 @@ class Program
             if (!emitted.started || emitted.exitCode != 0) return;
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
-            context.expect(result.started && result.error.empty() &&
-                    result.exitCode == static_cast<decltype(result.exitCode)>(-1),
-                "TL-LANG-376 a throw in the async body must surface as a future error (state=-2): " +
+            context.expect(result.started && result.error.empty() && result.exitCode == 9,
+                "TL-LANG-376 a throw in the async body must propagate through a synchronous await outside "
+                "try to the caller's catch (C-17): " +
                     result.error + result.output + " exit=" + std::to_string(result.exitCode));
         }});
 }
