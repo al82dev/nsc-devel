@@ -56,6 +56,14 @@ struct ExpectedSurfaceEntry final
     std::string_view rationale;
 };
 
+// EN: Freeze 3.0 C-06 and DEC-07/DEC-08: the frozen surface publishes async-await, async-streams,
+//     yield-generators, default-interface-implementations and list-patterns as implemented, and the
+//     move-only rule names the structs with a destructor (C-11) and the futures (C-14). This table is
+//     the independent oracle of src/Language/Language3Surface.cpp.
+// ES: Congelamiento 3.0 C-06 y DEC-07/DEC-08: la superficie congelada publica async-await,
+//     async-streams, yield-generators, default-interface-implementations y list-patterns como
+//     implementados, y la regla move-only nombra los structs con destructor (C-11) y los futures
+//     (C-14). Esta tabla es el oraculo independiente de src/Language/Language3Surface.cpp.
 constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
     {Language3Feature::RecordStructs, "record-structs", Language3Disposition::Implemented,
         "productive parser, layout, metadata and code-generation vertical"},
@@ -63,17 +71,20 @@ constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
         "lowered to ordinary fields and constructors before name binding"},
     {Language3Feature::RawStringLiterals, "raw-string-literals", Language3Disposition::Implemented,
         "delimiter-aware UTF-8 literal with exact multiline contents"},
-    {Language3Feature::AsyncAwait, "async-await", Language3Disposition::PlannedFor304,
-        "requires productive state-machine lowering, cleanup, pinning, cancellation and debugger metadata"},
-    {Language3Feature::AsyncStreams, "async-streams", Language3Disposition::PlannedFor304,
-        "requires an async iterator ABI with backpressure, cancellation and deterministic cleanup"},
-    {Language3Feature::YieldGenerators, "yield-generators", Language3Disposition::PlannedFor304,
-        "requires productive generator frames, suspension ownership and deterministic cleanup"},
+    {Language3Feature::AsyncAwait, "async-await", Language3Disposition::Implemented,
+        "async callables lower to a future constructor and a poll state machine; await suspends, resumes "
+        "and propagates errors"},
+    {Language3Feature::AsyncStreams, "async-streams", Language3Disposition::Implemented,
+        "AsyncIterator<T, E> with MoveNextAsync, cooperative cancellation and deterministic cleanup of "
+        "active finally regions"},
+    {Language3Feature::YieldGenerators, "yield-generators", Language3Disposition::Implemented,
+        "Iterator<T> generator frames with MoveNext, yield break and early-stop destruction of live locals"},
     {Language3Feature::DefaultInterfaceImplementations, "default-interface-implementations",
-        Language3Disposition::PlannedFor304,
-        "requires versioned dispatch, coherence and metadata rules for interface bodies"},
-    {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::PlannedFor304,
-        "requires exhaustiveness and usefulness analysis integrated with borrow and move semantics"},
+        Language3Disposition::Implemented,
+        "interface and trait method bodies dispatched through the interface map, most-derived default wins"},
+    {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::Implemented,
+        "list patterns in match and is with length-domain exhaustiveness and redundancy analysis; not in "
+        "case labels"},
     {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::Implemented,
         "thread-safe once initialization with reentrancy and terminal failure"},
     {Language3Feature::Decimal, "decimal", Language3Disposition::Implemented,
@@ -83,7 +94,9 @@ constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
     {Language3Feature::TraitOperators, "trait-operators", Language3Disposition::Implemented,
         "stable lang-item witnesses with builtin precedence and intrinsic short-circuit control flow"},
     {Language3Feature::MoveOnlyDefaults, "move-only-defaults", Language3Disposition::Implemented,
-        "value types require explicit Copy and named consuming reads require move(value)"},
+        "structs without a destructor whose fields are all copyable copy implicitly; structs with a "
+        "destructor or owned fields, variants and opaque types without the copy modifier, and futures "
+        "are move-only; named consuming reads require move(value) and await consumes its future"},
     {Language3Feature::LongDouble, "long-double", Language3Disposition::RejectedFor3,
         "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp 3.0"},
     {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::Implemented,
@@ -332,16 +345,16 @@ std::string expectedManifest()
         "record-structs=implemented:productive parser, layout, metadata and code-generation vertical\n"
         "primary-constructors=implemented:lowered to ordinary fields and constructors before name binding\n"
         "raw-string-literals=implemented:delimiter-aware UTF-8 literal with exact multiline contents\n"
-        "async-await=planned-3.0.4:requires productive state-machine lowering, cleanup, pinning, cancellation "
-        "and debugger metadata\n"
-        "async-streams=planned-3.0.4:requires an async iterator ABI with backpressure, cancellation and "
-        "deterministic cleanup\n"
-        "yield-generators=planned-3.0.4:requires productive generator frames, suspension ownership and "
-        "deterministic cleanup\n"
-        "default-interface-implementations=planned-3.0.4:requires versioned dispatch, coherence and metadata "
-        "rules for interface bodies\n"
-        "list-patterns=planned-3.0.4:requires exhaustiveness and usefulness analysis integrated with borrow "
-        "and move semantics\n"
+        "async-await=implemented:async callables lower to a future constructor and a poll state machine; "
+        "await suspends, resumes and propagates errors\n"
+        "async-streams=implemented:AsyncIterator<T, E> with MoveNextAsync, cooperative cancellation and "
+        "deterministic cleanup of active finally regions\n"
+        "yield-generators=implemented:Iterator<T> generator frames with MoveNext, yield break and early-stop "
+        "destruction of live locals\n"
+        "default-interface-implementations=implemented:interface and trait method bodies dispatched through "
+        "the interface map, most-derived default wins\n"
+        "list-patterns=implemented:list patterns in match and is with length-domain exhaustiveness and "
+        "redundancy analysis; not in case labels\n"
         "static-constructors=implemented:thread-safe once initialization with reentrancy and terminal failure\n"
         "decimal=implemented:frozen 128-bit value ABI (coefficient 96 + scale + sign) with arithmetic, overflow, "
         "conversion, formatting and FFI contracts\n"
@@ -349,8 +362,10 @@ std::string expectedManifest()
         "receiver-type mutation\n"
         "trait-operators=implemented:stable lang-item witnesses with builtin precedence and intrinsic "
         "short-circuit control flow\n"
-        "move-only-defaults=implemented:value types require explicit Copy and named consuming reads require "
-        "move(value)\n"
+        "move-only-defaults=implemented:structs without a destructor whose fields are all copyable copy "
+        "implicitly; structs with a destructor or owned fields, variants and opaque types without the copy "
+        "modifier, and futures are move-only; named consuming reads require move(value) and await consumes "
+        "its future\n"
         "long-double=rejected-3.0:Windows x64 MSVC ABI aliases long double to double; use double in "
         "NativeSharp 3.0\n"
         "condition-declarations=implemented:edge-scoped if, while and switch locals with definite assignment "
@@ -458,8 +473,8 @@ void registerUnavailableDiagnosticCase(TestRegistry& registry)
             context.expect(language3SurfaceDiagnostic(entry.feature) == expectedDiagnostic(entry),
                 "TL-LANG-160 every planned, deferred, or rejected feature must return its exact status diagnostic");
         }
-        context.expect(planned == 5 && deferred == 0 && rejected == 1,
-            "TL-LANG-160 the catalog must expose five nonproductive 3.0.4 plans and one rejected feature");
+        context.expect(planned == 0 && deferred == 0 && rejected == 1,
+            "TL-LANG-160 the catalog must expose no 3.0.4 plans, no 4.0 deferrals and one rejected feature");
     });
 }
 
