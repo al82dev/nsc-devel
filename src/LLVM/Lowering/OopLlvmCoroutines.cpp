@@ -93,6 +93,20 @@ void OopLlvmImplementation::collectCoroutineSuspensions(const frontend::ProjectO
                     const auto parent = parents.find(ancestor);
                     ancestor = parent == parents.end() ? nullptr : parent->second;
                 }
+                // EN: Freeze 3.0 D-01: every slotted operand off the path from this await is
+                //     loaded, not evaluated, while the replay toward this id runs.
+                // ES: Congelamiento 3.0 D-01: todo operando con slot fuera del camino desde este
+                //     await se carga, no se evalua, mientras corre la repeticion hacia este id.
+                const frontend::ProjectOopMirNode* onPath = node;
+                for (auto parent = parents.find(onPath); parent != parents.end();
+                     parent = parents.find(onPath))
+                {
+                    for (const auto& sibling : parent->second->children)
+                        if (sibling != nullptr && sibling.get() != onPath &&
+                            sibling->replaySpillOffset.has_value())
+                            coroutine_.replayIds[sibling.get()].push_back(id);
+                    onPath = parent->second;
+                }
             }
             for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
             {
@@ -330,6 +344,156 @@ void OopLlvmImplementation::enterCoroutineResumeTarget(const frontend::ProjectOo
         LLVMBuildBr(builder_, block);
         enterBlock(block);
         for (const std::int64_t id : found->second) coroutine_.resumeBlocks[id] = block;
+}
+
+bool OopLlvmImplementation::beginCoroutineReplaySpill(
+        const frontend::ProjectOopMirNode* node, OopLlvmReplaySpill& spill, std::string& error)
+{
+        // EN: Freeze 3.0 D-01: the replay of a statement toward an await loads each operand the
+        //     first pass already evaluated (a call, an index, a temporary), so its side effects
+        //     run once. Any other flow evaluates the operand and stores it.
+        // ES: Congelamiento 3.0 D-01: la repeticion de una sentencia hacia un await carga cada
+        //     operando que la primera pasada ya evaluo (una llamada, un indice, un temporal), asi
+        //     sus efectos corren una vez. Cualquier otro flujo evalua el operando y lo guarda.
+        if (!coroutine_.active || node == nullptr || !node->replaySpillOffset.has_value() ||
+            terminated())
+            return false;
+        const auto ids = coroutine_.replayIds.find(node);
+        if (ids == coroutine_.replayIds.end() || ids->second.empty()) return false;
+        if (coroutine_.replayEntered.contains(node)) return false;
+        if (currentMirFunction_ == nullptr ||
+            *node->replaySpillOffset >= currentMirFunction_->asyncFrameSize)
+            return fail(error, "coroutine replay operand has no slot in the frame");
+        LLVMTypeRef intType = llvmType("builtin:int", error);
+        if (intType == nullptr) return false;
+        coroutine_.replayEntered.insert(node);
+        spill.node = node;
+        spill.slot = byteOffset(coroutine_.frame, *node->replaySpillOffset, "coro.replay.slot");
+        LLVMValueRef seen = LLVMBuildLoad2(builder_, intType, coroutine_.resumeState, "coro.replay.seen");
+        LLVMValueRef replaying = nullptr;
+        for (const std::int64_t id : ids->second)
+        {
+            LLVMValueRef match = LLVMBuildICmp(
+                builder_, LLVMIntEQ, seen, LLVMConstInt(intType, static_cast<unsigned long long>(id), 1),
+                "coro.replay.is");
+            replaying = replaying == nullptr ? match : LLVMBuildOr(builder_, replaying, match, "coro.replay.any");
+        }
+        spill.loadBlock = appendBlock("coro.replay.load");
+        spill.computeBlock = appendBlock("coro.replay.compute");
+        LLVMBuildCondBr(builder_, replaying, spill.loadBlock, spill.computeBlock);
+        enterBlock(spill.computeBlock);
+        return true;
+}
+
+LLVMValueRef OopLlvmImplementation::finishCoroutineReplaySpill(
+        const OopLlvmReplaySpill& spill, LLVMValueRef value, std::string& error)
+{
+        coroutine_.replayEntered.erase(spill.node);
+        LLVMBasicBlockRef computeEnd = LLVMGetInsertBlock(builder_);
+        if (value == nullptr || !error.empty() || terminated() ||
+            !coroutineReplaySpillable(spill.node, value))
+        {
+            // EN: A value with no safe slot form, or one whose evaluation never reaches the await:
+            //     the replay evaluates it again, as before D-01.
+            // ES: Un valor sin forma segura de slot, o uno cuya evaluacion nunca llega al await: la
+            //     repeticion lo vuelve a evaluar, como antes de D-01.
+            enterBlock(spill.loadBlock);
+            LLVMBuildBr(builder_, spill.computeBlock);
+            LLVMPositionBuilderAtEnd(builder_, computeEnd);
+            return value;
+        }
+        LLVMTypeRef type = LLVMTypeOf(value);
+        LLVMSetAlignment(LLVMBuildStore(builder_, value, spill.slot), 8);
+        LLVMBasicBlockRef join = appendBlock("coro.replay.join");
+        LLVMBuildBr(builder_, join);
+        enterBlock(spill.loadBlock);
+        LLVMValueRef loaded = LLVMBuildLoad2(builder_, type, spill.slot, "coro.replay.value");
+        LLVMSetAlignment(loaded, 8);
+        LLVMBuildBr(builder_, join);
+        enterBlock(join);
+        LLVMValueRef merged = LLVMBuildPhi(builder_, type, "coro.replay");
+        LLVMValueRef incomingValues[] = {value, loaded};
+        LLVMBasicBlockRef incomingBlocks[] = {computeEnd, spill.loadBlock};
+        LLVMAddIncoming(merged, incomingValues, incomingBlocks, 2);
+        return merged;
+}
+
+bool OopLlvmImplementation::coroutineReplaySpillable(
+        const frontend::ProjectOopMirNode* node, LLVMValueRef value)
+{
+        // EN: A value of the operand's own LLVM type fits the slot MIR sized from its layout. A
+        //     pointer standing for an address is kept only when the storage outlives the poll.
+        // ES: Un valor del tipo LLVM propio del operando cabe en el slot que MIR dimensiono con su
+        //     layout. Un puntero que representa una direccion se guarda solo si el almacenamiento
+        //     sobrevive al poll.
+        LLVMTypeRef type = LLVMTypeOf(value);
+        if (node->kind == frontend::ProjectOopMirNodeKind::FieldAddress ||
+            node->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress ||
+            node->kind == frontend::ProjectOopMirNodeKind::RangeArrayElementAddress ||
+            node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress)
+            return type == LLVMPointerTypeInContext(context_, 0) && coroutineReplayAddressStable(node);
+        std::string ignored;
+        LLVMTypeRef declared = llvmType(node->typeKey, ignored);
+        return declared != nullptr && declared == type;
+}
+
+bool OopLlvmImplementation::coroutineReplayAddressStable(const frontend::ProjectOopMirNode* node)
+{
+        // EN: The frame, a capture cell, the heap and module storage outlive a poll; an alloca of
+        //     the poll does not.
+        // ES: El frame, una celda capturada, el heap y el almacenamiento del modulo sobreviven al
+        //     poll; un alloca del poll no.
+        LLVMTypeRef pointer = LLVMPointerTypeInContext(context_, 0);
+        for (const frontend::ProjectOopMirNode* cursor = node; cursor != nullptr;)
+        {
+            switch (cursor->kind)
+            {
+                case frontend::ProjectOopMirNodeKind::StaticFieldAddress:
+                case frontend::ProjectOopMirNodeKind::NamespaceStateAddress:
+                    return true;
+                case frontend::ProjectOopMirNodeKind::LocalAddress:
+                {
+                    if (!cursor->localOrdinal.has_value()) return false;
+                    const auto storage = localStorage_.find(*cursor->localOrdinal);
+                    return storage != localStorage_.end() && storage->second != nullptr &&
+                        LLVMIsAAllocaInst(storage->second) == nullptr;
+                }
+                case frontend::ProjectOopMirNodeKind::FieldAddress:
+                case frontend::ProjectOopMirNodeKind::ArrayElementAddress:
+                case frontend::ProjectOopMirNodeKind::RangeArrayElementAddress:
+                case frontend::ProjectOopMirNodeKind::RawElementAddress:
+                {
+                    if (cursor->children.empty() || cursor->children.front() == nullptr) return false;
+                    const frontend::ProjectOopMirNode* base = cursor->children.front().get();
+                    switch (base->kind)
+                    {
+                        case frontend::ProjectOopMirNodeKind::LocalAddress:
+                        case frontend::ProjectOopMirNodeKind::StaticFieldAddress:
+                        case frontend::ProjectOopMirNodeKind::NamespaceStateAddress:
+                        case frontend::ProjectOopMirNodeKind::FieldAddress:
+                        case frontend::ProjectOopMirNodeKind::ArrayElementAddress:
+                        case frontend::ProjectOopMirNodeKind::RangeArrayElementAddress:
+                        case frontend::ProjectOopMirNodeKind::RawElementAddress:
+                            cursor = base;
+                            continue;
+                        case frontend::ProjectOopMirNodeKind::TemporaryAddress:
+                        case frontend::ProjectOopMirNodeKind::StackAllocation:
+                        case frontend::ProjectOopMirNodeKind::ParameterAddress:
+                            return false;
+                        default:
+                        {
+                            // EN: A reference value (an object, an array): heap or module storage.
+                            // ES: Un valor referencia (un objeto, un arreglo): heap o modulo.
+                            std::string ignored;
+                            return llvmType(base->typeKey, ignored) == pointer;
+                        }
+                    }
+                }
+                default:
+                    return false;
+            }
+        }
+        return false;
 }
 
 LLVMValueRef OopLlvmImplementation::coroutineResumeMatches(

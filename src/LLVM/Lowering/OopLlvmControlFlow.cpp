@@ -602,6 +602,9 @@ bool OopLlvmImplementation::lowerDoWhile(const frontend::ProjectOopMirNode* node
         loopStack_.pop_back();
         if (!ok) return false;
         enterBlock(condBlock);
+        // EN: Freeze 3.0 D-01: an await in the condition resumes there, not at the body.
+        // ES: Congelamiento 3.0 D-01: un await en la condicion reanuda ahi, no en el cuerpo.
+        enterCoroutineResumeTarget(node->children[0].get());
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return false;
         if (!terminated()) LLVMBuildCondBr(builder_, condition, bodyBlock, endBlock);
@@ -732,6 +735,11 @@ bool OopLlvmImplementation::lowerFor(const frontend::ProjectOopMirNode* node, st
         LLVMBasicBlockRef endBlock = appendBlock("for.end");
         LLVMBuildBr(builder_, condBlock);
         enterBlock(condBlock);
+        // EN: Freeze 3.0 D-01: an await in the condition or the step resumes there; resuming at
+        //     the `for` would run its initializer again.
+        // ES: Congelamiento 3.0 D-01: un await en la condicion o el paso reanuda ahi; reanudar en
+        //     el `for` volveria a correr su inicializador.
+        enterCoroutineResumeTarget(node->children[1].get());
         if (node->children[1] != nullptr)
         {
             LLVMValueRef condition = lowerExpression(node->children[1].get(), error);
@@ -751,6 +759,8 @@ bool OopLlvmImplementation::lowerFor(const frontend::ProjectOopMirNode* node, st
         enterBlock(incBlock);
         if (node->children[2] != nullptr)
         {
+            if (node->children[2]->kind != frontend::ProjectOopMirNodeKind::Block)
+                enterCoroutineResumeTarget(node->children[2].get());
             if (node->children[2]->kind == frontend::ProjectOopMirNodeKind::Block)
             {
                 if (!lowerStatement(node->children[2].get(), error)) return false;

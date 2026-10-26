@@ -1075,6 +1075,248 @@ class Program
 )ns", 6);
 }
 
+/// EN: Freeze 3.0 D-01. A resumed poll re-enters the statement around the await that suspended;
+///     every operand evaluated before the await in that statement (a call, an index, a condition,
+///     a struct value, an assignment target) runs once, and an await in a `for` or `do` condition
+///     resumes in the condition, not at the initializer or the body.
+/// ES: Congelamiento 3.0 D-01. Un poll reanudado vuelve a entrar a la sentencia que rodea al await
+///     que suspendio; todo operando evaluado antes del await en esa sentencia (una llamada, un
+///     indice, una condicion, un valor struct, un destino de asignacion) corre una vez, y un await en
+///     la condicion de un `for` o un `do` reanuda en la condicion, no en el inicializador ni el cuerpo.
+void testAwaitReplayRunsOperandsOnce(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "D01Prefix", R"ns(
+class Program
+{
+    public static int Hits;
+    public static int Count() { Hits = Hits + 1; return 1; }
+    public static async int Slow()
+    {
+        yield;
+        return 5;
+    }
+    public static async int Main()
+    {
+        int x = Count() + await Slow();
+        return Hits * 100 + x;
+    }
+}
+)ns", 106);
+    expectRun(tests, root, "D01TwoAwaits", R"ns(
+class Program
+{
+    public static int Hits;
+    public static int Count() { Hits = Hits + 1; return 1; }
+    public static async int A()
+    {
+        yield;
+        return 1;
+    }
+    public static async int B()
+    {
+        yield;
+        yield;
+        return 2;
+    }
+    public static async int Main()
+    {
+        int v = await A() * 10 + Count() + await B();
+        return Hits * 100 + v;
+    }
+}
+)ns", 113);
+    expectRun(tests, root, "D01Condition", R"ns(
+class Program
+{
+    public static int Hits;
+    public static int Count() { Hits = Hits + 1; return 1; }
+    public static async int Slow()
+    {
+        yield;
+        return 5;
+    }
+    public static async int Main()
+    {
+        int r = 0;
+        if (Count() == 1 && await Slow() == 5) { r = 7; }
+        return Hits * 100 + r;
+    }
+}
+)ns", 107);
+    expectRun(tests, root, "D01StoreIndex", R"ns(
+class Program
+{
+    public static int Hits;
+    public static int Next() { Hits = Hits + 1; return Hits - 1; }
+    public static async int Slow()
+    {
+        yield;
+        return 5;
+    }
+    public static async int Main()
+    {
+        int[] values = new int[4];
+        values[Next()] = await Slow();
+        int r = Hits * 100 + values[0] * 10 + values[1];
+        delete[] values;
+        return r;
+    }
+}
+)ns", 150);
+    expectRun(tests, root, "D01Loop", R"ns(
+class Program
+{
+    public static int Hits;
+    public static int Count() { Hits = Hits + 1; return 1; }
+    public static async int Slow()
+    {
+        yield;
+        return 2;
+    }
+    public static async int Main()
+    {
+        int total = 0;
+        for (int i = 0; i < 3; i = i + 1)
+        {
+            total = total + Count() * await Slow();
+        }
+        return Hits * 100 + total;
+    }
+}
+)ns", 306);
+    expectRun(tests, root, "D01ForCondition", R"ns(
+class Program
+{
+    public static int Hits;
+    public static int Count() { Hits = Hits + 1; return 1; }
+    public static async bool Less(int i)
+    {
+        yield;
+        return i < 3;
+    }
+    public static async int Main()
+    {
+        int total = 0;
+        for (int i = 0; await Less(i); i = i + 1)
+        {
+            total = total + Count();
+        }
+        return Hits * 10 + total;
+    }
+}
+)ns", 33);
+    expectRun(tests, root, "D01DoWhileCondition", R"ns(
+class Program
+{
+    public static int Hits;
+    public static int Count() { Hits = Hits + 1; return 1; }
+    public static async bool Less(int i)
+    {
+        yield;
+        return i < 3;
+    }
+    public static async int Main()
+    {
+        int n = 0;
+        do
+        {
+            n = n + Count();
+        }
+        while (await Less(n));
+        return Hits * 10 + n;
+    }
+}
+)ns", 33);
+    expectRun(tests, root, "D01Arguments", R"ns(
+class Program
+{
+    public static int Hits;
+    public static int Count() { Hits = Hits + 1; return 1; }
+    public static int Add3(int a, int b, int c) { return a + b + c; }
+    public static async int Slow()
+    {
+        yield;
+        return 5;
+    }
+    public static async int Main()
+    {
+        int v = Add3(Count(), await Slow(), Count());
+        return Hits * 100 + v;
+    }
+}
+)ns", 207);
+    expectRun(tests, root, "D01Conditional", R"ns(
+class Program
+{
+    public static int Hits;
+    public static int Count() { Hits = Hits + 1; return 1; }
+    public static bool Flag() { Hits = Hits + 1; return true; }
+    public static async int Slow()
+    {
+        yield;
+        return 5;
+    }
+    public static async int Main()
+    {
+        int v = Flag() ? Count() + await Slow() : 0;
+        return Hits * 100 + v;
+    }
+}
+)ns", 206);
+    expectRun(tests, root, "D01StructOperand", R"ns(
+struct Pair
+{
+    public int A;
+    public int B;
+}
+class Program
+{
+    public static int Hits;
+    public static Pair Make()
+    {
+        Hits = Hits + 1;
+        Pair p;
+        p.A = 1;
+        p.B = 2;
+        return p;
+    }
+    public static int Sum(Pair p, int x) { return p.A + p.B + x; }
+    public static async int Slow()
+    {
+        yield;
+        return 5;
+    }
+    public static async int Main()
+    {
+        int v = Sum(Make(), await Slow());
+        return Hits * 100 + v;
+    }
+}
+)ns", 108);
+    expectRun(tests, root, "D01FieldTarget", R"ns(
+class Holder
+{
+    public int X;
+}
+class Program
+{
+    public static int Hits;
+    public static Holder Pick(Holder h) { Hits = Hits + 1; return h; }
+    public static async int Slow()
+    {
+        yield;
+        return 7;
+    }
+    public static async int Main()
+    {
+        raii Holder h = new Holder();
+        Pick(h).X = await Slow();
+        return Hits * 100 + h.X;
+    }
+}
+)ns", 107);
+}
+
 /// EN: C-02. A local of a coroutine lives in its frame: a raii local is destroyed once after the
 ///     resume, and a borrowed view of it stays valid across the suspension.
 /// ES: C-02. Un local de una corrutina vive en su frame: un local raii se destruye una vez tras
@@ -3464,6 +3706,7 @@ int main()
     testSynchronousAwaitAccepted(tests, root);
     testAsyncMainEntryPoint(tests, root);
     testCoroutineResume(tests, root);
+    testAwaitReplayRunsOperandsOnce(tests, root);
     testCoroutineFrameLocals(tests, root);
     testGeneratorResume(tests, root);
     testGeneratorEarlyStop(tests, root);

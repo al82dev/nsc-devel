@@ -318,6 +318,10 @@ using namespace llvm_api;
 LLVMValueRef OopLlvmImplementation::lowerExpression(const frontend::ProjectOopMirNode* node, std::string& error)
 {
     if (node == nullptr) return nullptr;
+    // EN: Freeze 3.0 D-01: an operand with a replay slot is evaluated once per statement pass.
+    // ES: Congelamiento 3.0 D-01: un operando con slot de repeticion se evalua una vez por pasada.
+    if (OopLlvmReplaySpill spill; beginCoroutineReplaySpill(node, spill, error))
+        return finishCoroutineReplaySpill(spill, lowerExpression(node, error), error);
     FloatingPointModeScope sourceModeScope;
     if (node->syntax != nullptr && node->syntax->floatingPointMode() !=
             ast::FloatingPointModeSyntaxKind::Inherit)

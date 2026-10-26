@@ -72,6 +72,7 @@ void writeNodeValues(IdentityWriter& output, const frontend::ProjectOopMirNode& 
     output.scalar(node.alignment);
     output.optional(node.bitOffset);
     output.optional(node.bitWidth);
+    output.optional(node.replaySpillOffset);
     output.scalar(node.bitStorageSize);
     output.scalar(node.integerValue);
     output.scalar(std::bit_cast<std::uint64_t>(node.floatingValue));

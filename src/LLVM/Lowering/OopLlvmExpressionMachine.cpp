@@ -25,6 +25,29 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionIterative(
                 values.push_back(nullptr);
                 continue;
             }
+            // EN: Freeze 3.0 D-01: an operand with a replay slot opens it before its first phase
+            //     and closes it, through a marker frame, once its value is on the stack.
+            // ES: Congelamiento 3.0 D-01: un operando con slot de repeticion lo abre antes de su
+            //     primera fase y lo cierra, con un frame marcador, cuando su valor esta en la pila.
+            if (frame.replayJoin)
+            {
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                values.push_back(finishCoroutineReplaySpill(
+                    {current, frame.replaySlot, frame.replayLoad, frame.replayCompute}, value, error));
+                continue;
+            }
+            if (OopLlvmReplaySpill spill; frame.phase == 0 && beginCoroutineReplaySpill(current, spill, error))
+            {
+                LlvmExpressionFrame join{current};
+                join.replayJoin = true;
+                join.replaySlot = spill.slot;
+                join.replayLoad = spill.loadBlock;
+                join.replayCompute = spill.computeBlock;
+                frames.push_back(join);
+                frames.push_back(frame);
+                continue;
+            }
             if (lowerExpressionFrameGroup01(frame, frames, values, error)) continue;
             if (lowerExpressionFrameGroup02(frame, frames, values, error)) continue;
             if (lowerExpressionFrameGroup03(frame, frames, values, error)) continue;

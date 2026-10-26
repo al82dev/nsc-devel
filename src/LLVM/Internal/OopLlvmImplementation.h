@@ -1368,6 +1368,14 @@ private:
     bool emitCoroutineDoneReturn(const frontend::ProjectOopMirFunction& function, std::string& error);
     bool finishCoroutineDispatch(std::string& error);
     void enterCoroutineResumeTarget(const frontend::ProjectOopMirNode* statement);
+    // EN: Freeze 3.0 D-01: the replay slot of an operand next to a suspending await.
+    // ES: Congelamiento 3.0 D-01: el slot de repeticion de un operando junto a un await que suspende.
+    bool beginCoroutineReplaySpill(
+        const frontend::ProjectOopMirNode* node, OopLlvmReplaySpill& spill, std::string& error);
+    LLVMValueRef finishCoroutineReplaySpill(
+        const OopLlvmReplaySpill& spill, LLVMValueRef value, std::string& error);
+    bool coroutineReplaySpillable(const frontend::ProjectOopMirNode* node, LLVMValueRef value);
+    bool coroutineReplayAddressStable(const frontend::ProjectOopMirNode* node);
     LLVMValueRef coroutineResumeMatches(
         const frontend::ProjectOopMirNode* node, std::int64_t& id, std::string& error);
     bool lowerCoroutineSuspendPoint(const frontend::ProjectOopMirNode* node, std::string& error);

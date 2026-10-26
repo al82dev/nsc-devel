@@ -26,5 +26,12 @@ struct LlvmExpressionFrame final
     LLVMTypeRef resultType = nullptr;
     LLVMBasicBlockRef nullBlock = nullptr;
     LLVMBasicBlockRef endBlock = nullptr;
+    // EN: Freeze 3.0 D-01: a marker that closes the replay slot of `node` once it is evaluated.
+    // ES: Congelamiento 3.0 D-01: un marcador que cierra el slot de repeticion de `node` al
+    //     terminar de evaluarlo.
+    bool replayJoin = false;
+    LLVMValueRef replaySlot = nullptr;
+    LLVMBasicBlockRef replayLoad = nullptr;
+    LLVMBasicBlockRef replayCompute = nullptr;
 };
 }

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -56,5 +57,24 @@ struct OopLlvmCoroutineState final
     // EN: Per yield id, the block that runs the cleanups active at that yield and ends.
     // ES: Por id de yield, el bloque que corre las limpiezas activas en ese yield y termina.
     std::unordered_map<std::int64_t, LLVMBasicBlockRef> cancelBlocks;
+    // EN: Freeze 3.0 D-01: per operand with a replay slot (replaySpillOffset), the ids whose
+    //     replay loads it instead of evaluating it; and the operands being evaluated right now.
+    // ES: Congelamiento 3.0 D-01: por operando con slot de repeticion (replaySpillOffset), los ids
+    //     cuya repeticion lo carga en vez de evaluarlo; y los operandos que se evaluan ahora.
+    std::unordered_map<const frontend::ProjectOopMirNode*, std::vector<std::int64_t>> replayIds;
+    std::unordered_set<const frontend::ProjectOopMirNode*> replayEntered;
+};
+
+// EN: Freeze 3.0 D-01: one operand under evaluation with its replay slot. `loadBlock` is entered
+//     when the resume state names a replay of this operand; `computeBlock` evaluates it.
+// ES: Congelamiento 3.0 D-01: un operando en evaluacion con su slot de repeticion. A `loadBlock`
+//     se entra cuando el estado de reanudacion nombra una repeticion de este operando;
+//     `computeBlock` lo evalua.
+struct OopLlvmReplaySpill final
+{
+    const frontend::ProjectOopMirNode* node = nullptr;
+    LLVMValueRef slot = nullptr;
+    LLVMBasicBlockRef loadBlock = nullptr;
+    LLVMBasicBlockRef computeBlock = nullptr;
 };
 }
