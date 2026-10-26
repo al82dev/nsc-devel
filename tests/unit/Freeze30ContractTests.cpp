@@ -2783,13 +2783,134 @@ class Program
     }
 }
 )ns", 56);
-    expectReject(tests, root, "P3OwnedArrayDelete", R"ns(
+    // EN: DEC-06: `delete[]` of a local `owned T[]` consumes it: the elements and the block are
+    //     released once, on the deleting path or by the lexical cleanup on the others (also when an
+    //     exception leaves the scope), and a later read or a second delete is a use of a moved value.
+    //     `raii T[]` keeps rejecting the explicit delete.
+    // ES: DEC-06: `delete[]` de un local `owned T[]` lo consume: los elementos y el bloque se liberan
+    //     una vez, en el camino que borra o por la limpieza lexica en los demas (tambien cuando una
+    //     excepcion sale del scope), y leerlo o borrarlo otra vez es usar un valor movido. `raii T[]`
+    //     sigue rechazando el delete explicito.
+    expectRun(tests, root, "DEC06OwnedArrayDelete", R"ns(
 class Program
 {
     public static int Main()
     {
-        owned int[] a = new int[2];
-        delete[] a;
+        owned int[] values = new int[3];
+        values[0] = 40;
+        values[1] = 2;
+        int r = values[0] + values[1];
+        delete[] values;
+        return r;
+    }
+}
+)ns", 42);
+    expectRun(tests, root, "DEC06OwnedArrayDeleteBranch", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int V;
+    public Guard(int v) { V = v; }
+    ~Guard() { Counter.Drops = Counter.Drops + V; }
+}
+class Program
+{
+    public static int Run(bool early)
+    {
+        owned Guard[] g = new Guard[2];
+        g[0] = new Guard(1);
+        g[1] = new Guard(2);
+        if (early)
+        {
+            delete[] g;
+            return 1;
+        }
+        return 2;
+    }
+    public static int Main()
+    {
+        int a = Run(true);
+        int b = Run(false);
+        return Counter.Drops * 10 + a + b;
+    }
+}
+)ns", 63);
+    expectRun(tests, root, "DEC06OwnedArrayDeleteUnwind", R"ns(
+using NativeSharp.Core;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int V;
+    public Guard(int v) { V = v; }
+    ~Guard() { Counter.Drops = Counter.Drops + V; }
+}
+class Program
+{
+    public static void Run(bool early)
+    {
+        owned Guard[] g = new Guard[2];
+        g[0] = new Guard(1);
+        g[1] = new Guard(2);
+        try
+        {
+            if (early) delete[] g;
+            if (early) throw new Exception("x");
+        }
+        catch (Exception e)
+        {
+        }
+    }
+    public static int Main()
+    {
+        Run(true);
+        int afterEarly = Counter.Drops;
+        Run(false);
+        return afterEarly * 10 + Counter.Drops;
+    }
+}
+)ns", 36);
+    expectReject(tests, root, "DEC06OwnedArrayUseAfterDelete", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        owned int[] values = new int[3];
+        delete[] values;
+        return values[0];
+    }
+}
+)ns", "use of moved-from RAII local 'values'");
+    expectReject(tests, root, "DEC06OwnedArrayDeleteTwice", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        owned int[] values = new int[3];
+        delete[] values;
+        delete[] values;
+        return 0;
+    }
+}
+)ns", "use of moved-from RAII local 'values'");
+    expectReject(tests, root, "DEC06OwnedArrayDeleteBorrowed", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        owned int[] values = new int[3];
+        ref int first = ref values[0];
+        delete[] values;
+        return first;
+    }
+}
+)ns", "while a borrowed local is alive");
+    expectReject(tests, root, "DEC06RaiiArrayDelete", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        raii int[] values = new int[3];
+        delete[] values;
         return 0;
     }
 }

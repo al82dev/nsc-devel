@@ -942,12 +942,33 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         case ast::AstNodeKind::DeleteExpression:
         {
             bool deletesRaiiLocal = false;
+            // EN: Freeze 3.0 DEC-06: `delete[]` of a local declared `owned T[]` consumes it. The
+            //     local is moved-from afterwards (a later read or delete is a use of a moved value),
+            //     the operation clears its slot and the lexical cleanup skips it, so it is destroyed
+            //     exactly once on every path. `raii T[]` keeps lexical cleanup as its only owner.
+            // ES: Congelamiento 3.0 DEC-06: `delete[]` de un local declarado `owned T[]` lo consume.
+            //     Despues el local queda movido (leerlo o borrarlo otra vez es usar un valor movido),
+            //     la operacion vacia su slot y la limpieza lexica lo omite, asi se destruye
+            //     exactamente una vez en todo camino. `raii T[]` conserva la limpieza lexica como
+            //     unico dueno.
+            std::optional<std::size_t> consumedOwnedArrayLocal;
             if (expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
             {
                 const std::optional<ScopeName> target = lookupScopeName(scopeOrdinal, expression->first()->text());
                 deletesRaiiLocal = target.has_value() && target->kind == ScopeNameKind::Local &&
                     target->semanticOrdinal < locals_.size() && locals_[target->semanticOrdinal].isRaii;
+                if (deletesRaiiLocal)
+                {
+                    const MethodLocalSymbol& local = locals_[target->semanticOrdinal];
+                    const bool ownedArrayLocal = expression->flag() && !local.isPinned &&
+                        ProjectTypeConversion::isNativeArray(local.typeKey) && local.syntax != nullptr &&
+                        local.syntax->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
+                        local.syntax->typeSyntax() != nullptr &&
+                        local.syntax->typeSyntax()->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::Owned;
+                    if (ownedArrayLocal) consumedOwnedArrayLocal = target->semanticOrdinal;
+                    deletesRaiiLocal = !ownedArrayLocal;
+                }
                 if (deletesRaiiLocal)
                 {
                     diagnostics.report(
@@ -959,6 +980,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             const ExpressionResult operand = analyzeExpression(
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            bool consumesBorrowedOwner = false;
+            if (consumedOwnedArrayLocal.has_value() && operand.valid)
+            {
+                const std::size_t ordinal = *consumedOwnedArrayLocal;
+                consumesBorrowedOwner = hasActiveBorrowOfOwnerLocal(ordinal, scopeOrdinal);
+                if (consumesBorrowedOwner)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "cannot delete[] owned local '" + locals_[ordinal].name +
+                            "' while a borrowed local is alive");
+                }
+                else
+                {
+                    arrayDeleteClearsOwnedField_.insert(expression);
+                    maybeMovedRaiiLocals_.erase(ordinal);
+                    movedRaiiLocals_.insert(ordinal);
+                    invalidateHistoricalBorrowsOfOwnerLocal(ordinal);
+                }
+            }
             const ClassMemberSymbol* context = methodSymbol(methodMemberOrdinal);
             const bool deletesCurrentThis = context != nullptr &&
                 context->kind == ClassMemberKind::Destructor &&
@@ -1025,7 +1068,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             result.typeKey = "builtin:void";
             result.valid = operand.valid && !deletesCurrentThis && !deletesRaiiLocal &&
-                !deletesOwnedField;
+                !deletesOwnedField && !consumesBorrowedOwner;
             break;
         }
         default:

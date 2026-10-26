@@ -4308,12 +4308,14 @@ void ProjectMethodBodyModel::analyzeVariable(
     // not yet perform -- both worse than leaving it exactly as it was.
     //
     // EN: Freeze 3.0 (owned arrays): an array destroys its elements now (C-12), so `owned T[]` is an
-    //     owner like `raii T[]`: released at scope exit, move-only, and not deleted by hand. The
-    //     LinkedList<T> relocation buffers drop their explicit delete[] (their slots are moved out).
+    //     owner like `raii T[]`: released at scope exit and move-only. DEC-06: unlike `raii T[]`, an
+    //     explicit `delete[]` consumes it (see analyzeExpressionKindDeleteExpression), so the
+    //     relocation buffers of LinkedList<T> keep their delete[].
     // ES: Congelamiento 3.0 (arreglos owned): un arreglo ya destruye sus elementos (C-12), asi que
-    //     `owned T[]` es dueno como `raii T[]`: se libera al salir del scope, es move-only y no se
-    //     borra a mano. Los buffers de reubicacion de LinkedList<T> quitan su delete[] explicito
-    //     (sus slots se mueven fuera).
+    //     `owned T[]` es dueno como `raii T[]`: se libera al salir del scope y es move-only. DEC-06: a
+    //     diferencia de `raii T[]`, un `delete[]` explicito lo consume (ver
+    //     analyzeExpressionKindDeleteExpression), asi los buffers de reubicacion de LinkedList<T>
+    //     conservan su delete[].
     const bool isOwnedQualified = declaredOwnership == sema::OwnershipKind::Owned;
     const bool managedDelegate = isAnyDelegateTypeKey(typeKey) && !isExternCDelegateTypeKey(typeKey);
     const bool ownedQualifierOwnsStorage =

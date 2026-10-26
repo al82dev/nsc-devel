@@ -329,10 +329,12 @@ public:
         const ast::AstNode* syntax) const noexcept;
     // EN: Freeze 3.0 (owned arrays): `delete[]` of an owned array field releases it and clears the
     //     field, so the container's destruction entry, which now releases owned array fields too,
-    //     never releases the same block again.
+    //     never releases the same block again. DEC-06: the same holds for a local declared
+    //     `owned T[]`, whose cleared slot the lexical cleanup then skips.
     // ES: Congelamiento 3.0 (arreglos owned): `delete[]` de un campo de arreglo owned lo libera y
     //     deja el campo vacio, asi la entrada de destruccion del contenedor, que ahora tambien libera
-    //     los campos de arreglo owned, nunca libera otra vez el mismo bloque.
+    //     los campos de arreglo owned, nunca libera otra vez el mismo bloque. DEC-06: lo mismo vale
+    //     para un local declarado `owned T[]`, cuyo slot vacio la limpieza lexica omite.
     bool arrayDeleteClearsOwnedField(const ast::AstNode* syntax) const noexcept
     {
         return arrayDeleteClearsOwnedField_.contains(syntax);

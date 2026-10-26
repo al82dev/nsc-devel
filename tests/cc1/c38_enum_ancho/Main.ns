@@ -216,6 +216,7 @@ namespace cc1enumancho
             if ((int)banderas[Opaco(0)] != 200) { return 34; }
             if ((int)banderas[Opaco(1)] != 128) { return 35; }
             if ((int)banderas[Opaco(3)] != 200) { return 36; }
+            delete[] banderas;
 
             // -----------------------------------------------------------------------------
             // 6. ToString(). El nombre no depende del ancho, pero la busqueda compara el valor

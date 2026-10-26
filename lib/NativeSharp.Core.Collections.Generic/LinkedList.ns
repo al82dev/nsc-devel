@@ -64,6 +64,7 @@ namespace NativeSharp.Core.Collections.Generic
                 tail = headSlot[0];
             }
             count = count + 1;
+            delete[] created;
             return headSlot[0];
         }
 
@@ -85,6 +86,7 @@ namespace NativeSharp.Core.Collections.Generic
                 tail = tail.Next();
             }
             count = count + 1;
+            delete[] created;
             return tail;
         }
 
@@ -151,6 +153,7 @@ namespace NativeSharp.Core.Collections.Generic
             raii LinkedListNode<T> discardedFromNode = node.SetNext(move(created[0]));
 
             count = count + 1;
+            delete[] created;
             return createdRef;
         }
 
@@ -316,6 +319,8 @@ namespace NativeSharp.Core.Collections.Generic
                 delete cursor[0];
                 cursor[0] = move(nextHolder[0]);
             }
+            delete[] cursor;
+            delete[] nextHolder;
             tail = null;
             count = 0;
         }
