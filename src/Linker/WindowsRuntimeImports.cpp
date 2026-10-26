@@ -1,4 +1,5 @@
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
+#include "nativesharp/Linker/ExternalImportValidation.h"
 
 #include "Internal/PlannedLibrary.h"
 #include "../LLVM/Internal/CacheVerifySwitch.h"
@@ -555,6 +556,9 @@ bool createWindowsImportLibraries(
     // CURRENT: the runtime closure comes from the toolchain SDK. Only explicit project imports
     // are materialized in the build directory, including additions to a canonical runtime DLL.
     if (!findCanonicalWindowsImportLibraries(libraries, error)) return false;
+    // EN: Freeze 3.0 (unresolved DLL imports): every external import must exist in its DLL.
+    // ES: Congelamiento 3.0 (imports de DLL sin resolver): todo import externo debe existir en su DLL.
+    if (!validateExternalImportExports(externalImports, error)) return false;
     const std::vector<PlannedLibrary> planned =
         planExternalWindowsImportLibraries(externalImports);
     return materializeWindowsImportLibraries(

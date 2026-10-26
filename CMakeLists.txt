@@ -1012,6 +1012,7 @@ add_library(nsc_linker STATIC
     src/Linker/Internal/ScopedTemporaryDirectory.cpp
     src/Linker/Internal/TemporaryFiles.cpp
     src/Linker/PeExecutableVerifier.cpp
+    src/Linker/ExternalImportValidation.cpp
     src/Linker/PdbVerifier.cpp
     src/Linker/WindowsExecutableBuilder.cpp
     src/Linker/WindowsLibraryBuilder.cpp

@@ -895,6 +895,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/CoffArchiveVerifier.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/LldLinker.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/PeExecutableVerifier.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/ExternalImportValidation.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/Internal/LinkToolIdentity.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/Internal/ScopedTemporaryDirectory.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Linker/Internal/TemporaryFiles.cpp"
