@@ -2592,8 +2592,14 @@ class Program
 )ns", 2213, true);
     // EN: LinkedList<T> keeps each value in an `owned T[]` slot of one element; the removed value
     //     belongs to the caller and every remaining value is dropped once by Clear().
+    //     Since P-1, RemoveFirst declares `throws InvalidOperationException`, so the call sits in a
+    //     minimal try/catch (authorized, P9); the removed value now ends with the try block, so
+    //     `before` is 1 and the result is 1123 (it was 123 before the call had to be handled).
     // ES: LinkedList<T> guarda cada valor en un slot `owned T[]` de un elemento; el valor removido
     //     es del llamador y cada valor restante se destruye una vez en Clear().
+    //     Desde P-1, RemoveFirst declara `throws InvalidOperationException`, asi que la llamada va
+    //     en un try/catch minimo (autorizado, P9); el valor removido termina con el bloque try, asi
+    //     `before` vale 1 y el resultado es 1123 (era 123 antes de tener que manejar la llamada).
     expectRun(tests, root, "C12LinkedList", prelude + R"ns(
 class Program
 {
@@ -2605,13 +2611,13 @@ class Program
             list.AddLast(Factory.Make(1));
             list.AddLast(Factory.Make(2));
             list.AddLast(Factory.Make(3));
-            Guard first = list.RemoveFirst();
+            try { Guard first = list.RemoveFirst(); } catch (InvalidOperationException e) { return 99; }
             before = Counter.Drops;
         }
         return before * 1000 + Counter.Drops;
     }
 }
-)ns", 123, true);
+)ns", 1123, true);
 }
 
 constexpr std::string_view kErrorPrelude = R"ns(
