@@ -4765,6 +4765,67 @@ class Program
 )ns", 121);
 }
 
+/// EN: Freeze 3.0 P6 (DEC-09). IAllocator keeps only the C-08 signature. A class that still implements a
+///     replaced member gets a diagnostic on that member naming the new signature.
+/// ES: Congelamiento 3.0 P6 (DEC-09). IAllocator conserva solo la firma de C-08. Una clase que aun
+///     implementa un miembro reemplazado recibe en ese miembro un diagnostico con la firma nueva.
+void testReplacedAllocatorSignature(TestContext& tests, const std::filesystem::path& root)
+{
+    expectReject(tests, root, "P6OldAllocator", R"ns(
+using NativeSharp.Core;
+class OldArena : IAllocator
+{
+    public byte* Allocate(int bytes) { return null; }
+    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return null; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii OldArena a = new OldArena();
+        return 0;
+    }
+}
+)ns",
+        "implements the IAllocator signature replaced in 3.0 (C-08); "
+        "implement 'byte* Allocate(long bytes, int alignment)'");
+    expectReject(tests, root, "P6OldDeallocate", R"ns(
+using NativeSharp.Core;
+class MixedArena : IAllocator
+{
+    public byte* Allocate(long bytes, int alignment) { return null; }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return null; }
+    public void Deallocate(byte* ptr) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii MixedArena a = new MixedArena();
+        return 0;
+    }
+}
+)ns", "implement 'void Deallocate(byte* ptr, long bytes, int alignment)'");
+    expectRun(tests, root, "P6NewAllocator", R"ns(
+using NativeSharp.Core;
+class NewArena : IAllocator
+{
+    public byte* Allocate(long bytes, int alignment) { return null; }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return null; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii NewArena a = new NewArena();
+        return 3;
+    }
+}
+)ns", 3);
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -6300,6 +6361,7 @@ int main()
     testSpanLivenessMap(tests, root);
     testCaughtExceptionParameterLoan(tests, root);
     testCaughtExceptionNotCaptured(tests, root);
+    testReplacedAllocatorSignature(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

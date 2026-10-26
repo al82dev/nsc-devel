@@ -24,3 +24,21 @@
 
 - `697226dd` — `ArenaAllocator` como `IAllocator` (Resize/Deallocate) + corrección del rechazo de
   retorno de `scope` (sólo el valor retornado directo escapa).
+
+## Nota de reemplazo — Congelamiento 3.0 (DEC-09, C-08)
+
+La firma de `IAllocator` que describe este documento fue reemplazada en 3.0, y la nueva es la única que se acepta:
+
+```
+byte* Allocate(long bytes, int alignment);
+byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment);
+void Deallocate(byte* ptr, long bytes, int alignment);
+```
+
+`ArenaAllocator` conserva `Allocate(int)` como override de la clase histórica `Allocator`, e implementa
+`IAllocator` con la firma nueva.
+
+Una implementación con la firma anterior (`Allocate(int)`, `Resize(byte*, int, int)`, `Deallocate(byte*)`) recibe
+en ese miembro un diagnóstico que nombra la firma nueva
+(`docs/3.0/decisiones-congelamiento/32-P6-IALLOCATOR-FIRMA-UNICA.md`).
+El texto de arriba se conserva como registro histórico de 3.0.4.

@@ -201,6 +201,11 @@ private:
         const ClassMemberSymbol& interfaceMethod,
         ClassInterfaceTablePlan& plan,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool reportReplacedAllocatorSignature(
+        std::size_t classOrdinal,
+        std::size_t interfaceOrdinal,
+        const ClassMemberSymbol& interfaceMethod,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void appendOperatorWitness(
         std::size_t classOrdinal,
         std::size_t interfaceOrdinal,
