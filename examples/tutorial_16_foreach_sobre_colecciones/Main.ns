@@ -25,7 +25,7 @@ namespace Tutorial.ForeachSobreColecciones
             return Hashing.Int32(value);
         }
 
-        public static int Main()
+        public static int Main() throws ArgumentException
         {
             int arraySum = 0;
             int[] numbers = new int[4];

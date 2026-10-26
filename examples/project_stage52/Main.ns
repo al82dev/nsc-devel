@@ -105,7 +105,7 @@ namespace Stage52Collections
         }
 
         // Queue<T>/Stack<T> -- FIFO and LIFO over a circular/dynamic backing array.
-        public static int RunQueueAndStack()
+        public static int RunQueueAndStack() throws Exception
         {
             raii Queue<int> queue = new Queue<int>();
             queue.Enqueue(1);
@@ -152,7 +152,7 @@ namespace Stage52Collections
         }
 
         // LinkedList<T> -- a doubly-linked list; each node owns its Value and its Next node.
-        public static int RunLinkedList()
+        public static int RunLinkedList() throws Exception
         {
             raii LinkedList<int> chain = new LinkedList<int>();
             chain.AddLast(2);
@@ -183,7 +183,7 @@ namespace Stage52Collections
         // NativeSharp generics are unconstrained and there is no object.GetHashCode() to fall
         // back on). AddOrUpdate is the owned-argument-friendly stand-in for a real indexer
         // setter; the indexer itself is read-only and throws KeyNotFoundException.
-        public static int RunDictionary()
+        public static int RunDictionary() throws Exception
         {
             HashFunc<int> intHash = HashInt;
             raii Dictionary<int, string> ages = new Dictionary<int, string>(intHash);
@@ -290,7 +290,7 @@ namespace Stage52Collections
         // `operator <`. See SortedDictionary.ns's class comment for why this package's
         // SortedDictionary/SortedSet deliberately share SortedList's array representation
         // instead of a balanced tree.
-        public static int RunSortedCollections()
+        public static int RunSortedCollections() throws Exception
         {
             raii SortedList<int, string> ranked = new SortedList<int, string>();
             raii string third = String.Copy("third");
@@ -323,7 +323,7 @@ namespace Stage52Collections
         // `Comparison<TKey>`/`Comparison<T>` constructor (P1 gap: previously these containers
         // only ever used TKey/T's own natural `<`), plus SortedSet<T>'s full set-theory surface,
         // GetViewBetween, Reverse, and capacity management.
-        public static int RunSortedCollectionsAdditions()
+        public static int RunSortedCollectionsAdditions() throws Exception
         {
             Comparison<int> descending = DescendingOrder;
 
@@ -382,7 +382,7 @@ namespace Stage52Collections
         // PriorityQueue<TElement,TPriority> -- a binary min-heap (Section 16 of the closure
         // review: "tipos genéricos adicionales"), plus Comparer<T>/EqualityComparer<T> as
         // reusable first-class wrappers around Comparison<T>/HashFunc<T>.
-        public static int RunPriorityQueueAndComparers()
+        public static int RunPriorityQueueAndComparers() throws Exception
         {
             raii PriorityQueue<int, int> tasks = new PriorityQueue<int, int>();
             tasks.Enqueue(100, 5);
@@ -421,7 +421,7 @@ namespace Stage52Collections
             return result;
         }
 
-        public static int Main()
+        public static int Main() throws Exception
         {
             return RunList() + RunListAdditions() + RunQueueAndStack() +
                 RunQueueAndStackAdditions() + RunLinkedList() + RunLinkedListAdditions() +

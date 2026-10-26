@@ -1313,14 +1313,16 @@ private:
         LLVMTypeRef carrier,
         LLVMBasicBlockRef suspendBlock);
     void releaseAwaitChildFrame(LLVMValueRef childSlot);
-    void emitSuspendingAwaitErrorPath(
+    bool emitSuspendingAwaitErrorPath(
+        const frontend::ProjectOopMirNode* node,
         LLVMValueRef self,
         LLVMValueRef childSlot,
         LLVMTypeRef intType,
         LLVMTypeRef errorType,
         std::uint64_t errorOffset,
         bool childFrameOnHeap,
-        LLVMBasicBlockRef errorBlock);
+        LLVMBasicBlockRef errorBlock,
+        std::string& error);
     LLVMValueRef finishSuspendingAwait(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef self,

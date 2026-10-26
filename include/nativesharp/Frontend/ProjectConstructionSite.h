@@ -36,5 +36,11 @@ struct ProjectConstructionSite final
     std::string allocatorResultCarrierTypeKey;
     std::vector<MethodExpressionTypeBinding> argumentTypes;
     bool argumentsTyped = false;
+    // EN: Freeze 3.0 C-13: catch types active at the site and the enclosing callable's error, so
+    //     constructor resolution can check a `throws E` constructor.
+    // ES: Congelamiento 3.0 C-13: tipos de catch activos en el sitio y el error del callable que lo
+    //     contiene, para que la resolucion de constructores revise un constructor `throws E`.
+    std::vector<std::string> activeErrorHandlers;
+    std::string enclosingErrorTypeKey;
 };
 }

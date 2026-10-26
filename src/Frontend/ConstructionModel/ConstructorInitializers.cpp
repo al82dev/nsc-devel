@@ -329,6 +329,12 @@ void ProjectConstructionModel::bindConstructorInitializer(
         anyMatchingArity,
         accessibleMatchingArity,
         diagnostics);
+    // EN: Freeze 3.0 C-13: only the constructor's own `throws` can cover `this(...)`/`base(...)`.
+    // ES: Congelamiento 3.0 C-13: solo el `throws` del propio constructor cubre `this(...)`/`base(...)`.
+    requireConstructorErrorHandled(
+        binding.selectedConstructorMemberOrdinal,
+        binding.initializerSyntax != nullptr ? binding.initializerSyntax : constructor.syntax,
+        {}, constructor.declaredErrorTypeKey, diagnostics);
     storeConstructorInitializerBinding(constructorMemberOrdinal, std::move(binding));
 }
 

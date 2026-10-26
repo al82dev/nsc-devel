@@ -84,6 +84,9 @@ enum class DiagnosticId
     // EN: Freeze 3.0 C-02: a synchronous `await` whose producer can suspend.
     // ES: Congelamiento 3.0 C-02: un `await` sincrono cuyo productor puede suspenderse.
     SynchronousAwaitCanSuspend,
+    // EN: Freeze 3.0 C-13: a `throws E` callable reached with no catch and no compatible `throws`.
+    // ES: Congelamiento 3.0 C-13: un callable `throws E` sin catch ni `throws` compatible.
+    UnhandledDeclaredError,
 
     NS3010InvalidCompilationStage,
     NS3020InvalidValueCategory,
@@ -195,6 +198,7 @@ constexpr std::string_view diagnosticIdNamePart2(DiagnosticId id) noexcept
         NSC_DIAGNOSTIC_NAME(InvalidExternCSignature);
         NSC_DIAGNOSTIC_NAME(LostOwnership);
         NSC_DIAGNOSTIC_NAME(SynchronousAwaitCanSuspend);
+        NSC_DIAGNOSTIC_NAME(UnhandledDeclaredError);
 #undef NSC_DIAGNOSTIC_NAME
         default: return {};
     }

@@ -1116,9 +1116,14 @@ bool ProjectMethodBodyModel::analyzeLambdaBodyAndCaptures(
     activeLambdaBindings_.push_back(&binding);
     const std::size_t previousCatchDepth = currentCatchDepth_;
     currentCatchDepth_ = 0;
+    // EN: Freeze 3.0 C-13: a lambda body runs later, outside the try blocks around its creation.
+    // ES: Congelamiento 3.0 C-13: el cuerpo de una lambda corre despues, fuera de los try que la rodean.
+    std::vector<std::vector<std::string>> previousErrorHandlers = std::move(activeErrorHandlers_);
+    activeErrorHandlers_.clear();
     bool bodyValid = analyzeLambdaSyntaxBody(
         syntax, methodMemberOrdinal, lambdaScope,
         inferAnonymous, returnType, binding, diagnostics);
+    activeErrorHandlers_ = std::move(previousErrorHandlers);
     currentLambdaOrdinal_ = previousLambda;
     currentLambdaReturnTypeKey_ = previousReturn;
     currentLambdaErrorTypeKey_ = previousError;

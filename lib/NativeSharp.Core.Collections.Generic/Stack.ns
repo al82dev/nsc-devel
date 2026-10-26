@@ -109,7 +109,12 @@ namespace NativeSharp.Core.Collections.Generic
         public bool TryPop(T[] result)
         {
             if (count == 0) { return false; }
-            result[0] = Pop();
+            // EN: Freeze 3.0 C-13: Pop() declares throws; the empty case is answered above, so the
+            //     catch only satisfies the checked contract.
+            // ES: Congelamiento 3.0 C-13: Pop() declara throws; el caso vacio ya se respondio arriba,
+            //     asi que el catch solo cumple el contrato verificado.
+            try { result[0] = Pop(); }
+            catch (InvalidOperationException problem) { return false; }
             return true;
         }
 

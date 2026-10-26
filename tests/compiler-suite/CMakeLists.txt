@@ -671,6 +671,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/LoopExpressionAnalyzer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/MethodBodyBindingRecorder.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/MethodBodyCallableLifecycle.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/DeclaredErrorAnalysis.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/MethodBodyInternals.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/MethodBodyKindNames.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Bodies/MethodBodyTypeQueries.cpp"

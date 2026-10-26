@@ -424,6 +424,31 @@ void ProjectConstructionModel::bindConstruction(
         return;
     }
     resolveConstructionCandidates(binding, argumentTypes, diagnostics);
+    requireConstructorErrorHandled(
+        constructions_.back().selectedConstructorMemberOrdinal, expression,
+        site.activeErrorHandlers, site.enclosingErrorTypeKey, diagnostics);
+}
+
+void ProjectConstructionModel::requireConstructorErrorHandled(
+    std::optional<std::size_t> constructorMemberOrdinal,
+    const ast::AstNode* site,
+    std::span<const std::string> handlers,
+    std::string_view enclosingErrorTypeKey,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!constructorMemberOrdinal.has_value() || site == nullptr || memberModel_ == nullptr ||
+        methodBodyModel_ == nullptr || *constructorMemberOrdinal >= memberModel_->members().size())
+        return;
+    const std::string& errorTypeKey =
+        memberModel_->members()[*constructorMemberOrdinal].declaredErrorTypeKey;
+    if (methodBodyModel_->declaredErrorIsCovered(errorTypeKey, handlers, enclosingErrorTypeKey))
+        return;
+    diagnostics.report(
+        diagnostics::DiagnosticId::UnhandledDeclaredError,
+        diagnostics::DiagnosticSeverity::Error,
+        site->range(),
+        "constructor throws '" + errorTypeKey + "', which is neither caught here nor declared by "
+            "the enclosing callable; catch it or declare a compatible 'throws'");
 }
 
 }

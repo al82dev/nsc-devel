@@ -288,7 +288,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
         pending.pop_back();
         if (*slot == nullptr) return nullptr;
         ProjectOopHirNode* node = slot->get();
-        if (node->kind == ProjectOopHirNodeKind::Throw)
+        // EN: Freeze 3.0 C-13: a throw inside a try of this body stays a native throw, so its
+        //     catch runs; only a throw that leaves the body becomes the future's error.
+        // ES: Congelamiento 3.0 C-13: un throw dentro de un try de este cuerpo sigue siendo un
+        //     throw nativo, para que su catch corra; solo el que sale del cuerpo se vuelve el
+        //     error del future.
+        if (node->kind == ProjectOopHirNodeKind::Throw && !node->exceptionTargetRegionOrdinal.has_value())
         {
             *slot = rewriteAsyncThrow(
                 std::move(*slot), selfParameterOrdinal, futureKey);

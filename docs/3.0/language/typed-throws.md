@@ -14,8 +14,14 @@ int Parse(string text) throws ParseError
 ```
 
 El tipo declarado debe ser `NativeSharp.Core.Exception` o derivar de él. NativeSharp comprueba toda
-llamada, `throw` y `throw;`: el error debe quedar cubierto por un `catch` activo o poder propagarse
-al tipo declarado por la función envolvente.
+llamada, invocación de delegate, acceso a un accesor, `new`, inicializador `this(...)`/`base(...)` y
+`await` de un future `async ... throws E`: el error debe quedar cubierto por un `catch` sin filtro
+del `try` que rodea el sitio, o poder propagarse al tipo declarado por la función envolvente (el
+mismo tipo o una base). Un `catch` con filtro no cuenta, porque su filtro puede rechazar el error;
+el cuerpo de un `catch` y el de una lambda tampoco están cubiertos por el `try` que los rodea. Un
+`throw` escrito no se comprueba: declarar `throws E` es lo que crea la obligación en quien llama.
+Un error tipado de generator que no es una excepción (por ejemplo `Iterator<T, int>`) es un valor
+que el consumidor lee, no un `throw`, y tampoco se comprueba.
 
 `throws` es contextual después de la lista de parámetros. En edición 2 puede seguir usándose como
 identificador; la cláusula sólo se habilita con `<Language>3</Language>`.
@@ -68,9 +74,15 @@ parameter list:
 int Parse(string text) throws ParseError;
 ```
 
-The declared type must be `NativeSharp.Core.Exception` or derive from it. Every call, written
-`throw`, and rethrow must be accepted by an active typed/catch-all handler or by the enclosing
-callable's declared error type.
+The declared type must be `NativeSharp.Core.Exception` or derive from it. Every call, delegate
+invocation, accessor access, `new`, `this(...)`/`base(...)` initializer and `await` of an
+`async ... throws E` future must be accepted by an unfiltered catch of the try around the site, or
+propagate through the enclosing callable's declared error type (the same type or a base). A
+filtered catch does not count, because its filter may decline the error; a catch body and a lambda
+body are not covered by the try around them. A written `throw` is not checked: declaring
+`throws E` is what creates the obligation for callers. A typed generator error that is not an
+exception (for example `Iterator<T, int>`) is a value the consumer reads, not a throw, and is not
+checked either.
 
 `throws` is contextual after a parameter list. Edition 2 can still use it as an identifier; the
 clause itself requires `<Language>3</Language>`.

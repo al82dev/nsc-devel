@@ -211,7 +211,12 @@ namespace NativeSharp.Core.Collections.Generic
         {
             if (count == 0) { return false; }
             priorityResult[0] = priorities[0];
-            elementResult[0] = Dequeue();
+            // EN: Freeze 3.0 C-13: Dequeue() declares throws; the empty case is answered above, so the
+            //     catch only satisfies the checked contract.
+            // ES: Congelamiento 3.0 C-13: Dequeue() declara throws; el caso vacio ya se respondio arriba,
+            //     asi que el catch solo cumple el contrato verificado.
+            try { elementResult[0] = Dequeue(); }
+            catch (InvalidOperationException problem) { return false; }
             return true;
         }
 

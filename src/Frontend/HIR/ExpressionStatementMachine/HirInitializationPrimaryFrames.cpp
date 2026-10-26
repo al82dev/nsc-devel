@@ -199,7 +199,11 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledAwaitExpressionFrame(
             currentInputKind, lowered, error)) return LoopBlockAdvance::Descend;
             return LoopBlockAdvance::Error;
         }
-        if (!loweringAsyncBody_ && !activeHirExceptionHandlers_.empty())
+        // EN: Freeze 3.0 C-13: an await inside a try of an async body also hands its error to that
+        //     catch; before, only a synchronous await did, so the async catch never ran.
+        // ES: Congelamiento 3.0 C-13: un await dentro de un try de un cuerpo async tambien entrega su
+        //     error a ese catch; antes solo lo hacia un await sincrono, y el catch async nunca corria.
+        if (!activeHirExceptionHandlers_.empty())
         {
             const auto& handler = activeHirExceptionHandlers_.back();
             for (std::size_t index = activeHirCleanupRegions_.size();

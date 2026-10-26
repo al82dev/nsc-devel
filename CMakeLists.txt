@@ -579,6 +579,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/Bodies/LoopExpressionAnalyzer.cpp
     src/Frontend/Bodies/MethodBodyBindingRecorder.cpp
     src/Frontend/Bodies/MethodBodyCallableLifecycle.cpp
+    src/Frontend/Bodies/DeclaredErrorAnalysis.cpp
     src/Frontend/Bodies/MethodBodyInternals.cpp
     src/Frontend/Bodies/MethodBodyKindNames.cpp
     src/Frontend/Bodies/MethodBodyTypeQueries.cpp

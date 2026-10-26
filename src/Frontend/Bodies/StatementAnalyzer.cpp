@@ -2435,11 +2435,17 @@ ProjectMethodBodyModel::beginTry(
     state.cleanupRegionOrdinal = cleanupRegionOrdinal;
     state.tryEntryState = captureOwnershipFlow();
     state.throwStateBegin = throwFlowStates_.size();
+    // EN: Freeze 3.0 C-13: the unfiltered catches of this try cover `throws E` calls in its body
+    //     until completeTryBody.
+    // ES: Congelamiento 3.0 C-13: los catch sin filtro de este try cubren las llamadas `throws E`
+    //     de su cuerpo hasta completeTryBody.
+    activeErrorHandlers_.push_back(tryErrorHandlers(statement));
     return state;
 }
 
 void ProjectMethodBodyModel::completeTryBody(TryAnalysisState& state)
 {
+    if (!activeErrorHandlers_.empty()) activeErrorHandlers_.pop_back();
     state.tryExitState = captureOwnershipFlow();
     // A catch can observe ownership state from any explicit throw point and, conservatively,
     // from both try entry and normal try exit to account for other potentially-throwing calls.

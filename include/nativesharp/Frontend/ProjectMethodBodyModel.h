@@ -379,6 +379,14 @@ public:
     bool isBuilt() const noexcept;
     // NS304-T08-F04: resolves a callable ordinal to a class member or a namespace-callable adapter.
     const ClassMemberSymbol* callableSymbol(std::size_t ordinal) const noexcept;
+    // EN: Freeze 3.0 C-13: true when `errorTypeKey` is caught by one of `handlers` (catch types,
+    //     "<any-exception>" for a catch-all) or propagates through `enclosingErrorTypeKey`.
+    // ES: Congelamiento 3.0 C-13: verdadero si `errorTypeKey` lo atrapa uno de `handlers` (tipos de
+    //     catch, "<any-exception>" para un catch-all) o se propaga por `enclosingErrorTypeKey`.
+    bool declaredErrorIsCovered(
+        std::string_view errorTypeKey,
+        std::span<const std::string> handlers,
+        std::string_view enclosingErrorTypeKey) const;
 
 private:
 #include "nativesharp/Frontend/Internal/MethodBody/ScopeNameKind.h"
@@ -1496,6 +1504,17 @@ private:
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
     std::string delegateErrorTypeKey(std::string_view delegateTypeKey) const;
+    // EN: Freeze 3.0 C-13: handle-or-propagate check for a call site of a callable `throws E`.
+    // ES: Congelamiento 3.0 C-13: chequeo manejar-o-propagar en la llamada a un callable `throws E`.
+    void requireDeclaredErrorHandled(
+        const ast::AstNode* site,
+        std::string_view errorTypeKey,
+        std::string_view calleeName,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::vector<std::string> activeErrorHandlers() const;
+    std::string enclosingErrorTypeKey(std::size_t methodMemberOrdinal) const;
+    std::vector<std::string> tryErrorHandlers(const ast::AstNode* statement) const;
     std::optional<std::size_t> exceptionRootTypeOrdinal() const noexcept;
     bool isExceptionTypeOrdinal(std::size_t typeOrdinal) const noexcept;
     std::size_t addCatchLocal(
@@ -5217,6 +5236,9 @@ private:
     IterativeExpressionAnalysis* iterativeExpressionAnalysis_ = nullptr;
     std::vector<OwnershipFlowSnapshot> throwFlowStates_;
     std::vector<std::string> currentCatchErrorTypes_;
+    // EN: Freeze 3.0 C-13: unfiltered catch types of each try body being analyzed, outermost first.
+    // ES: Congelamiento 3.0 C-13: tipos de catch sin filtro de cada cuerpo try en analisis.
+    std::vector<std::vector<std::string>> activeErrorHandlers_;
     std::vector<MethodSwitchBinding> switchBindings_;
     std::vector<MethodStructuredExitBinding> structuredExits_;
     std::vector<MethodCleanupContinuation> cleanupContinuations_;

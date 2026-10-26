@@ -1519,6 +1519,270 @@ class Program
 )ns", 123, true);
 }
 
+constexpr std::string_view kErrorPrelude = R"ns(
+using NativeSharp.Core;
+class MyError : Exception { }
+class OtherError : Exception { }
+public delegate int Work(bool f) throws MyError;
+public delegate int Plain(bool f);
+)ns";
+
+// EN: C-13. A call, a delegate invocation, a `new` and a `this(...)`/`base(...)` initializer that
+//     reach a `throws E` callable need a try whose unfiltered catch accepts E, or an enclosing
+//     `throws` of E or a base of E. A lambda body, a catch body and a filtered catch do not count.
+// ES: C-13. Una llamada, una invocacion de delegate, un `new` y un inicializador
+//     `this(...)`/`base(...)` que llegan a un callable `throws E` necesitan un try cuyo catch sin
+//     filtro acepte E, o un `throws` envolvente de E o de una base de E. El cuerpo de una lambda, el
+//     de un catch y un catch con filtro no cuentan.
+void testDeclaredErrorsRejected(TestContext& tests, const std::filesystem::path& root)
+{
+    expectReject(tests, root, "C13Call", std::string(kErrorPrelude) + R"ns(
+class Program
+{
+    private static int Fail(bool f) throws MyError { if (f) { throw new MyError(); } return 1; }
+    public static int Main() { return Fail(false); }
+}
+)ns",
+        "which is neither caught here nor declared");
+    expectReject(tests, root, "C13New", std::string(kErrorPrelude) + R"ns(
+class Thing
+{
+    public Thing(bool f) throws MyError { if (f) { throw new MyError(); } }
+}
+class Program
+{
+    public static int Main() { raii Thing t = new Thing(false); return 2; }
+}
+)ns",
+        "which is neither caught here nor declared");
+    expectReject(tests, root, "C13This", std::string(kErrorPrelude) + R"ns(
+class Thing
+{
+    public Thing(bool f) throws MyError { if (f) { throw new MyError(); } }
+    public Thing() : this(false) { }
+}
+class Program
+{
+    public static int Main() { raii Thing t = new Thing(); return 3; }
+}
+)ns",
+        "which is neither caught here nor declared");
+    expectReject(tests, root, "C13Base", std::string(kErrorPrelude) + R"ns(
+class Base
+{
+    public Base(bool f) throws MyError { if (f) { throw new MyError(); } }
+}
+class Derived : Base
+{
+    public Derived() : base(false) { }
+}
+class Program
+{
+    public static int Main() { raii Derived d = new Derived(); return 4; }
+}
+)ns",
+        "which is neither caught here nor declared");
+    expectReject(tests, root, "C13Wrong", std::string(kErrorPrelude) + R"ns(
+class Program
+{
+    private static int Fail(bool f) throws MyError { if (f) { throw new MyError(); } return 1; }
+    private static int Caller() throws OtherError { return Fail(false); }
+    public static int Main() { try { return Caller(); } catch (OtherError e) { return 9; } }
+}
+)ns",
+        "which is neither caught here nor declared");
+    expectReject(tests, root, "C13Delegate", std::string(kErrorPrelude) + R"ns(
+class Program
+{
+    public static int Fail(bool f) throws MyError { if (f) { throw new MyError(); } return 1; }
+    public static int Main() { Work m = Fail; return m(false); }
+}
+)ns",
+        "which is neither caught here nor declared");
+    expectReject(tests, root, "C13LambdaReject", std::string(kErrorPrelude) + R"ns(
+class Program
+{
+    public static int Fail(bool f) throws MyError { if (f) { throw new MyError(); } return 1; }
+    public static int Main()
+    {
+        try
+        {
+            raii Plain p = [] (bool f) => Program.Fail(f);
+            return p(false);
+        }
+        catch (MyError e) { return 2; }
+    }
+}
+)ns",
+        "which is neither caught here nor declared");
+    expectReject(tests, root, "C13Filtered", std::string(kErrorPrelude) + R"ns(
+class Program
+{
+    public static int Fail(bool f) throws MyError { if (f) { throw new MyError(); } return 1; }
+    public static int Main()
+    {
+        try { return Fail(false); }
+        catch (MyError e) when (e != null) { return 2; }
+    }
+}
+)ns",
+        "which is neither caught here nor declared");
+    expectReject(tests, root, "C13CatchBody", std::string(kErrorPrelude) + R"ns(
+class Program
+{
+    public static int Fail(bool f) throws MyError { if (f) { throw new MyError(); } return 1; }
+    public static int Main()
+    {
+        try { return 0; }
+        catch (MyError e) { return Fail(false); }
+    }
+}
+)ns",
+        "which is neither caught here nor declared");
+    expectReject(tests, root, "C13AwaitUncaught", std::string(kErrorPrelude) + R"ns(
+class Program
+{
+    private static async int Load(bool f) throws MyError { if (f) { throw new MyError(); } return 5; }
+    public static async int Main() { return await Load(false); }
+}
+)ns",
+        "which is neither caught here nor declared");
+    expectReject(tests, root, "C13PropGet", std::string(kErrorPrelude) + R"ns(
+class Source
+{
+    public int Value { get throws MyError { return 3; } }
+}
+class Program
+{
+    public static int Main() { owned Source source = new Source(); return source.Value; }
+}
+)ns",
+        "which is neither caught here nor declared");
+    expectReject(tests, root, "C13IndexSet", std::string(kErrorPrelude) + R"ns(
+class Source
+{
+    public int this[int index]
+    {
+        get { return 0; }
+        set throws MyError { if (index < 0) { throw new MyError(); } }
+    }
+}
+class Program
+{
+    public static int Main() { owned Source source = new Source(); source[0] = 1; return 4; }
+}
+)ns",
+        "which is neither caught here nor declared");
+}
+
+// EN: An async body catches its own throws and the errors of the futures it awaits inside a try,
+//     also after a suspension, and destroys the try's raii locals on the way.
+// ES: Un cuerpo async atrapa sus propios throw y los errores de los futures que espera dentro de un
+//     try, tambien despues de una suspension, y destruye en el camino los locales raii del try.
+void testDeclaredErrorsHandled(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C13AsyncLocalThrow", std::string(kErrorPrelude) + R"ns(
+class Program
+{
+    private static async int Outer()
+    {
+        int total = 0;
+        try { throw new MyError(); } catch (MyError e) { total = total + 10; }
+        return total;
+    }
+    public static int Main() { return await Outer(); }
+}
+)ns", 10);
+    expectRun(tests, root, "C13AsyncAwaitCaught", std::string(kErrorPrelude) + R"ns(
+class Source
+{
+    public int Value { get throws MyError { return 3; } }
+}
+class Program
+{
+    private static async int Load(bool f) throws MyError { if (f) { throw new MyError(); } return 5; }
+    public static async int Main()
+    {
+        int total = 0;
+        try { total = total + await Load(true); } catch (MyError e) { total = total + 10; }
+        owned Source source = new Source();
+        try { total = total + source.Value; } catch (MyError e) { total = total + 100; }
+        return total;
+    }
+}
+)ns", 13);
+    expectRun(tests, root, "C13AsyncSuspendedError", std::string(kErrorPrelude) + R"ns(
+class Counter { public static int Drops; }
+class Guard
+{
+    public int Id;
+    public Guard(int id) { Id = id; }
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+}
+class Program
+{
+    private static async int Slow(bool f) throws MyError { yield; if (f) { throw new MyError(); } return 5; }
+    private static async int Outer()
+    {
+        int total = 0;
+        try
+        {
+            raii Guard g = new Guard(7);
+            total = total + await Slow(true);
+        }
+        catch (MyError e) { total = total + 10; }
+        return total + 1;
+    }
+    public static async int Main() { int r = await Outer(); return r * 100 + Counter.Drops; }
+}
+)ns", 1107);
+    expectRun(tests, root, "C13Accepted", std::string(kErrorPrelude) + R"ns(
+class Thing
+{
+    public int V;
+    public Thing(bool f) throws MyError { if (f) { throw new MyError(); } V = 1; }
+    public Thing() throws MyError : this(true) { }
+}
+class Derived : Thing
+{
+    public Derived(bool f) throws MyError : base(f) { }
+}
+class Program
+{
+    private static int Fail(bool f) throws MyError { if (f) { throw new MyError(); } return 1; }
+    private static int Propagate(bool f) throws MyError { return Fail(f); }
+    private static int Widen(bool f) throws Exception { return Fail(f); }
+    public static int Main()
+    {
+        int total = 0;
+        try { total = total + Propagate(true); } catch (MyError e) { total = total + 10; }
+        try { total = total + Widen(true); } catch (Exception e) { total = total + 100; }
+        try { raii Thing t = new Thing(); } catch (MyError e) { total = total + 1000; }
+        try { raii Derived d = new Derived(true); } catch (MyError e) { total = total + 10000; }
+        try { total = total + Fail(false); } catch { total = total + 5; }
+        return total;
+    }
+}
+)ns", 11111);
+    expectRun(tests, root, "C13Lambda", std::string(kErrorPrelude) + R"ns(
+class Program
+{
+    public static int Fail(bool f) throws MyError { if (f) { throw new MyError(); } return 1; }
+    private static int Run(Work w, bool f) throws MyError { return w(f); }
+    public static int Main()
+    {
+        int total = 0;
+        raii Work w = [] (bool f) => Program.Fail(f);
+        try { total = total + Run(w, true); } catch (MyError e) { total = total + 10; }
+        try { total = total + w(false); } catch (MyError e) { total = total + 100; }
+        Work m = Fail;
+        try { total = total + m(true); } catch (MyError e) { total = total + 1000; }
+        return total;
+    }
+}
+)ns", 1011);
+}
+
 int main()
 {
     TestContext tests;
@@ -1549,5 +1813,7 @@ int main()
     testValueFieldsAndTemporaries(tests, root);
     testValueArrayElements(tests, root);
     testValueListElements(tests, root);
+    testDeclaredErrorsRejected(tests, root);
+    testDeclaredErrorsHandled(tests, root);
     return tests.resultKeeping(root);
 }

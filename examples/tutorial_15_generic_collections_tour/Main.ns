@@ -22,7 +22,7 @@ namespace Tutorial.GenericCollectionsTour
             return Hashing.Int32(value);
         }
 
-        public static int Main()
+        public static int Main() throws Exception
         {
             // List<T> -- arreglo dinamico, la coleccion mas usada.
             raii List<int> list = new List<int>();

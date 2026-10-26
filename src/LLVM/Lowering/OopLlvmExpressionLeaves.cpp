@@ -866,14 +866,16 @@ void OopLlvmImplementation::releaseAwaitChildFrame(LLVMValueRef childSlot)
             byteOffset(childSlot, 8, "await.child.frame.forget"));
 }
 
-void OopLlvmImplementation::emitSuspendingAwaitErrorPath(
+bool OopLlvmImplementation::emitSuspendingAwaitErrorPath(
+        const frontend::ProjectOopMirNode* node,
         LLVMValueRef self,
         LLVMValueRef childSlot,
         LLVMTypeRef intType,
         LLVMTypeRef errorType,
         const std::uint64_t errorOffset,
         const bool childFrameOnHeap,
-        LLVMBasicBlockRef errorBlock)
+        LLVMBasicBlockRef errorBlock,
+        std::string& error)
 {
         // ReadyError: child errored. Propagate the carried error into the parent
         // future's error slot and mark the parent errored (state == -2) — no unwind.
@@ -881,11 +883,31 @@ void OopLlvmImplementation::emitSuspendingAwaitErrorPath(
         LLVMValueRef childError = LLVMBuildLoad2(
             builder_, errorType,
             byteOffset(childSlot, errorOffset, "await.child.error.addr"), "await.child.error");
-        LLVMBuildStore(builder_, childError, byteOffset(self, errorOffset, "await.self.error.addr"));
+        if (childFrameOnHeap) releaseAwaitChildFrame(childSlot);
+        // EN: Freeze 3.0 C-13: an await inside a try of this async body hands the error to that
+        //     catch, as a synchronous await does. Before, it always left the poll, so the catch
+        //     never ran and a non-throwing parent got a write past its future.
+        // ES: Congelamiento 3.0 C-13: un await dentro de un try de este cuerpo async entrega el
+        //     error a ese catch, igual que un await sincrono. Antes siempre salia del poll, asi
+        //     que el catch nunca corria y un padre que no lanza recibia una escritura fuera de su
+        //     future.
+        if (node->exceptionTargetRegionOrdinal.has_value())
+            return lowerExceptionalTransfer(childError, node, error);
+        // EN: Otherwise the error goes to this future's own error slot, at this future's offset.
+        // ES: Si no, el error va al slot de error de este future, en el offset de este future.
+        std::string parentKey = currentMirFunction_ != nullptr &&
+                !currentMirFunction_->parameterTypeKeys.empty()
+            ? currentMirFunction_->parameterTypeKeys.front() : std::string{};
+        if (parentKey.ends_with('*')) parentKey.pop_back();
+        const std::uint64_t parentErrorOffset = language::futureErrorTypeKey(parentKey).has_value()
+            ? futureFieldOffset(parentKey, 4) : 0;
+        if (parentErrorOffset != 0)
+            LLVMBuildStore(
+                builder_, childError, byteOffset(self, parentErrorOffset, "await.self.error.addr"));
         LLVMValueRef errorConst = LLVMConstInt(intType, static_cast<unsigned long long>(-2), 1);
         LLVMBuildStore(builder_, errorConst, self);
-        if (childFrameOnHeap) releaseAwaitChildFrame(childSlot);
         LLVMBuildRetVoid(builder_);
+        return true;
 }
 
 LLVMValueRef OopLlvmImplementation::finishSuspendingAwait(
@@ -930,8 +952,9 @@ LLVMValueRef OopLlvmImplementation::finishSuspendingAwait(
             LLVMBuildCondBr(
                 builder_, LLVMBuildICmp(builder_, LLVMIntEQ, childState, errorConst, "await.is.error"),
                 errorBlock, suspendBlock);
-            emitSuspendingAwaitErrorPath(
-                self, childSlot, intType, errorType, errorOffset, childFrameOnHeap, errorBlock);
+            if (!emitSuspendingAwaitErrorPath(
+                    node, self, childSlot, intType, errorType, errorOffset, childFrameOnHeap,
+                    errorBlock, error)) return nullptr;
         }
         emitAwaitSuspendPath(node, self, childSlot, intType, carrier, suspendBlock);
         // Ready: load result (immediate = result offset).

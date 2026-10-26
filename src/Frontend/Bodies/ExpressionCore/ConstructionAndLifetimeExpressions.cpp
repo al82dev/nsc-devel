@@ -242,6 +242,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     ? namedTypeOrdinalForTypeKey(objectType)
                     : nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
                 site.argumentsTyped = true;
+                site.activeErrorHandlers = activeErrorHandlers();
+                site.enclosingErrorTypeKey = enclosingErrorTypeKey(methodMemberOrdinal);
                 bool argumentsValid = true;
                 for (const ast::AstNode* argument : expression->children())
                 {
@@ -472,6 +474,8 @@ ProjectMethodBodyModel::analyzeExpressionKindPlacementConstructionExpression(
     site.targetTypeKey = targetType;
     site.targetTypeOrdinal = nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
     site.argumentsTyped = true;
+    site.activeErrorHandlers = activeErrorHandlers();
+    site.enclosingErrorTypeKey = enclosingErrorTypeKey(methodMemberOrdinal);
     const NamedTypeDeclaration* target =
         nameLookup_->resolvedDeclaration(expression->typeSyntax());
     const bool constructible = target != nullptr &&

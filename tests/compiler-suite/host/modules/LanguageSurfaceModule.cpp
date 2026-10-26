@@ -3847,7 +3847,7 @@ class C
 
 class Program
 {
-    public static int Main()
+    public static int Main() throws E
     {
         raii C c = new C();
         return 0;
@@ -7061,7 +7061,7 @@ class Program
         return 42;
     }
 
-    public static int Main()
+    public static int Main() throws Exception
     {
         int result = await Read();
         return result;
@@ -7112,7 +7112,7 @@ class Program
         return 42;
     }
 
-    public static int Main()
+    public static int Main() throws Exception
     {
         int result = await Read();
         return result;
@@ -7981,7 +7981,7 @@ class Program
         yield return 42;
     }
 
-    public static int Main()
+    public static int Main() throws Exception
     {
         int r = 0;
         try { foreach (int x in Fail()) { r += x; } }

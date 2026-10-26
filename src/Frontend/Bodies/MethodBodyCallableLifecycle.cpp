@@ -110,6 +110,7 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     partialProjectionReceiverDepth_ = 0;
     throwFlowStates_.clear();
     awaitExpressions_.clear();
+    activeErrorHandlers_.clear();
 }
 
 void ProjectMethodBodyModel::recordRequiredConstructorNormalExit(

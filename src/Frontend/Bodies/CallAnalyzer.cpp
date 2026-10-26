@@ -3771,6 +3771,12 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 expression, callee, scopeOrdinal, diagnostics)) return result;
         binding.selectedDefaultArguments = std::move(defaultedSyntaxes);
         binding.selectedDefaultArgumentTypeKeys = std::move(defaultedTypeKeys);
+        // EN: Freeze 3.0 C-13: invoking a `throws E` delegate is a call to a `throws E` callable.
+        // ES: Congelamiento 3.0 C-13: invocar un delegate `throws E` es llamar a un callable `throws E`.
+        requireDeclaredErrorHandled(
+            expression, delegateErrorTypeKey(callee.typeKey),
+            expression->first() != nullptr ? expression->first()->text() : std::string_view("delegate"),
+            methodMemberOrdinal, diagnostics);
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
@@ -4570,6 +4576,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
             coreStringForwarding, methodMemberOrdinal, scopeOrdinal);
         applySelectedCoreOperations(
             expression, selectedMember, methodMemberOrdinal, scopeOrdinal, call, result, diagnostics);
+        // EN: Freeze 3.0 C-13: an async callee reports its error at the await, not at the call.
+        // ES: Congelamiento 3.0 C-13: un callee async reporta su error en el await, no en la llamada.
+        if (!selectedMember.effects.contains(sema::Effect::Async))
+            requireDeclaredErrorHandled(
+                expression, selectedMember.declaredErrorTypeKey, selectedMember.name,
+                methodMemberOrdinal, diagnostics);
     }
     finalizeSelectedCallResult(
         result, expression, call, nullConditionalCall, provenVariantCase, diagnostics);
@@ -5734,6 +5746,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishSynthetic
             result.ownershipTransfer = true;
             result.ownershipFreshOwner = true;
         }
+        // EN: Freeze 3.0 C-13: an accessor or a user operator is a call to its `throws E` member.
+        // ES: Congelamiento 3.0 C-13: un accesor o un operador de usuario es una llamada a su miembro
+        //     `throws E`.
+        if (diagnoseFailure)
+            requireDeclaredErrorHandled(
+                syntax, memberPtr->declaredErrorTypeKey, memberPtr->name,
+                call.callerMethodMemberOrdinal, diagnostics);
         if (call.staticCall)
         {
             call.implicitThis = false;
