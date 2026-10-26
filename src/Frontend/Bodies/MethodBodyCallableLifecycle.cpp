@@ -438,6 +438,61 @@ const ast::AstNode* uniqueLocalInitializer(const ast::AstNode* body, std::string
     }
     return declarations == 1 ? initializer : nullptr;
 }
+
+// EN: Freeze 3.0 (await without recursion). The expression whose call binding names the producer of
+//     an awaited future: a local is replaced by its unique initializer, and `it.MoveNextAsync()` over
+//     a local iterator by the origin of `it` (the generator that created it). Returns nullptr for an
+//     unknown origin. A local whose origin leads back to itself is an unknown origin; the recursive
+//     version never terminated on it.
+// ES: Congelamiento 3.0 (await sin recursion). La expresion cuyo binding de llamada nombra al
+//     productor de un future esperado: un local se sustituye por su inicializador unico, y
+//     `it.MoveNextAsync()` sobre un iterador local por el origen de `it` (el generador que lo creo).
+//     Devuelve nullptr si el origen es desconocido. Un local cuyo origen vuelve a si mismo es origen
+//     desconocido; la version recursiva nunca terminaba con el.
+const ast::AstNode* awaitOperandOrigin(const ast::AstNode* operand, const ast::AstNode* callerBody)
+{
+    std::unordered_set<const ast::AstNode*> visited;
+    while (operand != nullptr)
+    {
+        if (!visited.insert(operand).second) return nullptr;
+        if (operand->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            operand = uniqueLocalInitializer(callerBody, operand->text());
+            if (operand == nullptr) return nullptr;
+        }
+        const bool localIteratorStep = operand->kind() == ast::AstNodeKind::CallExpression &&
+            operand->first() != nullptr && operand->first()->kind() == ast::AstNodeKind::MemberExpression &&
+            operand->first()->text() == "MoveNextAsync" && operand->first()->first() != nullptr &&
+            operand->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression;
+        if (!localIteratorStep) return operand;
+        operand = operand->first()->first();
+    }
+    return nullptr;
+}
+
+// EN: The producer named by a resolved call binding; nullopt means an unknown producer.
+// ES: El productor que nombra un binding de llamada resuelto; nullopt es productor desconocido.
+std::optional<std::size_t> boundAwaitProducer(const MethodCallBinding* binding)
+{
+    if (binding == nullptr || binding->resolution != MethodCallResolutionKind::Resolved) return std::nullopt;
+    return binding->selectedMemberOrdinal;
+}
+
+// EN: One producer under analysis in ProjectMethodBodyModel::awaitProducerCanSuspend: its body, its
+//     await sites in source order, the next site to examine and whether it is already known to
+//     suspend. The stack of frames replaces the former mutual recursion through
+//     awaitOperandCanSuspend.
+// ES: Un productor en analisis en ProjectMethodBodyModel::awaitProducerCanSuspend: su cuerpo, sus
+//     awaits en orden de fuente, el siguiente a examinar y si ya se sabe que se suspende. La pila de
+//     frames reemplaza la antigua recursion mutua a traves de awaitOperandCanSuspend.
+struct AwaitProducerFrame final
+{
+    std::size_t ordinal = 0;
+    const ast::AstNode* body = nullptr;
+    std::vector<const ast::AstNode*> awaits;
+    std::size_t next = 0;
+    bool suspends = false;
+};
 }
 
 void ProjectMethodBodyModel::reportMissingReturn(
@@ -475,53 +530,90 @@ bool ProjectMethodBodyModel::awaitOperandCanSuspend(
     std::size_t callerOrdinal,
     std::unordered_map<std::size_t, int>& memo) const
 {
-    if (operand != nullptr && operand->kind() == ast::AstNodeKind::IdentifierExpression)
-    {
-        operand = uniqueLocalInitializer(callerBody, operand->text());
-        if (operand == nullptr) return true;
-    }
-    // EN: `it.MoveNextAsync()` over a local iterator suspends only when the generator that
-    //     created `it` can suspend; the iterator's origin is its unique initializer.
-    // ES: `it.MoveNextAsync()` sobre un iterador local solo se suspende si el generador que
-    //     creo `it` puede suspenderse; el origen del iterador es su inicializador unico.
-    if (operand != nullptr && operand->kind() == ast::AstNodeKind::CallExpression &&
-        operand->first() != nullptr && operand->first()->kind() == ast::AstNodeKind::MemberExpression &&
-        operand->first()->text() == "MoveNextAsync" && operand->first()->first() != nullptr &&
-        operand->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression)
-        return awaitOperandCanSuspend(operand->first()->first(), callerBody, callerOrdinal, memo);
-    const MethodCallBinding* binding = callBinding(operand, callerOrdinal);
-    if (binding == nullptr || binding->resolution != MethodCallResolutionKind::Resolved ||
-        !binding->selectedMemberOrdinal.has_value()) return true;
-    return awaitProducerCanSuspend(*binding->selectedMemberOrdinal, memo);
+    // EN: An unknown origin or an unresolved call can suspend; otherwise the producer decides.
+    // ES: Un origen desconocido o una llamada sin resolver puede suspenderse; si no, decide el
+    //     productor.
+    const ast::AstNode* origin = awaitOperandOrigin(operand, callerBody);
+    if (origin == nullptr) return true;
+    const std::optional<std::size_t> producer = boundAwaitProducer(callBinding(origin, callerOrdinal));
+    if (!producer.has_value()) return true;
+    return awaitProducerCanSuspend(*producer, memo);
 }
 
 bool ProjectMethodBodyModel::awaitProducerCanSuspend(
     std::size_t producerOrdinal,
     std::unordered_map<std::size_t, int>& memo) const
 {
+    // EN: Freeze 3.0 (await without recursion). Depth-first walk with an explicit stack and the same
+    //     order as the former recursion: a producer's awaits are examined in source order, the walk
+    //     stops at the first that suspends, and `memo` keeps 0 (being visited, read as "does not
+    //     suspend" so cycles terminate), 1 (does not suspend) or 2 (suspends). A producer that is not
+    //     a source async callable analyzed here suspends without opening a frame.
+    // ES: Congelamiento 3.0 (await sin recursion). Recorrido en profundidad con pila explicita y el
+    //     mismo orden que la recursion anterior: los awaits de un productor se examinan en orden de
+    //     fuente, el recorrido se detiene en el primero que se suspende, y `memo` guarda 0 (en
+    //     visita, leido como "no se suspende" para que los ciclos terminen), 1 (no se suspende) o 2
+    //     (se suspende). Un productor que no es un callable async de fuente analizado aqui se
+    //     suspende sin abrir frame.
     const auto known = memo.find(producerOrdinal);
     if (known != memo.end()) return known->second == 2;
-    memo[producerOrdinal] = 0;
-    const ClassMemberSymbol* producer = methodSymbol(producerOrdinal);
-    bool suspends = true;
-    if (producer != nullptr && producer->syntax != nullptr && producer->syntax->first() != nullptr &&
-        !producer->isPrecompiled &&
-        (producer->effects.contains(sema::Effect::Async) ||
-            language::asyncIteratorInnerTypeKey(producer->declaredTypeKey).has_value()) &&
-        analyzedCallableMembers_.contains(producerOrdinal))
+    std::vector<AwaitProducerFrame> frames;
+    std::optional<std::size_t> opening = producerOrdinal;
+    for (;;)
     {
-        std::vector<const ast::AstNode*> awaits;
-        suspends = false;
-        collectAwaitSites(producer->syntax->first(), awaits, suspends);
-        for (const ast::AstNode* await : awaits)
+        if (opening.has_value())
         {
-            if (suspends) break;
-            suspends = awaitOperandCanSuspend(
-                await->first(), producer->syntax->first(), producerOrdinal, memo);
+            const std::size_t ordinal = *opening;
+            opening.reset();
+            memo[ordinal] = 0;
+            const ClassMemberSymbol* producer = methodSymbol(ordinal);
+            const bool analyzable = producer != nullptr && producer->syntax != nullptr &&
+                producer->syntax->first() != nullptr && !producer->isPrecompiled &&
+                (producer->effects.contains(sema::Effect::Async) ||
+                    language::asyncIteratorInnerTypeKey(producer->declaredTypeKey).has_value()) &&
+                analyzedCallableMembers_.contains(ordinal);
+            if (!analyzable)
+            {
+                memo[ordinal] = 2;
+                if (frames.empty()) return true;
+                frames.back().suspends = true;
+                continue;
+            }
+            AwaitProducerFrame frame;
+            frame.ordinal = ordinal;
+            frame.body = producer->syntax->first();
+            collectAwaitSites(frame.body, frame.awaits, frame.suspends);
+            frames.push_back(std::move(frame));
+            continue;
         }
+        AwaitProducerFrame& top = frames.back();
+        if (top.suspends || top.next == top.awaits.size())
+        {
+            const bool finished = top.suspends;
+            memo[top.ordinal] = finished ? 2 : 1;
+            frames.pop_back();
+            if (frames.empty()) return finished;
+            frames.back().suspends = finished;
+            continue;
+        }
+        const ast::AstNode* await = top.awaits[top.next++];
+        const ast::AstNode* origin = awaitOperandOrigin(await->first(), top.body);
+        const std::optional<std::size_t> producer = origin != nullptr
+            ? boundAwaitProducer(callBinding(origin, top.ordinal))
+            : std::nullopt;
+        if (!producer.has_value())
+        {
+            top.suspends = true;
+            continue;
+        }
+        const auto visited = memo.find(*producer);
+        if (visited != memo.end())
+        {
+            top.suspends = visited->second == 2;
+            continue;
+        }
+        opening = *producer;
     }
-    memo[producerOrdinal] = suspends ? 2 : 1;
-    return suspends;
 }
 
 void ProjectMethodBodyModel::verifySynchronousAwaits(
