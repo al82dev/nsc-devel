@@ -124,6 +124,13 @@ OptionResult handleGenericsTrace(OptionContext& context)
 OptionResult handleTraceAndIncrementalLink(OptionContext& context)
 {
     if (context.argument == "--llvm-pass-trace") return matched();
+    // EN: Freeze 3.0 DEC-13: the host-DLL import check is explicit opt-in.
+    // ES: Congelamiento 3.0 DEC-13: la comprobacion de imports contra DLL del host es opcional.
+    if (context.argument == "--validate-system-imports")
+    {
+        context.invocation.validateSystemImports = true;
+        return matched();
+    }
     if (context.argument != "--incremental-link") return noMatch();
     context.invocation.incrementalLink = true;
     return matched();

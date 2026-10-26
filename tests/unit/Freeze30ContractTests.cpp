@@ -2842,13 +2842,45 @@ class Program
 )ns", 678);
 }
 
-// EN: Freeze 3.0 (unresolved DLL imports). A symbol that the named DLL does not export is a compile
-//     error; a DLL that cannot be found at compile time is not judged.
-// ES: Congelamiento 3.0 (imports de DLL sin resolver). Un simbolo que la DLL nombrada no exporta es
-//     un error de compilacion; una DLL que no se encuentra al compilar no se juzga.
+/// EN: Freeze 3.0 DEC-13. Compiles `source` with --validate-system-imports and checks the outcome:
+///     success when `fragment` is empty, otherwise a failure whose diagnostic contains `fragment`.
+/// ES: Congelamiento 3.0 DEC-13. Compila `source` con --validate-system-imports y comprueba el
+///     resultado: exito si `fragment` esta vacio; si no, un fallo cuyo diagnostico contiene `fragment`.
+void expectSystemImportValidation(
+    TestContext& tests,
+    const std::filesystem::path& root,
+    std::string_view name,
+    std::string_view source,
+    std::string_view fragment)
+{
+    const std::filesystem::path directory = root / std::string(name);
+    const std::filesystem::path project = writeProject(directory, name);
+    writeFile(directory / "Main.ns", source);
+    const std::string projectText = project.string();
+    const std::string executableText = (directory / (std::string(name) + ".exe")).string();
+    const std::array<std::string_view, 7> arguments = {"-O0", "--no-artifact-cache",
+        "--validate-system-imports", "--emit-project-oop-exe", projectText, "-o", executableText};
+    Driver driver;
+    std::ostringstream output;
+    std::ostringstream error;
+    const ExitCode code = driver.run(arguments, output, error);
+    const std::string diagnostic = output.str() + error.str();
+    const bool accepted = fragment.empty()
+        ? code == ExitCode::Success
+        : code != ExitCode::Success && diagnostic.find(fragment) != std::string::npos;
+    tests.expect(accepted, std::string(name) + ": --validate-system-imports outcome: " + diagnostic);
+}
+
+// EN: Freeze 3.0 DEC-13 (unresolved DLL imports). By default the build never reads host DLLs, so a
+//     symbol the named DLL does not export still compiles. Under --validate-system-imports it is a
+//     compile error; a DLL that cannot be found at compile time is not judged even then.
+// ES: Congelamiento 3.0 DEC-13 (imports de DLL sin resolver). Por defecto la compilacion nunca lee
+//     DLL del host, asi que un simbolo que la DLL nombrada no exporta compila. Con
+//     --validate-system-imports es error de compilacion; una DLL que no se encuentra al compilar no
+//     se juzga ni siquiera entonces.
 void testExternalImports(TestContext& tests, const std::filesystem::path& root)
 {
-    expectReject(tests, root, "P5DllCalled", R"ns(
+    constexpr std::string_view missingSymbol = R"ns(
 class Native
 {
     extern C from "kernel32.dll"
@@ -2860,7 +2892,23 @@ class Program
 {
     public static int Main() { return Native.NoSuchFunctionAnywhere(3); }
 }
-)ns", "is not exported by 'kernel32.dll'");
+)ns";
+    expectCompiles(tests, root, "P5DllCalled", missingSymbol);
+    expectSystemImportValidation(
+        tests, root, "P5DllCalledValidated", missingSymbol, "is not exported by 'kernel32.dll'");
+    expectSystemImportValidation(tests, root, "P5DllMissingValidated", R"ns(
+class Native
+{
+    extern C from "nosuchlibrary_xyz.dll"
+    {
+        public static int Anything(int x);
+    }
+}
+class Program
+{
+    public static int Main() { return Native.Anything(3); }
+}
+)ns", "");
     expectCompiles(tests, root, "P5DllMissing", R"ns(
 class Native
 {

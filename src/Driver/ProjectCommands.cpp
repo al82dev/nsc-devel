@@ -1041,6 +1041,7 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
         else if (argument == "--no-restore") options.noRestore = true;
         else if (argument == "--precompiled-only") options.precompiledOnly = true;
         else if (argument == "--dependency-report") options.dependencyReport = true;
+        else if (argument == "--validate-system-imports") options.validateSystemImports = true;
         else if (argument == "--progress" || argument.starts_with("--progress=") ||
                  argument.starts_with("--progress-format="))
         {
@@ -1487,6 +1488,7 @@ void appendNestedCompilerOptions(
         owned.push_back("-j");
         owned.push_back(std::to_string(*compilerJobs));
     }
+    if (options.validateSystemImports) owned.push_back("--validate-system-imports");
     if (options.progress)
     {
         owned.push_back(options.progressFormat.has_value()

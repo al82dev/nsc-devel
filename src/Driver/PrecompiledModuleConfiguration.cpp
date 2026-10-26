@@ -251,6 +251,13 @@ void addCompilationLinkIdentity(
             "extra-link-library-" + std::to_string(index),
             extraLinkLibraries[index].filename().generic_string());
     }
+    // EN: Freeze 3.0 DEC-13: a bundle built without the host-DLL check must not satisfy a build that
+    //     asks for it. The field exists only when requested, so default identities do not change.
+    // ES: Congelamiento 3.0 DEC-13: un bundle construido sin la comprobacion contra DLL del host no
+    //     debe satisfacer una compilacion que la pide. El campo solo existe cuando se pide, asi que
+    //     las identidades por defecto no cambian.
+    if (activeExecutionScope != nullptr && activeExecutionScope->validateSystemImports)
+        manifest.addIdentityField("validate-system-imports", "true");
     addCompilationLinkToolIdentity(manifest);
 }
 

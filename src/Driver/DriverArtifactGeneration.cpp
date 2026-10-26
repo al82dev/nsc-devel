@@ -1,6 +1,8 @@
 #include "Internal/DriverInternal.h"
 #include "ThinLtoLibraryLinking.h"
 
+#include "nativesharp/Linker/ExternalImportValidation.h"
+
 namespace nativesharp::driver
 {
 using target::BuiltinLayoutKind;
@@ -181,6 +183,24 @@ void printExecutableGenerationResult(const frontend::ProjectOopMirFunction &entr
         appendCodeUnitTelemetry(output, objectBundle);
 }
 
+/// EN: Freeze 3.0 DEC-13. Under --validate-system-imports, checks the complete import list (own and
+///     inherited) against the DLLs found on this host; without the option it does nothing, so the
+///     artifact never depends on the host. Returns false and reports on `error` when a symbol is not
+///     exported by its DLL.
+/// ES: Congelamiento 3.0 DEC-13. Con --validate-system-imports comprueba la lista completa de
+///     imports (propios y heredados) contra las DLL que se encuentran en este host; sin la opcion no
+///     hace nada, asi que el artefacto nunca depende del host. Devuelve false y lo reporta en `error`
+///     cuando la DLL no exporta un simbolo.
+bool validateSystemImportsWhenRequested(std::span<const linker::ExternalImportModule> externalImports,
+                                        std::ostream &error)
+{
+    if (activeExecutionScope == nullptr || !activeExecutionScope->validateSystemImports) return true;
+    std::string validationError;
+    if (linker::validateExternalImportExports(externalImports, validationError)) return true;
+    error << "nsc: error: system import validation failed: " << validationError << '\n';
+    return false;
+}
+
 bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
                               const std::vector<std::filesystem::path> &extraLinkLibraries,
                               llvm_backend::DebugInformationKind debugInformation, bool incrementalLink,
@@ -208,6 +228,7 @@ bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
     for (const linker::ExternalImportModule &module : inheritedImports)
         for (const std::string &symbol : module.symbols)
             externalImportList.append(module.dllName, symbol);
+    if (!validateSystemImportsWhenRequested(externalImports, error)) return false;
     builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(linkLibraries);
     return true;
@@ -868,6 +889,7 @@ bool prepareDynamicLibraryBuilder(const frontend::ProjectCompilation &compilatio
     for (const linker::ExternalImportModule &module : inheritedImports)
         for (const std::string &symbol : module.symbols)
             externalImportList.append(module.dllName, symbol);
+    if (!validateSystemImportsWhenRequested(externalImports, error)) return false;
     builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(linkLibraries);
     return true;

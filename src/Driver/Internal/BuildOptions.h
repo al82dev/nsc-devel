@@ -24,6 +24,9 @@ struct BuildOptions final
     bool precompiledOnly = false;
     bool dependencyReport = false;
     bool progress = false;
+    // EN: Freeze 3.0 DEC-13: forwarded as --validate-system-imports to the nested compilation.
+    // ES: Congelamiento 3.0 DEC-13: se reenvia como --validate-system-imports a la compilacion anidada.
+    bool validateSystemImports = false;
     std::optional<std::string> progressFormat;
     std::vector<std::string> programArguments;
 };
