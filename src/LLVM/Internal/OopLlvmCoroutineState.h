@@ -35,6 +35,13 @@ struct OopLlvmCoroutineState final
     // ES: El puntero al future (poll) o al iterador (MoveNext), y su frame (offset 8).
     LLVMValueRef self = nullptr;
     LLVMValueRef frame = nullptr;
+    // EN: Freeze 3.0 C-17: an async-generator poll keeps its state in the async-iterator (self)
+    //     and publishes each answer in the demand future it was given; elsewhere both are self.
+    // ES: Congelamiento 3.0 C-17: el poll de un generador async guarda su estado en el iterador
+    //     async (self) y publica cada respuesta en el future de demanda que recibio; en otro caso
+    //     ambos son self.
+    LLVMValueRef future = nullptr;
+    bool asyncGenerator = false;
     // EN: i32 slot holding the state seen at entry; a suspension point that resumes clears it.
     // ES: Slot i32 con el estado visto al entrar; el punto de suspension que reanuda lo limpia.
     LLVMValueRef resumeState = nullptr;

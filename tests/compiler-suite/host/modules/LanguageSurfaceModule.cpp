@@ -6286,8 +6286,10 @@ class Program
     {
         AsyncIterator<int, Exception> it = Gen(-5);
         bool h1 = await it.MoveNextAsync();
-        bool h2 = await it.MoveNextAsync();
-        return (h1 && Log.FinallyCount == 1 && Log.DropCount == 1) ? 0 : 1;
+        // Freeze 3.0 C-17: the error reaches the await of MoveNextAsync; before, it was lost.
+        bool caught = false;
+        try { bool h2 = await it.MoveNextAsync(); } catch (Exception e) { caught = true; }
+        return (h1 && caught && Log.FinallyCount == 1 && Log.DropCount == 1) ? 0 : 1;
     }
 }
 )ns", "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"

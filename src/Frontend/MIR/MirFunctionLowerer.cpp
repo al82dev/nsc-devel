@@ -826,6 +826,13 @@ void insertGeneratorFrameInit(ProjectOopMirFunction& function)
     if (function.body == nullptr || function.body->children.empty() ||
         function.body->children[0]->kind != ProjectOopMirNodeKind::LocalDeclaration)
         return;
+    // EN: Freeze 3.0 C-17: an async generator inherits from both `$moveNext` and `$moveNext$poll`;
+    //     a second init allocated a second frame and lost the first.
+    // ES: Congelamiento 3.0 C-17: un generador async hereda de `$moveNext` y de `$moveNext$poll`;
+    //     una segunda inicializacion reservaba un segundo frame y perdia el primero.
+    if (function.body->children.size() > 1U &&
+        function.body->children[1]->kind == ProjectOopMirNodeKind::GeneratorFrameInit)
+        return;
     auto frameInit = std::make_unique<ProjectOopMirNode>();
     frameInit->kind = ProjectOopMirNodeKind::GeneratorFrameInit;
     frameInit->typeKey = "builtin:void";

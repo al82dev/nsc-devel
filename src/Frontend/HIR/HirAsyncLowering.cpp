@@ -996,10 +996,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAwaitExpression(
         const ClassMemberSymbol& callee = memberModel_->members()[*selectedMemberOrdinal];
         await->stringValue = mangleCallable(
             nameLookup_->namedTypes()[callee.declaringTypeOrdinal], callee) + "$poll";
-        await->cleanupRegionOrdinals = std::move(cleanupRegionOrdinals);
-        await->exceptionTargetRegionOrdinal = exceptionTargetRegionOrdinal;
     }
     else await->stringValue.clear();
+    // EN: Freeze 3.0 C-17: every awaited future hands its error to the enclosing handler.
+    // ES: Congelamiento 3.0 C-17: todo future esperado entrega su error al handler envolvente.
+    await->cleanupRegionOrdinals = std::move(cleanupRegionOrdinals);
+    await->exceptionTargetRegionOrdinal = exceptionTargetRegionOrdinal;
     await->children.push_back(std::move(operand));
     return await;
 }

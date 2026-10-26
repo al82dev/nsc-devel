@@ -1,5 +1,7 @@
 #include "../Internal/OopLlvmImplementation.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
+#include "nativesharp/Language/IterationSemantics.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -41,6 +43,7 @@ bool isSuspensionPoint(const frontend::ProjectOopMirNode& node) noexcept
 {
     return node.kind == frontend::ProjectOopMirNodeKind::SuspendPoint ||
         node.kind == frontend::ProjectOopMirNodeKind::YieldValue ||
+        node.kind == frontend::ProjectOopMirNodeKind::AsyncYieldValue ||
         (node.kind == frontend::ProjectOopMirNodeKind::AwaitFuture && node.integerValue == 1);
 }
 }
@@ -50,8 +53,16 @@ bool OopLlvmImplementation::isFrameResidentCoroutine(
 {
         // EN: The async-generator poll ($moveNext$poll) keeps its own save/restore protocol.
         // ES: El poll del generador async ($moveNext$poll) conserva su protocolo de guardado.
+        // EN: Freeze 3.0 C-17: no longer. That protocol replayed the body from the top on every
+        //     MoveNextAsync (side effects before a yield ran again, a local made again leaked, and
+        //     a resume after an error destroyed a local twice); the async-generator poll is now a
+        //     coroutine too, with its state in the async-iterator.
+        // ES: Congelamiento 3.0 C-17: ya no. Ese protocolo repetia el cuerpo desde arriba en cada
+        //     MoveNextAsync (los efectos antes de un yield se repetian, un local creado otra vez se
+        //     perdia y una reanudacion tras un error destruia un local dos veces); el poll del
+        //     generador async ahora tambien es una corrutina, con su estado en el iterador async.
         const std::string& name = function.mangledName;
-        const bool poll = name.ends_with("$poll") && !name.ends_with("$moveNext$poll");
+        const bool poll = name.ends_with("$poll");
         const bool moveNext = name.ends_with("$moveNext") && !function.parameterTypeKeys.empty() &&
             !function.parameterTypeKeys[0].starts_with("async-iterator:");
         return (poll || moveNext) && function.body != nullptr &&
@@ -230,6 +241,7 @@ bool OopLlvmImplementation::emitCoroutineDoneReturn(
 {
         // EN: A finished poll returns at once; a finished MoveNext answers false.
         // ES: Un poll terminado regresa de inmediato; un MoveNext terminado responde false.
+        if (coroutine_.asyncGenerator) return publishAsyncGeneratorEnd(error);
         if (function.returnTypeKey == "builtin:void" || sretStorage_ != nullptr)
         {
             LLVMBuildRetVoid(builder_);
@@ -251,6 +263,12 @@ bool OopLlvmImplementation::beginCoroutineDispatch(
         coroutine_.active = true;
         coroutine_.self = LLVMBuildLoad2(
             builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0], "coro.self");
+        coroutine_.future = coroutine_.self;
+        coroutine_.asyncGenerator = function.mangledName.ends_with("$moveNext$poll");
+        if (coroutine_.asyncGenerator)
+            coroutine_.self = LLVMBuildLoad2(
+                builder_, LLVMPointerTypeInContext(context_, 0),
+                byteOffset(coroutine_.future, 8, "coro.iter.addr"), "coro.iter");
         coroutine_.frame = ensureCoroutineFrame(function, error);
         if (coroutine_.frame == nullptr) return false;
         if (!aliasCoroutineFrameLocals(function, error)) return false;
@@ -408,7 +426,8 @@ bool OopLlvmImplementation::emitCoroutineYieldCancel(
                 LLVMBuildStore(
                     builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1), coroutine_.self);
                 releaseOwnedCaptureCells();
-                LLVMBuildRet(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
+                if (coroutine_.asyncGenerator) ok = publishAsyncGeneratorEnd(error);
+                else LLVMBuildRet(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
             }
         }
         activeCleanupRegions_ = savedActive;
@@ -420,6 +439,21 @@ bool OopLlvmImplementation::markCoroutineFinished(std::string& error)
 {
         // EN: Only a MoveNext needs it: a poll's return already publishes its result and state.
         // ES: Solo un MoveNext lo necesita: el return de un poll ya publica resultado y estado.
+        // EN: Freeze 3.0 C-17: and an async-generator poll: its return (the end of the body, or a
+        //     `throw` that leaves it) publishes in the demand future, and the async-iterator is
+        //     parked as finished so a later MoveNextAsync answers false and runs nothing.
+        // ES: Congelamiento 3.0 C-17: y el poll de un generador async: su return (el fin del
+        //     cuerpo, o un `throw` que sale de el) publica en el future de demanda, y el iterador
+        //     async queda terminado para que un MoveNextAsync posterior responda false sin correr.
+        if (coroutine_.active && coroutine_.asyncGenerator)
+        {
+            LLVMTypeRef finishedType = llvmType("builtin:int", error);
+            if (finishedType == nullptr) return false;
+            LLVMBuildStore(
+                builder_, LLVMConstInt(finishedType, static_cast<unsigned long long>(-1), 1),
+                coroutine_.self);
+            return true;
+        }
         if (!coroutine_.active || currentMirFunction_ == nullptr ||
             currentMirFunction_->returnTypeKey != "builtin:bool") return true;
         LLVMTypeRef intType = llvmType("builtin:int", error);
@@ -430,6 +464,119 @@ bool OopLlvmImplementation::markCoroutineFinished(std::string& error)
             builder_, LLVMBuildICmp(builder_, LLVMIntEQ, state, errored, "coro.exit.errored"), errored,
             LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1), "coro.exit.final");
         LLVMBuildStore(builder_, finished, coroutine_.self);
+        return true;
+}
+
+bool OopLlvmImplementation::publishAsyncGeneratorEnd(std::string& error)
+{
+        // EN: Freeze 3.0 C-17: the demand future answers false and is ready; the poll ends.
+        // ES: Congelamiento 3.0 C-17: el future de demanda responde false y queda listo; el poll
+        //     termina.
+        LLVMTypeRef intType = llvmType("builtin:int", error);
+        if (intType == nullptr) return false;
+        LLVMBuildStore(
+            builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0),
+            byteOffset(coroutine_.future, 16, "coro.agen.end.result"));
+        LLVMBuildStore(
+            builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1), coroutine_.future);
+        LLVMBuildRetVoid(builder_);
+        return true;
+}
+
+bool OopLlvmImplementation::lowerCoroutineAsyncYield(
+        const frontend::ProjectOopMirNode* node, std::string& error)
+{
+        // EN: Freeze 3.0 C-17: `yield return v` in an async generator stores the item in the
+        //     async-iterator, answers true in the demand future, parks the iterator at this id and
+        //     leaves; the next MoveNextAsync resumes right after it.
+        // ES: Congelamiento 3.0 C-17: `yield return v` en un generador async guarda el elemento en
+        //     el iterador async, responde true en el future de demanda, deja el iterador en este id
+        //     y sale; el siguiente MoveNextAsync reanuda justo despues.
+        std::int64_t id = 0;
+        LLVMValueRef resuming = coroutineResumeMatches(node, id, error);
+        if (resuming == nullptr) return false;
+        LLVMTypeRef intType = llvmType("builtin:int", error);
+        if (intType == nullptr) return false;
+        LLVMBasicBlockRef produce = appendBlock("coro.agen.produce");
+        LLVMBasicBlockRef resumed = appendBlock("coro.agen.resumed");
+        LLVMBasicBlockRef cancel = appendBlock("coro.agen.cancel");
+        LLVMBuildCondBr(builder_, resuming, resumed, produce);
+        enterBlock(produce);
+        LLVMValueRef item = lowerAsyncYieldItem(node, coroutine_.frame, error);
+        if (!node->children.empty() && item == nullptr) return false;
+        if (terminated()) return true;
+        if (item != nullptr)
+            LLVMBuildStore(builder_, item, byteOffset(coroutine_.self, 16, "coro.agen.item"));
+        LLVMBuildStore(
+            builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0),
+            byteOffset(coroutine_.future, 16, "coro.agen.result"));
+        LLVMBuildStore(
+            builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1), coroutine_.future);
+        LLVMBuildStore(
+            builder_, LLVMConstInt(intType, static_cast<unsigned long long>(id), 1), coroutine_.self);
+        LLVMBuildRetVoid(builder_);
+        coroutine_.cancelBlocks[id] = cancel;
+        if (!emitCoroutineYieldCancel(node, cancel, error)) return false;
+        enterBlock(resumed);
+        LLVMBuildStore(builder_, LLVMConstInt(intType, 0, 0), coroutine_.resumeState);
+        return true;
+}
+
+bool OopLlvmImplementation::lowerAsyncGeneratorDrop(LLVMValueRef self, std::string& error)
+{
+        // EN: Freeze 3.0 C-17: an async generator parked at yield `k` is unwound by its own poll
+        //     (state kCancelStateBase - k), driven with a demand future made here. One never
+        //     started, or already finished, holds no live local.
+        // ES: Congelamiento 3.0 C-17: un generador async detenido en el yield `k` lo desenreda su
+        //     propio poll (estado kCancelStateBase - k), movido con un future de demanda creado
+        //     aqui. Uno que nunca empezo, o que ya termino, no tiene locales vivos.
+        //     The poll may live in another code unit, so it is reached as the iterator does: its
+        //     moveNextFn builds the demand future, whose pollFn is then called.
+        //     El poll puede vivir en otra unidad de codigo, asi que se alcanza como lo hace el
+        //     iterador: su moveNextFn arma el future de demanda, cuyo pollFn se llama despues.
+        if (currentMirFunction_ == nullptr || currentMirFunction_->parameterTypeKeys.empty())
+            return fail(error, "async generator drop has no owning function");
+        std::string iteratorKey = currentMirFunction_->parameterTypeKeys.front();
+        if (iteratorKey.ends_with('*')) iteratorKey.pop_back();
+        const auto errorKey = language::asyncIteratorErrorTypeKey(iteratorKey);
+        const std::string futureKey = language::futureTypeKey(
+            "builtin:bool", errorKey.has_value() ? std::string(*errorKey) : std::string{});
+        LLVMTypeRef futureType = llvmType(futureKey, error);
+        LLVMTypeRef intType = llvmType("builtin:int", error);
+        if (futureType == nullptr || intType == nullptr) return false;
+        LLVMValueRef state = LLVMBuildLoad2(builder_, intType, self, "drop.agen.state");
+        LLVMBasicBlockRef unwind = appendBlock("drop.agen.unwind");
+        LLVMBasicBlockRef done = appendBlock("drop.agen.done");
+        LLVMBuildCondBr(
+            builder_,
+            LLVMBuildICmp(builder_, LLVMIntSGT, state, LLVMConstInt(intType, 0, 0), "drop.agen.parked"),
+            unwind, done);
+        enterBlock(unwind);
+        LLVMValueRef cancelState = LLVMBuildSub(
+            builder_,
+            LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
+            state, "drop.agen.cancel.state");
+        LLVMBuildStore(builder_, cancelState, self);
+        LLVMValueRef demand = entryBlockAlloca(
+            futureType, structAlignmentFor(futureKey), "drop.agen.future");
+        if (demand == nullptr) return fail(error, "async generator drop could not reserve a future");
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef moveNextFn = LLVMBuildLoad2(
+            builder_, ptr, byteOffset(self, 24, "drop.agen.movenextfn.addr"), "drop.agen.movenextfn");
+        LLVMTypeRef moveNextParams[] = {ptr, ptr};
+        LLVMTypeRef moveNextType = LLVMFunctionType(LLVMVoidTypeInContext(context_), moveNextParams, 2, 0);
+        LLVMValueRef moveNextArgs[] = {demand, self};
+        if (LLVMBuildCall2(builder_, moveNextType, moveNextFn, moveNextArgs, 2U, "") == nullptr)
+            return fail(error, "async generator drop could not build its demand future");
+        LLVMValueRef pollFn = LLVMBuildLoad2(
+            builder_, ptr, byteOffset(demand, 24, "drop.agen.pollfn.addr"), "drop.agen.pollfn");
+        LLVMTypeRef pollParams[] = {ptr};
+        LLVMTypeRef pollType = LLVMFunctionType(LLVMVoidTypeInContext(context_), pollParams, 1, 0);
+        LLVMValueRef pollArgs[] = {demand};
+        if (LLVMBuildCall2(builder_, pollType, pollFn, pollArgs, 1U, "") == nullptr)
+            return fail(error, "async generator drop could not unwind through its poll");
+        LLVMBuildBr(builder_, done);
+        enterBlock(done);
         return true;
 }
 

@@ -391,9 +391,12 @@ bool OopLlvmImplementation::collectLocalStorage(
             currentMirFunction_->capturedLocalOrdinals,
             *node->localOrdinal) != currentMirFunction_->capturedLocalOrdinals.end();
         LLVMValueRef slot = nullptr;
-        if (captured && currentMirFunction_->mangledName.ends_with("$moveNext$poll"))
-            return fail(error, "a lambda that captures a local of an async generator is not supported "
-                "in NativeSharp 3.0; capture a copy made outside the generator");
+        // EN: Freeze 3.0 C-17: an async-generator poll is a frame-resident coroutine now, so a
+        //     captured local keeps its cell in the frame like any other coroutine's (C-05); the
+        //     former rejection of this case was lifted.
+        // ES: Congelamiento 3.0 C-17: el poll de un generador async ahora es una corrutina con frame
+        //     residente, asi que un local capturado guarda su celda en el frame como en cualquier
+        //     otra corrutina (C-05); se retiro el rechazo que existia para este caso.
         if (captured && isFrameResidentCoroutine(*currentMirFunction_))
         {
             // EN: Freeze 3.0 C-05: the cell outlives this call; aliasCoroutineFrameLocals finds it

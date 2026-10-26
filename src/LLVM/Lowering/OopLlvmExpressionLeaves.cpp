@@ -721,7 +721,19 @@ bool OopLlvmImplementation::emitBlockingAwaitErrorPath(
             ? std::string(*errorInner) : std::string{};
         LLVMTypeRef errorType = errorKey.empty() ? nullptr : llvmType(errorKey, error);
         const std::uint64_t errorOffset = futureFieldOffset(node->elementTypeKey, 4);
-        transfersException = node->exceptionTargetRegionOrdinal.has_value() &&
+        // EN: Freeze 3.0 C-17: a synchronous await (integerValue 0) outside any try propagates an
+        //     exception error to its caller, running the active cleanup, as a call does; before, it
+        //     returned the default result and the error was lost. Only the async entry point
+        //     (integerValue 2) keeps the deterministic signal; C-13 already requires the enclosing
+        //     callable to declare what is not caught.
+        // ES: Congelamiento 3.0 C-17: un await sincrono (integerValue 0) fuera de todo try propaga un
+        //     error de excepcion a su llamador, corriendo el cleanup activo, como una llamada; antes
+        //     devolvia el resultado por defecto y el error se perdia. Solo el punto de entrada async
+        //     (integerValue 2) conserva la senal determinista; C-13 ya exige que el callable
+        //     envolvente declare lo que no se captura.
+        const bool propagatesToCaller = node->integerValue == 0 && !errorKey.empty() &&
+            isClassReferenceType(nameLookup_, errorKey);
+        transfersException = (node->exceptionTargetRegionOrdinal.has_value() || propagatesToCaller) &&
             errorType != nullptr && errorOffset != 0;
         if (transfersException)
         {
@@ -988,12 +1000,35 @@ bool OopLlvmImplementation::emitSuspendingAwaitErrorPath(
         if (parentKey.ends_with('*')) parentKey.pop_back();
         const std::uint64_t parentErrorOffset = language::futureErrorTypeKey(parentKey).has_value()
             ? futureFieldOffset(parentKey, 4) : 0;
+        // EN: Freeze 3.0 C-17: an async-generator poll publishes in its demand future, not in the
+        //     async-iterator that holds its state, and the iterator is parked as finished.
+        // ES: Congelamiento 3.0 C-17: el poll de un generador async publica en su future de
+        //     demanda, no en el iterador async que guarda su estado, y el iterador queda terminado.
+        LLVMValueRef published = coroutine_.active && coroutine_.future != nullptr ? coroutine_.future : self;
+        if (coroutine_.asyncGenerator && !markCoroutineFinished(error)) return false;
         if (parentErrorOffset != 0)
             LLVMBuildStore(
-                builder_, childError, byteOffset(self, parentErrorOffset, "await.self.error.addr"));
+                builder_, childError, byteOffset(published, parentErrorOffset, "await.self.error.addr"));
         LLVMValueRef errorConst = LLVMConstInt(intType, static_cast<unsigned long long>(-2), 1);
-        LLVMBuildStore(builder_, errorConst, self);
-        LLVMBuildRetVoid(builder_);
+        LLVMBuildStore(builder_, errorConst, published);
+        // EN: Freeze 3.0 C-17: the error leaves this body, so the active cleanup runs first, as for
+        //     a `throw` that leaves it (its synthesized return carries the same regions). Before,
+        //     the live locals of this async body were never destroyed on this path.
+        // ES: Congelamiento 3.0 C-17: el error sale de este cuerpo, asi que primero corre el cleanup
+        //     activo, como en un `throw` que sale de el (su return sintetizado lleva las mismas
+        //     regiones). Antes, los locales vivos de este cuerpo async nunca se destruian aqui.
+        //     The error branch is separate from the ready path lowered next, so the cleanup state
+        //     the walk changes is restored, as the cancel path of a yield does.
+        //     La rama de error es aparte de la ruta lista que se baja despues, asi que el estado
+        //     de cleanup que el recorrido cambia se restaura, como en la cancelacion de un yield.
+        const std::vector<std::size_t> savedActive = activeCleanupRegions_;
+        const std::vector<FuncletContext> savedFunclets = funcletStack_;
+        std::size_t pathIndex = 0;
+        const bool cleaned = !funcletStack_.empty() || emitRemainingStructuredCleanups(node, pathIndex, error);
+        activeCleanupRegions_ = savedActive;
+        funcletStack_ = savedFunclets;
+        if (!cleaned) return false;
+        if (!terminated()) LLVMBuildRetVoid(builder_);
         return true;
 }
 

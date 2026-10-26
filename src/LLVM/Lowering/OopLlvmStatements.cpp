@@ -562,6 +562,7 @@ bool OopLlvmImplementation::lowerAsyncYieldValueStatement(
                 // NS304-T07-F02: the async-generator poll's yield. Entry: allocate the frame once,
                 // save live locals, write the item + the demand future's result/state and return;
                 // resume: restore the live locals and fall through to the next yield.
+                if (coroutine_.active) return lowerCoroutineAsyncYield(node, error);
                 if (parameterStorage_.empty())
                     return fail(error, "async yield has no poll self parameter");
                 LLVMValueRef future = LLVMBuildLoad2(
@@ -810,20 +811,17 @@ bool OopLlvmImplementation::lowerDropFrameStatement(
                         LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), "drop.frame.null"),
                     noFrame, doDrop);
                 enterBlock(doDrop);
-                const auto& frameLocals = currentMirFunction_ != nullptr
-                    ? currentMirFunction_->asyncFrameLocals
-                    : std::vector<std::tuple<std::size_t, std::uint64_t, std::string>>{};
-                for (std::size_t index = frameLocals.size(); index > 0; --index)
-                {
-                    const auto& [localOrdinal, offset, typeKey] = frameLocals[index - 1];
-                    const auto glue = valueDropEntries_.find(typeKey);
-                    if (glue == valueDropEntries_.end()) continue;
-                    LLVMValueRef args[] = { byteOffset(frame, offset, "drop.slot") };
-                    if (LLVMBuildCall2(
-                            builder_, glue->second.functionType, glue->second.function,
-                            args, 1U, "") == nullptr)
-                        return fail(error, "drop glue call failed");
-                }
+                // EN: Freeze 3.0 C-17: the async-generator poll is a coroutine now, so a parked one
+                //     unwinds through it (finally blocks and the destructions active at its yield)
+                //     instead of a blind drop of every frame slot, which could drop a dead value.
+                // ES: Congelamiento 3.0 C-17: el poll del generador async ahora es una corrutina,
+                //     asi que uno detenido se desenreda por el (los finally y las destrucciones
+                //     activas en su yield) en lugar de destruir a ciegas cada slot del frame, que
+                //     podia destruir un valor muerto.
+                if (!lowerAsyncGeneratorDrop(self, error)) return false;
+                frame = LLVMBuildLoad2(
+                    builder_, LLVMPointerTypeInContext(context_, 0),
+                    byteOffset(self, 8, "drop.frame.after.addr"), "drop.frame.after");
                 // NS304-T07-F04: the async-iterator's frame is heap (allocated by the constructor's
                 // GeneratorFrameInit). Release it exactly once and null it + park the terminal state
                 // so a second destruction never re-drops or re-frees. The sync iterator is left alone

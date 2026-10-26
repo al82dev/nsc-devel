@@ -2163,6 +2163,412 @@ class Program
         142, "d2d1", true);
 }
 
+constexpr std::string_view kAsyncErrorPrelude = R"ns(
+using NativeSharp.Core;
+class MyError : Exception { public int Code; public MyError(int c) { Code = c; } }
+class Counter { public static int Log; }
+class Guard
+{
+    public int Id;
+    public Guard(int id) { Id = id; }
+    ~Guard() { Counter.Log = Counter.Log * 10 + Id; }
+}
+)ns";
+
+// EN: C-17. An error thrown in an async generator reaches the future of `MoveNextAsync` whole: a
+//     catch around the await receives the same object, from a synchronous or an async caller,
+//     before the first yield or after a resume; the generator runs its active finally blocks and
+//     destructions once and then stays finished. Without a catch the error propagates and the
+//     consumer's own live locals are destroyed too.
+// ES: C-17. Un error lanzado en un generador async llega completo al future de `MoveNextAsync`:
+//     un catch alrededor del await recibe el mismo objeto, desde un llamador sincrono o async,
+//     antes del primer yield o tras reanudar; el generador corre una vez sus finally y
+//     destrucciones activas y luego queda terminado. Sin catch el error se propaga y tambien se
+//     destruyen los locales vivos del consumidor.
+void testAsyncGeneratorErrors(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "C17Catch", std::string(kAsyncErrorPrelude) + R"ns(
+class Program
+{
+    private static AsyncIterator<int, MyError> Gen(int n) throws MyError
+    {
+        raii Guard a = new Guard(1);
+        yield return n;
+        raii Guard b = new Guard(2);
+        if (n > 0) { throw new MyError(37); }
+        yield return 9;
+    }
+    public static int Main()
+    {
+        int r = 0;
+        AsyncIterator<int, MyError> it = Gen(4);
+        try
+        {
+            bool h1 = await it.MoveNextAsync();
+            r = it.Current;
+            bool h2 = await it.MoveNextAsync();
+            r = r + 1000;
+        }
+        catch (MyError e) { r = r * 100 + e.Code; }
+        return r * 100 + Counter.Log;
+    }
+}
+)ns", 43721);
+    expectRun(tests, root, "C17First", std::string(kAsyncErrorPrelude) + R"ns(
+class Program
+{
+    private static AsyncIterator<int, MyError> Gen(int n) throws MyError
+    {
+        raii Guard a = new Guard(3);
+        if (n > 0) { throw new MyError(n); }
+        yield return n;
+    }
+    public static int Main()
+    {
+        int r = 1;
+        AsyncIterator<int, MyError> it = Gen(5);
+        try { bool h1 = await it.MoveNextAsync(); r = 99; }
+        catch (MyError e) { r = e.Code; }
+        return r * 10 + Counter.Log;
+    }
+}
+)ns", 53);
+    expectRun(tests, root, "C17After", std::string(kAsyncErrorPrelude) + R"ns(
+class Program
+{
+    private static AsyncIterator<int, MyError> Gen() throws MyError
+    {
+        raii Guard a = new Guard(1);
+        yield return 1;
+        throw new MyError(2);
+    }
+    public static int Main()
+    {
+        int r = 0;
+        AsyncIterator<int, MyError> it = Gen();
+        try { bool h1 = await it.MoveNextAsync(); bool h2 = await it.MoveNextAsync(); r = 50; }
+        catch (MyError e) { r = e.Code; }
+        bool h3 = false;
+        try { h3 = await it.MoveNextAsync(); }
+        catch (MyError e2) { r = r + 500; }
+        return r * 1000 + (h3 ? 100 : 0) + Counter.Log;
+    }
+}
+)ns", 2001);
+    expectRun(tests, root, "C17Finally", std::string(kAsyncErrorPrelude) + R"ns(
+class Program
+{
+    private static AsyncIterator<int, MyError> Gen() throws MyError
+    {
+        raii Guard a = new Guard(1);
+        try
+        {
+            yield return 1;
+            raii Guard b = new Guard(2);
+            throw new MyError(6);
+        }
+        finally { Counter.Log = Counter.Log * 10 + 8; }
+    }
+    public static int Main()
+    {
+        int r = 0;
+        AsyncIterator<int, MyError> it = Gen();
+        try { bool h1 = await it.MoveNextAsync(); bool h2 = await it.MoveNextAsync(); r = 50; }
+        catch (MyError e) { r = e.Code; }
+        return r * 1000 + Counter.Log;
+    }
+}
+)ns", 6281);
+    expectRun(tests, root, "C17Chain", std::string(kAsyncErrorPrelude) + R"ns(
+class Program
+{
+    private static AsyncIterator<int, MyError> Gen() throws MyError
+    {
+        raii Guard a = new Guard(1);
+        yield return 4;
+        yield;
+        throw new MyError(9);
+    }
+    private static async int Sum() throws MyError
+    {
+        int total = 0;
+        AsyncIterator<int, MyError> it = Gen();
+        while (await it.MoveNextAsync()) { total = total + it.Current; }
+        return total + 100;
+    }
+    public static async int Main()
+    {
+        int r = 0;
+        try { r = await Sum(); }
+        catch (MyError e) { r = e.Code; }
+        return r * 10 + Counter.Log;
+    }
+}
+)ns", 91);
+    expectRun(tests, root, "C17AsyncMain", std::string(kAsyncErrorPrelude) + R"ns(
+class Program
+{
+    private static AsyncIterator<int, MyError> Gen(int n) throws MyError
+    {
+        raii Guard a = new Guard(1);
+        yield return n;
+        raii Guard b = new Guard(2);
+        if (n > 0) { throw new MyError(37); }
+        yield return 9;
+    }
+    public static async int Main()
+    {
+        int r = 0;
+        AsyncIterator<int, MyError> it = Gen(4);
+        try
+        {
+            bool h1 = await it.MoveNextAsync();
+            r = it.Current;
+            bool h2 = await it.MoveNextAsync();
+            r = r + 1000;
+        }
+        catch (MyError e) { r = r * 100 + e.Code; }
+        return r * 100 + Counter.Log;
+    }
+}
+)ns", 43721);
+    expectRun(tests, root, "C17SyncDrop", std::string(kAsyncErrorPrelude) + R"ns(
+{
+    private static AsyncIterator<int, MyError> Gen() throws MyError
+    {
+        raii Guard a = new Guard(1);
+        yield return 1;
+        throw new MyError(4);
+    }
+    private static int Walk() throws MyError
+    {
+        raii Guard w = new Guard(5);
+        AsyncIterator<int, MyError> it = Gen();
+        bool h1 = await it.MoveNextAsync();
+        bool h2 = await it.MoveNextAsync();
+        return 50;
+    }
+    public static int Main()
+    {
+        int r = 0;
+        try { r = Walk(); } catch (MyError e) { r = e.Code; }
+        return r * 100 + Counter.Log;
+    }
+}
+)ns", 415);
+    expectRun(tests, root, "C17AsyncDrop", std::string(kAsyncErrorPrelude) + R"ns(
+{
+    private static AsyncIterator<int, MyError> Gen() throws MyError
+    {
+        raii Guard a = new Guard(1);
+        yield return 1;
+        throw new MyError(4);
+    }
+    private static async int Walk() throws MyError
+    {
+        raii Guard w = new Guard(5);
+        AsyncIterator<int, MyError> it = Gen();
+        bool h1 = await it.MoveNextAsync();
+        bool h2 = await it.MoveNextAsync();
+        return 50;
+    }
+    public static async int Main()
+    {
+        int r = 0;
+        try { r = await Walk(); } catch (MyError e) { r = e.Code; }
+        return r * 100 + Counter.Log;
+    }
+}
+)ns", 415);
+    expectRun(tests, root, "C17AsyncAwaitDrop", std::string(kAsyncErrorPrelude) + R"ns(
+{
+    private static async int Fail() throws MyError { yield; throw new MyError(4); }
+    private static async int Walk() throws MyError
+    {
+        raii Guard w = new Guard(5);
+        int v = await Fail();
+        return 50 + v;
+    }
+    public static async int Main()
+    {
+        int r = 0;
+        try { r = await Walk(); } catch (MyError e) { r = e.Code; }
+        return r * 100 + Counter.Log;
+    }
+}
+)ns", 405);
+}
+
+// EN: C-17 (finding). The async-generator poll replayed its body from the top on every
+//     MoveNextAsync. Now it resumes after its yield: each statement runs once, a parked generator
+//     that is dropped or cancelled runs its active cleanup once, and one never started runs none.
+// ES: C-17 (hallazgo). El poll del generador async repetia su cuerpo desde arriba en cada
+//     MoveNextAsync. Ahora reanuda tras su yield: cada sentencia corre una vez, un generador
+//     detenido que se destruye o se cancela corre una vez su cleanup activo, y uno que nunca
+//     empezo no corre ninguno.
+void testAsyncGeneratorResume(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRunOutput(tests, root, "C17Rerun", R"ns(
+using NativeSharp.Core;
+class Box
+{
+    public int Id;
+    public Box(int id) { Id = id; Console.Write("c"); Console.Write(Id); }
+    ~Box() { Console.Write("d"); Console.Write(Id); }
+}
+class Program
+{
+    private static AsyncIterator<int, int> Gen()
+    {
+        Console.Write("s");
+        raii Box a = new Box(1);
+        yield return 1;
+        Console.Write("m");
+        yield return 2;
+        Console.Write("e");
+    }
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen();
+        bool h1 = await it.MoveNextAsync();
+        Console.Write("|");
+        bool h2 = await it.MoveNextAsync();
+        Console.Write("|");
+        bool h3 = await it.MoveNextAsync();
+        Console.Write("|");
+        bool h4 = await it.MoveNextAsync();
+        Console.Write("|");
+        return (h1 ? 1000 : 0) + (h2 ? 100 : 0) + (h3 ? 10 : 0) + (h4 ? 1 : 0);
+    }
+}
+)ns",
+        1100, "sc1|m|ed1||", false);
+    // EN: A lambda may capture a local of an async generator; its cell lives in the frame.
+    // ES: Una lambda puede capturar un local de un generador async; su celda vive en el frame.
+    expectRun(tests, root, "C17Capture", R"ns(
+delegate int Transform(int value);
+
+class Program
+{
+    public static AsyncIterator<int, int> Gen()
+    {
+        int counter = 1;
+        raii Transform bump = [ref mut counter] (int value) =>
+        {
+            counter = counter + value;
+            return counter;
+        };
+        yield return bump(1);
+        yield return bump(10);
+        yield return counter;
+    }
+
+    public static int Main()
+    {
+        int sum = 0;
+        AsyncIterator<int, int> it = Gen();
+        while (await it.MoveNextAsync()) { sum = sum * 100 + it.Current; }
+        return sum % 251;
+    }
+}
+)ns", 128);
+    expectRun(tests, root, "C17DropParked", R"ns(
+
+public class Log { public static int FinallyCount; public static int DropCount; }
+public class Resource { ~Resource() { Log.DropCount += 1; } }
+class Program
+{
+    public static AsyncIterator<int, int> Gen(int n)
+    {
+        owned Resource res = new Resource();
+        try { yield return n; if (n < 0) yield return -1; }
+        finally { Log.FinallyCount += 1; }
+    }
+
+    private static int Use()
+    {
+        AsyncIterator<int, int> it = Gen(5);
+        bool h1 = await it.MoveNextAsync();
+        return h1 ? 1 : 0;
+    }
+    public static int Main()
+    {
+        int r = Use();
+        return r * 100 + Log.FinallyCount * 10 + Log.DropCount;
+    }
+}
+)ns", 111);
+    expectRun(tests, root, "C17CancelFresh", R"ns(
+
+public class Log { public static int FinallyCount; public static int DropCount; }
+public class Resource { ~Resource() { Log.DropCount += 1; } }
+class Program
+{
+    public static AsyncIterator<int, int> Gen(int n)
+    {
+        owned Resource res = new Resource();
+        try { yield return n; if (n < 0) yield return -1; }
+        finally { Log.FinallyCount += 1; }
+    }
+
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen(5);
+        it.Cancel();
+        bool h1 = await it.MoveNextAsync();
+        return (h1 ? 100 : 0) + Log.FinallyCount * 10 + Log.DropCount;
+    }
+}
+)ns", 0);
+    expectRun(tests, root, "C17Cancel1", R"ns(
+
+public class Log { public static int FinallyCount; public static int DropCount; }
+public class Resource { ~Resource() { Log.DropCount += 1; } }
+class Program
+{
+    public static AsyncIterator<int, int> Gen(int n)
+    {
+        owned Resource res = new Resource();
+        try { yield return n; if (n < 0) yield return -1; }
+        finally { Log.FinallyCount += 1; }
+    }
+
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen(-5);
+        bool h1 = await it.MoveNextAsync();
+        it.Cancel();
+        bool h2 = await it.MoveNextAsync();
+        return (!h2 && Log.FinallyCount == 1 && Log.DropCount == 1) ? 0 : 1;
+    }
+}
+)ns", 0);
+    expectRun(tests, root, "C17Cancel2", R"ns(
+
+public class Log { public static int FinallyCount; public static int DropCount; }
+public class Resource { ~Resource() { Log.DropCount += 1; } }
+class Program
+{
+    public static AsyncIterator<int, int> Gen(int n)
+    {
+        owned Resource res = new Resource();
+        try { yield return n; if (n < 0) yield return -1; }
+        finally { Log.FinallyCount += 1; }
+    }
+
+    public static int Main()
+    {
+        AsyncIterator<int, int> it = Gen(-5);
+        bool h1 = await it.MoveNextAsync();
+        bool h2 = await it.MoveNextAsync();
+        it.Cancel();
+        bool h3 = await it.MoveNextAsync();
+        return (h1 && h2 && !h3 && Log.FinallyCount == 1 && Log.DropCount == 1) ? 0 : 1;
+    }
+}
+)ns", 0);
+}
+
 int main()
 {
     TestContext tests;
@@ -2198,5 +2604,7 @@ int main()
     testFutureDrops(tests, root);
     testFutureMoveOnly(tests, root);
     testGeneratorCleanup(tests, root);
+    testAsyncGeneratorErrors(tests, root);
+    testAsyncGeneratorResume(tests, root);
     return tests.resultKeeping(root);
 }

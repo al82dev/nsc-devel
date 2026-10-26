@@ -813,8 +813,26 @@ bool OopLlvmImplementation::lowerExpressionFrame014IteratorCancel(
     if (self == nullptr) { values.push_back(nullptr); return true; }
     LLVMTypeRef intType = llvmType("builtin:int", error);
     if (intType == nullptr) { values.push_back(nullptr); return true; }
-    LLVMBuildStore(
-        builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-3), 1), self);
+    // EN: Freeze 3.0 C-17: the poll is a coroutine, so a cancel parks the iterator in the cancel
+    //     state of the yield it is stopped at (kCancelStateBase - k): the next MoveNextAsync runs
+    //     the cleanup active there and answers false. One never started just finishes.
+    // ES: Congelamiento 3.0 C-17: el poll es una corrutina, asi que cancelar deja el iterador en
+    //     el estado de cancelacion del yield donde esta detenido (kCancelStateBase - k): el
+    //     siguiente MoveNextAsync corre la limpieza activa ahi y responde false. Uno que nunca
+    //     empezo solo termina.
+    LLVMValueRef state = LLVMBuildLoad2(builder_, intType, self, "cancel.state");
+    LLVMValueRef parked = LLVMBuildICmp(
+        builder_, LLVMIntSGT, state, LLVMConstInt(intType, 0, 0), "cancel.parked");
+    LLVMValueRef fresh = LLVMBuildICmp(
+        builder_, LLVMIntEQ, state, LLVMConstInt(intType, 0, 0), "cancel.fresh");
+    LLVMValueRef unwind = LLVMBuildSub(
+        builder_,
+        LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
+        state, "cancel.unwind");
+    LLVMValueRef settled = LLVMBuildSelect(
+        builder_, fresh, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1), state,
+        "cancel.settled");
+    LLVMBuildStore(builder_, LLVMBuildSelect(builder_, parked, unwind, settled, "cancel.next"), self);
     values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
     return true;
 }
