@@ -9,6 +9,7 @@
 #include "OopLlvmFuncletKind.h"
 #include "OopLlvmFunctionInfo.h"
 #include "OopLlvmLoopTargets.h"
+#include "OopLlvmReplaySpill.h"
 #include "ScopedDebugLocation.h"
 #include "ScopedDebugScope.h"
 #include "StaticLocalGuard.h"
