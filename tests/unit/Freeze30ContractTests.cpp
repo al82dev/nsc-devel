@@ -3311,6 +3311,67 @@ class Program
 )ns", 123);
 }
 
+/// EN: P3. A struct returned by `ref` and used as a receiver or field target reaches the storage.
+/// ES: P3. Un struct devuelto por `ref` y usado como receptor o destino de campo llega al
+///     almacenamiento.
+void testRefReturnReceiver(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P3RefReceiverCall", R"ns(
+struct S
+{
+    public int A;
+    public void Bump() { A = A + 1; }
+}
+class Holder
+{
+    private S s;
+    private int v;
+    public ref S GetMut() { return ref s; }
+    public ref int V() { return ref v; }
+}
+class Program { public static int Main() { raii Holder h = new Holder(); h.GetMut().Bump(); return h.GetMut().A; } }
+)ns", 1);
+    expectRun(tests, root, "P3RefReceiverField", R"ns(
+struct S
+{
+    public int A;
+    public void Bump() { A = A + 1; }
+}
+class Holder
+{
+    private S s;
+    private int v;
+    public ref S GetMut() { return ref s; }
+    public ref int V() { return ref v; }
+}
+class Program { public static int Main() { raii Holder h = new Holder(); h.GetMut().A = 5; return h.GetMut().A; } }
+)ns", 5);
+    expectRun(tests, root, "P3RefReceiverMixed", R"ns(
+struct S
+{
+    public int A;
+    public void Bump() { A = A + 1; }
+    public readonly int Read() { return A; }
+}
+class Holder
+{
+    private S s;
+    public ref readonly S Get() { return ref s; }
+    public ref S GetMut() { return ref s; }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Holder h = new Holder();
+        h.GetMut().Bump();
+        h.GetMut().Bump();
+        return h.Get().Read() * 10 + h.Get().A;
+    }
+}
+)ns", 22);
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -4835,6 +4896,7 @@ int main()
     testReadonlyReferenceReturns(tests, root);
     testInAcceptsReadonlyPlace(tests, root);
     testRefToFieldElement(tests, root);
+    testRefReturnReceiver(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);
