@@ -4621,7 +4621,12 @@ class Holder { public Boom Saved; public owned Boom Kept; public static Boom Glo
 class Program
 {
     public static void Store(Holder h, Exception b) { h.Saved = null; Exception e2 = b; }
-    public static void Keep(Holder h, Exception b) { Holder.Global = null; Exception[] a = new Exception[1]; a[0] = b; }
+    public static void Keep(Holder h, Exception b)
+    {
+        Holder.Global = null;
+        Exception[] a = new Exception[1];
+        a[0] = b;
+    }
     public static int Main()
     {
         raii Holder holder = new Holder();
@@ -4702,6 +4707,62 @@ class Program
     }
 }
 )ns", 71);
+}
+
+/// EN: Freeze 3.0 P10. The catch variable receives the caught exception: a lambda may not capture it
+///     (the delegate may outlive the handler); a lambda in the handler that does not capture it is fine.
+/// ES: Congelamiento 3.0 P10. La variable del catch recibe la excepcion atrapada: un lambda no puede
+///     capturarla (el delegate puede sobrevivir al handler); un lambda del handler que no la captura sirve.
+void testCaughtExceptionNotCaptured(TestContext& tests, const std::filesystem::path& root)
+{
+    expectReject(tests, root, "P10CatchVariableCaptured", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+delegate int Getter();
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static Getter Saved;
+    public static void Store(Holder h, Boom b) { }
+    public static int Main()
+    {
+        raii Holder holder = new Holder();
+        try { throw new Boom(7); }
+        catch (Boom problem) { Saved = () => problem.Code; }
+        return Boom.Destroyed;
+    }
+}
+)ns", "cannot be captured by a lambda; move it into an owner first");
+    expectRun(tests, root, "P10LambdaInHandler", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+delegate int Getter();
+class Holder { public Boom Saved; public owned Boom Kept; public static Boom Global; }
+class Program
+{
+    public static Getter Saved;
+    public static void Store(Holder h, Boom b) { }
+    public static int Main()
+    {
+        int r = 0;
+        try { throw new Boom(7); }
+        catch (Boom problem) { int c = problem.Code; Getter g = () => 5; r = g() + c; }
+        return r * 10 + Boom.Destroyed;
+    }
+}
+)ns", 121);
 }
 
 constexpr std::string_view kErrorPrelude = R"ns(
@@ -6238,6 +6299,7 @@ int main()
     testCollectionReferencesSorted(tests, root);
     testSpanLivenessMap(tests, root);
     testCaughtExceptionParameterLoan(tests, root);
+    testCaughtExceptionNotCaptured(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

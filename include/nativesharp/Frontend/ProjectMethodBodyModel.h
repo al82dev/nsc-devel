@@ -4607,6 +4607,14 @@ private:
         MethodLambdaCapture capture) const;
     MethodLambdaCapture routeLambdaCaptureThroughParents(
         MethodLambdaCapture capture);
+    bool validateExceptionLocalCapture(
+        const MethodNameBinding& name,
+        const MethodLocalSymbol& local,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateExceptionParameterCapture(
+        const MethodNameBinding& name,
+        const MethodParameterSymbol& parameter,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     bool validateLambdaLocalCaptureLifetime(
         const MethodNameBinding& name,
         const MethodLocalSymbol& local,
