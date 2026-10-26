@@ -504,6 +504,22 @@ void testSynchronousAwaitRejected(TestContext& tests, const std::filesystem::pat
         "    public static async int Quick() { return 1; }\n"
         "    public static int Main()\n    {\n        Future<int> later = Quick();\n"
         "        later = Producer();\n        return await later;\n    }\n}\n", suspends);
+    // EN: D-04: whether a producer suspends does not depend on which synchronous caller is checked
+    //     first. `First` opens B before `Main` opens A; A and B await each other and B awaits P, so
+    //     `Main` is rejected too.
+    // ES: D-04: que un productor se suspenda no depende de que llamador sincrono se revise primero.
+    //     `First` abre B antes de que `Main` abra A; A y B se esperan mutuamente y B espera a P, asi
+    //     que `Main` tambien se rechaza.
+    expectReject(tests, root, "D04CycleOrder", R"ns(
+class Program
+{
+    public static async int P() { yield; return 5; }
+    public static async int A(int n) { if (n == 0) return 1; int v = await B(n - 1); return v + 1; }
+    public static async int B(int n) { if (n == 0) return 2; int v = await A(n - 1); int w = await P(); return v + w; }
+    public static int First() { return await B(1); }
+    public static int Main() { return await A(3); }
+}
+)ns", "declare 'Main' async");
 }
 
 /// EN: C-02. A synchronous await of producers that complete without suspending still works,
@@ -532,6 +548,42 @@ class Program
     }
 }
 )ns", 56);
+    // EN: D-04: an unknown origin (a parameter) and a local whose every assignment comes from a
+    //     producer that does not suspend are accepted and run.
+    // ES: D-04: un origen desconocido (un parametro) y un local cuyas asignaciones vienen todas de un
+    //     productor que no se suspende se aceptan y se ejecutan.
+    expectRun(tests, root, "D04FutureParam", R"ns(
+class Program
+{
+    public static async int Make() { return 4; }
+    public static int Use(Future<int> f) { return await f; }
+    public static int Main() { return Use(Make()); }
+}
+)ns", 4);
+    expectRun(tests, root, "D04FutureReassigned", R"ns(
+class Program
+{
+    public static async int Make(int v) { return v; }
+    public static int Main()
+    {
+        Future<int> f = Make(1);
+        f = Make(9);
+        return await f;
+    }
+}
+)ns", 9);
+    // EN: DEC-04: an unknown origin that is still pending after the single poll panics (exit 142,
+    //     LlvmTrapReason::Panic); it is not iterated to completion.
+    // ES: DEC-04: un origen desconocido que sigue pendiente despues del unico poll entra en panico
+    //     (salida 142, LlvmTrapReason::Panic); no se itera hasta completar.
+    expectRun(tests, root, "D04PendingPanics", R"ns(
+class Program
+{
+    public static async int Producer() { yield; return 5; }
+    public static int Use(Future<int> f) { return await f; }
+    public static int Main() { return Use(Producer()); }
+}
+)ns", 142);
 }
 
 /// EN: C-02. `static async int Main()` is an entry point and drives a suspending producer to

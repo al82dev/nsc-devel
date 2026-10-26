@@ -592,12 +592,14 @@ bool OopLlvmImplementation::emitBlockingAwaitPollLoop(
 {
         // NS304-T05-F03: cooperative blocking poll — loop until the future reaches
         // ready (state == -1). For a synchronously-completing producer this runs once.
-        // EN: Freeze 3.0 C-02: only the async entry point drives the loop. Any other synchronous
-        //     await polls once: semantic analysis proved its producer cannot suspend, so a future
-        //     still pending afterwards is a broken invariant and panics instead of spinning.
-        // ES: Congelamiento 3.0 C-02: solo el punto de entrada async itera. Cualquier otro await
-        //     sincrono hace un poll: el analisis probo que su productor no se suspende, asi que un
-        //     future aun pendiente rompe esa invariante y es panico, no un ciclo.
+        // EN: Freeze 3.0 C-02 and DEC-04: only the async entry point drives the loop. Any other
+        //     synchronous await polls once: semantic analysis rejects a producer known to suspend
+        //     and accepts an unknown origin (D-04), so a future still pending afterwards panics
+        //     instead of spinning.
+        // ES: Congelamiento 3.0 C-02 y DEC-04: solo el punto de entrada async itera. Cualquier otro
+        //     await sincrono hace un poll: el analisis rechaza un productor que se sabe que se
+        //     suspende y acepta un origen desconocido (D-04), asi que un future aun pendiente
+        //     despues es panico, no un ciclo.
         LLVMBasicBlockRef pollLoop = appendBlock("await.poll.loop");
         LLVMBasicBlockRef notReady = appendBlock("await.poll.notready");
         LLVMBasicBlockRef checkError = appendBlock("await.poll.checkerror");

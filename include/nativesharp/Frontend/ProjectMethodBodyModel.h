@@ -4692,15 +4692,23 @@ private:
     std::unordered_set<std::size_t> analyzedCallableMembers_;
     void verifyOutParameterAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
     void verifyRequiredFieldAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
-    // EN: Freeze 3.0 C-02. A synchronous `await` (outside an async callable) polls its future
-    //     once, so its producer must complete without suspending. The producer suspends when its
-    //     body has `yield;`, awaits a producer that suspends, or awaits a future whose origin is
-    //     not a direct call to a source async callable. `memo` holds 1 (does not suspend),
-    //     2 (suspends) or 0 (being visited, treated as not suspending so cycles terminate).
-    // ES: Congelamiento 3.0 C-02. Un `await` sincrono (fuera de un callable async) hace un solo
-    //     poll de su future, asi que su productor debe terminar sin suspenderse. El productor se
-    //     suspende si su cuerpo tiene `yield;`, espera a un productor que se suspende o espera un
-    //     future cuyo origen no es una llamada directa a un callable async de fuente.
+    // EN: Freeze 3.0 C-02 and D-04. A synchronous `await` (outside an async callable) polls its
+    //     future once, so a producer known to suspend is a compile error. A source async producer
+    //     suspends when its body has `yield;` or awaits, directly or through other producers, one
+    //     that does. The origins of a future are the producers named by the calls that can reach it
+    //     (a local's initializers and assignments, the generator of a local iterator). An unknown
+    //     origin (parameter, field, a future returned by a non-async or precompiled callable) is
+    //     not "suspends": it is accepted, and if it is still pending after the poll the program
+    //     panics (DEC-04). `memo` holds 1 (does not suspend) or 2 (suspends).
+    // ES: Congelamiento 3.0 C-02 y D-04. Un `await` sincrono (fuera de un callable async) hace un
+    //     solo poll de su future, asi que un productor que se sabe que se suspende es error de
+    //     compilacion. Un productor async de fuente se suspende si su cuerpo tiene `yield;` o
+    //     espera, directamente o a traves de otros productores, a uno que se suspende. Los origenes
+    //     de un future son los productores que nombran las llamadas que pueden llegar a el (los
+    //     inicializadores y asignaciones de un local, el generador de un iterador local). Un origen
+    //     desconocido (parametro, campo, un future devuelto por un callable no async o precompilado)
+    //     no es «se suspende»: se acepta, y si sigue pendiente despues del poll el programa entra
+    //     en panico (DEC-04). `memo` guarda 1 (no se suspende) o 2 (se suspende).
     void verifySynchronousAwaits(diagnostics::DiagnosticEngine& diagnostics) const;
     // EN: Freeze 3.0 C-05 (found): a method with a result whose block body can reach its end.
     // ES: Congelamiento 3.0 C-05 (hallazgo): un metodo con resultado cuyo cuerpo puede llegar al final.
