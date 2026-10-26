@@ -2,9 +2,9 @@
 
 - **Fecha**: 2026-10-25
 - **Rama**: `development-release-candidate` (sin push)
-- **Compilador validado**: `build-clang\bin\nsc.exe` construido desde `bc8fca456` (`bf4834cf3` solo toca
-  pruebas)
-- **Plan**: `NSC-PLAN-CONGELAMIENTO-3.0.md`, 101 de 101 elementos terminados
+- **Compilador validado**: `build-clang\bin\nsc.exe` construido desde `73b03a394` (pendientes P-1 a P-7:
+  `d8687f28a` y `73b03a394`)
+- **Plan**: `NSC-PLAN-CONGELAMIENTO-3.0.md`, 108 de 108 elementos terminados
 
 ## Resumen
 
@@ -15,8 +15,9 @@ quedan registrados abajo.
 
 Validación final por línea de comandos, en `-O0 -g` y en `-O2`:
 
-- **86 casos** de `Freeze30ContractTests` compilados y ejecutados con `nsc` (sin correr la suite
-  unitaria): **86 correctos** en ambos niveles (anexo A).
+- **98 casos** de `Freeze30ContractTests` (86 de los doce puntos y 12 de los pendientes) compilados y
+  ejecutados con `nsc` (sin correr la suite unitaria): **98 correctos** en ambos niveles (anexo A).
+  `P5DllMissing` solo se compila (el programa no puede cargar a propósito).
 - **168 sondas originales** de los doce puntos: el mismo resultado en ambos niveles (anexo B).
 - `checkall`: 349 proyectos, 75 fallas, **idénticas** a la base previa al congelamiento (ninguna nueva).
 - `casecheck`: 52 casos de `tests/cases`, 0 fallas.
@@ -67,27 +68,39 @@ de las sondas; se corrigió en `bf4834cf3`.
   corría su cleanup; `Cancel` antes de empezar no lo terminaba; el constructor reservaba dos frames. Una
   lambda ya puede capturar un local de un generador async.
 
+## Pendientes corregidos después del cierre
+
+Al cerrar el plan quedaron diez limitaciones anotadas (commits `d8687f28a`, DLL, y `73b03a394`, el
+resto). Se revisaron todas con sondas; las que eran
+defectos se corrigieron y las demás se reclasificaron con evidencia (plan: elementos 102 a 108).
+
+| Pendiente | Resultado | Evidencia |
+|---|---|---|
+| P-1 `throw` / `throw;` sin chequeo | Corregido: siguen la regla de una llamada (catch del try envolvente o `throws` del callable). Un throw en async sin `throws` tronaba el compilador; ahora es diagnóstico. Se agregó `throws` en book_examples, examples, tests y fixtures C++; los destructores atrapan lo que lanzan. | `testCheckedThrow`: 3 rechazos y `P1Handled` 789 |
+| P-2 errores tipados de generador que no son excepción | No producible: `throw` y `throws` exigen `NativeSharp.Core.Exception`. | sonda P2 |
+| P-3 arreglos `owned` locales y campos | Corregido: un local `owned T[]` es dueño como `raii T[]`; un campo `owned T[]` lo libera la entrada de destrucción del contenedor con sus elementos; `delete[]` del campo libera el bloque y lo vacía (también en clases genéricas). | `testOwnedArrays`: 1243, 65, 56, 42, 21 y un rechazo |
+| P-4 temporal receptor `Make().Campo` | Corregido: con resultado de datos simples el temporal se destruye tras leer el campo. | `P4Receiver` 678 |
+| P-5 imports de DLL sin resolver | Corregido: un símbolo que una DLL del sistema no exporta se rechaza al compilar; una DLL que no se encuentra se omite. | `P5DllCalled` rechazo, `P5DllMissing` compila |
+| P-6 `await` en `catch`/`finally` de async que propaga | La limitación era incorrecta: el cleanup ya corre. | sondas 405 y 415 |
+| P-7 `Cancel()` de iterador async detenido en `await` | Inalcanzable: el consumidor está suspendido dentro del mismo `await` y un future no queda a medias. | análisis y sonda de `MoveNextAsync` con préstamo vivo (rechazada) |
+
+Durante P-3 apareció un defecto propio del cambio: `delete[]` de un campo owned no vaciaba el campo
+cuando el análisis del cuerpo corría por callable (el merger no copiaba esos sitios) ni en la ruta
+iterativa del HIR, y `List<T>` liberaba su buffer dos veces. Se corrigió antes del commit; las sondas
+`C12List*` vuelven a dar 12, 12345 y 22013 en `-O0` y `-O2`.
+
 ## Limitaciones conocidas al congelar
 
 1. Desde el código fuente un future no puede quedar suspendido (no hay poll parcial: solo `await` lo
    consulta, hasta completar); por eso `F$drop` de un future ya iniciado no tiene frame propio que liberar.
-2. Un `throw` escrito no se comprueba contra el `throws` del callable (C-13 cubre llamadas, accesores,
-   operadores, construcción y `await`, no la sentencia `throw`).
-3. Los errores tipados de generadores que no son clases de excepción (p. ej. `AsyncIterator<int, int>`) no
-   pasan por la comprobación de C-13 ni por la propagación nativa.
-4. Un local `owned T[]` y un campo de arreglo owned de una clase siguen siendo de liberación manual.
-5. Un temporal usado solo como receptor (`Make().Campo`) cuyo resultado no es escalar no tiene todavía
-   dueño oculto.
-6. Los imports de DLL sin resolver no se diagnostican al compilar.
-7. Un slot de arreglo o de struct movido o borrado queda con su valor por defecto, y ese valor se destruye
+2. Un slot de arreglo o de struct movido o borrado queda con su valor por defecto, y ese valor se destruye
    después: el destructor debe tolerar el valor por defecto.
-8. Un `await` dentro de un `catch` o `finally` de un cuerpo async cuyo error sale del cuerpo no corre el
-   cleanup activo de ese cuerpo.
-9. `Cancel()` de un iterador async detenido en un `await` (no en un `yield`) lo deja terminado sin correr
-   el cleanup de ese punto.
-10. Una excepción que sale de `Main` termina el proceso con el código nativo `0xE04E5301`; en `-O2` el
-    reporte de errores de Windows lo demoró de forma intermitente en las sondas, por eso no hay prueba
-    unitaria de ese caso.
+3. `delete[]` explícito de un arreglo libera el bloque y no recorre sus elementos (el modelo manual de
+   `~List()`: cada elemento se borra a mano). Sin `delete[]`, el dueño (local `raii`/`owned` o el
+   contenedor de un campo `owned`) libera el arreglo con sus elementos.
+4. Una excepción que sale de `Main` termina el proceso con el código nativo `0xE04E5301`; en `-O2` el
+   reporte de errores de Windows lo demoró de forma intermitente en las sondas, por eso no hay prueba
+   unitaria de ese caso.
 
 ## Cómo se corrió la matriz
 
@@ -188,11 +201,30 @@ de las sondas; se corrigió en `bf4834cf3`.
 | C-17 | `C17CancelFresh` | 0 | 0 | 0 | ok |
 | C-17 | `C17Cancel1` | 0 | 0 | 0 | ok |
 | C-17 | `C17Cancel2` | 0 | 0 | 0 | ok |
+| P-1 | `P1Throw` | rechazo: throw of | rechazado | rechazado | ok |
+| P-1 | `P1ThrowAsync` | rechazo: throw of | rechazado | rechazado | ok |
+| P-1 | `P1Rethrow` | rechazo: throw of | rechazado | rechazado | ok |
+| P-1 | `P1Handled` | 789 | 789 | 789 | ok |
+| P-3 | `P3OwnedArray` | 1243 | 1243 | 1243 | ok |
+| P-3 | `P3OwnedArrayField` | 65 | 65 | 65 | ok |
+| P-3 | `P3OwnedArrayFieldDelete` | 56 | 56 | 56 | ok |
+| P-3 | `P3OwnedArrayDelete` | rechazo: explicit delete of a RAII local | rechazado | rechazado | ok |
+| P-3 | `P3OwnedArrayFieldPlain` | 42 | 42 | 42 | ok |
+| P-3 | `P3OwnedArrayFieldGeneric` | 21 | 21 | 21 | ok |
+| P-4 | `P4Receiver` | 678 | 678 | 678 | ok |
+| P-5 | `P5DllCalled` | rechazo: is not exported by 'kernel32.dll' | rechazado | rechazado | ok |
 
 ### Anexo B — sondas originales de cada punto
 
 Una sonda escrita con una forma que el congelamiento prohibió (por ejemplo `T x = new T();` o la firma
 vieja de `IAllocator`) ahora se rechaza con el diagnóstico nuevo; eso es el resultado correcto.
+
+Tras los pendientes (`73b03a394`) se repitieron las 168 sondas en ambos niveles. Solo cambiaron nueve,
+todas por diseño: las siete sondas C-01 que lanzan sin `throws` (`C01CatchOwnership`, `C01Rethrow`,
+`C01Throw`, `C01ThrowBorrow`, `C01ThrowMove`, `C01ThrowNew`, `C01Wrap`) ahora se rechazan con "throw of
+... is neither caught here nor declared" (P-1; sus pruebas unitarias equivalentes declaran `throws`), y
+`C12OwnedStruct` y `C12Field` pasan de 0 a 21 porque el arreglo owned local y el campo owned ya se
+liberan con sus elementos (P-3). La tabla conserva los resultados del cierre del plan.
 
 | Punto | Sonda | -O0 -g | -O2 |
 |---|---|---|---|
