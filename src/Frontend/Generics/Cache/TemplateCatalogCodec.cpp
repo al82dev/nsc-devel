@@ -46,7 +46,7 @@ std::string computeTemplateSourceFingerprint(
 }
 
 // NSC305-C01. The C1 cache schema version (bump on any format change).
-static constexpr std::string_view templateCacheSchema = "nsc-c1-template-v2";
+static constexpr std::string_view templateCacheSchema = "nsc-c1-template-v3";
 
 // Writes both FileIds and offsets so a restored tree preserves diagnostic and dump locations
 // exactly. The enclosing syntax-product codec validates unit identity before accepting the tree.
@@ -803,6 +803,7 @@ void writeNodeConstraint(
     internal::CachePayloadWriter::byte(out, clause.requiresUnmanaged ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, clause.requiresNotNull ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, clause.requiresRefLike ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, clause.enclosingTypeParameter ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, clause.equalityConstraint != nullptr ? 1U : 0U);
     pushSyntaxStep(steps, SyntaxStep::Kind::NodeConstraintProjection, &node, nullptr, index);
     if (clause.equalityConstraint != nullptr)
@@ -1247,6 +1248,7 @@ ast::AstNode* deserializeAstNodeTree(
     std::uint8_t requiresUnmanaged = 0;
     std::uint8_t requiresNotNull = 0;
     std::uint8_t requiresRefLike = 0;
+    std::uint8_t enclosingTypeParameter = 0;
     std::uint8_t hasEquality = 0;
     std::uint8_t hasProjection = 0;
     std::uint8_t hasSubstituted = 0;
@@ -1260,7 +1262,7 @@ ast::AstNode* deserializeAstNodeTree(
         !reader.byte(requiresCopy) || !reader.byte(requiresMove) ||
         !reader.byte(requiresTrackedLifetime) || !reader.byte(requiresUnmanaged) ||
         !reader.byte(requiresNotNull) || !reader.byte(requiresRefLike) ||
-        !reader.byte(hasEquality))
+        !reader.byte(enclosingTypeParameter) || !reader.byte(hasEquality))
         return false;
     clause.parameterRange = parameterRange;
     clause.requiresClass = requiresClass != 0U;
@@ -1272,6 +1274,7 @@ ast::AstNode* deserializeAstNodeTree(
     clause.requiresUnmanaged = requiresUnmanaged != 0U;
     clause.requiresNotNull = requiresNotNull != 0U;
     clause.requiresRefLike = requiresRefLike != 0U;
+    clause.enclosingTypeParameter = enclosingTypeParameter != 0U;
     if (hasEquality != 0U)
     {
         clause.equalityConstraint = deserializeTypeSyntaxTree(

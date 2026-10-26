@@ -2620,6 +2620,137 @@ class Program
 )ns", 1123, true);
 }
 
+/// EN: P1 (DEC-12). A member of a generic class or struct may constrain its type's parameter
+///     (`public T Copy() where T : copy`). The constraint is checked when a call resolves against
+///     a concrete argument: a copyable argument is accepted, a move-only one is rejected at the
+///     call, and a specialization that never calls the member still compiles. The constraint
+///     survives NSMETA, so a consumer of the precompiled library gets the same verdict. A member
+///     clause naming a parameter its type does not declare stays an error.
+/// ES: P1 (DEC-12). Un miembro de una clase o struct generica puede restringir el parametro de su
+///     tipo (`public T Copy() where T : copy`). La restriccion se comprueba al resolver una llamada
+///     con un argumento concreto: un argumento copiable se acepta, uno move-only se rechaza en la
+///     llamada, y una especializacion que nunca llama al miembro compila. La restriccion
+///     sobrevive en NSMETA, asi que el consumidor de la biblioteca precompilada recibe el mismo
+///     veredicto. Una clausula de miembro que nombra un parametro que su tipo no declara sigue
+///     siendo error.
+constexpr std::string_view kCopyBoxPrelude = R"ns(
+class Box<T>
+{
+    private T only;
+    public void Put(T value) { only = move(value); }
+    public T Copy() where T : copy { return only; }
+    public int Count() { return 1; }
+}
+)ns";
+
+/// EN: P1 through NSMETA: the library is compiled first and the consumers only see its metadata.
+/// ES: P1 a traves de NSMETA: la biblioteca se compila primero y los consumidores solo ven su
+///     metadata.
+void testMemberCopyConstraintLibrary(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path producer = root / "P1Library" / "Api";
+    writeFile(producer / "CopyApi.nsproj",
+        "<Project><PropertyGroup><Name>CopyApi</Name><Language>3</Language>"
+        "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    writeFile(producer / "Main.ns", "namespace CopyApi\n{\npublic " +
+        std::string(kCopyBoxPrelude).substr(1) + "}\n");
+    const std::string projectText = (producer / "CopyApi.nsproj").string();
+    const std::string libraryText = (producer / "CopyApi.lib").string();
+    const std::array<std::string_view, 5> arguments = {
+        "--emit-project-oop-lib", projectText, "-O0", "-o", libraryText};
+    std::string diagnostic;
+    const ExitCode built = runDriver(arguments, diagnostic);
+    tests.expect(built == ExitCode::Success, "P1Library: the library compiles: " + diagnostic);
+    if (built != ExitCode::Success) return;
+    const std::filesystem::path core =
+        std::filesystem::path(NSC_SOURCE_DIR) / "lib/NativeSharp.Core/NativeSharp.Core.nsproj";
+    const std::string reference = "<ProjectReference Include=\"" + core.generic_string() + "\" />" +
+        "<LibraryReference Include=\"" + std::filesystem::path(libraryText).generic_string() + "\" />";
+    const std::array<std::pair<std::string_view, std::string_view>, 2> consumers = {{
+        {"Accepted", "raii Box<int> b = new Box<int>(); b.Put(12); return b.Copy() + b.Count();"},
+        {"Rejected", "raii Box<Guard> b = new Box<Guard>(); Guard g; g.Id = 1; b.Put(move(g)); "
+            "Guard h = b.Copy(); return h.Id;"}}};
+    for (const auto& [name, body] : consumers)
+    {
+        const std::filesystem::path directory = root / "P1Library" / std::string(name);
+        const std::filesystem::path project = directory / "Consumer.nsproj";
+        writeFile(project,
+            "<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup><ItemGroup>"
+            "<Compile Include=\"**/*.ns\" />" + reference + "</ItemGroup></Project>");
+        writeFile(directory / "Main.ns", "using CopyApi;" + std::string(kGuardPrelude) +
+            "class Program { public static int Main() { " + std::string(body) + " } }\n");
+        const std::filesystem::path executable = directory / "Consumer.exe";
+        const ExitCode code = compile(project, executable, "-O0", diagnostic);
+        if (name == "Rejected")
+        {
+            tests.expect(code != ExitCode::Success && diagnostic.find(
+                "of 'Box.Copy' requires copyable storage ('where T : copy')") != std::string::npos,
+                "P1Library: a move-only argument is rejected through NSMETA: " + diagnostic);
+            continue;
+        }
+        tests.expect(code == ExitCode::Success, "P1Library: the consumer compiles: " + diagnostic);
+        if (code != ExitCode::Success) continue;
+        const int observed = std::system(("\"\"" + executable.string() + "\"\"").c_str());
+        tests.expect(observed == 13, "P1Library: exits 13, observed " + std::to_string(observed));
+    }
+}
+
+void testMemberCopyConstraint(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude = std::string(kGuardPrelude) + std::string(kCopyBoxPrelude);
+    expectRun(tests, root, "P1MemberCopyAccepted", prelude + R"ns(
+struct Cell<T> { public T Item; public T Copy() where T : copy { return Item; } }
+class Program
+{
+    public static int Main()
+    {
+        raii Box<int> numbers = new Box<int>();
+        numbers.Put(4);
+        Cell<int> cell;
+        cell.Item = 30;
+        return numbers.Copy() + cell.Copy();
+    }
+}
+)ns", 34);
+    expectRun(tests, root, "P1MemberUnused", prelude + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        raii Box<Guard> guards = new Box<Guard>();
+        Guard g;
+        g.Id = 4;
+        guards.Put(move(g));
+        return guards.Count();
+    }
+}
+)ns", 1);
+    expectReject(tests, root, "P1MemberCopyRejected", prelude + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        raii Box<Guard> guards = new Box<Guard>();
+        Guard g;
+        g.Id = 1;
+        guards.Put(move(g));
+        Guard h = guards.Copy();
+        return h.Id;
+    }
+}
+)ns", "generic parameter 'T' of 'Box.Copy' requires copyable storage ('where T : copy')");
+    expectReject(tests, root, "P1MemberUnknownParameter", R"ns(
+class Box<T> { public int Value() where U : copy { return 1; } }
+class Program { public static int Main() { return 0; } }
+)ns", "'U' is not a generic or lifetime parameter of this declaration");
+    expectReject(tests, root, "P1MemberNonGeneric", R"ns(
+class Plain { public int Value() where T : copy { return 1; } }
+class Program { public static int Main() { return 0; } }
+)ns", "'T' is not a generic or lifetime parameter of this declaration");
+    testMemberCopyConstraintLibrary(tests, root);
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -4138,6 +4269,7 @@ int main()
     testValueArrayElements(tests, root);
     testValueListElements(tests, root);
     testArrayElementLiveness(tests, root);
+    testMemberCopyConstraint(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

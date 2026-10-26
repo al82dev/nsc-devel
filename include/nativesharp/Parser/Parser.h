@@ -1691,6 +1691,11 @@ private:
     std::size_t nextComprehensionTemporary_ = 0;
     bool parsingExtensionBody_ = false;
     KnownTypeNameSet knownTypeNames_;
+    // EN: Freeze 3.0 P1: the generic parameters of the class and struct bodies being parsed, outer
+    //     first; a method `where` clause may restrict one of them.
+    // ES: Congelamiento 3.0 P1: los parametros genericos de los cuerpos de clase y struct en curso,
+    //     el exterior primero; una clausula `where` de un metodo puede restringir uno de ellos.
+    std::vector<std::string> enclosingGenericParameters_;
     const KnownTypeNameSet* sharedKnownTypeNames_ = nullptr;
     const Parser* knownTypeNameParent_ = nullptr;
 };

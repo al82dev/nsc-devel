@@ -1106,6 +1106,47 @@ void ProjectGenericConstraintModel::storeSpecializationViolations(
             DeferredDiagnostic{entry.id, entry.range, entry.message, entry.violation});
 }
 
+// EN: Freeze 3.0 P1: the member clauses of a closed type (`ToArray() where T : copy` in
+//     `List<Guard>`). A member whose clause fails is marked invalid and its diagnostics are only
+//     deferred: they reach the program at the call that selects the member, where overload
+//     resolution already reports deferred constraint failures. The type itself stays valid, and
+//     the analysis and HIR guards skip that member's body. O(members of the closed type).
+// ES: Congelamiento 3.0 P1: las clausulas de miembro de un tipo cerrado (`ToArray() where T : copy`
+//     en `List<Guard>`). Un miembro cuya clausula falla se marca invalido y sus diagnosticos solo
+//     se aplazan: llegan al programa en la llamada que lo elige, donde la resolucion de sobrecargas
+//     ya informa los constraints aplazados. El tipo sigue valido, y las guardas de analisis y de
+//     HIR saltan el cuerpo de ese miembro. O(miembros del tipo cerrado).
+void ProjectGenericConstraintModel::validateSpecializationMemberClauses(
+    const GenericSpecializationRecord& specialization,
+    const GenericTemplateRecord& templateRecord,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    const ProjectInheritanceModel& inheritanceModel,
+    const ProjectInterfaceModel& interfaceModel)
+{
+    for (const ast::AstNode* member : specialization.specializedSyntax->children())
+    {
+        if (member == nullptr || member->kind() != ast::AstNodeKind::MethodDeclaration) continue;
+        std::vector<PendingDiagnostic> pending;
+        GenericTemplateRecord memberRecord;
+        memberRecord.name = templateRecord.name + "." + member->text();
+        const std::string templateModuleSuffix =
+            "; template is declared in module '" + templateRecord.moduleName + "'";
+        for (const ast::GenericConstraintClause& clause : member->genericConstraints())
+        {
+            if (!clause.enclosingTypeParameter) continue;
+            validateSpecializationClause(
+                specialization, memberRecord, clause, templateModuleSuffix, nameLookup, memberModel,
+                inheritanceModel, interfaceModel, pending);
+        }
+        if (pending.empty()) continue;
+        invalidSpecializations_.insert(member);
+        std::vector<DeferredDiagnostic>& deferred = deferredBySpecialization_[member];
+        for (const PendingDiagnostic& entry : pending)
+            deferred.push_back(DeferredDiagnostic{entry.id, entry.range, entry.message, entry.violation});
+    }
+}
+
 void ProjectGenericConstraintModel::validateSpecialization(
     const GenericSpecializationRecord& specialization,
     std::span<const GenericTemplateRecord> templates,
@@ -1117,7 +1158,12 @@ void ProjectGenericConstraintModel::validateSpecialization(
 {
     if (specialization.templateOrdinal >= templates.size()) return;
     const GenericTemplateRecord& templateRecord = templates[specialization.templateOrdinal];
-    if (templateRecord.constraints.empty() || specialization.specializedSyntax == nullptr) return;
+    if (specialization.specializedSyntax == nullptr) return;
+    if (!invalidTemplateOrdinals_.contains(specialization.templateOrdinal))
+        validateSpecializationMemberClauses(
+            specialization, templateRecord, nameLookup, memberModel, inheritanceModel,
+            interfaceModel);
+    if (templateRecord.constraints.empty()) return;
     // LA PLANTILLA YA ERA INVALIDA ANTES DE QUE ESTA ESPECIALIZACION EXISTIERA. Se marca y se
     // sale SIN emitir nada: el error ya salio sobre el `where`, que es donde hay que
     // corregirlo. Repetirlo aqui, una vez por instanciacion, seria el muro de errores de
