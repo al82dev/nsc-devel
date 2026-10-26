@@ -3220,6 +3220,46 @@ class Program
 )ns", "reference-local initializer must be a mutable addressable storage location");
 }
 
+/// EN: P3. An `in` parameter accepts a readonly place: another `in` parameter, a `ref readonly`
+///     result.
+/// ES: P3. Un parametro `in` acepta un lugar readonly: otro parametro `in`, un resultado
+///     `ref readonly`.
+void testInAcceptsReadonlyPlace(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P3InForward", R"ns(
+class Program
+{
+    private static int B(in int x) { return x + 1; }
+    private static int A(in int y) { return B(in y); }
+    public static int Main()
+    {
+        int v = 4;
+        return A(in v);
+    }
+}
+)ns", 5);
+    expectRun(tests, root, "P3InFromRefReadonly", R"ns(
+class Cell
+{
+    private int v;
+    public Cell() { v = 7; }
+    public ref readonly int Get() { return ref v; }
+    public ref int GetMut() { return ref v; }
+}
+class Program
+{
+    private static int Use(in int x) { return x * 2; }
+    public static int Main()
+    {
+        raii Cell c = new Cell();
+        int a = c.Get();
+        c.GetMut() = 9;
+        return a * 1000 + c.Get() * 10 + Use(in c.Get()) % 10;
+    }
+}
+)ns", 7098);
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -4742,6 +4782,7 @@ int main()
     testConstructorCopyConstraint(tests, root);
     testInDelegateOverloads(tests, root);
     testReadonlyReferenceReturns(tests, root);
+    testInAcceptsReadonlyPlace(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

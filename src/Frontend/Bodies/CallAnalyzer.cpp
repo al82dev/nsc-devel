@@ -569,10 +569,16 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
         arguments[argumentOrdinal].typeKey,
         conversionTarget,
         arguments[argumentOrdinal].integerConstant);
+    // EN: Freeze 3.0 P3: an `in` parameter only reads its argument, so a readonly place (another
+    //     `in` parameter, a readonly field, a `ref readonly` result) may be lent to it.
+    // ES: Congelamiento 3.0 P3: un parametro `in` solo lee su argumento, asi que se le puede prestar
+    //     un lugar readonly (otro parametro `in`, un campo readonly, un resultado `ref readonly`).
+    const bool parameterPointeeReadonly =
+        parameter.pointerPointeeReadonly || parameter.passKind == ParameterPassKind::In;
     const bool discardsPointeeConst = !packElement &&
         arguments[argumentOrdinal].pointerPointeeReadonly &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
-        !parameter.pointerPointeeReadonly;
+        !parameterPointeeReadonly;
     const bool violatesPointerContract = !packElement &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(
@@ -584,7 +590,7 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
                 arguments[argumentOrdinal].pointerAddressSpace),
             pointerContract(
                 parameter.pointerNullable,
-                parameter.pointerPointeeReadonly,
+                parameterPointeeReadonly,
                 parameter.pointerHasProvenance,
                 parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
@@ -4092,8 +4098,12 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     ProjectImplicitConversion conversion = classifyImplicit(
         argument.typeKey, conversionTarget, argument.integerConstant);
     const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
+    // EN: Freeze 3.0 P3: as above, an `in` parameter accepts a readonly place.
+    // ES: Congelamiento 3.0 P3: como arriba, un parametro `in` acepta un lugar readonly.
+    const bool parameterPointeeReadonly =
+        parameter.pointerPointeeReadonly || parameter.passKind == ParameterPassKind::In;
     const bool discardsPointeeConst = !packElement && argument.pointerPointeeReadonly &&
-        ProjectTypeConversion::isPointer(parameter.typeKey) && !parameter.pointerPointeeReadonly;
+        ProjectTypeConversion::isPointer(parameter.typeKey) && !parameterPointeeReadonly;
     const bool violatesPointerContract = !packElement &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(
@@ -4102,7 +4112,7 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
                 argument.pointerHasProvenance, argument.pointerKnownAlignment,
                 argument.pointerAddressSpace),
             pointerContract(
-                parameter.pointerNullable, parameter.pointerPointeeReadonly,
+                parameter.pointerNullable, parameterPointeeReadonly,
                 parameter.pointerHasProvenance, parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
     if (!conversion.exists() || discardsPointeeConst || violatesPointerContract)
