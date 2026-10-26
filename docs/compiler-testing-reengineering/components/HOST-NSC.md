@@ -104,9 +104,11 @@ conserva cabecera versionada y secciones stdout/stderr.
 
 ## 10. Log automático y colisiones
 
-Salvo `NSC_NO_ERROR_LOG=1` o `--no-error-log`, un fallo sin `--log` intenta escribir `error.log`, `error1.log`,
-etc. hasta un millón. Para evitar carreras, cada candidato reclama primero un directorio `.claim`; sólo el dueño
-comprueba disponibilidad y publica. La claim se elimina siempre después del intento.
+Congelamiento 3.0 D-10: el log automático está desactivado por defecto. Sólo con `--error-log`, y salvo
+`NSC_NO_ERROR_LOG=1` o un `--no-error-log` posterior, un fallo sin `--log` intenta escribir `error.log`,
+`error1.log`, etc. en el directorio de trabajo, hasta un millón. Para evitar carreras, cada candidato reclama
+primero un directorio `.claim`; sólo el dueño comprueba disponibilidad y publica. La claim se elimina siempre
+después del intento.
 
 Un log explícito se publica en éxito o fallo. `--log-on-error` sólo en fallo. Fallar al publicar cualquier log
 acumula `logOk=false` y termina en advertencia; no altera el exit code del compilador.

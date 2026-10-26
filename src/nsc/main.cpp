@@ -258,7 +258,12 @@ void configureCompilerRun(
     CompilerRunConfiguration& configuration)
 {
     configuration.arguments.reserve(consoleArguments.arguments.size());
-    configuration.automaticErrorLog = automaticErrorLogEnabled();
+    // EN: Freeze 3.0 D-10: a failure no longer writes error.log, error1.log, ... into the working
+    //     directory unless --error-log asks for it; NSC_NO_ERROR_LOG=1 and --no-error-log still turn it
+    //     off.
+    // ES: Congelamiento 3.0 D-10: un fallo ya no escribe error.log, error1.log, ... en el directorio de
+    //     trabajo salvo que lo pida --error-log; NSC_NO_ERROR_LOG=1 y --no-error-log lo siguen apagando.
+    bool errorLogRequested = false;
     for (const std::string_view argument : consoleArguments.arguments)
     {
         if (argument.starts_with("--log=")) { configuration.logPath = argument.substr(6); continue; }
@@ -274,9 +279,11 @@ void configureCompilerRun(
         if (argument == "--quiet") { configuration.quiet = true; continue; }
         if (argument == "--no-banner") { configuration.banner = false; continue; }
         if (argument == "--verbose") { configuration.verbose = true; continue; }
-        if (argument == "--no-error-log") { configuration.automaticErrorLog = false; continue; }
+        if (argument == "--no-error-log") { errorLogRequested = false; continue; }
+        if (argument == "--error-log") { errorLogRequested = true; continue; }
         configuration.arguments.emplace_back(argument);
     }
+    configuration.automaticErrorLog = errorLogRequested && automaticErrorLogEnabled();
 }
 
 void addImplicitCompilerOptions(CompilerRunConfiguration& configuration)
