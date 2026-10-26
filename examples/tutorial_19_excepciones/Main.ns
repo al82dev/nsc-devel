@@ -43,7 +43,7 @@ namespace Tutorial.Excepciones
 
         // Throwing (K&R no tiene equivalente): en vez de devolver -1 o un codigo de error, se
         // lanza una excepcion con datos estructurados sobre que salio mal.
-        public void Withdraw(int amount)
+        public void Withdraw(int amount) throws InsufficientFundsException
         {
             if (amount > balance)
             {
@@ -58,7 +58,7 @@ namespace Tutorial.Excepciones
 
     class Program
     {
-        public static int Main()
+        public static int Main() throws InsufficientFundsException
         {
             // Catch basico, con la variable de excepcion tipada (K&R no tiene esto en absoluto).
             raii Account accountA = new Account(100);

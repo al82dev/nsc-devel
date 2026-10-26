@@ -45,14 +45,14 @@ namespace NativeSharp.BookExamples.StackEvaluator
             return 0;
         }
 
-        private void Fail(string message)
+        private void Fail(string message) throws ExpressionException
         {
             raii ExpressionException problem = new ExpressionException();
             problem.Message = String.Copy(message);
             throw move(problem);
         }
 
-        private void ApplyTopOperator()
+        private void ApplyTopOperator() throws Exception
         {
             operators.Pop(operatorSlot);
             char operation = operatorSlot[0];
@@ -99,7 +99,7 @@ namespace NativeSharp.BookExamples.StackEvaluator
             values.Push(result);
         }
 
-        private void ReduceFor(char incoming)
+        private void ReduceFor(char incoming) throws Exception
         {
             bool reducing = true;
             while (!operators.IsEmpty && reducing)
@@ -121,7 +121,7 @@ namespace NativeSharp.BookExamples.StackEvaluator
             }
         }
 
-        private void CloseParenthesis()
+        private void CloseParenthesis() throws Exception
         {
             bool matched = false;
             while (!operators.IsEmpty && !matched)
@@ -144,7 +144,7 @@ namespace NativeSharp.BookExamples.StackEvaluator
             }
         }
 
-        public int Evaluate(string expression)
+        public int Evaluate(string expression) throws Exception
         {
             values.Clear();
             operators.Clear();

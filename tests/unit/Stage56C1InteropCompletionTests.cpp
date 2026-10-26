@@ -613,7 +613,7 @@ using NativeSharp.Core;
 extern C delegate int Failing(int a);
 class Boom : Exception { }
 class Program {
-    public static int Throws(int a) { throw new Boom(); }
+    public static int Throws(int a) throws Boom { throw new Boom(); }
     public static int Main() {
         Failing f = Throws;
         return f(1);

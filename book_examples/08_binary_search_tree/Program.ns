@@ -22,7 +22,7 @@ namespace NativeSharp.BookExamples.BinarySearchTree
             Console.WriteLine(l4);
         }
 
-        public static int Main()
+        public static int Main() throws NativeSharp.Core.ArgumentException
         {
             Console.WriteLine("NativeSharp Book Example 08 - Binary Search Tree");
             Console.WriteLine("-------------------------------------------------");

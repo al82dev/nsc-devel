@@ -327,6 +327,16 @@ public:
         const ast::AstNode* syntax) const noexcept;
     const MethodLoopExpressionBinding* loopExpressionBinding(
         const ast::AstNode* syntax) const noexcept;
+    // EN: Freeze 3.0 (owned arrays): `delete[]` of an owned array field releases it and clears the
+    //     field, so the container's destruction entry, which now releases owned array fields too,
+    //     never releases the same block again.
+    // ES: Congelamiento 3.0 (arreglos owned): `delete[]` de un campo de arreglo owned lo libera y
+    //     deja el campo vacio, asi la entrada de destruccion del contenedor, que ahora tambien libera
+    //     los campos de arreglo owned, nunca libera otra vez el mismo bloque.
+    bool arrayDeleteClearsOwnedField(const ast::AstNode* syntax) const noexcept
+    {
+        return arrayDeleteClearsOwnedField_.contains(syntax);
+    }
     const MethodLoopBreakBinding* loopBreakBinding(
         const ast::AstNode* syntax) const noexcept;
     const std::string* staticInterpolationValue(const ast::AstNode* syntax) const noexcept;
@@ -1510,6 +1520,14 @@ private:
         const ast::AstNode* site,
         std::string_view errorTypeKey,
         std::string_view calleeName,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 (checked throw): a `throw` or `throw;` follows the same rule as a call.
+    // ES: Congelamiento 3.0 (throw chequeado): un `throw` o `throw;` sigue la misma regla que una
+    //     llamada.
+    void requireThrownErrorHandled(
+        const ast::AstNode* site,
+        std::string_view errorTypeKey,
         std::size_t methodMemberOrdinal,
         diagnostics::DiagnosticEngine& diagnostics) const;
     std::vector<std::string> activeErrorHandlers() const;
@@ -5173,6 +5191,7 @@ private:
         borrowedParameterReassignmentBindings_;
 #include "nativesharp/Frontend/Internal/MethodBody/ActiveIterationBorrow.h"
     std::vector<ActiveIterationBorrow> activeIterationBorrows_;
+    std::unordered_set<const ast::AstNode*> arrayDeleteClearsOwnedField_;
     std::unordered_set<std::size_t> movedRaiiLocals_;
     std::unordered_set<std::size_t> maybeMovedRaiiLocals_;
     std::unordered_set<std::size_t> movedOwnedParameters_;

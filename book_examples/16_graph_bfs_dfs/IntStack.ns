@@ -14,7 +14,7 @@ namespace NativeSharp.BookExamples.GraphTraversal
             delete[] data; data = grown;
         }
         public void Push(int value) { if (count == data.Length) { Grow(); } data[count] = value; count = count + 1; }
-        public int Pop() { if (count == 0) { throw new InvalidOperationException(); } count = count - 1; return data[count]; }
+        public int Pop() throws InvalidOperationException { if (count == 0) { throw new InvalidOperationException(); } count = count - 1; return data[count]; }
         ~IntStack() { delete[] data; }
     }
 }

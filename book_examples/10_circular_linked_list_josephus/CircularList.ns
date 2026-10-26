@@ -37,7 +37,7 @@ namespace NativeSharp.BookExamples.CircularJosephus
             count = count + 1;
         }
 
-        public int Remove(CircleNode node)
+        public int Remove(CircleNode node) throws InvalidOperationException
         {
             if (node == null || count == 0)
             {
@@ -93,7 +93,7 @@ namespace NativeSharp.BookExamples.CircularJosephus
             Console.WriteLine(line);
         }
 
-        public void Clear()
+        public void Clear() throws InvalidOperationException
         {
             while (count > 0)
             {
@@ -103,7 +103,9 @@ namespace NativeSharp.BookExamples.CircularJosephus
 
         ~CircularList()
         {
-            Clear();
+            // A destructor cannot declare throws: the error is handled here.
+            try { Clear(); }
+            catch (InvalidOperationException error) { }
         }
     }
 }

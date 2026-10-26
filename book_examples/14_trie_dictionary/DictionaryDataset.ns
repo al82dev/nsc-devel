@@ -2,7 +2,7 @@ namespace NativeSharp.BookExamples.Trie
 {
     public class DictionaryDataset
     {
-        public static void Fill(TrieDictionary dictionary)
+        public static void Fill(TrieDictionary dictionary) throws NativeSharp.Core.ArgumentException
         {
             dictionary.Insert("array");
             dictionary.Insert("asset");

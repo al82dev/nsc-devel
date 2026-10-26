@@ -258,8 +258,14 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledDestructionFrame(
             !isReferenceType(frame.operandType->typeKey) && !nativeString &&
             !frame.operandType->typeKey.ends_with("*") && memberModel_ != nullptr &&
             memberModel_->typeRequiresValueDrop(frame.operandType->typeKey);
+        // EN: Freeze 3.0 (owned arrays): `delete[]` of an owned array field addresses the field,
+        //     so the slot is cleared and the container's destruction entry finds it empty.
+        // ES: Congelamiento 3.0 (arreglos owned): `delete[]` de un campo de arreglo owned direcciona
+        //     el campo, asi el slot queda vacio y la entrada de destruccion del contenedor no lo libera.
+        const bool clearsOwnedField = current->flag() && methodBodyModel_ != nullptr &&
+            methodBodyModel_->arrayDeleteClearsOwnedField(current);
         frame.operandAddressContext = current->flag()
-            ? directElement
+            ? directElement || clearsOwnedField
             : (directElement &&
                 (isReferenceType(frame.operandType->typeKey) || nativeString)) || dropsValueElement;
     }

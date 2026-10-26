@@ -69,7 +69,6 @@ namespace bugtriage
             owned V3[] local = new V3[2];
             local[0] = new V3(9.0f, 0.0f, 0.0f);
             if (local[0].x != 9.0f) { return 1; }
-            delete[] local;
 
             raii Holder h = new Holder();
 

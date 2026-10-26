@@ -19,9 +19,11 @@ llamada, invocación de delegate, acceso a un accesor, `new`, inicializador `thi
 del `try` que rodea el sitio, o poder propagarse al tipo declarado por la función envolvente (el
 mismo tipo o una base). Un `catch` con filtro no cuenta, porque su filtro puede rechazar el error;
 el cuerpo de un `catch` y el de una lambda tampoco están cubiertos por el `try` que los rodea. Un
-`throw` escrito no se comprueba: declarar `throws E` es lo que crea la obligación en quien llama.
-Un error tipado de generator que no es una excepción (por ejemplo `Iterator<T, int>`) es un valor
-que el consumidor lee, no un `throw`, y tampoco se comprueba.
+`throw` escrito y un `throw;` siguen la misma regla: la excepción debe quedar cubierta por un
+`catch` del `try` que la rodea o por el `throws` de la función (congelamiento 3.0; antes un `throw`
+no se comprobaba). Un destructor no puede declarar `throws`, así que atrapa lo que lance. Un error
+tipado de generator que no es una excepción (por ejemplo `Iterator<T, int>`) no puede producirse:
+`throw` y `throws` exigen `NativeSharp.Core.Exception`, así que no hay nada que comprobar.
 
 `throws` es contextual después de la lista de parámetros. En edición 2 puede seguir usándose como
 identificador; la cláusula sólo se habilita con `<Language>3</Language>`.
@@ -79,10 +81,12 @@ invocation, accessor access, `new`, `this(...)`/`base(...)` initializer and `awa
 `async ... throws E` future must be accepted by an unfiltered catch of the try around the site, or
 propagate through the enclosing callable's declared error type (the same type or a base). A
 filtered catch does not count, because its filter may decline the error; a catch body and a lambda
-body are not covered by the try around them. A written `throw` is not checked: declaring
-`throws E` is what creates the obligation for callers. A typed generator error that is not an
-exception (for example `Iterator<T, int>`) is a value the consumer reads, not a throw, and is not
-checked either.
+body are not covered by the try around them. A written `throw` and a `throw;` follow the same
+rule: the exception must be accepted by a catch of the try around it or by the callable's `throws`
+(freeze 3.0; before, a `throw` was not checked). A destructor cannot declare `throws`, so it catches
+what it throws. A typed generator error that is not an exception (for example `Iterator<T, int>`)
+cannot be produced: `throw` and `throws` require `NativeSharp.Core.Exception`, so there is nothing to
+check.
 
 `throws` is contextual after a parameter list. Edition 2 can still use it as an identifier; the
 clause itself requires `<Language>3</Language>`.

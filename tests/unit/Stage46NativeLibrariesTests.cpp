@@ -3447,7 +3447,7 @@ namespace Precompiled
 
     public class CrossModuleExceptions
     {
-        public static void Raise(owned Problem problem) { throw move(problem); }
+        public static void Raise(owned Problem problem) throws Precompiled.Problem { throw move(problem); }
     }
 
     public class Counter

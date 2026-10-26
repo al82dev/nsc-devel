@@ -103,4 +103,34 @@ void ProjectMethodBodyModel::requireDeclaredErrorHandled(
             "', which is neither caught here nor declared by the enclosing callable; catch it "
             "or declare a compatible 'throws'");
 }
+
+// EN: Freeze 3.0 (checked throw): C-13 left the `throw` statement itself unchecked, so a method
+//     could throw an error it never declared and its callers never had to handle it. A thrown or
+//     rethrown exception must now be caught by an enclosing try or declared by the callable, the
+//     same rule a call to a `throws E` callable follows.
+// ES: Congelamiento 3.0 (throw chequeado): C-13 dejo sin chequeo la sentencia `throw`, asi que un
+//     metodo podia lanzar un error que nunca declaro y sus llamadores nunca tenian que manejarlo.
+//     Una excepcion lanzada o relanzada ahora debe atraparla un try envolvente o declararla el
+//     callable, la misma regla que sigue una llamada a un callable `throws E`.
+void ProjectMethodBodyModel::requireThrownErrorHandled(
+    const ast::AstNode* site,
+    std::string_view errorTypeKey,
+    std::size_t methodMemberOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (site == nullptr || errorTypeKey.empty() || inheritanceModel_ == nullptr) return;
+    const std::optional<std::size_t> errorOrdinal =
+        inheritanceModel_->typeOrdinalForTypeKey(std::string(errorTypeKey));
+    if (!errorOrdinal.has_value() || !isExceptionTypeOrdinal(*errorOrdinal)) return;
+    const std::vector<std::string> handlers = activeErrorHandlers();
+    if (declaredErrorIsCovered(errorTypeKey, handlers, enclosingErrorTypeKey(methodMemberOrdinal)))
+        return;
+    diagnostics.report(
+        diagnostics::DiagnosticId::UnhandledDeclaredError,
+        diagnostics::DiagnosticSeverity::Error,
+        site->range(),
+        "throw of '" + std::string(errorTypeKey) +
+            "' is neither caught here nor declared by the enclosing callable; catch it or declare a "
+            "compatible 'throws'");
+}
 }

@@ -115,7 +115,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::ownTemporary(
 
 bool ProjectOopHirModel::ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>& consumer)
 {
-    if (!consumesReceiver(*consumer) || !hasPlainResult(*consumer)) return false;
+    // EN: Freeze 3.0 (receiver temporaries): a consumer whose result is plain data (a struct of
+    //     scalars, say) copies it out of the temporary, so the temporary is owned and destroyed
+    //     too; before, only a scalar result was, and `Make().Inner` leaked the temporary.
+    // ES: Congelamiento 3.0 (temporales receptores): un consumidor cuyo resultado son datos
+    //     simples (un struct de escalares, por ejemplo) los copia fuera del temporal, asi que el
+    //     temporal tambien se posee y se destruye; antes solo con un resultado escalar, y
+    //     `Make().Inner` perdia el temporal.
+    const bool plainDataResult = !consumer->referenceResult && memberModel_ != nullptr &&
+        memberModel_->typeIsPlainData(consumer->typeKey);
+    if (!consumesReceiver(*consumer) || (!hasPlainResult(*consumer) && !plainDataResult)) return false;
     std::unique_ptr<ProjectOopHirNode>* receiver = &consumer->children.front();
     if (*receiver != nullptr && (*receiver)->kind == ProjectOopHirNodeKind::TemporaryAddress &&
         (*receiver)->children.size() == 1)
@@ -243,9 +252,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayDeleteExpressio
         return nullptr;
     }
     const MethodCoreBinding* elementBinding = coreBinding(expression->first());
-    const bool directElement = elementBinding != nullptr &&
+    // EN: Freeze 3.0 (owned arrays): an owned array field is addressed too, so it is cleared.
+    // ES: Congelamiento 3.0 (arreglos owned): un campo de arreglo owned tambien se direcciona,
+    //     asi queda vacio.
+    const bool clearsOwnedField = methodBodyModel_ != nullptr &&
+        methodBodyModel_->arrayDeleteClearsOwnedField(expression);
+    const bool directElement = clearsOwnedField || (elementBinding != nullptr &&
         (elementBinding->kind == MethodCoreOperationKind::ArrayElement ||
-         elementBinding->kind == MethodCoreOperationKind::RawElement);
+         elementBinding->kind == MethodCoreOperationKind::RawElement));
     auto operand = lowerExpression(expression->first(), memberOrdinal, directElement, error);
     if (operand == nullptr) return nullptr;
     auto node = makeNode(ProjectOopHirNodeKind::Deallocation, expression, "builtin:void");

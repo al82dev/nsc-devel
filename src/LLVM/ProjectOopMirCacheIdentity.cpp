@@ -347,12 +347,16 @@ void writeDispatchTables(IdentityWriter& output, const frontend::ProjectOopMirMo
         output.optional(table.delegatedBaseDestructionTypeOrdinal);
         output.scalar(table.ownedFields.size());
         for (const auto& field : table.ownedFields)
-        { output.scalar(field.memberOrdinal); output.scalar(field.offset); output.scalar(field.isNativeString); }
+        {
+            output.scalar(field.memberOrdinal); output.scalar(field.offset); output.scalar(field.isNativeString);
+            output.scalar(field.isNativeArray); output.text(field.arrayTypeKey);
+        }
         output.scalar(table.destructionSteps.size());
         for (const auto& step : table.destructionSteps)
         {
             output.text(step.destructorCalleeName); output.scalar(step.ownedField.memberOrdinal);
             output.scalar(step.ownedField.offset); output.scalar(step.ownedField.isNativeString);
+            output.scalar(step.ownedField.isNativeArray); output.text(step.ownedField.arrayTypeKey);
             output.scalar(step.isFieldRelease);
             output.scalar(step.isValueFieldDrop); output.text(step.valueFieldTypeKey);
         }

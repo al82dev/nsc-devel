@@ -1004,6 +1004,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     deletedMember.declaredOwnership == sema::OwnershipKind::Owned &&
                     (isReferenceTypeKey(deletedMember.declaredTypeKey) ||
                      deletedMember.declaredTypeKey == "builtin:string");
+                // EN: Freeze 3.0 (owned arrays): an owned array field is released by its container
+                //     now; `delete[]` on it stays the manual spelling, and it clears the field.
+                // ES: Congelamiento 3.0 (arreglos owned): el contenedor ahora libera un campo de
+                //     arreglo owned; `delete[]` sobre el sigue siendo la forma manual, y vacia el campo.
+                if (deletedMember.kind == ClassMemberKind::Field && !deletedMember.isStatic &&
+                    deletedMember.declaredOwnership == sema::OwnershipKind::Owned &&
+                    ProjectTypeConversion::isNativeArray(deletedMember.declaredTypeKey))
+                    arrayDeleteClearsOwnedField_.insert(expression);
                 if (deletesOwnedField)
                 {
                     diagnostics.report(

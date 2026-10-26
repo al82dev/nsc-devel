@@ -19,7 +19,7 @@ namespace NativeSharp.BookExamples.Dijkstra
         public int Count { get { return count; } }
         private int Cell(int a, int b) { return a * capacity + b; }
 
-        public int AddCity(string name)
+        public int AddCity(string name) throws InvalidOperationException
         {
             if (count == capacity) { throw new InvalidOperationException(); }
             int id = count;
@@ -28,7 +28,7 @@ namespace NativeSharp.BookExamples.Dijkstra
             return id;
         }
 
-        public void AddUndirectedEdge(int a, int b, int weight)
+        public void AddUndirectedEdge(int a, int b, int weight) throws ArgumentOutOfRangeException
         {
             if (weight <= 0) { throw new ArgumentOutOfRangeException(); }
             weights[Cell(a,b)] = weight;

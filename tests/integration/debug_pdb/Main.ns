@@ -144,7 +144,7 @@ namespace DebugFixture
             GeneratedState.Seed = value;
         }
 
-        public static int MaybeThrow(bool fail)
+        public static int MaybeThrow(bool fail) throws DebugProblem
         {
             if (fail)
             {

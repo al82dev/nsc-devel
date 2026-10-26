@@ -3,7 +3,7 @@ namespace NativeSharp.BookExamples.Dijkstra
 {
     class Program
     {
-        public static int Main()
+        public static int Main() throws Exception
         {
             Console.WriteLine("NativeSharp Book Example 17 - Dijkstra Shortest Paths");
             Console.WriteLine("-----------------------------------------------------");

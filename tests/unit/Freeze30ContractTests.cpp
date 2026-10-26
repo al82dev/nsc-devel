@@ -412,27 +412,27 @@ class Boom : Exception
 
 class Program
 {
-    public static void Fail() { throw new Boom("bad"); }
+    public static void Fail() throws Boom { throw new Boom("bad"); }
 
-    public static void FailOwned()
+    public static void FailOwned() throws Boom
     {
         raii Boom problem = new Boom("owned");
         throw move(problem);
     }
 
-    public static void Middle()
+    public static void Middle() throws Boom
     {
         try { Fail(); }
         catch (Boom b) { throw; }
     }
 
-    public static void Again()
+    public static void Again() throws Boom
     {
         try { Fail(); }
         catch (Boom b) { throw b; }
     }
 
-    public static void Wrap()
+    public static void Wrap() throws Boom
     {
         try { Fail(); }
         catch (Boom b) { throw new Boom("wrapped"); }
@@ -2572,6 +2572,310 @@ class Program
 )ns", 0);
 }
 
+/// EN: `source` must compile; the program is not run (its imports may not exist on this machine).
+/// ES: `source` debe compilar; el programa no se ejecuta (sus imports pueden no existir aqui).
+void expectCompiles(
+    TestContext& tests,
+    const std::filesystem::path& root,
+    std::string_view name,
+    std::string_view source)
+{
+    const std::filesystem::path directory = root / std::string(name);
+    const std::filesystem::path project = writeProject(directory, name);
+    writeFile(directory / "Main.ns", source);
+    std::string diagnostic;
+    const ExitCode code = compile(project, directory / (std::string(name) + ".exe"), "-O0", diagnostic);
+    tests.expect(code == ExitCode::Success, std::string(name) + ": compiles: " + diagnostic);
+}
+
+// EN: Freeze 3.0 (checked throw). C-13 left the `throw` statement unchecked. A thrown or rethrown
+//     exception must now be caught by an enclosing try or declared by the callable; a throw in an
+//     async function without `throws` used to crash the compiler, and is rejected the same way.
+// ES: Congelamiento 3.0 (throw chequeado). C-13 dejo sin chequeo la sentencia `throw`. Una excepcion
+//     lanzada o relanzada ahora debe atraparla un try envolvente o declararla el callable; un throw
+//     en una funcion async sin `throws` tronaba el compilador, y se rechaza igual.
+void testCheckedThrow(TestContext& tests, const std::filesystem::path& root)
+{
+    expectReject(tests, root, "P1Throw", R"ns(
+using NativeSharp.Core;
+class MyError : Exception { }
+class Program
+{
+    private static int Fail(bool f) { if (f) { throw new MyError(); } return 1; }
+    public static int Main() { return Fail(false); }
+}
+)ns", "throw of");
+    expectReject(tests, root, "P1ThrowAsync", R"ns(
+using NativeSharp.Core;
+class MyError : Exception { }
+class Program
+{
+    private static async int Fail(bool f) { yield; if (f) { throw new MyError(); } return 1; }
+    public static async int Main() { return await Fail(false); }
+}
+)ns", "throw of");
+    expectReject(tests, root, "P1Rethrow", R"ns(
+using NativeSharp.Core;
+class MyError : Exception { }
+class Program
+{
+    private static int Fail(bool f) throws MyError { if (f) { throw new MyError(); } return 1; }
+    private static int Wrap(bool f)
+    {
+        try { return Fail(f); }
+        catch (MyError e) { throw; }
+    }
+    public static int Main() { return Wrap(false); }
+}
+)ns", "throw of");
+    expectRun(tests, root, "P1Handled", R"ns(
+using NativeSharp.Core;
+class MyError : Exception { }
+class Program
+{
+    private static int Local() { try { throw new MyError(); } catch (MyError e) { return 7; } }
+    private static int Base(bool f) throws Exception { if (f) { throw new MyError(); } return 0; }
+    private static int Fail(bool f) throws MyError { if (f) { throw new MyError(); } return 0; }
+    private static int Wrap(bool f) throws MyError
+    {
+        try { return Fail(f); }
+        catch (MyError e) { throw; }
+    }
+    public static int Main()
+    {
+        int r = Local() * 100;
+        try { r = r + Base(true); } catch (Exception e) { r = r + 80; }
+        try { r = r + Wrap(true); } catch (MyError e) { r = r + 9; }
+        return r;
+    }
+}
+)ns", 789);
+}
+
+// EN: Freeze 3.0 (owned arrays). An `owned T[]` local is an owner like `raii T[]`: it is released
+//     at scope exit with its elements and is not deleted by hand. An owned array field is released
+//     by its container; `delete[]` on it still works and clears the field, so it is released once.
+// ES: Congelamiento 3.0 (arreglos owned). Un local `owned T[]` es dueno como `raii T[]`: se libera
+//     al salir del scope con sus elementos y no se borra a mano. Un campo de arreglo owned lo libera
+//     su contenedor; `delete[]` sobre el sigue funcionando y vacia el campo, asi se libera una vez.
+void testOwnedArrays(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P3OwnedArray", R"ns(
+class Counter { public static int Drops; }
+class Box { public int Id; public Box(int id) { Id = id; } ~Box() { Counter.Drops = Counter.Drops * 10 + Id; } }
+struct Val { public int Id; ~Val() { Counter.Drops = Counter.Drops * 10 + Id; } }
+class Program
+{
+    private static void Classes()
+    {
+        owned Box[] boxes = new Box[2];
+        boxes[0] = new Box(1);
+        boxes[1] = new Box(2);
+    }
+    private static void Values()
+    {
+        owned Val[] vals = new Val[2];
+        vals[0].Id = 3;
+        vals[1].Id = 4;
+    }
+    public static int Main()
+    {
+        Classes();
+        int a = Counter.Drops;
+        Counter.Drops = 0;
+        Values();
+        return a * 100 + Counter.Drops;
+    }
+}
+)ns", 1243);
+    expectRun(tests, root, "P3OwnedArrayField", R"ns(
+class Counter { public static int Drops; }
+struct Val { public int Id; ~Val() { Counter.Drops = Counter.Drops * 10 + Id; } }
+class Holder
+{
+    private owned Val[] vals;
+    public Holder() { vals = new Val[2]; vals[0].Id = 5; vals[1].Id = 6; }
+}
+class Program
+{
+    public static int Main()
+    {
+        {
+            raii Holder h = new Holder();
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 65);
+    // EN: The manual model of ~List(): each element is deleted by hand and `delete[]` frees the block
+    //     and clears the field; every element is dropped once and the block is freed once.
+    // ES: El modelo manual de ~List(): cada elemento se borra a mano y `delete[]` libera el bloque y
+    //     vacia el campo; cada elemento se destruye una vez y el bloque se libera una vez.
+    expectRun(tests, root, "P3OwnedArrayFieldDelete", R"ns(
+class Counter { public static int Drops; }
+struct Val { public int Id; ~Val() { Counter.Drops = Counter.Drops * 10 + Id; } }
+class Holder
+{
+    private owned Val[] vals;
+    public Holder() { vals = new Val[2]; vals[0].Id = 5; vals[1].Id = 6; }
+    ~Holder() { delete vals[0]; delete vals[1]; delete[] vals; }
+}
+class Program
+{
+    public static int Main()
+    {
+        {
+            raii Holder h = new Holder();
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 56);
+    expectReject(tests, root, "P3OwnedArrayDelete", R"ns(
+class Program
+{
+    public static int Main()
+    {
+        owned int[] a = new int[2];
+        delete[] a;
+        return 0;
+    }
+}
+)ns", "explicit delete of a RAII local is forbidden");
+    // EN: `delete[]` of an owned array field of plain elements, in a plain and in a generic class,
+    //     clears the field, so the destruction entry does not free the buffer a second time.
+    // ES: `delete[]` de un campo de arreglo owned de elementos simples, en una clase normal y en una
+    //     generica, vacia el campo, asi la entrada de destruccion no libera el buffer otra vez.
+    expectRun(tests, root, "P3OwnedArrayFieldPlain", R"ns(
+class Box
+{
+    private owned int[] items;
+    public Box() { items = new int[2]; items[0] = 40; items[1] = 2; }
+    public int Sum() { return items[0] + items[1]; }
+    ~Box() { delete[] items; }
+}
+class Program
+{
+    public static int Main()
+    {
+        int r = 0;
+        {
+            raii Box box = new Box();
+            r = box.Sum();
+        }
+        return r;
+    }
+}
+)ns", 42);
+    expectRun(tests, root, "P3OwnedArrayFieldGeneric", R"ns(
+class Counter { public static int Drops; }
+struct Guard { public int Id; ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; } }
+class Box<T>
+{
+    private owned T[] items;
+    private int count;
+    public Box() { items = new T[1]; }
+    public void Add(T value)
+    {
+        if (count == items.Length)
+        {
+            const T[] grown = new T[items.Length * 2];
+            int i = 0;
+            while (i < count) { grown[i] = move(items[i]); i = i + 1; }
+            delete[] items;
+            items = grown;
+        }
+        items[count] = move(value);
+        count = count + 1;
+    }
+}
+class Plain<T>
+{
+    private owned T[] items;
+    public Plain() { items = new T[1]; }
+    ~Plain() { delete[] items; }
+}
+class Program
+{
+    private static Guard Make(int id) { Guard g; g.Id = id; return move(g); }
+    public static int Main()
+    {
+        {
+            raii Plain<int> plain = new Plain<int>();
+            raii Box<Guard> box = new Box<Guard>();
+            box.Add(Make(1));
+            box.Add(Make(2));
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 21);
+}
+
+// EN: Freeze 3.0 (receiver temporaries). `Make().Field` whose result is plain data (here a struct
+//     of scalars) destroys the temporary after copying the field out; before, it leaked.
+// ES: Congelamiento 3.0 (temporales receptores). `Make().Campo` cuyo resultado son datos simples
+//     (aqui un struct de escalares) destruye el temporal despues de copiar el campo; antes se fugaba.
+void testReceiverTemporaries(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P4Receiver", R"ns(
+class Counter { public static int Drops; }
+struct Inner { public int A; public int B; }
+struct Val
+{
+    public Inner In;
+    public int Id;
+    ~Val() { Counter.Drops = Counter.Drops * 10 + Id; }
+}
+class Box { public Inner In; public int Id; ~Box() { Counter.Drops = Counter.Drops * 10 + Id; } }
+class Program
+{
+    private static Val MakeVal(int id) { Val v; v.Id = id; v.In.A = 1; v.In.B = 2; return move(v); }
+    private static owned Box MakeBox(int id) { owned Box b = new Box(); b.Id = id; b.In.A = 3; return move(b); }
+    public static int Main()
+    {
+        Inner i1 = MakeVal(7).In;
+        Inner i2 = MakeBox(8).In;
+        return (i1.A + i1.B + i2.A) * 100 + Counter.Drops;
+    }
+}
+)ns", 678);
+}
+
+// EN: Freeze 3.0 (unresolved DLL imports). A symbol that the named DLL does not export is a compile
+//     error; a DLL that cannot be found at compile time is not judged.
+// ES: Congelamiento 3.0 (imports de DLL sin resolver). Un simbolo que la DLL nombrada no exporta es
+//     un error de compilacion; una DLL que no se encuentra al compilar no se juzga.
+void testExternalImports(TestContext& tests, const std::filesystem::path& root)
+{
+    expectReject(tests, root, "P5DllCalled", R"ns(
+class Native
+{
+    extern C from "kernel32.dll"
+    {
+        public static int NoSuchFunctionAnywhere(int x);
+    }
+}
+class Program
+{
+    public static int Main() { return Native.NoSuchFunctionAnywhere(3); }
+}
+)ns", "is not exported by 'kernel32.dll'");
+    expectCompiles(tests, root, "P5DllMissing", R"ns(
+class Native
+{
+    extern C from "nosuchlibrary_xyz.dll"
+    {
+        public static int Anything(int x);
+    }
+}
+class Program
+{
+    public static int Main() { return Native.Anything(3); }
+}
+)ns");
+}
+
 int main()
 {
     TestContext tests;
@@ -2609,5 +2913,9 @@ int main()
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);
+    testCheckedThrow(tests, root);
+    testOwnedArrays(tests, root);
+    testReceiverTemporaries(tests, root);
+    testExternalImports(tests, root);
     return tests.resultKeeping(root);
 }

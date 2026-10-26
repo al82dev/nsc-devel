@@ -4,7 +4,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
 {
     public class Program
     {
-        public static int Main()
+        public static int Main() throws Exception
         {
             Console.WriteLine("Drozdek core structures in NativeSharp");
             Console.WriteLine("---------------------------------------");

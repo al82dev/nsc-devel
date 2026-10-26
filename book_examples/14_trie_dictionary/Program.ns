@@ -23,7 +23,7 @@ namespace NativeSharp.BookExamples.Trie
             raii string line = String.Concat("  total words below prefix: ", n);
             Console.WriteLine(line);
         }
-        public static int Main()
+        public static int Main() throws NativeSharp.Core.ArgumentException
         {
             Console.WriteLine("NativeSharp Book Example 14 - Trie Dictionary");
             Console.WriteLine("----------------------------------------------");

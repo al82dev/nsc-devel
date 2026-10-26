@@ -132,7 +132,7 @@ class Runner
         }
     }
 
-    public static void Rethrow(Resource input)
+    public static void Rethrow(Resource input) throws Problem
     {
         try
         {

@@ -26,7 +26,7 @@ namespace NativeSharp.BookExamples.RationalNumbers
             Console.WriteLine(line);
         }
 
-        public static int Main()
+        public static int Main() throws ZeroDenominatorException
         {
             Console.WriteLine("NativeSharp Book Example 01 - Rational Numbers");
             Console.WriteLine("------------------------------------------------");

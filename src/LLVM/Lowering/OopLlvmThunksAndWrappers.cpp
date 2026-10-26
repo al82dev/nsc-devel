@@ -945,7 +945,13 @@ bool OopLlvmImplementation::emitObjectDestructionSteps(
             LLVMBuildCondBr(builder_, fieldIsNull, doneBlock, destroyBlock);
             enterBlock(destroyBlock);
             LLVMBuildStore(builder_, LLVMConstNull(ptr), fieldAddress);
-            if (ownedField.isNativeString)
+            if (ownedField.isNativeArray)
+            {
+                if (!emitNativeArrayDestroy(
+                        fieldValue, ownedField.arrayTypeKey, "owned.field.array", true, error))
+                    return false;
+            }
+            else if (ownedField.isNativeString)
             {
                 LLVMValueRef arguments[] = {fieldValue};
                 buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");

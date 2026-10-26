@@ -2769,6 +2769,7 @@ void ProjectMethodBodyModel::analyzeThrow(
         else if (!currentCatchErrorTypes_.empty())
         {
             binding.exceptionTypeKey = currentCatchErrorTypes_.back();
+            requireThrownErrorHandled(statement, binding.exceptionTypeKey, methodMemberOrdinal, diagnostics);
         }
         exceptionBindings_.push_back(std::move(binding));
         throwFlowStates_.push_back(captureOwnershipFlow());
@@ -2810,7 +2811,11 @@ void ProjectMethodBodyModel::analyzeThrow(
             }
             // Ownership is only meaningful once the operand is an exception object.
             // La propiedad solo tiene sentido cuando el operando ya es una excepcion.
-            else validateThrowOwnership(statement->first(), value, scopeOrdinal, diagnostics);
+            else
+            {
+                validateThrowOwnership(statement->first(), value, scopeOrdinal, diagnostics);
+                requireThrownErrorHandled(statement, value.typeKey, methodMemberOrdinal, diagnostics);
+            }
         }
     }
     exceptionBindings_.push_back(std::move(binding));
@@ -4157,8 +4162,11 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     MethodEscapeOrigin pendingReferenceEscapeOrigin;
     std::string pendingReferencePlaceKey;
     std::optional<std::size_t> pendingReferenceReborrowSourceLocalOrdinal;
+    // EN: Freeze 3.0 (owned arrays): `owned T[]` owns its buffer exactly like `raii T[]`.
+    // ES: Congelamiento 3.0 (arreglos owned): `owned T[]` posee su buffer igual que `raii T[]`.
     const bool raiiOwnsNativeArrayBuffer =
-        variable->hasModifier(TokenKind::KwRaii) && ProjectTypeConversion::isNativeArray(typeKey);
+        (variable->hasModifier(TokenKind::KwRaii) || declaredOwnership == sema::OwnershipKind::Owned) &&
+        ProjectTypeConversion::isNativeArray(typeKey);
     // T41: `raii borrowed T[]` owns the allocation that stores the slots, while every T slot is
     // an alias. The two keywords are not contradictory for an array: `raii` qualifies the
     // buffer and `borrowed` qualifies its elements. For non-arrays the old contradiction remains.
@@ -4298,10 +4306,19 @@ void ProjectMethodBodyModel::analyzeVariable(
     // array does not currently destroy its elements at all, so treating that local as an owner
     // would either reject the idiom outright or promise a destruction traversal the compiler does
     // not yet perform -- both worse than leaving it exactly as it was.
+    //
+    // EN: Freeze 3.0 (owned arrays): an array destroys its elements now (C-12), so `owned T[]` is an
+    //     owner like `raii T[]`: released at scope exit, move-only, and not deleted by hand. The
+    //     LinkedList<T> relocation buffers drop their explicit delete[] (their slots are moved out).
+    // ES: Congelamiento 3.0 (arreglos owned): un arreglo ya destruye sus elementos (C-12), asi que
+    //     `owned T[]` es dueno como `raii T[]`: se libera al salir del scope, es move-only y no se
+    //     borra a mano. Los buffers de reubicacion de LinkedList<T> quitan su delete[] explicito
+    //     (sus slots se mueven fuera).
     const bool isOwnedQualified = declaredOwnership == sema::OwnershipKind::Owned;
     const bool managedDelegate = isAnyDelegateTypeKey(typeKey) && !isExternCDelegateTypeKey(typeKey);
     const bool ownedQualifierOwnsStorage =
-        isOwnedQualified && (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
+        isOwnedQualified && (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate ||
+            ProjectTypeConversion::isNativeArray(typeKey));
     const bool isRaii = variableRequiresRaii(
         variable, typeKey, isForeachEnumerator, isDeferValueCapture,
         ownedQualifierOwnsStorage, managedDelegate);

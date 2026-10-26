@@ -270,6 +270,10 @@ void ProjectCallableResultMerger::mergeShardState(
         source.assignedRequiredFields_.begin(), source.assignedRequiredFields_.end());
     destination.constructorsWithNormalExit_.insert(
         source.constructorsWithNormalExit_.begin(), source.constructorsWithNormalExit_.end());
+    // EN: Freeze 3.0 (owned arrays): the HIR reads which `delete[]` sites clear an owned field.
+    // ES: Congelamiento 3.0 (arreglos owned): el HIR lee que sitios `delete[]` vacian un campo owned.
+    destination.arrayDeleteClearsOwnedField_.insert(
+        source.arrayDeleteClearsOwnedField_.begin(), source.arrayDeleteClearsOwnedField_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
     if (source.isolatedCallableOrdinal_.has_value() &&
         *source.isolatedCallableOrdinal_ == result.callableOrdinal() &&

@@ -9916,12 +9916,12 @@ namespace RequiredFlow
     public class Program
     {
         public required int Value;
-        public Program(bool fail)
+        public Program(bool fail) throws RequiredFlow.ConstructionFailure
         {
             if (fail) { throw new ConstructionFailure(); }
             Value = 42;
         }
-        public static int Main() { raii Program p = new Program(false); return p.Value; }
+        public static int Main() throws RequiredFlow.ConstructionFailure { raii Program p = new Program(false); return p.Value; }
     }
 }
 )ns");

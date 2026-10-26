@@ -25,7 +25,7 @@ namespace cc1catchcontinue
     {
         // El paso 1 lanza un tipo, el paso 2 lanza otro, el resto no lanza. Los tres caminos
         // existen para que la clausula que atrapa dependa del tipo y no del orden.
-        private static void Fail(int step)
+        private static void Fail(int step) throws Exception
         {
             if (step == 1)
             {
@@ -37,7 +37,7 @@ namespace cc1catchcontinue
             }
         }
 
-        public static int Main()
+        public static int Main() throws Exception
         {
             int invalidOps = 0;
             int outOfRange = 0;

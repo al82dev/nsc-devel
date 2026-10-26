@@ -1577,7 +1577,7 @@ namespace ReturnInTryCatch
         // The Dictionary<TKey,TValue> indexer shape: a throw is reachable in the callee, but not
         // taken on this call path, and the caller's return-of-the-call is itself inside a
         // try/catch.
-        public static int MaybeThrow(bool doThrow)
+        public static int MaybeThrow(bool doThrow) throws ReturnInTryCatch.Boom
         {
             if (doThrow)
             {

@@ -4,7 +4,7 @@ namespace NativeSharp.BookExamples.LinkedList
 {
     class Program
     {
-        public static int Main()
+        public static int Main() throws Exception
         {
             Console.WriteLine("NativeSharp Book Example 05 - Singly Linked List<T>");
             Console.WriteLine("-----------------------------------------------------");

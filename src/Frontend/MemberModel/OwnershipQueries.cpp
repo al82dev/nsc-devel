@@ -209,6 +209,50 @@ bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) cons
     return true;
 }
 
+bool ProjectMemberModel::typeIsPlainData(std::string_view typeKey) const
+{
+    std::vector<std::string> pending{std::string(typeKey)};
+    std::unordered_set<std::size_t> visited;
+    while (!pending.empty())
+    {
+        std::string candidate = std::move(pending.back());
+        pending.pop_back();
+        if (candidate.empty() || candidate == "<error>" || candidate == "builtin:void" ||
+            candidate == "builtin:string" || candidate == "builtin:null" ||
+            candidate.ends_with("*") || candidate.ends_with("[]") ||
+            language::isFunctionTypeIdentity(candidate))
+            return false;
+        if (candidate.starts_with("builtin:")) continue;
+        if (const std::optional<std::vector<std::string>> tuple =
+                ProjectTypeConversion::tupleElementTypeKeys(candidate))
+        {
+            pending.insert(pending.end(), tuple->begin(), tuple->end());
+            continue;
+        }
+        if (const std::optional<std::string> element = fixedArrayElementTypeKey(candidate))
+        {
+            pending.push_back(*element);
+            continue;
+        }
+        if (nameLookup_ == nullptr) return false;
+        const std::optional<std::size_t> ordinal = typeOrdinalForKey(candidate);
+        if (!ordinal.has_value()) return false;
+        const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[*ordinal];
+        if (declaration.kind == NamedTypeDeclarationKind::Enum) continue;
+        if (declaration.kind != NamedTypeDeclarationKind::Struct) return false;
+        if (typeRequiresValueDrop(candidate)) return false;
+        if (!visited.insert(*ordinal).second) continue;
+        for (const std::size_t memberOrdinal : membersByType_[*ordinal])
+        {
+            if (memberOrdinal >= members_.size()) continue;
+            const ClassMemberSymbol& field = members_[memberOrdinal];
+            if (field.kind != ClassMemberKind::Field || field.isStatic || field.isConst) continue;
+            pending.push_back(field.declaredTypeKey);
+        }
+    }
+    return true;
+}
+
 bool ProjectMemberModel::typeIsMoveOnly(std::string_view typeKey) const
 {
     std::vector<std::string> pending{std::string(typeKey)};

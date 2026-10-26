@@ -20,7 +20,7 @@ namespace NativeSharp.BookExamples.GraphTraversal
             if (count == data.Length) { Grow(); }
             data[Index(count)] = value; count = count + 1;
         }
-        public int Dequeue()
+        public int Dequeue() throws InvalidOperationException
         {
             if (count == 0) { throw new InvalidOperationException(); }
             int value = data[head]; head = (head + 1) % data.Length; count = count - 1; return value;

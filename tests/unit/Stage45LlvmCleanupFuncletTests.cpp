@@ -97,7 +97,7 @@ class Resource : IDisposable
 
 class Runner
 {
-    public static void ThrowFromCallee(Exception problem)
+    public static void ThrowFromCallee(Exception problem) throws NativeSharp.Core.Exception
     {
         throw new Exception();
     }
@@ -121,7 +121,7 @@ class Runner
         }
     }
 
-    public static void RethrowThroughUsing(Resource input, Exception problem)
+    public static void RethrowThroughUsing(Resource input, Exception problem) throws NativeSharp.Core.Exception
     {
         try
         {

@@ -14,7 +14,7 @@ namespace NativeSharp.BookExamples.TopologicalSort
         private int Cell(int a,int b){return a*capacity+b;}
         public int AddTask(string name){int id=count; tasks[id]=new BuildTask(id,name); count=count+1; return id;}
         public void AddDependency(int prerequisite,int dependent){edges[Cell(prerequisite,dependent)]=1;}
-        public void TopologicalOrder()
+        public void TopologicalOrder() throws InvalidOperationException
         {
             int[] indegree=new int[count];
             int a=0;

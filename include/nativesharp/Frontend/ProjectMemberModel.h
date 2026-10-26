@@ -121,6 +121,13 @@ public:
     // capability, so constraints, calls and method-body flow all ask one canonical service.
     bool typeIsImplicitlyCopyable(std::string_view typeKey) const;
     bool typeIsMoveOnly(std::string_view typeKey) const;
+    // EN: Freeze 3.0 (receiver temporaries): plain data -- scalars, enums, and tuples, fixed
+    //     arrays and structs built only of plain data, with nothing to destroy. A copy of plain
+    //     data can never refer into the value it was read from.
+    // ES: Congelamiento 3.0 (temporales receptores): datos simples -- escalares, enums, y tuplas,
+    //     arreglos fijos y structs hechos solo de datos simples, sin nada que destruir. Una copia
+    //     de datos simples nunca puede apuntar dentro del valor del que se leyo.
+    bool typeIsPlainData(std::string_view typeKey) const;
 
     // C2.1 "fixed arrays". The compile-time value of a `T[N]` count expression, or nullopt when
     // it is not a constant. It lives here, next to canonicalTypeKey, because the CANONICAL TYPE

@@ -20,7 +20,7 @@ namespace NativeSharp.BookExamples.DoublyLinkedList
         public DoublyNode<T> First { get { return head; } }
         public DoublyNode<T> Last { get { return tail; } }
 
-        private DoublyNode<T> NodeAt(int index)
+        private DoublyNode<T> NodeAt(int index) throws ArgumentOutOfRangeException
         {
             if (index < 0 || index >= count)
             {
@@ -88,7 +88,7 @@ namespace NativeSharp.BookExamples.DoublyLinkedList
             count = count + 1;
         }
 
-        public void InsertAt(int index, T value)
+        public void InsertAt(int index, T value) throws ArgumentOutOfRangeException
         {
             if (index < 0 || index > count)
             {
@@ -140,7 +140,7 @@ namespace NativeSharp.BookExamples.DoublyLinkedList
             count = count - 1;
         }
 
-        public void RemoveAt(int index, T[] result)
+        public void RemoveAt(int index, T[] result) throws ArgumentOutOfRangeException
         {
             DoublyNode<T> node = NodeAt(index);
             result[0] = node.Value;

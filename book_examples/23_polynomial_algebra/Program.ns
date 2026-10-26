@@ -3,7 +3,7 @@ namespace NativeSharp.BookExamples.Polynomial
 {
     class Program
     {
-        public static int Main()
+        public static int Main() throws ArgumentOutOfRangeException
         {
             Console.WriteLine("NativeSharp Book Example 23 - Polynomial Algebra");
             Console.WriteLine("-----------------------------------------------");

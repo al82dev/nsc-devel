@@ -4,7 +4,7 @@ namespace NativeSharp.BookExamples.LinkedList
 {
     public class IntListPrinter
     {
-        public static void Print(string caption, SinglyLinkedList<int> list)
+        public static void Print(string caption, SinglyLinkedList<int> list) throws ArgumentOutOfRangeException
         {
             raii string line = String.Copy(caption);
             int i = 0;

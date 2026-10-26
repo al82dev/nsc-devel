@@ -20,7 +20,7 @@ namespace NativeSharp.BookExamples.Trie
             return (int)c - (int)'a';
         }
 
-        public bool Insert(string word)
+        public bool Insert(string word) throws ArgumentException
         {
             TrieNode current = root;
             int i = 0;

@@ -64,7 +64,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             count = count + 1;
         }
 
-        public int DeleteFromHead()
+        public int DeleteFromHead() throws InvalidOperationException
         {
             if (head == null)
             {
@@ -83,7 +83,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return value;
         }
 
-        public int DeleteFromTail()
+        public int DeleteFromTail() throws InvalidOperationException
         {
             if (tail == null)
             {
@@ -106,7 +106,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return value;
         }
 
-        public bool DeleteValue(int value)
+        public bool DeleteValue(int value) throws InvalidOperationException
         {
             IntListNode previous = null;
             IntListNode current = head;
@@ -163,7 +163,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return checksum;
         }
 
-        public void Clear()
+        public void Clear() throws InvalidOperationException
         {
             while (head != null)
             {
@@ -173,13 +173,15 @@ namespace NativeSharp.BookExamples.DrozdekCore
 
         ~IntSinglyLinkedList()
         {
-            Clear();
+            // A destructor cannot declare throws: the error is handled here.
+            try { Clear(); }
+            catch (InvalidOperationException error) { }
         }
     }
 
     public class LinkedListExample
     {
-        public static int Run()
+        public static int Run() throws InvalidOperationException
         {
             raii IntSinglyLinkedList list = new IntSinglyLinkedList();
             list.AddToHead(20);

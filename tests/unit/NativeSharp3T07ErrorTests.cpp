@@ -718,10 +718,19 @@ public class Program
     public static int Main() { return Risk(); }
 }
 )NS", "which is neither caught here nor declared");
-    expectAccepted("UnhandledThrow", R"NS(
+    // Freeze 3.0 (checked throw): a written `throw` follows the same rule as a call now.
+    expectRejected("UnhandledThrow", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Program { public static int Main() { throw new Error(); } }
+)NS", "is neither caught here nor declared");
+    expectAccepted("HandledThrow", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Program
+{
+    public static int Main() { try { throw new Error(); } catch (Error problem) { return 1; } }
+}
 )NS");
     expectRejected("UnhandledPropertyGet", R"NS(
 namespace NativeSharp.Core { public class Exception {} }

@@ -4,7 +4,7 @@ namespace NativeSharp.BookExamples.RationalNumbers
 {
     public class RationalSeries
     {
-        public static owned Rational Harmonic(int terms)
+        public static owned Rational Harmonic(int terms) throws ZeroDenominatorException
         {
             raii Rational sum = new Rational(0);
             int k = 1;
@@ -22,7 +22,7 @@ namespace NativeSharp.BookExamples.RationalNumbers
             return move(sum);
         }
 
-        public static owned Rational LeibnizPiQuarter(int terms)
+        public static owned Rational LeibnizPiQuarter(int terms) throws ZeroDenominatorException
         {
             raii Rational sum = new Rational(0);
             int k = 0;

@@ -113,7 +113,7 @@ namespace DebugExtreme
             return 0;
         }
 
-        public static int ThrowFromProducer(int value)
+        public static int ThrowFromProducer(int value) throws StackProblem
         {
             if (value == 21)
             {

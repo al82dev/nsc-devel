@@ -59,7 +59,7 @@ class Probe
         catch (Problem problem) { return 2; }
         finally { int completed = 1; }
     }
-    public static void Again()
+    public static void Again() throws Problem
     {
         try { throw new Problem(); }
         catch (Problem problem) { throw; }

@@ -189,7 +189,7 @@ class Program
         return read(1);
     }
 
-    public static void ThrowAfterCapture()
+    public static void ThrowAfterCapture() throws Boom
     {
         int state = 1;
         raii Transform read = value => state + value;

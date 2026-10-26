@@ -52,7 +52,7 @@ namespace NativeSharp.BookExamples.LinkedList
             count = count + 1;
         }
 
-        private SinglyNode<T> NodeAt(int index)
+        private SinglyNode<T> NodeAt(int index) throws ArgumentOutOfRangeException
         {
             if (index < 0 || index >= count)
             {
@@ -69,17 +69,17 @@ namespace NativeSharp.BookExamples.LinkedList
             return current;
         }
 
-        public T GetAt(int index)
+        public T GetAt(int index) throws ArgumentOutOfRangeException
         {
             return NodeAt(index).Value;
         }
 
-        public void SetAt(int index, T value)
+        public void SetAt(int index, T value) throws ArgumentOutOfRangeException
         {
             NodeAt(index).Value = value;
         }
 
-        public void InsertAt(int index, T value)
+        public void InsertAt(int index, T value) throws ArgumentOutOfRangeException
         {
             if (index < 0 || index > count)
             {
@@ -105,7 +105,7 @@ namespace NativeSharp.BookExamples.LinkedList
             count = count + 1;
         }
 
-        public void RemoveFirst(T[] result)
+        public void RemoveFirst(T[] result) throws InvalidOperationException
         {
             if (head == null)
             {
@@ -125,7 +125,7 @@ namespace NativeSharp.BookExamples.LinkedList
             }
         }
 
-        public void RemoveAt(int index, T[] result)
+        public void RemoveAt(int index, T[] result) throws Exception
         {
             if (index < 0 || index >= count)
             {

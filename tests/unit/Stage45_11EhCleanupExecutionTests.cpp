@@ -195,7 +195,7 @@ class Res : IDisposable
     public Res(int initial) { value = initial; }
     ~Res() { destructions = destructions + 1; }
     public void Dispose() { disposals = disposals + 1; }
-    public void Fail() { raii Boom problem = new Boom(); problem.Code = 7; throw move(problem); }
+    public void Fail() throws Boom { raii Boom problem = new Boom(); problem.Code = 7; throw move(problem); }
     public int Value() { return value; }
     public static int Destructions() { return destructions; }
     public static int Disposals() { return disposals; }
@@ -213,7 +213,7 @@ void testFinallyRunsWhenExceptionEscapes(TestContext& tests, const std::filesyst
     class Program
     {
         private static int marks;
-        public static void Inner()
+        public static void Inner() throws Boom
         {
             try { raii Boom problem = new Boom(); throw move(problem); }
             finally { marks = marks + 1; }
@@ -242,8 +242,8 @@ void testFinallyRunsWhenThrowComesFromInlinedHelper(
     class Program
     {
         private static int marks;
-        public static void Thrower() { raii Boom problem = new Boom(); throw move(problem); }
-        public static void Inner()
+        public static void Thrower() throws Boom { raii Boom problem = new Boom(); throw move(problem); }
+        public static void Inner() throws Boom
         {
             try { Thrower(); }
             finally { marks = marks + 1; }
@@ -270,7 +270,7 @@ void testNestedFinallyBothRunWhenExceptionEscapes(
     class Program
     {
         private static int marks;
-        public static void Inner()
+        public static void Inner() throws Boom
         {
             try
             {
@@ -450,7 +450,7 @@ void testRethrowRunsEnclosingCleanupOnce(TestContext& tests, const std::filesyst
     const std::string source = std::string(kPrelude) + R"NS(
     class Program
     {
-        public static void Inner()
+        public static void Inner() throws Boom
         {
             raii Res guard = new Res(5);
             try { guard.Fail(); }
@@ -474,11 +474,11 @@ void testThrowFromConstructorDestroysLiveRaiiOnce(
     TestContext& tests, const std::filesystem::path& root)
 {
     const std::string source = std::string(kPrelude) + R"NS(
-    class Failing { public Failing() { raii Boom problem = new Boom(); throw move(problem); } }
+    class Failing { public Failing() throws Boom { raii Boom problem = new Boom(); throw move(problem); } }
 
     class Program
     {
-        public static void Inner()
+        public static void Inner() throws Boom
         {
             raii Res guard = new Res(1);
             raii Failing bad = new Failing();
@@ -505,7 +505,7 @@ void testRaiiSurvivesRepeatedCatchInLoop(TestContext& tests, const std::filesyst
     {
         private int balance;
         public Account(int initial) { balance = initial; }
-        public void Withdraw(int amount)
+        public void Withdraw(int amount) throws Boom
         {
             if (amount > balance) { raii Boom problem = new Boom(); throw move(problem); }
             balance = balance - amount;
@@ -515,7 +515,7 @@ void testRaiiSurvivesRepeatedCatchInLoop(TestContext& tests, const std::filesyst
 
     class Program
     {
-        public static int Main()
+        public static int Main() throws Boom
         {
             raii Account account = new Account(100);
             int index = 0;

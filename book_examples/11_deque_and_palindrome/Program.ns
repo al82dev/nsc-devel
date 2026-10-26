@@ -3,7 +3,7 @@ namespace NativeSharp.BookExamples.Deque
 {
     class Program
     {
-        private static void Check(string text)
+        private static void Check(string text) throws InvalidOperationException
         {
             bool palindrome = PalindromeAnalyzer.IsPalindrome(text);
             raii string state = String.Copy("not a palindrome");
@@ -18,7 +18,7 @@ namespace NativeSharp.BookExamples.Deque
             Console.WriteLine(line);
         }
 
-        public static int Main()
+        public static int Main() throws InvalidOperationException
         {
             Console.WriteLine("NativeSharp Book Example 11 - Deque");
             Console.WriteLine("-----------------------------------");

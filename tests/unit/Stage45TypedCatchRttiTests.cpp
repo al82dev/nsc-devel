@@ -317,7 +317,7 @@ class BaseProblem : Exception { }
 class OtherProblem : Exception { }
 class Runner
 {
-    public static void Run(Exception problem)
+    public static void Run(Exception problem) throws NativeSharp.Core.Exception
     {
         try { throw new Exception(); }
         catch (BaseProblem caught) { int handled = 1; }
@@ -354,7 +354,7 @@ class RaisedProblem : Exception { }
 class OtherProblem : Exception { }
 class Runner
 {
-    public static int Run()
+    public static int Run() throws RaisedProblem
     {
         try
         {
@@ -403,7 +403,7 @@ class BaseProblem : Exception { }
 class DerivedProblem : BaseProblem { }
 class Runner
 {
-    public static void Run(Exception problem)
+    public static void Run(Exception problem) throws NativeSharp.Core.Exception
     {
         try { throw new Exception(); }
         catch (BaseProblem first) { }

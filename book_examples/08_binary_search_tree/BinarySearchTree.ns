@@ -16,7 +16,7 @@ namespace NativeSharp.BookExamples.BinarySearchTree
         public int Count { get { return count; } }
         public bool IsEmpty { get { return root == null; } }
 
-        public void Insert(Student value)
+        public void Insert(Student value) throws ArgumentException
         {
             // Congelamiento 3.0 (C-01): el nodo se crea en el campo que lo guarda, justo donde se
             // engancha; el arbol es su dueno manual y lo libera con `delete`.

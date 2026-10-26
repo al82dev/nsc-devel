@@ -369,8 +369,13 @@ bool ProjectOopMirModel::appendOwnedFieldDestructionSteps(
             const std::size_t memberOrdinal = *memberIt;
             const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
             if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
+            // EN: Freeze 3.0 (owned arrays): an owned array field is released too, with its elements.
+            // ES: Congelamiento 3.0 (arreglos owned): un campo de arreglo owned tambien se libera,
+            //     con sus elementos.
+            const bool ownedArray = member.declaredOwnership == sema::OwnershipKind::Owned &&
+                ProjectTypeConversion::isNativeArray(member.declaredTypeKey);
             const bool releasesHeap = member.declaredOwnership == sema::OwnershipKind::Owned &&
-                (member.declaredTypeKey == "builtin:string" ||
+                (member.declaredTypeKey == "builtin:string" || ownedArray ||
                  destroyableClassTypeKeys.contains(member.declaredTypeKey));
             if (!releasesHeap)
             {
@@ -386,7 +391,8 @@ bool ProjectOopMirModel::appendOwnedFieldDestructionSteps(
                 return false;
             }
             const ProjectOopMirDispatchTable::OwnedField ownedField{
-                memberOrdinal, layout->offset, member.declaredTypeKey == "builtin:string"};
+                memberOrdinal, layout->offset, member.declaredTypeKey == "builtin:string", ownedArray,
+                ownedArray ? member.declaredTypeKey : std::string{}};
             table.ownedFields.push_back(ownedField);
             ProjectOopMirDispatchTable::DestructionStep fieldStep;
             fieldStep.ownedField = ownedField;
@@ -420,7 +426,8 @@ bool ProjectOopMirModel::appendValueFieldDropStep(
         return false;
     }
     ProjectOopMirDispatchTable::DestructionStep step;
-    step.ownedField = ProjectOopMirDispatchTable::OwnedField{memberOrdinal, layout->offset, false};
+    step.ownedField = ProjectOopMirDispatchTable::OwnedField{
+        memberOrdinal, layout->offset, false, false, std::string{}};
     step.isValueFieldDrop = true;
     step.valueFieldTypeKey = member.declaredTypeKey;
     table.destructionSteps.push_back(std::move(step));

@@ -90,7 +90,7 @@ public class Boom : Exception { }
 
 public class Program
 {
-    public static int Throws(void* self, int value)
+    public static int Throws(void* self, int value) throws Boom
     {
         throw new Boom();
     }

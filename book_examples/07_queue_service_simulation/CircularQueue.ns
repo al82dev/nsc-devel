@@ -61,7 +61,7 @@ namespace NativeSharp.BookExamples.QueueSimulation
             result[0] = items[head];
         }
 
-        public void Dequeue(T[] result)
+        public void Dequeue(T[] result) throws InvalidOperationException
         {
             if (count == 0)
             {

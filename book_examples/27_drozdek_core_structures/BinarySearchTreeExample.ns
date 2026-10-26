@@ -86,7 +86,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return false;
         }
 
-        public int Minimum()
+        public int Minimum() throws InvalidOperationException
         {
             if (root == null)
             {
@@ -100,7 +100,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return current.Key;
         }
 
-        public int Maximum()
+        public int Maximum() throws InvalidOperationException
         {
             if (root == null)
             {
@@ -238,7 +238,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
 
     public class BinarySearchTreeExample
     {
-        public static int Run()
+        public static int Run() throws InvalidOperationException
         {
             raii IntBinarySearchTree tree = new IntBinarySearchTree();
             int[] keys = new int[] { 50, 25, 75, 10, 30, 60, 90, 27, 33, 55, 65 };
