@@ -5725,6 +5725,39 @@ bool ProjectMethodBodyModel::validateSyntheticReadonlyReceiver(
     return false;
 }
 
+// EN: Freeze 3.0 P3: an indexer accessor of a closed generic type may carry a member `where`
+//     (`get where T : copy`). The synthetic call that selects it reports the deferred constraint
+//     failure at the access, exactly as an ordinary call does. The getter bound only for the
+//     target of a plain `=` (activeUnionWriteTarget_, see analyzeAssignmentLeft) is exempt: that
+//     store runs the setter, unless the getter returns a reference and the store writes through it.
+// ES: Congelamiento 3.0 P3: un accesor de indexador de un tipo generico cerrado puede llevar un
+//     `where` de miembro (`get where T : copy`). La llamada sintetica que lo elige reporta en el
+//     acceso el constraint aplazado que falla, igual que una llamada ordinaria. El getter ligado
+//     solo para el destino de un `=` simple (activeUnionWriteTarget_, ver analyzeAssignmentLeft)
+//     queda exento: ese store ejecuta el setter, salvo que el getter devuelva una referencia y el
+//     store escriba por ella.
+bool ProjectMethodBodyModel::validateSyntheticConstraints(
+    const ast::AstNode* syntax,
+    MethodCallBinding& call,
+    const MethodCallCandidate& selected,
+    bool diagnoseFailure,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (genericConstraintModel_ == nullptr || memberModel_ == nullptr ||
+        selected.memberOrdinal >= memberModel_->members().size()) return true;
+    const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+    if (syntax != nullptr && syntax == activeUnionWriteTarget_ && !selectedMember.isReferenceReturn)
+        return true;
+    const ast::AstNode* member = selectedMember.syntax;
+    if (genericConstraintModel_->specializationSatisfiesConstraints(member)) return true;
+    if (diagnoseFailure)
+        genericConstraintModel_->reportSpecializationConstraintViolations(
+            member, syntax != nullptr ? syntax->range() : SourceRange{}, diagnostics);
+    call.resolution = MethodCallResolutionKind::NoViableCandidate;
+    recordCallBinding(std::move(call));
+    return false;
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishSyntheticCall(
     const ast::AstNode* syntax,
     MethodCallBinding& call,
@@ -5872,10 +5905,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
 
     const MethodCallCandidate& selected = call.evaluatedCandidates[nonDominated.front()];
     if (!validateSyntheticReadonlyReceiver(
-            syntax, call, selected, diagnoseFailure, readonlyReceiver, diagnostics))
-    {
+            syntax, call, selected, diagnoseFailure, readonlyReceiver, diagnostics) ||
+        !validateSyntheticConstraints(syntax, call, selected, diagnoseFailure, diagnostics))
         return result;
-    }
     return finishSyntheticCall(
         syntax, call, selected, arguments, diagnoseFailure, diagnostics);
 }

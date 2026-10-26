@@ -4366,6 +4366,12 @@ private:
         bool diagnoseFailure,
         bool readonlyReceiver,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool validateSyntheticConstraints(
+        const ast::AstNode* syntax,
+        MethodCallBinding& call,
+        const MethodCallCandidate& selected,
+        bool diagnoseFailure,
+        diagnostics::DiagnosticEngine& diagnostics);
     ExpressionResult finishSyntheticCall(
         const ast::AstNode* syntax,
         MethodCallBinding& call,

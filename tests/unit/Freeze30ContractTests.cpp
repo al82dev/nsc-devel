@@ -3627,6 +3627,99 @@ class Program
 )ns", 77);
 }
 
+/// EN: Freeze 3.0 P3. An indexer or property accessor of a generic type may restrict the type's
+///     parameter (`get where T : copy`). The getter fails at the access with the constraint message; a plain
+///     `=` runs only the setter and stays valid for a move-only T.
+/// ES: Congelamiento 3.0 P3. Un accesor de indexador o de propiedad de un tipo generico puede
+///     restringir el parametro del tipo (`get where T : copy`). El getter falla en el acceso con el mensaje del
+///     constraint; un `=` simple solo ejecuta el setter y sigue valido para un T move-only.
+void testIndexerAccessorWhere(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string box = R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Box<T>
+{
+    private owned T[] items;
+    public Box() { items = new T[2]; }
+    public owned T this[int i]
+    {
+        get where T : copy { return items[i]; }
+        set { items[i] = move(value); }
+    }
+    public ref T RefAt(int i) { return ref items[i]; }
+}
+)ns";
+    expectRun(tests, root, "P3IndexerWhereCopy", box + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        raii Box<int> b = new Box<int>();
+        b[0] = 4;
+        b[1] = 5;
+        return b[0] * 10 + b[1];
+    }
+}
+)ns", 45);
+    expectRun(tests, root, "P3IndexerWhereSetMoveOnly", box + R"ns(
+class Program
+{
+    private static int Run()
+    {
+        raii Box<Guard> b = new Box<Guard>();
+        b[0] = Make.G(7);
+        b[0] = Make.G(8);
+        return b.RefAt(0).Id;
+    }
+    public static int Main() { int r = Run(); return r * 100 + Counter.Drops; }
+}
+)ns", 878);
+    expectReject(tests, root, "P3IndexerWhereGetMoveOnly", box + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        raii Box<Guard> b = new Box<Guard>();
+        b[0] = Make.G(7);
+        return b[0].Id;
+    }
+}
+)ns", "'Box.get_Item' requires copyable storage ('where T : copy')");
+    expectReject(tests, root, "P3PropertyWhereGetMoveOnly", R"ns(
+struct Guard
+{
+    public int Id;
+    ~Guard() { }
+}
+class Holder<T>
+{
+    private T v;
+    public T Value
+    {
+        get where T : copy { return v; }
+        set { v = move(value); }
+    }
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Holder<Guard> h = new Holder<Guard>();
+        Guard g;
+        g.Id = 7;
+        h.Value = move(g);
+        return h.Value.Id;
+    }
+}
+)ns", "'Holder.get_Value' requires copyable storage ('where T : copy')");
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -5155,6 +5248,7 @@ int main()
     testRefReturnLibrary(tests, root);
     testConditionalGenericCopy(tests, root);
     testMoveOnlyPlaceReturn(tests, root);
+    testIndexerAccessorWhere(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

@@ -2202,6 +2202,11 @@ ast::AstNode* Parser::parsePropertyAccessor(PropertyParseState& state)
     ast::AstNode* accessor = createPropertyAccessorNode(
         state, getter, initOnly, accessorReadonly, effective, range);
     parseThrowsClause(accessor);
+    // EN: Freeze 3.0 P3: like an indexer accessor, a property accessor may restrict a parameter of
+    //     its generic type (`get where T : copy`).
+    // ES: Congelamiento 3.0 P3: como un accesor de indexador, un accesor de propiedad puede
+    //     restringir un parametro de su tipo generico (`get where T : copy`).
+    parseGenericConstraintClauses(accessor);
     parsePropertyAccessorBody(state, accessor, getter, range);
     accessor->setRange(tokenRangeFrom(state.beginIndex));
     return accessor;
@@ -2491,6 +2496,11 @@ ast::AstNode* Parser::parseIndexerAccessor(IndexerParseState& state)
     ast::AstNode* accessor = createIndexerAccessorNode(
         state, getter, initOnly, accessorReadonly, effective, range);
     parseThrowsClause(accessor);
+    // EN: Freeze 3.0 P3: an accessor of an indexer in a generic type may restrict the type's
+    //     parameters (`get where T : copy`); the setter keeps its own contract.
+    // ES: Congelamiento 3.0 P3: un accesor de indexador en un tipo generico puede restringir los
+    //     parametros del tipo (`get where T : copy`); el setter conserva su propio contrato.
+    parseGenericConstraintClauses(accessor);
     parseIndexerAccessorBody(state, accessor, range);
     accessor->setRange(tokenRangeFrom(state.beginIndex));
     return accessor;

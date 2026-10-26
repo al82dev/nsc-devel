@@ -291,6 +291,14 @@ private:
         const ProjectMemberModel& memberModel,
         const ProjectInheritanceModel& inheritanceModel,
         const ProjectInterfaceModel& interfaceModel);
+    void validateSpecializationMemberClause(
+        const GenericSpecializationRecord& specialization,
+        const GenericTemplateRecord& templateRecord,
+        const ast::AstNode* member,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel);
     void validateSpecialization(
         const GenericSpecializationRecord& specialization,
         std::span<const GenericTemplateRecord> templates,
