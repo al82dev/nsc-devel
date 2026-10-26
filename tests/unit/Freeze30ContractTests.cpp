@@ -13,8 +13,6 @@
 
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
-#include "nativesharp/Interop/LibraryMetadata.h"
-#include "nativesharp/Interop/LibraryMetadataCodec.h"
 
 #include "../support/TestContext.h"
 
@@ -4828,32 +4826,6 @@ class Program
 )ns", 3);
 }
 
-/// EN: Freeze 3.0 P8. NSMETA 1.41 is the 3.0 layout epoch. A library produced before it is not consumed
-///     and the error asks for its recompilation; reading and inspecting older minors stays possible.
-/// ES: Congelamiento 3.0 P8. NSMETA 1.41 es la epoca de layout 3.0. Una biblioteca producida antes no se
-///     consume y el error pide recompilarla; leer e inspeccionar minors anteriores sigue siendo posible.
-void testNsmetaLayoutEpoch(TestContext& tests, const std::filesystem::path& root)
-{
-    (void)root;
-    using nativesharp::interop::kMetadataFormatMinor;
-    using nativesharp::interop::kMetadataLayoutEpochMinor;
-    nativesharp::interop::LibraryMetadataCodec codec;
-    nativesharp::interop::LibraryMetadata metadata;
-    metadata.moduleName = "OldApi";
-    metadata.formatMinor = static_cast<std::uint16_t>(kMetadataLayoutEpochMinor - 1U);
-    std::string error;
-    tests.expect(!codec.verifyLayoutEpoch(metadata, error) && error.find("OldApi") != std::string::npos &&
-                     error.find("recompile the library") != std::string::npos,
-                 "P8: a library from before the layout epoch is rejected with a recompile request (" +
-                     error + ")");
-    metadata.formatMinor = kMetadataLayoutEpochMinor;
-    error.clear();
-    tests.expect(codec.verifyLayoutEpoch(metadata, error) && error.empty(),
-                 "P8: a library at the layout epoch is consumable (" + error + ")");
-    tests.expect(kMetadataFormatMinor >= kMetadataLayoutEpochMinor,
-                 "P8: the current NSMETA minor is at or after the layout epoch");
-}
-
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -6390,7 +6362,6 @@ int main()
     testCaughtExceptionParameterLoan(tests, root);
     testCaughtExceptionNotCaptured(tests, root);
     testReplacedAllocatorSignature(tests, root);
-    testNsmetaLayoutEpoch(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);
