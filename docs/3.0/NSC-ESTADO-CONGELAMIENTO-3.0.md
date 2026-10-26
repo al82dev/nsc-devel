@@ -1,5 +1,10 @@
 # NativeSharp 3.0 — Estado para el congelamiento
 
+> **FOTOGRAFÍA HISTÓRICA, NO AUTORIDAD OPERATIVA.** Este archivo describe el estado alcanzado en
+> `73b03a394` y todavía no incorpora la campaña posterior. Para continuar desde la rama actual debe leerse
+> primero `NSC-DECISIONES-VIGENTES-CONGELAMIENTO-3.0.md`. La reconciliación integral de este documento queda
+> pendiente del cierre final.
+
 - **Fecha**: 2026-10-25
 - **Rama**: `development-release-candidate` (sin push)
 - **Compilador validado**: `build-clang\bin\nsc.exe` construido desde `73b03a394` (pendientes P-1 a P-7:
