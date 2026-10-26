@@ -2,11 +2,13 @@
 
 #include "nativesharp/Compilation/ImplicitProjectRegistry.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/LLVM/LlvmModuleInspection.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLoweringRequest.h"
 #include "nativesharp/Source/SourceFile.h"
 
 #include <algorithm>
 #include <cctype>
+#include <sstream>
 #include <system_error>
 
 // EN: Freeze 3.0 C-05. The file actions of the driver (`nsc <file.ns>`, `--check`, the file dumps
@@ -14,14 +16,16 @@
 //     different language than the 3.x project pipeline. A lone `.ns` now compiles as its implicit
 //     project: an in-memory `.nsproj` beside the file that compiles only that file and references
 //     NativeSharp.Core. Each file action maps to the project action that answers the same
-//     question; the dumps of 1.x stages with no 3.x counterpart are rejected by name.
+//     question. DEC-05: the CFG, dominance, SSA, optimization and pass-pipeline actions inspect the
+//     LLVM that the 3.x pipeline generates for that project (LlvmModuleInspector).
 // ES: Congelamiento 3.0 C-05. Las acciones de archivo del driver (`nsc <file.ns>`, `--check`, los
 //     dumps de archivo y la generacion de codigo de archivo) corrian el pipeline 1.x de un solo
 //     archivo, que acepta un lenguaje distinto al del pipeline 3.x de proyectos. Un `.ns` suelto
 //     ahora compila como su proyecto implicito: un `.nsproj` en memoria junto al archivo, que
 //     compila solo ese archivo y referencia NativeSharp.Core. Cada accion de archivo corresponde a
-//     la accion de proyecto que responde la misma pregunta; los dumps de etapas 1.x sin
-//     equivalente 3.x se rechazan por nombre.
+//     la accion de proyecto que responde la misma pregunta. DEC-05: las acciones de CFG, dominancia,
+//     SSA, optimizacion y pass-pipeline inspeccionan el LLVM que el pipeline 3.x genera para ese
+//     proyecto (LlvmModuleInspector).
 namespace nativesharp::driver
 {
 namespace
@@ -187,11 +191,36 @@ ExitCode dumpSourceFileSyntax(std::string_view action, std::string_view path, st
     return success && unit != nullptr ? ExitCode::Success : ExitCode::CompilationError;
 }
 
-bool isRemovedLegacyAction(std::string_view action) noexcept
+// EN: Freeze 3.0 DEC-05. The CFG, dominance and SSA actions of a source file read the unoptimized
+//     LLVM of its implicit project; -O does not change them. The module is lowered for the
+//     inspection only and is never used to generate code.
+// ES: Congelamiento 3.0 DEC-05. Las acciones de CFG, dominancia y SSA de un archivo fuente leen el
+//     LLVM sin optimizar de su proyecto implicito; -O no las cambia. El modulo se baja solo para la
+//     inspeccion y nunca se usa para generar codigo.
+bool isLlvmGraphInspection(std::string_view action) noexcept
 {
     return action == "--dump-cfg" || action == "--verify-cfg" || action == "--dump-dominance" ||
-        action == "--verify-dominance" || action == "--dump-ssa" || action == "--verify-ssa" ||
-        action == "--dump-opt" || action == "--verify-opt" || action == "--dump-pass-pipeline";
+        action == "--verify-dominance" || action == "--dump-ssa" || action == "--verify-ssa";
+}
+
+ExitCode inspectSourceFileLlvm(std::string_view action, std::string_view path, std::ostream& output,
+                               std::ostream& error)
+{
+    std::unique_ptr<llvm_backend::LlvmModule> module;
+    if (!lowerSourceFileModule(path, false, module, error)) return ExitCode::CompilationError;
+    using Inspector = llvm_backend::LlvmModuleInspector;
+    std::string inspectionError;
+    bool inspected = false;
+    if (action == "--dump-cfg") inspected = Inspector::dumpControlFlow(*module, output, inspectionError);
+    else if (action == "--verify-cfg") inspected = Inspector::verifyControlFlow(*module, output, inspectionError);
+    else if (action == "--dump-dominance") inspected = Inspector::dumpDominance(*module, output, inspectionError);
+    else if (action == "--verify-dominance")
+        inspected = Inspector::verifyDominance(*module, output, inspectionError);
+    else if (action == "--dump-ssa") inspected = Inspector::dumpSsa(*module, output, inspectionError);
+    else inspected = Inspector::verifySsa(*module, output, inspectionError);
+    if (inspected) return ExitCode::Success;
+    error << "nsc: internal error: " << action << ": " << inspectionError << '\n';
+    return ExitCode::CompilationError;
 }
 }
 
@@ -305,15 +334,26 @@ ExitCode Driver::runSourceFile(std::string_view action, std::string_view path,
         output << "program check: ok\n";
         return ExitCode::Success;
     }
-    if (isRemovedLegacyAction(action))
+    if (isLlvmGraphInspection(action)) return inspectSourceFileLlvm(action, path, output, error);
+    if (action == "--dump-pass-pipeline")
     {
-        error << "nsc: error: '" << action << "' dumped a stage of the NativeSharp 1.x single-file "
-                 "pipeline, which the 3.x driver no longer runs; a source file compiles as its implicit "
-                 "project, whose stages are shown by --dump-hir, --dump-mir, --dump-llvm and "
-                 "--dump-llvm-opt\n";
-        return ExitCode::CommandLineError;
+        // EN: DEC-05: the pipeline that optimizes this file at the requested level.
+        // ES: DEC-05: el pipeline que optimiza este archivo en el nivel pedido.
+        std::unique_ptr<llvm_backend::LlvmModule> module;
+        if (!lowerSourceFileModule(path, false, module, error)) return ExitCode::CompilationError;
+        output << "pass.pipeline " << llvm_backend::kLlvmPassPipelineFormat << '\n';
+        printLlvmPipeline(optimizationLevel, output);
+        return ExitCode::Success;
     }
-    const std::string_view projectAction = projectActionFor(action);
+    // EN: DEC-05: --dump-opt and --verify-opt are the optimized LLVM of the implicit project, the
+    //     same module --dump-llvm-opt and --verify-llvm-opt produce, under a versioned header.
+    // ES: DEC-05: --dump-opt y --verify-opt son el LLVM optimizado del proyecto implicito, el mismo
+    //     modulo que producen --dump-llvm-opt y --verify-llvm-opt, con un encabezado versionado.
+    const bool optimizedInspection = action == "--dump-opt" || action == "--verify-opt";
+    const std::string_view projectAction = optimizedInspection
+        ? (action == "--dump-opt" ? std::string_view("--dump-project-oop-llvm-opt")
+                                  : std::string_view("--verify-project-oop-llvm-opt"))
+        : projectActionFor(action);
     if (projectAction.empty())
     {
         error << "nsc: error: unknown source-file action '" << action << "'\n";
@@ -327,6 +367,17 @@ ExitCode Driver::runSourceFile(std::string_view action, std::string_view path,
         return ExitCode::CompilationError;
     }
     const std::string projectText = project->string();
-    return runProject(projectAction, projectText, output, error, optimizationLevel);
+    if (!optimizedInspection) return runProject(projectAction, projectText, output, error, optimizationLevel);
+    std::ostringstream optimized;
+    const ExitCode code = runProject(projectAction, projectText, optimized, error, optimizationLevel);
+    if (code != ExitCode::Success) return code;
+    if (action == "--dump-opt")
+        output << "; optimized.ssa.module " << llvm_backend::kLlvmOptimizedFormat << ' '
+               << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n';
+    else
+        output << "Optimization verification: ok\n"
+               << "format: " << llvm_backend::kLlvmOptimizedFormat << '\n';
+    output << optimized.str();
+    return ExitCode::Success;
 }
 }

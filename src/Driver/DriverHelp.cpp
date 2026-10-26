@@ -165,6 +165,20 @@ void printHelpUsagePart3(std::ostream &output)
            << "  nsc --verify-hir <file.ns>\n"
            << "  nsc --dump-mir <file.ns>\n"
            << "  nsc --verify-mir <file.ns>\n"
+           << compilerText(
+                  "  CFG, dominance and SSA read the unoptimized LLVM of the implicit project; -opt and the "
+                  "pass pipeline follow -O (formats nsc-llvm-*/1).\n",
+                  "  CFG, dominancia y SSA leen el LLVM sin optimizar del proyecto implicito; -opt y el "
+                  "pipeline de pases siguen a -O (formatos nsc-llvm-*/1).\n")
+           << "  nsc --dump-cfg <file.ns>\n"
+           << "  nsc --verify-cfg <file.ns>\n"
+           << "  nsc --dump-dominance <file.ns>\n"
+           << "  nsc --verify-dominance <file.ns>\n"
+           << "  nsc --dump-ssa <file.ns>\n"
+           << "  nsc --verify-ssa <file.ns>\n"
+           << "  nsc --dump-opt <file.ns> [-O0|-O1|-O2|-O3]\n"
+           << "  nsc --verify-opt <file.ns> [-O0|-O1|-O2|-O3]\n"
+           << "  nsc --dump-pass-pipeline <file.ns> [-O0|-O1|-O2|-O3]\n"
            << "  nsc --dump-llvm <file.ns>\n"
            << "  nsc --verify-llvm <file.ns>\n"
            << "  nsc --dump-llvm-opt <file.ns> [-O0|-O1|-O2|-O3]\n"

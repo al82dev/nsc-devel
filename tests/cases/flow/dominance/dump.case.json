@@ -2,26 +2,13 @@
   "id": "nsc.dump-dominance",
   "component": "dominance",
   "kind": "dump",
-  "sources": [
-    "dominance_features.ns"
-  ],
-  "arguments": [
-    "--dump-dominance",
-    "{source:0}"
-  ],
+  "sources": ["dominance_features.ns"],
+  "arguments": ["--dump-dominance", "{source:0}"],
   "optimization": "O0",
   "expected": {
-    "exit_code": 2,
-    "stderr": {
-      "mode": "contains",
-      "text": "NativeSharp 1.x single-file pipeline"
-    }
+    "exit_code": 0,
+    "stdout": {"mode": "contains", "text": "dominance.module"}
   },
-  "tags": [
-    "integration",
-    "dominance",
-    "dump",
-    "nativesharp-1x-stage-removed"
-  ],
+  "tags": ["integration", "dominance", "dump"],
   "requires": []
 }

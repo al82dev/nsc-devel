@@ -921,6 +921,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/Internal/X64InstructionWalker.cpp
     src/LLVM/LlvmDebugPrefixMap.cpp
     src/LLVM/LlvmModule.cpp
+    src/LLVM/LlvmModuleInspection.cpp
     src/LLVM/LlvmTypeClassification.cpp
     src/LLVM/LlvmTypeLayout.cpp
     src/LLVM/LinkTimeOptimizationMode.cpp
@@ -6932,66 +6933,56 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.verify-mir-features COMMAND "${NSC_TEST_COMPILER}" --verify-mir ${NSC_INTEGRATION_DIR}/valid/mir_features.ns)
     set_tests_properties(nsc.verify-mir-features PROPERTIES PASS_REGULAR_EXPRESSION "project OOP MIR check: ok")
 
-    # EN: Freeze 3.0 C-05. A source file compiles as its implicit project; the 1.x single-file CFG,
-    #     dominance, SSA, optimization and pass-pipeline stages no longer exist, so these actions
-    #     must be rejected with a message that names the removed pipeline.
-    # ES: Congelamiento 3.0 C-05. Un archivo fuente compila como su proyecto implicito; las etapas
-    #     CFG, dominancia, SSA, optimizacion y pass-pipeline del pipeline 1.x de un solo archivo ya
-    #     no existen, asi que estas acciones deben rechazarse nombrando el pipeline eliminado.
     add_test(NAME nsc.dump-cfg COMMAND "${NSC_TEST_COMPILER}" --dump-cfg ${NSC_INTEGRATION_DIR}/valid/control_flow.ns)
-    set_tests_properties(nsc.dump-cfg PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
+    set_tests_properties(nsc.dump-cfg PROPERTIES PASS_REGULAR_EXPRESSION "cfg.module")
 
     add_test(NAME nsc.verify-cfg COMMAND "${NSC_TEST_COMPILER}" --verify-cfg ${NSC_INTEGRATION_DIR}/valid/control_flow.ns)
-    set_tests_properties(nsc.verify-cfg PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
+    set_tests_properties(nsc.verify-cfg PROPERTIES PASS_REGULAR_EXPRESSION "CFG verification: ok")
 
     add_test(NAME nsc.dump-cfg-features COMMAND "${NSC_TEST_COMPILER}" --dump-cfg ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
     set_tests_properties(
         nsc.dump-cfg-features
-        PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
+        PROPERTIES PASS_REGULAR_EXPRESSION "cfg_features[$]3A[$]3A__Select[^@]*while[.]cond[.][0-9]+. preds=[[]bb0, bb[0-9]+")
 
     add_test(NAME nsc.verify-cfg-features COMMAND "${NSC_TEST_COMPILER}" --verify-cfg ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
-    set_tests_properties(
-        nsc.verify-cfg-features
-        PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
+    set_tests_properties(nsc.verify-cfg-features PROPERTIES PASS_REGULAR_EXPRESSION "CFG verification: ok")
 
     add_test(
         NAME nsc.dump-dominance
         COMMAND "${NSC_TEST_COMPILER}" --dump-dominance ${NSC_INTEGRATION_DIR}/valid/dominance_features.ns)
-    set_tests_properties(nsc.dump-dominance PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
+    set_tests_properties(nsc.dump-dominance PROPERTIES PASS_REGULAR_EXPRESSION "dominance.module")
 
     add_test(
         NAME nsc.verify-dominance
         COMMAND "${NSC_TEST_COMPILER}" --verify-dominance ${NSC_INTEGRATION_DIR}/valid/dominance_features.ns)
     set_tests_properties(
         nsc.verify-dominance
-        PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
+        PROPERTIES PASS_REGULAR_EXPRESSION "Dominance verification: ok")
 
     add_test(
         NAME nsc.dump-ssa
         COMMAND "${NSC_TEST_COMPILER}" --dump-ssa ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
-    set_tests_properties(nsc.dump-ssa PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
+    set_tests_properties(nsc.dump-ssa PROPERTIES PASS_REGULAR_EXPRESSION "ssa_features[$]3A[$]3A__Main phis=[1-9]")
 
     add_test(
         NAME nsc.verify-ssa
         COMMAND "${NSC_TEST_COMPILER}" --verify-ssa ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
-    set_tests_properties(nsc.verify-ssa PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
+    set_tests_properties(nsc.verify-ssa PROPERTIES PASS_REGULAR_EXPRESSION "SSA verification: ok")
 
     add_test(
         NAME nsc.dump-opt
         COMMAND "${NSC_TEST_COMPILER}" --dump-opt ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
-    set_tests_properties(nsc.dump-opt PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
+    set_tests_properties(nsc.dump-opt PROPERTIES PASS_REGULAR_EXPRESSION "optimized.ssa.module")
 
     add_test(
         NAME nsc.verify-opt
         COMMAND "${NSC_TEST_COMPILER}" --verify-opt ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
-    set_tests_properties(nsc.verify-opt PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
+    set_tests_properties(nsc.verify-opt PROPERTIES PASS_REGULAR_EXPRESSION "Optimization verification: ok")
 
     add_test(
         NAME nsc.dump-pass-pipeline
         COMMAND "${NSC_TEST_COMPILER}" --dump-pass-pipeline ${NSC_INTEGRATION_DIR}/valid/pass_features.ns)
-    set_tests_properties(
-        nsc.dump-pass-pipeline
-        PROPERTIES PASS_REGULAR_EXPRESSION "NativeSharp 1.x single-file pipeline")
+    set_tests_properties(nsc.dump-pass-pipeline PROPERTIES PASS_REGULAR_EXPRESSION "pass.pipeline")
 
     add_test(
         NAME nsc.dump-llvm

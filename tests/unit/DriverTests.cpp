@@ -1007,10 +1007,11 @@ int main()
         const std::string path = validPath.string();
         const std::vector<std::string_view> arguments = {"--dump-cfg", path};
         const ExitCode code = runDriver(arguments, output, error);
-        tests.expect(code == ExitCode::CommandLineError,
-            "--dump-cfg of a 1.x single-file stage is rejected (Freeze 3.0 C-05)");
-        tests.expect(error.str().find("NativeSharp 1.x single-file pipeline") != std::string::npos,
-            "--dump-cfg names the removed 1.x stage and the implicit-project dumps");
+        tests.expect(code == ExitCode::Success, "--dump-cfg succeeds on valid source");
+        tests.expect(output.str().find("cfg.module") != std::string::npos &&
+                output.str().find("rpo:") != std::string::npos,
+            "CFG dump is written to stdout and exposes traversal metadata");
+        tests.expect(error.str().empty(), "valid CFG dump keeps stderr empty");
     }
 
     {
@@ -1019,10 +1020,10 @@ int main()
         const std::string path = validPath.string();
         const std::vector<std::string_view> arguments = {"--verify-cfg", path};
         const ExitCode code = runDriver(arguments, output, error);
-        tests.expect(code == ExitCode::CommandLineError,
-            "--verify-cfg of a 1.x single-file stage is rejected (Freeze 3.0 C-05)");
-        tests.expect(error.str().find("NativeSharp 1.x single-file pipeline") != std::string::npos,
-            "--verify-cfg names the removed 1.x stage and the implicit-project dumps");
+        tests.expect(code == ExitCode::Success, "--verify-cfg succeeds on valid source");
+        tests.expect(output.str().find("CFG verification: ok") != std::string::npos,
+            "CFG verification result is written to stdout");
+        tests.expect(error.str().empty(), "valid CFG verification keeps stderr empty");
     }
 
 
@@ -1032,10 +1033,11 @@ int main()
         const std::string path = validPath.string();
         const std::vector<std::string_view> arguments = {"--dump-dominance", path};
         const ExitCode code = runDriver(arguments, output, error);
-        tests.expect(code == ExitCode::CommandLineError,
-            "--dump-dominance of a 1.x single-file stage is rejected (Freeze 3.0 C-05)");
-        tests.expect(error.str().find("NativeSharp 1.x single-file pipeline") != std::string::npos,
-            "--dump-dominance names the removed 1.x stage and the implicit-project dumps");
+        tests.expect(code == ExitCode::Success, "--dump-dominance succeeds on valid source");
+        tests.expect(output.str().find("dominance.module") != std::string::npos &&
+                output.str().find("idom=") != std::string::npos,
+            "dominance dump is written to stdout and exposes immediate dominators");
+        tests.expect(error.str().empty(), "valid dominance dump keeps stderr empty");
     }
 
     {
@@ -1044,10 +1046,10 @@ int main()
         const std::string path = validPath.string();
         const std::vector<std::string_view> arguments = {"--verify-dominance", path};
         const ExitCode code = runDriver(arguments, output, error);
-        tests.expect(code == ExitCode::CommandLineError,
-            "--verify-dominance of a 1.x single-file stage is rejected (Freeze 3.0 C-05)");
-        tests.expect(error.str().find("NativeSharp 1.x single-file pipeline") != std::string::npos,
-            "--verify-dominance names the removed 1.x stage and the implicit-project dumps");
+        tests.expect(code == ExitCode::Success, "--verify-dominance succeeds on valid source");
+        tests.expect(output.str().find("Dominance verification: ok") != std::string::npos,
+            "dominance verification result is written to stdout");
+        tests.expect(error.str().empty(), "valid dominance verification keeps stderr empty");
     }
 
     {
@@ -1056,10 +1058,10 @@ int main()
         const std::string path = validPath.string();
         const std::vector<std::string_view> arguments = {"--dump-ssa", path};
         const ExitCode code = runDriver(arguments, output, error);
-        tests.expect(code == ExitCode::CommandLineError,
-            "--dump-ssa of a 1.x single-file stage is rejected (Freeze 3.0 C-05)");
-        tests.expect(error.str().find("NativeSharp 1.x single-file pipeline") != std::string::npos,
-            "--dump-ssa names the removed 1.x stage and the implicit-project dumps");
+        tests.expect(code == ExitCode::Success, "--dump-ssa succeeds on valid source");
+        tests.expect(output.str().find("ssa.module") != std::string::npos,
+            "SSA dump is written to stdout");
+        tests.expect(error.str().empty(), "valid SSA dump keeps stderr empty");
     }
 
     {
@@ -1068,10 +1070,10 @@ int main()
         const std::string path = validPath.string();
         const std::vector<std::string_view> arguments = {"--verify-ssa", path};
         const ExitCode code = runDriver(arguments, output, error);
-        tests.expect(code == ExitCode::CommandLineError,
-            "--verify-ssa of a 1.x single-file stage is rejected (Freeze 3.0 C-05)");
-        tests.expect(error.str().find("NativeSharp 1.x single-file pipeline") != std::string::npos,
-            "--verify-ssa names the removed 1.x stage and the implicit-project dumps");
+        tests.expect(code == ExitCode::Success, "--verify-ssa succeeds on valid source");
+        tests.expect(output.str().find("SSA verification: ok") != std::string::npos,
+            "SSA verification result is written to stdout");
+        tests.expect(error.str().empty(), "valid SSA verification keeps stderr empty");
     }
 
     {
@@ -1080,10 +1082,10 @@ int main()
         const std::string path = validPath.string();
         const std::vector<std::string_view> arguments = {"--dump-opt", path};
         const ExitCode code = runDriver(arguments, output, error);
-        tests.expect(code == ExitCode::CommandLineError,
-            "--dump-opt of a 1.x single-file stage is rejected (Freeze 3.0 C-05)");
-        tests.expect(error.str().find("NativeSharp 1.x single-file pipeline") != std::string::npos,
-            "--dump-opt names the removed 1.x stage and the implicit-project dumps");
+        tests.expect(code == ExitCode::Success, "--dump-opt succeeds on valid source");
+        tests.expect(output.str().find("optimized.ssa.module") != std::string::npos,
+            "optimized SSA dump is written to stdout");
+        tests.expect(error.str().empty(), "valid optimized dump keeps stderr empty");
     }
 
     {
@@ -1092,10 +1094,10 @@ int main()
         const std::string path = validPath.string();
         const std::vector<std::string_view> arguments = {"--verify-opt", path};
         const ExitCode code = runDriver(arguments, output, error);
-        tests.expect(code == ExitCode::CommandLineError,
-            "--verify-opt of a 1.x single-file stage is rejected (Freeze 3.0 C-05)");
-        tests.expect(error.str().find("NativeSharp 1.x single-file pipeline") != std::string::npos,
-            "--verify-opt names the removed 1.x stage and the implicit-project dumps");
+        tests.expect(code == ExitCode::Success, "--verify-opt succeeds on valid source");
+        tests.expect(output.str().find("Optimization verification: ok") != std::string::npos,
+            "optimization verification result is written to stdout");
+        tests.expect(error.str().empty(), "valid optimization verification keeps stderr empty");
     }
 
     {
@@ -1104,10 +1106,11 @@ int main()
         const std::string path = validPath.string();
         const std::vector<std::string_view> arguments = {"--dump-pass-pipeline", path};
         const ExitCode code = runDriver(arguments, output, error);
-        tests.expect(code == ExitCode::CommandLineError,
-            "--dump-pass-pipeline of a 1.x single-file stage is rejected (Freeze 3.0 C-05)");
-        tests.expect(error.str().find("NativeSharp 1.x single-file pipeline") != std::string::npos,
-            "--dump-pass-pipeline names the removed 1.x stage and the implicit-project dumps");
+        tests.expect(code == ExitCode::Success, "--dump-pass-pipeline succeeds on valid source");
+        tests.expect(output.str().find("pass.pipeline") != std::string::npos &&
+                output.str().find("pass-pipeline: default<O0>") != std::string::npos,
+            "pass pipeline trace is written to stdout");
+        tests.expect(error.str().empty(), "valid pass trace keeps stderr empty");
     }
 
     {

@@ -718,6 +718,26 @@ void LLVMDisposeBuilder(LLVMBuilderRef builder);
 void LLVMPositionBuilderAtEnd(LLVMBuilderRef builder, LLVMBasicBlockRef block);
 LLVMBasicBlockRef LLVMGetInsertBlock(LLVMBuilderRef builder);
 LLVMValueRef LLVMGetBasicBlockTerminator(LLVMBasicBlockRef block);
+// EN: Freeze 3.0 DEC-05: LlvmModuleInspector walks blocks, edges, instructions and phis of the
+//     generated module (and clones it for the SSA form). LLVMGetFirstBasicBlock and
+//     LLVMGetNextBasicBlock return for this read-only use.
+// ES: Congelamiento 3.0 DEC-05: LlvmModuleInspector recorre bloques, aristas, instrucciones y phis del
+//     modulo generado (y lo clona para la forma SSA). LLVMGetFirstBasicBlock y LLVMGetNextBasicBlock
+//     vuelven para este uso de solo lectura.
+LLVMBasicBlockRef LLVMGetFirstBasicBlock(LLVMValueRef function);
+LLVMBasicBlockRef LLVMGetNextBasicBlock(LLVMBasicBlockRef block);
+const char* LLVMGetBasicBlockName(LLVMBasicBlockRef block);
+unsigned LLVMGetNumSuccessors(LLVMValueRef terminator);
+LLVMBasicBlockRef LLVMGetSuccessor(LLVMValueRef terminator, unsigned index);
+LLVMValueRef LLVMGetNextInstruction(LLVMValueRef instruction);
+int LLVMGetNumOperands(LLVMValueRef value);
+LLVMValueRef LLVMGetOperand(LLVMValueRef value, unsigned index);
+LLVMValueRef LLVMIsAPHINode(LLVMValueRef value);
+LLVMValueRef LLVMIsAAllocaInst(LLVMValueRef value);
+unsigned LLVMCountIncoming(LLVMValueRef phi);
+LLVMValueRef LLVMGetIncomingValue(LLVMValueRef phi, unsigned index);
+LLVMBasicBlockRef LLVMGetIncomingBlock(LLVMValueRef phi, unsigned index);
+LLVMModuleRef LLVMCloneModule(LLVMModuleRef module);
 
 LLVMValueRef LLVMBuildAlloca(
     LLVMBuilderRef builder,
