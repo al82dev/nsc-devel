@@ -3752,6 +3752,367 @@ class Program
 )ns", 601);
 }
 
+/// EN: Freeze 3.0 P3 (library). Reference access without copies for any T: List/Span/Stack/Queue/
+///     PriorityQueue RefAt, Peek by reference, SortedSet Min/Max/RefAt and SortedList KeyAt readonly,
+///     ValueAt and LinkedListNode.Value by reference, and `foreach (ref ...)` over the live
+///     enumerators. Lookups hand their parameter on without copying; what returns a copy requires
+///     `copy`. RefAt out of range panics.
+/// ES: Congelamiento 3.0 P3 (biblioteca). Acceso por referencia sin copias para todo T: RefAt de
+///     List/Span/Stack/Queue/PriorityQueue, Peek por referencia, Min/Max/RefAt de SortedSet y KeyAt de
+///     SortedList de solo lectura, ValueAt y LinkedListNode.Value por referencia, y `foreach (ref ...)`
+///     sobre los enumeradores vivos. Las busquedas entregan su parametro sin copiarlo; lo que
+///     devuelve una copia exige `copy`. RefAt fuera de rango hace panic.
+void testCollectionReferences(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P3ListRefAtMoveOnly", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+    public static bool operator ==(in Guard a, in Guard b) { return a.Id == b.Id; }
+    public static bool operator !=(in Guard a, in Guard b) { return a.Id != b.Id; }
+}
+class Box { public int V; public Box(int v) { V = v; } ~Box() { Counter.Drops = Counter.Drops * 10 + V; } }
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        int id = 0;
+        int during = 0;
+        {
+            raii List<Guard> list = new List<Guard>();
+            list.Add(Make.G(7));
+            list.Add(Make.G(8));
+            id = list.RefAt(0).Id;
+            list.RefAt(1).Id = 9;
+            foreach (ref Guard g in list) { id = id * 10 + g.Id; }
+            during = Counter.Drops;
+        }
+        return id * 10 + during;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 779002, true);
+    expectRun(tests, root, "P3ListCopyableUnchanged", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+    public static bool operator ==(in Guard a, in Guard b) { return a.Id == b.Id; }
+    public static bool operator !=(in Guard a, in Guard b) { return a.Id != b.Id; }
+}
+class Box { public int V; public Box(int v) { V = v; } ~Box() { Counter.Drops = Counter.Drops * 10 + V; } }
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        raii List<int> a = new List<int>();
+        a.Add(1);
+        a.Add(2);
+        a[1] = 5;
+        int sum = a[0] * 10 + a[1];
+        foreach (int x in a) { sum = sum * 10 + x; }
+        foreach (ref mut int y in a) { y = y + 1; }
+        sum = sum * 10 + a[0] + a[1];
+        raii List<Box> b = new List<Box>();
+        b.Add(new Box(3));
+        b[0] = new Box(4);
+        foreach (Box z in b) { sum = sum * 10 + z.V; }
+        return sum % 1000000;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 1000 + Counter.Drops;
+    }
+}
+)ns", 151584034, true);
+    expectRun(tests, root, "P3PeekByReference", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+    public static bool operator ==(in Guard a, in Guard b) { return a.Id == b.Id; }
+    public static bool operator !=(in Guard a, in Guard b) { return a.Id != b.Id; }
+}
+class Box { public int V; public Box(int v) { V = v; } ~Box() { Counter.Drops = Counter.Drops * 10 + V; } }
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        int r = 0;
+        {
+            raii Stack<Guard> s = new Stack<Guard>();
+            s.Push(Make.G(1));
+            s.Push(Make.G(2));
+            raii Queue<Guard> q = new Queue<Guard>();
+            q.Enqueue(Make.G(3));
+            raii PriorityQueue<Guard, int> p = new PriorityQueue<Guard, int>();
+            p.Enqueue(Make.G(4), 1);
+            try
+            {
+                r = s.Peek().Id * 100 + q.Peek().Id * 10 + p.Peek().Id;
+                s.Peek().Id = 5;
+            }
+            catch (InvalidOperationException ex) { r = -1; }
+            foreach (ref Guard g in s) { r = r * 10 + g.Id; }
+            foreach (ref Guard h in q) { r = r * 10 + h.Id; }
+            foreach (ref Guard k in p) { r = r * 10 + k.Id; }
+        }
+        return r % 100000;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 4513404, true);
+    expectRun(tests, root, "P3SortedSetMoveOnly", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+    public static bool operator ==(in Guard a, in Guard b) { return a.Id == b.Id; }
+    public static bool operator !=(in Guard a, in Guard b) { return a.Id != b.Id; }
+}
+class Box { public int V; public Box(int v) { V = v; } ~Box() { Counter.Drops = Counter.Drops * 10 + V; } }
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        int r = 0;
+        {
+            raii SortedSet<Guard> s = new SortedSet<Guard>();
+            bool a = s.Add(Make.G(3));
+            bool b = s.Add(Make.G(1));
+            bool c = s.Add(Make.G(3));
+            r = (a ? 1 : 0) * 100 + (b ? 1 : 0) * 10 + (c ? 1 : 0);
+            try { r = r * 100 + s.Min().Id * 10 + s.Max().Id; } catch (InvalidOperationException ex) { r = -1; }
+            r = r * 10 + (s.Contains(Make.G(1)) ? 1 : 0);
+            r = r * 10 + (s.Remove(Make.G(1)) ? 1 : 0);
+            r = r * 10 + s.Count();
+        }
+        return r % 100000;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 1311105, true);
+}
+
+/// EN: Freeze 3.0 P3 (library), continued: SortedList, LinkedList and Span references, RefAt out of
+///     range, and the copying List getter rejected for a move-only T.
+/// ES: Congelamiento 3.0 P3 (biblioteca), continuacion: referencias de SortedList, LinkedList y Span,
+///     RefAt fuera de rango, y el getter de List que copia rechazado para un T move-only.
+void testCollectionReferencesSorted(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P3SortedListReferences", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+    public static bool operator ==(in Guard a, in Guard b) { return a.Id == b.Id; }
+    public static bool operator !=(in Guard a, in Guard b) { return a.Id != b.Id; }
+}
+class Box { public int V; public Box(int v) { V = v; } ~Box() { Counter.Drops = Counter.Drops * 10 + V; } }
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        int r = 0;
+        {
+            raii SortedList<Guard, Guard> s = new SortedList<Guard, Guard>();
+            s.AddOrUpdate(Make.G(2), Make.G(5));
+            s.AddOrUpdate(Make.G(1), Make.G(6));
+            r = s.KeyAt(0).Id * 10 + s.ValueAt(0).Id;
+            s.ValueAt(0).Id = 7;
+            r = r * 10 + s.ValueAt(0).Id;
+            r = r * 10 + (s.ContainsKey(Make.G(2)) ? 1 : 0);
+            r = r * 10 + (s.Remove(Make.G(2)) ? 1 : 0);
+            raii SortedDictionary<Guard, int> d = new SortedDictionary<Guard, int>();
+            d.AddOrUpdate(Make.G(4), 1);
+            r = r * 10 + (d.ContainsKey(Make.G(4)) ? 1 : 0);
+        }
+        return r % 100000;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 6711108, true);
+    expectRun(tests, root, "P3LinkedListReferences", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+    public static bool operator ==(in Guard a, in Guard b) { return a.Id == b.Id; }
+    public static bool operator !=(in Guard a, in Guard b) { return a.Id != b.Id; }
+}
+class Box { public int V; public Box(int v) { V = v; } ~Box() { Counter.Drops = Counter.Drops * 10 + V; } }
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        int r = 0;
+        {
+            raii LinkedList<Guard> l = new LinkedList<Guard>();
+            LinkedListNode<Guard> n = l.AddLast(Make.G(1));
+            l.AddLast(Make.G(2));
+            n.Value().Id = 3;
+            r = n.Value().Id;
+            r = r * 10 + (l.Contains(Make.G(2)) ? 1 : 0);
+            r = r * 10 + (l.Find(Make.G(3)) != null ? 1 : 0);
+            foreach (ref Guard g in l) { r = r * 10 + g.Id; }
+        }
+        return r % 100000;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 3113204, true);
+    expectRun(tests, root, "P3SpanRefAt", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+    public static bool operator ==(in Guard a, in Guard b) { return a.Id == b.Id; }
+    public static bool operator !=(in Guard a, in Guard b) { return a.Id != b.Id; }
+}
+class Box { public int V; public Box(int v) { V = v; } ~Box() { Counter.Drops = Counter.Drops * 10 + V; } }
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        Guard[] arr = new Guard[2];
+        arr[0] = Make.G(1);
+        arr[1] = Make.G(2);
+        Span<Guard> s = Spans.OfRange<Guard>(arr, 0, 2);
+        s.RefAt(0).Id = 5;
+        int r = s.RefAt(0).Id * 10 + s.AsReadOnly().RefAt(1).Id;
+        int[] nums = new int[3];
+        Span<int> t = Spans.OfRange<int>(nums, 0, 3);
+        t[0] = 4;
+        t.Fill(6);
+        t[1] = 7;
+        r = r * 1000 + t[0] * 100 + t[1] * 10 + t[2] + t[5];
+        delete[] nums;
+        delete[] arr;
+        return r;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 5267602, true);
+    expectRun(tests, root, "P3RefAtOutOfRange", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+    public static bool operator ==(in Guard a, in Guard b) { return a.Id == b.Id; }
+    public static bool operator !=(in Guard a, in Guard b) { return a.Id != b.Id; }
+}
+class Box { public int V; public Box(int v) { V = v; } ~Box() { Counter.Drops = Counter.Drops * 10 + V; } }
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int Run()
+    {
+        raii List<int> a = new List<int>();
+        a.Add(1);
+        return a.RefAt(1);
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 1000 + Counter.Drops;
+    }
+}
+)ns", 142, true);
+    expectReject(tests, root, "P3ListGetMoveOnly", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+struct Guard
+{
+    public int Id;
+    ~Guard() { }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    public static int Main()
+    {
+        raii List<Guard> list = new List<Guard>();
+        list.Add(Make.G(7));
+        return list[0].Id;
+    }
+}
+)ns", "'List.get_Item' requires copyable storage ('where T : copy')", true);
+}
+
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -5282,6 +5643,8 @@ int main()
     testMoveOnlyPlaceReturn(tests, root);
     testIndexerAccessorWhere(tests, root);
     testMoveOnlyReferenceLocal(tests, root);
+    testCollectionReferences(tests, root);
+    testCollectionReferencesSorted(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

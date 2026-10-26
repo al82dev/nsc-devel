@@ -69,10 +69,25 @@ namespace NativeSharp.Core.Collections.Generic
             return items.Length;
         }
 
+        // EN: Freeze 3.0 P3: the getter returns a copy of the element and requires `T : copy`; the
+        //     setter moves its owned value into the slot and serves any T. RefAt lends the element
+        //     itself, also for a move-only T.
+        // ES: Congelamiento 3.0 P3: el getter devuelve una copia del elemento y exige `T : copy`; el
+        //     setter mueve su valor owned al slot y sirve para todo T. RefAt presta el elemento mismo,
+        //     tambien para un T move-only.
         public owned T this[int index]
         {
-            get { return items[index]; }
+            get where T : copy { return items[index]; }
             set { items[index] = move(value); }
+        }
+
+        public ref T RefAt(int index)
+        {
+            if (index < 0 || index >= count)
+            {
+                panic("List index out of range");
+            }
+            return ref items[index];
         }
 
         // Mirrors List<T>.EnsureCapacity: grows the backing array (using the same doubling
@@ -244,7 +259,7 @@ namespace NativeSharp.Core.Collections.Generic
         // destructors over the same object (a double-free), which NativeSharp's ownership model
         // (no GC, no shared ownership) cannot express safely without a real IEnumerable/shared
         // wrapper. A snapshot array is the ownership-safe equivalent.
-        public T[] GetRange(int index, int rangeCount)
+        public T[] GetRange(int index, int rangeCount) where T : copy
         {
             const T[] result = new T[rangeCount];
             int i = 0;
@@ -256,7 +271,18 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
+        // EN: Freeze 3.0 P3: a search compares borrowed elements and never copies one, so it serves
+        //     any T whose `==` takes `in` operands. Contains and Remove lend their own parameter to
+        //     IndexOfIn instead of passing (copying) it by value.
+        // ES: Congelamiento 3.0 P3: una busqueda compara elementos prestados y nunca copia uno, asi que
+        //     sirve para todo T cuyo `==` reciba operandos `in`. Contains y Remove prestan su propio
+        //     parametro a IndexOfIn en vez de pasarlo (copiarlo) por valor.
         public int IndexOf(T value)
+        {
+            return IndexOfIn(in value);
+        }
+
+        private int IndexOfIn(in T value)
         {
             int i = 0;
             while (i < count)
@@ -280,14 +306,14 @@ namespace NativeSharp.Core.Collections.Generic
 
         public bool Contains(T value)
         {
-            return IndexOf(value) >= 0;
+            return IndexOfIn(in value) >= 0;
         }
 
         // Removes the first occurrence of `value` (compared with the receiver's own T's `==`,
         // see Delegates.ns). Returns whether an element was actually removed.
         public bool Remove(T value)
         {
-            int index = IndexOf(value);
+            int index = IndexOfIn(in value);
             if (index < 0) { return false; }
             RemoveAt(index);
             return true;
@@ -304,7 +330,7 @@ namespace NativeSharp.Core.Collections.Generic
             count = 0;
         }
 
-        public T[] ToArray()
+        public T[] ToArray() where T : copy
         {
             const T[] result = new T[count];
             int i = 0;
@@ -316,7 +342,7 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
-        public void CopyTo(T[] destination, int destinationIndex)
+        public void CopyTo(T[] destination, int destinationIndex) where T : copy
         {
             int i = 0;
             while (i < count)

@@ -27,9 +27,11 @@ namespace NativeSharp.Core.Collections.Generic
             previous = null;
         }
 
-        public T Value()
+        // EN: Freeze 3.0 P3: the value by reference, for any T, without a copy.
+        // ES: Congelamiento 3.0 P3: el valor por referencia, para todo T, sin copia.
+        public ref T Value()
         {
-            return slot[0];
+            return ref slot[0];
         }
 
         public void SetValue(owned T value)

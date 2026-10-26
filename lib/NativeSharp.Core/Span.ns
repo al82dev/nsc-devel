@@ -64,9 +64,15 @@ namespace NativeSharp.Core
         // El indexador es total para conservar compatibilidad con compiladores Language 3 que no
         // publican contratos `throws` en accesores. Una lectura fuera de rango devuelve el valor
         // por omision; una escritura fuera de rango no modifica memoria.
+        //
+        // EN: Freeze 3.0 P3: both accessors copy a T (the getter returns it, the setter stores its
+        //     by-value parameter), so they require `T : copy`. RefAt reaches any T without copying.
+        // ES: Congelamiento 3.0 P3: los dos accesores copian un T (el getter lo devuelve, el setter
+        //     guarda su parametro por valor), asi que exigen `T : copy`. RefAt llega a cualquier T sin
+        //     copiar.
         public T this[int index]
         {
-            readonly get
+            readonly get where T : copy
             {
                 if (index < 0 || index >= count)
                 {
@@ -74,7 +80,7 @@ namespace NativeSharp.Core
                 }
                 return start[index];
             }
-            set
+            set where T : copy
             {
                 if (index < 0 || index >= count)
                 {
@@ -84,12 +90,25 @@ namespace NativeSharp.Core
             }
         }
 
-        public T UncheckedAt(int index)
+        // EN: Freeze 3.0 P3: the element itself, for any T. Out of range is a program error and
+        //     panics: there is no element to return a reference to.
+        // ES: Congelamiento 3.0 P3: el elemento mismo, para cualquier T. Fuera de rango es un error
+        //     del programa y hace panic: no hay elemento al cual devolver una referencia.
+        public ref T RefAt(int index)
+        {
+            if (index < 0 || index >= count)
+            {
+                panic("Span index out of range");
+            }
+            return ref start[index];
+        }
+
+        public T UncheckedAt(int index) where T : copy
         {
             return start[index];
         }
 
-        public void UncheckedSet(int index, T value)
+        public void UncheckedSet(int index, T value) where T : copy
         {
             start[index] = value;
         }
@@ -115,7 +134,7 @@ namespace NativeSharp.Core
             return new Span<T>(this.start + begin, take);
         }
 
-        public void Fill(T value)
+        public void Fill(T value) where T : copy
         {
             int index = 0;
             while (index < count)
@@ -128,7 +147,7 @@ namespace NativeSharp.Core
         // Devuelve cuantos elementos copio: el minimo de las dos longitudes. Devolver el conteo
         // en vez de fallar cuando el destino es mas corto es lo que permite escribir un bucle de
         // "vaciar en trozos" sin calcular el trozo dos veces.
-        public int CopyTo(Span<T> destination)
+        public int CopyTo(Span<T> destination) where T : copy
         {
             int limit = count;
             if (destination.Length() < limit) { limit = destination.Length(); }
@@ -143,7 +162,7 @@ namespace NativeSharp.Core
 
         // Para cuando origen y destino SI se solapan. Copia hacia atras si el destino va por
         // delante del origen, que es el unico caso en que la copia hacia delante se pisa.
-        public int CopyToOverlapping(Span<T> destination)
+        public int CopyToOverlapping(Span<T> destination) where T : copy
         {
             int limit = count;
             if (destination.Length() < limit) { limit = destination.Length(); }
@@ -201,9 +220,13 @@ namespace NativeSharp.Core
             return start;
         }
 
+        // EN: Freeze 3.0 P3: the getter returns a copy and requires `T : copy`; RefAt lends the
+        //     element of any T, readonly.
+        // ES: Congelamiento 3.0 P3: el getter devuelve una copia y exige `T : copy`; RefAt presta el
+        //     elemento de cualquier T, de solo lectura.
         public readonly T this[int index]
         {
-            get
+            get where T : copy
             {
                 if (index < 0 || index >= count)
                 {
@@ -213,7 +236,16 @@ namespace NativeSharp.Core
             }
         }
 
-        public T UncheckedAt(int index)
+        public ref readonly T RefAt(int index)
+        {
+            if (index < 0 || index >= count)
+            {
+                panic("ReadOnlySpan index out of range");
+            }
+            return ref start[index];
+        }
+
+        public T UncheckedAt(int index) where T : copy
         {
             return start[index];
         }
@@ -239,7 +271,7 @@ namespace NativeSharp.Core
             return new ReadOnlySpan<T>(this.start + begin, take);
         }
 
-        public int CopyTo(Span<T> destination)
+        public int CopyTo(Span<T> destination) where T : copy
         {
             int limit = count;
             if (destination.Length() < limit) { limit = destination.Length(); }

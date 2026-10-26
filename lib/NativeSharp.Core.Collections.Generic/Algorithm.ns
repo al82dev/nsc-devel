@@ -35,12 +35,18 @@ namespace NativeSharp.Core.Collections.Generic
         // Indice del primer elemento igual a `que`, o -1. Usa el `==` estructural de NativeSharp,
         // que para primitivos es comparacion de valor y para clases/structs es identidad o el
         // `operator ==` que el tipo defina -- lo mismo que hacen las colecciones de este paquete.
+        //
+        // EN: Freeze 3.0 P3: the elements are compared in place through the span's pointer; the
+        //     indexer would copy each one and requires `T : copy`.
+        // ES: Congelamiento 3.0 P3: los elementos se comparan en su lugar por el puntero del span; el
+        //     indexador copiaria cada uno y exige `T : copy`.
         public static int Find<T>(ReadOnlySpan<T> donde, T que)
         {
+            T* datos = donde.Data();
             int i = 0;
             while (i < donde.Length())
             {
-                if (donde[i] == que) { return i; }
+                if (datos[i] == que) { return i; }
                 i = i + 1;
             }
             return -1;

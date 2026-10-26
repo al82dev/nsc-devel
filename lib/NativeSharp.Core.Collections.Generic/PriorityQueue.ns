@@ -194,13 +194,17 @@ namespace NativeSharp.Core.Collections.Generic
             SiftUp(count - 1);
         }
 
-        public TElement Peek() throws InvalidOperationException
+        // EN: Freeze 3.0 P3: Peek lends the element by reference, for any TElement. TryPeek and
+        //     TryDequeue copy what they report and require the matching `copy` constraints.
+        // ES: Congelamiento 3.0 P3: Peek presta el elemento por referencia, para todo TElement.
+        //     TryPeek y TryDequeue copian lo que informan y exigen los `copy` correspondientes.
+        public ref TElement Peek() throws InvalidOperationException
         {
             if (count == 0)
             {
                 throw new InvalidOperationException();
             }
-            return elements[0];
+            return ref elements[0];
         }
 
         // See the class comment for why the root is swapped to the (about to become out-of-range)
@@ -226,7 +230,7 @@ namespace NativeSharp.Core.Collections.Generic
         // caller-supplied single-element array. `priorityResult[0]` is a plain (non-owned) read
         // of the priority that is about to be discarded (see Dequeue() -- the priority itself is
         // never returned to the caller by real C#'s TryDequeue either, only reported).
-        public bool TryDequeue(TElement[] elementResult, TPriority[] priorityResult)
+        public bool TryDequeue(TElement[] elementResult, TPriority[] priorityResult) where TPriority : copy
         {
             if (count == 0) { return false; }
             priorityResult[0] = priorities[0];
@@ -240,6 +244,7 @@ namespace NativeSharp.Core.Collections.Generic
         }
 
         public bool TryPeek(TElement[] elementResult, TPriority[] priorityResult)
+            where TElement : copy where TPriority : copy
         {
             if (count == 0) { return false; }
             elementResult[0] = elements[0];
@@ -267,9 +272,23 @@ namespace NativeSharp.Core.Collections.Generic
         // Added so PriorityQueueEnumerator<TElement,TPriority> can borrow a live reference to this
         // queue, same design as List<T>/Queue<T>/Stack<T>'s enumerators (P1.2 of
         // STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md).
+        //
+        // EN: Freeze 3.0 P3: the getter copies and requires `TElement : copy`; RefAt lends the same
+        //     element for any TElement (PriorityQueueEnumerator uses it).
+        // ES: Congelamiento 3.0 P3: el getter copia y exige `TElement : copy`; RefAt presta el mismo
+        //     elemento para todo TElement (PriorityQueueEnumerator lo usa).
         public TElement this[int index]
         {
-            get { return elements[index]; }
+            get where TElement : copy { return elements[index]; }
+        }
+
+        public ref TElement RefAt(int index)
+        {
+            if (index < 0 || index >= count)
+            {
+                panic("PriorityQueue index out of range");
+            }
+            return ref elements[index];
         }
 
         // P1.2: `Current` yields TElement ONLY, not a (TElement, TPriority) pair -- mirroring

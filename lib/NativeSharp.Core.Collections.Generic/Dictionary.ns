@@ -189,7 +189,12 @@ namespace NativeSharp.Core.Collections.Generic
         // `TValue[]` of length (at least) 1, and slot 0 is written with the found value.
         // `result[0] = entryValues[index]` is a plain (non-owned) array-element write -- exactly
         // Keys()/Values()/ToArray()'s own snapshot-aliasing story, not an ownership transfer.
-        public bool TryGetValue(TKey key, TValue[] result)
+        //
+        // EN: Freeze 3.0 P3: TryGetValue and the getter copy the value and require `TValue : copy`;
+        //     Keys, Values, ToArray and the snapshot enumerator copy too.
+        // ES: Congelamiento 3.0 P3: TryGetValue y el getter copian el valor y exigen `TValue : copy`;
+        //     Keys, Values, ToArray y el enumerador por instantanea tambien copian.
+        public bool TryGetValue(TKey key, TValue[] result) where TValue : copy
         {
             int index = FindEntry(key);
             if (index < 0) { return false; }
@@ -201,7 +206,7 @@ namespace NativeSharp.Core.Collections.Generic
         // Use TryGetValue when a stored default(TValue) must be distinguished from a missing key.
         public TValue this[TKey key]
         {
-            get
+            get where TValue : copy
             {
                 int index = FindEntry(key);
                 if (index < 0)
@@ -449,7 +454,7 @@ namespace NativeSharp.Core.Collections.Generic
             freeCount = 0;
         }
 
-        public TKey[] Keys()
+        public TKey[] Keys() where TKey : copy
         {
             const TKey[] result = new TKey[Count()];
             int outIndex = 0;
@@ -466,7 +471,7 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
-        public TValue[] Values()
+        public TValue[] Values() where TValue : copy
         {
             const TValue[] result = new TValue[Count()];
             int outIndex = 0;
@@ -484,7 +489,7 @@ namespace NativeSharp.Core.Collections.Generic
         }
 
         // The returned snapshot aliases the dictionary's keys/values; it owns no element.
-        public KeyValuePair<TKey, TValue>[] ToArray()
+        public KeyValuePair<TKey, TValue>[] ToArray() where TKey : copy where TValue : copy
         {
             const KeyValuePair<TKey, TValue>[] result = new KeyValuePair<TKey, TValue>[Count()];
             int outIndex = 0;
@@ -506,7 +511,7 @@ namespace NativeSharp.Core.Collections.Generic
         // Key/Value in it is a plain non-owning alias into this dictionary. Thus foreach never
         // copies the dictionary owner or transfers an element; the dictionary must outlive the
         // loop. Mutations after GetEnumerator() do not change the sequence being visited.
-        public owned DictionaryEnumerator<TKey, TValue> GetEnumerator()
+        public owned DictionaryEnumerator<TKey, TValue> GetEnumerator() where TKey : copy where TValue : copy
         {
             return new DictionaryEnumerator<TKey, TValue>(this);
         }

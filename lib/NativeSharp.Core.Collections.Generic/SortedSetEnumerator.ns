@@ -9,7 +9,11 @@ namespace NativeSharp.Core.Collections.Generic
         private T[] snapshot;
         private int index;
 
-        public SortedSetEnumerator(SortedSet<T> sourceSet)
+        // EN: Freeze 3.0 P3: the snapshot copies every element, so this enumerator exists only for a
+        //     copyable element type (GetEnumerator carries the same constraint).
+        // ES: Congelamiento 3.0 P3: la instantanea copia cada elemento, asi que este enumerador solo
+        //     existe para un tipo de elemento copiable (GetEnumerator lleva el mismo constraint).
+        public SortedSetEnumerator(SortedSet<T> sourceSet) where T : copy
         {
             snapshot = sourceSet.ToArray();
             index = -1;

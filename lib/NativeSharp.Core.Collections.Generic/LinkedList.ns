@@ -289,7 +289,7 @@ namespace NativeSharp.Core.Collections.Generic
             return false;
         }
 
-        public T[] ToArray()
+        public T[] ToArray() where T : copy
         {
             const T[] result = new T[count];
             LinkedListNode<T> current = headSlot[0];

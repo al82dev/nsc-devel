@@ -9,7 +9,11 @@ namespace NativeSharp.Core.Collections.Generic
         private KeyValuePair<TKey, TValue>[] snapshot;
         private int index;
 
-        public DictionaryEnumerator(Dictionary<TKey, TValue> source)
+        // EN: Freeze 3.0 P3: the snapshot copies every element, so this enumerator exists only for a
+        //     copyable element type (GetEnumerator carries the same constraint).
+        // ES: Congelamiento 3.0 P3: la instantanea copia cada elemento, asi que este enumerador solo
+        //     existe para un tipo de elemento copiable (GetEnumerator lleva el mismo constraint).
+        public DictionaryEnumerator(Dictionary<TKey, TValue> source) where TKey : copy where TValue : copy
         {
             snapshot = source.ToArray();
             index = -1;

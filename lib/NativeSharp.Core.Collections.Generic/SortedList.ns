@@ -171,7 +171,12 @@ namespace NativeSharp.Core.Collections.Generic
             return low;
         }
 
-        private int FindIndex(TKey key)
+        // EN: Freeze 3.0 P3: the key is borrowed (`in`), so a lookup never copies a key and serves a
+        //     move-only TKey. Callers lend their own by-value parameter.
+        // ES: Congelamiento 3.0 P3: la clave se recibe prestada (`in`), asi que una busqueda nunca
+        //     copia una clave y sirve para un TKey move-only. Los llamadores prestan su propio
+        //     parametro por valor.
+        private int FindIndex(in TKey key)
         {
             int index = LowerBound(in key);
             if (index < count && KeyEquals(in keys[index], in key)) { return index; }
@@ -180,12 +185,12 @@ namespace NativeSharp.Core.Collections.Generic
 
         public int IndexOfKey(TKey key)
         {
-            return FindIndex(key);
+            return FindIndex(in key);
         }
 
         public bool ContainsKey(TKey key)
         {
-            return FindIndex(key) >= 0;
+            return FindIndex(in key) >= 0;
         }
 
         public bool ContainsValue(TValue value)
@@ -215,9 +220,9 @@ namespace NativeSharp.Core.Collections.Generic
         // See Dictionary.ns's class comment for why this is a caller-supplied single-element
         // array rather than a real `out TValue` parameter (NativeSharp has no `ref`/`out`
         // parameters) or a returned `{bool, TValue}` struct (Stage 40's struct-value ABI limit).
-        public bool TryGetValue(TKey key, TValue[] result)
+        public bool TryGetValue(TKey key, TValue[] result) where TValue : copy
         {
-            int index = FindIndex(key);
+            int index = FindIndex(in key);
             if (index < 0) { return false; }
             result[0] = values[index];
             return true;
@@ -225,11 +230,16 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Language 3 collection accessors are total for compatibility with the official NSC.
         // Use TryGetValue when a stored default(TValue) must be distinguished from a missing key.
+        //
+        // EN: Freeze 3.0 P3: the getter returns a copy of the value and requires `TValue : copy`;
+        //     ValueAt lends it by reference. TryGetValue copies it too.
+        // ES: Congelamiento 3.0 P3: el getter devuelve una copia del valor y exige `TValue : copy`;
+        //     ValueAt lo presta por referencia. TryGetValue tambien lo copia.
         public TValue this[TKey key]
         {
-            get
+            get where TValue : copy
             {
-                int index = FindIndex(key);
+                int index = FindIndex(in key);
                 if (index < 0)
                 {
                     return default(TValue);
@@ -238,14 +248,19 @@ namespace NativeSharp.Core.Collections.Generic
             }
         }
 
-        public TKey KeyAt(int index)
+        // EN: Freeze 3.0 P3: KeyAt lends the key readonly (changing it in place would break the
+        //     order); ValueAt lends the value, which may change. Both serve any type.
+        // ES: Congelamiento 3.0 P3: KeyAt presta la clave de solo lectura (cambiarla en su lugar
+        //     romperia el orden); ValueAt presta el valor, que si puede cambiar. Ambos sirven para todo
+        //     tipo.
+        public ref readonly TKey KeyAt(int index)
         {
-            return keys[index];
+            return ref keys[index];
         }
 
-        public TValue ValueAt(int index)
+        public ref TValue ValueAt(int index)
         {
-            return values[index];
+            return ref values[index];
         }
 
         // Public so callers can pre-size before a known-size batch of Add()s. Returns the
@@ -324,6 +339,25 @@ namespace NativeSharp.Core.Collections.Generic
             InsertAt(insertAt, move(key), move(value));
         }
 
+        // EN: Freeze 3.0 P3: like Dictionary.TryAdd. Inserts only a new key and reports whether it did;
+        //     a duplicate key and its value are destroyed. It never copies a key (SortedSet.Add uses
+        //     it for a move-only T).
+        // ES: Congelamiento 3.0 P3: como Dictionary.TryAdd. Inserta solo una clave nueva e informa si
+        //     lo hizo; una clave repetida y su valor se destruyen. Nunca copia una clave (SortedSet.Add
+        //     lo usa para un T move-only).
+        public bool TryAdd(owned TKey key, owned TValue value)
+        {
+            int insertAt = LowerBound(in key);
+            if (insertAt < count && KeyEquals(in keys[insertAt], in key))
+            {
+                delete key;
+                delete value;
+                return false;
+            }
+            InsertAt(insertAt, move(key), move(value));
+            return true;
+        }
+
         // The `owned`-argument-friendly stand-in for real C#'s indexer setter (`sl[key] =
         // value;`) -- see Dictionary.ns's class comment for why NativeSharp's indexer setters
         // cannot take an owned parameter.
@@ -345,7 +379,7 @@ namespace NativeSharp.Core.Collections.Generic
         // needs no ownership of the key at all, since the container already owns the one stored.
         public void SetValue(TKey key, owned TValue value) throws KeyNotFoundException
         {
-            int index = FindIndex(key);
+            int index = FindIndex(in key);
             if (index < 0)
             {
                 throw new KeyNotFoundException();
@@ -371,7 +405,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         public bool Remove(TKey key)
         {
-            int index = FindIndex(key);
+            int index = FindIndex(in key);
             if (index < 0) { return false; }
             RemoveAt(index);
             return true;
@@ -389,7 +423,7 @@ namespace NativeSharp.Core.Collections.Generic
             count = 0;
         }
 
-        public TKey[] Keys()
+        public TKey[] Keys() where TKey : copy
         {
             const TKey[] result = new TKey[count];
             int i = 0;
@@ -401,7 +435,7 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
-        public TValue[] Values()
+        public TValue[] Values() where TValue : copy
         {
             const TValue[] result = new TValue[count];
             int i = 0;
@@ -415,7 +449,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         // See the class comment: consumed via `result[i].Key`/`result[i].Value` field access,
         // never by copying an element into a standalone `KeyValuePair<TKey, TValue>` local.
-        public KeyValuePair<TKey, TValue>[] ToArray()
+        public KeyValuePair<TKey, TValue>[] ToArray() where TKey : copy where TValue : copy
         {
             const KeyValuePair<TKey, TValue>[] result = new KeyValuePair<TKey, TValue>[count];
             int i = 0;
