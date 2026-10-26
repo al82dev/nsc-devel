@@ -2248,6 +2248,8 @@ std::size_t ProjectMethodBodyModel::addCatchLocal(
     local.name = catchClause->text();
     local.typeKey = std::move(typeKey);
     local.lambdaOrdinal = currentLambdaOrdinal_;
+    local.isCatchVariable = true;
+    local.caughtExceptionScopeOrdinal = scopeOrdinal;
 
     const std::size_t localOrdinal = locals_.size();
     locals_.push_back(std::move(local));
@@ -2262,6 +2264,99 @@ std::size_t ProjectMethodBodyModel::addCatchLocal(
 std::optional<std::size_t> ProjectMethodBodyModel::disposableTypeOrdinal() const noexcept
 {
     return coreDisposableTypeOrdinal_;
+}
+
+std::optional<std::size_t> ProjectMethodBodyModel::caughtExceptionScopeOfValue(
+    const ast::AstNode* value,
+    std::size_t scopeOrdinal) const
+{
+    if (value == nullptr || value->kind() != ast::AstNodeKind::IdentifierExpression) return std::nullopt;
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, value->text());
+    if (!name.has_value() || name->kind != ScopeNameKind::Local || name->semanticOrdinal >= locals_.size())
+        return std::nullopt;
+    return locals_[name->semanticOrdinal].caughtExceptionScopeOrdinal;
+}
+
+bool ProjectMethodBodyModel::scopeIsWithin(std::size_t scope, std::size_t ancestor) const noexcept
+{
+    std::optional<std::size_t> current = scope;
+    while (current.has_value() && *current < scopes_.size())
+    {
+        if (*current == ancestor) return true;
+        current = scopes_[*current].parentScopeOrdinal;
+    }
+    return false;
+}
+
+bool ProjectMethodBodyModel::reportCaughtExceptionReturn(
+    const ast::AstNode* value,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!caughtExceptionScopeOfValue(value, scopeOrdinal).has_value()) return false;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidReturn,
+        diagnostics::DiagnosticSeverity::Error,
+        value->range(),
+        "the caught exception in '" + value->text() + "' belongs to its catch until the handler "
+            "ends and cannot be returned; return move(...) of the catch variable to take it out");
+    return true;
+}
+
+bool ProjectMethodBodyModel::rejectCaughtExceptionAssignment(
+    const ast::AstNode* expression,
+    const std::optional<std::size_t>& assignmentTargetLocal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const std::optional<std::size_t> handler = caughtExceptionScopeOfValue(expression->second(), scopeOrdinal);
+    if (!handler.has_value()) return false;
+    // EN: A local of the same handler may hold it; that local is then a caught-exception local too.
+    // ES: Un local del mismo handler puede guardarla; ese local tambien queda como local de la
+    //     excepcion atrapada.
+    if (expression->tokenKind() == TokenKind::Equal && assignmentTargetLocal.has_value() &&
+        *assignmentTargetLocal < locals_.size() &&
+        scopeIsWithin(locals_[*assignmentTargetLocal].scopeOrdinal, *handler))
+    {
+        locals_[*assignmentTargetLocal].caughtExceptionScopeOrdinal = *handler;
+        return false;
+    }
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->second()->range(),
+        "the caught exception in '" + expression->second()->text() + "' belongs to its catch until the "
+            "handler ends; it cannot be stored where it outlives the handler -- take it out with move(...) "
+            "of the catch variable");
+    return true;
+}
+
+bool ProjectMethodBodyModel::reportRethrowOfMovedCatch(
+    const ast::AstNode* statement,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    // EN: The innermost catch scope around the rethrow, and its catch variable.
+    // ES: El scope de catch mas interno alrededor del rethrow, y su variable de catch.
+    std::optional<std::size_t> current = scopeOrdinal;
+    while (current.has_value() && *current < scopes_.size() &&
+           scopes_[*current].kind != MethodScopeKind::Catch)
+        current = scopes_[*current].parentScopeOrdinal;
+    if (!current.has_value() || *current >= scopes_.size()) return false;
+    for (const std::size_t localOrdinal : scopes_[*current].localOrdinals)
+    {
+        if (localOrdinal >= locals_.size() || !locals_[localOrdinal].isCatchVariable) continue;
+        if (!movedRaiiLocals_.contains(localOrdinal) && !maybeMovedRaiiLocals_.contains(localOrdinal))
+            return false;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->range(),
+            "throw; rethrows the caught exception, but '" + locals_[localOrdinal].name +
+                "' was moved out of its catch");
+        return true;
+    }
+    return false;
 }
 
 std::optional<std::size_t> ProjectMethodBodyModel::disposableContractMemberOrdinal(
@@ -2771,6 +2866,7 @@ void ProjectMethodBodyModel::analyzeThrow(
             binding.exceptionTypeKey = currentCatchErrorTypes_.back();
             requireThrownErrorHandled(statement, binding.exceptionTypeKey, methodMemberOrdinal, diagnostics);
         }
+        if (currentCatchDepth_ != 0) reportRethrowOfMovedCatch(statement, scopeOrdinal, diagnostics);
         exceptionBindings_.push_back(std::move(binding));
         throwFlowStates_.push_back(captureOwnershipFlow());
         return;
@@ -3905,6 +4001,10 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     local.syntax = variable;
     local.name = variable->text();
     local.typeKey = typeKey;
+    // EN: Freeze 3.0 DEC-10: `T alias = e;` inside a handler names the caught exception too.
+    // ES: Congelamiento 3.0 DEC-10: `T alias = e;` dentro de un handler tambien nombra la excepcion
+    //     atrapada.
+    local.caughtExceptionScopeOrdinal = caughtExceptionScopeOfValue(variable->first(), scopeOrdinal);
     local.isStatic = isStaticLocal;
     local.isReference = isReferenceLocal;
     local.referenceMutable = isReferenceLocal && !isReadonlyReference;
@@ -4872,6 +4972,7 @@ bool ProjectMethodBodyModel::analyzeLambdaReturn(
             "non-void lambda must return a value");
         return true;
     }
+    reportCaughtExceptionReturn(statement->first(), scopeOrdinal, diagnostics);
     if (statement->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
         const std::optional<ScopeName> returnedName = lookupScopeName(
@@ -5128,6 +5229,7 @@ bool ProjectMethodBodyModel::reportDirectOwnerReturnWithoutMove(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
+    if (reportCaughtExceptionReturn(statement->first(), scopeOrdinal, diagnostics)) return true;
     if (method.declaredOwnership == sema::OwnershipKind::Borrowed ||
         statement->first()->kind() != ast::AstNodeKind::IdentifierExpression) return false;
     const std::optional<ScopeName> returnedName = lookupScopeName(

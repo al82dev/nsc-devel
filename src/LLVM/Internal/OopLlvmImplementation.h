@@ -887,6 +887,9 @@ private:
     // Freeze 3.0 C-01: before a throw, a catch whose exception is the thrown one hands it over,
     // and a catch the throw leaves releases the exception it still owns.
     bool emitCatchOwnershipOnThrow(LLVMValueRef exception, std::string& error);
+    // Freeze 3.0 DEC-10: a catch whose owner slot holds `value` gives it up (stores null), so
+    // `move(e)` and a rethrow of `e` transfer the caught exception instead of releasing it.
+    void emitCatchOwnershipHandover(LLVMValueRef value, const ActiveCatchBody& frame);
 
     bool lowerStructuredExit(
         const frontend::ProjectOopMirNode* node,

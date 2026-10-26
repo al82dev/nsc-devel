@@ -2171,6 +2171,10 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
     if (rejectBorrowedAssignmentEscape(
             expression, left, right, borrowedReassignment,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
+    // EN: Freeze 3.0 DEC-10: the caught exception stays in its handler.
+    // ES: Congelamiento 3.0 DEC-10: la excepcion atrapada se queda en su handler.
+    if (rejectCaughtExceptionAssignment(expression, assignmentTargetLocal, scopeOrdinal, diagnostics))
+        return false;
     if (rejectOwnerCopyAssignment(
             expression, borrowedReassignment, borrowedArrayElementTarget, raiiTargetLocal,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;

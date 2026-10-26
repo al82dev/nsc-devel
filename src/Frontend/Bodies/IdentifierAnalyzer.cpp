@@ -133,24 +133,27 @@ bool ProjectMethodBodyModel::validateLocalIdentifierRead(
                 "'; reinitialize every moved field before using the complete value");
         return false;
     }
-    if ((local.isRaii || local.isMoveOnly) && movedRaiiLocals_.contains(scopeName.semanticOrdinal))
+    // EN: Freeze 3.0 DEC-10: a catch variable moved out with move(e) is moved-from too.
+    // ES: Congelamiento 3.0 DEC-10: una variable de catch sacada con move(e) tambien queda movida.
+    const bool tracksMoves = local.isRaii || local.isMoveOnly || local.isCatchVariable;
+    const std::string movedKind = local.isRaii ? "RAII local '"
+        : (local.isCatchVariable ? "caught exception '" : "move-only local '");
+    if (tracksMoves && movedRaiiLocals_.contains(scopeName.semanticOrdinal))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::NS3020InvalidValueCategory,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "use of moved-from " +
-                std::string(local.isRaii ? "RAII local '" : "move-only local '") + local.name + "'");
+            "use of moved-from " + movedKind + local.name + "'");
         return false;
     }
-    if ((local.isRaii || local.isMoveOnly) && maybeMovedRaiiLocals_.contains(scopeName.semanticOrdinal))
+    if (tracksMoves && maybeMovedRaiiLocals_.contains(scopeName.semanticOrdinal))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::NS3020InvalidValueCategory,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "use of possibly moved " +
-                std::string(local.isRaii ? "RAII local '" : "move-only local '") + local.name +
+            "use of possibly moved " + movedKind + local.name +
                 "': value is possibly moved after a control-flow join");
         return false;
     }

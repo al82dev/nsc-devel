@@ -119,6 +119,20 @@ struct MethodLocalSymbol final
     // usa para una pregunta concreta --¿el divisor es cero?-- y no para tipar nada.
     std::optional<std::int64_t> constantIntegerValue;
     bool isRaii = false;
+    // EN: Freeze 3.0 DEC-10. The exception a catch handles belongs to the handler until the handler
+    //     ends or `move(e)` takes it out. `isCatchVariable` marks the catch parameter;
+    //     `caughtExceptionScopeOrdinal` is the catch scope of the exception this local names. It is
+    //     set on the catch parameter and on every local of that handler that copies it, so storing
+    //     either where it outlives the handler (a field, a static, an outer local, a return) is a
+    //     compile error.
+    // ES: Congelamiento 3.0 DEC-10. La excepcion que maneja un catch pertenece al handler hasta que
+    //     termina o `move(e)` la saca. `isCatchVariable` marca el parametro del catch;
+    //     `caughtExceptionScopeOrdinal` es el scope del catch cuya excepcion nombra este local. Se
+    //     fija en el parametro del catch y en cada local de ese handler que lo copia, asi guardar
+    //     cualquiera donde sobrevive al handler (un campo, un static, un local exterior, un return)
+    //     es error de compilacion.
+    bool isCatchVariable = false;
+    std::optional<std::size_t> caughtExceptionScopeOrdinal;
     // NS304-T13-F03: `scope T x = new T(...)` — the object's physical storage lives in the current
     // frame (stack), never heap; the destructor runs once at lexical-scope exit and never calls the
     // heap deallocator. Escape (return/capture/field/static) is rejected by Sema.

@@ -638,7 +638,8 @@ bool ProjectMethodBodyModel::validateLocalMoveState(
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
             "cannot move from already moved-from " +
-                std::string(local.isRaii ? "RAII local '" : "move-only local '") +
+                std::string(local.isRaii ? "RAII local '"
+                    : (local.isCatchVariable ? "caught exception '" : "move-only local '")) +
                 local.name + "'");
         return false;
     }
@@ -649,7 +650,8 @@ bool ProjectMethodBodyModel::validateLocalMoveState(
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
             "cannot move from possibly moved " +
-                std::string(local.isRaii ? "RAII local '" : "move-only local '") +
+                std::string(local.isRaii ? "RAII local '"
+                    : (local.isCatchVariable ? "caught exception '" : "move-only local '")) +
                 local.name + "' after a control-flow join");
         return false;
     }
@@ -725,7 +727,9 @@ bool ProjectMethodBodyModel::analyzeNamedLocalMove(
 {
     if (source.semanticOrdinal >= locals_.size()) return false;
     const MethodLocalSymbol& local = locals_[source.semanticOrdinal];
-    const bool sourceRequiresMove = local.isRaii || local.isMoveOnly ||
+    // EN: Freeze 3.0 DEC-10: `move(e)` takes the caught exception out of its catch.
+    // ES: Congelamiento 3.0 DEC-10: `move(e)` saca la excepcion atrapada de su catch.
+    const bool sourceRequiresMove = local.isRaii || local.isMoveOnly || local.isCatchVariable ||
         compilerVariantResultTransfer;
     // `move` may spell an explicit copy for value-shaped inputs, but it must never
     // manufacture ownership for a reference which was not owned by its source.

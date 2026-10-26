@@ -484,6 +484,355 @@ class Program
 )ns", 0);
 }
 
+/// EN: DEC-10. The caught exception belongs to its catch for the whole handler and is destroyed when
+///     the handler ends. Storing it where it outlives the handler (a field, a static, an outer local, a
+///     return, also through a local alias) is a compile error; a local of the handler may alias it, and
+///     only move(e) takes it out, after which the catch neither destroys it nor rethrows it.
+/// ES: DEC-10. La excepcion atrapada pertenece a su catch durante todo el handler y se destruye al
+///     terminar el handler. Guardarla donde sobrevive al handler (un campo, un static, un local
+///     exterior, un return, tambien a traves de un alias local) es error de compilacion; un local del
+///     handler puede ser alias, y solo move(e) la saca, despues de lo cual el catch ni la destruye ni
+///     la relanza.
+void testCaughtExceptionStaysInCatch(TestContext& tests, const std::filesystem::path& root)
+{
+    expectReject(tests, root, "DEC10CatchStoredInField", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder
+{
+    public Boom Saved;
+}
+class Program
+{
+    public static int Main()
+    {
+        raii Holder holder = new Holder();
+        try { throw new Boom(7); }
+        catch (Boom problem) { holder.Saved = problem; }
+        int destroyed = Boom.Destroyed;
+        return destroyed * 100 + holder.Saved.Code;
+    }
+}
+)ns", "belongs to its catch until the handler ends");
+    expectReject(tests, root, "DEC10CatchStoredInOuterLocal", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Program
+{
+    public static int Main()
+    {
+        Boom outer = null;
+        try { throw new Boom(7); }
+        catch (Boom problem) { outer = problem; }
+        return outer.Code;
+    }
+}
+)ns", "belongs to its catch until the handler ends");
+    expectReject(tests, root, "DEC10CatchReturned", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Program
+{
+    public static Boom Catch()
+    {
+        try { throw new Boom(7); }
+        catch (Boom problem) { return problem; }
+        return null;
+    }
+    public static int Main() { return Catch().Code; }
+}
+)ns", "cannot be returned");
+    expectReject(tests, root, "DEC10CatchStoredInStatic", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Program
+{
+    public static Boom Last;
+    public static int Main()
+    {
+        try { throw new Boom(7); }
+        catch (Boom problem) { Last = problem; }
+        return Last.Code;
+    }
+}
+)ns", "belongs to its catch until the handler ends");
+    expectReject(tests, root, "DEC10CatchAliasStored", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder { public Boom Saved; }
+class Program
+{
+    public static int Main()
+    {
+        raii Holder holder = new Holder();
+        try { throw new Boom(7); }
+        catch (Boom problem) { Boom alias = problem; holder.Saved = alias; }
+        return holder.Saved.Code;
+    }
+}
+)ns", "the caught exception in 'alias'");
+    expectReject(tests, root, "DEC10CatchRethrowAfterMove", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Program
+{
+    public static void Run() throws Boom
+    {
+        try { throw new Boom(7); }
+        catch (Boom problem)
+        {
+            raii Boom keep = move(problem);
+            throw;
+        }
+    }
+    public static int Main() { return 0; }
+}
+)ns", "was moved out of its catch");
+    expectReject(tests, root, "DEC10CatchUseAfterMove", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Program
+{
+    public static int Main()
+    {
+        try { throw new Boom(7); }
+        catch (Boom problem)
+        {
+            raii Boom keep = move(problem);
+            return problem.Code;
+        }
+        return 0;
+    }
+}
+)ns", "use of moved-from caught exception 'problem'");
+    expectRun(tests, root, "DEC10CatchMovedToOwnedField", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Holder
+{
+    public owned Boom Saved;
+}
+class Program
+{
+    public static int Main()
+    {
+        int code = 0;
+        int during = 0;
+        {
+            raii Holder holder = new Holder();
+            try { throw new Boom(7); }
+            catch (Boom problem) { holder.Saved = move(problem); }
+            during = Boom.Destroyed;
+            code = holder.Saved.Code;
+        }
+        return during * 100 + Boom.Destroyed * 10 + code;
+    }
+}
+)ns", 17);
+    expectRun(tests, root, "DEC10CatchMovedToLocal", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Program
+{
+    public static int Main()
+    {
+        int inside = 0;
+        try { throw new Boom(7); }
+        catch (Boom problem)
+        {
+            {
+                raii Boom keep = move(problem);
+                inside = keep.Code;
+            }
+            inside = inside + Boom.Destroyed * 100;
+        }
+        return Boom.Destroyed * 1000 + inside;
+    }
+}
+)ns", 1107);
+    expectRun(tests, root, "DEC10CatchReturnedByMove", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Program
+{
+    public static owned Boom Catch()
+    {
+        try { throw new Boom(7); }
+        catch (Boom problem) { return move(problem); }
+        return null;
+    }
+    public static int Main()
+    {
+        raii Boom b = Catch();
+        return Boom.Destroyed * 100 + b.Code;
+    }
+}
+)ns", 7);
+    expectRun(tests, root, "DEC10CatchMovedOnOnePath", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Program
+{
+    public static int Run(bool take)
+    {
+        int r = 0;
+        try { throw new Boom(7); }
+        catch (Boom problem)
+        {
+            if (take)
+            {
+                raii Boom keep = move(problem);
+                r = keep.Code;
+            }
+        }
+        return r;
+    }
+    public static int Main()
+    {
+        int a = Run(true);
+        int first = Boom.Destroyed;
+        int b = Run(false);
+        return first * 1000 + Boom.Destroyed * 100 + a + b;
+    }
+}
+)ns", 1207);
+    expectRun(tests, root, "DEC10CatchAliasInHandler", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Program
+{
+    public static int Main()
+    {
+        int r = 0;
+        try { throw new Boom(7); }
+        catch (Boom problem)
+        {
+            Boom inner = null;
+            inner = problem;
+            r = inner.Code;
+        }
+        return Boom.Destroyed * 100 + r;
+    }
+}
+)ns", 107);
+    expectRun(tests, root, "DEC10CatchAliasDeclaredInHandler", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Program
+{
+    public static int Main()
+    {
+        int sum = 0;
+        try { throw new Boom(7); }
+        catch (Exception e) { Exception again = e; sum = sum + 20; }
+        return Boom.Destroyed * 100 + sum;
+    }
+}
+)ns", 120);
+    expectRun(tests, root, "DEC10CatchThrownByMove", R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public static int Destroyed;
+    public int Code;
+    public Boom(int code) : base("boom") { Code = code; }
+    ~Boom() { Destroyed = Destroyed + 1; }
+}
+class Program
+{
+    public static void Run() throws Boom
+    {
+        try { throw new Boom(7); }
+        catch (Boom problem) { throw move(problem); }
+    }
+    public static int Main()
+    {
+        try { Run(); }
+        catch (Boom b) { if (Boom.Destroyed != 0) return 50; }
+        return Boom.Destroyed;
+    }
+}
+)ns", 1);
+}
+
 /// EN: C-02. A synchronous await polls its future once, so a producer that can suspend is a
 ///     compile error: directly (`yield;`), transitively (it awaits one that suspends) or through
 ///     a future of unknown origin (a local that is reassigned).
@@ -3110,6 +3459,7 @@ int main()
     testLostOwnershipRejected(tests, root);
     testOwningFormsAccepted(tests, root);
     testCatchOwnsException(tests, root);
+    testCaughtExceptionStaysInCatch(tests, root);
     testSynchronousAwaitRejected(tests, root);
     testSynchronousAwaitAccepted(tests, root);
     testAsyncMainEntryPoint(tests, root);

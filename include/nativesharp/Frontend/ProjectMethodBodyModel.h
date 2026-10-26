@@ -1312,6 +1312,31 @@ private:
         const ClassMemberSymbol& method,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 DEC-10 (caught exception). The catch scope whose exception `value` names, when
+    //     `value` is an identifier of such a local; `scopeIsWithin` tells whether `scope` is
+    //     `ancestor` or nested in it. The report functions reject storing the caught exception
+    //     where it outlives its handler, and `throw;` after it was moved out.
+    // ES: Congelamiento 3.0 DEC-10 (excepcion atrapada). El scope del catch cuya excepcion nombra
+    //     `value`, cuando `value` es el identificador de un local asi; `scopeIsWithin` dice si
+    //     `scope` es `ancestor` o esta anidado en el. Las funciones report rechazan guardar la
+    //     excepcion atrapada donde sobrevive a su handler, y `throw;` despues de sacarla con move.
+    std::optional<std::size_t> caughtExceptionScopeOfValue(
+        const ast::AstNode* value,
+        std::size_t scopeOrdinal) const;
+    bool scopeIsWithin(std::size_t scope, std::size_t ancestor) const noexcept;
+    bool reportCaughtExceptionReturn(
+        const ast::AstNode* value,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool rejectCaughtExceptionAssignment(
+        const ast::AstNode* expression,
+        const std::optional<std::size_t>& assignmentTargetLocal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool reportRethrowOfMovedCatch(
+        const ast::AstNode* statement,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     ExpressionResult analyzeReturnValue(
         const ast::AstNode* statement,
         const ClassMemberSymbol& method,

@@ -1427,24 +1427,29 @@ bool OopLlvmImplementation::emitCaughtExceptionRelease(LLVMValueRef ownerSlot, s
         return true;
     }
 
-bool OopLlvmImplementation::emitCatchOwnershipOnThrow(LLVMValueRef exception, std::string& error)
+void OopLlvmImplementation::emitCatchOwnershipHandover(LLVMValueRef value, const ActiveCatchBody& frame)
 {
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef owned = LLVMBuildLoad2(builder_, ptr, frame.ownerSlot, "eh.catch.owned");
+        LLVMValueRef same = LLVMBuildICmp(builder_, LLVMIntEQ, owned, value, "eh.catch.rethrown");
+        LLVMBasicBlockRef handOver = appendBlock("eh.catch.handover");
+        LLVMBasicBlockRef next = appendBlock("eh.catch.handover.done");
+        LLVMBuildCondBr(builder_, same, handOver, next);
+        enterBlock(handOver);
+        LLVMBuildStore(builder_, LLVMConstNull(ptr), frame.ownerSlot);
+        LLVMBuildBr(builder_, next);
+        enterBlock(next);
+    }
+
+bool OopLlvmImplementation::emitCatchOwnershipOnThrow(LLVMValueRef exception, std::string& error)
+{
         const std::vector<ActiveCatchBody> frames = activeCatchExceptions_;
         for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
         {
             if (frame->ownerSlot == nullptr) continue;
             // EN: Throwing the caught object itself (`throw;` or `throw e;`) hands it over.
             // ES: Lanzar el mismo objeto atrapado (`throw;` o `throw e;`) lo entrega.
-            LLVMValueRef owned = LLVMBuildLoad2(builder_, ptr, frame->ownerSlot, "eh.catch.owned");
-            LLVMValueRef same = LLVMBuildICmp(builder_, LLVMIntEQ, owned, exception, "eh.catch.rethrown");
-            LLVMBasicBlockRef handOver = appendBlock("eh.catch.handover");
-            LLVMBasicBlockRef next = appendBlock("eh.catch.handover.done");
-            LLVMBuildCondBr(builder_, same, handOver, next);
-            enterBlock(handOver);
-            LLVMBuildStore(builder_, LLVMConstNull(ptr), frame->ownerSlot);
-            LLVMBuildBr(builder_, next);
-            enterBlock(next);
+            emitCatchOwnershipHandover(exception, *frame);
             // EN: A throw with no try of its own inside this body leaves it: the catch releases
             //     the exception it still owns before the new one propagates.
             // ES: Un throw sin un try propio dentro de este cuerpo sale de el: el catch libera la
