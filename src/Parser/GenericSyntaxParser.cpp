@@ -197,12 +197,14 @@ bool Parser::beginGenericConstraintClause(
             return item.name == state.rootParameter;
         });
     state.known = knownGeneric || state.knownLifetime;
-    // EN: Freeze 3.0 P1: a non-generic method of a generic class or struct may restrict a generic
-    //     parameter of that type. The clause is checked on each closed type.
-    // ES: Congelamiento 3.0 P1: un metodo no generico de una clase o struct generica puede
-    //     restringir un parametro generico de ese tipo. La clausula se comprueba en cada tipo cerrado.
-    if (!state.known && !state.associatedEquality &&
-        declaration->kind() == ast::AstNodeKind::MethodDeclaration && declared.empty() &&
+    // EN: Freeze 3.0 P1: a non-generic method or a constructor of a generic class or struct may
+    //     restrict a generic parameter of that type. The clause is checked on each closed type.
+    // ES: Congelamiento 3.0 P1: un metodo no generico o un constructor de una clase o struct
+    //     generica puede restringir un parametro generico de ese tipo. La clausula se comprueba en
+    //     cada tipo cerrado.
+    const bool memberDeclaration = declaration->kind() == ast::AstNodeKind::MethodDeclaration ||
+        declaration->kind() == ast::AstNodeKind::ConstructorDeclaration;
+    if (!state.known && !state.associatedEquality && memberDeclaration && declared.empty() &&
         std::ranges::find(enclosingGenericParameters_, state.rootParameter) !=
             enclosingGenericParameters_.end())
     {

@@ -208,6 +208,19 @@ private:
         ConstructorCandidateBinding& candidate) const;
     std::vector<std::size_t> viableConstructorCandidates(
         const std::vector<ConstructorCandidateBinding>& candidates) const;
+    // EN: Freeze 3.0 P1: drops a viable candidate whose member clause fails for its closed type,
+    //     and reports those clauses at `site` when no candidate survived. Report returns true when
+    //     it emitted something.
+    // ES: Congelamiento 3.0 P1: descarta un candidato viable cuya clausula de miembro falla en su
+    //     tipo cerrado, e informa esas clausulas en `site` cuando no sobrevivio ningun candidato.
+    //     Report devuelve true si emitio algo.
+    void rejectConstraintFailedCandidate(
+        const ClassMemberSymbol& constructor,
+        ConstructorCandidateBinding& candidate) const;
+    bool reportConstraintRejectedCandidates(
+        const std::vector<ConstructorCandidateBinding>& candidates,
+        const ast::AstNode* site,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     std::vector<std::size_t> nonDominatedConstructorCandidates(
         const std::vector<ConstructorCandidateBinding>& candidates,
         std::span<const std::size_t> viable) const;

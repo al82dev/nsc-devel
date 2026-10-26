@@ -2751,6 +2751,68 @@ class Program { public static int Main() { return 0; } }
     testMemberCopyConstraintLibrary(tests, root);
 }
 
+/// EN: P1 on constructors. A constructor of a generic type may constrain the type's parameter; a
+///     construction that selects it with a failing argument is rejected at the `new`, and an
+///     overload whose clause holds is still chosen by its parameter types.
+/// ES: P1 en constructores. Un constructor de un tipo generico puede restringir el parametro del
+///     tipo; una construccion que lo elige con un argumento que no cumple se rechaza en el `new`, y
+///     una sobrecarga cuya clausula se cumple se sigue eligiendo por sus tipos de parametro.
+constexpr std::string_view kCopyHolderPrelude = R"ns(
+delegate int Cmp<T>(T a, T b);
+delegate int InCmp<T>(in T a, in T b);
+class Holder<T>
+{
+    private int kind;
+    public Holder(Cmp<T> c) where T : copy { kind = 1; }
+    public Holder(InCmp<T> c) { kind = 2; }
+    public Holder() { kind = 3; }
+    public int Kind() { return kind; }
+}
+struct Cell<T>
+{
+    public int Kind;
+    public Cell(int k) where T : copy { Kind = k; }
+}
+)ns";
+
+void testConstructorCopyConstraint(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude = std::string(kGuardPrelude) + std::string(kCopyHolderPrelude);
+    expectRun(tests, root, "P1ConstructorAccepted", prelude + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        Cmp<int> c = (int p, int q) => p - q;
+        InCmp<Guard> d = (in Guard p, in Guard q) => p.Id - q.Id;
+        raii Holder<int> a = new Holder<int>(c);
+        raii Holder<Guard> b = new Holder<Guard>(d);
+        raii Holder<Guard> e = new Holder<Guard>();
+        Cell<int> cell = new Cell<int>(4);
+        return a.Kind() * 1000 + b.Kind() * 100 + e.Kind() * 10 + cell.Kind;
+    }
+}
+)ns", 1234);
+    expectReject(tests, root, "P1ConstructorRejected", prelude + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        Cmp<Guard> c = (Guard p, Guard q) => p.Id - q.Id;
+        raii Holder<Guard> a = new Holder<Guard>(c);
+        return a.Kind();
+    }
+}
+)ns", "generic parameter 'T' of 'Holder constructor' requires copyable storage ('where T : copy')");
+    expectReject(tests, root, "P1StructConstructorRejected", prelude + R"ns(
+class Program { public static int Main() { Cell<Guard> c = new Cell<Guard>(5); return c.Kind; } }
+)ns", "generic parameter 'T' of 'Cell constructor' requires copyable storage ('where T : copy')");
+    expectReject(tests, root, "P1ConstructorNonGeneric", R"ns(
+class Plain { public Plain() where T : copy { } }
+class Program { public static int Main() { return 0; } }
+)ns", "'T' is not a generic or lifetime parameter of this declaration");
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -4270,6 +4332,7 @@ int main()
     testValueListElements(tests, root);
     testArrayElementLiveness(tests, root);
     testMemberCopyConstraint(tests, root);
+    testConstructorCopyConstraint(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

@@ -2821,6 +2821,10 @@ ast::AstNode* Parser::parseConstructorTail(
             "static constructors cannot declare parameters");
     parseCallableParameterList(constructor);
     parseThrowsClause(constructor);
+    // EN: Freeze 3.0 P1: a constructor of a generic type may restrict the type's parameters.
+    // ES: Congelamiento 3.0 P1: un constructor de un tipo generico puede restringir los
+    //     parametros del tipo.
+    parseGenericConstraintClauses(constructor);
     parseConstructorInitializer(constructor, isStatic);
     parseConstructorBody(constructor, isPartial);
     if (isPartial)

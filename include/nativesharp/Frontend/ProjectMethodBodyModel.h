@@ -389,6 +389,15 @@ public:
     const ProjectEscapePropagationStatistics& escapePropagationStatistics() const noexcept;
     const ProjectCallableAnalysisStatistics& callableAnalysisStatistics() const noexcept;
     bool isBuilt() const noexcept;
+    // EN: Freeze 3.0 P1: the constraint model this body model consults (null when none was given);
+    //     construction binding reads it to reject a constructor whose member clause fails.
+    // ES: Congelamiento 3.0 P1: el modelo de constraints que consulta este modelo de cuerpos (nulo si
+    //     no se dio); el binding de construcciones lo lee para rechazar un constructor cuya clausula
+    //     de miembro falla.
+    const ProjectGenericConstraintModel* genericConstraintModel() const noexcept
+    {
+        return genericConstraintModel_;
+    }
     // NS304-T08-F04: resolves a callable ordinal to a class member or a namespace-callable adapter.
     const ClassMemberSymbol* callableSymbol(std::size_t ordinal) const noexcept;
     // EN: Freeze 3.0 C-13: true when `errorTypeKey` is caught by one of `handlers` (catch types,

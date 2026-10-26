@@ -4,6 +4,7 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
+#include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 
 #include <algorithm>
 #include <utility>
@@ -214,12 +215,44 @@ void ProjectConstructionModel::evaluateConstructionCandidates(
             argumentTypes,
             conversions,
             matchingArity);
+        rejectConstraintFailedCandidate(constructor, candidate);
         anyAccessible = anyAccessible || candidate.accessible;
         anyMatchingArity = anyMatchingArity || matchingArity;
         accessibleMatchingArity = accessibleMatchingArity ||
             (candidate.accessible && matchingArity);
         binding.evaluatedCandidates.push_back(std::move(candidate));
     }
+}
+
+void ProjectConstructionModel::rejectConstraintFailedCandidate(
+    const ClassMemberSymbol& constructor,
+    ConstructorCandidateBinding& candidate) const
+{
+    const ProjectGenericConstraintModel* constraints = methodBodyModel_ != nullptr
+        ? methodBodyModel_->genericConstraintModel() : nullptr;
+    if (!candidate.viable || constraints == nullptr ||
+        constraints->specializationSatisfiesConstraints(constructor.syntax)) return;
+    candidate.viable = false;
+    candidate.constraintRejected = true;
+}
+
+bool ProjectConstructionModel::reportConstraintRejectedCandidates(
+    const std::vector<ConstructorCandidateBinding>& candidates,
+    const ast::AstNode* site,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const ProjectGenericConstraintModel* constraints = methodBodyModel_ != nullptr
+        ? methodBodyModel_->genericConstraintModel() : nullptr;
+    if (constraints == nullptr) return false;
+    bool reported = false;
+    for (const ConstructorCandidateBinding& candidate : candidates)
+    {
+        if (!candidate.constraintRejected || !candidate.memberOrdinal.has_value()) continue;
+        constraints->reportSpecializationConstraintViolations(
+            memberModel_->members()[*candidate.memberOrdinal].syntax, site->range(), diagnostics);
+        reported = true;
+    }
+    return reported;
 }
 
 bool ProjectConstructionModel::resolveConstructionAccessibility(
@@ -313,6 +346,13 @@ void ProjectConstructionModel::resolveConstructionCandidates(
 {
     const std::vector<std::size_t> viable =
         viableConstructorCandidates(binding.evaluatedCandidates);
+    if (viable.empty() &&
+        reportConstraintRejectedCandidates(binding.evaluatedCandidates, binding.syntax, diagnostics))
+    {
+        binding.resolution = ConstructionResolutionKind::NoViableCandidate;
+        constructions_.push_back(std::move(binding));
+        return;
+    }
     if (viable.empty())
     {
         // NSC-LIMIT-010. Si el unico estorbo fue el contrato de propiedad, se dice cual y

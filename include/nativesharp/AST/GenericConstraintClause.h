@@ -37,12 +37,13 @@ struct GenericConstraintClause
     bool requiresNotNull = false;
     // NS304-T11-F05: `where T : ref-like` authorizes a stack-only (ref-like) generic argument.
     bool requiresRefLike = false;
-    // EN: Freeze 3.0 P1. True when the clause sits on a non-generic method of a generic type and
+    // EN: Freeze 3.0 P1. True when the clause sits on a non-generic method (or a constructor) of a
+    //     generic type and
     //     restricts a parameter of that type (`public T[] ToArray() where T : copy` inside
     //     `List<T>`). The constraint model checks it on each closed type and keeps a failing member
     //     out of overload resolution, reporting the clause at the call that selects it.
-    // ES: Congelamiento 3.0 P1. Verdadero cuando la clausula esta en un metodo no generico de un tipo
-    //     generico y restringe un parametro de ese tipo (`public T[] ToArray() where T : copy` dentro
+    // ES: Congelamiento 3.0 P1. Verdadero cuando la clausula esta en un metodo no generico (o en un
+    //     constructor) de un tipo generico y restringe un parametro de ese tipo (`public T[] ToArray() where T : copy` dentro
     //     de `List<T>`). El modelo de constraints la comprueba en cada tipo cerrado y deja fuera de la
     //     resolucion de sobrecargas al miembro que falla, con el mensaje en la llamada que lo elige.
     bool enclosingTypeParameter = false;

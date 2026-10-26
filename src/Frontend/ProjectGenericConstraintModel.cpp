@@ -1126,10 +1126,15 @@ void ProjectGenericConstraintModel::validateSpecializationMemberClauses(
 {
     for (const ast::AstNode* member : specialization.specializedSyntax->children())
     {
-        if (member == nullptr || member->kind() != ast::AstNodeKind::MethodDeclaration) continue;
+        if (member == nullptr || (member->kind() != ast::AstNodeKind::MethodDeclaration &&
+                member->kind() != ast::AstNodeKind::ConstructorDeclaration)) continue;
         std::vector<PendingDiagnostic> pending;
         GenericTemplateRecord memberRecord;
-        memberRecord.name = templateRecord.name + "." + member->text();
+        // EN: A specialized constructor carries the mangled type name; the message names the type.
+        // ES: Un constructor especializado lleva el nombre mangleado del tipo; el mensaje nombra el
+        //     tipo.
+        memberRecord.name = member->kind() == ast::AstNodeKind::ConstructorDeclaration
+            ? templateRecord.name + " constructor" : templateRecord.name + "." + member->text();
         const std::string templateModuleSuffix =
             "; template is declared in module '" + templateRecord.moduleName + "'";
         for (const ast::GenericConstraintClause& clause : member->genericConstraints())
