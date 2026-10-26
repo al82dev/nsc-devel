@@ -3720,6 +3720,38 @@ class Program
 )ns", "'Holder.get_Value' requires copyable storage ('where T : copy')");
 }
 
+/// EN: Freeze 3.0 P3. A `ref` local of a move-only type aliases its place: binding it is not a copy
+///     (no NS3020) and it is not destroyed at the end of its scope; the owner destroys the value once.
+/// ES: Congelamiento 3.0 P3. Un local `ref` de tipo move-only es alias de su lugar: enlazarlo no es
+///     una copia (sin NS3020) y no se destruye al final de su scope; el dueno destruye el valor una vez.
+void testMoveOnlyReferenceLocal(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P3MoveOnlyRefLocal", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; }
+}
+class Program
+{
+    private static int Run()
+    {
+        Guard[] arr = new Guard[1];
+        Guard g;
+        g.Id = 4;
+        arr[0] = move(g);
+        ref Guard r = ref arr[0];
+        r.Id = 6;
+        int v = arr[0].Id;
+        delete[] arr;
+        return v;
+    }
+    public static int Main() { int r = Run(); return r * 100 + Counter.Drops; }
+}
+)ns", 601);
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -5249,6 +5281,7 @@ int main()
     testConditionalGenericCopy(tests, root);
     testMoveOnlyPlaceReturn(tests, root);
     testIndexerAccessorWhere(tests, root);
+    testMoveOnlyReferenceLocal(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

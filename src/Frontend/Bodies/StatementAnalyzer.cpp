@@ -4041,7 +4041,9 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     local.isScope = isScope;
     local.isMoveOnly = isMoveOnly;
     local.callableTrait = pendingCallableTrait;
-    local.requiresValueDrop = memberModel_->typeRequiresValueDrop(typeKey);
+    // EN: Freeze 3.0 P3: a `ref` local aliases storage that some other owner destroys.
+    // ES: Congelamiento 3.0 P3: un local `ref` es alias de almacenamiento que destruye otro dueno.
+    local.requiresValueDrop = !local.isReference && memberModel_->typeRequiresValueDrop(typeKey);
     local.isPinned = isPinnedLocal;
     local.ownership = isBorrowed ? sema::OwnershipKind::Borrowed : sema::OwnershipKind::None;
     local.objectLifetimeOwnership = pendingObjectLifetimeOwnership;
@@ -4376,7 +4378,11 @@ void ProjectMethodBodyModel::analyzeVariable(
             : memberModel_->canonicalTypeKey(variable->typeSyntax(), *nameLookup_));
     const sema::OwnershipKind declaredOwnership = ownershipKindFromSyntax(variable->typeSyntax());
     const bool isBorrowed = declaredOwnership == sema::OwnershipKind::Borrowed;
-    const bool isMoveOnly = memberModel_->typeIsMoveOnly(typeKey);
+    // EN: Freeze 3.0 P3: a `ref` local aliases its place; it neither copies nor owns a move-only value
+    //     (`ref Guard r = ref a[0]`, `foreach (ref Guard g in list)`).
+    // ES: Congelamiento 3.0 P3: un local `ref` es alias de su lugar; no copia ni posee un valor
+    //     move-only (`ref Guard r = ref a[0]`, `foreach (ref Guard g in list)`).
+    const bool isMoveOnly = !isReferenceLocal && memberModel_->typeIsMoveOnly(typeKey);
     // Bloque 1 item 1/6/7 fix -- `owned T x = ...` declares an OWNING local, exactly like
     // `raii T x = ...`. Before this, the `owned` qualifier on a local was computed here (into
     // `declaredOwnership`) and then silently DISCARDED: only the Borrowed case was ever consulted,
