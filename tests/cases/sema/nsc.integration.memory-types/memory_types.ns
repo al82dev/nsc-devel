@@ -23,5 +23,6 @@ int Main()
     int* local = stackalloc int[3];
     heap[0] = values[0];
     local[0] = heap[0];
+    delete[] heap;
     return local[0] + (int)Mode.Second + (int)sizeof(Pair);
 }

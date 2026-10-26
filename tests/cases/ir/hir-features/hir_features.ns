@@ -72,6 +72,8 @@ int Main()
 
     owned int[] heap = new int[4];
     heap[0] = values[0];
+    delete[] heap;
+    delete null;
 
     int* temporary = stackalloc int[4];
     temporary[0] = pair.A;

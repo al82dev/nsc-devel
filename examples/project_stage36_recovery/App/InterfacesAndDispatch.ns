@@ -89,6 +89,7 @@ namespace Stage36.Demo
 
             int result = advanced.Scale(2) + advanced.Status() + holder.Invoke();
 
+
             return result;
         }
     }

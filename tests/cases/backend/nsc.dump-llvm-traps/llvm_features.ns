@@ -1,3 +1,4 @@
+
 int IntegerOps(int left, int right)
 {
     int quotient = left / right;
@@ -42,8 +43,8 @@ int MemoryOps(int count, int index)
     owned int[] heap = new int[count];
     int* temporary = stackalloc int[count];
     temporary[0] = fixedValues[index];
-    heap[0] = temporary[0];
-    return heap[0];
+    delete[] heap;
+    return temporary[0];
 }
 
 int StringWithNul()

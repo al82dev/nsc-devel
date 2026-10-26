@@ -88,6 +88,7 @@ namespace NativeSharp.BookExamples.RationalNumbers
                 Console.WriteLine("  Invalid denominator correctly rejected with an exception.");
             }
 
+
             if (!caughtInvalid)
             {
                 return 1;

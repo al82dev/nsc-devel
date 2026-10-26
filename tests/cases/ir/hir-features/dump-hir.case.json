@@ -2,25 +2,13 @@
   "id": "nsc.dump-hir-features",
   "component": "hir",
   "kind": "dump",
-  "sources": [
-    "hir_features.ns"
-  ],
-  "arguments": [
-    "--dump-hir",
-    "{source:0}"
-  ],
+  "sources": ["hir_features.ns"],
+  "arguments": ["--dump-hir", "{source:0}"],
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {
-      "mode": "regex",
-      "text": "compound-store type=builtin:byte op=Plus"
-    }
+    "stdout": {"mode": "regex", "text": "compound-store type=builtin:byte op=Plus"}
   },
-  "tags": [
-    "integration",
-    "legacy-parity",
-    "hir"
-  ],
+  "tags": ["integration", "legacy-parity", "hir"],
   "requires": []
 }

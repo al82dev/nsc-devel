@@ -50,11 +50,13 @@ int Main()
     nuint pointSize = sizeof(Point);
     if (pointSize == 0u)
     {
+        delete[] heap;
         return 2;
     }
 
     uint process = Native.GetCurrentProcessId();
     Console.WriteLine("NativeSharp frontend");
     int result = temp[0];
-    return process == 0u ? 1 : result;
+    delete[] heap;
+    return result;
 }

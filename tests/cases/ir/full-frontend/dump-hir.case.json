@@ -2,25 +2,13 @@
   "id": "nsc.dump-hir",
   "component": "hir",
   "kind": "dump",
-  "sources": [
-    "full_frontend.ns"
-  ],
-  "arguments": [
-    "--dump-hir",
-    "{source:0}"
-  ],
+  "sources": ["full_frontend.ns"],
+  "arguments": ["--dump-hir", "{source:0}"],
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {
-      "mode": "contains",
-      "text": "__nsc_function_full_frontend$3A$3A__Main"
-    }
+    "stdout": {"mode": "contains", "text": "__nsc_function_full_frontend$3A$3A__Main"}
   },
-  "tags": [
-    "integration",
-    "legacy-parity",
-    "hir"
-  ],
+  "tags": ["integration", "legacy-parity", "hir"],
   "requires": []
 }

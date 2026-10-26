@@ -2,25 +2,13 @@
   "id": "nsc.dump-mir-features",
   "component": "mir",
   "kind": "dump",
-  "sources": [
-    "mir_features.ns"
-  ],
-  "arguments": [
-    "--dump-mir",
-    "{source:0}"
-  ],
+  "sources": ["mir_features.ns"],
+  "arguments": ["--dump-mir", "{source:0}"],
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {
-      "mode": "contains",
-      "text": "raw-element-address type=builtin:int"
-    }
+    "stdout": {"mode": "contains", "text": "raw-element-address type=builtin:int"}
   },
-  "tags": [
-    "integration",
-    "legacy-parity",
-    "mir"
-  ],
+  "tags": ["integration", "legacy-parity", "mir"],
   "requires": []
 }

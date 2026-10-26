@@ -2,25 +2,14 @@
   "id": "nsc.dump-sema",
   "component": "sema",
   "kind": "semantic",
-  "sources": [
-    "full_frontend.ns"
-  ],
-  "arguments": [
-    "--dump-sema",
-    "{source:0}"
-  ],
+  "sources": ["full_frontend.ns"],
+  "arguments": ["--dump-sema", "{source:0}"],
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {
-      "mode": "contains",
-      "text": "full_frontend::Native.GetCurrentProcessId() -> builtin:uint"
-    },
+    "stdout": {"mode": "contains", "text": "full_frontend::Native.GetCurrentProcessId() -> builtin:uint"},
     "stderr": ""
   },
-  "tags": [
-    "integration",
-    "semantic-dump"
-  ],
+  "tags": ["integration", "semantic-dump"],
   "requires": []
 }

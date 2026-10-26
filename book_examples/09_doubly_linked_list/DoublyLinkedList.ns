@@ -111,6 +111,7 @@ namespace NativeSharp.BookExamples.DoublyLinkedList
             DoublyNode<T> node = before.Next;
             node.Previous = before;
             node.Next = after;
+            before.Next = node;
             after.Previous = node;
             count = count + 1;
         }

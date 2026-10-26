@@ -2,25 +2,13 @@
   "id": "nsc.verify-hir",
   "component": "hir",
   "kind": "dump",
-  "sources": [
-    "hir_features.ns"
-  ],
-  "arguments": [
-    "--verify-hir",
-    "{source:0}"
-  ],
+  "sources": ["hir_features.ns"],
+  "arguments": ["--verify-hir", "{source:0}"],
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {
-      "mode": "contains",
-      "text": "project OOP HIR check: ok"
-    }
+    "stdout": {"mode": "contains", "text": "project OOP HIR check: ok"}
   },
-  "tags": [
-    "integration",
-    "legacy-parity",
-    "hir"
-  ],
+  "tags": ["integration", "legacy-parity", "hir"],
   "requires": []
 }
