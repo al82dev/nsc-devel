@@ -4856,6 +4856,29 @@ void testObjectAbiBoundary(TestContext& tests, const std::filesystem::path& root
                  "P8: the same library with the current object ABI is accepted (" + error + ")");
 }
 
+/// EN: Freeze 3.0 P3 regression. SortedDictionary's indexer getter forwarded `items[move(key)]`, which is rejected
+///     for every key type; a SortedDictionary<int, int> read through the indexer did not compile.
+/// ES: Regresion de P3 del congelamiento 3.0. El getter del indexador de SortedDictionary pasaba
+///     `items[move(key)]`, que se rechaza con todo tipo de clave; leer un SortedDictionary<int, int> por el
+///     indexador no compilaba.
+void testSortedDictionaryIndexerGet(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P3SortedDictionaryGet", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Program
+{
+    public static int Main() throws ArgumentException
+    {
+        raii SortedDictionary<int, int> d = new SortedDictionary<int, int>();
+        d.Add(2, 20);
+        d.Add(1, 21);
+        return d[1] + d[2] + d[3];
+    }
+}
+)ns", 41);
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -6393,6 +6416,7 @@ int main()
     testCaughtExceptionNotCaptured(tests, root);
     testReplacedAllocatorSignature(tests, root);
     testObjectAbiBoundary(tests, root);
+    testSortedDictionaryIndexerGet(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

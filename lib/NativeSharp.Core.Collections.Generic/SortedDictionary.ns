@@ -104,7 +104,11 @@ namespace NativeSharp.Core.Collections.Generic
         {
             get where TValue : copy
             {
-                return items[move(key)];
+                // EN: Freeze 3.0: the key goes to the indexer as it is; move(...) is not a consuming
+                //     argument of an element access, so `items[move(key)]` was rejected for every key type.
+                // ES: Congelamiento 3.0: la clave pasa al indexador tal cual; move(...) no es un argumento
+                //     que consuma en un acceso a elemento, asi que `items[move(key)]` se rechazaba con toda clave.
+                return items[key];
             }
         }
 
