@@ -54,7 +54,8 @@ std::shared_ptr<const interop::LibraryMetadata> readMetadata(
     if (!repository.verify(
             path,
             [&codec](const interop::LibraryMetadata& candidate, std::string& verificationError) {
-                return codec.verifyCurrentCompiler(candidate, verificationError);
+                return codec.verifyCurrentCompiler(candidate, verificationError) &&
+                    codec.verifyLayoutEpoch(candidate, verificationError);
             },
             error))
     {

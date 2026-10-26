@@ -102,7 +102,8 @@ bool loadLibraryReferenceMetadata(const compilation::LibraryReference &reference
                 const interop::LibraryMetadata &candidate,
                 std::string &verificationError)
             {
-                return metadataCodec.verifyCurrentCompiler(candidate, verificationError);
+                return metadataCodec.verifyCurrentCompiler(candidate, verificationError) &&
+                       metadataCodec.verifyLayoutEpoch(candidate, verificationError);
             },
             metadataError))
     {
