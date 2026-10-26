@@ -3372,6 +3372,88 @@ class Program
 )ns", 22);
 }
 
+/// EN: P3. A precompiled library with public `ref` and `ref readonly` members is consumable; the
+///     readonly mode survives NSMETA.
+/// ES: P3. Una biblioteca precompilada con miembros publicos `ref` y `ref readonly` se puede
+///     consumir; el modo readonly sobrevive en NSMETA.
+void testRefReturnLibrary(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path producer = root / "P3RefLibrary" / "Api";
+    writeFile(producer / "RefApi.nsproj",
+        "<Project><PropertyGroup><Name>RefApi</Name><Language>3</Language>"
+        "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    writeFile(producer / "Main.ns", R"ns(
+namespace RApi
+{
+    public class Cell
+    {
+        private int v;
+        public Cell() { v = 6; }
+        public ref readonly int Get() { return ref v; }
+        public ref readonly int this[int i] { get { return ref v; } }
+    }
+}
+)ns");
+    const std::string projectText = (producer / "RefApi.nsproj").string();
+    const std::string libraryText = (producer / "RefApi.lib").string();
+    const std::array<std::string_view, 5> arguments = {
+        "--emit-project-oop-lib", projectText, "-O0", "-o", libraryText};
+    std::string diagnostic;
+    const ExitCode built = runDriver(arguments, diagnostic);
+    tests.expect(built == ExitCode::Success, "P3RefLibrary: the library compiles: " + diagnostic);
+    if (built != ExitCode::Success) return;
+    const std::string reference = "<LibraryReference Include=\"" +
+        std::filesystem::path(libraryText).generic_string() + "\" />";
+    const std::array<std::pair<std::string_view, std::string_view>, 2> consumers = {{
+        {"Use", R"ns(
+using RApi;
+class Program
+{
+    public static int Main()
+    {
+        raii Cell c = new Cell();
+        return c.Get() * 10 + c[0];
+    }
+}
+)ns"},
+        {"Bad", R"ns(
+using RApi;
+class Program
+{
+    public static int Main()
+    {
+        raii Cell c = new Cell();
+        c.Get() = 1;
+        c[0] = 2;
+        return 0;
+    }
+}
+)ns"}}};
+    for (const auto& [name, source] : consumers)
+    {
+        const std::filesystem::path directory = root / "P3RefLibrary" / std::string(name);
+        const std::filesystem::path project = directory / "Consumer.nsproj";
+        writeFile(project,
+            "<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language></PropertyGroup>"
+            "<ItemGroup><Compile Include=\"**/*.ns\" />" + reference + "</ItemGroup></Project>");
+        writeFile(directory / "Main.ns", source);
+        const std::filesystem::path executable = directory / "Consumer.exe";
+        const ExitCode code = compile(project, executable, "-O0", diagnostic);
+        if (name == "Bad")
+        {
+            tests.expect(code != ExitCode::Success &&
+                    diagnostic.find("left side of assignment is not assignable") != std::string::npos,
+                "P3RefLibrary: writes through precompiled ref readonly are rejected: " + diagnostic);
+            continue;
+        }
+        tests.expect(code == ExitCode::Success, "P3RefLibrary: the consumer compiles: " + diagnostic);
+        if (code != ExitCode::Success) continue;
+        const int observed = std::system(("\"\"" + executable.string() + "\"\"").c_str());
+        tests.expect(observed == 66, "P3RefLibrary: exits 66, observed " + std::to_string(observed));
+    }
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -4897,6 +4979,7 @@ int main()
     testInAcceptsReadonlyPlace(tests, root);
     testRefToFieldElement(tests, root);
     testRefReturnReceiver(tests, root);
+    testRefReturnLibrary(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);
