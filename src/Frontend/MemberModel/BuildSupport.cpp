@@ -134,6 +134,20 @@ void ProjectMemberModel::validateCopyType(
             continue;
         }
         if (field.kind != ClassMemberKind::Field || field.isStatic || field.isConst) continue;
+        // EN: Freeze 3.0 P3: a generic `copy` struct is Copy only when its type arguments allow it.
+        //     `KeyValuePair<Guard, int>` keeps a move-only field, so that closed type is simply
+        //     move-only (typeIsImplicitlyCopyable already derives this from the fields) instead of an
+        //     error; `KeyValuePair<int, int>` stays Copy. An `owned` field is never Copy and is still
+        //     rejected. Specializations are recognized by the `__g` arity marker in their name, as
+        //     elsewhere in the compiler.
+        // ES: Congelamiento 3.0 P3: un struct `copy` generico es Copy solo si sus argumentos de tipo
+        //     lo permiten. `KeyValuePair<Guard, int>` guarda un campo move-only, asi que ese tipo
+        //     cerrado es simplemente move-only (typeIsImplicitlyCopyable ya lo deriva de los campos)
+        //     en vez de un error; `KeyValuePair<int, int>` sigue siendo Copy. Un campo `owned` nunca
+        //     es Copy y se sigue rechazando. Las especializaciones se reconocen por la marca de aridad
+        //     `__g` en su nombre, como en el resto del compilador.
+        const bool specialization = type.identity.name().find("__g") != std::string::npos;
+        if (specialization && field.declaredOwnership != sema::OwnershipKind::Owned) continue;
         if (field.declaredOwnership == sema::OwnershipKind::Owned ||
             !typeIsImplicitlyCopyable(field.declaredTypeKey))
         {

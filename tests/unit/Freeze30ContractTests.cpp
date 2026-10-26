@@ -3454,6 +3454,127 @@ class Program
     }
 }
 
+/// EN: P3. A generic `copy` struct is Copy only when its type arguments are: `Pair<int, int>` copies,
+///     `Pair<Guard, int>` is move-only (and a copy of it is rejected), and a SortedList keyed by a
+///     move-only struct can be instantiated. A non-generic `copy` struct with a non-Copy field is
+///     still an error.
+/// ES: P3. Un struct `copy` generico es Copy solo si sus argumentos de tipo lo son: `Pair<int, int>`
+///     se copia, `Pair<Guard, int>` es move-only (y copiarlo se rechaza), y una SortedList con clave
+///     struct move-only se puede instanciar. Un struct `copy` no generico con un campo no Copy sigue
+///     siendo error.
+void testConditionalGenericCopy(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P3GenericCopyStays", R"ns(
+copy struct Pair<A, B> { public A First; public B Second; }
+class Program
+{
+    public static int Main()
+    {
+        Pair<int, int> a;
+        a.First = 3;
+        a.Second = 4;
+        Pair<int, int> b = a;
+        b.First = 5;
+        return a.First * 10 + b.First;
+    }
+}
+)ns", 35);
+    expectRun(tests, root, "P3GenericCopyMoveOnly", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+copy struct Pair<A, B> { public A First; public B Second; }
+class Program
+{
+    private static int Run()
+    {
+        Pair<Guard, int> a;
+        a.First = Make.G(7);
+        a.Second = 2;
+        Pair<Guard, int> b = move(a);
+        return b.First.Id * 10 + b.Second;
+    }
+    public static int Main()
+    {
+        int r = Run();
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 7207);
+    expectRun(tests, root, "P3SortedListMoveOnlyKey", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    public static int Main()
+    {
+        int r = 0;
+        {
+            InComparison<Guard> byId = (in Guard a, in Guard b) => a.Id - b.Id;
+            raii SortedList<Guard, int> list = new SortedList<Guard, int>(byId);
+            try
+            {
+                list.Add(Make.G(3), 30);
+                list.Add(Make.G(1), 10);
+                list.Add(Make.G(2), 20);
+            }
+            catch (ArgumentException e) { return 99; }
+            int order = 0;
+            list.ForEachKey((in Guard g) => { order = order * 10 + g.Id; });
+            r = order * 10 + list.RemoveKeysWhere((in Guard g) => g.Id == 2);
+            r = r * 10 + list.Count();
+            r = r * 100 + Counter.Drops;
+        }
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 123120413, true);
+    expectReject(tests, root, "P3GenericCopyRejected", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+copy struct Pair<A, B> { public A First; public B Second; }
+class Program
+{
+    public static int Main()
+    {
+        Pair<Guard, int> a;
+        a.Second = 2;
+        Pair<Guard, int> b = a;
+        return b.Second;
+    }
+}
+)ns", "cannot be copied into local 'b'");
+    expectReject(tests, root, "P3NonGenericCopyField", R"ns(
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+copy struct Bad { public Guard G; }
+class Program { public static int Main() { return 0; } }
+)ns", "contains non-Copy field 'G'");
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -4980,6 +5101,7 @@ int main()
     testRefToFieldElement(tests, root);
     testRefReturnReceiver(tests, root);
     testRefReturnLibrary(tests, root);
+    testConditionalGenericCopy(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);
