@@ -704,6 +704,67 @@ void OopLlvmImplementation::consumeAwaitedFuture(
         LLVMBuildStore(builder_, LLVMConstNull(type), storage);
 }
 
+// EN: Freeze 3.0 (plan item 113): a future class field is consumed by its await as a local is. The field is
+//     loaded and zeroed through one address, so the receiver is evaluated once and the destruction of the
+//     owner finds nothing to release a second time.
+// ES: Congelamiento 3.0 (elemento 113 del plan): el await consume un campo future de clase como consume un
+//     local. El campo se lee y se pone en cero por una sola dirección, así que el receptor se evalúa una vez y
+//     la destrucción del dueño no encuentra nada que liberar otra vez.
+bool OopLlvmImplementation::awaitOperandIsField(const frontend::ProjectOopMirNode* operand) noexcept
+{
+        return operand != nullptr && operand->kind == frontend::ProjectOopMirNodeKind::FieldLoad &&
+            operand->children.size() == 1U && operand->children.front() != nullptr &&
+            language::futureInnerTypeKey(operand->typeKey).has_value();
+}
+
+LLVMValueRef OopLlvmImplementation::lowerAwaitOperand(
+        const frontend::ProjectOopMirNode* operand, std::string& error)
+{
+        if (!awaitOperandIsField(operand)) return lowerExpression(operand, error);
+        LLVMValueRef receiver = lowerExpression(operand->children.front().get(), error);
+        if (receiver == nullptr) return nullptr;
+        LLVMValueRef address = fieldAddressFromReceiver(operand, receiver, error);
+        LLVMTypeRef type = llvmType(operand->typeKey, error);
+        if (address == nullptr || type == nullptr) return nullptr;
+        if (!guardAwaitedFieldFuture(address, operand->typeKey, error)) return nullptr;
+        LLVMValueRef value = LLVMBuildLoad2(builder_, type, address, "await.field.future");
+        LLVMBuildStore(builder_, LLVMConstNull(type), address);
+        return value;
+}
+
+// EN: A field never assigned, or already consumed by an await, holds a zero future: no poll function and not
+//     ready. Awaiting it traps as a null reference instead of calling address zero.
+// ES: Un campo nunca asignado, o ya consumido por un await, guarda un future en cero: sin función poll y no
+//     listo. Esperarlo atrapa como referencia nula en vez de llamar a la dirección cero.
+bool OopLlvmImplementation::guardAwaitedFieldFuture(
+        LLVMValueRef address, std::string_view futureKey, std::string& error)
+{
+        if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+            return fail(error, "await of a future field cannot emit its empty-future guard");
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+        LLVMValueRef state = LLVMBuildLoad2(builder_, i32, address, "await.field.state");
+        LLVMValueRef pollFn = LLVMBuildLoad2(
+            builder_, ptr, byteOffset(address, futureFieldOffset(futureKey, 3), "await.field.pollfn.addr"),
+            "await.field.pollfn");
+        LLVMValueRef ready = LLVMBuildICmp(
+            builder_, LLVMIntEQ, state, LLVMConstInt(i32, static_cast<unsigned long long>(-1), 1),
+            "await.field.ready");
+        LLVMValueRef present = LLVMBuildICmp(
+            builder_, LLVMIntNE, pollFn, LLVMConstNull(ptr), "await.field.present");
+        LLVMBasicBlockRef okBlock = appendBlock("await.field.ok");
+        LLVMBasicBlockRef trapBlock = appendBlock("await.field.empty");
+        LLVMBuildCondBr(
+            builder_, LLVMBuildOr(builder_, ready, present, "await.field.valid"), okBlock, trapBlock);
+        enterBlock(trapBlock);
+        LLVMValueRef reason = LLVMConstInt(i32, static_cast<std::uint64_t>(LlvmTrapReason::NullReference), 0);
+        LLVMValueRef trapArguments[] = {reason};
+        buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+        LLVMBuildUnreachable(builder_);
+        enterBlock(okBlock);
+        return true;
+}
+
 bool OopLlvmImplementation::emitBlockingAwaitErrorPath(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef futureSlot,
@@ -832,7 +893,7 @@ LLVMValueRef OopLlvmImplementation::lowerBlockingAwait(
             return failValue(error, "await future requires one operand");
         LLVMValueRef value = childOverride != nullptr
             ? childOverride
-            : lowerExpression(node->children.front().get(), error);
+            : lowerAwaitOperand(node->children.front().get(), error);
         if (value == nullptr) return nullptr;
         LLVMTypeRef carrier = llvmType(node->elementTypeKey, error);
         if (carrier == nullptr) return nullptr;
@@ -898,7 +959,7 @@ bool OopLlvmImplementation::emitAwaitChildSelection(
         enterBlock(entryBlock);
         LLVMValueRef fresh = childOverride != nullptr
             ? childOverride
-            : lowerExpression(node->children.front().get(), error);
+            : lowerAwaitOperand(node->children.front().get(), error);
         if (fresh == nullptr) return false;
         LLVMBuildStore(builder_, fresh, childSlot);
         consumeAwaitedFuture(node->children.front().get(), error);

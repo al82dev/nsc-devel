@@ -5299,6 +5299,95 @@ class Program
         "use of moved-from move-only local 'f'");
 }
 
+constexpr std::string_view kFutureFieldPrelude = R"ns(
+class Holder { public Future<int> Pending; }
+)ns";
+
+// EN: Plan item 113. A `Future<T>` class field is stored with the layout of its future. The destruction of
+//     the owner drops a future that did not complete, an assignment drops the one it replaces, and an await
+//     consumes the field as it consumes a local, so the owner does not release the frame a second time.
+//     Awaiting an empty field (never assigned or already consumed) traps as a null reference. A struct
+//     field keeps its rejection.
+// ES: Elemento 113 del plan. Un campo `Future<T>` de clase se guarda con el layout de su future. La
+//     destrucción del dueño libera un future que no completó, una asignación libera el que reemplaza y un
+//     await consume el campo como consume un local, así que el dueño no libera el frame otra vez. Esperar un
+//     campo vacío (nunca asignado o ya consumido) atrapa como referencia nula. Un campo de struct conserva
+//     su rechazo.
+void testFutureFields(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude = std::string(kBoxPrelude) + std::string(kFutureFieldPrelude);
+    const std::string take = "    private static async int Take(owned Box b) { return b.Id; }\n";
+    expectRun(tests, root, "F113FieldAwait", prelude + "class Program\n{\n" + take + R"ns(
+    public static int Main()
+    {
+        int r = 0;
+        {
+            raii Holder h = new Holder();
+            h.Pending = Take(new Box(7));
+            r = await h.Pending;
+        }
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 707);
+    expectRun(tests, root, "F113FieldDropped", prelude + "class Program\n{\n" + take + R"ns(
+    public static int Main()
+    {
+        {
+            raii Holder h = new Holder();
+            h.Pending = Take(new Box(4));
+        }
+        return Counter.Drops;
+    }
+}
+)ns", 4);
+    expectRun(tests, root, "F113FieldOverwrite", prelude + "class Program\n{\n" + take + R"ns(
+    public static int Main()
+    {
+        int r = 0;
+        {
+            raii Holder h = new Holder();
+            h.Pending = Take(new Box(1));
+            h.Pending = Take(new Box(2));
+            r = await h.Pending;
+        }
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 212);
+    expectRun(tests, root, "F113AsyncAwaitField", prelude + "class Program\n{\n" + take + R"ns(
+    private static async int Outer(Holder h) { int v = await h.Pending; return v + 1; }
+    public static int Main()
+    {
+        int r = 0;
+        {
+            raii Holder h = new Holder();
+            h.Pending = Take(new Box(5));
+            r = await Outer(h);
+        }
+        return r * 100 + Counter.Drops;
+    }
+}
+)ns", 605);
+    expectRun(tests, root, "F113EmptyField", std::string(kFutureFieldPrelude) + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        raii Holder h = new Holder();
+        return await h.Pending;
+    }
+}
+)ns", 135);
+    expectReject(tests, root, "F113StructField", R"ns(
+struct Slot { public Future<int> Pending; }
+class Program
+{
+    public static int Main() { Slot s = new Slot(); return 0; }
+}
+)ns", "field type has no resolved named-type layout");
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -6421,6 +6510,7 @@ int main()
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);
     testFutureMoveOnly(tests, root);
+    testFutureFields(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

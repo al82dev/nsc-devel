@@ -117,6 +117,14 @@ private:
         std::size_t typeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics,
         SourceRange useRange);
+    std::optional<std::string> futureFieldTypeKey(const ast::TypeSyntax* syntax) const;
+    bool rejectStructFutureField(
+        const ClassMemberSymbol& member,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::optional<target::TypeLayout> layoutFutureType(
+        const std::string& typeKey,
+        diagnostics::DiagnosticEngine& diagnostics,
+        SourceRange useRange) const;
     std::optional<std::uint64_t> evaluateArrayCount(const ast::AstNode* expression) const noexcept;
     bool buildStructLayout(
         std::size_t typeOrdinal,

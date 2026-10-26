@@ -1285,6 +1285,9 @@ private:
         LLVMValueRef heapFrame, LLVMValueRef owned = nullptr, LLVMValueRef forgetSlot = nullptr);
     LLVMValueRef futureOwnsFrame(LLVMValueRef futureSlot, std::string_view futureKey);
     void consumeAwaitedFuture(const frontend::ProjectOopMirNode* operand, std::string& error);
+    static bool awaitOperandIsField(const frontend::ProjectOopMirNode* operand) noexcept;
+    LLVMValueRef lowerAwaitOperand(const frontend::ProjectOopMirNode* operand, std::string& error);
+    bool guardAwaitedFieldFuture(LLVMValueRef address, std::string_view futureKey, std::string& error);
     bool emitBlockingAwaitErrorPath(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef futureSlot,

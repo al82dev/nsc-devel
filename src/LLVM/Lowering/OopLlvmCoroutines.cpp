@@ -923,7 +923,7 @@ LLVMValueRef OopLlvmImplementation::lowerCoroutineAwait(
         enterBlock(create);
         LLVMValueRef fresh = childOverride != nullptr
             ? childOverride
-            : lowerExpression(node->children.front().get(), error);
+            : lowerAwaitOperand(node->children.front().get(), error);
         if (fresh == nullptr) return nullptr;
         LLVMBuildStore(builder_, fresh, childSlot);
         consumeAwaitedFuture(node->children.front().get(), error);

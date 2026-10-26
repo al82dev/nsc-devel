@@ -1345,7 +1345,9 @@ bool OopLlvmImplementation::lowerExpressionFrame026AwaitFuture(
         //     creates the child; evaluating it here would call the producer again on every resume.
         // ES: Congelamiento 3.0 C-02: un await que suspende baja su operando el mismo, en la ruta
         //     que crea el hijo; evaluarlo aqui llamaria otra vez al productor en cada reanudacion.
-        if (current->integerValue == 1)
+        // EN: Freeze 3.0 (plan item 113): a field operand is lowered by lowerAwaitOperand, which zeroes it.
+        // ES: Congelamiento 3.0 (elemento 113 del plan): lowerAwaitOperand baja un operando campo y lo pone en cero.
+        if (current->integerValue == 1 || awaitOperandIsField(current->children.front().get()))
         {
             values.push_back(lowerAwaitExpression(current, error, nullptr));
             return true;

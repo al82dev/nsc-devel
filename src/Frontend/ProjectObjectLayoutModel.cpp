@@ -10,6 +10,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/AbiSemantics.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -58,6 +59,11 @@ std::optional<std::uint64_t> checkedAdd(std::uint64_t left, std::uint64_t right)
         return std::nullopt;
     }
     return left + right;
+}
+
+std::uint64_t alignFutureOffset(std::uint64_t offset, std::uint64_t alignment) noexcept
+{
+    return (offset + alignment - 1U) / alignment * alignment;
 }
 
 }
@@ -479,6 +485,8 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutBaseType(
             "bare void has no object field layout");
         return std::nullopt;
     }
+    if (const std::optional<std::string> future = futureFieldTypeKey(syntax); future.has_value())
+        return layoutFutureType(*future, diagnostics, useRange);
     if (nameLookup_ == nullptr)
     {
         return std::nullopt;
@@ -494,6 +502,73 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutBaseType(
         return std::nullopt;
     }
     return layoutNamedType(*ordinal, diagnostics, useRange);
+}
+
+// EN: Freeze 3.0 (plan item 113): `Future<T>` is not a named type, so a field of that type has no type
+//     ordinal. Its canonical key `future:<T>` names the future value instead.
+// ES: Congelamiento 3.0 (elemento 113 del plan): `Future<T>` no es un tipo con nombre, así que un campo de ese
+//     tipo no tiene ordinal de tipo. Su clave canónica `future:<T>` nombra el valor future.
+std::optional<std::string> ProjectObjectLayoutModel::futureFieldTypeKey(const ast::TypeSyntax* syntax) const
+{
+    if (syntax->baseName() != "Future" || nameLookup_ == nullptr || memberModel_ == nullptr)
+        return std::nullopt;
+    if (!syntax->modifiers().empty()) return std::nullopt;
+    std::string key = memberModel_->canonicalTypeKey(syntax, *nameLookup_);
+    if (!language::futureInnerTypeKey(key).has_value()) return std::nullopt;
+    return key;
+}
+
+// EN: Only a class field holds a future: the destruction of a struct does not drop one, so a struct field
+//     keeps the rejection it had before plan item 113.
+// ES: Sólo un campo de clase guarda un future: la destrucción de un struct no lo libera, así que un campo de
+//     struct conserva el rechazo que tenía antes del elemento 113 del plan.
+bool ProjectObjectLayoutModel::rejectStructFutureField(
+    const ClassMemberSymbol& member,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!futureFieldTypeKey(member.declaredTypeSyntax).has_value()) return false;
+    diagnostics.report(
+        diagnostics::DiagnosticId::UnknownTypeName,
+        diagnostics::DiagnosticSeverity::Error,
+        member.range,
+        "field type has no resolved named-type layout");
+    return true;
+}
+
+// EN: Size and alignment of a stored future: the members of the MIR struct that
+//     ProjectOopMirModel::appendFutureLayout builds for the same key, in the same order and with the same
+//     widths: state, frame, result, poll function, error (throwing future only) and Drop function.
+// ES: Tamaño y alineación de un future guardado: los miembros del struct MIR que
+//     ProjectOopMirModel::appendFutureLayout construye para la misma clave, en el mismo orden y con los mismos
+//     anchos: estado, frame, resultado, función poll, error (sólo future que lanza) y función Drop.
+std::optional<TypeLayout> ProjectObjectLayoutModel::layoutFutureType(
+    const std::string& typeKey,
+    diagnostics::DiagnosticEngine& diagnostics,
+    SourceRange useRange) const
+{
+    using ValueLayout = std::optional<std::pair<std::uint64_t, std::uint64_t>>;
+    const std::string_view inner = *language::futureInnerTypeKey(typeKey);
+    const std::optional<std::string_view> errorInner = language::futureErrorTypeKey(typeKey);
+    const ValueLayout result = inner == "builtin:void"
+        ? ValueLayout{{0U, 1U}} : valueLayoutForTypeKey(*nameLookup_, inner);
+    const ValueLayout error = errorInner.has_value()
+        ? valueLayoutForTypeKey(*nameLookup_, *errorInner) : ValueLayout{{0U, 1U}};
+    if (!result.has_value() || !error.has_value())
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            useRange,
+            "future field layout could not be computed for '" + typeKey + "'");
+        return std::nullopt;
+    }
+    std::uint64_t end = alignFutureOffset(4U, 8U) + 8U;
+    end = alignFutureOffset(end, result->second) + result->first;
+    end = alignFutureOffset(end, 8U) + 8U;
+    if (error->first > 0U) end = alignFutureOffset(end, error->second) + error->first;
+    end = alignFutureOffset(end, 8U) + 8U;
+    const std::uint64_t alignment = std::max({std::uint64_t{8U}, result->second, error->second});
+    return TypeLayout{alignFutureOffset(end, alignment), alignment};
 }
 
 std::optional<TypeLayout> ProjectObjectLayoutModel::layoutNamedType(
@@ -761,8 +836,8 @@ bool ProjectObjectLayoutModel::collectStructPhysicalFields(
         if (memberOrdinal >= memberModel_->members().size()) continue;
         const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
         if (member.kind != ClassMemberKind::Field || member.isStatic) continue;
-        const std::optional<TypeLayout> fieldLayout = layoutTypeSyntax(
-            member.declaredTypeSyntax, diagnostics, member.range);
+        const std::optional<TypeLayout> fieldLayout = rejectStructFutureField(member, diagnostics)
+            ? std::nullopt : layoutTypeSyntax(member.declaredTypeSyntax, diagnostics, member.range);
         if (!fieldLayout.has_value())
         {
             namedLayoutStates_[typeOrdinal] = NamedLayoutState::Failed;
