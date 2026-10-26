@@ -113,22 +113,7 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // binders/outlives edges as an explicit semantic catalogue in addition to materializable source.
 // MINOR 38 (2026-10-04): extern-C parameters publish buffer-length and callback-lifetime
 // contracts; members publish the explicit unwind-boundary policy.
-// MINOR 41 (2026-10-26, freeze 3.0 P8): layout epoch. Arrays whose element needs a value drop
-// carry a liveness map after their data (DEC-11), array-backed Span/ReadOnlySpan carry their
-// source array and offset (P4) and members may set kMetadataMemberReadonlyReferenceReturn (P3).
-// The payload encoding is unchanged; the number marks the producer's layout generation.
-// MINOR 41 (2026-10-26, congelamiento 3.0 P8): época de layout. Los arreglos cuyo elemento
-// requiere drop llevan mapa de vida tras sus datos (DEC-11), los Span/ReadOnlySpan sobre un
-// arreglo llevan el arreglo y su desplazamiento (P4) y los miembros pueden llevar
-// kMetadataMemberReadonlyReferenceReturn (P3). La codificación del payload no cambia; el número
-// marca la generación de layout del productor.
-inline constexpr std::uint16_t kMetadataFormatMinor = 41;
-
-// EN: oldest minor produced with the 3.0 layout. A precompiled library below it is not consumed;
-// the consumer asks for its recompilation instead of mixing two layouts.
-// ES: minor más antiguo producido con el layout 3.0. Una biblioteca precompilada anterior no se
-// consume; el consumidor pide recompilarla en vez de mezclar dos layouts.
-inline constexpr std::uint16_t kMetadataLayoutEpochMinor = 41;
+inline constexpr std::uint16_t kMetadataFormatMinor = 40;
 
 // NSMETA 1.39. These bits version producer language capabilities that affect private lowering
 // and debug behavior without changing the public NativeSharp ABI projection. Older files decode

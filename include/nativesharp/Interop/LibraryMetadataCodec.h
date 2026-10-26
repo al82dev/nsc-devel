@@ -65,11 +65,6 @@ public:
     bool verifyCurrentCompiler(
         const LibraryMetadata& metadata,
         std::string& error) const;
-    // EN: Rejects a library produced before the 3.0 layout epoch (kMetadataLayoutEpochMinor).
-    // ES: Rechaza una biblioteca producida antes de la época de layout 3.0.
-    bool verifyLayoutEpoch(
-        const LibraryMetadata& metadata,
-        std::string& error) const;
 
     static std::string fingerprintHex(const std::array<std::uint8_t, 32>& fingerprint);
 

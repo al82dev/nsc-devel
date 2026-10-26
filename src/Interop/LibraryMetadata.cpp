@@ -250,28 +250,6 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     return verifyLifetimeMetadataContracts(metadata, error);
 }
 
-// EN: Codec reads and verifyCurrentCompiler keep accepting older minors (inspection, diff and the
-// historical compatibility tests); only the paths that consume a library's code call this check.
-// ES: La lectura y verifyCurrentCompiler siguen aceptando minors anteriores (inspección, diff y
-// pruebas históricas de compatibilidad); sólo los caminos que consumen el código de una
-// biblioteca llaman a esta comprobación.
-bool LibraryMetadataCodec::verifyLayoutEpoch(
-    const LibraryMetadata& metadata,
-    std::string& error) const
-{
-    const bool olderMajor = metadata.formatMajor < kFormatMajor;
-    const bool olderMinor = metadata.formatMajor == kFormatMajor &&
-        metadata.formatMinor < kMetadataLayoutEpochMinor;
-    if (!olderMajor && !olderMinor) return true;
-    error = "module '" + metadata.moduleName + "' was produced with NSMETA " +
-        std::to_string(metadata.formatMajor) + "." + std::to_string(metadata.formatMinor) +
-        ", before the NativeSharp 3.0 layout epoch (NSMETA " + std::to_string(kFormatMajor) + "." +
-        std::to_string(kMetadataLayoutEpochMinor) +
-        "): arrays of values with destructors and array-backed spans changed layout; "
-        "recompile the library with this compiler";
-    return false;
-}
-
 std::string LibraryMetadataCodec::fingerprintHex(const std::array<std::uint8_t, 32>& fingerprint)
 {
     std::ostringstream stream;

@@ -779,8 +779,7 @@ bool appendBinaryDependencies(
         if (!compilation.libraryMetadataRepository().verify(
                 reference.metadataPath,
                 [&codec](const LibraryMetadata& candidate, std::string& verificationError) {
-                    return codec.verifyCurrentCompiler(candidate, verificationError) &&
-                        codec.verifyLayoutEpoch(candidate, verificationError);
+                    return codec.verifyCurrentCompiler(candidate, verificationError);
                 },
                 dependencyError))
         {
