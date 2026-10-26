@@ -26,7 +26,11 @@ namespace NativeSharp.Core.Collections.Generic
         private owned TElement[] elements;
         private owned TPriority[] priorities;
         private int count;
-        private Comparison<TPriority> comparer;
+        // EN: Freeze 3.0 P2: stored as InComparison<TPriority>, so comparing priorities never copies
+        //     one (see the Comparison constructor).
+        // ES: Congelamiento 3.0 P2: se guarda como InComparison<TPriority>, asi que comparar
+        //     prioridades nunca copia una (ver el constructor con Comparison).
+        private InComparison<TPriority> comparer;
 
         public PriorityQueue()
         {
@@ -47,7 +51,22 @@ namespace NativeSharp.Core.Collections.Generic
         }
 
         // Mirrors real C#'s PriorityQueue<TElement,TPriority>(IComparer<TPriority>).
-        public PriorityQueue(Comparison<TPriority> comparerFunc)
+        //
+        // EN: Freeze 3.0 P2: a Comparison<TPriority> receives copies, so this constructor requires
+        //     `TPriority : copy` and wraps it in a borrowing InComparison; the InComparison
+        //     constructor serves any TPriority.
+        // ES: Congelamiento 3.0 P2: un Comparison<TPriority> recibe copias, asi que este constructor
+        //     exige `TPriority : copy` y lo envuelve en un InComparison que presta; el constructor con
+        //     InComparison sirve para todo TPriority.
+        public PriorityQueue(Comparison<TPriority> comparerFunc) where TPriority : copy
+        {
+            elements = new TElement[4];
+            priorities = new TPriority[4];
+            count = 0;
+            comparer = (in TPriority a, in TPriority b) => comparerFunc(a, b);
+        }
+
+        public PriorityQueue(InComparison<TPriority> comparerFunc)
         {
             elements = new TElement[4];
             priorities = new TPriority[4];
@@ -69,7 +88,7 @@ namespace NativeSharp.Core.Collections.Generic
         {
             if (comparer != null)
             {
-                return comparer(priorities[i], priorities[j]) < 0;
+                return comparer(in priorities[i], in priorities[j]) < 0;
             }
             return priorities[i] < priorities[j];
         }

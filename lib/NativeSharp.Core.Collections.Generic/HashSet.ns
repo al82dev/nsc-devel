@@ -32,12 +32,15 @@ namespace NativeSharp.Core.Collections.Generic
             items = new Dictionary<T, bool>(capacity);
         }
 
-        public HashSet(HashFunc<T> hashFunc)
+        // EN: Freeze 3.0 P2: a HashFunc<T> receives a copy, so these constructors require `T : copy`.
+        // ES: Congelamiento 3.0 P2: un HashFunc<T> recibe una copia, asi que estos constructores exigen
+        //     `T : copy`.
+        public HashSet(HashFunc<T> hashFunc) where T : copy
         {
             items = new Dictionary<T, bool>(hashFunc);
         }
 
-        public HashSet(HashFunc<T> hashFunc, int capacity)
+        public HashSet(HashFunc<T> hashFunc, int capacity) where T : copy
         {
             items = new Dictionary<T, bool>(hashFunc, capacity);
         }
@@ -231,7 +234,14 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Mirrors HashSet<T>.RemoveWhere: removes every element matching `predicate`, returns how
         // many were removed.
-        public int RemoveWhere(Predicate<T> predicate)
+        //
+        // EN: Freeze 3.0 P2: the Predicate overload copies every element into a snapshot and into
+        //     the predicate, so it requires `T : copy`; the InPredicate overload lends the elements
+        //     in place.
+        // ES: Congelamiento 3.0 P2: la sobrecarga con Predicate copia cada elemento a una instantanea y
+        //     al predicado, asi que exige `T : copy`; la de InPredicate presta los elementos en su
+        //     sitio.
+        public int RemoveWhere(Predicate<T> predicate) where T : copy
         {
             const T[] snapshot = items.Keys();
             int removed = 0;
@@ -247,6 +257,11 @@ namespace NativeSharp.Core.Collections.Generic
             }
             delete[] snapshot;
             return removed;
+        }
+
+        public int RemoveWhere(InPredicate<T> predicate)
+        {
+            return items.RemoveKeysWhere(predicate);
         }
 
         // Mirrors HashSet<T>.TryGetValue: returns the actual stored element structurally equal to
@@ -272,7 +287,9 @@ namespace NativeSharp.Core.Collections.Generic
             return false;
         }
 
-        public void ForEach(Action<T> action)
+        // EN: Freeze 3.0 P2: same split as RemoveWhere.
+        // ES: Congelamiento 3.0 P2: la misma division que RemoveWhere.
+        public void ForEach(Action<T> action) where T : copy
         {
             const T[] snapshot = items.Keys();
             int i = 0;
@@ -282,6 +299,11 @@ namespace NativeSharp.Core.Collections.Generic
                 i = i + 1;
             }
             delete[] snapshot;
+        }
+
+        public void ForEach(InAction<T> action)
+        {
+            items.ForEachKey(action);
         }
 
         // P1.2 of STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md. Unlike List<T>/Queue<T>/

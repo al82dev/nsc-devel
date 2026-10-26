@@ -47,7 +47,12 @@ namespace NativeSharp.Core.Collections.Generic
         }
 
         // Indice del primer elemento que cumple el predicado, o -1.
-        public static int FindIf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion)
+        //
+        // EN: Freeze 3.0 P2: the by-value predicate copies each element, so these three overloads
+        //     require `T : copy`; the InPredicate overloads read through a borrow and serve any T.
+        // ES: Congelamiento 3.0 P2: el predicado por valor copia cada elemento, asi que estas tres
+        //     sobrecargas exigen `T : copy`; las de InPredicate leen por prestamo y sirven para todo T.
+        public static int FindIf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion) where T : copy
         {
             int i = 0;
             while (i < donde.Length())
@@ -58,9 +63,21 @@ namespace NativeSharp.Core.Collections.Generic
             return -1;
         }
 
+        public static int FindIf<T>(ReadOnlySpan<T> donde, InPredicate<T> condicion)
+        {
+            T* datos = donde.Data();
+            int i = 0;
+            while (i < donde.Length())
+            {
+                if (condicion(in datos[i])) { return i; }
+                i = i + 1;
+            }
+            return -1;
+        }
+
         // Sobre un rango VACIO devuelve false, que es el convenio de std::any_of y el unico que
         // compone: "alguno cumple" sobre nada es falso.
-        public static bool AnyOf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion)
+        public static bool AnyOf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion) where T : copy
         {
             int i = 0;
             while (i < donde.Length())
@@ -71,16 +88,33 @@ namespace NativeSharp.Core.Collections.Generic
             return false;
         }
 
+        public static bool AnyOf<T>(ReadOnlySpan<T> donde, InPredicate<T> condicion)
+        {
+            return FindIf<T>(donde, condicion) >= 0;
+        }
+
         // Sobre un rango VACIO devuelve true -- verdad vacua, igual que std::all_of. Parece raro y
         // es lo correcto: "todos cumplen" sobre ningun elemento no tiene contraejemplo. Cambiarlo
         // romperia la propiedad de que dividir un rango en dos y preguntar por cada mitad da lo
         // mismo que preguntar por el entero.
-        public static bool AllOf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion)
+        public static bool AllOf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion) where T : copy
         {
             int i = 0;
             while (i < donde.Length())
             {
                 if (!condicion(donde[i])) { return false; }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public static bool AllOf<T>(ReadOnlySpan<T> donde, InPredicate<T> condicion)
+        {
+            T* datos = donde.Data();
+            int i = 0;
+            while (i < donde.Length())
+            {
+                if (!condicion(in datos[i])) { return false; }
                 i = i + 1;
             }
             return true;
@@ -108,37 +142,71 @@ namespace NativeSharp.Core.Collections.Generic
 
         // --- TRANSFORMACION EN SITIO --------------------------------------------------------
 
+        // EN: Freeze 3.0 P2: Reverse, RemoveIf and every Sort move elements only by swapping them
+        //     (Intercambiar), never by copying, so they serve a move-only T. Elements are read
+        //     through `Data()`, as `in` borrows.
+        // ES: Congelamiento 3.0 P2: Reverse, RemoveIf y todo Sort mueven elementos solo
+        //     intercambiandolos (Intercambiar), nunca copiandolos, asi que sirven para un T move-only.
+        //     Los elementos se leen por `Data()`, como prestamos `in`.
         public static void Reverse<T>(Span<T> datos)
         {
+            if (datos.Length() < 2) { return; }
+            T* elementos = datos.Data();
             int izquierda = 0;
             int derecha = datos.Length() - 1;
             while (izquierda < derecha)
             {
-                var temporal = datos[izquierda];
-                datos[izquierda] = datos[derecha];
-                datos[derecha] = temporal;
+                Intercambiar<T>(elementos, izquierda, derecha);
                 izquierda = izquierda + 1;
                 derecha = derecha - 1;
             }
         }
 
         // Compacta hacia el principio los elementos que NO cumplen el predicado y devuelve cuantos
-        // quedan. Lo que hay detras de esa longitud queda como estaba: no se toca ni se pone a
-        // cero, exactamente como std::remove_if deja la cola en un estado valido pero sin
-        // especificar.
+        // quedan.
+        //
+        // EN: Freeze 3.0 P2: the compaction swaps, so the removed elements end up behind the new
+        //     length, intact, in an unspecified order -- std::remove_if's tail is also valid but
+        //     unspecified. Before, the tail kept stale copies; for a T with a destructor that would
+        //     have destroyed some values twice and others never.
+        // ES: Congelamiento 3.0 P2: la compactacion intercambia, asi que los elementos quitados
+        //     quedan detras de la nueva longitud, intactos y en orden sin especificar -- la cola de
+        //     std::remove_if tambien es valida pero sin especificar. Antes la cola guardaba copias
+        //     viejas; con un T con destructor algunos valores se habrian destruido dos veces y otros
+        //     nunca.
         //
         // DEVUELVE LA NUEVA LONGITUD Y NO UN ITERADOR. std::remove_if devuelve el nuevo final y el
         // llamador hace erase(); aqui no hay iteradores, y un entero lleva la misma informacion sin
         // inventar un tipo para transportarla.
-        public static int RemoveIf<T>(Span<T> datos, Predicate<T> condicion)
+        public static int RemoveIf<T>(Span<T> datos, Predicate<T> condicion) where T : copy
         {
+            if (datos.Length() == 0) { return 0; }
+            T* elementos = datos.Data();
             int escribir = 0;
             int leer = 0;
             while (leer < datos.Length())
             {
-                if (!condicion(datos[leer]))
+                if (!condicion(elementos[leer]))
                 {
-                    if (escribir != leer) { datos[escribir] = datos[leer]; }
+                    if (escribir != leer) { Intercambiar<T>(elementos, escribir, leer); }
+                    escribir = escribir + 1;
+                }
+                leer = leer + 1;
+            }
+            return escribir;
+        }
+
+        public static int RemoveIf<T>(Span<T> datos, InPredicate<T> condicion)
+        {
+            if (datos.Length() == 0) { return 0; }
+            T* elementos = datos.Data();
+            int escribir = 0;
+            int leer = 0;
+            while (leer < datos.Length())
+            {
+                if (!condicion(in elementos[leer]))
+                {
+                    if (escribir != leer) { Intercambiar<T>(elementos, escribir, leer); }
                     escribir = escribir + 1;
                 }
                 leer = leer + 1;
@@ -171,20 +239,27 @@ namespace NativeSharp.Core.Collections.Generic
         // PARAMETROS DE VALOR, asi que las dos conviven y el rodeo sobra. Un nombre peor que
         // sobrevive al motivo que lo justificaba es deuda disfrazada de decision.
         //
-        // LO QUE SIGUE SIN PODERSE, y esta escrito donde se arreglo: dos sobrecargas genericas con
-        // la MISMA cuenta de parametros y tipos distintos. Elegir entre ellas necesita los tipos
-        // de los argumentos, y la pasada generica corre antes del modelo semantico.
+        // EN: Freeze 3.0 P2: Sort(span, Comparison) and Sort(span, InComparison) have the same
+        //     count and differ in the delegate type; measured on 2026-10-26, overload resolution
+        //     picks by that type (a lambda's parameter modes included). Sort(span) compares with
+        //     T's `<` on borrowed elements, so `operator <(in T, in T)` sorts a move-only T.
+        // ES: Congelamiento 3.0 P2: Sort(span, Comparison) y Sort(span, InComparison) tienen la misma
+        //     cuenta y difieren en el tipo del delegado; medido el 2026-10-26, la resolucion de
+        //     sobrecargas elige por ese tipo (incluidos los modos de parametro de una lambda).
+        //     Sort(span) compara con el `<` de T sobre elementos prestados, asi que
+        //     `operator <(in T, in T)` ordena un T move-only.
         public static void Sort<T>(Span<T> datos)
         {
             int cuantos = datos.Length();
             if (cuantos < 2) { return; }
+            T* elementos = datos.Data();
 
             // Construir el monticulo: se hunde cada nodo interno, del ultimo al primero. El ultimo
             // nodo interno es (n/2 - 1); las hojas ya son monticulos de un elemento.
             int i = cuantos / 2 - 1;
             while (i >= 0)
             {
-                Hundir<T>(datos, i, cuantos);
+                Hundir<T>(elementos, i, cuantos);
                 i = i - 1;
             }
 
@@ -193,55 +268,154 @@ namespace NativeSharp.Core.Collections.Generic
             int fin = cuantos - 1;
             while (fin > 0)
             {
-                var temporal = datos.UncheckedAt(0);
-                datos.UncheckedSet(0, datos.UncheckedAt(fin));
-                datos.UncheckedSet(fin, temporal);
-                Hundir<T>(datos, 0, fin);
+                Intercambiar<T>(elementos, 0, fin);
+                Hundir<T>(elementos, 0, fin);
                 fin = fin - 1;
             }
         }
 
-        public static void Sort<T>(Span<T> datos, Comparison<T> comparador)
+        public static void Sort<T>(Span<T> datos, Comparison<T> comparador) where T : copy
         {
             int cuantos = datos.Length();
             if (cuantos < 2) { return; }
-
+            T* elementos = datos.Data();
             int i = cuantos / 2 - 1;
             while (i >= 0)
             {
-                HundirCon<T>(datos, i, cuantos, comparador);
+                HundirCon<T>(elementos, i, cuantos, comparador);
                 i = i - 1;
             }
-
             int fin = cuantos - 1;
             while (fin > 0)
             {
-                var temporal = datos.UncheckedAt(0);
-                datos.UncheckedSet(0, datos.UncheckedAt(fin));
-                datos.UncheckedSet(fin, temporal);
-                HundirCon<T>(datos, 0, fin, comparador);
+                Intercambiar<T>(elementos, 0, fin);
+                HundirCon<T>(elementos, 0, fin, comparador);
+                fin = fin - 1;
+            }
+        }
+
+        public static void Sort<T>(Span<T> datos, InComparison<T> comparador)
+        {
+            int cuantos = datos.Length();
+            if (cuantos < 2) { return; }
+            T* elementos = datos.Data();
+            int i = cuantos / 2 - 1;
+            while (i >= 0)
+            {
+                HundirConIn<T>(elementos, i, cuantos, comparador);
+                i = i - 1;
+            }
+            int fin = cuantos - 1;
+            while (fin > 0)
+            {
+                Intercambiar<T>(elementos, 0, fin);
+                HundirConIn<T>(elementos, 0, fin, comparador);
                 fin = fin - 1;
             }
         }
 
         // Stable insertion sort for small compiler and tooling tables. Equal elements keep their
-        // discovery order because the inner loop moves only strictly greater predecessors. The
-        // implementation is iterative, uses no auxiliary allocation and deliberately exposes its
-        // O(n^2) cost instead of pretending that the heap-based Sort overload is stable.
-        public static void StableSort<T>(Span<T> datos, Comparison<T> comparador)
+        // discovery order because an element only passes strictly greater predecessors. The
+        // implementation is iterative and deliberately exposes its O(n^2) cost instead of
+        // pretending that the heap-based Sort overload is stable.
+        //
+        // EN: Freeze 3.0 P2: the element walks left by adjacent swaps instead of being held in a
+        //     copy while the greater predecessors shift right; the comparisons and the result are
+        //     the same.
+        // ES: Congelamiento 3.0 P2: el elemento avanza a la izquierda por intercambios adyacentes en
+        //     vez de guardarse en una copia mientras los predecesores mayores se corren a la derecha;
+        //     las comparaciones y el resultado son los mismos.
+        public static void StableSort<T>(Span<T> datos, Comparison<T> comparador) where T : copy
         {
+            if (datos.Length() < 2) { return; }
+            T* elementos = datos.Data();
             int i = 1;
             while (i < datos.Length())
             {
-                var current = datos.UncheckedAt(i);
-                int destination = i;
-                while (destination > 0 &&
-                       comparador(current, datos.UncheckedAt(destination - 1)) < 0)
+                int destino = i;
+                while (destino > 0 && comparador(elementos[destino], elementos[destino - 1]) < 0)
                 {
-                    datos.UncheckedSet(destination, datos.UncheckedAt(destination - 1));
-                    destination = destination - 1;
+                    Intercambiar<T>(elementos, destino, destino - 1);
+                    destino = destino - 1;
                 }
-                datos.UncheckedSet(destination, current);
+                i = i + 1;
+            }
+        }
+
+        public static void StableSort<T>(Span<T> datos, InComparison<T> comparador)
+        {
+            if (datos.Length() < 2) { return; }
+            T* elementos = datos.Data();
+            int i = 1;
+            while (i < datos.Length())
+            {
+                int destino = i;
+                while (destino > 0 &&
+                       comparador(in elementos[destino], in elementos[destino - 1]) < 0)
+                {
+                    Intercambiar<T>(elementos, destino, destino - 1);
+                    destino = destino - 1;
+                }
+                i = i + 1;
+            }
+        }
+
+        // EN: Swaps the bytes of two elements: a relocation, so nothing is copied or destroyed. A
+        //     swap through `move` cannot be written here: storing through a `T*` destroys the value
+        //     it overwrites, and the slot `move` just emptied still holds a zeroed T, so every swap
+        //     would run the destructor twice on an empty value (measured, 2026-10-26). The bytes are
+        //     exchanged eight or four at a time when the size allows.
+        // ES: Intercambia los bytes de dos elementos: una reubicacion, asi que nada se copia ni se
+        //     destruye. Un intercambio con `move` no se puede escribir aqui: guardar por un `T*`
+        //     destruye el valor que sobrescribe, y el hueco que `move` acaba de vaciar aun tiene un T
+        //     en cero, asi que cada intercambio correria dos veces el destructor sobre un valor vacio
+        //     (medido, 2026-10-26). Los bytes se intercambian de ocho o de cuatro en cuatro cuando el
+        //     tamano lo permite.
+        private static void Intercambiar<T>(T* elementos, int a, int b)
+        {
+            int tamano = (int)sizeof(T);
+            if (tamano % 8 == 0)
+            {
+                IntercambiarPalabras((long*)(elementos + a), (long*)(elementos + b), tamano / 8);
+                return;
+            }
+            if (tamano % 4 == 0)
+            {
+                IntercambiarMedias((int*)(elementos + a), (int*)(elementos + b), tamano / 4);
+                return;
+            }
+            byte* x = (byte*)(elementos + a);
+            byte* y = (byte*)(elementos + b);
+            int i = 0;
+            while (i < tamano)
+            {
+                byte t = x[i];
+                x[i] = y[i];
+                y[i] = t;
+                i = i + 1;
+            }
+        }
+
+        private static void IntercambiarPalabras(long* x, long* y, int cuantas)
+        {
+            int i = 0;
+            while (i < cuantas)
+            {
+                long t = x[i];
+                x[i] = y[i];
+                y[i] = t;
+                i = i + 1;
+            }
+        }
+
+        private static void IntercambiarMedias(int* x, int* y, int cuantas)
+        {
+            int i = 0;
+            while (i < cuantas)
+            {
+                int t = x[i];
+                x[i] = y[i];
+                y[i] = t;
                 i = i + 1;
             }
         }
@@ -254,7 +428,7 @@ namespace NativeSharp.Core.Collections.Generic
         // pila. Escrito una vez por variante en vez de con un comparador por omision, porque
         // NativeSharp no tiene valores por omision de parametro y envolver `<` en un delegado
         // costaria una llamada indirecta por comparacion.
-        private static void Hundir<T>(Span<T> datos, int raiz, int limite)
+        private static void Hundir<T>(T* datos, int raiz, int limite)
         {
             int actual = raiz;
             while (true)
@@ -263,24 +437,23 @@ namespace NativeSharp.Core.Collections.Generic
                 int izquierdo = 2 * actual + 1;
                 int derecho = izquierdo + 1;
 
-                if (izquierdo < limite && datos.UncheckedAt(mayor) < datos.UncheckedAt(izquierdo))
+                if (izquierdo < limite && datos[mayor] < datos[izquierdo])
                 {
                     mayor = izquierdo;
                 }
-                if (derecho < limite && datos.UncheckedAt(mayor) < datos.UncheckedAt(derecho))
+                if (derecho < limite && datos[mayor] < datos[derecho])
                 {
                     mayor = derecho;
                 }
                 if (mayor == actual) { return; }
 
-                var temporal = datos.UncheckedAt(actual);
-                datos.UncheckedSet(actual, datos.UncheckedAt(mayor));
-                datos.UncheckedSet(mayor, temporal);
+                Intercambiar<T>(datos, actual, mayor);
                 actual = mayor;
             }
         }
 
-        private static void HundirCon<T>(Span<T> datos, int raiz, int limite, Comparison<T> comparador)
+        private static void HundirCon<T>(T* datos, int raiz, int limite, Comparison<T> comparador)
+            where T : copy
         {
             int actual = raiz;
             while (true)
@@ -289,21 +462,42 @@ namespace NativeSharp.Core.Collections.Generic
                 int izquierdo = 2 * actual + 1;
                 int derecho = izquierdo + 1;
 
-                if (izquierdo < limite &&
-                    comparador(datos.UncheckedAt(mayor), datos.UncheckedAt(izquierdo)) < 0)
+                if (izquierdo < limite && comparador(datos[mayor], datos[izquierdo]) < 0)
                 {
                     mayor = izquierdo;
                 }
-                if (derecho < limite &&
-                    comparador(datos.UncheckedAt(mayor), datos.UncheckedAt(derecho)) < 0)
+                if (derecho < limite && comparador(datos[mayor], datos[derecho]) < 0)
                 {
                     mayor = derecho;
                 }
                 if (mayor == actual) { return; }
 
-                var temporal = datos.UncheckedAt(actual);
-                datos.UncheckedSet(actual, datos.UncheckedAt(mayor));
-                datos.UncheckedSet(mayor, temporal);
+                Intercambiar<T>(datos, actual, mayor);
+                actual = mayor;
+            }
+        }
+
+        private static void HundirConIn<T>(
+            T* datos, int raiz, int limite, InComparison<T> comparador)
+        {
+            int actual = raiz;
+            while (true)
+            {
+                int mayor = actual;
+                int izquierdo = 2 * actual + 1;
+                int derecho = izquierdo + 1;
+
+                if (izquierdo < limite && comparador(in datos[mayor], in datos[izquierdo]) < 0)
+                {
+                    mayor = izquierdo;
+                }
+                if (derecho < limite && comparador(in datos[mayor], in datos[derecho]) < 0)
+                {
+                    mayor = derecho;
+                }
+                if (mayor == actual) { return; }
+
+                Intercambiar<T>(datos, actual, mayor);
                 actual = mayor;
             }
         }

@@ -77,13 +77,17 @@ namespace NativeSharp.Core.Collections.Generic
             Initialize(actual);
         }
 
-        public Dictionary(HashFunc<TKey> hashFunc)
+        // EN: Freeze 3.0 P2: a HashFunc<TKey> receives a copy of the key, so these constructors
+        //     require `TKey : copy`.
+        // ES: Congelamiento 3.0 P2: un HashFunc<TKey> recibe una copia de la clave, asi que estos
+        //     constructores exigen `TKey : copy`.
+        public Dictionary(HashFunc<TKey> hashFunc) where TKey : copy
         {
             hasher = hashFunc;
             Initialize(4);
         }
 
-        public Dictionary(HashFunc<TKey> hashFunc, int capacity)
+        public Dictionary(HashFunc<TKey> hashFunc, int capacity) where TKey : copy
         {
             hasher = hashFunc;
             int actual = capacity;
@@ -510,7 +514,10 @@ namespace NativeSharp.Core.Collections.Generic
         // Two plain (key, value) parameters rather than one `KeyValuePair<TKey,TValue>` parameter
         // -- see the class comment for why: this sidesteps Stage 40's struct-size ABI limitation
         // entirely (two plain values are never at risk of it, however large TKey/TValue are).
-        public void ForEach(KeyValueAction<TKey, TValue> action)
+        //
+        // EN: Freeze 3.0 P2: the action receives copies of the key and the value.
+        // ES: Congelamiento 3.0 P2: la accion recibe copias de la clave y del valor.
+        public void ForEach(KeyValueAction<TKey, TValue> action) where TKey : copy where TValue : copy
         {
             int i = 0;
             while (i < count)
@@ -521,6 +528,70 @@ namespace NativeSharp.Core.Collections.Generic
                 }
                 i = i + 1;
             }
+        }
+
+        // EN: Freeze 3.0 P2: lends every live key to `action`, in entry order. HashSet<T>.ForEach
+        //     (InAction<T>) uses it, because Keys() copies.
+        // ES: Congelamiento 3.0 P2: presta cada clave viva a `action`, en orden de entradas. Lo usa
+        //     HashSet<T>.ForEach(InAction<T>), porque Keys() copia.
+        public void ForEachKey(InAction<TKey> action)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                if (entryHashCodes[i] >= 0) { action(in entryKeys[i]); }
+                i = i + 1;
+            }
+        }
+
+        // EN: Freeze 3.0 P2: removes (and destroys) every entry whose key matches `predicate`, which
+        //     borrows the key; returns how many were removed. Used by HashSet<T>.RemoveWhere.
+        // ES: Congelamiento 3.0 P2: quita (y destruye) cada entrada cuya clave cumple `predicate`, que
+        //     recibe la clave prestada; devuelve cuantas quito. Lo usa HashSet<T>.RemoveWhere.
+        public int RemoveKeysWhere(InPredicate<TKey> predicate)
+        {
+            int removed = 0;
+            int i = 0;
+            while (i < count)
+            {
+                if (entryHashCodes[i] >= 0 && predicate(in entryKeys[i]))
+                {
+                    RemoveEntryAt(i);
+                    removed = removed + 1;
+                }
+                i = i + 1;
+            }
+            return removed;
+        }
+
+        // EN: Unlinks live entry `index` from its bucket chain, destroys its key and value and puts
+        //     the slot on the free list -- the same steps Remove(key) takes once it finds the entry.
+        // ES: Desengancha la entrada viva `index` de su cadena, destruye su clave y su valor y pone el
+        //     hueco en la lista libre -- los mismos pasos que Remove(key) da al encontrar la entrada.
+        private void RemoveEntryAt(int index)
+        {
+            int bucketIndex = entryHashCodes[index] % buckets.Length;
+            int previous = -1;
+            int i = buckets[bucketIndex];
+            while (i != index)
+            {
+                previous = i;
+                i = entryNext[i];
+            }
+            if (previous < 0)
+            {
+                buckets[bucketIndex] = entryNext[index];
+            }
+            else
+            {
+                entryNext[previous] = entryNext[index];
+            }
+            delete entryKeys[index];
+            delete entryValues[index];
+            entryHashCodes[index] = -1;
+            entryNext[index] = freeFirst;
+            freeFirst = index;
+            freeCount = freeCount + 1;
         }
 
         ~Dictionary()

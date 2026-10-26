@@ -156,17 +156,20 @@ void expectRunOutput(
     }
 }
 
-/// EN: `source` must be rejected and the diagnostic must contain `fragment`.
-/// ES: `source` debe rechazarse y el diagnostico debe contener `fragment`.
+/// EN: `source` must be rejected and the diagnostic must contain `fragment`. `collections` adds the
+///     NativeSharp.Core.Collections.Generic reference.
+/// ES: `source` debe rechazarse y el diagnostico debe contener `fragment`. `collections` agrega la
+///     referencia a NativeSharp.Core.Collections.Generic.
 void expectReject(
     TestContext& tests,
     const std::filesystem::path& root,
     std::string_view name,
     std::string_view source,
-    std::string_view fragment)
+    std::string_view fragment,
+    bool collections = false)
 {
     const std::filesystem::path directory = root / std::string(name);
-    const std::filesystem::path project = writeProject(directory, name);
+    const std::filesystem::path project = writeProject(directory, name, collections);
     writeFile(directory / "Main.ns", source);
     std::string diagnostic;
     const ExitCode code = compile(project, directory / (std::string(name) + ".exe"), "-O0", diagnostic);
@@ -2813,6 +2816,215 @@ class Program { public static int Main() { return 0; } }
 )ns", "'T' is not a generic or lifetime parameter of this declaration");
 }
 
+/// EN: P2 (DEC-12). Every collection API that hands an element to a by-value delegate
+///     (Comparison, Predicate, Action, HashFunc, KeyValueAction) requires `T : copy`; the
+///     InComparison/InPredicate/InAction overloads lend the element instead and serve a move-only
+///     T. Sort, Reverse and RemoveIf relocate elements by swapping, so a List<T> or a span of a
+///     struct with a destructor is sorted, reversed and filtered without a single extra
+///     destruction (the destructor counts calls, so a destroyed empty value would show).
+/// ES: P2 (DEC-12). Toda API de coleccion que pasa un elemento a un delegado por valor
+///     (Comparison, Predicate, Action, HashFunc, KeyValueAction) exige `T : copy`; las sobrecargas
+///     con InComparison/InPredicate/InAction prestan el elemento y sirven para un T move-only. Sort,
+///     Reverse y RemoveIf reubican elementos intercambiandolos, asi que una List<T> o un span de un
+///     struct con destructor se ordena, invierte y filtra sin una sola destruccion de mas (el
+///     destructor cuenta llamadas, asi que destruir un valor vacio se notaria).
+void testInDelegateOverloads(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "P2SwapWithoutExtraDrops", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; public static int Sum; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops + 1; Counter.Sum = Counter.Sum + Id; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    private static int RunList()
+    {
+        raii List<Guard> list = new List<Guard>();
+        list.Add(Make.G(3));
+        list.Add(Make.G(1));
+        list.Add(Make.G(2));
+        list.Sort((in Guard a, in Guard b) => b.Id - a.Id);
+        list.Sort();
+        list.Reverse();
+        int kept = list.RemoveAll((in Guard g) => g.Id == 2);
+        return Counter.Drops * 10 + kept;
+    }
+    private static int RunArray()
+    {
+        raii Guard[] a = new Guard[4];
+        a[0].Id = 3; a[1].Id = 1; a[2].Id = 4; a[3].Id = 2;
+        Span<Guard> s = Spans.OfRange<Guard>(a, 0, 4);
+        Algorithm.Sort<Guard>(s);
+        Algorithm.Sort<Guard>(s, (in Guard x, in Guard y) => y.Id - x.Id);
+        Algorithm.StableSort<Guard>(s, (in Guard x, in Guard y) => x.Id - y.Id);
+        Algorithm.Reverse<Guard>(s);
+        int kept = Algorithm.RemoveIf<Guard>(s, (in Guard x) => x.Id % 2 == 0);
+        return Counter.Drops * 10 + kept;
+    }
+    public static int Main()
+    {
+        int list = RunList();
+        int afterList = Counter.Drops;
+        int sumList = Counter.Sum;
+        Counter.Drops = 0;
+        Counter.Sum = 0;
+        int array = RunArray();
+        return list * 1000000 + afterList * 100000 + sumList * 1000 + array * 10 + Counter.Drops;
+    }
+}
+)ns", 11306024, true);
+    expectRun(tests, root, "P2ListInQueries", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    public static int Main()
+    {
+        int r = 0;
+        int afterRemove = 0;
+        {
+            raii List<Guard> list = new List<Guard>();
+            list.Add(Make.G(1));
+            list.Add(Make.G(2));
+            list.Add(Make.G(3));
+            list.Add(Make.G(4));
+            InPredicate<Guard> even = (in Guard g) => g.Id % 2 == 0;
+            r = list.FindIndex(even) * 1000 + list.FindLastIndex(even) * 100;
+            if (list.Exists(even)) { r = r + 10; }
+            if (!list.TrueForAll(even)) { r = r + 1; }
+            r = r * 10 + list.RemoveAll(even);
+            afterRemove = Counter.Drops;
+        }
+        return r * 10000 + afterRemove * 100 + Counter.Drops;
+    }
+}
+)ns", 131124813, true);
+    expectRun(tests, root, "P2PriorityQueueInComparison", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    public static int Main()
+    {
+        int r = 0;
+        {
+            InComparison<Guard> byId = (in Guard a, in Guard b) => a.Id - b.Id;
+            raii PriorityQueue<int, Guard> queue = new PriorityQueue<int, Guard>(byId);
+            queue.Enqueue(30, Make.G(3));
+            queue.Enqueue(10, Make.G(1));
+            queue.Enqueue(20, Make.G(2));
+            try
+            {
+                r = queue.Dequeue();
+                r = r * 100 + queue.Dequeue();
+            }
+            catch (InvalidOperationException e) { return 99; }
+        }
+        return r * 1000 + Counter.Drops;
+    }
+}
+)ns", 1020123, true);
+    expectRun(tests, root, "P2SetsAndDictionaryIn", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Program
+{
+    public static int Main()
+    {
+        raii HashSet<int> hs = new HashSet<int>();
+        hs.Add(1); hs.Add(2); hs.Add(3); hs.Add(4);
+        int r = hs.RemoveWhere((in int x) => x % 2 == 0);
+        int sum = 0;
+        hs.ForEach((in int x) => { sum = sum + x; });
+        InComparison<int> desc = (in int a, in int b) => b - a;
+        raii SortedSet<int> ss = new SortedSet<int>(desc);
+        ss.Add(1); ss.Add(3); ss.Add(2);
+        int order = 0;
+        ss.ForEach((in int x) => { order = order * 10 + x; });
+        int removed = ss.RemoveWhere((in int x) => x == 3);
+        Comparison<int> asc = (int a, int b) => a - b;
+        raii SortedDictionary<int, int> sd = new SortedDictionary<int, int>(asc);
+        try { sd.Add(2, 20); sd.Add(1, 10); } catch (ArgumentException e) { return 98; }
+        raii Dictionary<int, int> d = new Dictionary<int, int>();
+        try { d.Add(1, 1); d.Add(2, 2); d.Add(3, 3); } catch (ArgumentException e) { return 97; }
+        int dr = d.RemoveKeysWhere((in int k) => k != 2);
+        return r * 1000000 + sum * 100000 + order * 100 + removed * 10 + dr * 3 + d.Count() + sd.Count() * 0;
+    }
+}
+)ns", 2432117, true);
+    expectReject(tests, root, "P2ByValueComparisonRejected", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    public static int Main()
+    {
+        raii List<Guard> list = new List<Guard>();
+        list.Add(Make.G(2));
+        list.Sort((Guard a, Guard b) => a.Id - b.Id);
+        return 0;
+    }
+}
+)ns", "generic parameter 'T' of 'List.Sort' requires copyable storage ('where T : copy')", true);
+    expectReject(tests, root, "P2ByValueConstructorRejected", R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Counter { public static int Drops; }
+struct Guard
+{
+    public int Id;
+    ~Guard() { Counter.Drops = Counter.Drops * 10 + Id; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+}
+class Make { public static Guard G(int id) { Guard g; g.Id = id; return move(g); } }
+class Program
+{
+    public static int Main()
+    {
+        Comparison<Guard> byId = (Guard a, Guard b) => a.Id - b.Id;
+        raii PriorityQueue<int, Guard> queue = new PriorityQueue<int, Guard>(byId);
+        return queue.Count();
+    }
+}
+)ns",
+        "generic parameter 'TPriority' of 'PriorityQueue constructor' requires copyable storage", true);
+}
+
 constexpr std::string_view kErrorPrelude = R"ns(
 using NativeSharp.Core;
 class MyError : Exception { }
@@ -4333,6 +4545,7 @@ int main()
     testArrayElementLiveness(tests, root);
     testMemberCopyConstraint(tests, root);
     testConstructorCopyConstraint(tests, root);
+    testInDelegateOverloads(tests, root);
     testDeclaredErrorsRejected(tests, root);
     testDeclaredErrorsHandled(tests, root);
     testFutureDrops(tests, root);

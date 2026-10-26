@@ -28,7 +28,17 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Mirrors real C#'s SortedSet<T>(IComparer<T>) -- see SortedList.ns's own
         // `Comparison<T>` constructor for why a delegate stands in for IComparer<T>.
-        public SortedSet(Comparison<T> comparerFunc)
+        //
+        // EN: Freeze 3.0 P2: the Comparison constructor requires `T : copy` (see SortedList); the
+        //     InComparison one serves any T.
+        // ES: Congelamiento 3.0 P2: el constructor con Comparison exige `T : copy` (ver SortedList); el
+        //     de InComparison sirve para todo T.
+        public SortedSet(Comparison<T> comparerFunc) where T : copy
+        {
+            items = new SortedList<T, bool>(comparerFunc);
+        }
+
+        public SortedSet(InComparison<T> comparerFunc)
         {
             items = new SortedList<T, bool>(comparerFunc);
         }
@@ -149,7 +159,14 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Mirrors SortedSet<T>.RemoveWhere: removes every element matching `predicate`, returns how
         // many were removed.
-        public int RemoveWhere(Predicate<T> predicate)
+        //
+        // EN: Freeze 3.0 P2: the Predicate overload copies every element into a snapshot and into
+        //     the predicate, so it requires `T : copy`; the InPredicate overload lends the elements
+        //     in place.
+        // ES: Congelamiento 3.0 P2: la sobrecarga con Predicate copia cada elemento a una instantanea y
+        //     al predicado, asi que exige `T : copy`; la de InPredicate presta los elementos en su
+        //     sitio.
+        public int RemoveWhere(Predicate<T> predicate) where T : copy
         {
             const T[] snapshot = items.Keys();
             int removed = 0;
@@ -165,6 +182,11 @@ namespace NativeSharp.Core.Collections.Generic
             }
             delete[] snapshot;
             return removed;
+        }
+
+        public int RemoveWhere(InPredicate<T> predicate)
+        {
+            return items.RemoveKeysWhere(predicate);
         }
 
         // Same cross-set ownership caveat as HashSet<T>.UnionWith -- see its comment.
@@ -296,7 +318,9 @@ namespace NativeSharp.Core.Collections.Generic
             return Count() == other.Count() && IsSubsetOf(other);
         }
 
-        public void ForEach(Action<T> action)
+        // EN: Freeze 3.0 P2: same split as RemoveWhere.
+        // ES: Congelamiento 3.0 P2: la misma division que RemoveWhere.
+        public void ForEach(Action<T> action) where T : copy
         {
             const T[] snapshot = items.Keys();
             int i = 0;
@@ -306,6 +330,11 @@ namespace NativeSharp.Core.Collections.Generic
                 i = i + 1;
             }
             delete[] snapshot;
+        }
+
+        public void ForEach(InAction<T> action)
+        {
+            items.ForEachKey(action);
         }
 
         // P1.2 of STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md -- see
