@@ -16,16 +16,41 @@ std::string structuralGenericKey(std::string_view value)
     for (std::size_t cursor = 0; cursor < value.size();)
     {
         constexpr std::size_t kHashDigits = 16U;
-        if (value.substr(cursor, 3U) == "__h" && cursor + 3U + kHashDigits <= value.size())
+        if (value.substr(cursor, 3U) == "__g")
         {
-            const std::string_view digits = value.substr(cursor + 3U, kHashDigits);
-            if (std::ranges::all_of(digits, [](const char character) {
-                    return std::isxdigit(static_cast<unsigned char>(character)) != 0;
-                }))
+            std::size_t arityEnd = cursor + 3U;
+            while (arityEnd < value.size() &&
+                   std::isdigit(static_cast<unsigned char>(value[arityEnd])) != 0)
             {
-                result.append("__h");
-                cursor += 3U + kHashDigits;
-                continue;
+                ++arityEnd;
+            }
+            if (arityEnd > cursor + 3U && value.substr(arityEnd, 2U) == "__")
+            {
+                bool canonicalized = false;
+                std::size_t hash = value.find("__h", arityEnd + 2U);
+                while (hash != std::string_view::npos)
+                {
+                    const std::size_t afterHash = hash + 3U + kHashDigits;
+                    const std::string_view digits = value.substr(hash + 3U, kHashDigits);
+                    const bool hexadecimal = digits.size() == kHashDigits &&
+                        std::ranges::all_of(digits, [](const char character) {
+                            return std::isxdigit(static_cast<unsigned char>(character)) != 0;
+                        });
+                    const bool boundary = afterHash == value.size() ||
+                        (std::isalnum(static_cast<unsigned char>(value[afterHash])) == 0 &&
+                         value[afterHash] != '_');
+                    if (hexadecimal && boundary)
+                    {
+                        result.append(value.substr(cursor, arityEnd - cursor));
+                        result.append("__h");
+                        result.append(digits);
+                        cursor = afterHash;
+                        canonicalized = true;
+                        break;
+                    }
+                    hash = value.find("__h", hash + 3U);
+                }
+                if (canonicalized) continue;
             }
         }
         result.push_back(value[cursor]);
