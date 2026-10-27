@@ -567,7 +567,7 @@ LLVMValueRef OopLlvmImplementation::lowerLoopExpression(
 
         LLVMBasicBlockRef bodyBlock = appendBlock("loop.body");
         LLVMBasicBlockRef endBlock = appendBlock("loop.end");
-        LLVMBuildBr(builder_, bodyBlock);
+        LLVMValueRef reentry = beginLoopResumeScope(node, bodyBlock);
         enterBlock(bodyBlock);
         loopStack_.push_back({
             endBlock,
@@ -579,6 +579,7 @@ LLVMValueRef OopLlvmImplementation::lowerLoopExpression(
         const bool ok = lowerStatement(node->children.front().get(), error);
         if (ok && !terminated()) LLVMBuildBr(builder_, bodyBlock);
         loopStack_.pop_back();
+        finishLoopResumeScope(reentry);
         if (!ok) return nullptr;
 
         enterBlock(endBlock);

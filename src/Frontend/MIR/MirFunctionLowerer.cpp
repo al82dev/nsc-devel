@@ -917,15 +917,17 @@ void climbReplaySpillSlots(
     }
 }
 
-// EN: Freeze 3.0 (plan item 117): a match is an expression, so the resume of an await inside it replays the
-//     statement around the match. That replay must load what already ran: the governing value, the guard of
-//     the selected arm and the operands evaluated before the match. The climb from the await stops at the arm
-//     or at the match; this walk goes on from each match to its statement, until a statement boundary.
-// ES: Congelamiento 3.0 (elemento 117 del plan): un match es una expresión, así que la reanudación de un await
-//     dentro de él repite la sentencia que lo rodea. Esa repetición debe cargar lo que ya corrió: el valor que
-//     gobierna, el guard del brazo elegido y los operandos evaluados antes del match. El ascenso desde el await
-//     se detiene en el brazo o en el match; este recorrido sigue desde cada match hasta su sentencia, hasta un
-//     límite de sentencia.
+// EN: Freeze 3.0 (plan item 117): a match or a loop expression is part of the statement around it, so the
+//     resume of an await inside it replays that statement (a loop then jumps back to the statement of its body
+//     that suspended). That replay must load what already ran: the governing value of a match, the guard of
+//     the selected arm and the operands evaluated before the match or the loop. The climb from the await stops
+//     at the arm, the match or the loop body; this walk goes on from each of them to the root.
+// ES: Congelamiento 3.0 (elemento 117 del plan): un match o una expresión loop es parte de la sentencia que lo
+//     rodea, así que la reanudación de un await dentro de él repite esa sentencia (un loop salta después a la
+//     sentencia de su cuerpo que se suspendió). Esa repetición debe cargar lo que ya corrió: el valor que
+//     gobierna un match, el guard del brazo elegido y los operandos evaluados antes del match o del loop. El
+//     ascenso desde el await se detiene en el brazo, el match o el cuerpo del loop; este recorrido sigue desde
+//     cada uno de ellos hasta la raíz.
 void assignMatchReplaySpillSlots(
     const ProjectOopMirNode* await,
     const ReplayParentMap& parents,
@@ -939,9 +941,8 @@ void assignMatchReplaySpillSlots(
     for (auto parent = parents.find(below); parent != parents.end(); parent = parents.find(below))
     {
         ProjectOopMirNode* ancestor = parent->second;
-        const bool matchNode = ancestor->kind == ProjectOopMirNodeKind::MatchExpression ||
-            ancestor->kind == ProjectOopMirNodeKind::MatchArm;
-        if (!matchNode && replayClimbStopsBefore(ancestor->kind)) break;
+        if (ancestor->kind == ProjectOopMirNodeKind::LoopExpression)
+            climbReplaySpillSlots(ancestor, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
         if (ancestor->kind == ProjectOopMirNodeKind::MatchArm && ancestor->children.size() > 1 &&
             ancestor->children[1] != nullptr && ancestor->children[1].get() != below)
             assignReplaySpillSlotsTo(
@@ -952,7 +953,6 @@ void assignMatchReplaySpillSlots(
                 ancestor, below, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
             climbReplaySpillSlots(ancestor, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
         }
-        if (replayClimbStopsAfter(ancestor->kind)) break;
         below = ancestor;
     }
 }
@@ -983,6 +983,7 @@ void assignReplaySpillSlotNodes(
 {
     ReplayParentMap parents;
     std::vector<ProjectOopMirNode*> awaits;
+    std::vector<ProjectOopMirNode*> yields;
     std::vector<ProjectOopMirNode*> work{root};
     while (!work.empty())
     {
@@ -991,6 +992,13 @@ void assignReplaySpillSlotNodes(
         if (node == nullptr) continue;
         if (node->kind == ProjectOopMirNodeKind::AwaitFuture && node->integerValue == 1)
             awaits.push_back(node);
+        // EN: Freeze 3.0 (plan item 117): a yield is a statement, so D-01 has nothing to climb from it; inside a
+        //     loop expression its resume replays the statement around the loop like an await's.
+        // ES: Congelamiento 3.0 (elemento 117 del plan): un yield es una sentencia, así que D-01 no asciende desde
+        //     él; dentro de una expresión loop su reanudación repite la sentencia del loop como la de un await.
+        if (node->kind == ProjectOopMirNodeKind::SuspendPoint || node->kind == ProjectOopMirNodeKind::YieldValue ||
+            node->kind == ProjectOopMirNodeKind::AsyncYieldValue)
+            yields.push_back(node);
         for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
         {
             if (*child == nullptr) continue;
@@ -1003,6 +1011,8 @@ void assignReplaySpillSlotNodes(
         climbReplaySpillSlots(await, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
         assignMatchReplaySpillSlots(await, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
     }
+    for (ProjectOopMirNode* yield : yields)
+        assignMatchReplaySpillSlots(yield, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
 }
 
 // EN: Freeze 3.0 C-02: one drop-flag byte per frame local closes the frame, 8-aligned, so a
@@ -1066,6 +1076,10 @@ void buildMoveNextFrame(
     // ES: Congelamiento 3.0 C-02: como un poll, un MoveNext guarda todo local y todo parametro
     //     usado en el frame; la vivacidad lineal que esto sustituye perdia valores entre vueltas.
     std::uint64_t frameSize = 0;
+    // EN: Freeze 3.0 (plan item 117): a yield inside a loop expression replays the statement around the loop.
+    // ES: Congelamiento 3.0 (elemento 117 del plan): un yield dentro de una expresión loop repite la sentencia del
+    //     loop.
+    assignReplaySpillSlotNodes(function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, frameSize);
     appendCoroutineFrameLocalNodes(
         function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
     appendUsedFrameParameterNodes(

@@ -1186,6 +1186,8 @@ private:
 
     bool lowerWhile(const frontend::ProjectOopMirNode* node, std::string& error);
 
+    LLVMValueRef beginLoopResumeScope(const frontend::ProjectOopMirNode* node, LLVMBasicBlockRef bodyBlock);
+    void finishLoopResumeScope(LLVMValueRef reentry);
     LLVMValueRef lowerLoopExpression(
         const frontend::ProjectOopMirNode* node, std::string& error);
 

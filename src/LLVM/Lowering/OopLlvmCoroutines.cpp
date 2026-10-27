@@ -340,7 +340,50 @@ void OopLlvmImplementation::enterCoroutineResumeTarget(const frontend::ProjectOo
         LLVMBasicBlockRef block = appendBlock("coro.resume.stmt");
         LLVMBuildBr(builder_, block);
         enterBlock(block);
-        for (const std::int64_t id : found->second) coroutine_.resumeBlocks[id] = block;
+        for (const std::int64_t id : found->second)
+        {
+            if (coroutine_.loopResumeScopes.empty()) coroutine_.resumeBlocks[id] = block;
+            else coroutine_.loopResumeScopes.back()[id] = block;
+        }
+}
+
+// EN: Freeze 3.0 (plan item 117): the entry of a loop expression around suspension points. A fresh flow enters
+//     the body from the top; the replay toward an id of the body jumps to the statement that claimed it.
+//     Without this, the resume went straight into the body and the operands evaluated before the loop in its
+//     statement did not dominate their use after the loop.
+// ES: Congelamiento 3.0 (elemento 117 del plan): la entrada de una expresión loop alrededor de puntos de
+//     suspensión. Un flujo nuevo entra al cuerpo desde arriba; la repetición hacia un id del cuerpo salta a la
+//     sentencia que lo reclamó. Sin esto, la reanudación entraba directo al cuerpo y los operandos evaluados
+//     antes del loop en su sentencia no dominaban su uso después del loop.
+LLVMValueRef OopLlvmImplementation::beginLoopResumeScope(
+        const frontend::ProjectOopMirNode* node, LLVMBasicBlockRef bodyBlock)
+{
+        if (!coroutine_.active || !coroutine_.subtreeIds.contains(node))
+        {
+            LLVMBuildBr(builder_, bodyBlock);
+            return nullptr;
+        }
+        LLVMValueRef seen = LLVMBuildLoad2(
+            builder_, LLVMInt32TypeInContext(context_), coroutine_.resumeState, "loop.resume.seen");
+        LLVMValueRef reentry = LLVMBuildSwitch(builder_, seen, bodyBlock, 0);
+        coroutine_.loopResumeScopes.emplace_back();
+        return reentry;
+}
+
+void OopLlvmImplementation::finishLoopResumeScope(LLVMValueRef reentry)
+{
+        if (reentry == nullptr) return;
+        const std::unordered_map<std::int64_t, LLVMBasicBlockRef> claimed =
+            std::move(coroutine_.loopResumeScopes.back());
+        coroutine_.loopResumeScopes.pop_back();
+        std::vector<std::int64_t> ids;
+        ids.reserve(claimed.size());
+        for (const auto& [id, block] : claimed) ids.push_back(id);
+        std::ranges::sort(ids);
+        for (const std::int64_t id : ids)
+            LLVMAddCase(
+                reentry, LLVMConstInt(LLVMInt32TypeInContext(context_), static_cast<unsigned long long>(id), 1),
+                claimed.at(id));
 }
 
 void OopLlvmImplementation::markCoroutineReplayOperands(

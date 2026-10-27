@@ -54,6 +54,14 @@ struct OopLlvmCoroutineState final
     // EN: The start of the innermost statement around each id; the dispatch jumps there.
     // ES: El inicio de la sentencia mas interna alrededor de cada id; ahi salta el despacho.
     std::unordered_map<std::int64_t, LLVMBasicBlockRef> resumeBlocks;
+    // EN: Freeze 3.0 (plan item 117): while the body of a loop expression around suspension points is lowered,
+    //     its statements claim their ids here, innermost loop last. The statement around the loop stays the
+    //     resume target, so its operands replay (D-01), and the loop entry jumps to the claimed block.
+    // ES: Congelamiento 3.0 (elemento 117 del plan): mientras se baja el cuerpo de una expresión loop alrededor
+    //     de puntos de suspensión, sus sentencias reclaman aquí sus ids, el loop más interno al final. La
+    //     sentencia alrededor del loop sigue siendo el destino de reanudación, así que sus operandos se
+    //     repiten (D-01), y la entrada del loop salta al bloque reclamado.
+    std::vector<std::unordered_map<std::int64_t, LLVMBasicBlockRef>> loopResumeScopes;
     // EN: Per yield id, the block that runs the cleanups active at that yield and ends.
     // ES: Por id de yield, el bloque que corre las limpiezas activas en ese yield y termina.
     std::unordered_map<std::int64_t, LLVMBasicBlockRef> cancelBlocks;

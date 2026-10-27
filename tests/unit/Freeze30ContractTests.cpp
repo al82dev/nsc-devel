@@ -5575,6 +5575,87 @@ void testMatchAwaitReplay(TestContext& tests, const std::filesystem::path& root)
 )ns", 410001);
 }
 
+constexpr std::string_view kLoopReplayProgram = R"ns(
+class Box
+{
+    public static int Freed;
+    public int V;
+    public Box(int v) { V = v; }
+    ~Box() { Freed = Freed + 1; }
+}
+class Program
+{
+    public static int Calls;
+    public static async int G() { Calls = Calls + 1; yield; return 4; }
+    public static int Bump() { Calls = Calls + 100; return 0; }
+)ns";
+
+// EN: Plan item 117. The resume of an await inside a loop expression replays the statement around the loop,
+//     loading what ran before it, and the loop entry jumps to the statement of the body that suspended. An
+//     operand before the loop runs once, also across iterations, with a raii local in the body and with an
+//     array element as the destination; a yield in the body of a generator loop does the same.
+// ES: Elemento 117 del plan. La reanudación de un await dentro de una expresión loop repite la sentencia que
+//     rodea al loop, cargando lo que corrió antes, y la entrada del loop salta a la sentencia del cuerpo que se
+//     suspendió. Un operando antes del loop corre una vez, también entre vueltas, con un local raii en el
+//     cuerpo y con un elemento de arreglo como destino; un yield en el loop de un generador hace lo mismo.
+void testLoopOperandResume(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "F117LoopOperand", std::string(kLoopReplayProgram) + R"ns(
+    public static async int Main()
+    {
+        int v = Bump() + loop { break await G(); };
+        return v * 1000 + Calls;
+    }
+}
+)ns", 4101);
+    expectRun(tests, root, "F117LoopIterations", std::string(kLoopReplayProgram) + R"ns(
+    public static async int Main()
+    {
+        int n = 0;
+        int v = Bump() + loop { n = n + await G(); if (n >= 8) { break n; } };
+        return v * 1000 + Calls;
+    }
+}
+)ns", 8102);
+    expectRun(tests, root, "F117LoopRaii", std::string(kLoopReplayProgram) + R"ns(
+    public static async int Main()
+    {
+        int v = Bump() + loop { raii Box b = new Box(3); int t = await G(); break t + b.V; };
+        return v * 10000 + Calls * 10 + Box.Freed;
+    }
+}
+)ns", 71011);
+    expectRun(tests, root, "F117LoopYield", R"ns(
+class Program
+{
+    public static int Calls;
+    public static int Bump() { Calls = Calls + 100; return 0; }
+    private static Iterator<int, int> Gen()
+    {
+        int v = Bump() + loop { yield return 1; break 4; };
+        yield return v;
+    }
+    public static int Main()
+    {
+        Iterator<int, int> it = Gen();
+        int total = 0;
+        while (it.MoveNext()) { total = total * 10 + it.Current; }
+        return total * 1000 + Calls;
+    }
+}
+)ns", 14100);
+    expectRun(tests, root, "F117LoopElement", std::string(kLoopReplayProgram) + R"ns(
+    public static async int Main()
+    {
+        int[] values = new int[2];
+        int i = 1;
+        values[i] = loop { break await G(); };
+        return values[1] * 10 + Calls;
+    }
+}
+)ns", 41);
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -6702,6 +6783,7 @@ int main()
     testNestedAwaitResume(tests, root);
     testLoopExpressionAwait(tests, root);
     testMatchAwaitReplay(tests, root);
+    testLoopOperandResume(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);
