@@ -5990,6 +5990,77 @@ void testGenericMoveReferenceCopy(TestContext& tests, const std::filesystem::pat
         "            r = w.Use(b);\n" + tail, "move(...) source must be a RAII local or owned parameter", true);
 }
 
+constexpr std::string_view kImportPrelude = R"ns(
+using NativeSharp.Core;
+class Box { public int V; public Box(int v) { V = v; } }
+struct Code { public int V; }
+struct Guard
+{
+    public int V;
+    ~Guard() { }
+}
+struct Holder
+{
+    public int V;
+    public owned Box B;
+}
+class Native
+{
+    extern C from "kernel32.dll"
+    {
+        public static void SetLastError(Code code);
+        public static int GetLastError();
+    }
+}
+class NativePointer
+{
+    extern C from "kernel32.dll"
+    {
+        public static int lstrlenA(Guard* text);
+    }
+}
+class NativeGuard
+{
+    extern C from "kernel32.dll"
+    {
+        public static void Sleep(Guard milliseconds);
+    }
+}
+class NativeHolder
+{
+    extern C from "kernel32.dll"
+    {
+        public static int SetErrorMode(Holder mode);
+    }
+}
+)ns";
+
+/// EN: Item 130b. A by-value parameter of an `extern C` import must be ABI-trivial. A trivial struct and a
+///     pointer to a struct with a destructor still pass; a struct with a destructor or with an owned field
+///     passed by value is rejected at the call, because native code cannot run its destructor or release
+///     its owned fields.
+/// ES: Elemento 130b. Un parametro por valor de un import `extern C` debe ser ABI-trivial. Un struct trivial y
+///     un puntero a un struct con destructor siguen pasando; un struct con destructor o con un campo owned
+///     pasado por valor se rechaza en la llamada, porque el codigo nativo no puede correr su destructor ni
+///     liberar sus campos owned.
+void testImportedCArgumentTrivial(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude(kImportPrelude);
+    const std::string opening = "class Program\n{\n    public static int Main()\n    {\n";
+    expectRun(tests, root, "F130bTrivialStruct", prelude + opening +
+        "        Code c;\n        c.V = 7;\n        Native.SetLastError(c);\n"
+        "        return Native.GetLastError();\n    }\n}\n", 7);
+    expectRun(tests, root, "F130bPointerToGuard", prelude + opening +
+        "        Guard g;\n        g.V = 3;\n        int length = NativePointer.lstrlenA(&g);\n"
+        "        return length * 10 + g.V;\n    }\n}\n", 13);
+    expectReject(tests, root, "F130bGuardByValue", prelude + opening +
+        "        Guard g;\n        g.V = 3;\n        NativeGuard.Sleep(move(g));\n"
+        "        return 0;\n    }\n}\n", "native code cannot run its destructor");
+    expectReject(tests, root, "F130bOwnedFieldByValue", prelude + opening +
+        "        Holder h;\n        h.V = 1;\n        h.B = new Box(1);\n        NativeHolder.SetErrorMode(move(h));\n"
+        "        return 0;\n    }\n}\n", "release its owned fields");
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -7126,6 +7197,7 @@ int main()
     testDeleteOwnedParameter(tests, root);
     testPlainArrayDelete(tests, root);
     testGenericMoveReferenceCopy(tests, root);
+    testImportedCArgumentTrivial(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

@@ -4648,6 +4648,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
             coreStringForwarding, methodMemberOrdinal, scopeOrdinal);
         rejectSelectedNewToOrdinaryParameters(
             expression, callee, resolvedArguments, selected, selectedMember, coreStringForwarding, diagnostics);
+        rejectNonTrivialImportedCArguments(
+            expression, callee, resolvedArguments, selected, selectedMember, coreStringForwarding, diagnostics);
         applySelectedCoreOperations(
             expression, selectedMember, methodMemberOrdinal, scopeOrdinal, call, result, diagnostics);
         // EN: Freeze 3.0 C-13: an async callee reports its error at the await, not at the call.
@@ -5200,6 +5202,44 @@ void ProjectMethodBodyModel::recordSelectedOwnershipTransfers(
         else
             transfer.kind = MethodOwnershipTransferKind::OwnedReturnToOwnedParameter;
         ownershipTransferBindings_.push_back(std::move(transfer));
+    }
+}
+
+// EN: Freeze 3.0 (item 130b). A by-value parameter of an `extern C` import must be ABI-trivial: native code
+//     cannot run a destructor or release owned fields, so a struct that has either is rejected at the
+//     call. Trivial structs, pointers and handles keep compiling.
+// ES: Congelamiento 3.0 (elemento 130b). Un parametro por valor de un import `extern C` debe ser
+//     ABI-trivial: el codigo nativo no puede correr un destructor ni liberar campos owned, asi que un
+//     struct que tiene alguno se rechaza en la llamada. Los structs triviales, punteros y handles siguen
+//     compilando.
+void ProjectMethodBodyModel::rejectNonTrivialImportedCArguments(
+    const ast::AstNode* expression,
+    const ExpressionResult& callee,
+    std::span<const ExpressionResult> resolvedArguments,
+    const MethodCallCandidate& selected,
+    const ClassMemberSymbol& selectedMember,
+    bool coreStringForwarding,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!selectedMember.isImportedC || memberModel_ == nullptr) return;
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < resolvedArguments.size() &&
+         argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
+    {
+        const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+        if (parameterOrdinal >= selectedMember.parameters.size()) continue;
+        const MethodParameterSymbol& parameter = selectedMember.parameters[parameterOrdinal];
+        if (parameter.passKind != ParameterPassKind::Value ||
+            !memberModel_->typeRequiresValueDrop(parameter.typeKey)) continue;
+        const ast::AstNode* argumentSyntax = resolvedCallArgumentSyntax(
+            expression, callee, argumentOrdinal, coreStringForwarding);
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            argumentSyntax != nullptr ? argumentSyntax->range() : expression->range(),
+            "extern C parameter '" + parameter.name + "' of '" + selectedMember.name + "' takes '" +
+                parameter.typeKey + "' by value, but native code cannot run its destructor or release its "
+                "owned fields; pass an ABI-trivial struct, a pointer or a handle");
     }
 }
 

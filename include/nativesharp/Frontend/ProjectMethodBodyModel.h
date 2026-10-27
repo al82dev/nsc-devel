@@ -3412,6 +3412,14 @@ private:
         std::span<const ExpressionResult> arguments,
         std::size_t delegateOrdinal,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    void rejectNonTrivialImportedCArguments(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> resolvedArguments,
+        const MethodCallCandidate& selected,
+        const ClassMemberSymbol& selectedMember,
+        bool coreStringForwarding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void rejectSelectedNewToOrdinaryParameters(
         const ast::AstNode* expression,
         const ExpressionResult& callee,
