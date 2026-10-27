@@ -391,7 +391,37 @@ void ProjectConstructionModel::resolveConstructionCandidates(
     }
 
     selectConstructionCandidate(binding, nonDominated.front());
+    rejectNewToOrdinaryConstructorParameters(
+        binding.evaluatedCandidates[nonDominated.front()], argumentTypes, diagnostics);
     constructions_.push_back(std::move(binding));
+}
+
+// EN: Freeze 3.0 C-01 (plan item 115): a constructor that keeps an argument takes it through an `owned`
+//     parameter; `new C(new T())` into a parameter without `owned` gives the inner object no owner.
+// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): un constructor que conserva un argumento lo recibe por
+//     un parámetro `owned`; `new C(new T())` hacia un parámetro sin `owned` deja al objeto interior sin dueño.
+void ProjectConstructionModel::rejectNewToOrdinaryConstructorParameters(
+    const ConstructorCandidateBinding& selected,
+    std::span<const MethodExpressionTypeBinding> argumentTypes,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (methodBodyModel_ == nullptr || !selected.memberOrdinal.has_value() ||
+        *selected.memberOrdinal >= memberModel_->members().size())
+        return;
+    const ClassMemberSymbol& constructor = memberModel_->members()[*selected.memberOrdinal];
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < argumentTypes.size() &&
+         argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
+    {
+        const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+        if (parameterOrdinal >= constructor.parameters.size()) continue;
+        const MethodExpressionTypeBinding& argument = argumentTypes[argumentOrdinal];
+        if (methodBodyModel_->newReachesOrdinaryParameter(
+                constructor.parameters[parameterOrdinal], argument.syntax,
+                argument.ownershipFreshOwner, argument.ownershipTransfer, argument.typeKey))
+            methodBodyModel_->reportNewToOrdinaryParameter(
+                argument.syntax, constructor.parameters[parameterOrdinal], constructor.name, diagnostics);
+    }
 }
 
 void ProjectConstructionModel::bindConstruction(

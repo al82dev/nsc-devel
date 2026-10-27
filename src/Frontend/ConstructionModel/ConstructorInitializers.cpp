@@ -263,6 +263,8 @@ void ProjectConstructionModel::resolveConstructorInitializerCandidates(
         return;
     }
     selectConstructorInitializerCandidate(binding, nonDominated.front());
+    rejectNewToOrdinaryConstructorParameters(
+        binding.evaluatedCandidates[nonDominated.front()], argumentTypes, diagnostics);
 }
 
 void ProjectConstructionModel::storeConstructorInitializerBinding(

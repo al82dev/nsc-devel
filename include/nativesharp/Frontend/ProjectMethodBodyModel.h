@@ -347,6 +347,23 @@ public:
     // regla de propiedad que las llamadas ordinarias, y volver a escribirlo alli seria la segunda
     // definicion de ownable -- que es la forma exacta del defecto que este ID cierra.
     bool typeKeyIsOwnable(std::string_view typeKey) const noexcept;
+    // EN: Freeze 3.0 C-01 (plan item 115): a `new T(...)` handed straight to a by-value parameter without
+    //     `owned` reaches no owner. Public because ProjectConstructionModel applies the same rule to
+    //     constructor arguments.
+    // ES: Congelamiento 3.0 C-01 (elemento 115 del plan): un `new T(...)` entregado directo a un parámetro por
+    //     valor sin `owned` no llega a ningún dueño. Público porque ProjectConstructionModel aplica la misma
+    //     regla a los argumentos de constructor.
+    bool newReachesOrdinaryParameter(
+        const MethodParameterSymbol& parameter,
+        const ast::AstNode* argumentSyntax,
+        bool freshOwner,
+        bool ownershipTransfer,
+        std::string_view argumentTypeKey) const;
+    void reportNewToOrdinaryParameter(
+        const ast::AstNode* argumentSyntax,
+        const MethodParameterSymbol& parameter,
+        std::string_view calleeName,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     std::span<const MethodRuntimeTypeBinding> runtimeTypeBindings() const noexcept;
     std::span<const MethodCoreBinding> coreBindings() const noexcept;
     const MethodVariableArrayIndexBinding* variableArrayIndexBinding(
@@ -950,10 +967,12 @@ private:
     //     is a fresh owner. A local without raii/owned and a discarded expression give it no
     //     owner, so it leaks deterministically. A parameter, return or field without `owned`
     //     stays the manual-ownership form (the receiver may `delete` it), see ExpressionResult.
+    //     Plan item 115 replaced the parameter case: newReachesOrdinaryParameter rejects it.
     // ES: Congelamiento 3.0 C-01. Verdadero cuando `syntax` es `new T(...)` de un tipo poseible
     //     cuyo resultado es un dueno nuevo. Un local sin raii/owned y una expresion descartada no
     //     le dan dueno, asi que se fuga siempre. Un parametro, retorno o campo sin `owned` sigue
     //     siendo la forma de propiedad manual (quien lo recibe puede hacer `delete`).
+    //     El elemento 115 del plan reemplazó el caso del parámetro: newReachesOrdinaryParameter lo rechaza.
     bool isFreshObjectCreation(
         const ast::AstNode* syntax,
         const ExpressionResult& result) const;
@@ -3355,6 +3374,19 @@ private:
         bool coreStringForwarding,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal);
+    void rejectDelegateNewToOrdinaryParameters(
+        const ast::AstNode* expression,
+        std::span<const ExpressionResult> arguments,
+        std::size_t delegateOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void rejectSelectedNewToOrdinaryParameters(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> resolvedArguments,
+        const MethodCallCandidate& selected,
+        const ClassMemberSymbol& selectedMember,
+        bool coreStringForwarding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void finalizeSelectedCallResult(
         ExpressionResult& result,
         const ast::AstNode* expression,
@@ -3790,6 +3822,12 @@ private:
         const ClassMemberSymbol& callable,
         const MethodCallCandidate& selected,
         NamespaceFunctionCallBinding& call) const;
+    void rejectNamespaceNewToOrdinaryParameters(
+        const ClassMemberSymbol& callable,
+        std::span<ast::AstNode* const> argumentSyntaxes,
+        const std::vector<ExpressionResult>& arguments,
+        const MethodCallCandidate& selected,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     ExpressionResult completeNamespaceFunctionCall(
         const ast::AstNode* expression,
         std::size_t callerCallableOrdinal,

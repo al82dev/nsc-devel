@@ -3541,6 +3541,38 @@ void ProjectMethodBodyModel::reportLostOwnership(
             "or return it through an owned return type");
 }
 
+bool ProjectMethodBodyModel::newReachesOrdinaryParameter(
+    const MethodParameterSymbol& parameter,
+    const ast::AstNode* argumentSyntax,
+    bool freshOwner,
+    bool ownershipTransfer,
+    std::string_view argumentTypeKey) const
+{
+    return parameter.ownership == sema::OwnershipKind::None &&
+        parameter.passKind == ParameterPassKind::Value && !parameter.isParameterPack &&
+        argumentSyntax != nullptr && argumentSyntax->kind() == ast::AstNodeKind::ObjectCreationExpression &&
+        freshOwner && !ownershipTransfer && typeKeyIsOwnable(argumentTypeKey);
+}
+
+void ProjectMethodBodyModel::reportNewToOrdinaryParameter(
+    const ast::AstNode* argumentSyntax,
+    const MethodParameterSymbol& parameter,
+    std::string_view calleeName,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    // EN: A generic instantiation is named <name>__g<arity>__<arguments>__h<16 hex>; the message shows <name>.
+    // ES: Una instanciacion generica se llama <name>__g<arity>__<arguments>__h<16 hex>; el mensaje muestra <name>.
+    const std::size_t generic = calleeName.find("__g");
+    const std::size_t hash = calleeName.rfind("__h");
+    if (generic != std::string_view::npos && hash != std::string_view::npos && hash > generic &&
+        hash + 3U + 16U == calleeName.size())
+        calleeName = calleeName.substr(0, generic);
+    reportLostOwnership(
+        argumentSyntax,
+        "the parameter '" + parameter.name + "' of '" + std::string(calleeName) + "', which is not owned",
+        diagnostics);
+}
+
 void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     const ExpressionResult& initializer,
     const ast::AstNode* variable,
