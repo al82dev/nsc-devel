@@ -23,6 +23,7 @@ struct PrecompiledSyntaxModule final
     std::vector<PrecompiledMemberIdentity> members;
     std::vector<PrecompiledNamespaceFunctionIdentity> namespaceFunctions;
     std::vector<PrecompiledGenericSpecialization> genericSpecializations;
+    std::vector<std::string> externalTypeKeys;
     std::filesystem::path productSidecarPath;
     // EN: SHA-256 (hex) of the module's NSMETA bytes; snapshots of other libraries name it as a
     //     dependency digest.

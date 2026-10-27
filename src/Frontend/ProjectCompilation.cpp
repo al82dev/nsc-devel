@@ -812,6 +812,17 @@ bool ProjectCompilation::compileProjectMembers(
         return "type:" + std::string(templateKey.substr(0, terminalBegin)) +
             std::string(specializedName);
     };
+    const auto specializationStem = [](std::string_view key) {
+        if (!key.starts_with("type:")) return std::string_view{};
+        const std::size_t generic = key.rfind("__g");
+        const std::size_t hash = key.rfind("__h");
+        if (generic == std::string_view::npos || hash == std::string_view::npos ||
+            generic >= hash || hash + 3U + 16U != key.size())
+        {
+            return std::string_view{};
+        }
+        return key.substr(0, hash);
+    };
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
         precompiledMembers.insert(precompiledMembers.end(), module.members.begin(), module.members.end());
@@ -874,6 +885,30 @@ bool ProjectCompilation::compileProjectMembers(
                 }
                 if (sameArguments) appendAlias(local);
             }
+        }
+        // Provider-owned closed generics are recorded as external type keys rather than as
+        // generic-specialization records. Match their structural name only when it identifies one
+        // local specialization; the producer's suffix then restores the signature published in NSMETA.
+        for (const std::string& externalTypeKey : module.externalTypeKeys)
+        {
+            const std::string_view externalStem = specializationStem(externalTypeKey);
+            if (externalStem.empty()) continue;
+            std::string localTypeKey;
+            bool ambiguous = false;
+            for (const GenericSpecializationRecord& local : genericModel_->specializations())
+            {
+                if (local.kind == GenericTemplateKind::Method) continue;
+                const std::string candidate = typeKey(local.templateKey, local.specializedName);
+                if (specializationStem(candidate) != externalStem) continue;
+                if (!localTypeKey.empty() && localTypeKey != candidate)
+                {
+                    ambiguous = true;
+                    break;
+                }
+                localTypeKey = candidate;
+            }
+            if (!ambiguous && !localTypeKey.empty())
+                specializationTypeAliases.emplace_back(std::move(localTypeKey), externalTypeKey);
         }
     }
     if (!memberModel_->bindPrecompiledPhysicalNames(

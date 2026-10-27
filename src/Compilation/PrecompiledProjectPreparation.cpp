@@ -448,6 +448,7 @@ bool materializeModules(
             memberIdentities(surface),
             namespaceIdentities(surface),
             genericSpecializations(surface, concreteMemberNames),
+            surface.externalTypeKeys,
             restoredPublishedProducts
                 ? entry.productSidecarPath
                 : std::filesystem::path{},
