@@ -3408,6 +3408,33 @@ bool ProjectMethodBodyModel::variableRequiresRaii(
         foreachEnumeratorNeedsRaii || deferCaptureNeedsRaii;
 }
 
+bool ProjectMethodBodyModel::variableInfersRaiiOwner(
+    const ast::AstNode* variable,
+    std::string_view typeKey,
+    sema::OwnershipKind declaredOwnership,
+    bool isStaticLocal,
+    bool isReferenceLocal,
+    bool isVariableLengthArray) const
+{
+    // EN: Freeze 3.0 (item 141). A fresh class allocation bound directly to an ordinary lexical
+    //     local has exactly one natural owner: that local. Give it the established RAII behavior
+    //     instead of requiring a keyword whose only purpose would be to repeat the initializer.
+    // ES: Congelamiento 3.0 (elemento 141). Una asignacion nueva de clase ligada directamente a
+    //     un local lexico ordinario tiene un unico dueno natural: ese local. Se le da la conducta
+    //     RAII existente en vez de exigir una palabra que solo repetiria lo que dice el inicializador.
+    if (variable == nullptr || variable->first() == nullptr ||
+        declaredOwnership != sema::OwnershipKind::None || isStaticLocal ||
+        isReferenceLocal || isVariableLengthArray ||
+        variable->hasModifier(TokenKind::KwRaii) ||
+        variable->auxiliaryText() == "local:scope" ||
+        variable->text().starts_with("$"))
+    {
+        return false;
+    }
+    return variable->first()->kind() == ast::AstNodeKind::ObjectCreationExpression &&
+        typeKeyIsOwnable(typeKey);
+}
+
 void ProjectMethodBodyModel::validateVariableQualifiers(
     const ast::AstNode* variable,
     std::string_view typeKey,
@@ -3732,10 +3759,10 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     // local's own declared type actually needs ownership tracking.
     const bool localTypeOwnable = isReferenceTypeKey(typeKey) || typeKey == "builtin:string" ||
         managedDelegate || raiiOwnsNativeArrayBuffer;
-    // EN: Freeze 3.0 C-01: `T x = new T();` without raii/owned makes x a non-owning alias of an
-    //     object nobody owns. Compiler-generated snapshots ($-prefixed) never hold a `new`.
-    // ES: Congelamiento 3.0 C-01: `T x = new T();` sin raii/owned deja a x como alias no dueno de
-    //     un objeto que nadie posee. Los snapshots del compilador (prefijo $) nunca llevan `new`.
+    // EN: Freeze 3.0 item 141: a direct local initializer `T x = new T()` is an inferred owner and
+    //     reaches this validation as RAII. Assignments after declaration remain non-owning.
+    // ES: Congelamiento 3.0 elemento 141: un inicializador local directo `T x = new T()` es un
+    //     dueno inferido y llega como RAII. Las asignaciones posteriores siguen sin ser duenas.
     // A `scope` local is itself the owner: its object lives in the frame and dies with it.
     // Un local `scope` es el dueno: su objeto vive en el marco y muere con el.
     if (!isRaii && !variable->text().starts_with("$") &&
@@ -4632,7 +4659,10 @@ void ProjectMethodBodyModel::analyzeVariable(
     const bool ownedQualifierOwnsStorage =
         isOwnedQualified && (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate ||
             ProjectTypeConversion::isNativeArray(typeKey));
-    const bool isRaii = variableRequiresRaii(
+    const bool inferredRaiiOwner = variableInfersRaiiOwner(
+        variable, typeKey, declaredOwnership, isStaticLocal, isReferenceLocal,
+        isVariableLengthArray);
+    const bool isRaii = inferredRaiiOwner || variableRequiresRaii(
         variable, typeKey, isForeachEnumerator, isDeferValueCapture,
         ownedQualifierOwnsStorage, managedDelegate);
     // NS304-T13-F03: `scope` forces frame storage (never heap).
@@ -4641,7 +4671,9 @@ void ProjectMethodBodyModel::analyzeVariable(
     // Wording helper: every owner diagnostic below has to name the spelling the user actually
     // wrote, otherwise an `owned` local reports errors about "raii local" and sends them looking at
     // the wrong keyword.
-    const char* const ownerSpelling = ownedQualifierOwnsStorage
+    const char* const ownerSpelling = inferredRaiiOwner
+        ? "inferred owner local"
+        : ownedQualifierOwnsStorage
         ? "owned local"
         : (isForeachEnumerator ? "foreach enumerator"
             : (isDeferValueCapture ? "defer value capture" : "raii local"));

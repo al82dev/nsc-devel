@@ -303,20 +303,15 @@ class Program
 }
 }
 
-/// EN: C-01. A `new` that reaches no owner is a compile error: a local without raii/owned
-///     (declared with a type or with var, or assigned later), a discarded expression, and a
-///     throw operand that is a borrow or a raii owner without move.
-/// ES: C-01. Un `new` que no llega a ningun dueno es error de compilacion: un local sin
-///     raii/owned (con tipo o con var, o asignado despues), una expresion descartada y un operando
-///     de throw que es un prestamo o un owner raii sin move.
+/// EN: C-01. A `new` that still reaches no owner is a compile error: assignment after declaration,
+///     a discarded expression, and a throw operand that is a borrow or a raii owner without move.
+/// ES: C-01. Un `new` que todavia no llega a un dueno es error de compilacion: una asignacion
+///     posterior a la declaracion, una expresion descartada y un operando de throw que es un
+///     prestamo o un owner raii sin move.
 void testLostOwnershipRejected(TestContext& tests, const std::filesystem::path& root)
 {
     const std::string_view box = "class Box { public int V; }\n";
     const std::string lost = "reaches no owner";
-    expectReject(tests, root, "C01TypedLocal", std::string(box) +
-        "class Program { public static int Main() { Box b = new Box(); return b.V; } }\n", lost);
-    expectReject(tests, root, "C01VarLocal", std::string(box) +
-        "class Program { public static int Main() { var b = new Box(); return b.V; } }\n", lost);
     expectReject(tests, root, "C01Assigned", std::string(box) +
         "class Program { public static int Main() { Box b = null; b = new Box(); return 0; } }\n",
         lost);
@@ -330,6 +325,130 @@ void testLostOwnershipRejected(TestContext& tests, const std::filesystem::path& 
     expectReject(tests, root, "C01ThrowBorrow", std::string(boom) +
         "class Program { public static void Fail(Boom given) { throw given; }\n"
         "public static int Main() { return 0; } }\n", thrown);
+}
+
+/// EN: Freeze 3.0 item 141. A direct `new` initializer makes an unqualified lexical local an
+///     inferred owner. It uses every established RAII rule: one cleanup, move-only aliases and
+///     captures, explicit transfer on return, and frame-backed lifetime in async and generators.
+/// ES: Congelamiento 3.0 elemento 141. Un inicializador directo `new` convierte un local lexico
+///     sin calificador en dueno inferido. Usa todas las reglas RAII existentes: un cleanup, aliases
+///     y capturas move-only, transferencia explicita al retornar y vida en el frame async/generator.
+void testInferredLocalOwnership(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude = R"ns(
+class Box
+{
+    public static int Drops;
+    public int V;
+    public Box(int v) { V = v; }
+    ~Box() { Drops = Drops + 1; }
+}
+)ns";
+    expectRun(tests, root, "C01InferredTypedLocal", prelude + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int value = 0;
+        { Box box = new Box(4); value = box.V; }
+        return value * 10 + Box.Drops;
+    }
+}
+)ns", 41);
+    expectRun(tests, root, "C01InferredVarLocal", prelude + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        int value = 0;
+        { var box = new Box(5); value = box.V; }
+        return value * 10 + Box.Drops;
+    }
+}
+)ns", 51);
+    expectReject(tests, root, "C01InferredAlias", prelude + R"ns(
+class Program
+{
+    public static int Main()
+    {
+        Box box = new Box(1);
+        Box alias = box;
+        return alias.V;
+    }
+}
+)ns", "cannot be copied into a non-owning local");
+    expectReject(tests, root, "C01InferredCapture", prelude + R"ns(
+delegate int Getter();
+class Program
+{
+    public static int Main()
+    {
+        Box box = new Box(1);
+        Getter getter = () => box.V;
+        return getter();
+    }
+}
+)ns", "cannot be captured by a lambda without an explicit move capture");
+    expectReject(tests, root, "C01InferredReturnWithoutMove", prelude + R"ns(
+class Program
+{
+    private static owned Box Make()
+    {
+        Box box = new Box(1);
+        return box;
+    }
+    public static int Main() { return 0; }
+}
+)ns", "requires return move(owner)");
+    expectRun(tests, root, "C01InferredReturnMove", prelude + R"ns(
+class Program
+{
+    private static owned Box Make()
+    {
+        Box box = new Box(6);
+        return move(box);
+    }
+    public static int Main()
+    {
+        int value = 0;
+        { raii Box box = Make(); value = box.V; }
+        return value * 10 + Box.Drops;
+    }
+}
+)ns", 61);
+    expectRun(tests, root, "C01InferredAsyncFrame", prelude + R"ns(
+class Program
+{
+    private static async int Read()
+    {
+        Box box = new Box(2);
+        yield;
+        return box.V;
+    }
+    public static async int Main()
+    {
+        int value = await Read();
+        return value * 10 + Box.Drops;
+    }
+}
+)ns", 21);
+    expectRun(tests, root, "C01InferredGeneratorFrame", prelude + R"ns(
+class Program
+{
+    private static Iterator<int> Values()
+    {
+        Box box = new Box(3);
+        yield return box.V;
+        yield return box.V + 1;
+    }
+    public static int Main()
+    {
+        int total = 0;
+        foreach (var value in Values()) { total = total + value; }
+        return total * 10 + Box.Drops;
+    }
+}
+)ns", 71);
 }
 
 /// EN: C-01. Every owning form compiles and destroys its object exactly once: raii and owned
@@ -7735,6 +7854,7 @@ int main()
     testAllocatorAlignment(tests, root);
     testCoreDisposable(tests, root);
     testLostOwnershipRejected(tests, root);
+    testInferredLocalOwnership(tests, root);
     testOwningFormsAccepted(tests, root);
     testCatchOwnsException(tests, root);
     testCaughtExceptionStaysInCatch(tests, root);

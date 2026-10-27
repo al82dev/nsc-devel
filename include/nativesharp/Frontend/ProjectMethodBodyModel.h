@@ -944,6 +944,13 @@ private:
         bool isDeferValueCapture,
         bool ownedQualifierOwnsStorage,
         bool managedDelegate) const;
+    bool variableInfersRaiiOwner(
+        const ast::AstNode* variable,
+        std::string_view typeKey,
+        sema::OwnershipKind declaredOwnership,
+        bool isStaticLocal,
+        bool isReferenceLocal,
+        bool isVariableLengthArray) const;
     void validateVariableQualifiers(
         const ast::AstNode* variable,
         std::string_view typeKey,
