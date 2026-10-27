@@ -882,8 +882,13 @@ bool ProjectOopHirModel::regularFunctionShouldBeSkipped(
         member.declaringTypeOrdinal < nameLookup_->namedTypes().size()
             ? nameLookup_->namedTypes()[member.declaringTypeOrdinal].syntax
             : nullptr;
-    const bool deferredGenericMethod = member.kind == ClassMemberKind::Method &&
-        !member.isVirtual && !member.isOverride && !member.isAbstract &&
+    // EN: Freeze 3.0 (item 130a): an instance constructor of a closed generic type is deferred too.
+    // ES: Congelamiento 3.0 (elemento 130a): un constructor de instancia de un tipo generico cerrado
+    //     tambien se difiere.
+    const bool deferredKind = (member.kind == ClassMemberKind::Method &&
+        !member.isVirtual && !member.isOverride && !member.isAbstract) ||
+        (member.kind == ClassMemberKind::Constructor && !member.isStatic);
+    const bool deferredGenericMethod = deferredKind &&
         ((member.syntax != nullptr &&
           member.syntax->auxiliaryText().starts_with(kDeferredSpecializationPrefix)) ||
          (declaringSyntaxForDemand != nullptr &&

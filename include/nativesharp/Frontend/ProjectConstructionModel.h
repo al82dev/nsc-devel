@@ -76,6 +76,28 @@ public:
     void setPrecompiledSnapshotCaptureFile(FileId fileId) noexcept;
     bool writePrecompiledSnapshotConstruction(std::string& payload, std::string& error) const;
 
+    // EN: Freeze 3.0 (item 130a). A resolver instance only receives the models, before the method-body
+    //     model finishes, and answers which explicit constructor a construction site or a constructor's
+    //     this/base initializer selects, with the same overload rules as build(). It reports nothing:
+    //     build() still binds and diagnoses every site. An empty result means "no explicit constructor
+    //     selected" (implicit default, no viable or ambiguous candidate).
+    // ES: Congelamiento 3.0 (elemento 130a). Una instancia resolvedora solo recibe los modelos, antes de
+    //     que termine el modelo de cuerpos, y responde que constructor explicito elige un sitio de
+    //     construccion o el inicializador this/base de un constructor, con las mismas reglas de
+    //     sobrecarga que build(). No reporta nada: build() sigue enlazando y diagnosticando cada sitio.
+    //     Un resultado vacio significa "ningun constructor explicito elegido" (default implicito, ningun
+    //     candidato viable o ambiguo).
+    void attachDemandResolver(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectMethodBodyModel& methodBodyModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel) noexcept;
+    std::optional<std::size_t> previewConstructionConstructor(const ProjectConstructionSite& site) const;
+    std::optional<std::size_t> previewInitializerConstructor(std::size_t constructorMemberOrdinal) const;
+    std::optional<std::size_t> previewImplicitChainConstructor(std::size_t typeOrdinal) const;
+
 private:
     friend struct ProjectOopHirModelTestAccess;
 
@@ -210,6 +232,9 @@ private:
         std::size_t argumentOrdinal,
         const ProjectConversionClassifier& conversions,
         ConstructorCandidateBinding& candidate) const;
+    std::optional<std::size_t> previewSelectedCandidate(
+        const std::vector<ConstructorCandidateBinding>& candidates) const;
+    void reportUndemandedConstructors(diagnostics::DiagnosticEngine& diagnostics) const;
     std::vector<std::size_t> viableConstructorCandidates(
         const std::vector<ConstructorCandidateBinding>& candidates) const;
     // EN: Freeze 3.0 P1: drops a viable candidate whose member clause fails for its closed type,

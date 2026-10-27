@@ -6,6 +6,7 @@
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 namespace nativesharp::frontend
@@ -338,6 +339,42 @@ void ProjectConstructionModel::bindConstructorInitializer(
         binding.initializerSyntax != nullptr ? binding.initializerSyntax : constructor.syntax,
         {}, constructor.declaredErrorTypeKey, diagnostics);
     storeConstructorInitializerBinding(constructorMemberOrdinal, std::move(binding));
+}
+
+// EN: Freeze 3.0 (item 130a). The constructor that `constructorMemberOrdinal`'s this(...), base(...) or
+//     implicit base() selects, with the evaluation of bindConstructorInitializer and nothing reported.
+// ES: Congelamiento 3.0 (elemento 130a). El constructor que elige el this(...), base(...) o base()
+//     implicito de `constructorMemberOrdinal`, con la evaluacion de bindConstructorInitializer y sin
+//     reportar nada.
+std::optional<std::size_t> ProjectConstructionModel::previewInitializerConstructor(
+    std::size_t constructorMemberOrdinal) const
+{
+    if (memberModel_ == nullptr || nameLookup_ == nullptr || inheritanceModel_ == nullptr ||
+        methodBodyModel_ == nullptr || constructorMemberOrdinal >= memberModel_->members().size())
+        return std::nullopt;
+    diagnostics::DiagnosticEngine scratch(std::numeric_limits<std::size_t>::max());
+    ConstructorInitializerBinding binding;
+    binding.constructorMemberOrdinal = constructorMemberOrdinal;
+    const ClassMemberSymbol& constructor = memberModel_->members()[constructorMemberOrdinal];
+    if (!resolveConstructorInitializerTarget(binding, constructor, scratch)) return std::nullopt;
+    const std::span<const std::size_t> constructors =
+        memberModel_->constructorsOfType(*binding.targetTypeOrdinal);
+    if (constructors.empty())
+    {
+        if (binding.kind == ConstructorInitializerKind::ExplicitThis) return std::nullopt;
+        return previewImplicitChainConstructor(*binding.targetTypeOrdinal);
+    }
+    binding.explicitConstructorMemberOrdinals.assign(constructors.begin(), constructors.end());
+    std::vector<MethodExpressionTypeBinding> argumentTypes;
+    if (!collectConstructorInitializerArgumentTypes(binding, constructorMemberOrdinal, argumentTypes))
+        return std::nullopt;
+    bool anyAccessible = false;
+    bool anyMatchingArity = false;
+    bool accessibleMatchingArity = false;
+    evaluateConstructorInitializerCandidates(
+        binding, constructorMemberOrdinal, argumentTypes,
+        anyAccessible, anyMatchingArity, accessibleMatchingArity);
+    return previewSelectedCandidate(binding.evaluatedCandidates);
 }
 
 void ProjectConstructionModel::validateThisConstructorCycles(

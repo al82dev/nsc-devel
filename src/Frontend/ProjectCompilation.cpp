@@ -925,6 +925,14 @@ bool ProjectCompilation::compileProjectMethodBodies(
     methodBodyOptions.cancellationCheck = cancellationCheck_;
     methodBodyOptions.phaseTimingSink = phaseTimingSink_;
     methodBodyOptions.executionError = &loadError;
+    // EN: Freeze 3.0 (item 130a): previews constructor selection while the bodies are analyzed.
+    // ES: Congelamiento 3.0 (elemento 130a): anticipa la eleccion de constructores mientras se analizan
+    //     los cuerpos.
+    ProjectConstructionModel constructorDemandResolver;
+    constructorDemandResolver.attachDemandResolver(
+        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
+        *namespaceFunctionModel_);
+    methodBodyOptions.constructorDemandResolver = &constructorDemandResolver;
     if (!methodBodyModel_->build(
         *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_,
         genericModel_.get(), diagnostics_,

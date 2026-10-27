@@ -416,6 +416,11 @@ public:
     // bodies reached from real source; libraries additionally analyze every public/protected body
     // in their exported closed types. HIR uses this exact set so an unbound body is never lowered.
     bool callableBodyAnalyzed(std::size_t memberOrdinal) const noexcept;
+    // EN: Freeze 3.0 (item 130a): an instance constructor of a closed generic type that no construction,
+    //     this(...) or base(...) selected; its body was not analyzed and is never lowered.
+    // ES: Congelamiento 3.0 (elemento 130a): un constructor de instancia de un tipo generico cerrado que
+    //     ninguna construccion, this(...) ni base(...) eligio; su cuerpo no se analizo y nunca se baja.
+    bool constructorBodyDeferred(std::size_t memberOrdinal) const;
     bool namespaceFunctionBodyAnalyzed(std::size_t functionOrdinal) const noexcept;
     bool aggregateAllowsSynthesizedMember(
         std::string_view typeKey,
@@ -5221,6 +5226,19 @@ private:
         const ProjectInterfaceModel& interfaceModel,
         std::optional<std::size_t> publicSurfaceProjectOrdinal,
         std::unordered_set<std::size_t>& demandedGenericMethods) const;
+    void seedImplicitChainConstructors(
+        const ProjectConstructionModel* resolver,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::unordered_set<std::size_t>& demandedGenericMethods) const;
+    void collectConstructorDemands(
+        const ProjectConstructionModel* resolver,
+        std::span<const std::size_t> analyzedCallables,
+        bool everySite,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::unordered_set<std::size_t>& demandedGenericMethods,
+        std::vector<std::size_t>& newlyDemanded) const;
     std::vector<std::size_t> createCallableWorklist(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
@@ -5251,7 +5269,7 @@ private:
     void mergeCallableWave(
         std::vector<ProjectCallableAnalysisResult> waveResults,
         std::size_t waveOrdinal,
-        std::size_t analyzedCount,
+        std::span<const std::size_t> analyzedCallables,
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         const ProjectMethodBodyBuildOptions& options,

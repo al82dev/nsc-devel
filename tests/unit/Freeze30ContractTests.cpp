@@ -3457,6 +3457,103 @@ class Program
     }
 }
 
+/// EN: Item 130a. A consumer of a precompiled library instantiates the library's generic template and
+///     demands the constructor it selects: `new Store<Box>(3)` and `new Chain<Box>(4)` compile although
+///     `Store()` is invalid for Box, and `new Store<Box>()` is rejected in the consumer.
+/// ES: Elemento 130a. Un consumidor de una biblioteca precompilada instancia la plantilla generica de la
+///     biblioteca y demanda el constructor que elige: `new Store<Box>(3)` y `new Chain<Box>(4)` compilan
+///     aunque `Store()` es invalido para Box, y `new Store<Box>()` se rechaza en el consumidor.
+void testGenericConstructorDemandLibrary(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::filesystem::path producer = root / "F130aLibrary" / "Api";
+    writeFile(producer / "LApi.nsproj",
+        "<Project><PropertyGroup><Name>LApi</Name><Language>3</Language>"
+        "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    writeFile(producer / "Main.ns", R"ns(
+namespace LApi
+{
+    public delegate int Keyer<T>(T value);
+    public class Keys
+    {
+        public static int Of(int value) { return value; }
+        public static int Of(long value) { return (int)value; }
+    }
+    public class Store<T>
+    {
+        private Keyer<T> k;
+        public int Size;
+        public Store(int size) { Size = size; }
+        public Store() { k = Keys.Of; Size = 1; }
+    }
+    public class Chain<T> : Store<T>
+    {
+        public Chain(int a) : this(a, 1) { Size = Size * 10 + 3; }
+        public Chain(int a, int b) : base(a + b) { Size = Size * 10 + 2; }
+    }
+}
+)ns");
+    const std::string projectText = (producer / "LApi.nsproj").string();
+    const std::string libraryText = (producer / "LApi.lib").string();
+    const std::array<std::string_view, 5> arguments = {
+        "--emit-project-oop-lib", projectText, "-O0", "-o", libraryText};
+    std::string diagnostic;
+    const ExitCode built = runDriver(arguments, diagnostic);
+    tests.expect(built == ExitCode::Success, "F130aLibrary: the library compiles: " + diagnostic);
+    if (built != ExitCode::Success) return;
+    const std::string reference = "<LibraryReference Include=\"" +
+        std::filesystem::path(libraryText).generic_string() + "\" />";
+    const std::array<std::pair<std::string_view, std::string_view>, 2> consumers = {{
+        {"Use", R"ns(
+using LApi;
+class Box { public int V; }
+class Program
+{
+    public static int Main()
+    {
+        raii Store<Box> s = new Store<Box>(3);
+        raii Store<int> t = new Store<int>();
+        raii Chain<Box> c = new Chain<Box>(4);
+        return s.Size * 1000 + t.Size * 100 + c.Size - 523;
+    }
+}
+)ns"},
+        {"Bad", R"ns(
+using LApi;
+class Box { public int V; }
+class Program
+{
+    public static int Main()
+    {
+        raii Store<Box> s = new Store<Box>();
+        return s.Size;
+    }
+}
+)ns"}}};
+    for (const auto& [name, source] : consumers)
+    {
+        const std::filesystem::path directory = root / "F130aLibrary" / std::string(name);
+        const std::filesystem::path project = directory / "Consumer.nsproj";
+        writeFile(project,
+            "<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language></PropertyGroup>"
+            "<ItemGroup><Compile Include=\"**/*.ns\" />" + reference + "</ItemGroup></Project>");
+        writeFile(directory / "Main.ns", source);
+        const std::filesystem::path executable = directory / "Consumer.exe";
+        const ExitCode code = compile(project, executable, "-O0", diagnostic);
+        if (name == "Bad")
+        {
+            tests.expect(code != ExitCode::Success &&
+                    diagnostic.find("exactly matches delegate signature") != std::string::npos,
+                "F130aLibrary: the chosen invalid constructor is rejected in the consumer: " + diagnostic);
+            continue;
+        }
+        tests.expect(code == ExitCode::Success, "F130aLibrary: the consumer compiles: " + diagnostic);
+        if (code != ExitCode::Success) continue;
+        const int observed = std::system(("\"\"" + executable.string() + "\"\"").c_str());
+        tests.expect(observed == 3100, "F130aLibrary: exits 3100, observed " + std::to_string(observed));
+    }
+}
+
 /// EN: P3. A generic `copy` struct is Copy only when its type arguments are: `Pair<int, int>` copies,
 ///     `Pair<Guard, int>` is move-only (and a copy of it is rejected), and a SortedList keyed by a
 ///     move-only struct can be instantiated. A non-generic `copy` struct with a non-Copy field is
@@ -6061,6 +6158,82 @@ void testImportedCArgumentTrivial(TestContext& tests, const std::filesystem::pat
         "        return 0;\n    }\n}\n", "release its owned fields");
 }
 
+constexpr std::string_view kConstructorDemandPrelude = R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+public delegate int Keyer<T>(T value);
+public class Keys
+{
+    public static int Of(int value) { return value; }
+    public static int Of(long value) { return (int)value; }
+}
+class Box
+{
+    public static int Freed;
+    public int V;
+    public Box(int v) { V = v; }
+    ~Box() { Freed = Freed + 1; }
+}
+class Keeper<T>
+{
+    private Keyer<T> k;
+    public int Size;
+    public Keeper(int size) { Size = size; }
+    public Keeper() { k = Keys.Of; Size = 1; }
+}
+class Root<T>
+{
+    public int Seen;
+    private Keyer<T> k;
+    public Root(int seen) { Seen = seen; }
+    public Root() { k = Keys.Of; Seen = 99; }
+}
+class Chain<T> : Root<T>
+{
+    public Chain(int a) : this(a, 1) { Seen = Seen * 10 + 3; }
+    public Chain(int a, int b) : base(a + b) { Seen = Seen * 10 + 2; }
+    public Chain() { Seen = 7; }
+}
+)ns";
+
+/// EN: Item 130a. A constructor of a closed generic type is analyzed only when a `new`, `this(...)` or
+///     `base(...)` selects it: one that is invalid for the type argument compiles while unused and is
+///     rejected once chosen; a chain analyzes every constructor it reaches; Dictionary and HashSet keyed by
+///     a destructible class work with a HashFunc, and the default constructor, which needs Hashing.Default,
+///     is rejected. Each running program returns its observed values.
+/// ES: Elemento 130a. Un constructor de un tipo generico cerrado se analiza solo cuando un `new`,
+///     `this(...)` o `base(...)` lo elige: uno invalido para el argumento de tipo compila mientras no se usa
+///     y se rechaza al elegirse; una cadena analiza todo constructor que alcanza; Dictionary y HashSet con
+///     clave de clase destructible funcionan con un HashFunc, y el constructor por defecto, que necesita
+///     Hashing.Default, se rechaza. Cada programa que corre devuelve los valores observados.
+void testGenericConstructorDemand(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude(kConstructorDemandPrelude);
+    const std::string opening = "class Program\n{\n    public static int Main()\n    {\n";
+    const std::string mismatch = "no method in the method group exactly matches delegate signature";
+    expectRun(tests, root, "F130aUnusedInvalidConstructor", prelude + opening +
+        "        raii Keeper<Box> k = new Keeper<Box>(3);\n        return k.Size;\n    }\n}\n", 3, true);
+    expectReject(tests, root, "F130aChosenInvalidConstructor", prelude + opening +
+        "        raii Keeper<Box> k = new Keeper<Box>();\n        return k.Size;\n    }\n}\n", mismatch, true);
+    expectRun(tests, root, "F130aChain", prelude + opening +
+        "        raii Chain<Box> c = new Chain<Box>(4);\n        return c.Seen;\n    }\n}\n", 523, true);
+    expectReject(tests, root, "F130aChainReachesInvalid", prelude + opening +
+        "        raii Chain<Box> c = new Chain<Box>();\n        return c.Seen;\n    }\n}\n", mismatch, true);
+    expectRun(tests, root, "F130aDictionaryClassKey", prelude + opening +
+        "        int r = 0;\n        {\n            HashFunc<Box> hash = (Box b) => b.V;\n"
+        "            raii Dictionary<Box, int> d = new Dictionary<Box, int>(hash);\n"
+        "            try { d.Add(new Box(1), 10); d.Add(new Box(2), 20); } catch (ArgumentException e) { r = 9; }\n"
+        "            r = r * 10 + d.Count();\n        }\n        return r * 10 + Box.Freed;\n    }\n}\n", 22, true);
+    expectRun(tests, root, "F130aHashSetClassKey", prelude + opening +
+        "        int r = 0;\n        {\n            HashFunc<Box> hash = (Box b) => b.V;\n"
+        "            raii HashSet<Box> s = new HashSet<Box>(hash);\n"
+        "            s.Add(new Box(1));\n            s.Add(new Box(2));\n            s.Add(new Box(3));\n"
+        "            r = s.Count();\n        }\n        return r * 10 + Box.Freed;\n    }\n}\n", 33, true);
+    expectReject(tests, root, "F130aDictionaryDefaultClassKey", prelude + opening +
+        "        raii Dictionary<Box, int> d = new Dictionary<Box, int>();\n        return d.Count();\n    }\n}\n",
+        mismatch, true);
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -7198,6 +7371,8 @@ int main()
     testPlainArrayDelete(tests, root);
     testGenericMoveReferenceCopy(tests, root);
     testImportedCArgumentTrivial(tests, root);
+    testGenericConstructorDemand(tests, root);
+    testGenericConstructorDemandLibrary(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);
