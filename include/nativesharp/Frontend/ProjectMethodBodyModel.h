@@ -1405,6 +1405,39 @@ private:
         const ClassMemberSymbol& method,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 (plan item 136). One place answers which sources of statically known life a value, a
+    //     local or a parameter carries: the borrow of an owned temporary (135), a caught exception (DEC-10), an
+    //     exception parameter loan (P10), a scope object (NS304-T13-F03), a raii or move-only owner, an owned
+    //     parameter, and a pinned local that a suspension does not preserve (NS304-T05-F05). Every escape check
+    //     of those sources asks it; each check keeps its own sinks and its own diagnostic.
+    // ES: Congelamiento 3.0 (elemento 136 del plan). Un solo lugar responde que fuentes de vida conocida
+    //     estaticamente lleva un valor, un local o un parametro: el prestamo de un temporal owned (135), una
+    //     excepcion atrapada (DEC-10), un prestamo de parametro de excepcion (P10), un objeto scope
+    //     (NS304-T13-F03), un owner raii o move-only, un parametro owned, y un local pin que una suspension no
+    //     conserva (NS304-T05-F05). Toda comprobacion de escape de esas fuentes le pregunta; cada una conserva
+    //     sus sumideros y su diagnostico.
+    struct KnownLifeSources
+    {
+        bool ownedTemporary = false;
+        std::optional<std::size_t> caughtExceptionScope;
+        std::optional<std::size_t> exceptionLoanParameter;
+        std::optional<std::size_t> local;
+        std::optional<std::size_t> parameter;
+        bool scopeObject = false;
+        bool raiiOwner = false;
+        bool moveOnlyOwner = false;
+        bool pinned = false;
+        bool ownedReferenceParameter = false;
+    };
+    KnownLifeSources knownLifeSourcesOfResult(const ExpressionResult& result) const noexcept;
+    KnownLifeSources knownLifeSourcesOfLocal(const MethodLocalSymbol& local) const noexcept;
+    KnownLifeSources knownLifeSourcesOfParameter(
+        const MethodParameterSymbol& parameter,
+        std::size_t parameterOrdinal) const;
+    KnownLifeSources knownLifeSourcesOfValue(
+        const ast::AstNode* value,
+        const ClassMemberSymbol* method,
+        std::size_t scopeOrdinal) const;
     // EN: Freeze 3.0 DEC-10 (caught exception). The catch scope whose exception `value` names, when
     //     `value` is an identifier of such a local; `scopeIsWithin` tells whether `scope` is
     //     `ancestor` or nested in it. The report functions reject storing the caught exception

@@ -109,15 +109,16 @@ void ProjectMethodBodyModel::reportScopeAssignmentEscape(
             if (node == nullptr) continue;
             if (node->kind() == ast::AstNodeKind::IdentifierExpression)
             {
-                const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, node->text());
-                if (name.has_value() && name->kind == ScopeNameKind::Local &&
-                    name->semanticOrdinal < locals_.size() && locals_[name->semanticOrdinal].isScope)
+                // EN: Freeze 3.0 (plan item 136): the classifier names the scope object.
+                // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el objeto scope.
+                const KnownLifeSources named = knownLifeSourcesOfValue(node, nullptr, scopeOrdinal);
+                if (named.scopeObject)
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->second()->range(),
-                        "scope object '" + locals_[name->semanticOrdinal].name +
+                        "scope object '" + locals_[*named.local].name +
                             "' cannot be stored in a field or static because it would outlive its frame");
                     break;
                 }
@@ -1341,27 +1342,23 @@ bool ProjectMethodBodyModel::rejectOwnerCopyAssignment(
     if (borrowedReassignment || borrowedArrayElementTarget || raiiTargetLocal.has_value() ||
         expression->second() == nullptr ||
         expression->second()->kind() != ast::AstNodeKind::IdentifierExpression) return false;
-    const std::optional<ScopeName> sourceName =
-        lookupScopeName(scopeOrdinal, expression->second()->text());
-    if (sourceName.has_value() && sourceName->kind == ScopeNameKind::Local &&
-        sourceName->semanticOrdinal < locals_.size() && locals_[sourceName->semanticOrdinal].isRaii)
+    // EN: Freeze 3.0 (plan item 136): the classifier names the raii owner or the owned parameter.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra al owner raii o al parametro owned.
+    const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
+    const KnownLifeSources copied = knownLifeSourcesOfValue(expression->second(), enclosing, scopeOrdinal);
+    if (copied.raiiOwner)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             expression->second()->range(),
-            "RAII owner '" + locals_[sourceName->semanticOrdinal].name +
+            "RAII owner '" + locals_[*copied.local].name +
                 "' cannot be copied by assignment; Stage 49 requires ownership transfer to "
                 "another RAII local with move(...)");
         return true;
     }
-    if (!sourceName.has_value() || sourceName->kind != ScopeNameKind::Parameter) return false;
-    const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
-    if (enclosing == nullptr || sourceName->semanticOrdinal >= enclosing->parameters.size()) return false;
-    const MethodParameterSymbol& source = enclosing->parameters[sourceName->semanticOrdinal];
-    const bool sourceOwnsStorage =
-        isReferenceTypeKey(source.typeKey) || source.typeKey == "builtin:string";
-    if (source.ownership != sema::OwnershipKind::Owned || !sourceOwnsStorage) return false;
+    if (!copied.ownedReferenceParameter) return false;
+    const MethodParameterSymbol& source = enclosing->parameters[*copied.parameter];
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidOperand,
         diagnostics::DiagnosticSeverity::Error,

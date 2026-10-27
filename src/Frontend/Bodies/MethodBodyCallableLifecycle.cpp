@@ -234,7 +234,9 @@ void ProjectMethodBodyModel::analyzeCallable(
     {
         for (const MethodLocalSymbol& local : locals())
         {
-            if (local.isPinned)
+            // EN: Freeze 3.0 (plan item 136): the classifier names the pinned local.
+            // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el local pin.
+            if (knownLifeSourcesOfLocal(local).pinned)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,

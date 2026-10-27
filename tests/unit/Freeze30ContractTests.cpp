@@ -6290,6 +6290,54 @@ void testTemporaryProvenance(TestContext& tests, const std::filesystem::path& ro
         "        return R(true).Length;\n" + closing, rejected);
 }
 
+constexpr std::string_view kKnownLifePrelude = R"ns(
+using NativeSharp.Core;
+class Log { public static int Value; }
+class Box
+{
+    public int Id;
+    public Box(int id) { Id = id; }
+    ~Box() { Log.Value = Log.Value * 10 + Id; }
+}
+class Holder { public Box B; public int Id; }
+class Program
+{
+)ns";
+
+/// EN: Item 136. The checks of scope objects, raii owners and pinned locals ask the known-life classifier and
+///     keep their sinks and diagnostics: a scope object is not stored, returned or captured; a raii owner is
+///     not copied or returned without move; a pinned local does not cross a suspension. Exception sources
+///     keep their own tests (DEC-10, P10).
+/// ES: Elemento 136. Las comprobaciones de objetos scope, owners raii y locales pin preguntan al clasificador
+///     de vida conocida y conservan sus sumideros y diagnosticos: un objeto scope no se guarda, no se devuelve
+///     ni se captura; un owner raii no se copia ni se devuelve sin move; un local pin no cruza una suspension.
+///     Las fuentes de excepciones conservan sus pruebas (DEC-10, P10).
+void testKnownLifeSourcesKeepTheirChecks(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude(kKnownLifePrelude);
+    const std::string opening = "    public static int Main()\n    {\n";
+    const std::string closing = "    }\n}\n";
+    expectReject(tests, root, "F136ScopeFieldStore", prelude + opening +
+        "        raii Holder h = new Holder();\n        scope Box b = new Box(1);\n        h.B = b;\n"
+        "        return 0;\n" + closing, "cannot be stored in a field or static");
+    expectReject(tests, root, "F136ScopeReturn", prelude +
+        "    private static Box Get() { scope Box b = new Box(1); return b; }\n" + opening +
+        "        return Get().Id;\n" + closing, "lives in the current frame and cannot be returned");
+    expectRun(tests, root, "F136ScopeValueReturn", prelude +
+        "    private static int Get() { scope Box b = new Box(4); return b.Id; }\n" + opening +
+        "        int v = Get();\n        return v * 10 + Log.Value;\n" + closing, 44);
+    expectReject(tests, root, "F136OwnerReturnWithoutMove", prelude +
+        "    private static owned Box Make() { raii Box b = new Box(1); return b; }\n" + opening +
+        "        raii Box x = Make();\n        return x.Id;\n" + closing, "requires return move(owner)");
+    expectReject(tests, root, "F136OwnerCopiedToLocal", prelude + opening +
+        "        raii Box b = new Box(1);\n        Box a = b;\n        return a.Id;\n" + closing,
+        "cannot be copied into a non-owning local");
+    expectReject(tests, root, "F136PinnedAcrossSuspension", prelude +
+        "    public static async int Run()\n    {\n        pin raii Box b = new Box(1);\n        yield;\n"
+        "        return b.Id;\n    }\n" + opening + "        return 0;\n" + closing,
+        "cannot hold a pinned local across a suspension");
+}
+
 constexpr std::string_view kConstructorDemandPrelude = R"ns(
 using NativeSharp.Core;
 using NativeSharp.Core.Collections.Generic;
@@ -7508,6 +7556,7 @@ int main()
     testReceiverTemporariesUntilFullExpression(tests, root);
     testNewCallReceiver(tests, root);
     testTemporaryProvenance(tests, root);
+    testKnownLifeSourcesKeepTheirChecks(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

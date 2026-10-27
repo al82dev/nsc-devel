@@ -332,9 +332,12 @@ bool ProjectMethodBodyModel::validateExceptionLocalCapture(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     bool safe = true;
+    // EN: Freeze 3.0 (plan item 136): the classifier answers both questions.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador responde las dos preguntas.
+    const KnownLifeSources captured = knownLifeSourcesOfLocal(local);
     // EN: Freeze 3.0 P10: a local that copies an exception parameter loan.
     // ES: Congelamiento 3.0 P10: un local que copia un prestamo de parametro de excepcion.
-    if (local.loanedExceptionParameterOrdinal.has_value())
+    if (captured.exceptionLoanParameter.has_value())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -350,7 +353,7 @@ bool ProjectMethodBodyModel::validateExceptionLocalCapture(
     // ES: Congelamiento 3.0 P10: la variable del catch es el parametro que recibe la excepcion
     //     atrapada, y un closure puede sobrevivir al handler. Sacarla antes (`raii T keep =
     //     move(e);`) es la transferencia explicita.
-    if (local.caughtExceptionScopeOrdinal.has_value())
+    if (captured.caughtExceptionScope.has_value())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -372,7 +375,9 @@ bool ProjectMethodBodyModel::validateExceptionParameterCapture(
     // EN: Freeze 3.0 P10: an exception parameter is a loan from the caller; a closure may outlive it.
     // ES: Congelamiento 3.0 P10: un parametro de excepcion es un prestamo del llamador; un closure
     //     puede sobrevivirlo.
-    if (parameterIsExceptionLoan(parameter))
+    // EN: Freeze 3.0 (plan item 136): the classifier answers; the ordinal does not matter here.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): responde el clasificador; el ordinal no importa aqui.
+    if (knownLifeSourcesOfParameter(parameter, 0).exceptionLoanParameter.has_value())
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -418,7 +423,10 @@ bool ProjectMethodBodyModel::validateLambdaLocalCaptureLifetime(
                 "' cannot be captured by a lambda because the delegate may outlive its stack frame");
         safe = false;
     }
-    if (local.isScope)
+    // EN: Freeze 3.0 (plan item 136): the classifier names the scope object and the owner.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el objeto scope y el owner.
+    const KnownLifeSources captured = knownLifeSourcesOfLocal(local);
+    if (captured.scopeObject)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -432,7 +440,7 @@ bool ProjectMethodBodyModel::validateLambdaLocalCaptureLifetime(
         ((mode == language::CaptureMode::Copy ||
           mode == language::CaptureMode::Reference ||
           mode == language::CaptureMode::MutableReference) &&
-         (local.isRaii || local.isMoveOnly || local.requiresValueDrop)))
+         (captured.raiiOwner || captured.moveOnlyOwner || local.requiresValueDrop)))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,

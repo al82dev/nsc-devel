@@ -2268,15 +2268,72 @@ std::optional<std::size_t> ProjectMethodBodyModel::disposableTypeOrdinal() const
     return coreDisposableTypeOrdinal_;
 }
 
+// EN: Freeze 3.0 (plan item 136): the known-life classifier. A result carries the borrow of an owned temporary;
+//     a local or a parameter carries what its symbol records; a value that is an identifier carries what its
+//     local (any) or its parameter (only with `method`) carries.
+// ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador de vida conocida. Un resultado lleva el prestamo
+//     de un temporal owned; un local o un parametro lleva lo que registra su simbolo; un valor que es un
+//     identificador lleva lo que lleva su local (cualquiera) o su parametro (solo con `method`).
+ProjectMethodBodyModel::KnownLifeSources ProjectMethodBodyModel::knownLifeSourcesOfResult(
+    const ExpressionResult& result) const noexcept
+{
+    KnownLifeSources sources;
+    sources.ownedTemporary = result.valid && result.borrowsOwnedTemporary;
+    return sources;
+}
+
+ProjectMethodBodyModel::KnownLifeSources ProjectMethodBodyModel::knownLifeSourcesOfLocal(
+    const MethodLocalSymbol& local) const noexcept
+{
+    KnownLifeSources sources;
+    sources.caughtExceptionScope = local.caughtExceptionScopeOrdinal;
+    sources.exceptionLoanParameter = local.loanedExceptionParameterOrdinal;
+    sources.scopeObject = local.isScope;
+    sources.raiiOwner = local.isRaii;
+    sources.moveOnlyOwner = local.isMoveOnly;
+    sources.pinned = local.isPinned;
+    return sources;
+}
+
+ProjectMethodBodyModel::KnownLifeSources ProjectMethodBodyModel::knownLifeSourcesOfParameter(
+    const MethodParameterSymbol& parameter,
+    std::size_t parameterOrdinal) const
+{
+    KnownLifeSources sources;
+    sources.parameter = parameterOrdinal;
+    if (parameterIsExceptionLoan(parameter)) sources.exceptionLoanParameter = parameterOrdinal;
+    sources.ownedReferenceParameter = parameter.ownership == sema::OwnershipKind::Owned &&
+        (isReferenceTypeKey(parameter.typeKey) || parameter.typeKey == "builtin:string");
+    return sources;
+}
+
+ProjectMethodBodyModel::KnownLifeSources ProjectMethodBodyModel::knownLifeSourcesOfValue(
+    const ast::AstNode* value,
+    const ClassMemberSymbol* method,
+    std::size_t scopeOrdinal) const
+{
+    if (value == nullptr || value->kind() != ast::AstNodeKind::IdentifierExpression) return {};
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, value->text());
+    if (!name.has_value()) return {};
+    if (name->kind == ScopeNameKind::Local)
+    {
+        if (name->semanticOrdinal >= locals_.size()) return {};
+        KnownLifeSources sources = knownLifeSourcesOfLocal(locals_[name->semanticOrdinal]);
+        sources.local = name->semanticOrdinal;
+        return sources;
+    }
+    if (name->kind != ScopeNameKind::Parameter || method == nullptr ||
+        name->semanticOrdinal >= method->parameters.size()) return {};
+    return knownLifeSourcesOfParameter(method->parameters[name->semanticOrdinal], name->semanticOrdinal);
+}
+
 std::optional<std::size_t> ProjectMethodBodyModel::caughtExceptionScopeOfValue(
     const ast::AstNode* value,
     std::size_t scopeOrdinal) const
 {
-    if (value == nullptr || value->kind() != ast::AstNodeKind::IdentifierExpression) return std::nullopt;
-    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, value->text());
-    if (!name.has_value() || name->kind != ScopeNameKind::Local || name->semanticOrdinal >= locals_.size())
-        return std::nullopt;
-    return locals_[name->semanticOrdinal].caughtExceptionScopeOrdinal;
+    // EN: Freeze 3.0 (plan item 136): the classifier answers.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): responde el clasificador.
+    return knownLifeSourcesOfValue(value, nullptr, scopeOrdinal).caughtExceptionScope;
 }
 
 bool ProjectMethodBodyModel::scopeIsWithin(std::size_t scope, std::size_t ancestor) const noexcept
@@ -2345,16 +2402,9 @@ std::optional<std::size_t> ProjectMethodBodyModel::loanedExceptionParameterOfVal
     const ClassMemberSymbol* method,
     std::size_t scopeOrdinal) const
 {
-    if (value == nullptr || value->kind() != ast::AstNodeKind::IdentifierExpression) return std::nullopt;
-    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, value->text());
-    if (!name.has_value()) return std::nullopt;
-    if (name->kind == ScopeNameKind::Local)
-        return name->semanticOrdinal < locals_.size()
-            ? locals_[name->semanticOrdinal].loanedExceptionParameterOrdinal : std::nullopt;
-    if (name->kind != ScopeNameKind::Parameter || method == nullptr ||
-        name->semanticOrdinal >= method->parameters.size() ||
-        !parameterIsExceptionLoan(method->parameters[name->semanticOrdinal])) return std::nullopt;
-    return name->semanticOrdinal;
+    // EN: Freeze 3.0 (plan item 136): the classifier answers.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): responde el clasificador.
+    return knownLifeSourcesOfValue(value, method, scopeOrdinal).exceptionLoanParameter;
 }
 
 bool ProjectMethodBodyModel::reportExceptionLoanReturn(
@@ -3553,7 +3603,7 @@ void ProjectMethodBodyModel::rejectOwnedTemporaryBorrowEscape(
     std::string_view destination,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    if (!value.valid || !value.borrowsOwnedTemporary || syntax == nullptr) return;
+    if (!knownLifeSourcesOfResult(value).ownedTemporary || syntax == nullptr) return;
     // EN: Freeze 3.0 (plan item 135): a call, `?:` or `??` has no text of its own.
     // ES: Congelamiento 3.0 (elemento 135 del plan): una llamada, `?:` o `??` no tiene texto propio.
     const std::string shown = syntax->text().empty() ? std::string("the value") : "'" + syntax->text() + "'";
@@ -3662,15 +3712,15 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     if (!isRaii && !isBorrowed && localHoldsReference &&
         variable->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
-        const std::optional<ScopeName> sourceName =
-            lookupScopeName(scopeOrdinal, variable->first()->text());
-        if (sourceName.has_value() && sourceName->kind == ScopeNameKind::Local &&
-            sourceName->semanticOrdinal < locals_.size() && locals_[sourceName->semanticOrdinal].isRaii)
+        // EN: Freeze 3.0 (plan item 136): the classifier names the raii owner.
+        // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra al owner raii.
+        const KnownLifeSources source = knownLifeSourcesOfValue(variable->first(), nullptr, scopeOrdinal);
+        if (source.raiiOwner)
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
                 variable->first()->range(),
-                "RAII owner '" + locals_[sourceName->semanticOrdinal].name +
+                "RAII owner '" + locals_[*source.local].name +
                     "' cannot be copied into a non-owning local; Stage 49 requires ownership transfer with move(...)");
     }
     // Stage 52: an "owned"/"borrowed"-returning call whose declared return type is a
@@ -5432,15 +5482,12 @@ bool ProjectMethodBodyModel::reportDirectOwnerReturnWithoutMove(
     if (reportExceptionLoanReturn(statement->first(), method, scopeOrdinal, diagnostics)) return true;
     if (method.declaredOwnership == sema::OwnershipKind::Borrowed ||
         statement->first()->kind() != ast::AstNodeKind::IdentifierExpression) return false;
-    const std::optional<ScopeName> returnedName = lookupScopeName(
-        scopeOrdinal, statement->first()->text());
-    if (!returnedName.has_value()) return false;
-    if (returnedName->kind == ScopeNameKind::Local &&
-        returnedName->semanticOrdinal < locals_.size() &&
-        (locals_[returnedName->semanticOrdinal].isRaii ||
-         locals_[returnedName->semanticOrdinal].isMoveOnly))
+    // EN: Freeze 3.0 (plan item 136): the classifier names the owner local or parameter.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el local o parametro owner.
+    const KnownLifeSources returned = knownLifeSourcesOfValue(statement->first(), &method, scopeOrdinal);
+    if (returned.raiiOwner || returned.moveOnlyOwner)
     {
-        const MethodLocalSymbol& local = locals_[returnedName->semanticOrdinal];
+        const MethodLocalSymbol& local = locals_[*returned.local];
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidReturn,
             diagnostics::DiagnosticSeverity::Error,
@@ -5452,13 +5499,11 @@ bool ProjectMethodBodyModel::reportDirectOwnerReturnWithoutMove(
                     "' requires return move(value)");
         return true;
     }
-    if (returnedName->kind != ScopeNameKind::Parameter ||
-        returnedName->semanticOrdinal >= method.parameters.size()) return false;
-    const MethodParameterSymbol& parameter = method.parameters[returnedName->semanticOrdinal];
+    if (!returned.parameter.has_value()) return false;
+    const MethodParameterSymbol& parameter = method.parameters[*returned.parameter];
     // Stage 52: an "owned T" parameter closed over a Copy value type needs no
     // ownership ceremony; a move-only value is handled by the next alternative.
-    const bool ownedReference = parameter.ownership == sema::OwnershipKind::Owned &&
-        (isReferenceTypeKey(parameter.typeKey) || parameter.typeKey == "builtin:string");
+    const bool ownedReference = returned.ownedReferenceParameter;
     const bool moveOnlyValue = parameter.passKind == ParameterPassKind::Value &&
         memberModel_->typeIsMoveOnly(parameter.typeKey);
     if (!ownedReference && !moveOnlyValue) return false;
@@ -5745,16 +5790,15 @@ bool ProjectMethodBodyModel::validateScopeReturn(
     // a method call on it produces a copy and is legal.
     if (statement->first() == nullptr ||
         statement->first()->kind() != ast::AstNodeKind::IdentifierExpression) return true;
-    const std::optional<ScopeName> name = lookupScopeName(
-        scopeOrdinal, statement->first()->text());
-    if (!name.has_value() || name->kind != ScopeNameKind::Local ||
-        name->semanticOrdinal >= locals_.size() || !locals_[name->semanticOrdinal].isScope)
-        return true;
+    // EN: Freeze 3.0 (plan item 136): the classifier names the scope object.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el objeto scope.
+    const KnownLifeSources returned = knownLifeSourcesOfValue(statement->first(), nullptr, scopeOrdinal);
+    if (!returned.scopeObject) return true;
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidReturn,
         diagnostics::DiagnosticSeverity::Error,
         statement->first()->range(),
-        "scope object '" + locals_[name->semanticOrdinal].name +
+        "scope object '" + locals_[*returned.local].name +
             "' lives in the current frame and cannot be returned");
     return false;
 }
