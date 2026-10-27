@@ -891,6 +891,30 @@ LLVMValueRef OopLlvmImplementation::pollCoroutineAwaitChild(
         return childSlot;
 }
 
+// EN: Freeze 3.0 (plan item 116): an await whose operand holds another await creates its child again when the
+//     resume belongs to that inner await. The operand has not produced the child yet, and evaluating it reaches
+//     the inner resume point; reusing the empty slot polled a zero future.
+// ES: Congelamiento 3.0 (elemento 116 del plan): un await cuyo operando contiene otro await vuelve a crear su
+//     hijo cuando la reanudación es de ese await interior. El operando todavía no produjo el hijo, y evaluarlo
+//     llega al punto de reanudación interior; reutilizar el slot vacío consultaba un future en cero.
+LLVMValueRef OopLlvmImplementation::coroutineAwaitCreatesChild(
+        const frontend::ProjectOopMirNode* node, std::int64_t id, LLVMValueRef seen, LLVMTypeRef intType)
+{
+        LLVMValueRef creates = LLVMBuildICmp(
+            builder_, LLVMIntEQ, seen, LLVMConstInt(intType, 0, 0), "coro.await.fresh");
+        const auto nested = coroutine_.subtreeIds.find(node);
+        if (nested == coroutine_.subtreeIds.end()) return creates;
+        for (const std::int64_t inner : nested->second)
+        {
+            if (inner == id) continue;
+            LLVMValueRef resumesInner = LLVMBuildICmp(
+                builder_, LLVMIntEQ, seen, LLVMConstInt(intType, static_cast<unsigned long long>(inner), 1),
+                "coro.await.inner");
+            creates = LLVMBuildOr(builder_, creates, resumesInner, "coro.await.create");
+        }
+        return creates;
+}
+
 LLVMValueRef OopLlvmImplementation::lowerCoroutineAwait(
         const frontend::ProjectOopMirNode* node, std::string& error, LLVMValueRef childOverride)
 {
@@ -916,10 +940,7 @@ LLVMValueRef OopLlvmImplementation::lowerCoroutineAwait(
         LLVMBasicBlockRef create = appendBlock("coro.await.create");
         LLVMBasicBlockRef reuse = appendBlock("coro.await.reuse");
         LLVMBasicBlockRef selected = appendBlock("coro.await.selected");
-        LLVMBuildCondBr(
-            builder_,
-            LLVMBuildICmp(builder_, LLVMIntEQ, seen, LLVMConstInt(intType, 0, 0), "coro.await.fresh"),
-            create, reuse);
+        LLVMBuildCondBr(builder_, coroutineAwaitCreatesChild(node, id, seen, intType), create, reuse);
         enterBlock(create);
         LLVMValueRef fresh = childOverride != nullptr
             ? childOverride

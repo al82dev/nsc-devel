@@ -5426,6 +5426,61 @@ class Program
     }
 }
 
+constexpr std::string_view kNestedAwaitPrelude = R"ns(
+using NativeSharp.Core;
+class Box
+{
+    public static int Freed;
+    public int V;
+    public Box(int v) { V = v; }
+    ~Box() { Freed = Freed + 1; }
+}
+)ns";
+
+// EN: Plan item 116. `await F(await G())` in a coroutine: when G suspends, the resume of G's await evaluates
+//     the operand of the outer await again, so F is called with G's result. Operands evaluated before G
+//     (a call, an owned argument) run once.
+// ES: Elemento 116 del plan. `await F(await G())` en una corrutina: cuando G se suspende, la reanudación del
+//     await de G vuelve a evaluar el operando del await exterior, así que F recibe el resultado de G. Los
+//     operandos evaluados antes de G (una llamada, un argumento owned) corren una vez.
+void testNestedAwaitResume(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "F116NestedSuspend", std::string(kNestedAwaitPrelude) + R"ns(
+class Program
+{
+    public static int Calls;
+    public static async int G() { Calls = Calls + 1; yield; return 4; }
+    public static async int F(int x) { Calls = Calls + 10; yield; return x * 10; }
+    public static int Bump() { Calls = Calls + 100; return 0; }
+    public static async int Main()
+    {
+        int r = Bump() + await F(await G());
+        return r + Calls;
+    }
+}
+)ns", 151);
+    expectRun(tests, root, "F116NestedOwned", std::string(kNestedAwaitPrelude) + R"ns(
+class Program
+{
+    public static async int G() { yield; return 4; }
+    public static async int H(owned Box b, int x) { yield; return b.V * 10 + x; }
+    public static async int Main()
+    {
+        int r = await H(new Box(2), await G());
+        return r * 10 + Box.Freed;
+    }
+}
+)ns", 241);
+    expectRun(tests, root, "F116InnerOnlySuspends", std::string(kNestedAwaitPrelude) + R"ns(
+class Program
+{
+    public static async int G() { yield; return 4; }
+    public static async int F(int x) { return x * 10; }
+    public static async int Main() { return await F(await G()); }
+}
+)ns", 40);
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -6550,6 +6605,7 @@ int main()
     testFutureMoveOnly(tests, root);
     testFutureFields(tests, root);
     testValueDropVerification(tests, root);
+    testNestedAwaitResume(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

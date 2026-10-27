@@ -1388,6 +1388,8 @@ private:
         const OopLlvmReplaySpill& spill, LLVMValueRef value, std::string& error);
     bool coroutineReplaySpillable(const frontend::ProjectOopMirNode* node, LLVMValueRef value);
     bool coroutineReplayAddressStable(const frontend::ProjectOopMirNode* node);
+    LLVMValueRef coroutineAwaitCreatesChild(
+        const frontend::ProjectOopMirNode* node, std::int64_t id, LLVMValueRef seen, LLVMTypeRef intType);
     LLVMValueRef coroutineResumeMatches(
         const frontend::ProjectOopMirNode* node, std::int64_t& id, std::string& error);
     bool lowerCoroutineSuspendPoint(const frontend::ProjectOopMirNode* node, std::string& error);
