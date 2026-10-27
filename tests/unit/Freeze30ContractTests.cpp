@@ -6290,6 +6290,64 @@ void testTemporaryProvenance(TestContext& tests, const std::filesystem::path& ro
         "        return R(true).Length;\n" + closing, rejected);
 }
 
+constexpr std::string_view kLentArgumentPrelude = R"ns(
+class Log { public static int Value; }
+class Box
+{
+    public int Id;
+    public Box(int id) { Id = id; }
+    public Box Self() { return this; }
+    ~Box() { Log.Value = Log.Value * 10 + Id; }
+}
+public delegate string TextFn(string s);
+class Program
+{
+    private static owned Box Make(int id) { return new Box(id); }
+    private static owned string MakeText() { string a = "ab"; return a + "c"; }
+    private static string Id(string s) { return s; }
+    private static owned string Copy(string s) { return s + "!"; }
+    private static int Len(string s) { return s.Length; }
+    private static Box Plain(Box b) { return b; }
+)ns";
+
+/// EN: Item 135a. A non-owned reference result of a call inherits the borrow of every lent owned temporary
+///     argument and of the receiver: storing it is rejected, and an expression that only reads it keeps the
+///     temporary alive until its end. An owned return or a plain value does not inherit it. A class temporary
+///     never reaches a parameter that does not take ownership (C-01).
+/// ES: Elemento 135a. Un resultado referencia no owned de una llamada hereda el prestamo de todo temporal owned
+///     argumento prestado y del receptor: guardarlo se rechaza, y una expresion que solo lo lee mantiene vivo el
+///     temporal hasta su final. Un retorno owned o un valor simple no lo heredan. Un temporal de clase nunca
+///     llega a un parametro que no toma ownership (C-01).
+void testLentArgumentTemporaries(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude(kLentArgumentPrelude);
+    const std::string opening = "    public static int Main()\n    {\n";
+    const std::string closing = "    }\n}\n";
+    const std::string rejected = "destroyed at the end of the full expression";
+    expectReject(tests, root, "F135aStringStored", prelude + opening +
+        "        string s = Id(MakeText());\n        return s.Length;\n" + closing, rejected);
+    expectRun(tests, root, "F135aStringRead", prelude + opening +
+        "        int n = Id(MakeText()).Length + Id(MakeText()).Length;\n        return n;\n" + closing, 6);
+    expectReject(tests, root, "F135aNestedStored", prelude + opening +
+        "        string s = Id(Id(MakeText()));\n        return s.Length;\n" + closing, rejected);
+    expectRun(tests, root, "F135aNestedRead", prelude + opening +
+        "        int n = Id(Id(MakeText())).Length;\n        return n;\n" + closing, 3);
+    expectReject(tests, root, "F135aDelegateStored", prelude + opening +
+        "        TextFn f = Id;\n        string s = f(MakeText());\n        return s.Length;\n" + closing,
+        rejected);
+    expectRun(tests, root, "F135aOwnedReturn", prelude + opening +
+        "        raii string c = Copy(MakeText());\n        return c.Length;\n" + closing, 4);
+    expectRun(tests, root, "F135aPlainValue", prelude + opening +
+        "        int n = Len(MakeText());\n        return n;\n" + closing, 3);
+    expectReject(tests, root, "F135aClassReceiverStored", prelude + opening +
+        "        Box b = Make(4).Self();\n        return b.Id;\n" + closing, rejected);
+    expectRun(tests, root, "F135aClassReceiverRead", prelude + opening +
+        "        int v = Make(4).Self().Id;\n        return v * 10 + Log.Value;\n" + closing, 44);
+    expectReject(tests, root, "F135aClassArgument", prelude + opening +
+        "        Box b = Plain(Make(4));\n        return b.Id;\n" + closing,
+        "ownership-transfer argument requires an owned parameter");
+}
+
 constexpr std::string_view kKnownLifePrelude = R"ns(
 using NativeSharp.Core;
 class Log { public static int Value; }
@@ -7556,6 +7614,7 @@ int main()
     testReceiverTemporariesUntilFullExpression(tests, root);
     testNewCallReceiver(tests, root);
     testTemporaryProvenance(tests, root);
+    testLentArgumentTemporaries(tests, root);
     testKnownLifeSourcesKeepTheirChecks(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);

@@ -3,19 +3,19 @@
 - **Fecha**: 2026-10-27.
 - **Rama**: `development-release-candidate`.
 - **Base de la campaña**: `63aba0be4`.
-- **Revisión descrita**: `1df8e86e3` más el commit de este documento.
-- **Commits desde la base**: 81 antes de este documento. 79 están en la línea principal y 2 entraron por merge:
+- **Revisión descrita**: `16c0e6b0b` más el commit del elemento 135a, que actualiza este documento.
+- **Commits desde la base**: 83 antes de esta versión. 81 están en la línea principal y 2 entraron por merge:
   - `4da911c53` revierte la época NSMETA de P8;
   - `2796870df` es la primera versión del elemento 115, reemplazada por `e64631180`.
 - **Estado**: **IMPLEMENTADO CON VALIDACIÓN FOCAL**. No está congelado ni certificado; los gates finales de abajo
   siguen pendientes.
-- **Tracking**: plan de decisiones de 151 elementos en el proyecto NSC-IDE
-  (`NSC-PLAN-DECISIONES-CONGELAMIENTO-3.0.md`). Este documento es su elemento 132, actualizado en el 137.
+- **Tracking**: plan de decisiones de 153 elementos en el proyecto NSC-IDE
+  (`NSC-PLAN-DECISIONES-CONGELAMIENTO-3.0.md`). Este documento es su elemento 132, actualizado en el 137 y en el 135a.
 - **Registro de decisiones**:
   - Este documento reemplaza la instantánea de `NSC-DECISIONES-VIGENTES-CONGELAMIENTO-3.0.md`. Esa instantánea
     (§2) y sus pendientes (§6) son de `403b06641`.
   - Lo hecho después está en la tabla de contratos de abajo y en
-    `docs/3.0/decisiones-congelamiento/34-*` a `56-*`.
+    `docs/3.0/decisiones-congelamiento/34-*` a `58-*`.
 - **Contrato de vida**: `docs/3.0/language/known-life-sources.md` (elemento 137) fija la garantía sobre fuentes de
   vida conocida y sus límites exactos.
 
@@ -66,7 +66,9 @@ La versión del 2026-10-25 (`9b224f4df`, actualizada en `aa80795b4`) afirmaba lo
   con retorno owned o `new` de clase) descartado o receptor tiene dueño oculto. Si su préstamo termina en un valor
   simple, en un owner nuevo o en una escritura de campo, vive hasta el final de la expresión completa y se destruye
   una vez, también cuando una rama de `?:`/`??` no lo creó. El préstamo sigue por campos, getters, resultados no
-  owned de llamadas, `?:` y `??`; guardarlo, devolverlo o entregarlo con `yield` es error.
+  owned de llamadas, `?:` y `??`; guardarlo, devolverlo o entregarlo con `yield` es error. Un temporal owned
+  entregado a un parámetro que no toma ownership también presta al resultado no owned de la llamada y vive hasta
+  el final de la expresión completa (elemento 135a, doc 58).
 - **Fuentes de vida conocida** (`1df8e86e3`; docs 55, 56; `docs/3.0/language/known-life-sources.md`). Un solo
   clasificador reconoce temporales owned, locales `raii`, objetos `scope`, excepciones atrapadas, préstamos de
   excepción y locales `pin`; cada comprobación conserva su diagnóstico. Garantía: sin fugas, doble destrucción ni
@@ -119,7 +121,8 @@ La versión del 2026-10-25 (`9b224f4df`, actualizada en `aa80795b4`) afirmaba lo
 - **D-06 manifiesto de superficie falso**: Corregido por DEC-07/08.
 - **D-07 cambios de conducta del `await` síncrono**: Decididos: un poll y pánico (DEC-04); propagación de C-17
   conservada (DEC-15).
-- **D-08 costo y vida sin medición**: Medido (doc 50); las fugas reproducidas se corrigieron en 131a, 131b y 135.
+- **D-08 costo y vida sin medición**: Medido (doc 50); las fugas reproducidas se corrigieron en 131a, 131b, 135 y
+  135a.
 - **D-09 compilación dependiente del host**: Corregido por DEC-13 y verificado (elemento 119).
 - **D-10 `error*.log` en el directorio de trabajo**: Corregido (`4bf4a7a18`).
 - **D-11 modo archivo instalado**: **NO VERIFICADO.**
@@ -178,9 +181,6 @@ Es validación **focal**; no certifica la batería.
    - las referencias no owned de parámetros o campos no se comprueban;
    - un préstamo derivado (campo, getter, llamada, `?:`) de un local `raii` o `scope`, o de una excepción
      atrapada, compila y puede sobrevivir a su fuente;
-   - `string s = Id(MakeText());`: un temporal string owned pasado directamente a un parámetro string no owned
-     se destruye al final de la expresión y `s` lo sigue apuntando. Es una referencia colgante reproducida,
-     no corregida (doc 56);
    - el análisis de llamadas es conservador: puede tratar como préstamo un resultado que no lo es.
 7. Rendimiento: las corrutinas que nunca suspenden reservan frame en el heap en cada llamada (doc 50). Queda
    registrado para la fase de rendimiento, sin cambiar ahora el ABI de frames.

@@ -1028,10 +1028,30 @@ private:
     // ES: Congelamiento 3.0 (elemento 135 del plan): procedencia de un temporal de vida conocida a traves de
     //     `new`, getters, llamadas, `?:` y `??` (carriesOwnedTemporary, markCallTemporaryBorrow).
     bool carriesOwnedTemporary(const ExpressionResult& receiver) const;
+    // EN: Freeze 3.0 (plan item 135a): an argument that is itself an owned temporary handed to a parameter
+    //     that does not take ownership is borrowed until the end of the full expression, so a non-owned call
+    //     result may alias it (isOwnedTemporaryValue, ownedArgumentParameters, ownedDelegateArgumentParameters).
+    // ES: Congelamiento 3.0 (elemento 135a del plan): un argumento que es el propio temporal owned entregado a un
+    //     parametro que no toma ownership queda prestado hasta el final de la expresion completa, asi que un
+    //     resultado no owned de la llamada puede ser alias de el (isOwnedTemporaryValue, ownedArgumentParameters,
+    //     ownedDelegateArgumentParameters).
+    bool isOwnedTemporaryValue(const ExpressionResult& value) const;
+    std::vector<bool> ownedArgumentParameters(
+        std::span<const std::size_t> argumentParameterOrdinals,
+        const ClassMemberSymbol& callable) const;
+    std::vector<bool> ownedDelegateArgumentParameters(
+        std::size_t delegateOrdinal,
+        std::size_t argumentCount,
+        bool& returnsOwned) const;
+    void markDelegateCallTemporaryBorrow(
+        ExpressionResult& result,
+        std::span<const ExpressionResult> arguments,
+        std::size_t delegateOrdinal) const;
     void markCallTemporaryBorrow(
         ExpressionResult& result,
-        const ExpressionResult& callee,
-        std::span<const ExpressionResult> resolvedArguments) const;
+        bool receiverBorrows,
+        std::span<const ExpressionResult> arguments,
+        const std::vector<bool>& ownedParameters) const;
     void rejectOwnedTemporaryBorrowEscape(
         const ExpressionResult& value,
         const ast::AstNode* syntax,

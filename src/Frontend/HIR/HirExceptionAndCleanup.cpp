@@ -241,6 +241,20 @@ ProjectOopHirNode* hirFieldStoreThrough(
         return nullptr;
     return parent->second;
 }
+
+// EN: Freeze 3.0 (plan item 135a): `argument` is an owned temporary lent to a parameter that does not take
+//     ownership (its hidden owner destroys it at the end of the full expression).
+// ES: Congelamiento 3.0 (elemento 135a del plan): `argument` es un temporal owned prestado a un parametro que no
+//     toma ownership (su dueno oculto lo destruye al final de la expresion completa).
+bool hirLentTemporaryArgument(const ProjectOopHirNode& argument) noexcept
+{
+    if (argument.kind != ProjectOopHirNodeKind::OwnedTemporaryBorrow || argument.booleanValue ||
+        argument.children.size() != 1U || argument.children.front() == nullptr)
+        return false;
+    const ProjectOopHirNode& borrowed = *argument.children.front();
+    return borrowed.kind == ProjectOopHirNodeKind::BorrowValue &&
+        borrowed.borrowKind == MethodBorrowKind::FreshOwnedTemporaryToBorrowedParameter;
+}
 }
 
 bool ProjectOopHirModel::isFreshDroppableTemporary(const ProjectOopHirNode* node) const
@@ -333,7 +347,58 @@ void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
             pending.push_back(original);
         }
     }
+    extendLentArgumentCleanups(root);
     ownReceiversUntilFullExpression(root);
+}
+
+// EN: Freeze 3.0 (plan item 135a). A call that lends an owned temporary argument (`Id(MakeText())`) came wrapped
+//     in its own FullExpressionCleanup, so the temporary died right after the call even when the call returned it
+//     and an enclosing expression still read it (`Id(MakeText()).Length`). When the result is a non-owned
+//     reference, the wrapper is removed and the full expression is closed instead, as for a receiver temporary.
+//     Storing that result is rejected by the analysis, so the borrow never outlives the expression.
+// ES: Congelamiento 3.0 (elemento 135a del plan). Una llamada que presta un temporal owned argumento
+//     (`Id(MakeText())`) venia envuelta en su propio FullExpressionCleanup, asi que el temporal moria justo despues
+//     de la llamada aunque la llamada lo devolviera y una expresion exterior lo siguiera leyendo
+//     (`Id(MakeText()).Length`). Cuando el resultado es una referencia no owned, se quita la envoltura y se cierra
+//     la expresion completa, como para un temporal receptor. Guardar ese resultado lo rechaza el analisis, asi que
+//     el prestamo nunca sobrevive a la expresion.
+void ProjectOopHirModel::extendLentArgumentCleanups(ProjectOopHirNode* root)
+{
+    HirParentMap parents;
+    std::vector<ProjectOopHirNode*> order;
+    indexHirParents(root, parents, order);
+    for (ProjectOopHirNode* node : order)
+    {
+        if (!resultMayAliasLentArgument(*node)) continue;
+        const auto parent = parents.find(node);
+        if (parent == parents.end()) continue;
+        ProjectOopHirNode* holder = parent->second;
+        std::unique_ptr<ProjectOopHirNode>* slot = hirChildSlot(*holder, node);
+        if (slot == nullptr) continue;
+        ProjectOopHirNode* call = node->children.front().get();
+        *slot = std::move(node->children.front());
+        parents.erase(node);
+        parents[call] = holder;
+        ProjectOopHirNode* closingRoot = nullptr;
+        ProjectOopHirNode* enclosing = nullptr;
+        planFullExpressionClose(*call, parents, false, closingRoot, enclosing);
+        closeAtFullExpression(closingRoot, enclosing, false, parents);
+    }
+}
+
+bool ProjectOopHirModel::resultMayAliasLentArgument(const ProjectOopHirNode& fullExpression) const
+{
+    if (fullExpression.kind != ProjectOopHirNodeKind::FullExpressionCleanup || fullExpression.booleanValue ||
+        fullExpression.children.size() != 1U || fullExpression.children.front() == nullptr)
+        return false;
+    const ProjectOopHirNode& call = *fullExpression.children.front();
+    if (call.referenceResult || isFreshDroppableTemporary(&call)) return false;
+    if (!isReferenceType(call.typeKey) && call.typeKey != "builtin:string") return false;
+    for (const std::unique_ptr<ProjectOopHirNode>& argument : call.children)
+    {
+        if (argument != nullptr && hirLentTemporaryArgument(*argument)) return true;
+    }
+    return false;
 }
 
 // EN: Freeze 3.0 (plan item 131a). Three receiver temporaries leaked: a field read that is not plain data

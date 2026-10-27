@@ -946,6 +946,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
         result.objectLifetimeOwnership = result.ownership;
         result.storageOwnership = result.ownership;
     }
+    // EN: Freeze 3.0 (plan item 135a): a forwarded extension receiver is one of the arguments.
+    // ES: Congelamiento 3.0 (elemento 135a del plan): un receptor de extension reenviado es uno de los argumentos.
+    markCallTemporaryBorrow(
+        result, false, arguments, ownedArgumentParameters(selected.argumentParameterOrdinals, callable));
     return result;
 }
 
@@ -3645,6 +3649,10 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
+        // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
+        // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
+        //     argumento prestado.
+        markDelegateCallTemporaryBorrow(result, arguments, delegateOrdinal);
         return result;
     }
 
@@ -3815,6 +3823,10 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
+        // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
+        // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
+        //     argumento prestado.
+        markDelegateCallTemporaryBorrow(result, arguments, delegateOrdinal);
         return result;
     }
 
@@ -4662,7 +4674,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     }
     finalizeSelectedCallResult(
         result, expression, call, nullConditionalCall, provenVariantCase, diagnostics);
-    markCallTemporaryBorrow(result, callee, resolvedArguments);
+    // EN: Freeze 3.0 (plan item 135a): the parameters that take ownership do not lend their argument.
+    // ES: Congelamiento 3.0 (elemento 135a del plan): los parametros que toman ownership no prestan su argumento.
+    if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
+    {
+        const ClassMemberSymbol& selectedCallable = memberModel_->members()[selected.memberOrdinal];
+        markCallTemporaryBorrow(
+            result, callee.receiverBorrowsOwnedTemporary, resolvedArguments,
+            ownedArgumentParameters(selected.argumentParameterOrdinals, selectedCallable));
+    }
     recordCallBinding(std::move(call));
     return result;
 }
@@ -4674,18 +4694,102 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
 //     apuntar dentro del receptor o de un argumento, asi que conserva su prestamo de un temporal owned
 //     (`Make().GetName()`, `Id(Make().Name)`). La regla es conservadora: el analisis no sabe de que entrada vino
 //     el resultado.
+//
+// EN: Freeze 3.0 (plan item 135a): an argument also lends when it is itself an owned temporary of any reference
+//     type handed to a parameter that does not take ownership (`Id(MakeText())`); the call keeps it only until
+//     the end of the full expression. The same rule covers method, namespace function and delegate calls.
+// ES: Congelamiento 3.0 (elemento 135a del plan): un argumento tambien presta cuando es el propio temporal owned,
+//     de cualquier tipo referencia, entregado a un parametro que no toma ownership (`Id(MakeText())`); la llamada
+//     lo conserva solo hasta el final de la expresion completa. La misma regla cubre llamadas a metodos, a
+//     funciones de namespace y a delegates.
 void ProjectMethodBodyModel::markCallTemporaryBorrow(
     ExpressionResult& result,
-    const ExpressionResult& callee,
-    std::span<const ExpressionResult> resolvedArguments) const
+    bool receiverBorrows,
+    std::span<const ExpressionResult> arguments,
+    const std::vector<bool>& ownedParameters) const
 {
     if (!result.valid) return;
     if (!isReferenceTypeKey(result.typeKey) && result.typeKey != "builtin:string") return;
     if (result.ownership == sema::OwnershipKind::Owned && result.ownershipTransfer) return;
-    bool borrows = callee.receiverBorrowsOwnedTemporary;
-    for (const ExpressionResult& argument : resolvedArguments)
-        borrows = borrows || argument.borrowsOwnedTemporary;
+    bool borrows = receiverBorrows;
+    for (std::size_t index = 0; index < arguments.size(); ++index)
+    {
+        const bool ownedParameter = index < ownedParameters.size() && ownedParameters[index];
+        const bool lentTemporary = !ownedParameter && isOwnedTemporaryValue(arguments[index]);
+        borrows = borrows || arguments[index].borrowsOwnedTemporary || lentTemporary;
+    }
     result.borrowsOwnedTemporary = borrows;
+}
+
+// EN: Freeze 3.0 (plan item 135a): the result of an owned-returning call or a `new` of a class, as a value of a
+//     reference type that is not a delegate (a delegate cannot be what a reference result aliases).
+// ES: Congelamiento 3.0 (elemento 135a del plan): el resultado de una llamada con retorno owned o un `new` de una
+//     clase, como valor de un tipo referencia que no es delegate (un delegate no puede ser aquello de lo que un
+//     resultado referencia es alias).
+bool ProjectMethodBodyModel::isOwnedTemporaryValue(const ExpressionResult& value) const
+{
+    if (!value.valid || isAnyDelegateTypeKey(value.typeKey)) return false;
+    if (!isReferenceTypeKey(value.typeKey) && value.typeKey != "builtin:string") return false;
+    const bool ownedResult = value.ownership == sema::OwnershipKind::Owned && value.ownershipTransfer &&
+        !value.ownershipSourceLocalOrdinal.has_value() && !value.ownershipSourceParameterOrdinal.has_value();
+    const bool newObject = value.ownershipFreshOwner &&
+        value.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+        value.storageOwnership == sema::OwnershipKind::Owned;
+    return ownedResult || newObject;
+}
+
+std::vector<bool> ProjectMethodBodyModel::ownedArgumentParameters(
+    std::span<const std::size_t> argumentParameterOrdinals,
+    const ClassMemberSymbol& callable) const
+{
+    std::vector<bool> owned(argumentParameterOrdinals.size(), false);
+    for (std::size_t index = 0; index < argumentParameterOrdinals.size(); ++index)
+    {
+        const std::size_t parameter = argumentParameterOrdinals[index];
+        owned[index] = parameter < callable.parameters.size() &&
+            callable.parameters[parameter].ownership == sema::OwnershipKind::Owned;
+    }
+    return owned;
+}
+
+// EN: Freeze 3.0 (plan item 135a): the parameters of a declared delegate that take ownership, and whether it
+//     returns an owner. A structural function type declares neither, so every parameter lends.
+// ES: Congelamiento 3.0 (elemento 135a del plan): los parametros de un delegate declarado que toman ownership, y
+//     si devuelve un owner. Un tipo de funcion estructural no declara ninguno, asi que todo parametro presta.
+std::vector<bool> ProjectMethodBodyModel::ownedDelegateArgumentParameters(
+    std::size_t delegateOrdinal,
+    std::size_t argumentCount,
+    bool& returnsOwned) const
+{
+    std::vector<bool> owned(argumentCount, false);
+    returnsOwned = false;
+    if (nameLookup_ == nullptr || delegateOrdinal >= nameLookup_->namedTypes().size()) return owned;
+    const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[delegateOrdinal];
+    if (declaration.kind != NamedTypeDeclarationKind::Delegate || declaration.syntax == nullptr) return owned;
+    const ast::TypeSyntax* returnType = declaration.syntax->typeSyntax();
+    returnsOwned = returnType != nullptr &&
+        returnType->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::Owned;
+    std::size_t index = 0;
+    for (const ast::AstNode* child : declaration.syntax->children())
+    {
+        if (child == nullptr || child->kind() != ast::AstNodeKind::ParameterDeclaration) continue;
+        const ast::TypeSyntax* type = child->typeSyntax();
+        if (index < argumentCount)
+            owned[index] = type != nullptr && type->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::Owned;
+        ++index;
+    }
+    return owned;
+}
+
+void ProjectMethodBodyModel::markDelegateCallTemporaryBorrow(
+    ExpressionResult& result,
+    std::span<const ExpressionResult> arguments,
+    std::size_t delegateOrdinal) const
+{
+    bool returnsOwned = false;
+    const std::vector<bool> ownedParameters =
+        ownedDelegateArgumentParameters(delegateOrdinal, arguments.size(), returnsOwned);
+    if (!returnsOwned) markCallTemporaryBorrow(result, false, arguments, ownedParameters);
 }
 
 bool ProjectMethodBodyModel::validateSelectedCallReceiver(

@@ -4248,6 +4248,12 @@ private:
         ProjectOopHirNode*& enclosing) const;
     void closeAtFullExpression(
         ProjectOopHirNode* root, ProjectOopHirNode* enclosing, bool crossesBranch, HirParentMap& parents);
+    // EN: Freeze 3.0 (plan item 135a): a call that lends an owned temporary argument and returns a reference may
+    //     return that temporary; its cleanup moves out to the full expression.
+    // ES: Congelamiento 3.0 (elemento 135a del plan): una llamada que presta un temporal owned argumento y
+    //     devuelve una referencia puede devolver ese temporal; su limpieza sale a la expresion completa.
+    void extendLentArgumentCleanups(ProjectOopHirNode* root);
+    bool resultMayAliasLentArgument(const ProjectOopHirNode& fullExpression) const;
     void applyStructuredExitBinding(
         ProjectOopHirNode& node,
         const ast::AstNode* syntax) const;

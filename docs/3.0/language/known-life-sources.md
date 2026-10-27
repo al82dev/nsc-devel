@@ -34,13 +34,16 @@ a él y conserva su propio diagnóstico.
      Es préstamo:
      - una lectura de campo de referencia o string sobre el temporal o sobre otro préstamo;
      - un getter así;
-     - el resultado referencia o string, no `owned`, de una llamada cuyo receptor o algún argumento es un
-       préstamo;
+     - el resultado referencia o string, no `owned`, de una llamada (método, función o delegate) cuyo
+       receptor o algún argumento es un préstamo, o cuyo argumento es el propio temporal owned entregado a
+       un parámetro que no toma ownership (`Id(MakeText())`);
      - un `?:` o `??` con alguna rama que lo sea.
    - Leer un valor copiable del temporal no es un préstamo.
    - Si el préstamo termina en un valor simple, en un owner nuevo (un string nuevo, el objeto que devuelve un
      método llamado sobre el préstamo) o en una escritura de campo, el temporal vive hasta el final de la
      expresión.
+   - Un temporal prestado como argumento también vive hasta el final de la expresión completa, así que
+     `Id(MakeText()).Length` lo lee vivo.
    - `(new T(...)).Metodo()` es error: el objeto no tiene dueño.
 2. **Local `raii`.** No se copia a un local no dueño, por asignación ni en una captura sin `move`. No se devuelve
    sin `return move(...)`.
@@ -63,7 +66,7 @@ a él y conserva su propio diagnóstico.
 
 ### Límites
 
-Lo siguiente no está garantizado. Los límites 1–4 y 6 se midieron con sondas en `-O0` y `-O2`; el 5 sale del
+Lo siguiente no está garantizado. Los límites 1–3 y 5 se midieron con sondas en `-O0` y `-O2`; el 4 sale del
 diseño del análisis.
 
 1. **Referencias no `owned` de parámetros o campos.** Guardar un parámetro en un static y destruir después el
@@ -73,13 +76,10 @@ diseño del análisis.
    owner. Sólo se rechaza el alias directo del owner.
 3. **Préstamos derivados de una excepción atrapada.** `m = p.Text;` hacia un local exterior compila y sobrevive
    al handler.
-4. **Temporal string `owned` pasado directamente como argumento.** El parámetro string no `owned` lo toma
-   prestado hasta el final de la expresión completa, pero el resultado de la llamada no hereda el préstamo.
-   `string s = Id(MakeText());` compila, y el temporal se destruye mientras `s` lo sigue apuntando.
-5. **Análisis conservador de llamadas.** El análisis no sabe de qué entrada viene el resultado de una llamada.
-   Un resultado referencia o string no `owned` con un receptor o argumento prestado se trata como préstamo,
-   aunque en realidad no lo sea.
-6. **Ramas con suspensión.** Un préstamo que cruza un `?:` o `??` dentro de una expresión completa que suspende
+4. **Análisis conservador de llamadas.** El análisis no sabe de qué entrada viene el resultado de una llamada.
+   Un resultado referencia o string no `owned` con un receptor o argumento prestado, o con un temporal owned
+   entregado a un parámetro que no toma ownership, se trata como préstamo aunque en realidad no lo sea.
+5. **Ramas con suspensión.** Un préstamo que cruza un `?:` o `??` dentro de una expresión completa que suspende
    necesita un dueño puntero. Si no lo tiene, el temporal conserva la conducta anterior: se fuga, sin referencia
    colgante. La sonda con un `await` en la misma sentencia lo destruye una vez.
 
@@ -116,11 +116,15 @@ its own diagnostic.
    - A borrow of the temporary cannot initialize a local, be assigned, be returned or be yielded. A borrow is:
      - a reference or string field read on the temporary or on another borrow;
      - such a getter;
-     - the reference or string, non-`owned` result of a call whose receiver or some argument is a borrow;
+     - the reference or string, non-`owned` result of a call (method, function or delegate) whose receiver
+       or some argument is a borrow, or whose argument is the owned temporary itself handed to a parameter
+       that does not take ownership (`Id(MakeText())`);
      - a `?:` or `??` with some branch that is one.
    - Reading a copyable value from the temporary is not a borrow.
    - If the borrow ends in a plain value, in a new owner (a new string, the object returned by a method called on
      the borrow) or in a field store, the temporary lives until the end of the expression.
+   - A temporary lent as an argument also lives until the end of the full expression, so
+     `Id(MakeText()).Length` reads it while it is alive.
    - `(new T(...)).Method()` is an error: the object has no owner.
 2. **`raii` local.** It is not copied to a non-owning local, by assignment or in a capture without `move`. It is
    not returned without `return move(...)`.
@@ -143,7 +147,7 @@ its own diagnostic.
 
 ### Limits
 
-The following is not guaranteed. Limits 1–4 and 6 were measured with probes at `-O0` and `-O2`; limit 5 follows
+The following is not guaranteed. Limits 1–3 and 5 were measured with probes at `-O0` and `-O2`; limit 4 follows
 from the design of the analysis.
 
 1. **Non-`owned` references from parameters or fields.** Storing a parameter in a static and then destroying
@@ -153,19 +157,16 @@ from the design of the analysis.
    Only a direct alias of the owner is rejected.
 3. **Borrows derived from a caught exception.** `m = p.Text;` into an outer local compiles and outlives the
    handler.
-4. **An `owned` string temporary passed directly as an argument.** The non-`owned` string parameter borrows it
-   until the end of the full expression, but the call result does not inherit the borrow.
-   `string s = Id(MakeText());` compiles, and the temporary is destroyed while `s` still points at it.
-5. **Conservative call analysis.** The analysis does not know which input a call result comes from. A
-   non-`owned` reference or string result with a borrowed receiver or argument is treated as a borrow, even when
-   it is not one.
-6. **Branches with a suspension.** A borrow that crosses a `?:` or `??` inside a full expression that suspends
+4. **Conservative call analysis.** The analysis does not know which input a call result comes from. A
+   non-`owned` reference or string result with a borrowed receiver or argument, or with an owned temporary
+   handed to a parameter that does not take ownership, is treated as a borrow even when it is not one.
+5. **Branches with a suspension.** A borrow that crosses a `?:` or `??` inside a full expression that suspends
    needs a pointer owner. Without one, the temporary keeps the earlier behavior: it leaks, with no dangling
    reference. The probe with an `await` in the same statement destroys it once.
 
 ## Referencias / References
 
-- Elementos 131a, 131b, 135 y 136 del plan de congelamiento: `docs/3.0/decisiones-congelamiento/51-*`, `52-*`,
-  `54-*` y `55-*`.
+- Elementos 131a, 131b, 135, 135a y 136 del plan de congelamiento: `docs/3.0/decisiones-congelamiento/51-*`,
+  `52-*`, `54-*`, `58-*` y `55-*`.
 - DEC-10 y P10 (excepciones): `docs/3.0/decisiones-congelamiento/` y `Freeze30ContractTests`.
-- Sondas: `A:\temp\nsc-dec\d37`, `d38`, `d40`, `d41` y `d42`.
+- Sondas: `A:\temp\nsc-dec\d37`, `d38`, `d40`, `d41`, `d42` y `d43`.
