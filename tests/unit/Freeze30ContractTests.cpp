@@ -5656,6 +5656,139 @@ class Program
 )ns", 41);
 }
 
+constexpr std::string_view kParameterBoxPrelude = R"ns(
+using NativeSharp.Core;
+class Box
+{
+    public static int Freed;
+    public int V;
+    public Box(int v) { V = v; }
+    ~Box() { Freed = Freed + 1; }
+}
+)ns";
+
+/// EN: C-01, item 115. A `new` handed straight to a parameter that is neither owned nor borrowed
+///     reaches no owner: static, instance, virtual and delegate calls, any argument position, a
+///     constructor and a base-constructor initializer are rejected with LostOwnership. A
+///     borrowed parameter keeps its own rejection (it needs an existing owner).
+/// ES: C-01, elemento 115. Un `new` entregado directo a un parametro que no es owned ni borrowed
+///     no llega a ningun dueno: llamadas estaticas, de instancia, virtuales y de delegate, en
+///     cualquier posicion, un constructor y un inicializador de constructor base se rechazan con
+///     LostOwnership. Un parametro borrowed conserva su propio rechazo (necesita un dueno).
+void testNewToOrdinaryParameterRejected(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string box(kParameterBoxPrelude);
+    const std::string lost = "reaches no owner through the parameter 'b' of";
+    expectReject(tests, root, "F115Static", box + "class Program\n{\n"
+        "    public static int Use(Box b) { return b.V; }\n"
+        "    public static int Main() { return Use(new Box(3)); }\n}\n", lost);
+    expectReject(tests, root, "F115Escape", box + "class Program\n{\n"
+        "    public static Box Kept;\n"
+        "    public static int Keep(Box b) { Kept = b; return b.V; }\n"
+        "    public static int Main() { int v = Keep(new Box(3)); return Kept.V + v; }\n}\n", lost);
+    expectReject(tests, root, "F115SecondArgument", box + "class Program\n{\n"
+        "    public static int Use(int a, Box b) { return a + b.V; }\n"
+        "    public static int Main() { return Use(1, new Box(3)); }\n}\n", lost);
+    expectReject(tests, root, "F115Instance", box + "class Sink { public int Use(Box b) { return b.V; } }\n"
+        "class Program\n{\n"
+        "    public static int Main() { raii Sink s = new Sink(); return s.Use(new Box(3)); }\n}\n", lost);
+    expectReject(tests, root, "F115Virtual", box +
+        "class Sink { public virtual int Use(Box b) { return b.V; } }\nclass Program\n{\n"
+        "    public static int Main() { raii Sink s = new Sink(); return s.Use(new Box(3)); }\n}\n", lost);
+    expectReject(tests, root, "F115Delegate", box + "delegate int Work(Box b);\nclass Program\n{\n"
+        "    public static int Use(Box b) { return b.V; }\n"
+        "    public static int Main() { Work w = Use; return w(new Box(3)); }\n}\n",
+        "reaches no owner through the parameter 'b' of delegate 'Work'");
+    expectReject(tests, root, "F115Constructor", box +
+        "class Node { public Box Item; public Node(Box item) { Item = item; } }\nclass Program\n{\n"
+        "    public static int Main() { raii Node n = new Node(new Box(3)); return n.Item.V; }\n}\n",
+        "reaches no owner through the parameter 'item' of 'Node'");
+    expectReject(tests, root, "F115BaseInitializer", box +
+        "class Base { public int V; public Base(Box b) { V = b.V; } }\n"
+        "class Derived : Base { public Derived() : base(new Box(3)) { } }\nclass Program\n{\n"
+        "    public static int Main() { raii Derived d = new Derived(); return d.V; }\n}\n", lost);
+    expectReject(tests, root, "F115Borrowed", box + "class Program\n{\n"
+        "    public static int Use(borrowed Box b) { return b.V; }\n"
+        "    public static int Main() { return Use(new Box(3)); }\n}\n",
+        "borrowed parameter 'b' requires a checked owner or borrowed source");
+}
+
+/// EN: C-01, item 115. The owning alternatives compile and destroy the object exactly once: an
+///     owned parameter (static and delegate), a constructor and a base initializer that move an
+///     owned parameter into an owned field, and a raii local lent to an ordinary or borrowed
+///     parameter. Each program returns V * 10 + Freed = 31.
+/// ES: C-01, elemento 115. Las alternativas con dueno compilan y destruyen el objeto exactamente
+///     una vez: un parametro owned (estatico y de delegate), un constructor y un inicializador base
+///     que mueven un parametro owned a un campo owned, y un local raii prestado a un parametro
+///     ordinario o borrowed. Cada programa devuelve V * 10 + Freed = 31.
+void testNewToOwnedParameterAccepted(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string box(kParameterBoxPrelude);
+    expectRun(tests, root, "F115OwnedParameter", box + "class Program\n{\n"
+        "    public static int Take(owned Box b) { return b.V; }\n"
+        "    public static int Main() { int v = Take(new Box(3)); return v * 10 + Box.Freed; }\n}\n", 31);
+    expectRun(tests, root, "F115OwnedDelegate", box + "delegate int Take(owned Box b);\nclass Program\n{\n"
+        "    public static int T(owned Box b) { return b.V; }\n"
+        "    public static int Main() { Take t = T; int v = t(new Box(3)); return v * 10 + Box.Freed; }\n}\n",
+        31);
+    expectRun(tests, root, "F115OwnedField", box +
+        "class Node { public owned Box Item; public Node(owned Box item) { Item = move(item); } }\n"
+        "class Program\n{\n    public static int Main()\n    {\n        int v = 0;\n"
+        "        { raii Node n = new Node(new Box(3)); v = n.Item.V; }\n"
+        "        return v * 10 + Box.Freed;\n    }\n}\n", 31);
+    expectRun(tests, root, "F115OwnedBaseField", box +
+        "class Base { public owned Box Item; public Base(owned Box b) { Item = move(b); } }\n"
+        "class Derived : Base { public Derived() : base(new Box(3)) { } }\n"
+        "class Program\n{\n    public static int Main()\n    {\n        int v = 0;\n"
+        "        { raii Derived d = new Derived(); v = d.Item.V; }\n"
+        "        return v * 10 + Box.Freed;\n    }\n}\n", 31);
+    expectRun(tests, root, "F115LentOrdinary", box + "class Program\n{\n"
+        "    public static int Use(Box b) { return b.V; }\n"
+        "    public static int Main()\n    {\n        int v = 0;\n"
+        "        { raii Box b = new Box(3); v = Use(b); }\n"
+        "        return v * 10 + Box.Freed;\n    }\n}\n", 31);
+    expectRun(tests, root, "F115LentBorrowed", box + "class Program\n{\n"
+        "    public static int Use(borrowed Box b) { return b.V; }\n"
+        "    public static int Main()\n    {\n        int v = 0;\n"
+        "        { raii Box b = new Box(3); v = Use(b); }\n"
+        "        return v * 10 + Box.Freed;\n    }\n}\n", 31);
+}
+
+/// EN: C-01, item 115a. `return new T()` from a callable whose return type is not owned reaches no owner and
+///     is rejected; the owned return hands the object to a raii local that destroys it once (V * 10 + Freed).
+/// ES: C-01, elemento 115a. `return new T()` desde un callable cuyo retorno no es owned no llega a ningun
+///     dueno y se rechaza; el retorno owned entrega el objeto a un local raii que lo destruye una vez.
+void testNewToNonOwnedReturn(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string box(kParameterBoxPrelude);
+    expectReject(tests, root, "F115aReturn", box + "class Program\n{\n"
+        "    public static Box Make() { return new Box(3); }\n"
+        "    public static int Main() { return 0; }\n}\n",
+        "reaches no owner through the return of 'Make', whose return type is not owned");
+    expectRun(tests, root, "F115aOwnedReturn", box + "class Program\n{\n"
+        "    public static owned Box Make() { return new Box(3); }\n"
+        "    public static int Main()\n    {\n        int v = 0;\n"
+        "        { raii Box b = Make(); v = b.V; }\n"
+        "        return v * 10 + Box.Freed;\n    }\n}\n", 31);
+}
+
+/// EN: C-01, item 115b. `new T()` as the initializer of an instance field that is not owned reaches no owner
+///     and is rejected; an owned field destroys the object exactly once with its container.
+/// ES: C-01, elemento 115b. `new T()` como inicializador de un campo de instancia que no es owned no llega a
+///     ningun dueno y se rechaza; un campo owned destruye el objeto exactamente una vez con su contenedor.
+void testNewToNonOwnedField(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string box(kParameterBoxPrelude);
+    expectReject(tests, root, "F115bField", box + "class Holder { public Box Item = new Box(3); }\n"
+        "class Program\n{\n"
+        "    public static int Main() { raii Holder h = new Holder(); return h.Item.V; }\n}\n",
+        "reaches no owner through the field 'Item', which is not owned");
+    expectRun(tests, root, "F115bOwnedField", box + "class Holder { public owned Box Item = new Box(3); }\n"
+        "class Program\n{\n    public static int Main()\n    {\n        int v = 0;\n"
+        "        { raii Holder h = new Holder(); v = h.Item.V; }\n"
+        "        return v * 10 + Box.Freed;\n    }\n}\n", 31);
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -6784,6 +6917,10 @@ int main()
     testLoopExpressionAwait(tests, root);
     testMatchAwaitReplay(tests, root);
     testLoopOperandResume(tests, root);
+    testNewToOrdinaryParameterRejected(tests, root);
+    testNewToOwnedParameterAccepted(tests, root);
+    testNewToNonOwnedReturn(tests, root);
+    testNewToNonOwnedField(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

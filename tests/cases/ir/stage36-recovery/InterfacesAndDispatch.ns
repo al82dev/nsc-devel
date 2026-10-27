@@ -77,7 +77,7 @@ namespace Stage36.Demo
 
     public class Harness
     {
-        public static IReadable Make(int value)
+        public static owned IReadable Make(int value)
         {
             return new Sensor(value);
         }

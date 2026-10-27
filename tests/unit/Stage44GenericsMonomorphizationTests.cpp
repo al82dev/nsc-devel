@@ -241,7 +241,7 @@ public class Box<T> : ITaggedValue<T>
     public Box(T value) { stored = value; }
     public T Get() { return stored; }
     public int Tag() { return 2; }
-    public static Box<T> Create(T value) { return new Box<T>(value); }
+    public static owned Box<T> Create(T value) { return new Box<T>(value); }
 }
 
 public class Reader<T> where T : IValue<int>
@@ -253,8 +253,8 @@ public class Program
 {
     public static int Main()
     {
-        Box<int> box = Box<int>.Create(40);
-        ITaggedValue<int> tagged = box;
+        raii Box<int> box = Box<int>.Create(40);
+        borrowed ITaggedValue<int> tagged = box;
         return Reader<Box<int>>.Read(box) + tagged.Tag();
     }
 }

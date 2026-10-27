@@ -157,7 +157,7 @@ class Number : IAdd<Number>
     public Number(int source) { value = source; }
     public int Value { get { return value; } }
     public static int Zero { get { return 0; } }
-    public static Number operator +(Number left, Number right)
+    public static owned Number operator +(Number left, Number right)
     {
         return new Number(left.Value + right.Value);
     }
@@ -168,7 +168,7 @@ class Program
     {
         raii Number left = new Number(20);
         raii Number right = new Number(22);
-        Number sum = left + right;
+        raii Number sum = left + right;
         return sum.Value + Number.Zero;
     }
 }

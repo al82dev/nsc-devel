@@ -858,6 +858,32 @@ void ProjectMethodBodyModel::recordNamespaceFunctionBorrows(
     }
 }
 
+// EN: Freeze 3.0 C-01 (plan item 115): `F(new T())` where the parameter of F is not `owned` gives the object
+//     no owner: F only observes it, and destroying it after the call would free what F may have kept.
+// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): `F(new T())` con un parámetro de F sin `owned` deja al
+//     objeto sin dueño: F sólo lo observa, y destruirlo después de la llamada liberaría lo que F pudo guardar.
+void ProjectMethodBodyModel::rejectNamespaceNewToOrdinaryParameters(
+    const ClassMemberSymbol& callable,
+    std::span<ast::AstNode* const> argumentSyntaxes,
+    const std::vector<ExpressionResult>& arguments,
+    const MethodCallCandidate& selected,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < arguments.size() && argumentOrdinal < argumentSyntaxes.size() &&
+         argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
+    {
+        const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+        if (parameterOrdinal >= callable.parameters.size()) continue;
+        const ExpressionResult& argument = arguments[argumentOrdinal];
+        if (newReachesOrdinaryParameter(
+                callable.parameters[parameterOrdinal], argumentSyntaxes[argumentOrdinal],
+                argument.ownershipFreshOwner, argument.ownershipTransfer, argument.typeKey))
+            reportNewToOrdinaryParameter(
+                argumentSyntaxes[argumentOrdinal], callable.parameters[parameterOrdinal], callable.name, diagnostics);
+    }
+}
+
 void ProjectMethodBodyModel::recordNamespaceFunctionDefaults(
     const ClassMemberSymbol& callable,
     const MethodCallCandidate& selected,
@@ -899,6 +925,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     recordNamespaceFunctionBorrows(
         expression, callerCallableOrdinal, scopeOrdinal, functionOrdinal,
         argumentSyntaxes, arguments, selected);
+    rejectNamespaceNewToOrdinaryParameters(callable, argumentSyntaxes, arguments, selected, diagnostics);
     recordNamespaceFunctionDefaults(callable, selected, call);
     call.resultTypeKey = callable.declaredTypeKey;
     ExpressionResult result;
@@ -3774,6 +3801,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         binding.resultTypeKey = returnType;
         if (!bindDelegateInvocationArguments(
                 expression, arguments, parameterTypes, binding, diagnostics)) return result;
+        rejectDelegateNewToOrdinaryParameters(expression, arguments, delegateOrdinal, diagnostics);
         if (!validateCallableTraitInvocation(
                 expression, callee, scopeOrdinal, diagnostics)) return result;
         binding.selectedDefaultArguments = std::move(defaultedSyntaxes);
@@ -3852,6 +3880,39 @@ bool ProjectMethodBodyModel::collectDelegateDefaultArguments(
         return false;
     }
     return true;
+}
+
+// EN: Freeze 3.0 C-01 (plan item 115): a delegate parameter declared without `owned` takes no ownership, as a
+//     method parameter does. A structural function type has no declaration and is not checked here.
+// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): un parámetro de delegate declarado sin `owned` no recibe
+//     ownership, como el de un método. Un tipo función estructural no tiene declaración y no se revisa aquí.
+void ProjectMethodBodyModel::rejectDelegateNewToOrdinaryParameters(
+    const ast::AstNode* expression,
+    std::span<const ExpressionResult> arguments,
+    std::size_t delegateOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (nameLookup_ == nullptr || delegateOrdinal >= nameLookup_->namedTypes().size()) return;
+    const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[delegateOrdinal];
+    if (declaration.kind != NamedTypeDeclarationKind::Delegate || declaration.syntax == nullptr) return;
+    std::vector<const ast::AstNode*> parameters;
+    for (const ast::AstNode* child : declaration.syntax->children())
+        if (child != nullptr && child->kind() == ast::AstNodeKind::ParameterDeclaration) parameters.push_back(child);
+    for (std::size_t index = 0;
+         index < arguments.size() && index < parameters.size() && index < expression->children().size(); ++index)
+    {
+        const ast::TypeSyntax* type = parameters[index]->typeSyntax();
+        const ast::AstNode* argumentSyntax = expression->children()[index];
+        if (type == nullptr || type->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::None ||
+            arguments[index].argumentPassKind != ParameterPassKind::Value ||
+            !isFreshObjectCreation(argumentSyntax, arguments[index]))
+            continue;
+        reportLostOwnership(
+            argumentSyntax,
+            "the parameter '" + parameters[index]->text() + "' of delegate '" + declaration.syntax->text() +
+                "', which is not owned",
+            diagnostics);
+    }
 }
 
 bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
@@ -4585,6 +4646,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
         recordSelectedBorrows(
             expression, callee, resolvedArguments, selected, selectedMember,
             coreStringForwarding, methodMemberOrdinal, scopeOrdinal);
+        rejectSelectedNewToOrdinaryParameters(
+            expression, callee, resolvedArguments, selected, selectedMember, coreStringForwarding, diagnostics);
         applySelectedCoreOperations(
             expression, selectedMember, methodMemberOrdinal, scopeOrdinal, call, result, diagnostics);
         // EN: Freeze 3.0 C-13: an async callee reports its error at the await, not at the call.
@@ -5137,6 +5200,32 @@ void ProjectMethodBodyModel::recordSelectedOwnershipTransfers(
         else
             transfer.kind = MethodOwnershipTransferKind::OwnedReturnToOwnedParameter;
         ownershipTransferBindings_.push_back(std::move(transfer));
+    }
+}
+
+void ProjectMethodBodyModel::rejectSelectedNewToOrdinaryParameters(
+    const ast::AstNode* expression,
+    const ExpressionResult& callee,
+    std::span<const ExpressionResult> resolvedArguments,
+    const MethodCallCandidate& selected,
+    const ClassMemberSymbol& selectedMember,
+    bool coreStringForwarding,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < resolvedArguments.size() &&
+         argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
+    {
+        const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+        if (parameterOrdinal >= selectedMember.parameters.size()) continue;
+        const ast::AstNode* argumentSyntax = resolvedCallArgumentSyntax(
+            expression, callee, argumentOrdinal, coreStringForwarding);
+        const ExpressionResult& argument = resolvedArguments[argumentOrdinal];
+        if (newReachesOrdinaryParameter(
+                selectedMember.parameters[parameterOrdinal], argumentSyntax,
+                argument.ownershipFreshOwner, argument.ownershipTransfer, argument.typeKey))
+            reportNewToOrdinaryParameter(
+                argumentSyntax, selectedMember.parameters[parameterOrdinal], selectedMember.name, diagnostics);
     }
 }
 

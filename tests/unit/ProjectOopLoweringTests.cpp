@@ -2268,9 +2268,9 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
     writeFile(directory / "B.ns",
         "namespace Demo; public partial class Counter { "
         "public int AddTwice(int delta) { return Add(delta) + Add(delta); } "
-        "public Counter Make(int start) { return new Counter(start); } "
-        "public Counter MakeAfterAdd(int delta) { return new Counter(Add(delta)); } } "
-        "public class Empty { } public class Factory { public Empty MakeEmpty() { return new Empty(); } }");
+        "public owned Counter Make(int start) { return new Counter(start); } "
+        "public owned Counter MakeAfterAdd(int delta) { return new Counter(Add(delta)); } } "
+        "public class Empty { } public class Factory { public owned Empty MakeEmpty() { return new Empty(); } }");
 
     ProjectCompilation compilation;
     std::string error;

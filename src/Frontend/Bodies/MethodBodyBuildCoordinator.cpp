@@ -563,6 +563,14 @@ void ProjectMethodBodyModel::analyzeFieldInitializer(
         memberOrdinal, field, rootScopeOrdinal, diagnostics);
     if (!initializer.valid || initializer.methodGroup) return;
     if (!validateFieldInitializerConversion(field, initializer, diagnostics)) return;
+    // EN: Freeze 3.0 C-01 (plan item 115b): an instance field that is not `owned` does not destroy what it
+    //     holds, so `new T()` as its initializer reaches no owner.
+    // ES: Congelamiento 3.0 C-01 (elemento 115b del plan): un campo de instancia que no es `owned` no destruye lo
+    //     que guarda, así que `new T()` como su inicializador no llega a ningún dueño.
+    if (!field.isStatic && field.declaredOwnership != sema::OwnershipKind::Owned &&
+        isFreshObjectCreation(field.syntax->first(), initializer))
+        reportLostOwnership(
+            field.syntax->first(), "the field '" + field.name + "', which is not owned", diagnostics);
     if (field.isConst &&
         !ProjectTypeConversion::isIntegral(field.declaredTypeKey) &&
         field.declaredTypeKey != "builtin:bool" &&

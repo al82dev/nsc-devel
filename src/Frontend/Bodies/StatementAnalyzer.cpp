@@ -3541,6 +3541,59 @@ void ProjectMethodBodyModel::reportLostOwnership(
             "or return it through an owned return type");
 }
 
+// EN: Freeze 3.0 C-01 (plan item 115a): `return new T();` from a callable whose return type is not `owned`
+//     hands the caller a reference that owns nothing; the object would leak.
+// ES: Congelamiento 3.0 C-01 (elemento 115a del plan): `return new T();` desde un callable cuyo retorno no es
+//     `owned` entrega al llamador una referencia que no es dueña de nada; el objeto se perdería.
+void ProjectMethodBodyModel::rejectNewToNonOwnedReturn(
+    const ast::AstNode* statement,
+    const ClassMemberSymbol& method,
+    const ExpressionResult& value,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (method.declaredOwnership == sema::OwnershipKind::Owned || !isFreshObjectCreation(statement->first(), value))
+        return;
+    reportLostOwnership(
+        statement->first(), "the return of '" + method.name + "', whose return type is not owned", diagnostics);
+}
+
+bool ProjectMethodBodyModel::newReachesOrdinaryParameter(
+    const MethodParameterSymbol& parameter,
+    const ast::AstNode* argumentSyntax,
+    bool freshOwner,
+    bool ownershipTransfer,
+    std::string_view argumentTypeKey) const
+{
+    return parameter.ownership == sema::OwnershipKind::None &&
+        parameter.passKind == ParameterPassKind::Value && !parameter.isParameterPack &&
+        argumentSyntax != nullptr && argumentSyntax->kind() == ast::AstNodeKind::ObjectCreationExpression &&
+        freshOwner && !ownershipTransfer && typeKeyIsOwnable(argumentTypeKey);
+}
+
+void ProjectMethodBodyModel::reportNewToOrdinaryParameter(
+    const ast::AstNode* argumentSyntax,
+    const MethodParameterSymbol& parameter,
+    std::string_view calleeName,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    // EN: A `__nsc_` callee is a compiler desugaring (the opaque-result factory wraps `return new T()`), not
+    //     a parameter the program wrote; its ownership is the rewritten return's, not this rule's.
+    // ES: Un llamado `__nsc_` es una traducción del compilador (la fábrica de resultado opaco envuelve
+    //     `return new T()`), no un parámetro que escribió el programa; su ownership es el del retorno reescrito.
+    if (calleeName.starts_with("__nsc_")) return;
+    // EN: A generic instantiation is named <name>__g<arity>__<arguments>__h<16 hex>; the message shows <name>.
+    // ES: Una instanciacion generica se llama <name>__g<arity>__<arguments>__h<16 hex>; el mensaje muestra <name>.
+    const std::size_t generic = calleeName.find("__g");
+    const std::size_t hash = calleeName.rfind("__h");
+    if (generic != std::string_view::npos && hash != std::string_view::npos && hash > generic &&
+        hash + 3U + 16U == calleeName.size())
+        calleeName = calleeName.substr(0, generic);
+    reportLostOwnership(
+        argumentSyntax,
+        "the parameter '" + parameter.name + "' of '" + std::string(calleeName) + "', which is not owned",
+        diagnostics);
+}
+
 void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     const ExpressionResult& initializer,
     const ast::AstNode* variable,
@@ -5981,6 +6034,7 @@ void ProjectMethodBodyModel::analyzeReturn(
     if (!validateMustTailReturn(
             statement, *method, conversion, methodMemberOrdinal, diagnostics)) return;
     if (!validatePointerReturn(statement, *method, value, diagnostics)) return;
+    rejectNewToNonOwnedReturn(statement, *method, value, diagnostics);
     noteReturnEscape(
         statement, *method, value, methodMemberOrdinal, scopeOrdinal);
     // Stage 52: a generic method's declared "owned T"/"borrowed T" return type may monomorphize

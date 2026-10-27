@@ -172,7 +172,7 @@ namespace NativeSharp.Stage48_3
         public static export extern C int NS48_Invoke(IntCallback callback, int value) { return callback(value); }
         public static export extern C void NS48_SetCallback(IntCallback callback) { StoredCallback = callback; }
         public static export extern C int NS48_CallCallback(int value) { return StoredCallback(value); }
-        public static export extern C Counter NS48_Counter_Create(int value) { return new Counter(value); }
+        public static export extern C owned Counter NS48_Counter_Create(int value) { return new Counter(value); }
         public static export extern C int NS48_Counter_Get(Counter counter) { return counter.Value; }
         public static export extern C void NS48_Counter_Add(Counter counter, int delta)
         {

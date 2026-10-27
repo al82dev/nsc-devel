@@ -179,6 +179,10 @@ private:
     void selectConstructionCandidate(
         ObjectConstructionBinding& binding,
         std::size_t selectedIndex) const;
+    void rejectNewToOrdinaryConstructorParameters(
+        const ConstructorCandidateBinding& selected,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     // EN: Freeze 3.0 C-13: a selected `throws E` constructor must be caught or propagated.
     // ES: Congelamiento 3.0 C-13: un constructor `throws E` elegido debe atraparse o propagarse.
     void requireConstructorErrorHandled(

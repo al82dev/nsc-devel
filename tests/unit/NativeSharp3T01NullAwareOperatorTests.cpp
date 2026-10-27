@@ -123,12 +123,12 @@ namespace NullAware
 
     public class Node
     {
-        private Node next;
+        private owned Node next;
         public Node Link;
         public static int getterCalls = 0;
         public static int methodCalls = 0;
 
-        public Node(Node value) { next = value; Link = value; }
+        public Node(owned Node value) { next = move(value); Link = next; }
         public Node Next { get { getterCalls = getterCalls + 1; return next; } }
         public virtual Node Advance(int marker)
         {
@@ -176,7 +176,8 @@ namespace NullAware
         public static int Main()
         {
             // Freeze 3.0 (C-01): the nodes are created in the static field that keeps them; `head`
-            // and `tail` are aliases and the final `destroy` releases them by hand.
+            // and `tail` are aliases and the final `destroy` releases them by hand. Item 115: the
+            // head owns the tail (`owned` parameter and field), so destroying the head releases both.
             probeValue = new Node(new Node(null));
             Node head = probeValue;
             Node tail = head.Link;
@@ -230,7 +231,6 @@ namespace NullAware
             if ((none ?? FallbackValue()) != 42 || fallbackCalls != 2) { return 9; }
 
             destroy head;
-            destroy tail;
             return 42;
         }
     }

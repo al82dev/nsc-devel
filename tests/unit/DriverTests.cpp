@@ -587,8 +587,8 @@ int main()
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>\n");
     writeFile(constructionProjectDirectory / "Main.ns",
         "class Box { public Box(int x) { } public Box(float x) { } "
-        "Box MakeInt() { return new Box(1); } Box MakeFloat() { return new Box(1.0f); } } "
-        "class Empty { } class Factory { Empty Make() { return new Empty(); } }\n");
+        "owned Box MakeInt() { return new Box(1); } owned Box MakeFloat() { return new Box(1.0f); } } "
+        "class Empty { } class Factory { owned Empty Make() { return new Empty(); } }\n");
 
     {
         std::ostringstream output;
@@ -630,9 +630,9 @@ int main()
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>\n");
     writeFile(layoutProjectDirectory / "A.ns",
         "struct Pair { short A; int B; } class Empty {} partial class Box { byte Tag; int Count; Pair PairValue; Empty Child; int[3] Samples; "
-        "Box() { } Box Make() { return new Box(); } }\n");
+        "Box() { } owned Box Make() { return new Box(); } }\n");
     writeFile(layoutProjectDirectory / "B.ns",
-        "partial class Box { double Weight; Empty MakeEmpty() { return new Empty(); } }\n");
+        "partial class Box { double Weight; owned Empty MakeEmpty() { return new Empty(); } }\n");
 
     {
         std::ostringstream output;
@@ -678,8 +678,9 @@ int main()
         "public Counter(int start) { this.Value = start; } "
         "public int Add(int delta) { this.Value = this.Value + delta; return this.Value; } }\n");
     writeFile(oopProjectDirectory / "B.ns",
-        "namespace Demo; public partial class Counter { public Counter Make(int start) { return new Counter(start); } } "
-        "public class Empty { } public class Factory { public Empty MakeEmpty() { return new Empty(); } }\n");
+        "namespace Demo; public partial class Counter { "
+        "public owned Counter Make(int start) { return new Counter(start); } } "
+        "public class Empty { } public class Factory { public owned Empty MakeEmpty() { return new Empty(); } }\n");
 
     {
         std::ostringstream output;

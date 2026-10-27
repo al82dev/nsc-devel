@@ -18,7 +18,7 @@ public class Counter
 
 public class ReceiverHarness
 {
-    public Counter Make(int start)
+    public owned Counter Make(int start)
     {
         return new Counter(start);
     }

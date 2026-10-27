@@ -219,16 +219,16 @@ namespace Demo
             set { Value = value - row - column; }
         }
 
-        public static Number operator +(Number left, Number right)
+        public static owned Number operator +(Number left, Number right)
         { return new Number(left.Value + right.Value); }
-        public static Number operator -(Number value)
+        public static owned Number operator -(Number value)
         { return new Number(-value.Value); }
         public static bool operator ==(Number left, Number right)
         { return left.Value == right.Value; }
         public static bool operator !=(Number left, Number right)
         { return left.Value != right.Value; }
         public static implicit operator int(Number value) { return value.Value; }
-        public static explicit operator Number(int value) { return new Number(value); }
+        public static explicit operator owned Number(int value) { return new Number(value); }
     }
 
     public class Holder
@@ -245,21 +245,20 @@ namespace Demo
         {
             raii Number a = new Number(10);
             raii Number b = new Number(20);
-            Number c = a + b;
-            Number d = -c;
+            raii Number c = a + b;
+            raii Number d = -c;
             bool equal = a == b;
             int primitive = c;
             int consumed = Consume(c);
             raii Holder holder = new Holder(c);
-            Number casted = (Number)primitive;
-            IValue iv = casted;
+            raii Number casted = (Number)primitive;
+            borrowed IValue iv = casted;
             iv[2] = consumed;
             int one = iv[2];
             casted[1, 2] = one;
             int two = casted[1, 2];
             Number.Count = Number.Count + 1;
             int result = holder.Read() + one + two + d.Value + Number.Count;
-            delete c; delete d; delete casted;
             return result;
         }
     }

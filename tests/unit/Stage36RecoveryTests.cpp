@@ -246,7 +246,7 @@ void testInheritedImplementationsAndConversions(TestContext& tests, const std::f
         "public int Invoke() { return Value.Read(); } "
         "} "
         "class Harness { "
-        "public static IBase Make() { return new Derived(); } "
+        "public static owned IBase Make() { return new Derived(); } "
         "public static int Consume(IBase value) { return value.Read(); } "
         "public static int Run() { "
         "IAdvanced advanced = new Derived(); "
