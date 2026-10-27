@@ -149,10 +149,10 @@ namespace NativeSharp.Core.Collections.Generic
         // --- TRANSFORMACION EN SITIO --------------------------------------------------------
 
         // EN: Freeze 3.0 P2: Reverse, RemoveIf and every Sort move elements only by swapping them
-        //     (Intercambiar), never by copying, so they serve a move-only T. Elements are read
+        //     (Swap), never by copying, so they serve a move-only T. Elements are read
         //     through `Data()`, as `in` borrows.
         // ES: Congelamiento 3.0 P2: Reverse, RemoveIf y todo Sort mueven elementos solo
-        //     intercambiandolos (Intercambiar), nunca copiandolos, asi que sirven para un T move-only.
+        //     intercambiandolos (Swap), nunca copiandolos, asi que sirven para un T move-only.
         //     Los elementos se leen por `Data()`, como prestamos `in`.
         public static void Reverse<T>(Span<T> datos)
         {
@@ -162,7 +162,7 @@ namespace NativeSharp.Core.Collections.Generic
             int derecha = datos.Length() - 1;
             while (izquierda < derecha)
             {
-                Intercambiar<T>(elementos, izquierda, derecha);
+                Swap<T>(elementos, izquierda, derecha);
                 izquierda = izquierda + 1;
                 derecha = derecha - 1;
             }
@@ -194,7 +194,7 @@ namespace NativeSharp.Core.Collections.Generic
             {
                 if (!condicion(elementos[leer]))
                 {
-                    if (escribir != leer) { Intercambiar<T>(elementos, escribir, leer); }
+                    if (escribir != leer) { Swap<T>(elementos, escribir, leer); }
                     escribir = escribir + 1;
                 }
                 leer = leer + 1;
@@ -212,7 +212,7 @@ namespace NativeSharp.Core.Collections.Generic
             {
                 if (!condicion(in elementos[leer]))
                 {
-                    if (escribir != leer) { Intercambiar<T>(elementos, escribir, leer); }
+                    if (escribir != leer) { Swap<T>(elementos, escribir, leer); }
                     escribir = escribir + 1;
                 }
                 leer = leer + 1;
@@ -274,7 +274,7 @@ namespace NativeSharp.Core.Collections.Generic
             int fin = cuantos - 1;
             while (fin > 0)
             {
-                Intercambiar<T>(elementos, 0, fin);
+                Swap<T>(elementos, 0, fin);
                 Hundir<T>(elementos, 0, fin);
                 fin = fin - 1;
             }
@@ -294,7 +294,7 @@ namespace NativeSharp.Core.Collections.Generic
             int fin = cuantos - 1;
             while (fin > 0)
             {
-                Intercambiar<T>(elementos, 0, fin);
+                Swap<T>(elementos, 0, fin);
                 HundirCon<T>(elementos, 0, fin, comparador);
                 fin = fin - 1;
             }
@@ -314,7 +314,7 @@ namespace NativeSharp.Core.Collections.Generic
             int fin = cuantos - 1;
             while (fin > 0)
             {
-                Intercambiar<T>(elementos, 0, fin);
+                Swap<T>(elementos, 0, fin);
                 HundirConIn<T>(elementos, 0, fin, comparador);
                 fin = fin - 1;
             }
@@ -341,7 +341,7 @@ namespace NativeSharp.Core.Collections.Generic
                 int destino = i;
                 while (destino > 0 && comparador(elementos[destino], elementos[destino - 1]) < 0)
                 {
-                    Intercambiar<T>(elementos, destino, destino - 1);
+                    Swap<T>(elementos, destino, destino - 1);
                     destino = destino - 1;
                 }
                 i = i + 1;
@@ -359,7 +359,7 @@ namespace NativeSharp.Core.Collections.Generic
                 while (destino > 0 &&
                        comparador(in elementos[destino], in elementos[destino - 1]) < 0)
                 {
-                    Intercambiar<T>(elementos, destino, destino - 1);
+                    Swap<T>(elementos, destino, destino - 1);
                     destino = destino - 1;
                 }
                 i = i + 1;
@@ -377,52 +377,48 @@ namespace NativeSharp.Core.Collections.Generic
         //     en cero, asi que cada intercambio correria dos veces el destructor sobre un valor vacio
         //     (medido, 2026-10-26). Los bytes se intercambian de ocho o de cuatro en cuatro cuando el
         //     tamano lo permite.
-        private static void Intercambiar<T>(T* elementos, int a, int b)
+        private static void Swap<T>(T* elements, int first, int second)
         {
-            int tamano = (int)sizeof(T);
-            if (tamano % 8 == 0)
+            int elementSize = (int)sizeof(T);
+            if (elementSize % 8 == 0)
             {
-                IntercambiarPalabras((long*)(elementos + a), (long*)(elementos + b), tamano / 8);
+                long* firstWords = (long*)(elements + first);
+                long* secondWords = (long*)(elements + second);
+                int wordCount = elementSize / 8;
+                int index = 0;
+                while (index < wordCount)
+                {
+                    long temporary = firstWords[index];
+                    firstWords[index] = secondWords[index];
+                    secondWords[index] = temporary;
+                    index = index + 1;
+                }
                 return;
             }
-            if (tamano % 4 == 0)
+            if (elementSize % 4 == 0)
             {
-                IntercambiarMedias((int*)(elementos + a), (int*)(elementos + b), tamano / 4);
+                int* firstWords = (int*)(elements + first);
+                int* secondWords = (int*)(elements + second);
+                int wordCount = elementSize / 4;
+                int index = 0;
+                while (index < wordCount)
+                {
+                    int temporary = firstWords[index];
+                    firstWords[index] = secondWords[index];
+                    secondWords[index] = temporary;
+                    index = index + 1;
+                }
                 return;
             }
-            byte* x = (byte*)(elementos + a);
-            byte* y = (byte*)(elementos + b);
-            int i = 0;
-            while (i < tamano)
+            byte* firstBytes = (byte*)(elements + first);
+            byte* secondBytes = (byte*)(elements + second);
+            int index = 0;
+            while (index < elementSize)
             {
-                byte t = x[i];
-                x[i] = y[i];
-                y[i] = t;
-                i = i + 1;
-            }
-        }
-
-        private static void IntercambiarPalabras(long* x, long* y, int cuantas)
-        {
-            int i = 0;
-            while (i < cuantas)
-            {
-                long t = x[i];
-                x[i] = y[i];
-                y[i] = t;
-                i = i + 1;
-            }
-        }
-
-        private static void IntercambiarMedias(int* x, int* y, int cuantas)
-        {
-            int i = 0;
-            while (i < cuantas)
-            {
-                int t = x[i];
-                x[i] = y[i];
-                y[i] = t;
-                i = i + 1;
+                byte temporary = firstBytes[index];
+                firstBytes[index] = secondBytes[index];
+                secondBytes[index] = temporary;
+                index = index + 1;
             }
         }
 
@@ -453,7 +449,7 @@ namespace NativeSharp.Core.Collections.Generic
                 }
                 if (mayor == actual) { return; }
 
-                Intercambiar<T>(datos, actual, mayor);
+                Swap<T>(datos, actual, mayor);
                 actual = mayor;
             }
         }
@@ -478,7 +474,7 @@ namespace NativeSharp.Core.Collections.Generic
                 }
                 if (mayor == actual) { return; }
 
-                Intercambiar<T>(datos, actual, mayor);
+                Swap<T>(datos, actual, mayor);
                 actual = mayor;
             }
         }
@@ -503,7 +499,7 @@ namespace NativeSharp.Core.Collections.Generic
                 }
                 if (mayor == actual) { return; }
 
-                Intercambiar<T>(datos, actual, mayor);
+                Swap<T>(datos, actual, mayor);
                 actual = mayor;
             }
         }

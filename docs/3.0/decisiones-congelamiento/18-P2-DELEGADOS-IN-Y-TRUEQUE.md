@@ -40,6 +40,20 @@ Decisión de Alberto Huerta Luna (P2, 2026-10-26):
   - Cambiar el compilador.
 - **Terminación.** Sondas A1–A11 en `-O0` y `-O2`; c27 y c35 de cc1 en 42.
 
+### Enmienda 2026-10-27 — plantilla pública de `Algorithm`
+
+- **Entrada exacta:** un consumidor importa la plantilla pública de `Algorithm` desde
+  `NativeSharp.Core.Collections.Generic`.
+- **Defecto:** la plantilla conserva llamadas a `IntercambiarPalabras` e `IntercambiarMedias`, pero esos helpers
+  privados no genéricos no forman parte de la plantilla publicada.
+- **Cambio autorizado:** mantener el intercambio dentro del helper genérico publicado, usar únicamente
+  identificadores de código en inglés y retirar los dos helpers ausentes.
+- **Debe quedar idéntico:** API pública, ABI, selección por tamaño, orden de bytes, ownership y destrucciones.
+- **Archivos modificables:** `Algorithm.ns` y este documento causal.
+- **Protegido:** compilador, formato NSMETA, generador de snapshots, consumidores y pruebas existentes.
+- **Validación:** inspección del diferencial y compilación externa de las bibliotecas y `SaruDX11`; no se ejecutan
+  suites, baterías ni baselines en esta tanda.
+
 ## Contrato
 
 1. **Delegados nuevos** (`Delegates.ns`):
