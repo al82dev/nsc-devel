@@ -800,32 +800,80 @@ bool ProjectCompilation::compileProjectMembers(
     for (const GenericSpecializationRecord& specialization : genericModel_->specializations())
         localSpecializationsByKey.emplace(
             specialization.specializationKey, &specialization);
+    const auto typeKey = [](std::string_view templateKey, std::string_view specializedName) {
+        const std::size_t moduleSeparator = templateKey.find("::");
+        if (moduleSeparator == std::string_view::npos) return std::string{};
+        const std::size_t terminal = templateKey.find_last_of(".+");
+        const std::size_t terminalBegin = terminal == std::string_view::npos ||
+                terminal < moduleSeparator + 2U
+            ? moduleSeparator + 2U
+            : terminal + 1U;
+        if (templateKey.find('`', terminalBegin) == std::string_view::npos) return std::string{};
+        return "type:" + std::string(templateKey.substr(0, terminalBegin)) +
+            std::string(specializedName);
+    };
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
         precompiledMembers.insert(precompiledMembers.end(), module.members.begin(), module.members.end());
+        std::error_code metadataPathError;
+        const std::filesystem::path canonicalMetadata =
+            std::filesystem::weakly_canonical(module.metadataPath, metadataPathError);
+        const std::optional<std::size_t> moduleProjectOrdinal = metadataPathError
+            ? std::optional<std::size_t>{}
+            : precompiledProjectOrdinal(canonicalMetadata);
+        const std::string publishedTypePrefix = "type:" + module.moduleName + "::";
+        const auto argumentMatches = [&](std::string_view localArgument, std::string_view publishedArgument) {
+            if (localArgument == publishedArgument) return true;
+            if (!moduleProjectOrdinal.has_value() ||
+                !localArgument.starts_with("type:") ||
+                !publishedArgument.starts_with(publishedTypePrefix))
+            {
+                return false;
+            }
+            const std::size_t localModuleSeparator = localArgument.find("::", 5U);
+            if (localModuleSeparator == std::string_view::npos ||
+                localArgument.substr(localModuleSeparator + 2U) !=
+                    publishedArgument.substr(publishedTypePrefix.size()))
+            {
+                return false;
+            }
+            const std::string_view localIdentity = localArgument.substr(5U);
+            return std::ranges::any_of(nameLookup_->namedTypes(), [&](const NamedTypeDeclaration& type) {
+                return type.isPrecompiled && type.projectOrdinal == *moduleProjectOrdinal &&
+                    type.identity.keyView() == localIdentity;
+            });
+        };
         for (const PrecompiledGenericSpecialization& imported : module.genericSpecializations)
         {
             if (imported.kind == GenericTemplateKind::Method) continue;
-            const auto local = localSpecializationsByKey.find(imported.specializationKey);
-            if (local == localSpecializationsByKey.end()) continue;
-
-            const auto typeKey = [](std::string_view templateKey, std::string_view specializedName) {
-                const std::size_t moduleSeparator = templateKey.find("::");
-                if (moduleSeparator == std::string_view::npos) return std::string{};
-                const std::size_t terminal = templateKey.find_last_of(".+");
-                const std::size_t terminalBegin = terminal == std::string_view::npos ||
-                        terminal < moduleSeparator + 2U
-                    ? moduleSeparator + 2U
-                    : terminal + 1U;
-                if (templateKey.find('`', terminalBegin) == std::string_view::npos) return std::string{};
-                return "type:" + std::string(templateKey.substr(0, terminalBegin)) +
-                    std::string(specializedName);
-            };
-            const std::string localTypeKey =
-                typeKey(local->second->templateKey, local->second->specializedName);
             const std::string publishedTypeKey = typeKey(imported.templateKey, imported.specializedName);
-            if (!localTypeKey.empty() && !publishedTypeKey.empty())
-                specializationTypeAliases.emplace_back(localTypeKey, publishedTypeKey);
+            if (publishedTypeKey.empty()) continue;
+            const auto appendAlias = [&](const GenericSpecializationRecord& local) {
+                const std::string localTypeKey = typeKey(local.templateKey, local.specializedName);
+                if (!localTypeKey.empty())
+                    specializationTypeAliases.emplace_back(localTypeKey, publishedTypeKey);
+            };
+            const auto exact = localSpecializationsByKey.find(imported.specializationKey);
+            if (exact != localSpecializationsByKey.end()) appendAlias(*exact->second);
+            for (const GenericSpecializationRecord& local : genericModel_->specializations())
+            {
+                if ((exact != localSpecializationsByKey.end() && exact->second == &local) ||
+                    local.kind != imported.kind || local.templateKey != imported.templateKey ||
+                    local.typeArguments.size() != imported.typeArguments.size())
+                {
+                    continue;
+                }
+                bool sameArguments = true;
+                for (std::size_t index = 0; index < local.typeArguments.size(); ++index)
+                {
+                    if (!argumentMatches(local.typeArguments[index], imported.typeArguments[index]))
+                    {
+                        sameArguments = false;
+                        break;
+                    }
+                }
+                if (sameArguments) appendAlias(local);
+            }
         }
     }
     if (!memberModel_->bindPrecompiledPhysicalNames(
