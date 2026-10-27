@@ -274,6 +274,10 @@ void ProjectCallableResultMerger::mergeShardState(
     // ES: Congelamiento 3.0 (arreglos owned): el HIR lee que sitios `delete[]` vacian un campo owned.
     destination.arrayDeleteClearsOwnedField_.insert(
         source.arrayDeleteClearsOwnedField_.begin(), source.arrayDeleteClearsOwnedField_.end());
+    // EN: Freeze 3.0 (item 121): the HIR reads which `delete p` sites consume an owned parameter.
+    // ES: Congelamiento 3.0 (elemento 121): el HIR lee que sitios `delete p` consumen un parametro owned.
+    destination.deleteClearsOwnedParameter_.insert(
+        source.deleteClearsOwnedParameter_.begin(), source.deleteClearsOwnedParameter_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
     if (source.isolatedCallableOrdinal_.has_value() &&
         *source.isolatedCallableOrdinal_ == result.callableOrdinal() &&

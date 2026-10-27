@@ -264,10 +264,15 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledDestructionFrame(
         //     el campo, asi el slot queda vacio y la entrada de destruccion del contenedor no lo libera.
         const bool clearsOwnedField = current->flag() && methodBodyModel_ != nullptr &&
             methodBodyModel_->arrayDeleteClearsOwnedField(current);
+        // EN: Freeze 3.0 (item 121): `delete p` of an owned parameter addresses it, so it is cleared.
+        // ES: Congelamiento 3.0 (elemento 121): `delete p` de un parametro owned lo direcciona y lo vacia.
+        const bool clearsOwnedParameter = !current->flag() && methodBodyModel_ != nullptr &&
+            methodBodyModel_->deleteClearsOwnedParameter(current);
         frame.operandAddressContext = current->flag()
             ? directElement || clearsOwnedField
             : (directElement &&
-                (isReferenceType(frame.operandType->typeKey) || nativeString)) || dropsValueElement;
+                (isReferenceType(frame.operandType->typeKey) || nativeString)) || dropsValueElement ||
+                clearsOwnedParameter;
     }
 
     return LoopBlockAdvance::Complete;

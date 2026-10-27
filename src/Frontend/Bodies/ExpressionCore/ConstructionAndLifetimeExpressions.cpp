@@ -980,6 +980,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             const ExpressionResult operand = analyzeExpression(
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            const bool parameterConsumable = !operand.valid ||
+                consumeDeletedOwnedParameter(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
             bool consumesBorrowedOwner = false;
             if (consumedOwnedArrayLocal.has_value() && operand.valid)
             {
@@ -1068,13 +1070,45 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             result.typeKey = "builtin:void";
             result.valid = operand.valid && !deletesCurrentThis && !deletesRaiiLocal &&
-                !deletesOwnedField && !consumesBorrowedOwner;
+                !deletesOwnedField && !consumesBorrowedOwner && parameterConsumable;
             break;
         }
         default:
             break;
     }
     return result;
+}
+
+/// EN: Freeze 3.0 (item 121). `delete p` of an owned class or interface parameter consumes `p`, like
+///     move(p): it is moved-from afterwards and the HIR clears its slot before destruction. Returns
+///     false after reporting a delete of a moved parameter or of one a borrowed local still uses.
+/// ES: Congelamiento 3.0 (elemento 121). `delete p` de un parametro owned de clase o interfaz consume
+///     `p`, como move(p): despues queda movido y el HIR vacia su slot antes de la destruccion. Devuelve
+///     false despues de reportar el delete de un parametro movido o de uno que un local prestado usa.
+bool ProjectMethodBodyModel::consumeDeletedOwnedParameter(
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const ast::AstNode* operand = expression->first();
+    if (expression->flag() || operand == nullptr ||
+        operand->kind() != ast::AstNodeKind::IdentifierExpression) return true;
+    const std::optional<ScopeName> target = lookupScopeName(scopeOrdinal, operand->text());
+    const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+    if (!target.has_value() || target->kind != ScopeNameKind::Parameter || method == nullptr ||
+        target->semanticOrdinal >= method->parameters.size()) return true;
+    const MethodParameterSymbol& parameter = method->parameters[target->semanticOrdinal];
+    if (parameter.ownership != sema::OwnershipKind::Owned || !isReferenceTypeKey(parameter.typeKey))
+        return true;
+    if (!validateParameterMoveState(
+            parameter, expression, target->semanticOrdinal, scopeOrdinal, true, diagnostics))
+        return false;
+    deleteClearsOwnedParameter_.insert(expression);
+    maybeMovedOwnedParameters_.erase(target->semanticOrdinal);
+    movedOwnedParameters_.insert(target->semanticOrdinal);
+    invalidateHistoricalBorrowsOfOwnedParameter(target->semanticOrdinal);
+    return true;
 }
 
 bool ProjectMethodBodyModel::validateDestroyTarget(

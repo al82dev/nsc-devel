@@ -5854,6 +5854,42 @@ void testOwnedArgumentTransfer(TestContext& tests, const std::filesystem::path& 
         "        return r * 100 + Box.Made * 10 + Box.Freed;\n    }\n}\n", 511);
 }
 
+/// EN: Item 121. `delete p` of an owned class parameter consumes it: the object is destroyed once, also
+///     when the delete runs on one branch only and through Dictionary.TryAdd / SortedList.TryAdd, which
+///     delete the value they reject. Reading or deleting the parameter afterwards is rejected. Each
+///     program returns Made * 10 + Freed.
+/// ES: Elemento 121. `delete p` de un parametro owned de clase lo consume: el objeto se destruye una vez,
+///     tambien cuando el delete corre en una sola rama y a traves de Dictionary.TryAdd /
+///     SortedList.TryAdd, que borran el valor que rechazan. Leer o borrar el parametro despues se
+///     rechaza. Cada programa devuelve Made * 10 + Freed.
+void testDeleteOwnedParameter(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude(kTransferPrelude);
+    expectRun(tests, root, "F121Delete", prelude + "class Program\n{\n"
+        "    private static void Eat(owned Box b) { delete b; }\n"
+        "    private static bool EatIf(owned Box b, bool now) { if (now) { delete b; return false; } return true; }\n"
+        "    public static int Main()\n    {\n"
+        "        Eat(new Box(1));\n        EatIf(new Box(2), true);\n        EatIf(new Box(3), false);\n"
+        "        return Box.Made * 10 + Box.Freed;\n    }\n}\n", 33);
+    expectReject(tests, root, "F121DeleteThenRead", prelude + "class Program\n{\n"
+        "    private static int Eat(owned Box b) { delete b; return b.V; }\n"
+        "    public static int Main() { return Eat(new Box(1)); }\n}\n", "'b'");
+    expectReject(tests, root, "F121DeleteTwice", prelude + "class Program\n{\n"
+        "    private static void Eat(owned Box b) { delete b; delete b; }\n"
+        "    public static int Main() { Eat(new Box(1)); return 0; }\n}\n", "'b'");
+    const std::string collections = "using NativeSharp.Core.Collections.Generic;\n" + prelude;
+    expectRun(tests, root, "F121DictionaryTryAdd", collections + "class Program\n{\n"
+        "    public static int Main()\n    {\n        int added = 0;\n        {\n"
+        "            raii Dictionary<int, Box> d = new Dictionary<int, Box>();\n"
+        "            d.AddOrUpdate(1, new Box(1));\n            if (d.TryAdd(1, new Box(2))) added = 1;\n"
+        "        }\n        return added * 100 + Box.Made * 10 + Box.Freed;\n    }\n}\n", 22, true);
+    expectRun(tests, root, "F121SortedListTryAdd", collections + "class Program\n{\n"
+        "    public static int Main()\n    {\n        int added = 0;\n        {\n"
+        "            raii SortedList<int, Box> s = new SortedList<int, Box>();\n"
+        "            s.AddOrUpdate(1, new Box(1));\n            if (s.TryAdd(1, new Box(2))) added = 1;\n"
+        "        }\n        return added * 100 + Box.Made * 10 + Box.Freed;\n    }\n}\n", 22, true);
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -6987,6 +7023,7 @@ int main()
     testNewToNonOwnedReturn(tests, root);
     testNewToNonOwnedField(tests, root);
     testOwnedArgumentTransfer(tests, root);
+    testDeleteOwnedParameter(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

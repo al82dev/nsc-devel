@@ -328,8 +328,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerScalarDeleteExpressi
     const bool dropsValueElement = !deletable && elementBinding != nullptr &&
         elementBinding->kind == MethodCoreOperationKind::ArrayElement &&
         memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(operandType.typeKey);
+    // EN: Freeze 3.0 (item 121): `delete p` of an owned parameter clears the parameter too.
+    // ES: Congelamiento 3.0 (elemento 121): `delete p` de un parametro owned tambien lo vacia.
+    const bool clearsOwnedParameter = methodBodyModel_ != nullptr &&
+        methodBodyModel_->deleteClearsOwnedParameter(expression);
     const bool clearsElementSlot = (directElement &&
-        (isReferenceType(operandType.typeKey) || nativeString)) || dropsValueElement;
+        (isReferenceType(operandType.typeKey) || nativeString)) || dropsValueElement ||
+        clearsOwnedParameter;
     auto operand = lowerExpression(
         expression->first(), memberOrdinal, clearsElementSlot, error);
     if (operand == nullptr) return nullptr;

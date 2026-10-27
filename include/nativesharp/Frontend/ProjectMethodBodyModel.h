@@ -339,6 +339,16 @@ public:
     {
         return arrayDeleteClearsOwnedField_.contains(syntax);
     }
+    // EN: Freeze 3.0 (item 121): `delete p` of an owned class or interface parameter consumes it,
+    //     like move(p). The HIR addresses the parameter, so the slot is cleared before destruction and
+    //     the parameter's exit cleanup finds it empty.
+    // ES: Congelamiento 3.0 (elemento 121): `delete p` de un parametro owned de clase o interfaz lo
+    //     consume, como move(p). El HIR direcciona el parametro, asi el slot queda vacio antes de la
+    //     destruccion y la limpieza de salida del parametro lo encuentra vacio.
+    bool deleteClearsOwnedParameter(const ast::AstNode* syntax) const noexcept
+    {
+        return deleteClearsOwnedParameter_.contains(syntax);
+    }
     const MethodLoopBreakBinding* loopBreakBinding(
         const ast::AstNode* syntax) const noexcept;
     const std::string* staticInterpolationValue(const ast::AstNode* syntax) const noexcept;
@@ -1945,6 +1955,11 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         bool compilerVariantResultTransfer,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool consumeDeletedOwnedParameter(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
     bool validateParameterMoveState(
         const MethodParameterSymbol& parameter,
@@ -5331,6 +5346,7 @@ private:
 #include "nativesharp/Frontend/Internal/MethodBody/ActiveIterationBorrow.h"
     std::vector<ActiveIterationBorrow> activeIterationBorrows_;
     std::unordered_set<const ast::AstNode*> arrayDeleteClearsOwnedField_;
+    std::unordered_set<const ast::AstNode*> deleteClearsOwnedParameter_;
     std::unordered_set<std::size_t> movedRaiiLocals_;
     std::unordered_set<std::size_t> maybeMovedRaiiLocals_;
     std::unordered_set<std::size_t> movedOwnedParameters_;
