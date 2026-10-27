@@ -184,6 +184,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.typeKey = resultType;
             result.valid = true;
             result.assignable = false;
+            // EN: Freeze 3.0 (plan item 135): the result may be either operand, so it keeps a borrow of either.
+            // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado puede ser cualquier operando, asi que
+            //     conserva el prestamo de cualquiera.
+            result.borrowsOwnedTemporary = left.borrowsOwnedTemporary || right.borrowsOwnedTemporary;
             break;
         }
         default:
@@ -674,13 +678,14 @@ ProjectMethodBodyModel::analyzeExpressionKindConditionalExpression(
     analyzeConditionalBranches(
         expression, methodMemberOrdinal, scopeOrdinal, diagnostics, whenTrue, whenFalse);
     if (!whenTrue.valid || !whenFalse.valid) return result;
-    if (resolveConditionalDivergence(result, whenTrue, whenFalse)) return result;
-    if (resolveConditionalMatchingType(
-            result, expression, whenTrue, whenFalse, diagnostics))
-    {
-        return result;
-    }
-    resolveConditionalSpecialType(result, expression, whenTrue, whenFalse, diagnostics);
+    if (!resolveConditionalDivergence(result, whenTrue, whenFalse) &&
+        !resolveConditionalMatchingType(result, expression, whenTrue, whenFalse, diagnostics))
+        resolveConditionalSpecialType(result, expression, whenTrue, whenFalse, diagnostics);
+    // EN: Freeze 3.0 (plan item 135): the result is one branch or the other, so it keeps a borrow of either.
+    // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado es una rama o la otra, asi que conserva el
+    //     prestamo de cualquiera.
+    result.borrowsOwnedTemporary =
+        result.valid && (whenTrue.borrowsOwnedTemporary || whenFalse.borrowsOwnedTemporary);
     return result;
 }
 }

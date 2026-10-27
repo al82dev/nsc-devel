@@ -4225,12 +4225,29 @@ private:
     // ES: Congelamiento 3.0 (elemento 131a del plan): receptores cuyo temporal debe vivir hasta el final de la
     //     expresion completa (una lectura de campo prestada, una llamada que devuelve un owner nuevo, el destino
     //     de una escritura de campo).
+    // EN: Freeze 3.0 (plan item 135): the provenance of a borrow taken from the temporary follows field
+    //     reads, non-owned call and getter results, `?:` and `??`; `(new T()).Field` is a temporary too.
+    // ES: Congelamiento 3.0 (elemento 135 del plan): la procedencia de un prestamo tomado del temporal sigue
+    //     lecturas de campo, resultados no owned de llamadas y getters, `?:` y `??`; `(new T()).Campo` tambien
+    //     es un temporal.
     using HirParentMap = std::unordered_map<const ProjectOopHirNode*, ProjectOopHirNode*>;
     void ownReceiversUntilFullExpression(ProjectOopHirNode* root);
-    ProjectOopHirNode* fullExpressionTemporaryStart(ProjectOopHirNode& consumer, const HirParentMap& parents) const;
-    ProjectOopHirNode* temporaryBorrowConsumer(ProjectOopHirNode& fieldRead, const HirParentMap& parents) const;
+    ProjectOopHirNode* fullExpressionTemporaryStart(
+        ProjectOopHirNode& consumer, const HirParentMap& parents, bool& crossesBranch) const;
+    ProjectOopHirNode* temporaryBorrowConsumer(
+        ProjectOopHirNode& borrowed, const HirParentMap& parents, bool& crossesBranch) const;
     bool consumesIntoPlainValue(const ProjectOopHirNode& consumer) const;
-    void closeAtFullExpression(ProjectOopHirNode& start, HirParentMap& parents);
+    bool isOwnedNewObject(const ProjectOopHirNode& node) const;
+    bool endsInNewOwner(const ProjectOopHirNode& consumer, const ProjectOopHirNode& borrowed) const;
+    bool passesBorrowThrough(const ProjectOopHirNode& consumer, const ProjectOopHirNode& borrowed) const;
+    bool planFullExpressionClose(
+        ProjectOopHirNode& start,
+        const HirParentMap& parents,
+        bool crossesBranch,
+        ProjectOopHirNode*& root,
+        ProjectOopHirNode*& enclosing) const;
+    void closeAtFullExpression(
+        ProjectOopHirNode* root, ProjectOopHirNode* enclosing, bool crossesBranch, HirParentMap& parents);
     void applyStructuredExitBinding(
         ProjectOopHirNode& node,
         const ast::AstNode* syntax) const;

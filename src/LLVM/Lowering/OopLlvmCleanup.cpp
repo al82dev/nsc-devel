@@ -1091,6 +1091,35 @@ bool OopLlvmImplementation::emitValueDrop(
         return true;
     }
 
+// EN: Freeze 3.0 (plan item 135). Allocas are not zero-initialized and a branch region stays active after the
+//     join, so a full expression whose borrow crosses a `?:` or `??` (booleanValue) clears every pointer owner
+//     slot it holds before evaluating anything. emitRaiiDestroy already skips a null owner. A value-drop struct
+//     has its own drop flag, and a lambda body belongs to another function, so neither is touched.
+// ES: Congelamiento 3.0 (elemento 135 del plan). Los allocas no se inicializan en cero y una region de rama sigue
+//     activa despues de la union, asi que una expresion completa cuyo prestamo cruza un `?:` o `??`
+//     (booleanValue) pone en null cada slot de dueno puntero que contiene antes de evaluar nada. emitRaiiDestroy
+//     ya omite un dueno null. Un struct con drop tiene su propia bandera, y el cuerpo de una lambda pertenece a
+//     otra funcion, asi que ninguno se toca.
+void OopLlvmImplementation::clearTemporaryOwnerSlots(const frontend::ProjectOopMirNode& fullExpression)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+    std::vector<const frontend::ProjectOopMirNode*> pending{&fullExpression};
+    while (!pending.empty())
+    {
+        const frontend::ProjectOopMirNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind == frontend::ProjectOopMirNodeKind::LambdaCreate) continue;
+        for (const auto& child : node->children) pending.push_back(child.get());
+        if (node->kind != frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow || !node->localOrdinal.has_value())
+            continue;
+        if (!requiresOwnedDestruction(node->typeKey)) continue;
+        if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(node->typeKey)) continue;
+        const auto storage = localStorage_.find(*node->localOrdinal);
+        if (storage == localStorage_.end() || storage->second == nullptr) continue;
+        LLVMBuildStore(builder_, LLVMConstNull(ptr), storage->second);
+    }
+}
+
 bool OopLlvmImplementation::emitRaiiDestroy(const frontend::ProjectOopMirNode* node, std::string& error)
 {
         if (node == nullptr ||

@@ -964,6 +964,10 @@ bool ProjectMethodBodyModel::analyzeMethodGroupMember(
     result.ownershipSourceLocalOrdinal = receiver.ownershipSourceLocalOrdinal;
     result.ownershipSourceParameterOrdinal = receiver.ownershipSourceParameterOrdinal;
     result.borrowedLocalOrdinal = receiver.borrowedLocalOrdinal;
+    // EN: Freeze 3.0 (plan item 135): the call result may borrow the receiver temporary.
+    // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado de la llamada puede tomar prestado el temporal
+    //     receptor.
+    result.receiverBorrowsOwnedTemporary = !typeReceiver && carriesOwnedTemporary(receiver);
     const MethodNameBindingKind methodBindingKind = typeReceiver
         ? MethodNameBindingKind::StaticMethodGroup
         : receiver.baseReceiver ? MethodNameBindingKind::ExplicitBaseMethodGroup
@@ -1100,6 +1104,12 @@ void ProjectMethodBodyModel::classifyMemberReceiverKinds(
 // ES: Congelamiento 3.0 (elemento 131a del plan). Una referencia o string leido de un campo del temporal que creo
 //     una llamada con retorno owned (`Make().Name`), o de un campo de esa lectura (`Make().Inner.Name`), apunta a
 //     un objeto que la expresion completa destruye. La bandera deja que los contextos que guardan lo rechacen.
+//
+// EN: Freeze 3.0 (plan item 135): it also marks a getter result, and the receiver may be a `new` object. A result
+//     that is a new owner (an owned-returning getter) does not borrow; a copyable value never does.
+// ES: Congelamiento 3.0 (elemento 135 del plan): tambien marca el resultado de un getter, y el receptor puede ser
+//     un objeto `new`. Un resultado que es un owner nuevo (un getter con retorno owned) no toma prestado; un valor
+//     copiable nunca.
 void ProjectMethodBodyModel::markOwnedTemporaryFieldBorrow(
     ExpressionResult& result,
     const ExpressionResult& receiver,
@@ -1107,12 +1117,27 @@ void ProjectMethodBodyModel::markOwnedTemporaryFieldBorrow(
 {
     if (typeReceiver || !result.valid || !receiver.valid) return;
     if (!isReferenceTypeKey(result.typeKey) && result.typeKey != "builtin:string") return;
-    const bool freshTemporary = receiver.receiverSyntax != nullptr &&
-        receiver.receiverSyntax->kind() == ast::AstNodeKind::CallExpression &&
+    if (result.ownership == sema::OwnershipKind::Owned && result.ownershipTransfer) return;
+    result.borrowsOwnedTemporary = carriesOwnedTemporary(receiver);
+}
+
+// EN: Freeze 3.0 (plan item 135): `receiver` is a temporary whose life the full expression decides (the result of
+//     an owned-returning call, or `new` of a class), or a borrow of one.
+// ES: Congelamiento 3.0 (elemento 135 del plan): `receiver` es un temporal cuya vida decide la expresion completa
+//     (el resultado de una llamada con retorno owned, o `new` de una clase), o un prestamo de uno.
+bool ProjectMethodBodyModel::carriesOwnedTemporary(const ExpressionResult& receiver) const
+{
+    if (!receiver.valid) return false;
+    if (receiver.borrowsOwnedTemporary) return true;
+    const ast::AstNode* syntax = receiver.receiverSyntax;
+    if (syntax == nullptr) return false;
+    if (syntax->kind() == ast::AstNodeKind::ObjectCreationExpression)
+        return receiver.ownershipFreshOwner && isReferenceTypeKey(receiver.typeKey) &&
+            typeKeyIsOwnable(receiver.typeKey);
+    return syntax->kind() == ast::AstNodeKind::CallExpression &&
         receiver.ownership == sema::OwnershipKind::Owned && receiver.ownershipTransfer &&
         !receiver.ownershipSourceLocalOrdinal.has_value() &&
         !receiver.ownershipSourceParameterOrdinal.has_value();
-    result.borrowsOwnedTemporary = freshTemporary || receiver.borrowsOwnedTemporary;
 }
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
@@ -1173,7 +1198,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     if (analyzePropertyMember(
             result, receiver, expression, *caller, typeReceiver, receiverType,
             accessingTypeOrdinal, methodMemberOrdinal, scopeOrdinal,
-            diagnostics, allowConstructorPropertyWrite)) return result;
+            diagnostics, allowConstructorPropertyWrite))
+    {
+        markOwnedTemporaryFieldBorrow(result, receiver, typeReceiver);
+        return result;
+    }
     if (analyzeListPatternLengthMember(
             result, receiver, expression, methods, typeReceiver, receiverType,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;

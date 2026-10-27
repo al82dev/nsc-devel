@@ -4662,8 +4662,30 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     }
     finalizeSelectedCallResult(
         result, expression, call, nullConditionalCall, provenVariantCase, diagnostics);
+    markCallTemporaryBorrow(result, callee, resolvedArguments);
     recordCallBinding(std::move(call));
     return result;
+}
+
+// EN: Freeze 3.0 (plan item 135). A reference or string result that is not a new owner may point into the
+//     receiver or into an argument, so it keeps their borrow of an owned temporary (`Make().GetName()`,
+//     `Id(Make().Name)`). The rule is conservative: the analysis does not know which input the result came from.
+// ES: Congelamiento 3.0 (elemento 135 del plan). Un resultado referencia o string que no es un owner nuevo puede
+//     apuntar dentro del receptor o de un argumento, asi que conserva su prestamo de un temporal owned
+//     (`Make().GetName()`, `Id(Make().Name)`). La regla es conservadora: el analisis no sabe de que entrada vino
+//     el resultado.
+void ProjectMethodBodyModel::markCallTemporaryBorrow(
+    ExpressionResult& result,
+    const ExpressionResult& callee,
+    std::span<const ExpressionResult> resolvedArguments) const
+{
+    if (!result.valid) return;
+    if (!isReferenceTypeKey(result.typeKey) && result.typeKey != "builtin:string") return;
+    if (result.ownership == sema::OwnershipKind::Owned && result.ownershipTransfer) return;
+    bool borrows = callee.receiverBorrowsOwnedTemporary;
+    for (const ExpressionResult& argument : resolvedArguments)
+        borrows = borrows || argument.borrowsOwnedTemporary;
+    result.borrowsOwnedTemporary = borrows;
 }
 
 bool ProjectMethodBodyModel::validateSelectedCallReceiver(

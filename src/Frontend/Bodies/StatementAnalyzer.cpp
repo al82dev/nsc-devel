@@ -3554,12 +3554,15 @@ void ProjectMethodBodyModel::rejectOwnedTemporaryBorrowEscape(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (!value.valid || !value.borrowsOwnedTemporary || syntax == nullptr) return;
+    // EN: Freeze 3.0 (plan item 135): a call, `?:` or `??` has no text of its own.
+    // ES: Congelamiento 3.0 (elemento 135 del plan): una llamada, `?:` o `??` no tiene texto propio.
+    const std::string shown = syntax->text().empty() ? std::string("the value") : "'" + syntax->text() + "'";
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidOperand,
         diagnostics::DiagnosticSeverity::Error,
         syntax->range(),
-        "'" + syntax->text() + "' is read from the temporary of an owned-returning call, which is destroyed at "
-            "the end of the full expression, so " + std::string(destination) +
+        shown + " borrows an owned temporary (the result of an owned-returning call or of "
+            "'new'), which is destroyed at the end of the full expression, so " + std::string(destination) +
             " cannot keep it; store the temporary in a raii or owned local first");
 }
 

@@ -201,6 +201,46 @@ std::unique_ptr<ProjectOopHirNode>* hirReceiverSlot(ProjectOopHirNode& consumer)
         receiver = &(*receiver)->children.front();
     return *receiver != nullptr ? receiver : nullptr;
 }
+
+// EN: Freeze 3.0 (plan item 135): `borrowed` is a value operand of a `?:` (not its condition) or an operand of a
+//     `??`, so the borrow reaches the result on some path.
+// ES: Congelamiento 3.0 (elemento 135 del plan): `borrowed` es un operando de valor de un `?:` (no su condicion)
+//     o un operando de un `??`, asi que el prestamo llega al resultado en algun camino.
+bool hirBranchJoin(const ProjectOopHirNode& consumer, const ProjectOopHirNode& borrowed) noexcept
+{
+    if (consumer.kind == ProjectOopHirNodeKind::NullCoalescing) return true;
+    return consumer.kind == ProjectOopHirNodeKind::Conditional && !consumer.children.empty() &&
+        consumer.children.front().get() != &borrowed;
+}
+
+// EN: A node that would keep the borrow beyond the expression, or that closes cleanups of its own.
+// ES: Un nodo que guardaria el prestamo mas alla de la expresion, o que cierra limpiezas propias.
+bool hirKeepsBorrow(ProjectOopHirNodeKind kind) noexcept
+{
+    return kind == ProjectOopHirNodeKind::FullExpressionCleanup ||
+        kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow ||
+        kind == ProjectOopHirNodeKind::Assignment ||
+        kind == ProjectOopHirNodeKind::CompoundStore;
+}
+
+// EN: `borrowed` is the object whose field `consumer` stores into (`Make().Inner.V = 3`): the store ends the
+//     borrow. Returns the assignment, or null.
+// ES: `borrowed` es el objeto en cuyo campo escribe `consumer` (`Make().Inner.V = 3`): la escritura termina el
+//     prestamo. Devuelve la asignacion, o null.
+ProjectOopHirNode* hirFieldStoreThrough(
+    const ProjectOopHirNode& consumer,
+    const ProjectOopHirNode& borrowed,
+    const HirParentIndex& parents)
+{
+    if (consumer.kind != ProjectOopHirNodeKind::FieldAddress || consumer.children.empty() ||
+        consumer.children.front().get() != &borrowed)
+        return nullptr;
+    const auto parent = parents.find(&consumer);
+    if (parent == parents.end() || parent->second->kind != ProjectOopHirNodeKind::Assignment ||
+        parent->second->children.empty() || parent->second->children.front().get() != &consumer)
+        return nullptr;
+    return parent->second;
+}
 }
 
 bool ProjectOopHirModel::isFreshDroppableTemporary(const ProjectOopHirNode* node) const
@@ -308,6 +348,18 @@ void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
 //     completa destruye, despues de todo otro uso y en orden inverso de creacion. Una lectura prestada se posee
 //     solo cuando su valor termina en un valor simple (o se descarta): guardarla lo rechaza el analisis, y otro
 //     flujo conserva la conducta anterior, asi que ninguna referencia sobrevive al temporal.
+//
+// EN: Freeze 3.0 (plan item 135). The same hidden owner now covers every form the analysis tracks with the
+//     temporary's provenance: a borrow that goes on through a non-owned call or getter result, a `?:` or a `??`,
+//     and `(new T()).Field`. A borrow that crosses a `?:` or `??` comes from a temporary made on one path only, so
+//     its full expression clears the owner slot when it starts and the cleanup skips a temporary never made.
+//     That needs a pointer owner and no suspension inside the full expression; otherwise the old behavior stays.
+// ES: Congelamiento 3.0 (elemento 135 del plan). El mismo dueno oculto cubre ahora toda forma que el analisis
+//     sigue con la procedencia del temporal: un prestamo que continua por el resultado no owned de una llamada o
+//     de un getter, por un `?:` o un `??`, y `(new T()).Campo`. Un prestamo que cruza un `?:` o `??` viene de un
+//     temporal creado en un solo camino, asi que su expresion completa limpia el slot del dueno al empezar y la
+//     limpieza omite el temporal que nunca se creo. Eso exige un dueno puntero y ninguna suspension dentro de la
+//     expresion completa; si no, queda la conducta anterior.
 void ProjectOopHirModel::ownReceiversUntilFullExpression(ProjectOopHirNode* root)
 {
     HirParentMap parents;
@@ -315,15 +367,21 @@ void ProjectOopHirModel::ownReceiversUntilFullExpression(ProjectOopHirNode* root
     indexHirParents(root, parents, order);
     for (ProjectOopHirNode* consumer : order)
     {
-        ProjectOopHirNode* start = fullExpressionTemporaryStart(*consumer, parents);
+        bool crossesBranch = false;
+        ProjectOopHirNode* start = fullExpressionTemporaryStart(*consumer, parents, crossesBranch);
         if (start == nullptr || hirSubtreeSuspends(*start)) continue;
         std::unique_ptr<ProjectOopHirNode>* receiver = hirReceiverSlot(*consumer);
+        const std::string& ownerType = (*receiver)->typeKey;
+        if (crossesBranch && !isReferenceType(ownerType) && ownerType != "builtin:string") continue;
+        ProjectOopHirNode* closingRoot = nullptr;
+        ProjectOopHirNode* enclosing = nullptr;
+        if (!planFullExpressionClose(*start, parents, crossesBranch, closingRoot, enclosing)) continue;
         ProjectOopHirNode* original = receiver->get();
         ProjectOopHirNode* holder = parents.at(original);
         *receiver = ownTemporary(std::move(*receiver));
         parents[receiver->get()] = holder;
         parents[original] = receiver->get();
-        closeAtFullExpression(*start, parents);
+        closeAtFullExpression(closingRoot, enclosing, crossesBranch, parents);
     }
 }
 
@@ -331,19 +389,34 @@ void ProjectOopHirModel::ownReceiversUntilFullExpression(ProjectOopHirNode* root
 //     not one of the three shapes or its value can escape.
 // ES: El nodo cuya evaluacion debe sobrevivir el temporal receptor de `consumer`, o null cuando `consumer` no es
 //     una de las tres formas o su valor puede escapar.
+//
+// EN: Freeze 3.0 (plan item 135): a `new` of a class is a temporary like an owned-returning call; an instance call
+//     on one is rejected by the analysis (131b) and never reaches here. A non-owned call result follows the same
+//     borrow path as a field read; `crossesBranch` reports a `?:` or `??` on that path.
+// ES: Congelamiento 3.0 (elemento 135 del plan): un `new` de una clase es un temporal como una llamada con
+//     retorno owned; una llamada de instancia sobre el lo rechaza el analisis (131b) y nunca llega aqui. Un
+//     resultado no owned de llamada sigue el mismo camino de prestamo que una lectura de campo; `crossesBranch`
+//     avisa de un `?:` o `??` en ese camino.
 ProjectOopHirNode* ProjectOopHirModel::fullExpressionTemporaryStart(
     ProjectOopHirNode& consumer,
-    const HirParentMap& parents) const
+    const HirParentMap& parents,
+    bool& crossesBranch) const
 {
     std::unique_ptr<ProjectOopHirNode>* receiver = hirReceiverSlot(consumer);
-    if (receiver == nullptr || !isFreshDroppableTemporary(receiver->get())) return nullptr;
+    if (receiver == nullptr) return nullptr;
+    const bool newObject = isOwnedNewObject(**receiver);
+    if (!newObject && !isFreshDroppableTemporary(receiver->get())) return nullptr;
     if (consumer.kind == ProjectOopHirNodeKind::FieldValue)
-        return consumesIntoPlainValue(consumer) ? nullptr : temporaryBorrowConsumer(consumer, parents);
+    {
+        if (consumesIntoPlainValue(consumer)) return newObject ? &consumer : nullptr;
+        return temporaryBorrowConsumer(consumer, parents, crossesBranch);
+    }
     if (consumer.kind == ProjectOopHirNodeKind::InstanceCall)
     {
         const bool newOwner = isFreshDroppableTemporary(&consumer) &&
             (isReferenceType(consumer.typeKey) || consumer.typeKey == "builtin:string");
-        return newOwner ? &consumer : nullptr;
+        if (newObject || consumesIntoPlainValue(consumer)) return nullptr;
+        return newOwner ? &consumer : temporaryBorrowConsumer(consumer, parents, crossesBranch);
     }
     if (consumer.kind != ProjectOopHirNodeKind::FieldAddress) return nullptr;
     const auto parent = parents.find(&consumer);
@@ -357,28 +430,84 @@ ProjectOopHirNode* ProjectOopHirModel::fullExpressionTemporaryStart(
 //     value (or discards it); null when the borrow could reach anything that keeps it.
 // ES: Sigue una lectura de campo prestada hacia arriba por mas lecturas de campo hasta el nodo que la convierte
 //     en un valor simple (o la descarta); null cuando el prestamo podria llegar a algo que lo guarde.
+//
+// EN: Freeze 3.0 (plan item 135): the walk goes on through every node the analysis carries the provenance
+//     through (passesBorrowThrough, `?:`, `??`) and also ends at a field store through the borrow or at a node
+//     that makes a new owner from it (endsInNewOwner).
+// ES: Congelamiento 3.0 (elemento 135 del plan): el recorrido sigue por todo nodo por el que el analisis lleva la
+//     procedencia (passesBorrowThrough, `?:`, `??`) y tambien termina en una escritura de campo a traves del
+//     prestamo o en un nodo que hace de el un owner nuevo (endsInNewOwner).
 ProjectOopHirNode* ProjectOopHirModel::temporaryBorrowConsumer(
-    ProjectOopHirNode& fieldRead,
-    const HirParentMap& parents) const
+    ProjectOopHirNode& borrowed,
+    const HirParentMap& parents,
+    bool& crossesBranch) const
 {
-    ProjectOopHirNode* current = &fieldRead;
+    ProjectOopHirNode* current = &borrowed;
     for (auto parent = parents.find(current); parent != parents.end(); parent = parents.find(current))
     {
         ProjectOopHirNode* consumer = parent->second;
         if (consumer->kind == ProjectOopHirNodeKind::ExpressionStatement) return current;
+        if (ProjectOopHirNode* store = hirFieldStoreThrough(*consumer, *current, parents)) return store;
+        if (hirBranchJoin(*consumer, *current))
+        {
+            crossesBranch = true;
+            current = consumer;
+            continue;
+        }
         if (hirStatementKind(consumer->kind) || hirConditionalEvaluation(*consumer) ||
-            consumer->kind == ProjectOopHirNodeKind::FullExpressionCleanup ||
-            consumer->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow ||
-            consumer->kind == ProjectOopHirNodeKind::Assignment ||
-            consumer->kind == ProjectOopHirNodeKind::CompoundStore)
+            hirKeepsBorrow(consumer->kind))
             return nullptr;
-        const bool chainedRead = consumer->kind == ProjectOopHirNodeKind::FieldValue &&
-            consumer->children.front().get() == current;
-        if (consumesIntoPlainValue(*consumer)) return consumer;
-        if (!chainedRead) return nullptr;
+        if (consumesIntoPlainValue(*consumer) || endsInNewOwner(*consumer, *current)) return consumer;
+        if (!passesBorrowThrough(*consumer, *current)) return nullptr;
         current = consumer;
     }
     return nullptr;
+}
+
+// EN: Freeze 3.0 (plan item 135): `new T(...)` of a class whose object and storage this expression owns (not a
+//     placement or stack-promoted construction).
+// ES: Congelamiento 3.0 (elemento 135 del plan): `new T(...)` de una clase cuyo objeto y almacenamiento posee
+//     esta expresion (no una construccion en sitio ni promovida a la pila).
+bool ProjectOopHirModel::isOwnedNewObject(const ProjectOopHirNode& node) const
+{
+    return node.kind == ProjectOopHirNodeKind::ObjectConstruction &&
+        node.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+        node.storageOwnership == sema::OwnershipKind::Owned && !node.placementConstructed &&
+        !node.stackPromotedObject && isReferenceType(node.typeKey);
+}
+
+// EN: Freeze 3.0 (plan item 135): `consumer` makes a new owner that cannot keep `borrowed`: a new string (a
+//     concatenation or any string-returning call), or an object returned by a method called on the borrow.
+//     An object built from the borrow as an argument may keep it, so that one does not end the borrow.
+// ES: Congelamiento 3.0 (elemento 135 del plan): `consumer` crea un owner nuevo que no puede guardar `borrowed`:
+//     un string nuevo (una concatenacion o cualquier llamada que devuelve string), o un objeto devuelto por un
+//     metodo llamado sobre el prestamo. Un objeto construido con el prestamo como argumento puede guardarlo, asi
+//     que ese no termina el prestamo.
+bool ProjectOopHirModel::endsInNewOwner(const ProjectOopHirNode& consumer, const ProjectOopHirNode& borrowed) const
+{
+    if (!isFreshDroppableTemporary(&consumer)) return false;
+    if (consumer.typeKey == "builtin:string") return true;
+    return consumer.kind == ProjectOopHirNodeKind::InstanceCall && !consumer.children.empty() &&
+        consumer.children.front().get() == &borrowed && isReferenceType(consumer.typeKey);
+}
+
+// EN: Freeze 3.0 (plan item 135): the result of `consumer` is still a borrow of the temporary: a further
+//     reference field read, a call or getter whose result is a non-owned reference, or a conversion.
+// ES: Congelamiento 3.0 (elemento 135 del plan): el resultado de `consumer` sigue siendo un prestamo del
+//     temporal: otra lectura de campo de referencia, una llamada o getter cuyo resultado es una referencia no
+//     owned, o una conversion.
+bool ProjectOopHirModel::passesBorrowThrough(
+    const ProjectOopHirNode& consumer,
+    const ProjectOopHirNode& borrowed) const
+{
+    const bool referenceResult = isReferenceType(consumer.typeKey) || consumer.typeKey == "builtin:string";
+    if (!referenceResult || isFreshDroppableTemporary(&consumer)) return false;
+    if (consumer.kind == ProjectOopHirNodeKind::FieldValue)
+        return !consumer.children.empty() && consumer.children.front().get() == &borrowed;
+    return consumer.kind == ProjectOopHirNodeKind::InstanceCall ||
+        consumer.kind == ProjectOopHirNodeKind::StaticCall ||
+        consumer.kind == ProjectOopHirNodeKind::DelegateInvoke ||
+        consumer.kind == ProjectOopHirNodeKind::Conversion;
 }
 
 bool ProjectOopHirModel::consumesIntoPlainValue(const ProjectOopHirNode& consumer) const
@@ -394,17 +523,50 @@ bool ProjectOopHirModel::consumesIntoPlainValue(const ProjectOopHirNode& consume
 // ES: Envuelve la expresion completa alrededor de `start` (hasta su sentencia, o hasta el primer nodo que evalua
 //     condicionalmente o suspende) en un FullExpressionCleanup, salvo que ya haya uno que la contenga. Una raiz
 //     que contiene una suspension cierra en `start`, para no mantener ningun temporal a traves de ella.
-void ProjectOopHirModel::closeAtFullExpression(ProjectOopHirNode& start, HirParentMap& parents)
+//
+// EN: Freeze 3.0 (plan item 135): the choice is made before the receiver gets its owner
+//     (planFullExpressionClose): `root` is the node to wrap, or `enclosing` the cleanup that already closes the
+//     expression. A borrow that crosses a branch needs an enclosing cleanup without a suspension, because that
+//     cleanup clears the owner slots when it starts (booleanValue).
+// ES: Congelamiento 3.0 (elemento 135 del plan): la eleccion se hace antes de dar dueno al receptor
+//     (planFullExpressionClose): `root` es el nodo que se envuelve, o `enclosing` la limpieza que ya cierra la
+//     expresion. Un prestamo que cruza una rama necesita una limpieza envolvente sin suspension, porque esa
+//     limpieza pone en null los slots de los duenos al empezar (booleanValue).
+bool ProjectOopHirModel::planFullExpressionClose(
+    ProjectOopHirNode& start,
+    const HirParentMap& parents,
+    bool crossesBranch,
+    ProjectOopHirNode*& root,
+    ProjectOopHirNode*& enclosing) const
 {
-    ProjectOopHirNode* root = &start;
+    root = &start;
+    enclosing = nullptr;
     for (auto parent = parents.find(root); parent != parents.end(); parent = parents.find(root))
     {
         ProjectOopHirNode* above = parent->second;
-        if (above->kind == ProjectOopHirNodeKind::FullExpressionCleanup) return;
+        if (above->kind == ProjectOopHirNodeKind::FullExpressionCleanup)
+        {
+            enclosing = above;
+            return !crossesBranch || !hirSubtreeSuspends(*above);
+        }
         if (hirStatementKind(above->kind) || hirConditionalEvaluation(*above)) break;
         root = above;
     }
     if (root != &start && hirSubtreeSuspends(*root)) root = &start;
+    return parents.contains(root);
+}
+
+void ProjectOopHirModel::closeAtFullExpression(
+    ProjectOopHirNode* root,
+    ProjectOopHirNode* enclosing,
+    bool crossesBranch,
+    HirParentMap& parents)
+{
+    if (enclosing != nullptr)
+    {
+        if (crossesBranch) enclosing->booleanValue = true;
+        return;
+    }
     const auto parent = parents.find(root);
     if (parent == parents.end()) return;
     ProjectOopHirNode* above = parent->second;
@@ -412,6 +574,7 @@ void ProjectOopHirModel::closeAtFullExpression(ProjectOopHirNode& start, HirPare
     if (slot == nullptr) return;
     const ast::AstNode* syntax = root->syntax;
     *slot = wrapFullExpressionCleanup(std::move(*slot), syntax, true);
+    (*slot)->booleanValue = crossesBranch;
     parents[slot->get()] = above;
     parents[root] = slot->get();
 }

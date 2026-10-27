@@ -693,6 +693,10 @@ bool OopLlvmImplementation::lowerExpressionFrame009FullExpressionCleanup(
             values.push_back(failValue(error, "NSC-LIMIT-021 full expression requires exactly one value"));
             return true;
         }
+        // EN: Freeze 3.0 (plan item 135): a borrow crosses a `?:` or `??`; see clearTemporaryOwnerSlots.
+        // ES: Congelamiento 3.0 (elemento 135 del plan): un prestamo cruza un `?:` o `??`; ver
+        //     clearTemporaryOwnerSlots.
+        if (current->booleanValue) clearTemporaryOwnerSlots(*current);
         frames.push_back({current, 1, nullptr, activeCleanupRegions_.size()});
         frames.push_back({current->children.front().get(), 0, nullptr});
         return true;

@@ -853,6 +853,12 @@ private:
 
     bool emitRaiiDestroy(const frontend::ProjectOopMirNode* node, std::string& error);
 
+    // EN: Freeze 3.0 (plan item 135): stores null into the owner slot of every owned temporary under a full
+    //     expression, so its cleanup skips a temporary that a `?:` or `??` never made.
+    // ES: Congelamiento 3.0 (elemento 135 del plan): guarda null en el slot del dueno de cada temporal owned bajo
+    //     una expresion completa, para que su limpieza omita el temporal que un `?:` o `??` nunca creo.
+    void clearTemporaryOwnerSlots(const frontend::ProjectOopMirNode& fullExpression);
+
     bool emitRaiiSpecialDestroy(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef value,

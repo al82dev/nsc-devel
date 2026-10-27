@@ -6219,6 +6219,77 @@ void testNewCallReceiver(TestContext& tests, const std::filesystem::path& root)
         "        }\n        return v * 10 + Log.Value;\n    }\n}\n", 55);
 }
 
+constexpr std::string_view kTemporaryProvenancePrelude = R"ns(
+class Log { public static int Value; }
+class Box
+{
+    public int Id;
+    public string Name;
+    public Box(int id) { Id = id; Name = "box"; }
+    public string Title { get { return Name; } }
+    public string GetName() { return Name; }
+    ~Box() { Log.Value = Log.Value * 10 + Id; }
+}
+class Program
+{
+    private static owned Box Make(int id) { return new Box(id); }
+    private static string Id(string s) { return s; }
+)ns";
+
+/// EN: Item 135. A borrow of an owned temporary keeps its provenance through `?:`, `??`, getters, call results
+///     that are not new owners and `(new T()).Field`. Ending in a plain value or a new owner destroys the
+///     temporary once, also when a branch never made it; storing or returning the borrow is rejected. A copyable
+///     value field is not a borrow.
+/// ES: Elemento 135. Un prestamo de un temporal owned conserva su procedencia a traves de `?:`, `??`, getters,
+///     resultados de llamada que no son owners nuevos y `(new T()).Campo`. Terminar en un valor simple o en un
+///     owner nuevo destruye el temporal una vez, tambien cuando una rama nunca lo creo; guardar o devolver el
+///     prestamo se rechaza. Un campo de valor copiable no es un prestamo.
+void testTemporaryProvenance(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude(kTemporaryProvenancePrelude);
+    const std::string opening = "    public static int Main()\n    {\n";
+    const std::string closing = "    }\n}\n";
+    const std::string rejected = "destroyed at the end of the full expression";
+    expectRun(tests, root, "F135CondPlain", prelude + opening +
+        "        bool c = true;\n        int n = (c ? Make(3).Name : Make(4).Name).Length;\n"
+        "        return n * 100 + Log.Value;\n" + closing, 303);
+    expectRun(tests, root, "F135CondUntaken", prelude + opening +
+        "        bool c = false;\n        int n = (c ? Make(3).Name : \"xy\").Length;\n"
+        "        return n * 100 + Log.Value;\n" + closing, 200);
+    expectRun(tests, root, "F135CoalesceUntaken", prelude + opening +
+        "        string t = \"ab\";\n        int n = (t ?? Make(9).Name).Length;\n"
+        "        return n * 100 + Log.Value;\n" + closing, 200);
+    expectRun(tests, root, "F135GetterAndMethod", prelude + opening +
+        "        int n = Make(5).Title.Length + Make(6).GetName().Length + Id(Make(7).Name).Length;\n"
+        "        return n * 1000 + Log.Value;\n" + closing, 9765);
+    expectRun(tests, root, "F135NewObject", prelude + opening +
+        "        int v = (new Box(5)).Id + (new Box(8)).Name.Length;\n"
+        "        return v * 100 + Log.Value;\n" + closing, 885);
+    expectRun(tests, root, "F135NewOwnerAndValue", prelude + opening +
+        "        raii string s = Make(2).Name + \"!\";\n        int v = Make(4).Id;\n"
+        "        return s.Length * 1000 + v * 100 + Log.Value;\n" + closing, 4424);
+    expectRun(tests, root, "F135Loop", prelude + opening +
+        "        int total = 0;\n        for (int i = 0; i < 3; i++)\n        {\n"
+        "            total = total + (i == 1 ? Make(i).Name : \"xy\").Length;\n        }\n"
+        "        return total * 100 + Log.Value;\n" + closing, 701);
+    expectReject(tests, root, "F135CondStored", prelude + opening +
+        "        bool c = true;\n        string s = c ? Make(3).Name : \"x\";\n        return s.Length;\n" +
+        closing, rejected);
+    expectReject(tests, root, "F135CoalesceStored", prelude + opening +
+        "        string s = Make(1).Name ?? \"x\";\n        return s.Length;\n" + closing, rejected);
+    expectReject(tests, root, "F135GetterStored", prelude + opening +
+        "        string s = Make(5).Title;\n        return s.Length;\n" + closing, rejected);
+    expectReject(tests, root, "F135MethodStored", prelude + opening +
+        "        string s = Make(6).GetName();\n        return s.Length;\n" + closing, rejected);
+    expectReject(tests, root, "F135ArgumentStored", prelude + opening +
+        "        string s = Id(Make(7).Name);\n        return s.Length;\n" + closing, rejected);
+    expectReject(tests, root, "F135NewStored", prelude + opening +
+        "        string s = (new Box(5)).Name;\n        return s.Length;\n" + closing, rejected);
+    expectReject(tests, root, "F135CondReturned", prelude +
+        "    private static string R(bool c) { return c ? Make(1).Name : \"x\"; }\n" + opening +
+        "        return R(true).Length;\n" + closing, rejected);
+}
+
 constexpr std::string_view kConstructorDemandPrelude = R"ns(
 using NativeSharp.Core;
 using NativeSharp.Core.Collections.Generic;
@@ -7436,6 +7507,7 @@ int main()
     testGenericConstructorDemandLibrary(tests, root);
     testReceiverTemporariesUntilFullExpression(tests, root);
     testNewCallReceiver(tests, root);
+    testTemporaryProvenance(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

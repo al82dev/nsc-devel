@@ -66,7 +66,20 @@ struct ExpressionResult final
     // ES: Congelamiento 3.0 (elemento 131a del plan): el valor se leyo de un campo del temporal que creo una
     //     llamada con retorno owned (`Make().Name`), directo o a traves de mas lecturas de campo. El temporal se
     //     destruye al final de la expresion completa, asi que el valor no puede guardarse ni devolverse.
+    // EN: Freeze 3.0 (plan item 135): the same flag covers every known-life temporary and every form the borrow
+    //     goes through: a `new` object (`(new T()).Name`), a getter, a call result that is not a new owner
+    //     (`Make().GetName()`, `Id(Make().Name)`), and the union of the branches of `?:` and `??`.
+    // ES: Congelamiento 3.0 (elemento 135 del plan): la misma bandera cubre todo temporal de vida conocida y toda
+    //     forma por la que pasa el prestamo: un objeto `new` (`(new T()).Name`), un getter, un resultado de
+    //     llamada que no es un owner nuevo (`Make().GetName()`, `Id(Make().Name)`), y la union de las ramas de
+    //     `?:` y `??`.
     bool borrowsOwnedTemporary = false;
+    // EN: Freeze 3.0 (plan item 135): a method group whose receiver is an owned temporary or a borrow of one
+    //     (`Make().GetName`); the call result inherits the borrow (markCallTemporaryBorrow).
+    // ES: Congelamiento 3.0 (elemento 135 del plan): un grupo de metodos cuyo receptor es un temporal owned o un
+    //     prestamo de uno (`Make().GetName`); el resultado de la llamada hereda el prestamo
+    //     (markCallTemporaryBorrow).
+    bool receiverBorrowsOwnedTemporary = false;
     const ast::AstNode* receiverSyntax = nullptr;
     std::string receiverTypeKey;
     std::optional<std::size_t> receiverTypeOrdinal;

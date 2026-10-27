@@ -1023,6 +1023,15 @@ private:
         ExpressionResult& result,
         const ExpressionResult& receiver,
         bool typeReceiver) const;
+    // EN: Freeze 3.0 (plan item 135): provenance of a known-life temporary through `new`, getters, calls, `?:`
+    //     and `??` (carriesOwnedTemporary, markCallTemporaryBorrow).
+    // ES: Congelamiento 3.0 (elemento 135 del plan): procedencia de un temporal de vida conocida a traves de
+    //     `new`, getters, llamadas, `?:` y `??` (carriesOwnedTemporary, markCallTemporaryBorrow).
+    bool carriesOwnedTemporary(const ExpressionResult& receiver) const;
+    void markCallTemporaryBorrow(
+        ExpressionResult& result,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> resolvedArguments) const;
     void rejectOwnedTemporaryBorrowEscape(
         const ExpressionResult& value,
         const ast::AstNode* syntax,
