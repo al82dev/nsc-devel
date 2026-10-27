@@ -25,6 +25,12 @@ public:
         std::string_view name,
         std::string_view signatureKey) const noexcept;
 
+    PrecompiledMemberIdentityMatch findStructurally(
+        ClassMemberKind kind,
+        std::string_view declaringTypeKey,
+        std::string_view name,
+        std::string_view signatureKey) const;
+
     std::size_t indexedIdentityCount() const noexcept;
     std::size_t lookupCount() const noexcept;
 

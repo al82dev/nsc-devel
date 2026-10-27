@@ -1,9 +1,40 @@
 #include "nativesharp/Frontend/PrecompiledMemberIdentityIndex.h"
 
+#include <algorithm>
+#include <cctype>
 #include <functional>
+#include <string>
 
 namespace nativesharp::frontend
 {
+namespace
+{
+std::string structuralGenericKey(std::string_view value)
+{
+    std::string result;
+    result.reserve(value.size());
+    for (std::size_t cursor = 0; cursor < value.size();)
+    {
+        constexpr std::size_t kHashDigits = 16U;
+        if (value.substr(cursor, 3U) == "__h" && cursor + 3U + kHashDigits <= value.size())
+        {
+            const std::string_view digits = value.substr(cursor + 3U, kHashDigits);
+            if (std::ranges::all_of(digits, [](const char character) {
+                    return std::isxdigit(static_cast<unsigned char>(character)) != 0;
+                }))
+            {
+                result.append("__h");
+                cursor += 3U + kHashDigits;
+                continue;
+            }
+        }
+        result.push_back(value[cursor]);
+        ++cursor;
+    }
+    return result;
+}
+}
+
 PrecompiledMemberIdentityIndex::PrecompiledMemberIdentityIndex(
     std::span<const PrecompiledMemberIdentity> identities)
     : identities_(identities)
@@ -45,6 +76,33 @@ PrecompiledMemberIdentityMatch PrecompiledMemberIdentityIndex::find(
     return match != nullptr
         ? PrecompiledMemberIdentityMatch{
               PrecompiledMemberIdentityMatchKind::Unique, match}
+        : PrecompiledMemberIdentityMatch{};
+}
+
+PrecompiledMemberIdentityMatch PrecompiledMemberIdentityIndex::findStructurally(
+    ClassMemberKind kind,
+    std::string_view declaringTypeKey,
+    std::string_view name,
+    std::string_view signatureKey) const
+{
+    ++lookupCount_;
+    const std::string structuralDeclaringType = structuralGenericKey(declaringTypeKey);
+    const std::string structuralSignature = structuralGenericKey(signatureKey);
+    const PrecompiledMemberIdentity* match = nullptr;
+    for (const PrecompiledMemberIdentity& candidate : identities_)
+    {
+        if (candidate.mangledName.empty() || candidate.kind != kind || candidate.name != name ||
+            structuralGenericKey(candidate.declaringTypeKey) != structuralDeclaringType ||
+            structuralGenericKey(candidate.signatureKey) != structuralSignature)
+        {
+            continue;
+        }
+        if (match != nullptr)
+            return {PrecompiledMemberIdentityMatchKind::Ambiguous, nullptr};
+        match = &candidate;
+    }
+    return match != nullptr
+        ? PrecompiledMemberIdentityMatch{PrecompiledMemberIdentityMatchKind::Unique, match}
         : PrecompiledMemberIdentityMatch{};
 }
 

@@ -369,7 +369,6 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
         }
         return value;
     };
-
     const PrecompiledMemberIdentityIndex identityIndex(identities);
     // canonicalize is a pure function of its input, so the canonical key of each declaring type
     // is computed once and reused by its other members.
@@ -404,8 +403,11 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
                 internal::reportIndexShadowMismatch("bindPrecompiledPhysicalNames", declaringTypeKey);
         }
         const std::string signatureKey = canonicalize(member.signatureKey);
-        const PrecompiledMemberIdentityMatch match = identityIndex.find(
+        PrecompiledMemberIdentityMatch match = identityIndex.find(
             member.kind, declaringTypeKey, member.name, signatureKey);
+        if (match.kind == PrecompiledMemberIdentityMatchKind::Missing)
+            match = identityIndex.findStructurally(
+                member.kind, declaringTypeKey, member.name, signatureKey);
         if (match.kind == PrecompiledMemberIdentityMatchKind::Missing)
         {
             error = "precompiled callable '" + declaringTypeKey + "." + signatureKey +
