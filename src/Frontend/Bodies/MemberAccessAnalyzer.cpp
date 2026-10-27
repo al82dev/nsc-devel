@@ -1094,6 +1094,27 @@ void ProjectMethodBodyModel::classifyMemberReceiverKinds(
         nameLookup_->namedTypes()[receiverType].kind == NamedTypeDeclarationKind::Enum;
 }
 
+// EN: Freeze 3.0 (plan item 131a). A reference or string read from a field of the temporary an owned-returning
+//     call made (`Make().Name`), or from a field of such a read (`Make().Inner.Name`), points into an object that
+//     the full expression destroys. The flag lets the storing contexts reject it.
+// ES: Congelamiento 3.0 (elemento 131a del plan). Una referencia o string leido de un campo del temporal que creo
+//     una llamada con retorno owned (`Make().Name`), o de un campo de esa lectura (`Make().Inner.Name`), apunta a
+//     un objeto que la expresion completa destruye. La bandera deja que los contextos que guardan lo rechacen.
+void ProjectMethodBodyModel::markOwnedTemporaryFieldBorrow(
+    ExpressionResult& result,
+    const ExpressionResult& receiver,
+    bool typeReceiver) const
+{
+    if (typeReceiver || !result.valid || !receiver.valid) return;
+    if (!isReferenceTypeKey(result.typeKey) && result.typeKey != "builtin:string") return;
+    const bool freshTemporary = receiver.receiverSyntax != nullptr &&
+        receiver.receiverSyntax->kind() == ast::AstNodeKind::CallExpression &&
+        receiver.ownership == sema::OwnershipKind::Owned && receiver.ownershipTransfer &&
+        !receiver.ownershipSourceLocalOrdinal.has_value() &&
+        !receiver.ownershipSourceParameterOrdinal.has_value();
+    result.borrowsOwnedTemporary = freshTemporary || receiver.borrowsOwnedTemporary;
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     const ast::AstNode* expression,
     std::size_t methodMemberOrdinal,
@@ -1144,7 +1165,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
             methodMemberOrdinal, scopeOrdinal, diagnostics, allowEvent)) return result;
     if (analyzeFieldMember(
             result, receiver, expression, fields, typeReceiver, isProjectionReceiver,
-            receiverType, methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;
+            receiverType, methodMemberOrdinal, scopeOrdinal, diagnostics))
+    {
+        markOwnedTemporaryFieldBorrow(result, receiver, typeReceiver);
+        return result;
+    }
     if (analyzePropertyMember(
             result, receiver, expression, *caller, typeReceiver, receiverType,
             accessingTypeOrdinal, methodMemberOrdinal, scopeOrdinal,

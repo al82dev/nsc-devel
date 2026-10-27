@@ -4220,6 +4220,17 @@ private:
     bool ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>& consumer);
     bool isFreshDroppableTemporary(const ProjectOopHirNode* node) const;
     std::unique_ptr<ProjectOopHirNode> ownTemporary(std::unique_ptr<ProjectOopHirNode> value);
+    // EN: Freeze 3.0 (plan item 131a): receivers whose temporary must live until the end of the full
+    //     expression (a borrowed field read, a call that returns a new owner, a field store target).
+    // ES: Congelamiento 3.0 (elemento 131a del plan): receptores cuyo temporal debe vivir hasta el final de la
+    //     expresion completa (una lectura de campo prestada, una llamada que devuelve un owner nuevo, el destino
+    //     de una escritura de campo).
+    using HirParentMap = std::unordered_map<const ProjectOopHirNode*, ProjectOopHirNode*>;
+    void ownReceiversUntilFullExpression(ProjectOopHirNode* root);
+    ProjectOopHirNode* fullExpressionTemporaryStart(ProjectOopHirNode& consumer, const HirParentMap& parents) const;
+    ProjectOopHirNode* temporaryBorrowConsumer(ProjectOopHirNode& fieldRead, const HirParentMap& parents) const;
+    bool consumesIntoPlainValue(const ProjectOopHirNode& consumer) const;
+    void closeAtFullExpression(ProjectOopHirNode& start, HirParentMap& parents);
     void applyStructuredExitBinding(
         ProjectOopHirNode& node,
         const ast::AstNode* syntax) const;

@@ -1012,6 +1012,22 @@ private:
         const ast::AstNode* syntax,
         std::string_view context,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 (plan item 131a): a field read from an owned-returning call's temporary borrows the
+    //     temporary (markOwnedTemporaryFieldBorrow); storing, returning or yielding it is rejected
+    //     (rejectOwnedTemporaryBorrowEscape), because the temporary dies at the end of the full expression.
+    // ES: Congelamiento 3.0 (elemento 131a del plan): leer un campo del temporal de una llamada con retorno owned
+    //     toma prestado el temporal (markOwnedTemporaryFieldBorrow); guardarlo, devolverlo o entregarlo con
+    //     yield se rechaza (rejectOwnedTemporaryBorrowEscape), porque el temporal muere al final de la expresion
+    //     completa.
+    void markOwnedTemporaryFieldBorrow(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        bool typeReceiver) const;
+    void rejectOwnedTemporaryBorrowEscape(
+        const ExpressionResult& value,
+        const ast::AstNode* syntax,
+        std::string_view destination,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void validateVariableOwnershipInitializer(
         const ExpressionResult& initializer,
         const ast::AstNode* variable,

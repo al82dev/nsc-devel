@@ -6158,6 +6158,49 @@ void testImportedCArgumentTrivial(TestContext& tests, const std::filesystem::pat
         "        return 0;\n    }\n}\n", "release its owned fields");
 }
 
+constexpr std::string_view kTemporaryReceiverPrelude = R"ns(
+class Log { public static int Value; }
+class Box
+{
+    public int Id;
+    public string Name;
+    public Box(int id) { Id = id; Name = "box"; }
+    public owned Box Next() { return new Box(Id + 1); }
+    ~Box() { Log.Value = Log.Value * 10 + Id; }
+}
+class Program
+{
+    private static owned Box Make(int id) { return new Box(id); }
+)ns";
+
+/// EN: Item 131a. The receiver temporary of a borrowed field read, of a call that returns a new owner and of a
+///     field store lives until the end of the full expression and is destroyed once, in reverse order of
+///     creation. Storing, returning or assigning the borrowed read is rejected.
+/// ES: Elemento 131a. El temporal receptor de una lectura de campo prestada, de una llamada que devuelve un owner
+///     nuevo y de una escritura de campo vive hasta el final de la expresion completa y se destruye una vez, en
+///     orden inverso de creacion. Guardar, devolver o asignar la lectura prestada se rechaza.
+void testReceiverTemporariesUntilFullExpression(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude(kTemporaryReceiverPrelude);
+    const std::string opening = "    public static int Main()\n    {\n";
+    expectRun(tests, root, "F131aBorrowedRead", prelude + opening +
+        "        int n = Make(1).Name.Length + Make(2).Name.Length;\n"
+        "        return n * 100 + Log.Value;\n    }\n}\n", 621);
+    expectRun(tests, root, "F131aNewOwnerChain", prelude + opening +
+        "        int v = Make(3).Next().Id;\n        return v * 100 + Log.Value;\n    }\n}\n", 443);
+    expectRun(tests, root, "F131aFieldStore", prelude + opening +
+        "        Make(9).Id = 12;\n        return Log.Value;\n    }\n}\n", 12);
+    expectReject(tests, root, "F131aStoredBorrow", prelude + opening +
+        "        string s = Make(3).Name;\n        return s.Length;\n    }\n}\n",
+        "destroyed at the end of the full expression");
+    expectReject(tests, root, "F131aAssignedBorrow", prelude + opening +
+        "        string s = \"\";\n        s = Make(3).Name;\n        return s.Length;\n    }\n}\n",
+        "destroyed at the end of the full expression");
+    expectReject(tests, root, "F131aReturnedBorrow", prelude +
+        "    private static string Read() { return Make(3).Name; }\n" + opening +
+        "        return Read().Length;\n    }\n}\n", "destroyed at the end of the full expression");
+}
+
 constexpr std::string_view kConstructorDemandPrelude = R"ns(
 using NativeSharp.Core;
 using NativeSharp.Core.Collections.Generic;
@@ -7373,6 +7416,7 @@ int main()
     testImportedCArgumentTrivial(tests, root);
     testGenericConstructorDemand(tests, root);
     testGenericConstructorDemandLibrary(tests, root);
+    testReceiverTemporariesUntilFullExpression(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

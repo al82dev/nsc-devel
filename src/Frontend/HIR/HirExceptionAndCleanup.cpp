@@ -84,6 +84,123 @@ bool consumesReceiver(const ProjectOopHirNode& node)
          node.kind == ProjectOopHirNodeKind::StringLength ||
          node.kind == ProjectOopHirNodeKind::StringElementValue);
 }
+
+// EN: Freeze 3.0 (plan item 131a): helpers of ownReceiversUntilFullExpression. A statement node ends a full
+//     expression; so does a node that evaluates an operand only on some paths or suspends, because a cleanup
+//     closed past it would destroy a temporary that one path never made (or keep it across a suspension).
+// ES: Congelamiento 3.0 (elemento 131a del plan): auxiliares de ownReceiversUntilFullExpression. Un nodo de
+//     sentencia termina una expresion completa; tambien un nodo que evalua un operando solo en algunos caminos o
+//     que suspende, porque una limpieza cerrada despues de el destruiria un temporal que un camino nunca creo (o
+//     lo mantendria a traves de una suspension).
+using HirParentIndex = std::unordered_map<const ProjectOopHirNode*, ProjectOopHirNode*>;
+
+bool hirStatementKind(ProjectOopHirNodeKind kind) noexcept
+{
+    switch (kind)
+    {
+        case ProjectOopHirNodeKind::Block:
+        case ProjectOopHirNodeKind::LocalDeclaration:
+        case ProjectOopHirNodeKind::ExpressionStatement:
+        case ProjectOopHirNodeKind::InlineAssembly:
+        case ProjectOopHirNodeKind::If:
+        case ProjectOopHirNodeKind::While:
+        case ProjectOopHirNodeKind::DoWhile:
+        case ProjectOopHirNodeKind::For:
+        case ProjectOopHirNodeKind::Switch:
+        case ProjectOopHirNodeKind::SwitchSection:
+        case ProjectOopHirNodeKind::Return:
+        case ProjectOopHirNodeKind::TryRegion:
+        case ProjectOopHirNodeKind::CatchRegion:
+        case ProjectOopHirNodeKind::FinallyRegion:
+        case ProjectOopHirNodeKind::UsingRegion:
+        case ProjectOopHirNodeKind::Throw:
+        case ProjectOopHirNodeKind::YieldValue:
+        case ProjectOopHirNodeKind::AsyncYieldValue:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool hirConditionalEvaluation(const ProjectOopHirNode& node) noexcept
+{
+    switch (node.kind)
+    {
+        case ProjectOopHirNodeKind::Conditional:
+        case ProjectOopHirNodeKind::NullCoalescing:
+        case ProjectOopHirNodeKind::OptionalCoalescing:
+        case ProjectOopHirNodeKind::NullCoalescingAssignment:
+        case ProjectOopHirNodeKind::NullConditionalFieldValue:
+        case ProjectOopHirNodeKind::NullConditionalFieldStore:
+        case ProjectOopHirNodeKind::NullConditionalArrayLoad:
+        case ProjectOopHirNodeKind::NullConditionalArrayStore:
+        case ProjectOopHirNodeKind::LoopExpression:
+        case ProjectOopHirNodeKind::MatchExpression:
+        case ProjectOopHirNodeKind::MatchArm:
+        case ProjectOopHirNodeKind::BlockExpression:
+        case ProjectOopHirNodeKind::LambdaCreate:
+        case ProjectOopHirNodeKind::AwaitFuture:
+        case ProjectOopHirNodeKind::SuspendPoint:
+        case ProjectOopHirNodeKind::ResultPropagation:
+            return true;
+        case ProjectOopHirNodeKind::Binary:
+            return node.operation == lexer::TokenKind::AmpAmp || node.operation == lexer::TokenKind::PipePipe;
+        default:
+            return false;
+    }
+}
+
+bool hirSubtreeSuspends(const ProjectOopHirNode& root)
+{
+    std::vector<const ProjectOopHirNode*> pending{&root};
+    while (!pending.empty())
+    {
+        const ProjectOopHirNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind == ProjectOopHirNodeKind::AwaitFuture || node->kind == ProjectOopHirNodeKind::SuspendPoint ||
+            node->kind == ProjectOopHirNodeKind::YieldValue || node->kind == ProjectOopHirNodeKind::AsyncYieldValue)
+            return true;
+        for (const std::unique_ptr<ProjectOopHirNode>& child : node->children) pending.push_back(child.get());
+    }
+    return false;
+}
+
+// EN: Parent of every node under `root`, and the nodes in source order (preorder, left to right).
+// ES: Padre de cada nodo bajo `root`, y los nodos en orden de fuente (preorden, de izquierda a derecha).
+void indexHirParents(ProjectOopHirNode* root, HirParentIndex& parents, std::vector<ProjectOopHirNode*>& order)
+{
+    std::vector<ProjectOopHirNode*> pending{root};
+    while (!pending.empty())
+    {
+        ProjectOopHirNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        order.push_back(node);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+        {
+            if (*child == nullptr) continue;
+            parents[child->get()] = node;
+            pending.push_back(child->get());
+        }
+    }
+}
+
+std::unique_ptr<ProjectOopHirNode>* hirChildSlot(ProjectOopHirNode& parent, const ProjectOopHirNode* child)
+{
+    for (std::unique_ptr<ProjectOopHirNode>& slot : parent.children)
+        if (slot.get() == child) return &slot;
+    return nullptr;
+}
+
+std::unique_ptr<ProjectOopHirNode>* hirReceiverSlot(ProjectOopHirNode& consumer)
+{
+    if (consumer.children.empty() || consumer.children.front() == nullptr) return nullptr;
+    std::unique_ptr<ProjectOopHirNode>* receiver = &consumer.children.front();
+    if ((*receiver)->kind == ProjectOopHirNodeKind::TemporaryAddress && (*receiver)->children.size() == 1)
+        receiver = &(*receiver)->children.front();
+    return *receiver != nullptr ? receiver : nullptr;
+}
 }
 
 bool ProjectOopHirModel::isFreshDroppableTemporary(const ProjectOopHirNode* node) const
@@ -176,6 +293,127 @@ void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
             pending.push_back(original);
         }
     }
+    ownReceiversUntilFullExpression(root);
+}
+
+// EN: Freeze 3.0 (plan item 131a). Three receiver temporaries leaked: a field read that is not plain data
+//     (`Make().Name.Length`), a call that returns a new owner (`Make().Next().V`) and a field store target
+//     (`Make().V = 12;`). Each one now gets a hidden owner that the full expression destroys, after every other
+//     use and in reverse order of creation. A borrowed read is owned only when its value ends in a plain value
+//     (or is discarded): storing it is rejected by the analysis, and any other flow keeps the old behavior, so
+//     no reference outlives the temporary.
+// ES: Congelamiento 3.0 (elemento 131a del plan). Tres temporales receptores se fugaban: una lectura de campo que
+//     no son datos simples (`Make().Name.Length`), una llamada que devuelve un owner nuevo (`Make().Next().V`) y
+//     el destino de una escritura de campo (`Make().V = 12;`). Cada uno recibe un dueno oculto que la expresion
+//     completa destruye, despues de todo otro uso y en orden inverso de creacion. Una lectura prestada se posee
+//     solo cuando su valor termina en un valor simple (o se descarta): guardarla lo rechaza el analisis, y otro
+//     flujo conserva la conducta anterior, asi que ninguna referencia sobrevive al temporal.
+void ProjectOopHirModel::ownReceiversUntilFullExpression(ProjectOopHirNode* root)
+{
+    HirParentMap parents;
+    std::vector<ProjectOopHirNode*> order;
+    indexHirParents(root, parents, order);
+    for (ProjectOopHirNode* consumer : order)
+    {
+        ProjectOopHirNode* start = fullExpressionTemporaryStart(*consumer, parents);
+        if (start == nullptr || hirSubtreeSuspends(*start)) continue;
+        std::unique_ptr<ProjectOopHirNode>* receiver = hirReceiverSlot(*consumer);
+        ProjectOopHirNode* original = receiver->get();
+        ProjectOopHirNode* holder = parents.at(original);
+        *receiver = ownTemporary(std::move(*receiver));
+        parents[receiver->get()] = holder;
+        parents[original] = receiver->get();
+        closeAtFullExpression(*start, parents);
+    }
+}
+
+// EN: The node whose evaluation the receiver temporary of `consumer` must outlive, or null when `consumer` is
+//     not one of the three shapes or its value can escape.
+// ES: El nodo cuya evaluacion debe sobrevivir el temporal receptor de `consumer`, o null cuando `consumer` no es
+//     una de las tres formas o su valor puede escapar.
+ProjectOopHirNode* ProjectOopHirModel::fullExpressionTemporaryStart(
+    ProjectOopHirNode& consumer,
+    const HirParentMap& parents) const
+{
+    std::unique_ptr<ProjectOopHirNode>* receiver = hirReceiverSlot(consumer);
+    if (receiver == nullptr || !isFreshDroppableTemporary(receiver->get())) return nullptr;
+    if (consumer.kind == ProjectOopHirNodeKind::FieldValue)
+        return consumesIntoPlainValue(consumer) ? nullptr : temporaryBorrowConsumer(consumer, parents);
+    if (consumer.kind == ProjectOopHirNodeKind::InstanceCall)
+    {
+        const bool newOwner = isFreshDroppableTemporary(&consumer) &&
+            (isReferenceType(consumer.typeKey) || consumer.typeKey == "builtin:string");
+        return newOwner ? &consumer : nullptr;
+    }
+    if (consumer.kind != ProjectOopHirNodeKind::FieldAddress) return nullptr;
+    const auto parent = parents.find(&consumer);
+    if (parent == parents.end() || parent->second->kind != ProjectOopHirNodeKind::Assignment ||
+        parent->second->children.empty() || parent->second->children.front().get() != &consumer)
+        return nullptr;
+    return parent->second;
+}
+
+// EN: Follows a borrowed field read up through further field reads to the node that turns it into a plain
+//     value (or discards it); null when the borrow could reach anything that keeps it.
+// ES: Sigue una lectura de campo prestada hacia arriba por mas lecturas de campo hasta el nodo que la convierte
+//     en un valor simple (o la descarta); null cuando el prestamo podria llegar a algo que lo guarde.
+ProjectOopHirNode* ProjectOopHirModel::temporaryBorrowConsumer(
+    ProjectOopHirNode& fieldRead,
+    const HirParentMap& parents) const
+{
+    ProjectOopHirNode* current = &fieldRead;
+    for (auto parent = parents.find(current); parent != parents.end(); parent = parents.find(current))
+    {
+        ProjectOopHirNode* consumer = parent->second;
+        if (consumer->kind == ProjectOopHirNodeKind::ExpressionStatement) return current;
+        if (hirStatementKind(consumer->kind) || hirConditionalEvaluation(*consumer) ||
+            consumer->kind == ProjectOopHirNodeKind::FullExpressionCleanup ||
+            consumer->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow ||
+            consumer->kind == ProjectOopHirNodeKind::Assignment ||
+            consumer->kind == ProjectOopHirNodeKind::CompoundStore)
+            return nullptr;
+        const bool chainedRead = consumer->kind == ProjectOopHirNodeKind::FieldValue &&
+            consumer->children.front().get() == current;
+        if (consumesIntoPlainValue(*consumer)) return consumer;
+        if (!chainedRead) return nullptr;
+        current = consumer;
+    }
+    return nullptr;
+}
+
+bool ProjectOopHirModel::consumesIntoPlainValue(const ProjectOopHirNode& consumer) const
+{
+    if (consumer.referenceResult) return false;
+    if (hasPlainResult(consumer)) return true;
+    return memberModel_ != nullptr && memberModel_->typeIsPlainData(consumer.typeKey);
+}
+
+// EN: Wraps the full expression around `start` (up to its statement, or to the first node that evaluates
+//     conditionally or suspends) in a FullExpressionCleanup, unless one already encloses it. A root that
+//     contains a suspension closes at `start` instead, so no temporary is kept across it.
+// ES: Envuelve la expresion completa alrededor de `start` (hasta su sentencia, o hasta el primer nodo que evalua
+//     condicionalmente o suspende) en un FullExpressionCleanup, salvo que ya haya uno que la contenga. Una raiz
+//     que contiene una suspension cierra en `start`, para no mantener ningun temporal a traves de ella.
+void ProjectOopHirModel::closeAtFullExpression(ProjectOopHirNode& start, HirParentMap& parents)
+{
+    ProjectOopHirNode* root = &start;
+    for (auto parent = parents.find(root); parent != parents.end(); parent = parents.find(root))
+    {
+        ProjectOopHirNode* above = parent->second;
+        if (above->kind == ProjectOopHirNodeKind::FullExpressionCleanup) return;
+        if (hirStatementKind(above->kind) || hirConditionalEvaluation(*above)) break;
+        root = above;
+    }
+    if (root != &start && hirSubtreeSuspends(*root)) root = &start;
+    const auto parent = parents.find(root);
+    if (parent == parents.end()) return;
+    ProjectOopHirNode* above = parent->second;
+    std::unique_ptr<ProjectOopHirNode>* slot = hirChildSlot(*above, root);
+    if (slot == nullptr) return;
+    const ast::AstNode* syntax = root->syntax;
+    *slot = wrapFullExpressionCleanup(std::move(*slot), syntax, true);
+    parents[slot->get()] = above;
+    parents[root] = slot->get();
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerExceptionOrExitStatement(

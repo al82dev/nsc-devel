@@ -1985,6 +1985,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishPlainAssi
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (!validatePlainAssignmentConversion(expression, left, right, diagnostics)) return {};
+    rejectOwnedTemporaryBorrowEscape(right, expression->second(), "the assignment", diagnostics);
     // EN: Freeze 3.0 C-01: `x = new T();` into a local that is neither raii nor owned leaves the
     //     object without an owner.
     // ES: Congelamiento 3.0 C-01: `x = new T();` sobre un local que no es raii ni owned deja al

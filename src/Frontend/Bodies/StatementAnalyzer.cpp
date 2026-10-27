@@ -1982,6 +1982,7 @@ void ProjectMethodBodyModel::analyzeYieldStatement(
         const ExpressionResult yielded = analyzeExpression(
             statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
             false, false, true);
+        rejectOwnedTemporaryBorrowEscape(yielded, statement->first(), "the yield", diagnostics);
         if (yielded.valid)
         {
             // NS304-T06-F05: a `ref`/`ref mut` item (`ref:<T>`/`refmut:<T>`) yields a
@@ -3541,6 +3542,27 @@ void ProjectMethodBodyModel::reportLostOwnership(
             "or return it through an owned return type");
 }
 
+// EN: Freeze 3.0 (plan item 131a): the value borrows the temporary of an owned-returning call, which the full
+//     expression destroys; keeping it in `destination` would leave it pointing at a destroyed object.
+// ES: Congelamiento 3.0 (elemento 131a del plan): el valor toma prestado el temporal de una llamada con retorno
+//     owned, que la expresion completa destruye; guardarlo en `destination` lo dejaria apuntando a un objeto
+//     destruido.
+void ProjectMethodBodyModel::rejectOwnedTemporaryBorrowEscape(
+    const ExpressionResult& value,
+    const ast::AstNode* syntax,
+    std::string_view destination,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!value.valid || !value.borrowsOwnedTemporary || syntax == nullptr) return;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        syntax->range(),
+        "'" + syntax->text() + "' is read from the temporary of an owned-returning call, which is destroyed at "
+            "the end of the full expression, so " + std::string(destination) +
+            " cannot keep it; store the temporary in a raii or owned local first");
+}
+
 // EN: Freeze 3.0 C-01 (plan item 115a): `return new T();` from a callable whose return type is not `owned`
 //     hands the caller a reference that owns nothing; the object would leak.
 // ES: Congelamiento 3.0 C-01 (elemento 115a del plan): `return new T();` desde un callable cuyo retorno no es
@@ -3617,6 +3639,9 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     const bool isCompilerGeneratedForeachViewSnapshot =
         variable->text().starts_with("$__foreach_") &&
         variable->text().ends_with("_source") && typeKeyIsViewLike(typeKey);
+    if (!variable->text().starts_with("$"))
+        rejectOwnedTemporaryBorrowEscape(
+            initializer, variable->first(), "the local '" + variable->text() + "'", diagnostics);
     if (isMoveOnly && initializer.valid && initializer.addressable &&
         !isCompilerGeneratedMatchSnapshot && !isCompilerGeneratedForeachViewSnapshot &&
         variable->first()->kind() != ast::AstNodeKind::MoveExpression)
@@ -6035,6 +6060,8 @@ void ProjectMethodBodyModel::analyzeReturn(
             statement, *method, conversion, methodMemberOrdinal, diagnostics)) return;
     if (!validatePointerReturn(statement, *method, value, diagnostics)) return;
     rejectNewToNonOwnedReturn(statement, *method, value, diagnostics);
+    rejectOwnedTemporaryBorrowEscape(
+        value, statement->first(), "the return of '" + method->name + "'", diagnostics);
     noteReturnEscape(
         statement, *method, value, methodMemberOrdinal, scopeOrdinal);
     // Stage 52: a generic method's declared "owned T"/"borrowed T" return type may monomorphize

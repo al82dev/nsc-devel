@@ -60,6 +60,13 @@ struct ExpressionResult final
     // last for the whole process), so `delete[]` releases the block only.
     bool borrowedElementSlots = false;
     std::optional<std::size_t> borrowedLocalOrdinal;
+    // EN: Freeze 3.0 (plan item 131a): the value was read from a field of the temporary an owned-returning call
+    //     made (`Make().Name`), directly or through more field reads. The temporary is destroyed at the end of
+    //     the full expression, so the value cannot be stored or returned.
+    // ES: Congelamiento 3.0 (elemento 131a del plan): el valor se leyo de un campo del temporal que creo una
+    //     llamada con retorno owned (`Make().Name`), directo o a traves de mas lecturas de campo. El temporal se
+    //     destruye al final de la expresion completa, asi que el valor no puede guardarse ni devolverse.
+    bool borrowsOwnedTemporary = false;
     const ast::AstNode* receiverSyntax = nullptr;
     std::string receiverTypeKey;
     std::optional<std::size_t> receiverTypeOrdinal;
