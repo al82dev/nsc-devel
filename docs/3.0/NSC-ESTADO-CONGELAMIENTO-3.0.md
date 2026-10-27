@@ -1,28 +1,30 @@
 # NativeSharp 3.0 — Estado para el congelamiento
 
-- **Fecha**: 2026-10-26.
+- **Fecha**: 2026-10-27.
 - **Rama**: `development-release-candidate`.
 - **Base de la campaña**: `63aba0be4`.
-- **Revisión descrita**: `eb217cd3a` más el commit de este documento.
-- **Commits desde la base**: 78 antes de este documento. 76 están en la línea principal y 2 entraron por merge:
+- **Revisión descrita**: `1df8e86e3` más el commit de este documento.
+- **Commits desde la base**: 81 antes de este documento. 79 están en la línea principal y 2 entraron por merge:
   - `4da911c53` revierte la época NSMETA de P8;
   - `2796870df` es la primera versión del elemento 115, reemplazada por `e64631180`.
 - **Estado**: **IMPLEMENTADO CON VALIDACIÓN FOCAL**. No está congelado ni certificado; los gates finales de abajo
   siguen pendientes.
-- **Tracking**: plan de decisiones de 148 elementos en el proyecto NSC-IDE
-  (`NSC-PLAN-DECISIONES-CONGELAMIENTO-3.0.md`). Este documento es su elemento 132.
+- **Tracking**: plan de decisiones de 151 elementos en el proyecto NSC-IDE
+  (`NSC-PLAN-DECISIONES-CONGELAMIENTO-3.0.md`). Este documento es su elemento 132, actualizado en el 137.
 - **Registro de decisiones**:
   - Este documento reemplaza la instantánea de `NSC-DECISIONES-VIGENTES-CONGELAMIENTO-3.0.md`. Esa instantánea
     (§2) y sus pendientes (§6) son de `403b06641`.
   - Lo hecho después está en la tabla de contratos de abajo y en
-    `docs/3.0/decisiones-congelamiento/34-*` a `53-*`.
+    `docs/3.0/decisiones-congelamiento/34-*` a `56-*`.
+- **Contrato de vida**: `docs/3.0/language/known-life-sources.md` (elemento 137) fija la garantía sobre fuentes de
+  vida conocida y sus límites exactos.
 
 ## 1. Afirmaciones retiradas de la versión anterior
 
 La versión del 2026-10-25 (`9b224f4df`, actualizada en `aa80795b4`) afirmaba lo siguiente; la auditoría
 (`NSC-AUDITORIA-CONGELAMIENTO-3.0.md`, A-07 y A-09) y las decisiones posteriores lo retiran:
 
-- Plan de 108 elementos terminado; compilador validado `73b03a394` → Retirada. El trabajo siguió hasta `eb217cd3a`.
+- Plan de 108 elementos terminado; compilador validado `73b03a394` → Retirada. El trabajo siguió hasta `1df8e86e3`.
 - «Cada punto tiene sonda, corrección, pruebas nuevas y un commit propio» → Excesiva. `ea0da601c` mezcla al menos once
   hipótesis; 12 de los 17 primeros commits no tienen documento editorial.
 - «`checkall`: 349 proyectos, 75 fallas, idénticas a la base previa» → Falsa. La «base» se tomó después de migrar la
@@ -60,9 +62,16 @@ La versión del 2026-10-25 (`9b224f4df`, actualizada en `aa80795b4`) afirmaba lo
   CFG/dominancia/SSA/opt inspeccionan su LLVM.
 - **C-11 / DEC-11** (`4d6237d84`, `b1f1a9699`; doc 15). Structs con destructor o campos `owned`: move-only, destrucción
   por scope y estado vivo/muerto por slot de arreglo.
-- **C-11 / temporales** (`4d6237d84`, `73b03a394`, `f11be256a`; doc 51). Un temporal owned descartado o receptor tiene
-  dueño oculto. Si su valor termina en un valor simple, en un owner nuevo o en una escritura de campo, vive hasta el
-  final de la expresión completa. Guardar una lectura prestada de él es error.
+- **C-11 / temporales** (`4d6237d84`, `73b03a394`, `f11be256a`, `cb0a04c8b`; docs 51, 54). Un temporal owned (llamada
+  con retorno owned o `new` de clase) descartado o receptor tiene dueño oculto. Si su préstamo termina en un valor
+  simple, en un owner nuevo o en una escritura de campo, vive hasta el final de la expresión completa y se destruye
+  una vez, también cuando una rama de `?:`/`??` no lo creó. El préstamo sigue por campos, getters, resultados no
+  owned de llamadas, `?:` y `??`; guardarlo, devolverlo o entregarlo con `yield` es error.
+- **Fuentes de vida conocida** (`1df8e86e3`; docs 55, 56; `docs/3.0/language/known-life-sources.md`). Un solo
+  clasificador reconoce temporales owned, locales `raii`, objetos `scope`, excepciones atrapadas, préstamos de
+  excepción y locales `pin`; cada comprobación conserva su diagnóstico. Garantía: sin fugas, doble destrucción ni
+  escapes cuando la fuente y su vida son conocidas estáticamente; las referencias no owned de parámetros o campos
+  son responsabilidad del programador.
 - **C-12** (`0b6da967f`, `01f408b04`, `b1f1a9699`; doc 15). Los arreglos dueños destruyen sus elementos vivos antes de
   liberar el bloque.
 - **DEC-06** (`01e37532e`; doc 12). `delete[]` de un local `owned T[]` consume el ownership y destruye lo recibido.
@@ -110,7 +119,7 @@ La versión del 2026-10-25 (`9b224f4df`, actualizada en `aa80795b4`) afirmaba lo
 - **D-06 manifiesto de superficie falso**: Corregido por DEC-07/08.
 - **D-07 cambios de conducta del `await` síncrono**: Decididos: un poll y pánico (DEC-04); propagación de C-17
   conservada (DEC-15).
-- **D-08 costo y vida sin medición**: Medido (doc 50); las fugas reproducidas se corrigieron en 131a y 131b.
+- **D-08 costo y vida sin medición**: Medido (doc 50); las fugas reproducidas se corrigieron en 131a, 131b y 135.
 - **D-09 compilación dependiente del host**: Corregido por DEC-13 y verificado (elemento 119).
 - **D-10 `error*.log` en el directorio de trabajo**: Corregido (`4bf4a7a18`).
 - **D-11 modo archivo instalado**: **NO VERIFICADO.**
@@ -143,6 +152,8 @@ Es validación **focal**; no certifica la batería.
   - `d28` y las 3 bibliotecas.
 
   `f121` es un punto de la propia campaña, no la base previa.
+- En el elemento 136 (sin cambio de conducta), las sondas `d41` dieron el mismo resultado antes y después del
+  cambio, y `seq.cmd` fue idéntico a `f135`.
 
 ## 5. No verificado: gates finales pendientes
 
@@ -163,10 +174,14 @@ Es validación **focal**; no certifica la batería.
 4. Una clave struct move-only no puede usar el constructor con `HashFunc` de `Dictionary`/`HashSet`
    (`where TKey : copy`, P2).
 5. El diagnóstico de un constructor genérico elegido inválido sale en su cuerpo, no en el `new` (doc 49).
-6. Formas no reproducidas que conservan la conducta anterior (fuga, sin referencia colgante):
-   - una lectura prestada de un temporal que fluye por `?:`, `??` u otra llamada que devuelve referencia
-     (doc 51);
-   - `(new T(...)).Campo` (doc 52).
+6. Límites del contrato de vida (`docs/3.0/language/known-life-sources.md`, medidos en doc 56):
+   - las referencias no owned de parámetros o campos no se comprueban;
+   - un préstamo derivado (campo, getter, llamada, `?:`) de un local `raii` o `scope`, o de una excepción
+     atrapada, compila y puede sobrevivir a su fuente;
+   - `string s = Id(MakeText());`: un temporal string owned pasado directamente a un parámetro string no owned
+     se destruye al final de la expresión y `s` lo sigue apuntando. Es una referencia colgante reproducida,
+     no corregida (doc 56);
+   - el análisis de llamadas es conservador: puede tratar como préstamo un resultado que no lo es.
 7. Rendimiento: las corrutinas que nunca suspenden reservan frame en el heap en cada llamada (doc 50). Queda
    registrado para la fase de rendimiento, sin cambiar ahora el ABI de frames.
 
