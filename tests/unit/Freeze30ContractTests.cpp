@@ -451,6 +451,43 @@ class Program
 )ns", 71);
 }
 
+/// EN: A bare type in the lexical parent namespace wins over an imported generic template with
+///     the same terminal name. OpenXR relies on this for OpenXR.Result inside OpenXR.Raw.
+/// ES: Un tipo sin argumentos del namespace padre lexico gana sobre una plantilla generica
+///     importada con el mismo nombre terminal. OpenXR depende de ello para OpenXR.Result.
+void testLexicalTypeShadowsImportedGeneric(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "LexicalResultShadowsCoreGeneric", R"ns(
+namespace Probe
+{
+    public enum Result : int
+    {
+        Ok = 7
+    }
+}
+
+namespace Probe.Raw
+{
+    public class Api
+    {
+        public Result Read()
+        {
+            return (Result)7;
+        }
+    }
+}
+
+class Program
+{
+    public static int Main()
+    {
+        raii Probe.Raw.Api api = new Probe.Raw.Api();
+        return (int)api.Read();
+    }
+}
+)ns", 7);
+}
+
 /// EN: C-01. Every owning form compiles and destroys its object exactly once: raii and owned
 ///     locals, an owned return, an owned parameter, an owned field, a user operator and
 ///     conversion with an owned return, and an owning `using` (Dispose, then the destructor).
@@ -7855,6 +7892,7 @@ int main()
     testCoreDisposable(tests, root);
     testLostOwnershipRejected(tests, root);
     testInferredLocalOwnership(tests, root);
+    testLexicalTypeShadowsImportedGeneric(tests, root);
     testOwningFormsAccepted(tests, root);
     testCatchOwnsException(tests, root);
     testCaughtExceptionStaysInCatch(tests, root);

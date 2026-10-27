@@ -575,6 +575,18 @@ bool ProjectGenericModel::processTypeSyntax(
     if (nestedResult.has_value()) return *nestedResult;
     TypeResolution resolution = resolveTypeTemplate(
         unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());
+    // EN: A bare nominal type in the lexical namespace wins before the arity-diagnostic fallback
+    //     considers a visible generic template with the same terminal name. Otherwise
+    //     `OpenXR.Raw.Result` binds to imported `Core.Result<T, E>` instead of `OpenXR.Result`.
+    // ES: Un tipo nominal sin argumentos del namespace lexico gana antes de que el fallback de
+    //     diagnostico por aridad considere una plantilla generica visible con el mismo nombre.
+    if (resolution.kind != TypeResolutionKind::Unique && syntax->typeArguments().empty() &&
+        resolveDeclaredTypeIdentity(
+            syntax, unit.projectOrdinal(), namespaceName, scope) != nullptr)
+    {
+        recordDeclaredTypeIdentity(syntax, unit.projectOrdinal(), namespaceName, scope);
+        return true;
+    }
     if (resolution.kind != TypeResolutionKind::Unique)
     {
         resolution = resolveTypeTemplate(
