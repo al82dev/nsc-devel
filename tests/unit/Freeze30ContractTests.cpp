@@ -3554,6 +3554,134 @@ class Program
     }
 }
 
+constexpr std::string_view kPublishedSpecializationLibrary = R"ns(
+namespace LApi
+{
+    public delegate int Keyer<T>(T value);
+    public class Keys
+    {
+        public static int Of(int value) { return value; }
+        public static int Of(long value) { return (int)value; }
+    }
+    public class Store<T>
+    {
+        public int Size;
+        public Store(int size) : this(size, 2) { Size = Size * 10 + 1; }
+        private Store(int size, int extra) { Size = size + extra; }
+        public Store() { Size = 9; }
+    }
+    class Inner<T>
+    {
+        private Keyer<T> k;
+        public int Size;
+        public Inner(int size) { Size = size; }
+        public Inner() { k = Keys.Of; Size = 1; }
+    }
+    public class Api
+    {
+        public static int Size(Store<string> s) { return s.Size; }
+        public static int Hidden()
+        {
+            raii Inner<string> i = new Inner<string>(4);
+            return i.Size;
+        }
+    }
+}
+)ns";
+
+constexpr std::string_view kInvalidPublishedSpecializationLibrary = R"ns(
+namespace LBad
+{
+    public delegate int Keyer<T>(T value);
+    public class Keys
+    {
+        public static int Of(int value) { return value; }
+        public static int Of(long value) { return (int)value; }
+    }
+    public class Store<T>
+    {
+        private Keyer<T> k;
+        public int Size;
+        public Store(int size) { Size = size; }
+        public Store() { k = Keys.Of; Size = 1; }
+    }
+    public class Api
+    {
+        public static int Size(Store<string> s) { return s.Size; }
+    }
+}
+)ns";
+
+constexpr std::string_view kPublishedSpecializationConsumer = R"ns(
+using LApi;
+class Program
+{
+    public static int Main()
+    {
+        raii Store<string> a = new Store<string>(5);
+        raii Store<string> b = new Store<string>();
+        raii Store<int> c = new Store<int>(1);
+        return Api.Size(a) + b.Size * 100 + Api.Hidden() * 1000 + c.Size * 10000;
+    }
+}
+)ns";
+
+/// EN: Item 139. Writes a one-file static library project named `name` under `producer` and builds it at -O0.
+/// ES: Elemento 139. Escribe bajo `producer` un proyecto de biblioteca estatica de un archivo llamado `name` y lo
+///     compila en -O0.
+ExitCode buildItem139Library(
+    const std::filesystem::path& producer, const std::string& name, std::string_view source, std::string& diagnostic)
+{
+    writeFile(producer / (name + ".nsproj"),
+        "<Project><PropertyGroup><Name>" + name + "</Name><Language>3</Language>"
+        "<OutputType>StaticLibrary</OutputType></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    writeFile(producer / "Main.ns", source);
+    const std::string projectText = (producer / (name + ".nsproj")).string();
+    const std::string libraryText = (producer / (name + ".lib")).string();
+    const std::array<std::string_view, 5> arguments = {
+        "--emit-project-oop-lib", projectText, "-O0", "-o", libraryText};
+    return runDriver(arguments, diagnostic);
+}
+
+/// EN: Item 139. A library owns the public and protected constructors of every closed specialization it publishes:
+///     LApi emits `Store<string>` with both public constructors and the private one their chain reaches, while the
+///     constructor of the unpublished `Inner<string>` that is invalid for string stays unanalyzed. A consumer runs
+///     `new Store<string>(5)`, `new Store<string>()` and its own `new Store<int>(1)` and exits 314971. A published
+///     specialization whose public constructor is invalid for its argument is rejected in the producer.
+/// ES: Elemento 139. Una biblioteca es duena de los constructores publicos y protegidos de toda especializacion
+///     cerrada que publica: LApi emite `Store<string>` con sus dos constructores publicos y el privado que alcanza
+///     su cadena, mientras el constructor de `Inner<string>`, que no se publica y es invalido para string, queda
+///     sin analizar. Un consumidor corre `new Store<string>(5)`, `new Store<string>()` y su propio
+///     `new Store<int>(1)` y sale con 314971. Una especializacion publicada cuyo constructor publico es invalido
+///     para su argumento se rechaza en el productor.
+void testPublishedSpecializationConstructors(TestContext& tests, const std::filesystem::path& root)
+{
+    std::string diagnostic;
+    const ExitCode invalid = buildItem139Library(
+        root / "F139Library" / "Bad", "LBad", kInvalidPublishedSpecializationLibrary, diagnostic);
+    tests.expect(invalid != ExitCode::Success &&
+            diagnostic.find("exactly matches delegate signature") != std::string::npos,
+        "F139Library: the invalid public constructor of a published specialization is rejected: " + diagnostic);
+    const std::filesystem::path producer = root / "F139Library" / "Api";
+    const ExitCode built = buildItem139Library(producer, "LApi", kPublishedSpecializationLibrary, diagnostic);
+    tests.expect(built == ExitCode::Success, "F139Library: the library compiles: " + diagnostic);
+    if (built != ExitCode::Success) return;
+    const std::filesystem::path directory = root / "F139Library" / "Use";
+    const std::filesystem::path project = directory / "Consumer.nsproj";
+    writeFile(project,
+        "<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /><LibraryReference Include=\"" +
+        (producer / "LApi.lib").generic_string() + "\" /></ItemGroup></Project>");
+    writeFile(directory / "Main.ns", kPublishedSpecializationConsumer);
+    const std::filesystem::path executable = directory / "Consumer.exe";
+    const ExitCode code = compile(project, executable, "-O0", diagnostic);
+    tests.expect(code == ExitCode::Success, "F139Library: the consumer compiles: " + diagnostic);
+    if (code != ExitCode::Success) return;
+    const int observed = std::system(("\"\"" + executable.string() + "\"\"").c_str());
+    tests.expect(observed == 314971, "F139Library: exits 314971, observed " + std::to_string(observed));
+}
+
 /// EN: P3. A generic `copy` struct is Copy only when its type arguments are: `Pair<int, int>` copies,
 ///     `Pair<Guard, int>` is move-only (and a copy of it is rejected), and a SortedList keyed by a
 ///     move-only struct can be instantiated. A non-generic `copy` struct with a non-Copy field is
@@ -7611,6 +7739,7 @@ int main()
     testImportedCArgumentTrivial(tests, root);
     testGenericConstructorDemand(tests, root);
     testGenericConstructorDemandLibrary(tests, root);
+    testPublishedSpecializationConstructors(tests, root);
     testReceiverTemporariesUntilFullExpression(tests, root);
     testNewCallReceiver(tests, root);
     testTemporaryProvenance(tests, root);

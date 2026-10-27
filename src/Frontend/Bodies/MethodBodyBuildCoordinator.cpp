@@ -286,7 +286,16 @@ void ProjectMethodBodyModel::seedDemandedGenericMethods(
             //     selects.
             // ES: Congelamiento 3.0 (elemento 130a): los constructores no se siembran; un consumidor
             //     demanda el que elige.
-            if (callableAccessibility && member.kind == ClassMemberKind::Method &&
+            // EN: Freeze 3.0 (item 139): except the public and protected instance constructors of a closed
+            //     specialization this library publishes. NSMETA promises them with a physical identity, so
+            //     the producer owns them; a private one is reached through the chains of the seeded ones.
+            // ES: Congelamiento 3.0 (elemento 139): salvo los constructores de instancia publicos y
+            //     protegidos de una especializacion cerrada que esta biblioteca publica. NSMETA los promete
+            //     con identidad fisica, asi que son del productor; uno privado se alcanza por las cadenas de
+            //     los sembrados.
+            const bool seededKind =
+                member.kind == ClassMemberKind::Method || member.kind == ClassMemberKind::Constructor;
+            if (callableAccessibility && seededKind &&
                 isDeferredGenericMethod(memberOrdinal, memberModel, nameLookup) &&
                 declaringTypeIsPubliclyReachable(
                     member.declaringTypeOrdinal, nameLookup, publicSurfaceProjectOrdinal))
