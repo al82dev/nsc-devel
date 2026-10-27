@@ -47,7 +47,8 @@ public class ReceiverHarness
 
     public int Temporary()
     {
-        return (new Counter(5)).Add(6);
+        raii Counter counter = new Counter(5);
+        return counter.Add(6);
     }
 
     public int ReturnedReceiver()

@@ -3449,6 +3449,11 @@ private:
         const ClassMemberSymbol& selectedMember,
         bool coreStringForwarding,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    void rejectNewCallReceiver(
+        const ExpressionResult& callee,
+        const ClassMemberSymbol& selectedMember,
+        bool coreStringForwarding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void finalizeSelectedCallResult(
         ExpressionResult& result,
         const ast::AstNode* expression,

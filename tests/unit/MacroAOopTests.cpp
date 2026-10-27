@@ -187,7 +187,7 @@ void testGeneralizedReceivers(TestContext& tests, const std::filesystem::path& r
         "public int Write(Counter counter) { counter.Value = 11; return counter.Value; } "
         "public int Call(Counter counter) { return counter.Add(2); } "
         "public int Local() { Counter counter = new Counter(3); counter.Value = 9; return counter.Add(4); } "
-        "public int Temporary() { return (new Counter(5)).Add(6); } "
+        "public int Temporary() { raii Counter counter = new Counter(5); return counter.Add(6); } "
         "public int Returned() { return Make(7).Add(8); } "
         "public int WriteReturned() { Make(9).Value = 12; return 0; } }");
 

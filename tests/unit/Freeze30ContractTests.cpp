@@ -6201,6 +6201,24 @@ void testReceiverTemporariesUntilFullExpression(TestContext& tests, const std::f
         "        return Read().Length;\n    }\n}\n", "destroyed at the end of the full expression");
 }
 
+/// EN: Item 131b. `(new Box(5)).Get()` calls a method on an object that no owner holds; it is rejected with
+///     LostOwnership. The same call on a raii owner runs and destroys the object once.
+/// ES: Elemento 131b. `(new Box(5)).Get()` llama un metodo sobre un objeto que ningun dueno tiene; se rechaza con
+///     LostOwnership. La misma llamada sobre un dueno raii corre y destruye el objeto una vez.
+void testNewCallReceiver(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude =
+        "class Log { public static int Value; }\n"
+        "class Box\n{\n    public int Id;\n    public Box(int id) { Id = id; }\n"
+        "    public int Get() { return Id; }\n    ~Box() { Log.Value = Log.Value * 10 + Id; }\n}\n"
+        "class Program\n{\n    public static int Main()\n    {\n";
+    expectReject(tests, root, "F131bNewReceiver", prelude +
+        "        int v = (new Box(5)).Get();\n        return v;\n    }\n}\n", "through the receiver of 'Get'");
+    expectRun(tests, root, "F131bOwnerReceiver", prelude +
+        "        int v = 0;\n        {\n            raii Box b = new Box(5);\n            v = b.Get();\n"
+        "        }\n        return v * 10 + Log.Value;\n    }\n}\n", 55);
+}
+
 constexpr std::string_view kConstructorDemandPrelude = R"ns(
 using NativeSharp.Core;
 using NativeSharp.Core.Collections.Generic;
@@ -7417,6 +7435,7 @@ int main()
     testGenericConstructorDemand(tests, root);
     testGenericConstructorDemandLibrary(tests, root);
     testReceiverTemporariesUntilFullExpression(tests, root);
+    testNewCallReceiver(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

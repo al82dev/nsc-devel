@@ -4650,6 +4650,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
             expression, callee, resolvedArguments, selected, selectedMember, coreStringForwarding, diagnostics);
         rejectNonTrivialImportedCArguments(
             expression, callee, resolvedArguments, selected, selectedMember, coreStringForwarding, diagnostics);
+        rejectNewCallReceiver(callee, selectedMember, coreStringForwarding, diagnostics);
         applySelectedCoreOperations(
             expression, selectedMember, methodMemberOrdinal, scopeOrdinal, call, result, diagnostics);
         // EN: Freeze 3.0 C-13: an async callee reports its error at the await, not at the call.
@@ -5241,6 +5242,28 @@ void ProjectMethodBodyModel::rejectNonTrivialImportedCArguments(
                 parameter.typeKey + "' by value, but native code cannot run its destructor or release its "
                 "owned fields; pass an ABI-trivial struct, a pointer or a handle");
     }
+}
+
+// EN: Freeze 3.0 C-01 (plan item 131b). `(new T(...)).Method()` calls an instance method on an object that no
+//     owner holds: the method receives a borrowed `this` and may let it escape, and nothing destroys the object
+//     afterwards. The owner comes first (`raii T x = new T(...); x.Method();`).
+// ES: Congelamiento 3.0 C-01 (elemento 131b del plan). `(new T(...)).Metodo()` llama un metodo de instancia
+//     sobre un objeto que ningun dueno tiene: el metodo recibe un `this` prestado y puede hacerlo escapar, y nada
+//     destruye el objeto despues. Primero va el dueno (`raii T x = new T(...); x.Metodo();`).
+void ProjectMethodBodyModel::rejectNewCallReceiver(
+    const ExpressionResult& callee,
+    const ClassMemberSymbol& selectedMember,
+    bool coreStringForwarding,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const ast::AstNode* receiver = callee.receiverSyntax;
+    if (receiver == nullptr || selectedMember.isStatic || coreStringForwarding ||
+        receiver->kind() != ast::AstNodeKind::ObjectCreationExpression ||
+        !typeKeyIsOwnable(callee.receiverTypeKey))
+        return;
+    reportLostOwnership(
+        receiver, "the receiver of '" + selectedMember.name + "', which does not take ownership of it",
+        diagnostics);
 }
 
 void ProjectMethodBodyModel::rejectSelectedNewToOrdinaryParameters(
