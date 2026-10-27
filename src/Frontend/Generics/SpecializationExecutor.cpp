@@ -310,9 +310,7 @@ std::size_t ProjectGenericModel::reserveTypeDemand(
 {
     std::vector<std::string> spellings;
     key = computeSpecializationKey(state.record, arguments, spellings, identities);
-    specializedName = state.record.name + "__g" + std::to_string(arguments.size());
-    for (const std::string& spelling : spellings) specializedName += "__" + sanitize(spelling);
-    specializedName += "__h" + stableHashSuffix(key);
+    specializedName = typeSpecializedName(state.record, arguments.size(), spellings, key);
     if (specializationPlanner_.request(key))
     {
         telemetry_.noteSpecializationHit();
@@ -514,9 +512,8 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     std::vector<std::string> identities;
     const std::string key = computeSpecializationKey(
         state.record, arguments, spellings, identities);
-    std::string specializedName = state.record.name + "__g" + std::to_string(arguments.size());
-    for (const std::string& spelling : spellings) specializedName += "__" + sanitize(spelling);
-    specializedName += "__h" + stableHashSuffix(key);
+    const std::string specializedName =
+        typeSpecializedName(state.record, arguments.size(), spellings, key);
     if (const auto found = specializationPlanner_.request(key))
     {
         telemetry_.noteSpecializationHit();
@@ -570,6 +567,31 @@ std::string ProjectGenericModel::ensureTypeSpecialization(
     }
     instantiationBudget_.leave();
     if (outSpecializationKey != nullptr) *outSpecializationKey = key;
+    return specializedName;
+}
+
+// EN: Returns the physical name for a type specialization. Imported metadata wins for the exact
+//     canonical key so a reconstructed public source cannot rename an already published type.
+// ES: Devuelve el nombre físico de una especialización de tipo. La metadata importada prevalece
+//     para la clave canónica exacta, evitando que una fuente pública reconstruida renombre un tipo
+//     ya publicado.
+std::string ProjectGenericModel::typeSpecializedName(
+    const GenericTemplateRecord& record,
+    std::size_t argumentCount,
+    const std::vector<std::string>& spellings,
+    const std::string& key) const
+{
+    const auto published = importedTypeSpecializationNamesByKey_.find(key);
+    if (published != importedTypeSpecializationNamesByKey_.end())
+    {
+        return published->second;
+    }
+    std::string specializedName = record.name + "__g" + std::to_string(argumentCount);
+    for (const std::string& spelling : spellings)
+    {
+        specializedName += "__" + sanitize(spelling);
+    }
+    specializedName += "__h" + stableHashSuffix(key);
     return specializedName;
 }
 

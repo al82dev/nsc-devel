@@ -1356,6 +1356,11 @@ private:
         // especializan con ESTE nombre y se convierten en sobrecargas ordinarias. Vacio para el
         // caso normal, donde el nombre lo deriva la propia clave.
         std::string_view sharedName = {});
+    std::string typeSpecializedName(
+        const GenericTemplateRecord& record,
+        std::size_t argumentCount,
+        const std::vector<std::string>& spellings,
+        const std::string& key) const;
     std::string methodSpecializedName(
         const TemplateState& state,
         std::size_t argumentCount,
@@ -1657,6 +1662,14 @@ private:
         std::equal_to<>> declaredTypeIdentitiesBySourceName_;
     std::vector<GenericTemplateRecord> templateRecords_;
     std::vector<GenericSpecializationRecord> specializations_;
+    // EN: Physical names published by imported metadata for type specializations that still need
+    //     local materialization. The canonical key remains the authority; this only preserves the
+    //     producer's spelling when reconstructed public source uses another qualification.
+    // ES: Nombres físicos publicados por metadata importada para especializaciones de tipo que aún
+    //     requieren materialización local. La clave canónica sigue siendo la autoridad; esto sólo
+    //     conserva la escritura del productor cuando la fuente pública reconstruida usa otra
+    //     calificación.
+    std::unordered_map<std::string, std::string> importedTypeSpecializationNamesByKey_;
     // NSC305-G07. Deduplication and slot lifecycle for specialization demands. ensure*Specialization
     // delegates its cache hit/miss/commit/rollback here (the foundation for G09 waves).
     struct SpecializationPlanner final

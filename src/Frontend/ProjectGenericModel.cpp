@@ -472,6 +472,11 @@ void ProjectGenericModel::seedImportedSpecializationsForBuild(
     const GenericTelemetry::Scope phase(telemetry_, "generics.imported-specialization-seed");
     for (const PrecompiledGenericSpecialization& imported : precompiledSpecializations)
     {
+        if (imported.kind != GenericTemplateKind::Method && !imported.specializedName.empty())
+        {
+            importedTypeSpecializationNamesByKey_.try_emplace(
+                imported.specializationKey, imported.specializedName);
+        }
         if (!imported.hasConcreteDeclaration) continue;
         const auto templateStateIt = stateByCanonicalKey_.find(imported.templateKey);
         if (templateStateIt == stateByCanonicalKey_.end() ||
