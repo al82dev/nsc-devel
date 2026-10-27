@@ -22,10 +22,10 @@ namespace NativeSharp.Core.Collections.Generic
     //
     // Y TODO PREDICADO SE LIGA A UNA LOCAL ANTES DE PASARLO:
     //
-    //     Predicate<int> esPar = EsPar;
-    //     int donde = Algorithm.FindIf<int>(vista, esPar);
+        //     Predicate<int> isEven = IsEven;
+        //     int index = Algorithm.FindIf<int>(view, isEven);
     //
-    // Pasar el grupo de metodos directo en la llamada da "method group 'EsPar' can only be used as
+        // Pasar el grupo de metodos directo en la llamada da "method group 'IsEven' can only be used as
     // a call target". No es una limitacion de esta clase: es del lenguaje, y se dice aqui para que
     // nadie la descubra en la linea de llamada.
     public class Algorithm
@@ -40,14 +40,14 @@ namespace NativeSharp.Core.Collections.Generic
         //     indexer would copy each one and requires `T : copy`.
         // ES: Congelamiento 3.0 P3: los elementos se comparan en su lugar por el puntero del span; el
         //     indexador copiaria cada uno y exige `T : copy`.
-        public static int Find<T>(ReadOnlySpan<T> donde, T que)
+        public static int Find<T>(ReadOnlySpan<T> source, T value)
         {
-            T* datos = donde.Data();
-            int i = 0;
-            while (i < donde.Length())
+            T* data = source.Data();
+            int index = 0;
+            while (index < source.Length())
             {
-                if (datos[i] == que) { return i; }
-                i = i + 1;
+                if (data[index] == value) { return index; }
+                index = index + 1;
             }
             return -1;
         }
@@ -58,70 +58,70 @@ namespace NativeSharp.Core.Collections.Generic
         //     require `T : copy`; the InPredicate overloads read through a borrow and serve any T.
         // ES: Congelamiento 3.0 P2: el predicado por valor copia cada elemento, asi que estas tres
         //     sobrecargas exigen `T : copy`; las de InPredicate leen por prestamo y sirven para todo T.
-        public static int FindIf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion) where T : copy
+        public static int FindIf<T>(ReadOnlySpan<T> source, Predicate<T> predicate) where T : copy
         {
-            int i = 0;
-            while (i < donde.Length())
+            int index = 0;
+            while (index < source.Length())
             {
-                if (condicion(donde[i])) { return i; }
-                i = i + 1;
+                if (predicate(source[index])) { return index; }
+                index = index + 1;
             }
             return -1;
         }
 
-        public static int FindIf<T>(ReadOnlySpan<T> donde, InPredicate<T> condicion)
+        public static int FindIf<T>(ReadOnlySpan<T> source, InPredicate<T> predicate)
         {
-            T* datos = donde.Data();
-            int i = 0;
-            while (i < donde.Length())
+            T* data = source.Data();
+            int index = 0;
+            while (index < source.Length())
             {
-                if (condicion(in datos[i])) { return i; }
-                i = i + 1;
+                if (predicate(in data[index])) { return index; }
+                index = index + 1;
             }
             return -1;
         }
 
         // Sobre un rango VACIO devuelve false, que es el convenio de std::any_of y el unico que
         // compone: "alguno cumple" sobre nada es falso.
-        public static bool AnyOf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion) where T : copy
+        public static bool AnyOf<T>(ReadOnlySpan<T> source, Predicate<T> predicate) where T : copy
         {
-            int i = 0;
-            while (i < donde.Length())
+            int index = 0;
+            while (index < source.Length())
             {
-                if (condicion(donde[i])) { return true; }
-                i = i + 1;
+                if (predicate(source[index])) { return true; }
+                index = index + 1;
             }
             return false;
         }
 
-        public static bool AnyOf<T>(ReadOnlySpan<T> donde, InPredicate<T> condicion)
+        public static bool AnyOf<T>(ReadOnlySpan<T> source, InPredicate<T> predicate)
         {
-            return FindIf<T>(donde, condicion) >= 0;
+            return FindIf<T>(source, predicate) >= 0;
         }
 
         // Sobre un rango VACIO devuelve true -- verdad vacua, igual que std::all_of. Parece raro y
         // es lo correcto: "todos cumplen" sobre ningun elemento no tiene contraejemplo. Cambiarlo
         // romperia la propiedad de que dividir un rango en dos y preguntar por cada mitad da lo
         // mismo que preguntar por el entero.
-        public static bool AllOf<T>(ReadOnlySpan<T> donde, Predicate<T> condicion) where T : copy
+        public static bool AllOf<T>(ReadOnlySpan<T> source, Predicate<T> predicate) where T : copy
         {
-            int i = 0;
-            while (i < donde.Length())
+            int index = 0;
+            while (index < source.Length())
             {
-                if (!condicion(donde[i])) { return false; }
-                i = i + 1;
+                if (!predicate(source[index])) { return false; }
+                index = index + 1;
             }
             return true;
         }
 
-        public static bool AllOf<T>(ReadOnlySpan<T> donde, InPredicate<T> condicion)
+        public static bool AllOf<T>(ReadOnlySpan<T> source, InPredicate<T> predicate)
         {
-            T* datos = donde.Data();
-            int i = 0;
-            while (i < donde.Length())
+            T* data = source.Data();
+            int index = 0;
+            while (index < source.Length())
             {
-                if (!condicion(in datos[i])) { return false; }
-                i = i + 1;
+                if (!predicate(in data[index])) { return false; }
+                index = index + 1;
             }
             return true;
         }
@@ -131,19 +131,19 @@ namespace NativeSharp.Core.Collections.Generic
         // Sobre DOS valores, no sobre un rango, porque asi es como se usan las doce llamadas de
         // `src/`. Un Min/Max sobre un span seria una funcion mas que nadie llama.
         //
-        // Empate: devuelve `a`. Es el convenio de std::min/std::max y no es indiferente cuando T
+        // Empate: devuelve `first`. Es el convenio de std::min/std::max y no es indiferente cuando T
         // tiene identidad --dos objetos "iguales" que no son el mismo--; quedando escrito, el
         // resultado es predecible.
-        public static T Min<T>(T a, T b)
+        public static T Min<T>(T first, T second)
         {
-            if (b < a) { return b; }
-            return a;
+            if (second < first) { return second; }
+            return first;
         }
 
-        public static T Max<T>(T a, T b)
+        public static T Max<T>(T first, T second)
         {
-            if (a < b) { return b; }
-            return a;
+            if (first < second) { return second; }
+            return first;
         }
 
         // --- TRANSFORMACION EN SITIO --------------------------------------------------------
@@ -154,17 +154,17 @@ namespace NativeSharp.Core.Collections.Generic
         // ES: Congelamiento 3.0 P2: Reverse, RemoveIf y todo Sort mueven elementos solo
         //     intercambiandolos (Swap), nunca copiandolos, asi que sirven para un T move-only.
         //     Los elementos se leen por `Data()`, como prestamos `in`.
-        public static void Reverse<T>(Span<T> datos)
+        public static void Reverse<T>(Span<T> data)
         {
-            if (datos.Length() < 2) { return; }
-            T* elementos = datos.Data();
-            int izquierda = 0;
-            int derecha = datos.Length() - 1;
-            while (izquierda < derecha)
+            if (data.Length() < 2) { return; }
+            T* elements = data.Data();
+            int left = 0;
+            int right = data.Length() - 1;
+            while (left < right)
             {
-                Swap<T>(elementos, izquierda, derecha);
-                izquierda = izquierda + 1;
-                derecha = derecha - 1;
+                Swap<T>(elements, left, right);
+                left = left + 1;
+                right = right - 1;
             }
         }
 
@@ -184,40 +184,40 @@ namespace NativeSharp.Core.Collections.Generic
         // DEVUELVE LA NUEVA LONGITUD Y NO UN ITERADOR. std::remove_if devuelve el nuevo final y el
         // llamador hace erase(); aqui no hay iteradores, y un entero lleva la misma informacion sin
         // inventar un tipo para transportarla.
-        public static int RemoveIf<T>(Span<T> datos, Predicate<T> condicion) where T : copy
+        public static int RemoveIf<T>(Span<T> data, Predicate<T> predicate) where T : copy
         {
-            if (datos.Length() == 0) { return 0; }
-            T* elementos = datos.Data();
-            int escribir = 0;
-            int leer = 0;
-            while (leer < datos.Length())
+            if (data.Length() == 0) { return 0; }
+            T* elements = data.Data();
+            int writeIndex = 0;
+            int readIndex = 0;
+            while (readIndex < data.Length())
             {
-                if (!condicion(elementos[leer]))
+                if (!predicate(elements[readIndex]))
                 {
-                    if (escribir != leer) { Swap<T>(elementos, escribir, leer); }
-                    escribir = escribir + 1;
+                    if (writeIndex != readIndex) { Swap<T>(elements, writeIndex, readIndex); }
+                    writeIndex = writeIndex + 1;
                 }
-                leer = leer + 1;
+                readIndex = readIndex + 1;
             }
-            return escribir;
+            return writeIndex;
         }
 
-        public static int RemoveIf<T>(Span<T> datos, InPredicate<T> condicion)
+        public static int RemoveIf<T>(Span<T> data, InPredicate<T> predicate)
         {
-            if (datos.Length() == 0) { return 0; }
-            T* elementos = datos.Data();
-            int escribir = 0;
-            int leer = 0;
-            while (leer < datos.Length())
+            if (data.Length() == 0) { return 0; }
+            T* elements = data.Data();
+            int writeIndex = 0;
+            int readIndex = 0;
+            while (readIndex < data.Length())
             {
-                if (!condicion(in elementos[leer]))
+                if (!predicate(in elements[readIndex]))
                 {
-                    if (escribir != leer) { Swap<T>(elementos, escribir, leer); }
-                    escribir = escribir + 1;
+                    if (writeIndex != readIndex) { Swap<T>(elements, writeIndex, readIndex); }
+                    writeIndex = writeIndex + 1;
                 }
-                leer = leer + 1;
+                readIndex = readIndex + 1;
             }
-            return escribir;
+            return writeIndex;
         }
 
         // --- ORDENACION ---------------------------------------------------------------------
@@ -254,69 +254,69 @@ namespace NativeSharp.Core.Collections.Generic
         //     sobrecargas elige por ese tipo (incluidos los modos de parametro de una lambda).
         //     Sort(span) compara con el `<` de T sobre elementos prestados, asi que
         //     `operator <(in T, in T)` ordena un T move-only.
-        public static void Sort<T>(Span<T> datos)
+        public static void Sort<T>(Span<T> data)
         {
-            int cuantos = datos.Length();
-            if (cuantos < 2) { return; }
-            T* elementos = datos.Data();
+            int count = data.Length();
+            if (count < 2) { return; }
+            T* elements = data.Data();
 
             // Construir el monticulo: se hunde cada nodo interno, del ultimo al primero. El ultimo
             // nodo interno es (n/2 - 1); las hojas ya son monticulos de un elemento.
-            int i = cuantos / 2 - 1;
-            while (i >= 0)
+            int index = count / 2 - 1;
+            while (index >= 0)
             {
-                Hundir<T>(elementos, i, cuantos);
-                i = i - 1;
+                SiftDown<T>(elements, index, count);
+                index = index - 1;
             }
 
             // Extraer: el mayor esta en la raiz, va al final, y se rehace el monticulo con uno
             // menos. Cuando el monticulo se queda en uno, el arreglo esta ordenado.
-            int fin = cuantos - 1;
-            while (fin > 0)
+            int endIndex = count - 1;
+            while (endIndex > 0)
             {
-                Swap<T>(elementos, 0, fin);
-                Hundir<T>(elementos, 0, fin);
-                fin = fin - 1;
+                Swap<T>(elements, 0, endIndex);
+                SiftDown<T>(elements, 0, endIndex);
+                endIndex = endIndex - 1;
             }
         }
 
-        public static void Sort<T>(Span<T> datos, Comparison<T> comparador) where T : copy
+        public static void Sort<T>(Span<T> data, Comparison<T> comparison) where T : copy
         {
-            int cuantos = datos.Length();
-            if (cuantos < 2) { return; }
-            T* elementos = datos.Data();
-            int i = cuantos / 2 - 1;
-            while (i >= 0)
+            int count = data.Length();
+            if (count < 2) { return; }
+            T* elements = data.Data();
+            int index = count / 2 - 1;
+            while (index >= 0)
             {
-                HundirCon<T>(elementos, i, cuantos, comparador);
-                i = i - 1;
+                SiftDownWithComparison<T>(elements, index, count, comparison);
+                index = index - 1;
             }
-            int fin = cuantos - 1;
-            while (fin > 0)
+            int endIndex = count - 1;
+            while (endIndex > 0)
             {
-                Swap<T>(elementos, 0, fin);
-                HundirCon<T>(elementos, 0, fin, comparador);
-                fin = fin - 1;
+                Swap<T>(elements, 0, endIndex);
+                SiftDownWithComparison<T>(elements, 0, endIndex, comparison);
+                endIndex = endIndex - 1;
             }
         }
 
-        public static void Sort<T>(Span<T> datos, InComparison<T> comparador)
+        public static void Sort<T>(Span<T> data, InComparison<T> comparison)
         {
-            int cuantos = datos.Length();
-            if (cuantos < 2) { return; }
-            T* elementos = datos.Data();
-            int i = cuantos / 2 - 1;
-            while (i >= 0)
+            int count = data.Length();
+            if (count < 2) { return; }
+            T* elements = data.Data();
+            int index = count / 2 - 1;
+            while (index >= 0)
             {
-                HundirConIn<T>(elementos, i, cuantos, comparador);
-                i = i - 1;
+                SiftDownWithBorrowedComparison<T>(elements, index, count, comparison);
+                index = index - 1;
             }
-            int fin = cuantos - 1;
-            while (fin > 0)
+            int endIndex = count - 1;
+            while (endIndex > 0)
             {
-                Swap<T>(elementos, 0, fin);
-                HundirConIn<T>(elementos, 0, fin, comparador);
-                fin = fin - 1;
+                Swap<T>(elements, 0, endIndex);
+                SiftDownWithBorrowedComparison<T>(elements, 0, endIndex, comparison);
+                endIndex = endIndex - 1;
             }
         }
 
@@ -331,38 +331,38 @@ namespace NativeSharp.Core.Collections.Generic
         // ES: Congelamiento 3.0 P2: el elemento avanza a la izquierda por intercambios adyacentes en
         //     vez de guardarse en una copia mientras los predecesores mayores se corren a la derecha;
         //     las comparaciones y el resultado son los mismos.
-        public static void StableSort<T>(Span<T> datos, Comparison<T> comparador) where T : copy
+        public static void StableSort<T>(Span<T> data, Comparison<T> comparison) where T : copy
         {
-            if (datos.Length() < 2) { return; }
-            T* elementos = datos.Data();
-            int i = 1;
-            while (i < datos.Length())
+            if (data.Length() < 2) { return; }
+            T* elements = data.Data();
+            int index = 1;
+            while (index < data.Length())
             {
-                int destino = i;
-                while (destino > 0 && comparador(elementos[destino], elementos[destino - 1]) < 0)
+                int destination = index;
+                while (destination > 0 && comparison(elements[destination], elements[destination - 1]) < 0)
                 {
-                    Swap<T>(elementos, destino, destino - 1);
-                    destino = destino - 1;
+                    Swap<T>(elements, destination, destination - 1);
+                    destination = destination - 1;
                 }
-                i = i + 1;
+                index = index + 1;
             }
         }
 
-        public static void StableSort<T>(Span<T> datos, InComparison<T> comparador)
+        public static void StableSort<T>(Span<T> data, InComparison<T> comparison)
         {
-            if (datos.Length() < 2) { return; }
-            T* elementos = datos.Data();
-            int i = 1;
-            while (i < datos.Length())
+            if (data.Length() < 2) { return; }
+            T* elements = data.Data();
+            int index = 1;
+            while (index < data.Length())
             {
-                int destino = i;
-                while (destino > 0 &&
-                       comparador(in elementos[destino], in elementos[destino - 1]) < 0)
+                int destination = index;
+                while (destination > 0 &&
+                       comparison(in elements[destination], in elements[destination - 1]) < 0)
                 {
-                    Swap<T>(elementos, destino, destino - 1);
-                    destino = destino - 1;
+                    Swap<T>(elements, destination, destination - 1);
+                    destination = destination - 1;
                 }
-                i = i + 1;
+                index = index + 1;
             }
         }
 
@@ -422,7 +422,7 @@ namespace NativeSharp.Core.Collections.Generic
             }
         }
 
-        // Baja el elemento de `raiz` hasta que los dos hijos sean menores o iguales. `limite` es
+        // Baja el elemento de `root` hasta que los dos hijos sean menores o iguales. `limit` es
         // cuantos elementos del principio siguen formando parte del monticulo -- lo demas ya esta
         // colocado al final y no se toca.
         //
@@ -430,77 +430,78 @@ namespace NativeSharp.Core.Collections.Generic
         // pila. Escrito una vez por variante en vez de con un comparador por omision, porque
         // NativeSharp no tiene valores por omision de parametro y envolver `<` en un delegado
         // costaria una llamada indirecta por comparacion.
-        private static void Hundir<T>(T* datos, int raiz, int limite)
+        private static void SiftDown<T>(T* data, int root, int limit)
         {
-            int actual = raiz;
+            int current = root;
             while (true)
             {
-                int mayor = actual;
-                int izquierdo = 2 * actual + 1;
-                int derecho = izquierdo + 1;
+                int largest = current;
+                int leftChild = 2 * current + 1;
+                int rightChild = leftChild + 1;
 
-                if (izquierdo < limite && datos[mayor] < datos[izquierdo])
+                if (leftChild < limit && data[largest] < data[leftChild])
                 {
-                    mayor = izquierdo;
+                    largest = leftChild;
                 }
-                if (derecho < limite && datos[mayor] < datos[derecho])
+                if (rightChild < limit && data[largest] < data[rightChild])
                 {
-                    mayor = derecho;
+                    largest = rightChild;
                 }
-                if (mayor == actual) { return; }
+                if (largest == current) { return; }
 
-                Swap<T>(datos, actual, mayor);
-                actual = mayor;
+                Swap<T>(data, current, largest);
+                current = largest;
             }
         }
 
-        private static void HundirCon<T>(T* datos, int raiz, int limite, Comparison<T> comparador)
+        private static void SiftDownWithComparison<T>(
+            T* data, int root, int limit, Comparison<T> comparison)
             where T : copy
         {
-            int actual = raiz;
+            int current = root;
             while (true)
             {
-                int mayor = actual;
-                int izquierdo = 2 * actual + 1;
-                int derecho = izquierdo + 1;
+                int largest = current;
+                int leftChild = 2 * current + 1;
+                int rightChild = leftChild + 1;
 
-                if (izquierdo < limite && comparador(datos[mayor], datos[izquierdo]) < 0)
+                if (leftChild < limit && comparison(data[largest], data[leftChild]) < 0)
                 {
-                    mayor = izquierdo;
+                    largest = leftChild;
                 }
-                if (derecho < limite && comparador(datos[mayor], datos[derecho]) < 0)
+                if (rightChild < limit && comparison(data[largest], data[rightChild]) < 0)
                 {
-                    mayor = derecho;
+                    largest = rightChild;
                 }
-                if (mayor == actual) { return; }
+                if (largest == current) { return; }
 
-                Swap<T>(datos, actual, mayor);
-                actual = mayor;
+                Swap<T>(data, current, largest);
+                current = largest;
             }
         }
 
-        private static void HundirConIn<T>(
-            T* datos, int raiz, int limite, InComparison<T> comparador)
+        private static void SiftDownWithBorrowedComparison<T>(
+            T* data, int root, int limit, InComparison<T> comparison)
         {
-            int actual = raiz;
+            int current = root;
             while (true)
             {
-                int mayor = actual;
-                int izquierdo = 2 * actual + 1;
-                int derecho = izquierdo + 1;
+                int largest = current;
+                int leftChild = 2 * current + 1;
+                int rightChild = leftChild + 1;
 
-                if (izquierdo < limite && comparador(in datos[mayor], in datos[izquierdo]) < 0)
+                if (leftChild < limit && comparison(in data[largest], in data[leftChild]) < 0)
                 {
-                    mayor = izquierdo;
+                    largest = leftChild;
                 }
-                if (derecho < limite && comparador(in datos[mayor], in datos[derecho]) < 0)
+                if (rightChild < limit && comparison(in data[largest], in data[rightChild]) < 0)
                 {
-                    mayor = derecho;
+                    largest = rightChild;
                 }
-                if (mayor == actual) { return; }
+                if (largest == current) { return; }
 
-                Swap<T>(datos, actual, mayor);
-                actual = mayor;
+                Swap<T>(data, current, largest);
+                current = largest;
             }
         }
     }

@@ -82,12 +82,12 @@ Decisión de Alberto Huerta Luna (P2, 2026-10-26):
    - El constructor con `Comparison` lo envuelve: `(in a, in b) => comparerFunc(a, b)`.
    - `KeyEquals` y `LowerBound` reciben sus claves `in`, así que comparar claves no copia ninguna.
 5. **Intercambio.**
-   - `Algorithm.Intercambiar` intercambia los bytes de dos elementos (de 8, 4 o 1 bytes según `sizeof(T)`).
+   - `Algorithm.Swap` intercambia los bytes de dos elementos (de 8, 4 o 1 bytes según `sizeof(T)`).
      Es una reubicación: nada se copia ni se destruye.
    - No se puede escribir con `move`. Guardar por un `T*` destruye el valor sobrescrito, y el hueco que `move`
      acaba de vaciar sigue teniendo un `T` en cero. Medido: L5 daba 506, con dos destrucciones de más con
      `Id` 0, en vez de 306.
-   - `Sort`, `Reverse`, `RemoveIf` y `StableSort` usan solo `Intercambiar`.
+   - `Sort`, `Reverse`, `RemoveIf` y `StableSort` usan solo `Swap`.
    - `StableSort` avanza el elemento por intercambios adyacentes: mismas comparaciones, mismo resultado.
    - `RemoveIf` deja los quitados detrás de la nueva longitud, intactos. Antes quedaban copias viejas.
 6. **Sets.**
@@ -133,6 +133,11 @@ Sondas en `A:\temp\nsc-dec\d13`, en `-O0` y `-O2`:
   17).
 - **`raii string[]` de literales.** Una sonda con `raii string[] s = new string[] { "x", "y" }` terminó con
   0xC0000374. No se investigó: no toca P2.
+
+## Nomenclatura de código
+
+Desde la corrección de plantilla del 2026-10-27, todos los métodos, parámetros y variables ejecutables de
+`Algorithm.ns` usan identificadores en inglés. Los comentarios pueden permanecer en español, inglés o ambos.
 
 ## No verificado
 
