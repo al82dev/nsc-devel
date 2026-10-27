@@ -846,18 +846,14 @@ bool replaySpillDescends(ProjectOopMirNodeKind kind) noexcept
 // ES: Congelamiento 3.0 D-01: da un slot del frame a cada hijo de `ancestor` distinto de `onPath`
 //     (la direccion de un elemento de arreglo pasa el slot a sus operandos). Un slot mide al menos
 //     8 bytes, alineado a 8; un nodo con slot por otro await lo conserva. Iterativo; O(subarbol).
-void assignReplaySpillSlotsBeside(
-    ProjectOopMirNode* ancestor,
-    const ProjectOopMirNode* onPath,
+void assignReplaySpillSlotsTo(
+    std::vector<ProjectOopMirNode*> pending,
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup,
     const ProjectCompilationIndexes* indexes,
     std::span<const ProjectOopMirStructLayout> layouts,
     std::uint64_t& frameSize)
 {
-    std::vector<ProjectOopMirNode*> pending;
-    for (const auto& child : ancestor->children)
-        if (child != nullptr && child.get() != onPath) pending.push_back(child.get());
     while (!pending.empty())
     {
         ProjectOopMirNode* candidate = pending.back();
@@ -881,6 +877,83 @@ void assignReplaySpillSlotsBeside(
         frameSize = alignFrameOffset(frameSize, std::max<std::uint64_t>(8, layout->second));
         candidate->replaySpillOffset = frameSize;
         frameSize += std::max<std::uint64_t>(8, layout->first);
+    }
+}
+
+void assignReplaySpillSlotsBeside(
+    ProjectOopMirNode* ancestor,
+    const ProjectOopMirNode* onPath,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    std::vector<ProjectOopMirNode*> pending;
+    for (const auto& child : ancestor->children)
+        if (child != nullptr && child.get() != onPath) pending.push_back(child.get());
+    assignReplaySpillSlotsTo(std::move(pending), objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+}
+
+using ReplayParentMap = std::unordered_map<const ProjectOopMirNode*, ProjectOopMirNode*>;
+
+void climbReplaySpillSlots(
+    const ProjectOopMirNode* onPath,
+    const ReplayParentMap& parents,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    for (auto parent = parents.find(onPath); parent != parents.end(); parent = parents.find(onPath))
+    {
+        ProjectOopMirNode* ancestor = parent->second;
+        if (replayClimbStopsBefore(ancestor->kind)) break;
+        assignReplaySpillSlotsBeside(
+            ancestor, onPath, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+        if (replayClimbStopsAfter(ancestor->kind)) break;
+        onPath = ancestor;
+    }
+}
+
+// EN: Freeze 3.0 (plan item 117): a match is an expression, so the resume of an await inside it replays the
+//     statement around the match. That replay must load what already ran: the governing value, the guard of
+//     the selected arm and the operands evaluated before the match. The climb from the await stops at the arm
+//     or at the match; this walk goes on from each match to its statement, until a statement boundary.
+// ES: Congelamiento 3.0 (elemento 117 del plan): un match es una expresión, así que la reanudación de un await
+//     dentro de él repite la sentencia que lo rodea. Esa repetición debe cargar lo que ya corrió: el valor que
+//     gobierna, el guard del brazo elegido y los operandos evaluados antes del match. El ascenso desde el await
+//     se detiene en el brazo o en el match; este recorrido sigue desde cada match hasta su sentencia, hasta un
+//     límite de sentencia.
+void assignMatchReplaySpillSlots(
+    const ProjectOopMirNode* await,
+    const ReplayParentMap& parents,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    const ProjectOopMirNode* below = await;
+    for (auto parent = parents.find(below); parent != parents.end(); parent = parents.find(below))
+    {
+        ProjectOopMirNode* ancestor = parent->second;
+        const bool matchNode = ancestor->kind == ProjectOopMirNodeKind::MatchExpression ||
+            ancestor->kind == ProjectOopMirNodeKind::MatchArm;
+        if (!matchNode && replayClimbStopsBefore(ancestor->kind)) break;
+        if (ancestor->kind == ProjectOopMirNodeKind::MatchArm && ancestor->children.size() > 1 &&
+            ancestor->children[1] != nullptr && ancestor->children[1].get() != below)
+            assignReplaySpillSlotsTo(
+                {ancestor->children[1].get()}, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+        if (ancestor->kind == ProjectOopMirNodeKind::MatchExpression)
+        {
+            assignReplaySpillSlotsBeside(
+                ancestor, below, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+            climbReplaySpillSlots(ancestor, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+        }
+        if (replayClimbStopsAfter(ancestor->kind)) break;
+        below = ancestor;
     }
 }
 
@@ -908,7 +981,7 @@ void assignReplaySpillSlotNodes(
     std::span<const ProjectOopMirStructLayout> layouts,
     std::uint64_t& frameSize)
 {
-    std::unordered_map<const ProjectOopMirNode*, ProjectOopMirNode*> parents;
+    ReplayParentMap parents;
     std::vector<ProjectOopMirNode*> awaits;
     std::vector<ProjectOopMirNode*> work{root};
     while (!work.empty())
@@ -927,16 +1000,8 @@ void assignReplaySpillSlotNodes(
     }
     for (ProjectOopMirNode* await : awaits)
     {
-        const ProjectOopMirNode* onPath = await;
-        for (auto parent = parents.find(onPath); parent != parents.end(); parent = parents.find(onPath))
-        {
-            ProjectOopMirNode* ancestor = parent->second;
-            if (replayClimbStopsBefore(ancestor->kind)) break;
-            assignReplaySpillSlotsBeside(
-                ancestor, onPath, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
-            if (replayClimbStopsAfter(ancestor->kind)) break;
-            onPath = ancestor;
-        }
+        climbReplaySpillSlots(await, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+        assignMatchReplaySpillSlots(await, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
     }
 }
 

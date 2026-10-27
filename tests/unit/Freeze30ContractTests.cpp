@@ -5529,6 +5529,52 @@ class Program
 )ns", 501);
 }
 
+constexpr std::string_view kMatchReplayProgram = R"ns(
+class Program
+{
+    public static int Calls;
+    public static async int G() { Calls = Calls + 1; yield; return 4; }
+    public static int Bump() { Calls = Calls + 100; return 0; }
+    public static int Key() { Calls = Calls + 1000; return 1; }
+    public static bool Check() { Calls = Calls + 10000; return true; }
+)ns";
+
+// EN: Plan item 117. The resume of an await inside a match arm replays the statement around the match without
+//     running again what ran before the await: an operand before the match, the governing value and the guard
+//     of the selected arm.
+// ES: Elemento 117 del plan. La reanudación de un await dentro de un brazo de match repite la sentencia que lo
+//     rodea sin volver a correr lo que corrió antes del await: un operando antes del match, el valor que
+//     gobierna y el guard del brazo elegido.
+void testMatchAwaitReplay(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "F117MatchOperand", std::string(kMatchReplayProgram) + R"ns(
+    public static async int Main()
+    {
+        int k = 1;
+        int v = Bump() + match (k) { 1 => await G(), _ => 0 };
+        return v * 1000 + Calls;
+    }
+}
+)ns", 4101);
+    expectRun(tests, root, "F117MatchGoverning", std::string(kMatchReplayProgram) + R"ns(
+    public static async int Main()
+    {
+        int v = match (Key()) { 1 => await G(), _ => 0 };
+        return v * 100000 + Calls;
+    }
+}
+)ns", 401001);
+    expectRun(tests, root, "F117MatchGuard", std::string(kMatchReplayProgram) + R"ns(
+    public static async int Main()
+    {
+        int k = 1;
+        int v = match (k) { 1 when Check() => await G(), _ => 0 };
+        return v * 100000 + Calls;
+    }
+}
+)ns", 410001);
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -6655,6 +6701,7 @@ int main()
     testValueDropVerification(tests, root);
     testNestedAwaitResume(tests, root);
     testLoopExpressionAwait(tests, root);
+    testMatchAwaitReplay(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);
