@@ -349,6 +349,16 @@ public:
     {
         return deleteClearsOwnedParameter_.contains(syntax);
     }
+    // EN: Freeze 3.0 (item 130, F2): `delete[]` of a local array declared without owned/raii whose
+    //     element type is a class or interface releases only the block; such an array stores
+    //     references it does not own, even when it was created with `new T[n]`.
+    // ES: Congelamiento 3.0 (elemento 130, F2): `delete[]` de un local arreglo declarado sin owned/raii
+    //     cuyo elemento es una clase o interfaz libera solo el bloque; ese arreglo guarda referencias
+    //     que no posee, aunque se haya creado con `new T[n]`.
+    bool arrayDeleteKeepsElements(const ast::AstNode* syntax) const noexcept
+    {
+        return arrayDeleteKeepsElements_.contains(syntax);
+    }
     const MethodLoopBreakBinding* loopBreakBinding(
         const ast::AstNode* syntax) const noexcept;
     const std::string* staticInterpolationValue(const ast::AstNode* syntax) const noexcept;
@@ -1956,6 +1966,7 @@ private:
         std::size_t scopeOrdinal,
         bool compilerVariantResultTransfer,
         diagnostics::DiagnosticEngine& diagnostics);
+    void recordPlainArrayLocalDelete(const ast::AstNode* expression, std::size_t scopeOrdinal);
     bool consumeDeletedOwnedParameter(
         const ast::AstNode* expression,
         std::size_t methodMemberOrdinal,
@@ -5347,6 +5358,7 @@ private:
     std::vector<ActiveIterationBorrow> activeIterationBorrows_;
     std::unordered_set<const ast::AstNode*> arrayDeleteClearsOwnedField_;
     std::unordered_set<const ast::AstNode*> deleteClearsOwnedParameter_;
+    std::unordered_set<const ast::AstNode*> arrayDeleteKeepsElements_;
     std::unordered_set<std::size_t> movedRaiiLocals_;
     std::unordered_set<std::size_t> maybeMovedRaiiLocals_;
     std::unordered_set<std::size_t> movedOwnedParameters_;

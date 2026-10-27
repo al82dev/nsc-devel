@@ -278,6 +278,10 @@ void ProjectCallableResultMerger::mergeShardState(
     // ES: Congelamiento 3.0 (elemento 121): el HIR lee que sitios `delete p` consumen un parametro owned.
     destination.deleteClearsOwnedParameter_.insert(
         source.deleteClearsOwnedParameter_.begin(), source.deleteClearsOwnedParameter_.end());
+    // EN: Freeze 3.0 (item 130, F2): the HIR reads which `delete[]` sites keep the elements alive.
+    // ES: Congelamiento 3.0 (elemento 130, F2): el HIR lee que sitios `delete[]` no destruyen elementos.
+    destination.arrayDeleteKeepsElements_.insert(
+        source.arrayDeleteKeepsElements_.begin(), source.arrayDeleteKeepsElements_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
     if (source.isolatedCallableOrdinal_.has_value() &&
         *source.isolatedCallableOrdinal_ == result.callableOrdinal() &&

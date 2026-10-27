@@ -203,6 +203,10 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledDestructionFrame(
                 // EN: Slots holding literals do not belong to the array: only the block is released.
                 if (frame.operandType->borrowedElementSlots)
                     deallocation->storageOwnership = sema::OwnershipKind::None;
+                // EN: Freeze 3.0 (item 130, F2): a plain local array does not own its references.
+                // ES: Congelamiento 3.0 (elemento 130, F2): un local arreglo plano no posee sus referencias.
+                if (methodBodyModel_ != nullptr && methodBodyModel_->arrayDeleteKeepsElements(frame.syntax))
+                    deallocation->storageOwnership = sema::OwnershipKind::None;
             }
             else
             {

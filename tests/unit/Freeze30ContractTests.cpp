@@ -5890,6 +5890,44 @@ void testDeleteOwnedParameter(TestContext& tests, const std::filesystem::path& r
         "        }\n        return added * 100 + Box.Made * 10 + Box.Freed;\n    }\n}\n", 22, true);
 }
 
+/// EN: Item 130 (F2). A local `T[]` declared without owned/raii stores references it does not own:
+///     `delete[]` releases only the block, so the object TryGetValue or TryPeek copied into it stays alive
+///     in its collection. An `owned T[]` local still destroys what it received by transfer (DEC-06), and
+///     a plain array of structs with a destructor still drops its live slots (DEC-11). Each program
+///     returns Made * 10 + Freed (and the value read afterwards, where there is one).
+/// ES: Elemento 130 (F2). Un local `T[]` declarado sin owned/raii guarda referencias que no posee:
+///     `delete[]` solo libera el bloque, asi que el objeto que TryGetValue o TryPeek copio en el sigue vivo
+///     en su coleccion. Un local `owned T[]` sigue destruyendo lo que recibio por transferencia (DEC-06), y
+///     un arreglo plano de structs con destructor sigue destruyendo sus slots vivos (DEC-11). Cada programa
+///     devuelve Made * 10 + Freed (y el valor leido despues, donde lo hay).
+void testPlainArrayDelete(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string collections = "using NativeSharp.Core.Collections.Generic;\n" + std::string(kTransferPrelude);
+    const std::string tail = "        }\n        return v * 100 + Box.Made * 10 + Box.Freed;\n    }\n}\n";
+    expectRun(tests, root, "F130TryGetValueArray", collections + "class Program\n{\n"
+        "    public static int Main()\n    {\n        int v = 0;\n        {\n"
+        "            raii Dictionary<int, Box> d = new Dictionary<int, Box>();\n"
+        "            d.AddOrUpdate(1, new Box(4));\n"
+        "            Box[] r = new Box[1];\n            if (d.TryGetValue(1, r)) delete[] r;\n"
+        "            v = d[1].V;\n" + tail, 411, true);
+    expectRun(tests, root, "F130TryPeekArray", collections + "class Program\n{\n"
+        "    public static int Main()\n    {\n        int v = 0;\n        {\n"
+        "            raii PriorityQueue<Box, int> q = new PriorityQueue<Box, int>();\n"
+        "            q.Enqueue(new Box(5), 1);\n            Box[] r = new Box[1];\n            int[] p = new int[1];\n"
+        "            if (q.TryPeek(r, p)) delete[] r;\n            delete[] p;\n"
+        "            try { v = q.Peek().V; } catch (InvalidOperationException e) { v = 9; }\n" + tail, 511, true);
+    expectRun(tests, root, "F130OwnedArrayDestroys", std::string(kTransferPrelude) + "class Program\n{\n"
+        "    public static int Main()\n    {\n        int v = 0;\n        {\n"
+        "            owned Box[] r = new Box[1];\n            raii Box b = new Box(6);\n"
+        "            r[0] = move(b);\n            v = r[0].V;\n            delete[] r;\n" + tail, 611);
+    expectRun(tests, root, "F130StructArrayDrops", std::string(kTransferPrelude) +
+        "struct Guard\n{\n    public int Id;\n    ~Guard() { Box.Freed = Box.Freed + 1; }\n}\n"
+        "class Program\n{\n    public static int Main()\n    {\n        int v = 0;\n        {\n"
+        "            Guard[] a = new Guard[2];\n            Guard g;\n            g.Id = 7;\n"
+        "            Box.Made = Box.Made + 1;\n            a[0] = move(g);\n            v = a[0].Id;\n"
+        "            delete[] a;\n" + tail, 711);
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -7024,6 +7062,7 @@ int main()
     testNewToNonOwnedField(tests, root);
     testOwnedArgumentTransfer(tests, root);
     testDeleteOwnedParameter(tests, root);
+    testPlainArrayDelete(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

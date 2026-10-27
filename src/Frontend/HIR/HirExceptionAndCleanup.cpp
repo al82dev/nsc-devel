@@ -284,6 +284,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayDeleteExpressio
     // borrowed T[] owns no T elements even when its containing class manually
     // releases the backing buffer in its destructor.
     node->storageOwnership = operandType.storageOwnership;
+    // EN: Freeze 3.0 (item 130, F2): a plain local array does not own its references.
+    // ES: Congelamiento 3.0 (elemento 130, F2): un local arreglo plano no posee sus referencias.
+    if (methodBodyModel_ != nullptr && methodBodyModel_->arrayDeleteKeepsElements(expression))
+        node->storageOwnership = sema::OwnershipKind::None;
     // A jagged row is itself an owning native-array reference. Carrying the slot
     // address lets LLVM null it before recursive destruction, so an explicit row
     // delete followed by deletion of the outer array can never double-drop it.

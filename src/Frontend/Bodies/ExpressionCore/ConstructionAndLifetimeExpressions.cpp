@@ -982,6 +982,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
             const bool parameterConsumable = !operand.valid ||
                 consumeDeletedOwnedParameter(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            recordPlainArrayLocalDelete(expression, scopeOrdinal);
             bool consumesBorrowedOwner = false;
             if (consumedOwnedArrayLocal.has_value() && operand.valid)
             {
@@ -1077,6 +1078,29 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             break;
     }
     return result;
+}
+
+/// EN: Freeze 3.0 (item 130, F2). Marks `delete[] a` when `a` is a local declared without owned/raii whose
+///     elements are class or interface references: the array does not own them, so only the block is
+///     released. Struct elements (DEC-11) and owned/raii locals keep their behavior.
+/// ES: Congelamiento 3.0 (elemento 130, F2). Marca `delete[] a` cuando `a` es un local declarado sin
+///     owned/raii cuyos elementos son referencias de clase o interfaz: el arreglo no los posee, asi que
+///     solo se libera el bloque. Los elementos struct (DEC-11) y los locales owned/raii no cambian.
+void ProjectMethodBodyModel::recordPlainArrayLocalDelete(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal)
+{
+    const ast::AstNode* operand = expression->first();
+    if (!expression->flag() || operand == nullptr ||
+        operand->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const std::optional<ScopeName> target = lookupScopeName(scopeOrdinal, operand->text());
+    if (!target.has_value() || target->kind != ScopeNameKind::Local ||
+        target->semanticOrdinal >= locals_.size()) return;
+    const MethodLocalSymbol& local = locals_[target->semanticOrdinal];
+    if (local.isRaii || local.isReference) return;
+    const std::optional<std::string> element = ProjectTypeConversion::nativeArrayElementType(local.typeKey);
+    if (!element.has_value() || !isReferenceTypeKey(*element)) return;
+    arrayDeleteKeepsElements_.insert(expression);
 }
 
 /// EN: Freeze 3.0 (item 121). `delete p` of an owned class or interface parameter consumes `p`, like
