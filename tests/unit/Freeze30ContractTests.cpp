@@ -3682,6 +3682,65 @@ void testPublishedSpecializationConstructors(TestContext& tests, const std::file
     tests.expect(observed == 314971, "F139Library: exits 314971, observed " + std::to_string(observed));
 }
 
+constexpr std::string_view kReferencePropertyLibrary = R"ns(
+namespace LRef
+{
+    public class Cell<T>
+    {
+        private T value;
+        public Cell(T initial) { value = initial; }
+        public ref T Value
+        {
+            get { return ref value; }
+        }
+    }
+    public class Api
+    {
+        public static int Read(Cell<int> cell) { return cell.Value; }
+    }
+}
+)ns";
+
+constexpr std::string_view kReferencePropertyConsumer = R"ns(
+using LRef;
+class Program
+{
+    public static int Main()
+    {
+        raii Cell<int> c = new Cell<int>(4);
+        int before = Api.Read(c);
+        c.Value = 9;
+        return before * 100 + c.Value * 10 + Api.Read(c);
+    }
+}
+)ns";
+
+/// EN: Item 140. NSMETA accepts a by-reference property getter: LRef publishes `Cell<int>` with
+///     `ref T Value { get; }`, and a consumer reads and writes through it and exits 499.
+/// ES: Elemento 140. NSMETA acepta un getter de propiedad por referencia: LRef publica `Cell<int>` con
+///     `ref T Value { get; }`, y un consumidor lee y escribe por el y sale con 499.
+void testReferenceReturnPropertyLibrary(TestContext& tests, const std::filesystem::path& root)
+{
+    std::string diagnostic;
+    const std::filesystem::path producer = root / "F140Library" / "Api";
+    const ExitCode built = buildItem139Library(producer, "LRef", kReferencePropertyLibrary, diagnostic);
+    tests.expect(built == ExitCode::Success, "F140Library: the library compiles: " + diagnostic);
+    if (built != ExitCode::Success) return;
+    const std::filesystem::path directory = root / "F140Library" / "Use";
+    const std::filesystem::path project = directory / "Consumer.nsproj";
+    writeFile(project,
+        "<Project><PropertyGroup><Name>Consumer</Name><Language>3</Language></PropertyGroup>"
+        "<ItemGroup><Compile Include=\"**/*.ns\" /><LibraryReference Include=\"" +
+        (producer / "LRef.lib").generic_string() + "\" /></ItemGroup></Project>");
+    writeFile(directory / "Main.ns", kReferencePropertyConsumer);
+    const std::filesystem::path executable = directory / "Consumer.exe";
+    const ExitCode code = compile(project, executable, "-O0", diagnostic);
+    tests.expect(code == ExitCode::Success, "F140Library: the consumer compiles: " + diagnostic);
+    if (code != ExitCode::Success) return;
+    const int observed = std::system(("\"\"" + executable.string() + "\"\"").c_str());
+    tests.expect(observed == 499, "F140Library: exits 499, observed " + std::to_string(observed));
+}
+
 /// EN: P3. A generic `copy` struct is Copy only when its type arguments are: `Pair<int, int>` copies,
 ///     `Pair<Guard, int>` is move-only (and a copy of it is rejected), and a SortedList keyed by a
 ///     move-only struct can be instantiated. A non-generic `copy` struct with a non-Copy field is
@@ -7740,6 +7799,7 @@ int main()
     testGenericConstructorDemand(tests, root);
     testGenericConstructorDemandLibrary(tests, root);
     testPublishedSpecializationConstructors(tests, root);
+    testReferenceReturnPropertyLibrary(tests, root);
     testReceiverTemporariesUntilFullExpression(tests, root);
     testNewCallReceiver(tests, root);
     testTemporaryProvenance(tests, root);

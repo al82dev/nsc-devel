@@ -1479,16 +1479,20 @@ bool verifyReferenceReturnMemberMetadata(
     constexpr std::uint32_t kSetter = 1U << 15U;
     for (const LibraryMetadataMember& member : metadata.members)
     {
+        // EN: Freeze 3.0 (item 140): a property getter may return by reference too (the `ref T Current` of the P3
+        //     enumerators); the public surface already declares it as `ref T Name { get; }`.
+        // ES: Congelamiento 3.0 (elemento 140): un getter de propiedad tambien puede devolver por referencia (el
+        //     `ref T Current` de los enumeradores de P3); la superficie publica ya lo declara como
+        //     `ref T Name { get; }`.
+        const bool accessor = (member.flags & (kPropertyAccessor | kIndexerAccessor)) != 0U;
         if ((member.flags & kMetadataMemberReferenceReturn) != 0U &&
             (member.kind != kMethodKind ||
-             (member.flags & kPropertyAccessor) != 0U ||
              (member.flags & kSetter) != 0U ||
-             ((member.flags & kIndexerAccessor) != 0U &&
-              (member.flags & kGetter) == 0U)))
+             (accessor && (member.flags & kGetter) == 0U)))
         {
             error = "metadata member '" + member.declaringTypeKey + "." +
                 member.signatureKey +
-                "' carries ref-return outside an ordinary method or indexer getter";
+                "' carries ref-return outside an ordinary method or a property or indexer getter";
             return false;
         }
         // EN: Freeze 3.0 P3: `ref readonly` qualifies a ref return and nothing else.

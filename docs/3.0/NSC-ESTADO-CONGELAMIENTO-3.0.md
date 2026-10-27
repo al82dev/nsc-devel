@@ -4,20 +4,20 @@
 - **Rama**: `development`. Hasta el elemento 135a se trabajó en `development-release-candidate`, que entró por el
   merge `15dc778d5`.
 - **Base de la campaña**: `63aba0be4`.
-- **Revisión descrita**: `15dc778d5` más el commit del elemento 139, que actualiza este documento.
-- **Commits desde la base**: 85 sin contar merges antes de esta versión. Dos de ellos entraron por merge:
+- **Revisión descrita**: `31d4721e4` (elemento 139) más el commit del elemento 140, que actualiza este documento.
+- **Commits desde la base**: 86 sin contar merges antes de esta versión. Dos de ellos entraron por merge:
   - `4da911c53` revierte la época NSMETA de P8;
   - `2796870df` es la primera versión del elemento 115, reemplazada por `e64631180`.
 - **Estado**: **IMPLEMENTADO CON VALIDACIÓN FOCAL**. No está congelado ni certificado; los gates finales de abajo
   siguen pendientes.
-- **Tracking**: plan de decisiones de 154 elementos en el proyecto NSC-IDE
+- **Tracking**: plan de decisiones de 155 elementos en el proyecto NSC-IDE
   (`NSC-PLAN-DECISIONES-CONGELAMIENTO-3.0.md`). Este documento es su elemento 132, actualizado en el 137, en el
-  135a y en el 139.
+  135a, en el 139 y en el 140.
 - **Registro de decisiones**:
   - Este documento reemplaza la instantánea de `NSC-DECISIONES-VIGENTES-CONGELAMIENTO-3.0.md`. Esa instantánea
     (§2) y sus pendientes (§6) son de `403b06641`.
   - Lo hecho después está en la tabla de contratos de abajo y en
-    `docs/3.0/decisiones-congelamiento/34-*` a `59-*`.
+    `docs/3.0/decisiones-congelamiento/34-*` a `60-*`.
 - **Contrato de vida**: `docs/3.0/language/known-life-sources.md` (elemento 137) fija la garantía sobre fuentes de
   vida conocida y sus límites exactos.
 
@@ -109,6 +109,8 @@ La versión del 2026-10-25 (`9b224f4df`, actualizada en `aa80795b4`) afirmaba lo
 - **139** (doc 59). Excepción a 130a: una biblioteca analiza y baja los constructores públicos y protegidos de toda
   especialización cerrada que publica, porque NSMETA les exige identidad física. Uno inválido se rechaza en el
   productor.
+- **140** (doc 60). NSMETA acepta el retorno por referencia en un getter de propiedad, como el `ref T Current` de
+  los enumeradores de P3. Con 139 y 140, `NativeSharp.Core.Collections.Generic` vuelve a emitirse como biblioteca.
 - **I1 (130b)** (`6afc21151`; doc 48). Un argumento `extern C` por valor debe ser ABI-trivial.
 - **DiagnosticId** (`88982f3ab`; doc 01). Los IDs históricos conservan su valor; los nuevos se agregan al final.
 - **D-10 / DEC-01** (`4bf4a7a18`; doc 07). `nsc` no escribe `error*.log` salvo con `--error-log`.
@@ -155,6 +157,7 @@ Es validación **focal**; no certifica la batería.
 - En el elemento 139 se ejecutó en `bt`: pasan 1079 de 1085 comprobaciones. Las 6 que fallan son del entorno de
   `bt` (modo archivo sin `lib/` encima del compilador; P3SortedDictionaryGet sin referencia a las colecciones) y
   fallan igual en la base `15dc778d5` (doc 59).
+- En el elemento 140: pasan 1082 de 1088, con las mismas 6 fallas del entorno (doc 60).
 - Desde el elemento 121, `seq.cmd` en cada commit de código contra la referencia `f121`:
   - `all.cmd`: 101 líneas idénticas;
   - `asynccases` 86, `gencases` 76 y `loopcases` 10 PASS;
