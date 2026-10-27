@@ -147,6 +147,21 @@ void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
         for (std::unique_ptr<ProjectOopHirNode>& child : node->children)
         {
             if (child == nullptr) continue;
+            // EN: Plan item 118: a call with an owned argument comes wrapped in its full expression; the
+            //     discarded result is the call inside it.
+            // ES: Elemento 118 del plan: una llamada con un argumento owned viene envuelta en su expresión
+            //     completa; el resultado descartado es la llamada de adentro.
+            std::unique_ptr<ProjectOopHirNode>* inner = &child;
+            if (child->kind == ProjectOopHirNodeKind::FullExpressionCleanup && child->children.size() == 1U)
+                inner = &child->children.front();
+            if (inner != &child && node->kind == ProjectOopHirNodeKind::ExpressionStatement &&
+                isFreshDroppableTemporary(inner->get()))
+            {
+                ProjectOopHirNode* producer = inner->get();
+                *inner = ownTemporary(std::move(*inner));
+                pending.push_back(producer);
+                continue;
+            }
             if (node->kind == ProjectOopHirNodeKind::ExpressionStatement &&
                 isFreshDroppableTemporary(child.get()))
             {

@@ -300,6 +300,10 @@ bool ProjectOopHirModel::acceptOrdinaryConstructionArgument(
             child = wrapFreshOwnedTemporaryBorrow(
                 std::move(child), argumentSyntax, construction.hasOwnedTemporary);
         }
+        child = wrapOwnedArgumentTransfer(
+            std::move(child), argumentSyntax,
+            constructionParameterOwned(construction.binding->selectedConstructorMemberOrdinal, parameterIndex),
+            construction.hasOwnedTemporary);
         construction.node->children.push_back(std::move(child));
         construction.node->argumentParameterOrdinals.push_back(parameterIndex);
     }

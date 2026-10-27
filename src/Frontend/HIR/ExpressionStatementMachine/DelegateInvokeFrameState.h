@@ -11,5 +11,6 @@ struct DelegateInvokeFrameState final
     std::unique_ptr<ProjectOopHirNode> node;
     DelegateInvokeFrameStage stage = DelegateInvokeFrameStage::Ready;
     std::size_t nextArgument = 0U;
+    bool hasOwnedTemporary = false;
 };
 }

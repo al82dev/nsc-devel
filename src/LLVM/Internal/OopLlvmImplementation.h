@@ -2673,6 +2673,7 @@ private:
 
     LLVMValueRef staticFieldAddress(const frontend::ProjectOopMirNode* node, std::string& error);
 
+    void releaseTransferredArguments(const frontend::ProjectOopMirNode* call);
     LLVMValueRef lowerDirectClosureCall(
         const frontend::ProjectOopMirNode* node,
         std::string& error);

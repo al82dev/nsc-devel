@@ -78,6 +78,7 @@ LLVMValueRef OopLlvmImplementation::lowerValueConstruction(
             ctorArgs.reserve(1 + orderedArguments.size());
             ctorArgs.push_back(slot);
             ctorArgs.insert(ctorArgs.end(), orderedArguments.begin(), orderedArguments.end());
+            releaseTransferredArguments(node);
             if (buildPotentiallyThrowingCall(
                     target->second.functionType, target->second.function, ctorArgs.data(),
                     static_cast<unsigned>(ctorArgs.size()), "", error) == nullptr && !error.empty())
@@ -485,6 +486,7 @@ bool OopLlvmImplementation::invokeConstructionInitializer(
             ctorArgs.reserve(1 + orderedArguments.size());
             ctorArgs.push_back(object);
             ctorArgs.insert(ctorArgs.end(), orderedArguments.begin(), orderedArguments.end());
+            releaseTransferredArguments(node);
             if (buildPotentiallyThrowingCall(
                     target->second.functionType, target->second.function,
                     ctorArgs.data(), static_cast<unsigned>(ctorArgs.size()), "", error) == nullptr &&
@@ -635,6 +637,7 @@ bool OopLlvmImplementation::invokePlacementConstructor(
             constructorArguments.push_back(storage);
             constructorArguments.insert(
                 constructorArguments.end(), orderedArguments.begin(), orderedArguments.end());
+            releaseTransferredArguments(node);
             LLVMBasicBlockRef allocatorFailureCleanup = nullptr;
             if (targetType.kind == frontend::NamedTypeDeclarationKind::Class &&
                 node->allocatorContextLocalOrdinal.has_value() &&

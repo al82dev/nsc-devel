@@ -615,6 +615,8 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledDelegateInvokeFrame(
             error,
             *delegateInvoke.binding,
             std::move(delegateInvoke.node));
+        if (lowered != nullptr)
+            lowered = wrapFullExpressionCleanup(std::move(lowered), frame.syntax, delegateInvoke.hasOwnedTemporary);
         if (lowered == nullptr)
         {
             if (!lastErrorRange_.isValid())

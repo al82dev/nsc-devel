@@ -196,6 +196,12 @@ void ProjectOopHirModel::rejectNoHeapIndirectInvocation(
     [[maybe_unused]] std::string& error)
 {
     const ProjectOopHirNode* loweredChild = child.get();
+    // EN: Plan item 118: a delegate invocation with an owned argument comes wrapped in its full expression.
+    // ES: Elemento 118 del plan: una invocación de delegate con un argumento owned viene envuelta en su
+    //     expresión completa.
+    if (loweredChild != nullptr && loweredChild->kind == ProjectOopHirNodeKind::FullExpressionCleanup &&
+        loweredChild->children.size() == 1U)
+        loweredChild = loweredChild->children.front().get();
     if (loweredChild == nullptr ||
         (loweredChild->kind != ProjectOopHirNodeKind::DelegateInvoke &&
          loweredChild->kind != ProjectOopHirNodeKind::EventInvoke))

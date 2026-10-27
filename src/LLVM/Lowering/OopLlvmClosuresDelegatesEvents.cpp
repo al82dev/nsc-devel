@@ -1139,6 +1139,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             }
             arguments.push_back(value);
         }
+        releaseTransferredArguments(node);
         if (externC)
         {
             return emitExternCDelegateCall(

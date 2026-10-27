@@ -1224,6 +1224,11 @@ bool ProjectOopHirModel::appendConstructorInitializerArguments(
             argument = wrapFreshOwnedTemporaryBorrow(
                 std::move(argument), argumentSyntax, hasOwnedTemporary);
         }
+        argument = wrapOwnedArgumentTransfer(
+            std::move(argument), argumentSyntax,
+            parameterIndex < selectedConstructor.parameters.size() &&
+                ownedValueParameter(selectedConstructor.parameters[parameterIndex]),
+            hasOwnedTemporary);
         initializerCall.children.push_back(std::move(argument));
         initializerCall.argumentParameterOrdinals.push_back(parameterIndex);
     }

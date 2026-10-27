@@ -239,6 +239,7 @@ LLVMValueRef OopLlvmImplementation::lowerCall(
         std::vector<std::size_t> parameterToSource;
         if (!callArgumentOrder(node, sourceArguments.size(), parameterToSource, error)) return nullptr;
         for (const std::size_t source : parameterToSource) arguments.push_back(sourceArguments[source]);
+        releaseTransferredArguments(node);
         LLVMValueRef call = buildPotentiallyThrowingCall(
             found->second.functionType, found->second.function,
             arguments.data(), static_cast<unsigned>(arguments.size()),
@@ -350,6 +351,28 @@ LLVMValueRef OopLlvmImplementation::staticFieldAddress(const frontend::ProjectOo
         return globalFound->second;
     }
 
+// EN: Freeze 3.0 (plan item 118): right before the call instruction, the hidden owner of each argument
+//     handed to an `owned` parameter is cleared, so the callee owns it and the full-expression cleanup (or
+//     an unwind out of the callee) finds the slot empty. Until here the slot destroys it if anything throws.
+// ES: Congelamiento 3.0 (elemento 118 del plan): justo antes de la instrucción de llamada se limpia el dueño
+//     oculto de cada argumento entregado a un parámetro `owned`, así el llamado es el dueño y el cleanup de la
+//     expresión completa (o un unwind desde el llamado) encuentra el slot vacío. Hasta aquí el slot lo destruye
+//     si algo lanza.
+void OopLlvmImplementation::releaseTransferredArguments(const frontend::ProjectOopMirNode* call)
+{
+        if (call == nullptr || terminated()) return;
+        LLVMValueRef null = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
+        for (const auto& child : call->children)
+        {
+            if (child == nullptr || child->kind != frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow ||
+                !child->booleanValue || !child->localOrdinal.has_value())
+                continue;
+            const auto storage = localStorage_.find(*child->localOrdinal);
+            if (storage != localStorage_.end() && storage->second != nullptr)
+                LLVMBuildStore(builder_, null, storage->second);
+        }
+}
+
 LLVMValueRef OopLlvmImplementation::lowerDirectClosureCall(
         const frontend::ProjectOopMirNode* node,
         std::string& error)
@@ -392,6 +415,7 @@ LLVMValueRef OopLlvmImplementation::lowerDirectClosureCall(
             if (value == nullptr) return nullptr;
             arguments.push_back(value);
         }
+        releaseTransferredArguments(node);
         LLVMValueRef call = buildPotentiallyThrowingCall(
             found->second.functionType, found->second.function,
             arguments.data(), static_cast<unsigned>(arguments.size()),
@@ -463,6 +487,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         std::vector<std::size_t> parameterToSource;
         if (!callArgumentOrder(node, sourceArguments.size(), parameterToSource, error)) return nullptr;
         for (const std::size_t source : parameterToSource) arguments.push_back(sourceArguments[source]);
+        releaseTransferredArguments(node);
         LLVMValueRef call = buildPotentiallyThrowingCall(
             found->second.functionType, found->second.function,
             arguments.empty() ? nullptr : arguments.data(),
@@ -610,6 +635,7 @@ LLVMValueRef OopLlvmImplementation::lowerVirtualCall(
             parameterTypes.empty() ? nullptr : parameterTypes.data(),
             static_cast<unsigned>(parameterTypes.size()),
             0);
+        releaseTransferredArguments(node);
         LLVMValueRef call = buildPotentiallyThrowingCall(
             virtualFunctionType, target,
             arguments.data(), static_cast<unsigned>(arguments.size()),
@@ -790,6 +816,7 @@ LLVMValueRef OopLlvmImplementation::lowerInterfaceCall(
             parameterTypes.empty() ? nullptr : parameterTypes.data(),
             static_cast<unsigned>(parameterTypes.size()),
             0);
+        releaseTransferredArguments(node);
         LLVMValueRef interfaceCall = buildPotentiallyThrowingCall(
             interfaceFunctionType, target,
             arguments.data(), static_cast<unsigned>(arguments.size()),

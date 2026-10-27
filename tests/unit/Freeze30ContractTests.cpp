@@ -5789,6 +5789,71 @@ void testNewToNonOwnedField(TestContext& tests, const std::filesystem::path& roo
         "        return v * 10 + Box.Freed;\n    }\n}\n", 31);
 }
 
+constexpr std::string_view kTransferPrelude = R"ns(
+using NativeSharp.Core;
+class Boom : Exception
+{
+    public Boom(string message) : base(message) { }
+}
+class Box
+{
+    public static int Made;
+    public static int Freed;
+    public int V;
+    public Box(int v) { V = v; Made = Made + 1; }
+    ~Box() { Freed = Freed + 1; }
+}
+)ns";
+
+constexpr std::string_view kTransferProgram = R"ns(class Program
+{
+    public static int Fail() throws Boom { throw new Boom("x"); }
+    public static int Take(owned Box b, int x) { return b.V + x; }
+    public static int Take2(owned Box a, owned Box b, int x) { return x; }
+    public static owned Box Make() { return new Box(1); }
+)ns";
+
+/// EN: Item 118. An object handed to an `owned` parameter is destroyed once when a later argument throws
+///     before the call (a `new`, a `move`, an owned return; static call, constructor, base initializer,
+///     delegate, two owned arguments, and after an await in a coroutine), and the callee still owns it when
+///     the call runs. Each program returns Made * 10 + Freed.
+/// ES: Elemento 118. Un objeto entregado a un parametro `owned` se destruye una vez cuando un argumento
+///     posterior lanza antes de la llamada (un `new`, un `move`, un retorno owned; llamada estatica,
+///     constructor, inicializador base, delegate, dos argumentos owned y despues de un await en una
+///     corrutina), y el llamado sigue siendo el dueno cuando la llamada corre. Cada programa devuelve
+///     Made * 10 + Freed.
+void testOwnedArgumentTransfer(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string program = std::string(kTransferPrelude) + std::string(kTransferProgram);
+    const std::string caught = "        catch (Boom b) { }\n        return Box.Made * 10 + Box.Freed;\n    }\n}\n";
+    const std::string opening = "    public static int Main()\n    {\n        try { ";
+    expectRun(tests, root, "F118New", program + opening + "Take(new Box(1), Fail()); }\n" + caught, 11);
+    expectRun(tests, root, "F118Move", program + opening +
+        "raii Box a = new Box(1); Take(move(a), Fail()); }\n" + caught, 11);
+    expectRun(tests, root, "F118Return", program + opening + "Take(Make(), Fail()); }\n" + caught, 11);
+    expectRun(tests, root, "F118TwoOwned", program + opening + "Take2(new Box(1), new Box(2), Fail()); }\n" +
+        caught, 22);
+    expectRun(tests, root, "F118Delegate", std::string(kTransferPrelude) +
+        "delegate int Work(owned Box b, int x);\n" + std::string(kTransferProgram) + opening +
+        "Work w = Take; w(new Box(1), Fail()); }\n" + caught, 11);
+    expectRun(tests, root, "F118Constructor", std::string(kTransferPrelude) +
+        "class Holder { public owned Box Item; public Holder(owned Box b, int x) { Item = move(b); } }\n" +
+        std::string(kTransferProgram) + opening + "raii Holder h = new Holder(new Box(1), Fail()); }\n" + caught, 11);
+    expectRun(tests, root, "F118Base", std::string(kTransferPrelude) +
+        "class Base { public owned Box Item; public Base(owned Box b, int x) { Item = move(b); } }\n"
+        "class Derived : Base { public Derived() throws Boom : base(new Box(1), Program.Fail()) { } }\n" +
+        std::string(kTransferProgram) + opening + "raii Derived d = new Derived(); }\n" + caught, 11);
+    expectRun(tests, root, "F118AfterAwait", program +
+        "    public static async int G() { yield; return 4; }\n"
+        "    public static int FailWith(int x) throws Boom { throw new Boom(\"x\"); }\n"
+        "    public static async int Main()\n    {\n        try { int r = Take(new Box(1), FailWith(await G())); }\n" +
+        caught, 11);
+    expectRun(tests, root, "F118Completes", program +
+        "    public static async int G() { yield; return 4; }\n"
+        "    public static async int Main()\n    {\n        int r = Take(new Box(1), await G());\n"
+        "        return r * 100 + Box.Made * 10 + Box.Freed;\n    }\n}\n", 511);
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -6921,6 +6986,7 @@ int main()
     testNewToOwnedParameterAccepted(tests, root);
     testNewToNonOwnedReturn(tests, root);
     testNewToNonOwnedField(tests, root);
+    testOwnedArgumentTransfer(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

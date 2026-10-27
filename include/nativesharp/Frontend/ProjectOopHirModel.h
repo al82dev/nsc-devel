@@ -4197,6 +4197,19 @@ private:
         std::unique_ptr<ProjectOopHirNode> value,
         const ast::AstNode* argumentSyntax,
         bool& hasOwnedTemporary);
+    // EN: Freeze 3.0 (plan item 118): the hidden owner of an argument handed to an `owned` parameter
+    //     (HirConversion.cpp).
+    // ES: Congelamiento 3.0 (elemento 118 del plan): el dueño oculto de un argumento entregado a un
+    //     parámetro `owned` (HirConversion.cpp).
+    std::unique_ptr<ProjectOopHirNode> wrapOwnedArgumentTransfer(
+        std::unique_ptr<ProjectOopHirNode> value,
+        const ast::AstNode* argumentSyntax,
+        bool ownedParameter,
+        bool& hasOwnedTemporary);
+    static bool ownedValueParameter(const MethodParameterSymbol& parameter) noexcept;
+    bool ownedTransferType(std::string_view typeKey) const;
+    bool delegateParameterOwned(std::size_t delegateTypeOrdinal, std::size_t index) const;
+    bool constructionParameterOwned(std::optional<std::size_t> constructorOrdinal, std::size_t parameterIndex) const;
     std::unique_ptr<ProjectOopHirNode> wrapFullExpressionCleanup(
         std::unique_ptr<ProjectOopHirNode> value,
         const ast::AstNode* syntax,
