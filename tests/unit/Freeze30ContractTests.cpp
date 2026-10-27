@@ -5481,6 +5481,54 @@ class Program
 )ns", 40);
 }
 
+// EN: Plan item 117. A `loop` expression whose body suspends compiles in a coroutine: its result slot is in the
+//     entry block, so the resume that enters the body reaches the `break` that stores the value.
+// ES: Elemento 117 del plan. Una expresión `loop` cuyo cuerpo se suspende compila en una corrutina: su slot de
+//     resultado está en el bloque de entrada, así que la reanudación que entra al cuerpo llega al `break` que
+//     guarda el valor.
+void testLoopExpressionAwait(TestContext& tests, const std::filesystem::path& root)
+{
+    expectRun(tests, root, "F117BreakAwait", std::string(kNestedAwaitPrelude) + R"ns(
+class Program
+{
+    public static int Calls;
+    public static async int G() { Calls = Calls + 1; yield; return 4; }
+    public static async int Main()
+    {
+        int v = loop { break await G(); };
+        return v * 10 + Calls;
+    }
+}
+)ns", 41);
+    expectRun(tests, root, "F117AwaitThenBreak", std::string(kNestedAwaitPrelude) + R"ns(
+class Program
+{
+    public static int Calls;
+    public static async int G() { Calls = Calls + 1; yield; return 4; }
+    public static async int Main()
+    {
+        int v = loop { int t = await G(); break t; };
+        return v * 10 + Calls;
+    }
+}
+)ns", 41);
+    expectRun(tests, root, "F117RaiiInBody", std::string(kNestedAwaitPrelude) + R"ns(
+class Program
+{
+    public static async int F(int x) { yield; return x * 10; }
+    public static async int Main()
+    {
+        int v = loop
+        {
+            raii Box b = new Box(5);
+            break await F(b.V);
+        };
+        return v * 10 + Box.Freed;
+    }
+}
+)ns", 501);
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -6606,6 +6654,7 @@ int main()
     testFutureFields(tests, root);
     testValueDropVerification(tests, root);
     testNestedAwaitResume(tests, root);
+    testLoopExpressionAwait(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);

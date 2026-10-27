@@ -557,7 +557,12 @@ LLVMValueRef OopLlvmImplementation::lowerLoopExpression(
         {
             resultType = llvmType(node->typeKey, error);
             if (resultType == nullptr) return nullptr;
-            resultStorage = LLVMBuildAlloca(builder_, resultType, "loop.result.addr");
+            // EN: Freeze 3.0 (plan item 117): the result slot lives in the entry block. In a coroutine poll the
+            //     resume of an await inside the loop enters the body without passing through this point.
+            // ES: Congelamiento 3.0 (elemento 117 del plan): el slot del resultado vive en el bloque de entrada. En
+            //     el poll de una corrutina, la reanudación de un await dentro del loop entra al cuerpo sin pasar por
+            //     este punto.
+            resultStorage = entryBlockAlloca(resultType, 0, "loop.result.addr");
         }
 
         LLVMBasicBlockRef bodyBlock = appendBlock("loop.body");
