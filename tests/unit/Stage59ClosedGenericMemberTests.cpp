@@ -115,11 +115,12 @@ public class Caja<T>
 {
     public T Item;
     public static int Cuenta;
-    public static Caja<T> Make(T value)
+    public Caja() { }
+    public Caja(T value) { Item = value; }
+    // Congelamiento 3.0 (C-01): el `new` va directo al retorno owned (elemento 115a); quien llama es el dueno.
+    public static owned Caja<T> Make(T value)
     {
-        Caja<T> c = new Caja<T>();
-        c.Item = value;
-        return c;
+        return new Caja<T>(value);
     }
 }
 
@@ -156,7 +157,7 @@ int main()
     // 1. LA FORMA QUE NO PARSEABA, en sus variantes.
     // -----------------------------------------------------------------------------------------
     expectValid(tests, root, "llamada_estatica", program(
-        "        Caja<int> c = Caja<int>.Make(7);\n"
+        "        raii Caja<int> c = Caja<int>.Make(7);\n"
         "        return c.Item;"));
 
     // Al principio de una sentencia. Este es el caso 2: sin el arreglo, el parser lo leia como
@@ -176,9 +177,22 @@ int main()
     // Anidado. El `>>` de cierre cuenta como DOS niveles, que es donde una implementacion
     // ingenua de la profundidad se rompe.
     expectValid(tests, root, "generico_anidado", program(
-        "        Caja<int> dentro = Caja<int>.Make(3);\n"
-        "        Caja<Caja<int>> fuera = Caja<Caja<int>>.Make(dentro);\n"
+        "        raii Caja<int> dentro = Caja<int>.Make(3);\n"
+        "        raii Caja<Caja<int>> fuera = Caja<Caja<int>>.Make(dentro);\n"
         "        return fuera.Item.Item;"));
+
+    // Un argumento de tipo GENERICO en la llamada a un metodo generico. Aqui el `>>` cierra a
+    // la vez el argumento (`Caja<int>`) y la lista del metodo; el predicado escaneaba el
+    // argumento como un tipo suelto, lo daba por invalido y la llamada se leia como
+    // comparaciones: "expected expression" en `int`.
+    // A GENERIC type argument in a generic method call. The `>>` closes the argument
+    // (`Caja<int>`) and the method list at once; the predicate scanned the argument as a
+    // standalone type, judged it invalid and the call was read as comparisons.
+    expectValid(tests, root, "metodo_generico_con_argumento_generico", program(
+        "        raii Caja<int> dentro = Caja<int>.Make(5);\n"
+        "        if (Ayuda.Envolver<Caja<int>>(dentro).Item != 5) { return 1; }\n"
+        "        raii Par<int, long> par = new Par<int, long>();\n"
+        "        return Ayuda.Envolver<Par<int, long>>(par).First;"));
 
     // El tipo cerrado como receptor de una llamada cuyo resultado se encadena.
     expectValid(tests, root, "encadenado", program(
@@ -206,7 +220,7 @@ int main()
         "        return 0;"));
 
     expectValid(tests, root, "declaracion_de_local_generico", program(
-        "        Caja<int> c = new Caja<int>();\n"
+        "        raii Caja<int> c = new Caja<int>();\n"
         "        c.Item = 4;\n"
         "        return c.Item;"));
 

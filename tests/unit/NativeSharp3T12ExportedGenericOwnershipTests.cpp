@@ -109,7 +109,7 @@ namespace GenericContracts
     const std::uint16_t ownershipFlags = kMetadataGenericRequiresCopy |
         kMetadataGenericRequiresMove | kMetadataGenericRequiresUnmanaged |
         kMetadataGenericRequiresDefaultConstructor | kMetadataGenericRequiresNotNull;
-    tests.expect(metadataRead && metadata.formatMinor == 38 &&
+    tests.expect(metadataRead && metadata.formatMinor == kMetadataFormatMinor &&
             narrow != metadata.genericTemplates.end() &&
             narrow->parameterContracts.size() == 1 &&
             (narrow->parameterContracts[0].flags & ownershipFlags) == ownershipFlags &&

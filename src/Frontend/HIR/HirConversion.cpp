@@ -1,5 +1,8 @@
 #include "HirLoweringSupport.h"
 
+#include "nativesharp/AST/AstNode.h"
+#include "nativesharp/AST/OwnershipQualifierSyntaxKind.h"
+#include "nativesharp/AST/TypeSyntax.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 
 #include <optional>
@@ -127,6 +130,77 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapFreshOwnedTemporaryBo
     temporary->children.push_back(std::move(value));
     hasOwnedTemporary = true;
     return temporary;
+}
+
+// EN: Freeze 3.0 (plan item 118): an object handed to an `owned` parameter (a `new`, a `move`, an owned
+//     return) is owned by a hidden slot from its evaluation until the call starts. A later argument that
+//     throws, or an exception that leaves the coroutine before the call, destroys it through the slot's
+//     cleanup; the call clears the slot right before it runs (booleanValue marks the transfer).
+// ES: Congelamiento 3.0 (elemento 118 del plan): un objeto entregado a un parámetro `owned` (un `new`, un
+//     `move`, un retorno owned) es de un slot oculto desde su evaluación hasta que empieza la llamada. Un
+//     argumento posterior que lanza, o una excepción que sale de la corrutina antes de la llamada, lo destruye
+//     por el cleanup del slot; la llamada limpia el slot justo antes de correr (booleanValue marca la entrega).
+std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapOwnedArgumentTransfer(
+    std::unique_ptr<ProjectOopHirNode> value,
+    const ast::AstNode* argumentSyntax,
+    bool ownedParameter,
+    bool& hasOwnedTemporary)
+{
+    if (!ownedParameter || value == nullptr || value->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow ||
+        !ownedTransferType(value->typeKey))
+        return value;
+    auto temporary = makeNode(ProjectOopHirNodeKind::OwnedTemporaryBorrow, argumentSyntax, value->typeKey);
+    temporary->localOrdinal = nextSyntheticLocalOrdinal_++;
+    temporary->cleanupRegionOrdinal = nextSyntheticCleanupRegionOrdinal_++;
+    temporary->booleanValue = true;
+    temporary->children.push_back(std::move(value));
+    hasOwnedTemporary = true;
+    return temporary;
+}
+
+bool ProjectOopHirModel::ownedValueParameter(const MethodParameterSymbol& parameter) noexcept
+{
+    return parameter.ownership == sema::OwnershipKind::Owned &&
+        parameter.passKind == ParameterPassKind::Value && !parameter.isParameterPack;
+}
+
+bool ProjectOopHirModel::ownedTransferType(std::string_view typeKey) const
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
+    const std::optional<std::size_t> ordinal = nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+    const NamedTypeDeclaration* type = ordinal.has_value() ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+    return type != nullptr &&
+        (type->kind == NamedTypeDeclarationKind::Class || type->kind == NamedTypeDeclarationKind::Interface);
+}
+
+bool ProjectOopHirModel::constructionParameterOwned(
+    std::optional<std::size_t> constructorOrdinal, std::size_t parameterIndex) const
+{
+    if (memberModel_ == nullptr || !constructorOrdinal.has_value() ||
+        *constructorOrdinal >= memberModel_->members().size())
+        return false;
+    const ClassMemberSymbol& constructor = memberModel_->members()[*constructorOrdinal];
+    return parameterIndex < constructor.parameters.size() &&
+        ownedValueParameter(constructor.parameters[parameterIndex]);
+}
+
+// EN: A delegate parameter is owned when its declaration says `owned` (a structural function type has none).
+// ES: Un parámetro de delegate es owned cuando su declaración dice `owned` (un tipo función estructural no
+//     tiene declaración).
+bool ProjectOopHirModel::delegateParameterOwned(std::size_t delegateTypeOrdinal, std::size_t index) const
+{
+    if (nameLookup_ == nullptr || delegateTypeOrdinal >= nameLookup_->namedTypes().size()) return false;
+    const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[delegateTypeOrdinal];
+    if (declaration.kind != NamedTypeDeclarationKind::Delegate || declaration.syntax == nullptr) return false;
+    std::size_t position = 0;
+    for (const ast::AstNode* child : declaration.syntax->children())
+    {
+        if (child == nullptr || child->kind() != ast::AstNodeKind::ParameterDeclaration) continue;
+        if (position++ != index) continue;
+        const ast::TypeSyntax* type = child->typeSyntax();
+        return type != nullptr && type->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::Owned;
+    }
+    return false;
 }
 
 ProjectImplicitConversion ProjectOopHirModel::classifyImplicit(

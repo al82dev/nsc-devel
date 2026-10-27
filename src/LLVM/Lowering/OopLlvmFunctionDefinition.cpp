@@ -18,7 +18,7 @@ bool OopLlvmImplementation::defineFunction(const frontend::ProjectOopMirFunction
         }
         prepareFunctionDefinitionState(function, found->second);
         LLVMBasicBlockRef entry = appendBlock("entry");
-        LLVMPositionBuilderAtEnd(builder_, entry);
+        enterBlock(entry);
         constructionThisOverride_ = nullptr;
         if (!emitRuntimeDebugTrace(1U, runtimeDebugCallableRecord(function, "ENTER"), error))
             return false;
@@ -27,14 +27,32 @@ bool OopLlvmImplementation::defineFunction(const frontend::ProjectOopMirFunction
         if (!initializeFunctionReceiver(function, error) ||
             !initializeCapturedThis(function, error) ||
             !initializeFunctionParameters(function, sretReturn, error)) return false;
+        emitClosureCaptureDebugVariables(function);
 
         // NS304-T05-F10: expose the future's state discriminant as an artificial debug variable
         // (offset 0) so a debugger can inspect 0/-1/1..N. Only for the poll (self = parameter 0).
         emitPollStateDebugVariable(function);
         if (!prepareFunctionCleanupState(function, error)) return false;
+        // EN: Freeze 3.0 C-02: a poll/MoveNext dispatches on its state before the body.
+        // ES: Congelamiento 3.0 C-02: un poll/MoveNext despacha sobre su estado antes del cuerpo.
+        if (!beginCoroutineDispatch(function, error)) return false;
+        // EN: Freeze 3.0 DEC-11: element accesses of arrays with live bits, before the body.
+        // ES: Congelamiento 3.0 DEC-11: accesos a elementos de arreglos con bits de vida.
+        classifyArrayElementAccesses(function.body.get());
         if (!lowerStatement(function.body.get(), error)) return false;
+        if (!finishCoroutineDispatch(error)) return false;
         return finishFunctionDefinition(function, error);
     }
+
+std::string OopLlvmImplementation::localValueName(
+        std::size_t localOrdinal,
+        std::string_view prefix,
+        std::string_view suffix)
+{
+        const auto [entry, inserted] = localNameNumbers_.try_emplace(localOrdinal, localNameNumbers_.size());
+        (void)inserted;
+        return std::string(prefix) + std::to_string(entry->second) + std::string(suffix);
+}
 
 void OopLlvmImplementation::prepareFunctionDefinitionState(
         const frontend::ProjectOopMirFunction& function,
@@ -46,6 +64,7 @@ void OopLlvmImplementation::prepareFunctionDefinitionState(
         currentDebugScope_ = currentDebugSubprogram_;
         debugDeclaredLocals_.clear();
         debugCaptureVariables_.clear();
+        closureCaptureAddresses_.clear();
         currentDebugFileKey_ = 0;
         if (function.namespaceFunctionOrdinal.has_value() && function.body != nullptr &&
             function.body->syntax != nullptr && function.body->syntax->range().isValid())
@@ -57,11 +76,13 @@ void OopLlvmImplementation::prepareFunctionDefinitionState(
                 LLVMDIBuilderCreateDebugLocation(context_, 0, 0, currentDebugSubprogram_, nullptr));
         parameterStorage_.clear();
         localStorage_.clear();
+        localNameNumbers_.clear();
         parameterValueDropFlags_.clear();
         localValueDropFlags_.clear();
         stackObjectStorage_.clear();
         parameterCaptureCells_.clear();
         localCaptureCells_.clear();
+        coroutineCapturedLocals_.clear();
         thisCaptureCell_ = nullptr;
         ownedCaptureCells_.clear();
         captureCellExceptionalCleanupBlock_ = nullptr;
@@ -191,8 +212,10 @@ bool OopLlvmImplementation::initializeFunctionParameter(
         }
         LLVMTypeRef type = llvmType(function.parameterTypeKeys[index], error);
         if (type == nullptr) return false;
-        LLVMValueRef storage = LLVMBuildAlloca(
-            builder_, type, (parameterName + ".addr").c_str());
+        // ES: Toda ranura de pila de la función vive en el bloque de entrada (ver
+        // collectLocalStorage).
+        // EN: Every stack slot of the function lives in the entry block (see collectLocalStorage).
+        LLVMValueRef storage = entryBlockAlloca(type, 0, (parameterName + ".addr").c_str());
         LLVMBuildStore(builder_, value, storage);
         parameterStorage_[index] = storage;
         return emitDebugParameter(function, index, storage, error);
@@ -246,23 +269,22 @@ bool OopLlvmImplementation::prepareFunctionCleanupState(
             LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
             if (cleanup.localOrdinal.has_value())
             {
-                LLVMValueRef flag = LLVMBuildAlloca(
-                    builder_, flagType,
-                    ("drop.flag.l" + std::to_string(*cleanup.localOrdinal)).c_str());
+                LLVMValueRef flag = entryBlockAlloca(
+                    flagType, 0, localValueName(*cleanup.localOrdinal, "drop.flag.l", "").c_str());
                 LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag);
                 localValueDropFlags_[*cleanup.localOrdinal] = flag;
             }
             else if (cleanup.parameterOrdinal.has_value())
             {
-                LLVMValueRef flag = LLVMBuildAlloca(
-                    builder_, flagType,
+                LLVMValueRef flag = entryBlockAlloca(
+                    flagType, 0,
                     ("drop.flag.p" + std::to_string(*cleanup.parameterOrdinal)).c_str());
                 LLVMBuildStore(builder_, LLVMConstInt(flagType, 1, 0), flag);
                 parameterValueDropFlags_[*cleanup.parameterOrdinal] = flag;
             }
         }
         const bool hasExceptionalControl = function.exceptionFlow.requiresPersonality;
-        if (hasExceptionalControl || !ownedCaptureCells_.empty())
+        if (hasExceptionalControl || !ownedCaptureCells_.empty() || !coroutineCapturedLocals_.empty())
             LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
         if (function.constructor || function.returnTypeKey == "builtin:void" ||
             !hasExceptionalControl) return true;
@@ -270,9 +292,8 @@ bool OopLlvmImplementation::prepareFunctionCleanupState(
             ? LLVMPointerTypeInContext(context_, 0)
             : llvmType(function.returnTypeKey, error);
         if (returnType == nullptr) return false;
-        returnStorage_ = LLVMBuildAlloca(builder_, returnType, "eh.return.addr");
-        const unsigned returnAlignment = structAlignmentFor(function.returnTypeKey);
-        if (returnAlignment > 1U) LLVMSetAlignment(returnStorage_, returnAlignment);
+        returnStorage_ = entryBlockAlloca(
+            returnType, structAlignmentFor(function.returnTypeKey), "eh.return.addr");
         return true;
     }
 
@@ -373,18 +394,47 @@ bool OopLlvmImplementation::collectLocalStorage(
             currentMirFunction_->capturedLocalOrdinals,
             *node->localOrdinal) != currentMirFunction_->capturedLocalOrdinals.end();
         LLVMValueRef slot = nullptr;
+        // EN: Freeze 3.0 C-17: an async-generator poll is a frame-resident coroutine now, so a
+        //     captured local keeps its cell in the frame like any other coroutine's (C-05); the
+        //     former rejection of this case was lifted.
+        // ES: Congelamiento 3.0 C-17: el poll de un generador async ahora es una corrutina con frame
+        //     residente, asi que un local capturado guarda su celda en el frame como en cualquier
+        //     otra corrutina (C-05); se retiro el rechazo que existia para este caso.
+        if (captured && isFrameResidentCoroutine(*currentMirFunction_))
+        {
+            // EN: Freeze 3.0 C-05: the cell outlives this call; aliasCoroutineFrameLocals finds it
+            //     in the frame or creates it on the first entry.
+            // ES: Congelamiento 3.0 C-05: la celda sobrevive a esta llamada;
+            //     aliasCoroutineFrameLocals la encuentra en el frame o la crea en la primera entrada.
+            coroutineCapturedLocals_.emplace(*node->localOrdinal, typeKey);
+            localStorage_[*node->localOrdinal] = nullptr;
+            return true;
+        }
         if (captured)
         {
             LLVMValueRef cell = allocateCaptureCell(
-                typeKey, slot, "capture.local" + std::to_string(*node->localOrdinal), error);
+                typeKey, slot, localValueName(*node->localOrdinal, "capture.local", ""), error);
             if (cell == nullptr || slot == nullptr) return false;
             localCaptureCells_[*node->localOrdinal] = cell;
             ownedCaptureCells_.push_back(cell);
         }
         else
         {
-            slot = LLVMBuildAlloca(
-                builder_, type, ("local" + std::to_string(*node->localOrdinal) + ".addr").c_str());
+            // ES: La ranura se crea en el bloque de entrada aunque el builder ya esté en otro
+            // bloque. Una celda de captura anterior (o la de un parámetro) emite una reserva en el
+            // montón con su comprobación de null, que cierra el bloque de entrada; los locales que
+            // venían después quedaban como `alloca` dinámicos. LLVM los describía en el PDB con
+            // ubicaciones indirectas, a otros los perdía (en DeepFunctional faltaban `shifted` y
+            // `same`), y un `alloca` fuera del bloque de entrada vuelve a reservar pila cada vez
+            // que se ejecuta.
+            // EN: The slot is created in the entry block even when the builder already sits in
+            // another block. An earlier capture cell (or a parameter's) emits a heap allocation with
+            // its null check, which closes the entry block; the locals that came after became
+            // dynamic `alloca`s. LLVM described them in the PDB with indirect locations, lost others
+            // (DeepFunctional was missing `shifted` and `same`), and an `alloca` outside the entry
+            // block reserves stack again every time it runs.
+            slot = entryBlockAlloca(
+                type, 0, localValueName(*node->localOrdinal, "local", ".addr").c_str());
         }
         // An indirect-struct carrier is [N x i8], whose alloca defaults to align 1 --
         // but member accesses through the slot do naturally-aligned typed loads and
@@ -412,10 +462,9 @@ void OopLlvmImplementation::collectStackPromotedObjectStorage(
         }
         const frontend::ProjectOopMirNode* construction = node->children.front().get();
         LLVMTypeRef bytes = LLVMArrayType2(LLVMInt8TypeInContext(context_), construction->immediate);
-        LLVMValueRef object = LLVMBuildAlloca(
-            builder_, bytes, ("local" + std::to_string(*node->localOrdinal) + ".object").c_str());
-        if (construction->alignment > 1U)
-            LLVMSetAlignment(object, static_cast<unsigned>(construction->alignment));
+        LLVMValueRef object = entryBlockAlloca(
+            bytes, static_cast<unsigned>(construction->alignment),
+            localValueName(*node->localOrdinal, "local", ".object").c_str());
         stackObjectStorage_[*node->localOrdinal] = object;
     }
 

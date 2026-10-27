@@ -25,18 +25,6 @@
 
 namespace nativesharp::frontend
 {
-std::size_t ProjectCompilationIndexes::TransparentStringHash::operator()(
-    std::string_view value) const noexcept
-{
-    return std::hash<std::string_view>{}(value);
-}
-
-std::size_t ProjectCompilationIndexes::TransparentStringHash::operator()(
-    const std::string& value) const noexcept
-{
-    return (*this)(std::string_view(value));
-}
-
 void ProjectCompilationIndexes::clear() noexcept
 {
     typeIndexBuilt_ = false;

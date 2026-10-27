@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/LLVM/CodeUnitTelemetry.h"
+#include "nativesharp/LLVM/ThinLtoLibraryObjects.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -27,6 +28,28 @@ public:
     std::size_t cacheMissCount() const noexcept;
     std::size_t thinLtoSummaryCount() const noexcept;
     const std::string& thinLtoIndexDigest() const noexcept;
+    // Function definitions the ThinLTO backends imported across code units, and the backends served
+    // by the backend cache. Funciones que los backends ThinLTO importaron entre unidades y backends
+    // que sirvio el cache de backends.
+    std::size_t thinLtoImportCount() const noexcept;
+    std::size_t thinLtoCachedBackendCount() const noexcept;
+    // Optimized IR of every code unit after its ThinLTO backend, when the generator was asked to
+    // capture it; empty otherwise. IR optimizado de cada unidad tras su backend ThinLTO.
+    std::span<const std::string> thinLtoFinalModuleTexts() const noexcept;
+    // Summary bitcode of every ThinLTO code unit and the compatibility identity it was built for,
+    // when the generator was asked to keep them for a library sidecar (item 48); empty otherwise.
+    // Bitcode con resumen de cada unidad ThinLTO y la identidad de compatibilidad con que se hizo,
+    // cuando se pidio conservarlos para un sidecar de biblioteca (punto 48); vacio en otro caso.
+    std::span<const std::string> thinLtoUnitBitcode() const noexcept;
+    const std::string& thinLtoCompatibility() const noexcept;
+    // Objects of the units of every consumed library sidecar, in the order the generator received
+    // them (item 48). Objetos de las unidades de cada sidecar de biblioteca consumido, en el orden
+    // en que los recibio el generador (punto 48).
+    std::span<const ThinLtoLibraryObjects> thinLtoLibraryObjects() const noexcept;
+    // True when the ThinLTO backends internalized for a final link; the linker must then drop the
+    // sections nothing references (item 50). Verdadero cuando los backends ThinLTO internalizaron
+    // para un enlace final; el enlazador debe tirar entonces las secciones sin referencia (punto 50).
+    bool thinLtoInternalized() const noexcept;
     std::span<const CodeUnitTelemetry> codeUnitTelemetry() const noexcept;
 
 private:
@@ -42,6 +65,13 @@ private:
     std::size_t cacheMissCount_ = 0;
     std::size_t thinLtoSummaryCount_ = 0;
     std::string thinLtoIndexDigest_;
+    std::size_t thinLtoImportCount_ = 0;
+    std::size_t thinLtoCachedBackendCount_ = 0;
+    std::vector<std::string> thinLtoFinalModuleTexts_;
+    std::vector<std::string> thinLtoUnitBitcode_;
+    std::string thinLtoCompatibility_;
+    std::vector<ThinLtoLibraryObjects> thinLtoLibraryObjects_;
+    bool thinLtoInternalized_ = false;
     std::vector<CodeUnitTelemetry> codeUnitTelemetry_;
 };
 }

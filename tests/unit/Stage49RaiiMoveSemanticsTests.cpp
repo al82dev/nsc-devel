@@ -236,7 +236,7 @@ class Harness
         return move(escapedOwner);
     }
 
-    public static void Throwing()
+    public static void Throwing() throws Problem
     {
         raii Resource protectedOwner = new Resource(6);
         throw new Problem();

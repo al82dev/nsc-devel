@@ -1,14 +1,27 @@
 {
   "id": "nsc.invalid.unresolved-link",
   "component": "diagnostics",
-  "kind": "link-run",
-  "sources": ["linker_unresolved_symbol.ns"],
-  "arguments": ["--emit-exe", "{source:0}", "-o", "{workspace}/unresolved.exe"],
+  "kind": "semantic",
+  "sources": [
+    "linker_unresolved_symbol.ns"
+  ],
+  "arguments": [
+    "--emit-exe",
+    "{source:0}",
+    "-o",
+    "{workspace}/unresolved.exe"
+  ],
   "optimization": "O0",
   "expected": {
     "exit_code": 1,
-    "stderr": {"mode": "contains", "text": "unresolved external symbol: 'MissingNativeSymbol'"}
+    "stderr": {
+      "mode": "contains",
+      "text": "an 'extern C' import outside a class is not supported in NativeSharp 3.0"
+    }
   },
-  "tags": ["integration", "negative", "nslink"],
-  "requires": ["nslink"]
+  "tags": [
+    "integration",
+    "negative"
+  ],
+  "requires": []
 }

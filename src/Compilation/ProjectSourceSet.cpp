@@ -1,7 +1,11 @@
 #include "nativesharp/Compilation/ProjectSourceSet.h"
 
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
+
 #include <algorithm>
 #include <cctype>
+#include <numeric>
 #include <system_error>
 
 namespace nativesharp::compilation
@@ -20,13 +24,18 @@ bool ProjectSourceSet::add(const std::filesystem::path& sourcePath, std::string&
     }
 
     std::error_code filesystemError;
-    const std::filesystem::path canonicalProject =
-        std::filesystem::weakly_canonical(projectDirectory_, filesystemError);
-    if (filesystemError || !std::filesystem::is_directory(canonicalProject))
+    if (!canonicalProjectDirectory_)
     {
-        error = "project directory does not exist: '" + projectDirectory_.string() + "'";
-        return false;
+        const std::filesystem::path resolvedProject =
+            std::filesystem::weakly_canonical(projectDirectory_, filesystemError);
+        if (filesystemError || !std::filesystem::is_directory(resolvedProject))
+        {
+            error = "project directory does not exist: '" + projectDirectory_.string() + "'";
+            return false;
+        }
+        canonicalProjectDirectory_ = resolvedProject;
     }
+    const std::filesystem::path& canonicalProject = *canonicalProjectDirectory_;
 
     const std::filesystem::path unresolved = sourcePath.is_absolute()
         ? sourcePath
@@ -54,20 +63,38 @@ bool ProjectSourceSet::add(const std::filesystem::path& sourcePath, std::string&
     }
 
     const std::string candidateKey = comparisonKey(relative);
-    const auto duplicate = std::find_if(
-        sources_.begin(),
-        sources_.end(),
-        [&candidateKey](const ProjectSource& source)
-        {
-            return comparisonKey(source.projectRelativePath) == candidateKey;
-        });
-    if (duplicate != sources_.end())
+    if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        shadowCheckDuplicateKey(candidateKey, "ProjectSourceSet::add");
+    if (!sourceKeys_.insert(candidateKey).second)
     {
         error = "duplicate project source: '" + relative.generic_string() + "'";
         return false;
     }
 
     sources_.push_back(ProjectSource{canonicalSource, relative, 0});
+    return true;
+}
+
+bool ProjectSourceSet::addCanonical(
+    const std::filesystem::path& canonicalSource,
+    const std::filesystem::path& projectRelativePath,
+    std::string& error)
+{
+    if (finalized_)
+    {
+        error = "cannot add a source after the project source set was finalized";
+        return false;
+    }
+    const std::string candidateKey = comparisonKey(projectRelativePath);
+    if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        shadowCheckDuplicateKey(candidateKey, "ProjectSourceSet::addCanonical");
+    if (!sourceKeys_.insert(candidateKey).second)
+    {
+        error = "duplicate project source: '" + projectRelativePath.generic_string() + "'";
+        return false;
+    }
+
+    sources_.push_back(ProjectSource{canonicalSource, projectRelativePath, 0});
     return true;
 }
 
@@ -83,19 +110,38 @@ bool ProjectSourceSet::finalize(std::string& error, bool allowEmpty)
         return false;
     }
 
+    // Same order as comparing (comparisonKey, generic spelling) pairs, but each key is computed
+    // once per source instead of once per comparison. The order is total (duplicate keys are
+    // rejected by add), so sorting indices yields exactly the historical sequence.
+    std::vector<std::string> keys;
+    std::vector<std::string> spellings;
+    keys.reserve(sources_.size());
+    spellings.reserve(sources_.size());
+    for (const ProjectSource& source : sources_)
+    {
+        keys.push_back(comparisonKey(source.projectRelativePath));
+        spellings.push_back(source.projectRelativePath.generic_string());
+    }
+    std::vector<std::size_t> order(sources_.size());
+    std::iota(order.begin(), order.end(), std::size_t{0});
     std::sort(
-        sources_.begin(),
-        sources_.end(),
-        [](const ProjectSource& left, const ProjectSource& right)
+        order.begin(),
+        order.end(),
+        [&keys, &spellings](std::size_t left, std::size_t right)
         {
-            const std::string leftKey = comparisonKey(left.projectRelativePath);
-            const std::string rightKey = comparisonKey(right.projectRelativePath);
-            if (leftKey != rightKey)
+            if (keys[left] != keys[right])
             {
-                return leftKey < rightKey;
+                return keys[left] < keys[right];
             }
-            return left.projectRelativePath.generic_string() < right.projectRelativePath.generic_string();
+            return spellings[left] < spellings[right];
         });
+    std::vector<ProjectSource> sorted;
+    sorted.reserve(sources_.size());
+    for (const std::size_t index : order)
+    {
+        sorted.push_back(std::move(sources_[index]));
+    }
+    sources_ = std::move(sorted);
 
     for (std::size_t index = 0; index < sources_.size(); ++index)
     {
@@ -132,6 +178,20 @@ std::string ProjectSourceSet::comparisonKey(const std::filesystem::path& path)
             return static_cast<char>(std::tolower(value));
         });
     return key;
+}
+
+void ProjectSourceSet::shadowCheckDuplicateKey(const std::string& key, std::string_view function) const
+{
+    // Validation builds only: the key set must answer like the former scan of every source.
+    if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+    {
+        const bool scanned = std::ranges::any_of(sources_, [&key](const ProjectSource& source)
+        {
+            return comparisonKey(source.projectRelativePath) == key;
+        });
+        if (scanned != sourceKeys_.contains(key))
+            frontend::internal::reportIndexShadowMismatch(function, key);
+    }
 }
 
 bool ProjectSourceSet::escapesProject(const std::filesystem::path& relativePath) noexcept

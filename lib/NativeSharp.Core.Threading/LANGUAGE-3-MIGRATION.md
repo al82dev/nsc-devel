@@ -91,3 +91,19 @@ La emisión PE O0 enlazó dos bibliotecas y el ejecutable terminó con el códig
 ## Estado
 
 `Verificado` para compilación de biblioteca O0, consumo binario, enlace NSLink y la prueba puntual descrita.
+
+## Nota de distribución / Distribution note (2026-10-25)
+
+ES: En `nsc-devel/lib` y en la distribución (`C:\native-sharp\lib`) esta biblioteca se entrega como fuente,
+junto a `NativeSharp.Core`, sin un `NativeSharpCore.lib` en su carpeta. La `LibraryReference` relativa a
+`NativeSharpCore.lib` que trajo la sincronización del 2026-10-05 no existía ahí, así que ni la biblioteca ni
+sus consumidores compilaban ("referenced library does not exist"). El proyecto vuelve a referenciar Core como
+proyecto: `../NativeSharp.Core/NativeSharp.Core.nsproj`. La referencia binaria sigue siendo la forma de
+`nativesharp-libraries`, donde `NativeSharpCore.lib` sí se construye al lado.
+
+EN: In `nsc-devel/lib` and in the distribution (`C:\native-sharp\lib`) this library ships as source, next to
+`NativeSharp.Core`, with no `NativeSharpCore.lib` in its folder. The `LibraryReference` to a relative
+`NativeSharpCore.lib` brought by the 2026-10-05 sync did not exist there, so neither the library nor its
+consumers compiled ("referenced library does not exist"). The project references Core as a project again:
+`../NativeSharp.Core/NativeSharp.Core.nsproj`. The binary reference remains the form used in
+`nativesharp-libraries`, where `NativeSharpCore.lib` is built alongside.

@@ -172,7 +172,7 @@ namespace Stage47.Host
         public static export extern C void* EchoPointer(void* value) { return value; }
         public static export extern C Pair EchoPair(Pair value) { return value; }
         public static export extern C Mode EchoMode(Mode value) { return value; }
-        public static export extern C Counter CounterCreate(int value) { return new Counter(value); }
+        public static export extern C owned Counter CounterCreate(int value) { return new Counter(value); }
         public static export extern C int CounterGet(Counter counter) { return counter.Value; }
         public static export extern C void CounterDestroy(Counter counter) { delete counter; }
 

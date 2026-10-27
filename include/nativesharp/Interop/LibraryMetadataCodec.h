@@ -54,6 +54,13 @@ public:
         std::span<const std::uint8_t> bytes,
         LibraryMetadata& metadata,
         std::string& error) const;
+    // Decodes bytes whose content was already authenticated by a previous read (the repository
+    // records the content digest of every file that passed verification). The header is checked as
+    // in `read`; the payload checksum and the ABI fingerprint are not recomputed.
+    bool readAuthenticated(
+        std::span<const std::uint8_t> bytes,
+        LibraryMetadata& metadata,
+        std::string& error) const;
 
     bool verifyCurrentCompiler(
         const LibraryMetadata& metadata,
@@ -62,6 +69,11 @@ public:
     static std::string fingerprintHex(const std::array<std::uint8_t, 32>& fingerprint);
 
 private:
+    bool readBytes(
+        std::span<const std::uint8_t> bytes,
+        bool authenticate,
+        LibraryMetadata& metadata,
+        std::string& error) const;
     bool writeModelImpl(
         const LibraryMetadata& model,
         const std::filesystem::path& destination,

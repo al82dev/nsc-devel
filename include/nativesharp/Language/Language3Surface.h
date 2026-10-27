@@ -37,6 +37,12 @@ constexpr bool staticInitializationStateMayRetry(
     return state == StaticInitializationState::Uninitialized;
 }
 
+// EN: Freeze 3.0 C-06: the deliberate rejection of a list pattern in a `case` label.
+// ES: Congelamiento 3.0 C-06: el rechazo deliberado de un list pattern en una etiqueta `case`.
+inline constexpr std::string_view kListPatternCaseLabelMessage =
+    "list patterns are supported in 'match' and 'is', not in 'case' labels; "
+    "use a match expression over the value";
+
 std::span<const Language3SurfaceEntry> language3Surface() noexcept;
 const Language3SurfaceEntry& language3SurfaceEntry(Language3Feature feature) noexcept;
 std::string language3SurfaceManifest();

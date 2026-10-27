@@ -129,6 +129,12 @@ bool ProjectGenericModel::tryRestoreTemplateRecord(
     {
         record.extensionSyntaxes = extensions->second;
     }
+    // Dependencies belong to the compilation that stored the payload. The dependency discovery of
+    // this build fills them for every template, restored or collected cold, so they start empty
+    // here exactly as in a cold record.
+    record.dependencies.clear();
+    record.unresolvedDependencies.clear();
+    record.externalTypeReferences.clear();
 
     if (isGenericTypeTemplateNode(node))
     {
@@ -167,7 +173,7 @@ bool ProjectGenericModel::tryRestoreTemplateRecord(
     record.c1CacheKey = key;
     telemetry_.noteTemplate(static_cast<std::size_t>(record.kind));
     templateStates_.push_back(
-        TemplateState{std::move(record), &unit, node, parent, templateStates_.size()});
+        TemplateState{std::move(record), &unit, node, parent, templateStates_.size(), {}});
     return true;
 }
 

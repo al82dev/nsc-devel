@@ -880,6 +880,7 @@ void ProjectGenericModel::cloneGenericConstraints(
         copy.requiresUnmanaged = clause.requiresUnmanaged;
         copy.requiresNotNull = clause.requiresNotNull;
         copy.requiresRefLike = clause.requiresRefLike;
+        copy.enclosingTypeParameter = clause.enclosingTypeParameter;
         copy.equalityConstraint = cloneType(arena, clause.equalityConstraint, substitutions);
         copy.associatedProjection = cloneType(
             arena, clause.associatedProjection, substitutions);
@@ -898,6 +899,14 @@ void ProjectGenericModel::cloneGenericConstraints(
             ast::TypeSyntax* substitutedArgument = cloneType(arena, found->second, substitutions);
             preserveOrAttachInstantiationOrigin(substitutedArgument);
             copy.substitutedArgument = substitutedArgument;
+        }
+        else if (clause.enclosingTypeParameter && clause.substitutedArgument != nullptr)
+        {
+            // EN: Freeze 3.0 P1: a member clause keeps the argument of its closed type when the
+            //     member is cloned again without that parameter.
+            // ES: Congelamiento 3.0 P1: una clausula de miembro conserva el argumento de su tipo
+            //     cerrado cuando el miembro se vuelve a clonar sin ese parametro.
+            copy.substitutedArgument = cloneType(arena, clause.substitutedArgument, substitutions);
         }
         result->addGenericConstraint(std::move(copy));
     }

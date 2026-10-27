@@ -20,7 +20,7 @@ namespace NativeSharp.BookExamples.Deque
             return c;
         }
 
-        public static bool IsPalindrome(string text)
+        public static bool IsPalindrome(string text) throws InvalidOperationException
         {
             raii ArrayDeque<char> deque = new ArrayDeque<char>(8);
             int i = 0;

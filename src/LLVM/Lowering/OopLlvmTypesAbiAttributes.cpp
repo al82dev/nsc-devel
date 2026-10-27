@@ -47,7 +47,7 @@ bool OopLlvmImplementation::ensureAllocatorDescriptorSidecar(std::string& error)
         LLVMBasicBlockRef savedBlock = LLVMGetInsertBlock(builder_);
         LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(
             context_, allocatorDescriptorSidecarReleaseFunction_, "entry");
-        LLVMPositionBuilderAtEnd(builder_, entry);
+        enterBlock(entry);
         LLVMValueRef object = LLVMGetParam(allocatorDescriptorSidecarReleaseFunction_, 0);
         LLVMSetValueName2(object, "object", 6);
         LLVMValueRef sidecar = LLVMBuildLoad2(builder_, ptr, object, "allocator.sidecar");
@@ -80,7 +80,7 @@ bool OopLlvmImplementation::ensureAllocatorDescriptorSidecar(std::string& error)
         LLVMBuildRetVoid(builder_);
         applyFunctionAttribute(allocatorDescriptorSidecarReleaseFunction_, "nounwind");
 
-        if (savedBlock != nullptr) LLVMPositionBuilderAtEnd(builder_, savedBlock);
+        if (savedBlock != nullptr) enterBlock(savedBlock);
         return true;
     }
 
@@ -113,7 +113,7 @@ bool OopLlvmImplementation::installAllocatorDescriptorSidecar(
         LLVMBasicBlockRef failureBlock = appendBlock("allocator.sidecar.failure");
         LLVMBuildCondBr(builder_, sidecarValid, readyBlock, failureBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, failureBlock);
+        enterBlock(failureBlock);
         LLVMValueRef releaseArguments[] = {context, object};
         buildNoUnwindCall(allocatorFreeThunkType_, thunk, releaseArguments, 2, "");
         LLVMValueRef reason = LLVMConstInt(
@@ -123,7 +123,7 @@ bool OopLlvmImplementation::installAllocatorDescriptorSidecar(
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
         LLVMBuildUnreachable(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, readyBlock);
+        enterBlock(readyBlock);
         LLVMValueRef sidecarDescriptorAddress = LLVMBuildStructGEP2(
             builder_, allocatorDescriptorSidecarType_, sidecar, 0,
             "allocator.sidecar.descriptor.addr");
@@ -168,12 +168,12 @@ LLVMBasicBlockRef OopLlvmImplementation::emitAllocatorConstructionFailureCleanup
 
         LLVMValueRef parentPad = activeFuncletPad();
         LLVMBasicBlockRef cleanupBlock = appendBlock("placement.ctor.failure");
-        LLVMPositionBuilderAtEnd(builder_, cleanupBlock);
+        enterBlock(cleanupBlock);
         LLVMValueRef cleanupPad = LLVMBuildCleanupPad(
             builder_, parentPad, nullptr, 0, "placement.ctor.failure.pad");
         if (cleanupPad == nullptr)
         {
-            LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+            enterBlock(sourceBlock);
             error = "NS304-T13-F07 failed to create constructor failure cleanuppad";
             return nullptr;
         }
@@ -205,16 +205,21 @@ LLVMBasicBlockRef OopLlvmImplementation::emitAllocatorConstructionFailureCleanup
             deallocationFunctionType_, deallocationFunction_, freeSidecarArguments, 1, "");
         LLVMBuildCleanupRet(builder_, cleanupPad, outerUnwind);
         funcletStack_.pop_back();
-        LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+        enterBlock(sourceBlock);
         return cleanupBlock;
     }
 
 LLVMValueRef OopLlvmImplementation::allocatorDeallocateThunk(
         std::size_t allocatorTypeOrdinal,
         std::string_view deallocateCalleeName,
+        std::uint64_t objectSize,
+        std::uint64_t objectAlignment,
         std::string& error)
 {
-        const auto existing = allocatorThunks_.find(allocatorTypeOrdinal);
+        const std::string thunkName =
+            "__nativesharp_allocator_deallocate_" + std::to_string(allocatorTypeOrdinal) + "_" +
+            std::to_string(objectSize) + "_" + std::to_string(objectAlignment);
+        const auto existing = allocatorThunks_.find(thunkName);
         if (existing != allocatorThunks_.end()) return existing->second;
         const auto target = functions_.find(std::string(deallocateCalleeName));
         if (target == functions_.end())
@@ -228,21 +233,23 @@ LLVMValueRef OopLlvmImplementation::allocatorDeallocateThunk(
             LLVMPointerTypeInContext(context_, 0), LLVMPointerTypeInContext(context_, 0)};
         LLVMTypeRef thunkType =
             LLVMFunctionType(LLVMVoidTypeInContext(context_), thunkParams, 2, 0);
-        const std::string thunkName =
-            "__nativesharp_allocator_deallocate_" + std::to_string(allocatorTypeOrdinal);
         LLVMValueRef thunk = LLVMAddFunction(module_, thunkName.c_str(), thunkType);
         LLVMSetLinkage(thunk, LLVMInternalLinkage);
         LLVMValueRef contextParam = LLVMGetParam(thunk, 0);
         LLVMValueRef pointerParam = LLVMGetParam(thunk, 1);
         LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context_, thunk, "entry");
-        LLVMPositionBuilderAtEnd(builder_, entry);
-        LLVMValueRef args[] = {contextParam, pointerParam};
-        LLVMBuildCall2(builder_, target->second.functionType, target->second.function, args, 2, "");
+        enterBlock(entry);
+        LLVMValueRef args[] = {
+            contextParam,
+            pointerParam,
+            LLVMConstInt(LLVMInt64TypeInContext(context_), objectSize, 0),
+            LLVMConstInt(LLVMInt32TypeInContext(context_), objectAlignment, 0)};
+        LLVMBuildCall2(builder_, target->second.functionType, target->second.function, args, 4, "");
         LLVMBuildRetVoid(builder_);
         applyFunctionAttribute(thunk, "nounwind");
-        allocatorThunks_[allocatorTypeOrdinal] = thunk;
+        allocatorThunks_[thunkName] = thunk;
         if (savedBlock != nullptr)
-            LLVMPositionBuilderAtEnd(builder_, savedBlock);
+            enterBlock(savedBlock);
         return thunk;
     }
 
@@ -426,10 +433,10 @@ LLVMValueRef OopLlvmImplementation::entryBlockAlloca(LLVMTypeRef type, unsigned 
         LLVMBasicBlockRef entry = LLVMGetEntryBasicBlock(currentFunction_);
         LLVMValueRef first = LLVMGetFirstInstruction(entry);
         if (first != nullptr) LLVMPositionBuilderBefore(builder_, first);
-        else LLVMPositionBuilderAtEnd(builder_, entry);
+        else enterBlock(entry);
         LLVMValueRef slot = LLVMBuildAlloca(builder_, type, name);
         if (alignment > 1U) LLVMSetAlignment(slot, alignment);
-        LLVMPositionBuilderAtEnd(builder_, saved);
+        enterBlock(saved);
         return slot;
     }
 
@@ -471,6 +478,18 @@ LLVMBasicBlockRef OopLlvmImplementation::appendBlock(const std::string& stem)
         return LLVMAppendBasicBlockInContext(context_, currentFunction_, name.c_str());
     }
 
+void OopLlvmImplementation::enterBlock(LLVMBasicBlockRef block)
+{
+        if (block != nullptr && LLVMGetFirstInstruction(block) == nullptr)
+        {
+            LLVMValueRef function = LLVMGetBasicBlockParent(block);
+            LLVMBasicBlockRef last = function != nullptr ? LLVMGetLastBasicBlock(function) : nullptr;
+            if (last != nullptr && last != block && block != LLVMGetEntryBasicBlock(function))
+                LLVMMoveBasicBlockAfter(block, last);
+        }
+        LLVMPositionBuilderAtEnd(builder_, block);
+    }
+
 bool OopLlvmImplementation::emitDecimalScaleOverflow(LLVMValueRef effectiveScale, const char* stem, std::string& error)
 {
         LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
@@ -481,7 +500,7 @@ bool OopLlvmImplementation::emitDecimalScaleOverflow(LLVMValueRef effectiveScale
         LLVMBasicBlockRef okBlock = appendBlock(std::string(stem) + ".ok");
         LLVMBasicBlockRef trapBlock = appendBlock(std::string(stem) + ".trap");
         LLVMBuildCondBr(builder_, overflow, trapBlock, okBlock);
-        LLVMPositionBuilderAtEnd(builder_, trapBlock);
+        enterBlock(trapBlock);
         if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
             return fail(error, "decimal scale overflow but no trap is configured");
         LLVMValueRef reason = LLVMConstInt(
@@ -490,7 +509,7 @@ bool OopLlvmImplementation::emitDecimalScaleOverflow(LLVMValueRef effectiveScale
         LLVMValueRef trapArguments[] = { reason };
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
         LLVMBuildUnreachable(builder_);
-        LLVMPositionBuilderAtEnd(builder_, okBlock);
+        enterBlock(okBlock);
         return true;
     }
 
@@ -504,13 +523,13 @@ LLVMValueRef OopLlvmImplementation::buildPow10(LLVMValueRef exponent, const char
         LLVMValueRef one = LLVMConstInt(lane, 1, 0);
         LLVMValueRef ten = LLVMConstInt(lane, 10, 0);
         LLVMBuildBr(builder_, header);
-        LLVMPositionBuilderAtEnd(builder_, header);
+        enterBlock(header);
         LLVMValueRef accumulator = LLVMBuildPhi(builder_, lane, "decimal.pow10.acc");
         LLVMValueRef remaining = LLVMBuildPhi(builder_, lane, "decimal.pow10.rem");
         LLVMValueRef done = LLVMBuildICmp(
             builder_, LLVMIntEQ, remaining, LLVMConstInt(lane, 0, 0), "decimal.pow10.done");
         LLVMBuildCondBr(builder_, done, exit, body);
-        LLVMPositionBuilderAtEnd(builder_, body);
+        enterBlock(body);
         LLVMValueRef nextAcc = LLVMBuildMul(builder_, accumulator, ten, "decimal.pow10.mul");
         LLVMValueRef nextRem = LLVMBuildSub(builder_, remaining, one, "decimal.pow10.dec");
         LLVMBuildBr(builder_, header);
@@ -518,7 +537,7 @@ LLVMValueRef OopLlvmImplementation::buildPow10(LLVMValueRef exponent, const char
         LLVMAddIncoming(accumulator, &nextAcc, &body, 1);
         LLVMAddIncoming(remaining, &exponent, &preheader, 1);
         LLVMAddIncoming(remaining, &nextRem, &body, 1);
-        LLVMPositionBuilderAtEnd(builder_, exit);
+        enterBlock(exit);
         return accumulator;
     }
 

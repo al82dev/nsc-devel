@@ -7,7 +7,7 @@
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {"mode": "contains", "text": "bounds.check"}
+    "stdout": {"mode": "contains", "text": "raw-element-address type=builtin:int"}
   },
   "tags": ["integration", "legacy-parity", "mir"],
   "requires": []

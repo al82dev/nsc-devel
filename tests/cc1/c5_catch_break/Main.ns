@@ -18,7 +18,7 @@ namespace cc1catchbreak
 {
     class Program
     {
-        private static void Fail(int step)
+        private static void Fail(int step) throws InvalidOperationException
         {
             if (step == 2)
             {

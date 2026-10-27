@@ -102,9 +102,9 @@ public class Program
         int[] values = new int[1];
         values[0] = 5;
         int first = First(values);
-        Box<int> box = new Box<int>(6);
+        raii Box<int> box = new Box<int>(6);
         int boxed = Unbox(box);
-        var inferredBox = new Box<int>(11);
+        raii var inferredBox = new Box<int>(11);
         int fromVar = Unbox(inferredBox);
         short narrowed = Identity((short)12);
         int selected = Select(box);

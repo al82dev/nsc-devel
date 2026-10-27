@@ -22,6 +22,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
@@ -97,6 +98,27 @@ bool isErrorType(std::string_view key) noexcept
     return key.empty() || key == "<error>";
 }
 
+// ES: Verdadero si `initializer` es un inicializador inferido de array (`new T[] { ... }` o
+// `[ ... ]`) que guarda al menos un literal de cadena. El literal dura todo el proceso: el array
+// no es dueño de ese slot y `delete[]` no debe liberarlo.
+// EN: True when `initializer` is an inferred array initializer (`new T[] { ... }` or `[ ... ]`)
+// that stores at least one string literal. The literal lasts for the whole process: the array
+// does not own that slot and `delete[]` must not release it.
+bool initializerStoresStringLiterals(const ast::AstNode* initializer) noexcept
+{
+    if (initializer == nullptr || initializer->auxiliaryText() != "inferred-array-initializer")
+        return false;
+    if (initializer->kind() != ast::AstNodeKind::NewExpression &&
+        initializer->kind() != ast::AstNodeKind::CollectionExpression)
+        return false;
+    for (const ast::AstNode* element : initializer->children())
+    {
+        if (element != nullptr && element->kind() == ast::AstNodeKind::StringLiteralExpression)
+            return true;
+    }
+    return false;
+}
+
 sema::OwnershipKind ownershipKindFromSyntax(const ast::TypeSyntax* syntax) noexcept
 {
     if (syntax == nullptr)
@@ -145,10 +167,18 @@ ProjectMethodBodyModel::beginUsing(
         MethodScopeKind::Using, methodMemberOrdinal, scopeOrdinal);
     const std::string resourceTypeKey =
         memberModel_->canonicalTypeKey(statement->typeSyntax(), *nameLookup_);
-    validateUsingInitializer(
+    const bool freshResource = validateUsingInitializer(
         statement, resourceTypeKey, methodMemberOrdinal, usingScope, diagnostics);
     const std::size_t localOrdinal = addUsingLocal(
         statement, resourceTypeKey, methodMemberOrdinal, usingScope, diagnostics);
+    // EN: Freeze 3.0 C-01: `using (T x = new T())` creates the resource, so nothing else could
+    //     ever destroy it. The using local becomes its owner; its UsingDispose cleanup then runs
+    //     Dispose and the destructor right after it (HIR marks the region automaticDestruction).
+    // ES: Congelamiento 3.0 C-01: `using (T x = new T())` crea el recurso, asi que nadie mas
+    //     podria destruirlo. El local del using pasa a ser su dueno; su cleanup UsingDispose
+    //     corre Dispose y justo despues el destructor (HIR marca la region automaticDestruction).
+    if (freshResource && localOrdinal != static_cast<std::size_t>(-1))
+        locals_[localOrdinal].isRaii = true;
     std::optional<std::size_t> disposableOrdinal;
     std::optional<std::size_t> disposeContract;
     std::optional<std::size_t> resourceTypeOrdinal;
@@ -180,26 +210,30 @@ ProjectMethodBodyModel::beginUsing(
     return UsingAnalysisState{statement->second(), usingScope, true};
 }
 
-void ProjectMethodBodyModel::validateUsingInitializer(
+bool ProjectMethodBodyModel::validateUsingInitializer(
     const ast::AstNode* statement,
     std::string_view resourceTypeKey,
     std::size_t methodMemberOrdinal,
     std::size_t usingScope,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (statement->first() == nullptr) return;
+    if (statement->first() == nullptr) return false;
     const ExpressionResult initializer = analyzeExpression(
         statement->first(), methodMemberOrdinal, usingScope, diagnostics);
-    if (!initializer.valid) return;
+    if (!initializer.valid) return false;
     const ProjectImplicitConversion conversion = classifyImplicit(
         initializer.typeKey, resourceTypeKey, initializer.integerConstant);
     if (!conversion.exists())
+    {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error,
             statement->first()->range(),
             "cannot initialize using resource '" + statement->text() + "' of type '" +
                 std::string(resourceTypeKey) + "' from '" + initializer.typeKey + "'");
+        return false;
+    }
+    return isFreshObjectCreation(statement->first(), initializer);
 }
 
 bool ProjectMethodBodyModel::resolveUsingDispose(
@@ -1133,6 +1167,58 @@ void ProjectMethodBodyModel::analyzeBlockMatchCoverage(
     else reportClosedBlockMatchCoverage(block, arms, domain, diagnostics);
 }
 
+// EN: Freeze 3.0 C-05. The parser lowers `match` to a chain of `if (!selected)` tests, so the flow
+//     analysis alone always sees a path where no arm ran. That path cannot happen when the
+//     coverage check proved the match exhaustive.
+// ES: Congelamiento 3.0 C-05. El parser baja `match` a una cadena de pruebas `if (!selected)`, asi
+//     que el analisis de flujo por si solo siempre ve una ruta donde ningun brazo corrio. Esa ruta
+//     no puede ocurrir cuando la cobertura probo que el match es exhaustivo.
+bool ProjectMethodBodyModel::blockMatchIsExhaustive(
+    const ast::AstNode* block,
+    std::size_t activeScope) const
+{
+    const std::vector<language::MatchArmCoverage> arms = parseBlockMatchCoverage(block);
+    const std::vector<std::string> domain = blockMatchCoverageDomain(block, activeScope);
+    if (!domain.empty()) return language::analyzeClosedMatch(domain, arms).exhaustive;
+    if (!matchCoverageHasListLength(arms)) return matchCoverageHasUnguardedWildcard(arms);
+    return language::analyzeListMatch(arms).exhaustive;
+}
+
+// EN: An arm body is the block whose first statement is `$__nsc_match_N_selected = true`.
+// ES: Un cuerpo de brazo es el bloque cuya primera sentencia es `$__nsc_match_N_selected = true`.
+void ProjectMethodBodyModel::recordMatchArmExit(const ast::AstNode* block)
+{
+    if (block->children().empty()) return;
+    const ast::AstNode* first = block->children().front();
+    if (first == nullptr || first->kind() != ast::AstNodeKind::ExpressionStatement) return;
+    const ast::AstNode* assignment = first->first();
+    if (assignment == nullptr || assignment->kind() != ast::AstNodeKind::AssignmentExpression ||
+        assignment->first() == nullptr ||
+        assignment->first()->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    constexpr std::string_view prefix = "$__nsc_match_";
+    constexpr std::string_view suffix = "_selected";
+    const std::string& name = assignment->first()->text();
+    if (!name.starts_with(prefix) || !name.ends_with(suffix)) return;
+    bool& fallsThrough = matchArmFallthrough_[name.substr(0, name.size() - suffix.size())];
+    fallsThrough = fallsThrough || ownershipFlowReachable_;
+}
+
+// EN: After an exhaustive match whose every arm returned, threw or broke out, nothing follows.
+// ES: Despues de un match exhaustivo cuyos brazos retornaron, lanzaron o salieron, nada sigue.
+void ProjectMethodBodyModel::closeExhaustiveMatch(
+    const ast::AstNode* block,
+    std::size_t activeScope)
+{
+    constexpr std::string_view matchCoveragePrefix = "match-coverage:v1:";
+    if (!block->auxiliaryText().starts_with(matchCoveragePrefix) || block->text().empty()) return;
+    const auto arm = matchArmFallthrough_.find(block->text());
+    if (arm == matchArmFallthrough_.end()) return;
+    const bool everyArmExits = !arm->second;
+    matchArmFallthrough_.erase(arm);
+    if (everyArmExits && ownershipFlowReachable_ && blockMatchIsExhaustive(block, activeScope))
+        ownershipFlowReachable_ = false;
+}
+
 void ProjectMethodBodyModel::finishBlockFrame(
     std::vector<StatementFrame>& frames,
     BlockFrame& frame,
@@ -1151,6 +1237,8 @@ void ProjectMethodBodyModel::finishBlockFrame(
     activeCleanupRegions_.resize(cleanupDepthAtEntry);
     if (deferCaptureBoundary) deferCaptureStack_.pop_back();
     analyzeBlockMatchCoverage(block, activeScope, diagnostics);
+    recordMatchArmExit(block);
+    closeExhaustiveMatch(block, activeScope);
     std::optional<OwnershipFlowSnapshot> restoreAfterExit =
         std::move(frame.restoreAfterExit);
     frames.pop_back();
@@ -1749,8 +1837,12 @@ void ProjectMethodBodyModel::analyzeReturnStatement(
 {
     // NS304-T06-F02: a generator (Iterator<T> return) ends with `yield break`, not an
     // ordinary value return; reject `return v;` but allow the bare `return;`.
+    // EN: Freeze 3.0 C-05: a `return` inside a lambda belongs to the lambda, not to the generator
+    //     that creates it.
+    // ES: Congelamiento 3.0 C-05: un `return` dentro de una lambda es de la lambda, no del
+    //     generador que la crea.
     const ClassMemberSymbol* returnMethod = methodSymbol(methodMemberOrdinal);
-    if (statement->first() != nullptr && returnMethod != nullptr &&
+    if (statement->first() != nullptr && returnMethod != nullptr && !currentLambdaOrdinal_.has_value() &&
         language::iteratorInnerTypeKey(returnMethod->declaredTypeKey).has_value())
     {
         diagnostics.report(
@@ -1890,6 +1982,7 @@ void ProjectMethodBodyModel::analyzeYieldStatement(
         const ExpressionResult yielded = analyzeExpression(
             statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
             false, false, true);
+        rejectOwnedTemporaryBorrowEscape(yielded, statement->first(), "the yield", diagnostics);
         if (yielded.valid)
         {
             // NS304-T06-F05: a `ref`/`ref mut` item (`ref:<T>`/`refmut:<T>`) yields a
@@ -2072,6 +2165,8 @@ bool ProjectMethodBodyModel::analyzeStandaloneStatement(
                 statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
             if (expression.valid && expression.typeKey == "builtin:never")
                 ownershipFlowReachable_ = false;
+            if (isFreshObjectCreation(statement->first(), expression))
+                reportLostOwnership(statement->first(), "a discarded expression", diagnostics);
             return true;
         }
         case ast::AstNodeKind::FunctionDeclaration:
@@ -2155,6 +2250,8 @@ std::size_t ProjectMethodBodyModel::addCatchLocal(
     local.name = catchClause->text();
     local.typeKey = std::move(typeKey);
     local.lambdaOrdinal = currentLambdaOrdinal_;
+    local.isCatchVariable = true;
+    local.caughtExceptionScopeOrdinal = scopeOrdinal;
 
     const std::size_t localOrdinal = locals_.size();
     locals_.push_back(std::move(local));
@@ -2169,6 +2266,218 @@ std::size_t ProjectMethodBodyModel::addCatchLocal(
 std::optional<std::size_t> ProjectMethodBodyModel::disposableTypeOrdinal() const noexcept
 {
     return coreDisposableTypeOrdinal_;
+}
+
+// EN: Freeze 3.0 (plan item 136): the known-life classifier. A result carries the borrow of an owned temporary;
+//     a local or a parameter carries what its symbol records; a value that is an identifier carries what its
+//     local (any) or its parameter (only with `method`) carries.
+// ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador de vida conocida. Un resultado lleva el prestamo
+//     de un temporal owned; un local o un parametro lleva lo que registra su simbolo; un valor que es un
+//     identificador lleva lo que lleva su local (cualquiera) o su parametro (solo con `method`).
+ProjectMethodBodyModel::KnownLifeSources ProjectMethodBodyModel::knownLifeSourcesOfResult(
+    const ExpressionResult& result) const noexcept
+{
+    KnownLifeSources sources;
+    sources.ownedTemporary = result.valid && result.borrowsOwnedTemporary;
+    return sources;
+}
+
+ProjectMethodBodyModel::KnownLifeSources ProjectMethodBodyModel::knownLifeSourcesOfLocal(
+    const MethodLocalSymbol& local) const noexcept
+{
+    KnownLifeSources sources;
+    sources.caughtExceptionScope = local.caughtExceptionScopeOrdinal;
+    sources.exceptionLoanParameter = local.loanedExceptionParameterOrdinal;
+    sources.scopeObject = local.isScope;
+    sources.raiiOwner = local.isRaii;
+    sources.moveOnlyOwner = local.isMoveOnly;
+    sources.pinned = local.isPinned;
+    return sources;
+}
+
+ProjectMethodBodyModel::KnownLifeSources ProjectMethodBodyModel::knownLifeSourcesOfParameter(
+    const MethodParameterSymbol& parameter,
+    std::size_t parameterOrdinal) const
+{
+    KnownLifeSources sources;
+    sources.parameter = parameterOrdinal;
+    if (parameterIsExceptionLoan(parameter)) sources.exceptionLoanParameter = parameterOrdinal;
+    sources.ownedReferenceParameter = parameter.ownership == sema::OwnershipKind::Owned &&
+        (isReferenceTypeKey(parameter.typeKey) || parameter.typeKey == "builtin:string");
+    return sources;
+}
+
+ProjectMethodBodyModel::KnownLifeSources ProjectMethodBodyModel::knownLifeSourcesOfValue(
+    const ast::AstNode* value,
+    const ClassMemberSymbol* method,
+    std::size_t scopeOrdinal) const
+{
+    if (value == nullptr || value->kind() != ast::AstNodeKind::IdentifierExpression) return {};
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, value->text());
+    if (!name.has_value()) return {};
+    if (name->kind == ScopeNameKind::Local)
+    {
+        if (name->semanticOrdinal >= locals_.size()) return {};
+        KnownLifeSources sources = knownLifeSourcesOfLocal(locals_[name->semanticOrdinal]);
+        sources.local = name->semanticOrdinal;
+        return sources;
+    }
+    if (name->kind != ScopeNameKind::Parameter || method == nullptr ||
+        name->semanticOrdinal >= method->parameters.size()) return {};
+    return knownLifeSourcesOfParameter(method->parameters[name->semanticOrdinal], name->semanticOrdinal);
+}
+
+std::optional<std::size_t> ProjectMethodBodyModel::caughtExceptionScopeOfValue(
+    const ast::AstNode* value,
+    std::size_t scopeOrdinal) const
+{
+    // EN: Freeze 3.0 (plan item 136): the classifier answers.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): responde el clasificador.
+    return knownLifeSourcesOfValue(value, nullptr, scopeOrdinal).caughtExceptionScope;
+}
+
+bool ProjectMethodBodyModel::scopeIsWithin(std::size_t scope, std::size_t ancestor) const noexcept
+{
+    std::optional<std::size_t> current = scope;
+    while (current.has_value() && *current < scopes_.size())
+    {
+        if (*current == ancestor) return true;
+        current = scopes_[*current].parentScopeOrdinal;
+    }
+    return false;
+}
+
+bool ProjectMethodBodyModel::reportCaughtExceptionReturn(
+    const ast::AstNode* value,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!caughtExceptionScopeOfValue(value, scopeOrdinal).has_value()) return false;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidReturn,
+        diagnostics::DiagnosticSeverity::Error,
+        value->range(),
+        "the caught exception in '" + value->text() + "' belongs to its catch until the handler "
+            "ends and cannot be returned; return move(...) of the catch variable to take it out");
+    return true;
+}
+
+bool ProjectMethodBodyModel::rejectCaughtExceptionAssignment(
+    const ast::AstNode* expression,
+    const std::optional<std::size_t>& assignmentTargetLocal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const std::optional<std::size_t> handler = caughtExceptionScopeOfValue(expression->second(), scopeOrdinal);
+    if (!handler.has_value()) return false;
+    // EN: A local of the same handler may hold it; that local is then a caught-exception local too.
+    // ES: Un local del mismo handler puede guardarla; ese local tambien queda como local de la
+    //     excepcion atrapada.
+    if (expression->tokenKind() == TokenKind::Equal && assignmentTargetLocal.has_value() &&
+        *assignmentTargetLocal < locals_.size() &&
+        scopeIsWithin(locals_[*assignmentTargetLocal].scopeOrdinal, *handler))
+    {
+        locals_[*assignmentTargetLocal].caughtExceptionScopeOrdinal = *handler;
+        return false;
+    }
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->second()->range(),
+        "the caught exception in '" + expression->second()->text() + "' belongs to its catch until the "
+            "handler ends; it cannot be stored where it outlives the handler -- take it out with move(...) "
+            "of the catch variable");
+    return true;
+}
+
+bool ProjectMethodBodyModel::parameterIsExceptionLoan(const MethodParameterSymbol& parameter) const
+{
+    if (parameter.ownership == sema::OwnershipKind::Owned || inheritanceModel_ == nullptr) return false;
+    const std::optional<std::size_t> type = inheritanceModel_->typeOrdinalForTypeKey(parameter.typeKey);
+    return type.has_value() && isExceptionTypeOrdinal(*type);
+}
+
+std::optional<std::size_t> ProjectMethodBodyModel::loanedExceptionParameterOfValue(
+    const ast::AstNode* value,
+    const ClassMemberSymbol* method,
+    std::size_t scopeOrdinal) const
+{
+    // EN: Freeze 3.0 (plan item 136): the classifier answers.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): responde el clasificador.
+    return knownLifeSourcesOfValue(value, method, scopeOrdinal).exceptionLoanParameter;
+}
+
+bool ProjectMethodBodyModel::reportExceptionLoanReturn(
+    const ast::AstNode* value,
+    const ClassMemberSymbol& method,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!loanedExceptionParameterOfValue(value, &method, scopeOrdinal).has_value()) return false;
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidReturn,
+        diagnostics::DiagnosticSeverity::Error,
+        value->range(),
+        "the exception in '" + value->text() + "' is a loan from the caller (it may be a caught "
+            "exception) and cannot be returned; declare the parameter owned to take it");
+    return true;
+}
+
+bool ProjectMethodBodyModel::rejectExceptionLoanAssignment(
+    const ast::AstNode* expression,
+    const std::optional<std::size_t>& assignmentTargetLocal,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const std::optional<std::size_t> loan = loanedExceptionParameterOfValue(
+        expression->second(), methodSymbol(methodMemberOrdinal), scopeOrdinal);
+    if (!loan.has_value()) return false;
+    // EN: A local of the same callable may hold it (not one of an enclosing callable); it inherits the loan.
+    // ES: Un local del mismo callable puede guardarlo (no uno de un callable exterior); hereda el prestamo.
+    if (expression->tokenKind() == TokenKind::Equal && assignmentTargetLocal.has_value() &&
+        *assignmentTargetLocal < locals_.size() &&
+        locals_[*assignmentTargetLocal].lambdaOrdinal == currentLambdaOrdinal_)
+    {
+        locals_[*assignmentTargetLocal].loanedExceptionParameterOrdinal = *loan;
+        return false;
+    }
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->second()->range(),
+        "the exception in '" + expression->second()->text() + "' is a loan from the caller (it may be "
+            "a caught exception); it cannot be stored where it outlives the call -- declare the "
+            "parameter owned to keep it");
+    return true;
+}
+
+bool ProjectMethodBodyModel::reportRethrowOfMovedCatch(
+    const ast::AstNode* statement,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    // EN: The innermost catch scope around the rethrow, and its catch variable.
+    // ES: El scope de catch mas interno alrededor del rethrow, y su variable de catch.
+    std::optional<std::size_t> current = scopeOrdinal;
+    while (current.has_value() && *current < scopes_.size() &&
+           scopes_[*current].kind != MethodScopeKind::Catch)
+        current = scopes_[*current].parentScopeOrdinal;
+    if (!current.has_value() || *current >= scopes_.size()) return false;
+    for (const std::size_t localOrdinal : scopes_[*current].localOrdinals)
+    {
+        if (localOrdinal >= locals_.size() || !locals_[localOrdinal].isCatchVariable) continue;
+        if (!movedRaiiLocals_.contains(localOrdinal) && !maybeMovedRaiiLocals_.contains(localOrdinal))
+            return false;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            statement->range(),
+            "throw; rethrows the caught exception, but '" + locals_[localOrdinal].name +
+                "' was moved out of its catch");
+        return true;
+    }
+    return false;
 }
 
 std::optional<std::size_t> ProjectMethodBodyModel::disposableContractMemberOrdinal(
@@ -2342,11 +2651,17 @@ ProjectMethodBodyModel::beginTry(
     state.cleanupRegionOrdinal = cleanupRegionOrdinal;
     state.tryEntryState = captureOwnershipFlow();
     state.throwStateBegin = throwFlowStates_.size();
+    // EN: Freeze 3.0 C-13: the unfiltered catches of this try cover `throws E` calls in its body
+    //     until completeTryBody.
+    // ES: Congelamiento 3.0 C-13: los catch sin filtro de este try cubren las llamadas `throws E`
+    //     de su cuerpo hasta completeTryBody.
+    activeErrorHandlers_.push_back(tryErrorHandlers(statement));
     return state;
 }
 
 void ProjectMethodBodyModel::completeTryBody(TryAnalysisState& state)
 {
+    if (!activeErrorHandlers_.empty()) activeErrorHandlers_.pop_back();
     state.tryExitState = captureOwnershipFlow();
     // A catch can observe ownership state from any explicit throw point and, conservatively,
     // from both try entry and normal try exit to account for other potentially-throwing calls.
@@ -2601,6 +2916,45 @@ void ProjectMethodBodyModel::analyzeTry(
         finishFinally(*state);
     }
 }
+
+bool ProjectMethodBodyModel::isCatchLocalExpression(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal) const
+{
+    if (expression == nullptr || expression->kind() != ast::AstNodeKind::IdentifierExpression)
+        return false;
+    const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
+    if (!name.has_value() || name->kind != ScopeNameKind::Local ||
+        name->semanticOrdinal >= locals_.size()) return false;
+    const ast::AstNode* syntax = locals_[name->semanticOrdinal].syntax;
+    return syntax != nullptr && syntax->kind() == ast::AstNodeKind::CatchClause;
+}
+
+void ProjectMethodBodyModel::validateThrowOwnership(
+    const ast::AstNode* operand,
+    const ExpressionResult& value,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    // EN: Freeze 3.0 C-01: accepted operands give the exception exactly one owner: a fresh
+    //     `new`, a transfer (`move(owner)` or an owned return), or the exception this catch
+    //     already owns. Anything else is a borrow, and destroying it in the catch would free an
+    //     object that still belongs to someone else.
+    // ES: Congelamiento 3.0 C-01: los operandos aceptados dan a la excepcion un solo dueno: un
+    //     `new` recien creado, una transferencia (`move(owner)` o un retorno owned) o la
+    //     excepcion que este catch ya posee. Lo demas es un prestamo, y destruirlo en el catch
+    //     liberaria un objeto que todavia es de alguien mas.
+    if (value.ownershipFreshOwner) return;
+    if (value.ownershipTransfer && value.ownership == sema::OwnershipKind::Owned) return;
+    if (isCatchLocalExpression(operand, scopeOrdinal)) return;
+    diagnostics.report(
+        diagnostics::DiagnosticId::LostOwnership,
+        diagnostics::DiagnosticSeverity::Error,
+        operand->range(),
+        "throw hands the exception object to the catch that handles it, and that catch "
+        "destroys it; throw a new object, move(owner), an owned return, or the caught exception");
+}
+
 void ProjectMethodBodyModel::analyzeThrow(
     const ast::AstNode* statement,
     std::size_t methodMemberOrdinal,
@@ -2631,15 +2985,24 @@ void ProjectMethodBodyModel::analyzeThrow(
         else if (!currentCatchErrorTypes_.empty())
         {
             binding.exceptionTypeKey = currentCatchErrorTypes_.back();
+            requireThrownErrorHandled(statement, binding.exceptionTypeKey, methodMemberOrdinal, diagnostics);
         }
+        if (currentCatchDepth_ != 0) reportRethrowOfMovedCatch(statement, scopeOrdinal, diagnostics);
         exceptionBindings_.push_back(std::move(binding));
         throwFlowStates_.push_back(captureOwnershipFlow());
         return;
     }
 
     binding.kind = MethodExceptionOperationKind::Throw;
+    // EN: Freeze 3.0 C-01: the throw operand is a consuming context. The catch that handles
+    //     the exception owns it and destroys it, so `throw move(owner)` is the way to hand a
+    //     raii owner over.
+    // ES: Congelamiento 3.0 C-01: el operando de throw es un contexto que consume. El catch que
+    //     maneja la excepcion es su dueno y la destruye, asi que `throw move(owner)` es la forma
+    //     de entregar un owner raii.
     const ExpressionResult value = analyzeExpression(
-        statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        statement->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
+        /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
     if (value.valid)
     {
         binding.exceptionTypeKey = value.typeKey;
@@ -2662,6 +3025,13 @@ void ProjectMethodBodyModel::analyzeThrow(
                     diagnostics::DiagnosticSeverity::Error,
                     statement->first()->range(),
                     "throw operand type '" + value.typeKey + "' must be NativeSharp.Core.Exception or derive from it");
+            }
+            // Ownership is only meaningful once the operand is an exception object.
+            // La propiedad solo tiene sentido cuando el operando ya es una excepcion.
+            else
+            {
+                validateThrowOwnership(statement->first(), value, scopeOrdinal, diagnostics);
+                requireThrownErrorHandled(statement, value.typeKey, methodMemberOrdinal, diagnostics);
             }
         }
     }
@@ -3128,15 +3498,12 @@ void ProjectMethodBodyModel::validateVariableLifetimeQualifiers(
             std::string(ownerSpelling) +
                 " requires a NativeSharp class/interface reference, managed delegate, native "
                 "string, or native array buffer");
-    if (isForeachEnumerator && typeKeyIsStruct(typeKey) &&
-        !elementTypeHasTrivialLifetime(typeKey) &&
-        !typeKey.starts_with("iterator:") && !typeKey.starts_with("async-iterator:"))
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidType,
-            diagnostics::DiagnosticSeverity::Error,
-            variable->range(),
-            "foreach struct enumerator '" + std::string(typeKey) +
-                "' must have a trivial lifetime; automatic destruction of value locals is not yet supported");
+    // EN: Freeze 3.0 C-11: a struct enumerator with a non-trivial lifetime is an ordinary value
+    //     local of the lowered loop; its scope destroys it on every exit, like any value local.
+    // ES: Congelamiento 3.0 C-11: un enumerador struct con lifetime no trivial es un local de
+    //     valor comun del ciclo bajado; su scope lo destruye en cada salida, como a cualquier
+    //     local de valor.
+    (void)isForeachEnumerator;
     if (isRaii && variable->first() == nullptr)
         diagnostics.report(
             diagnostics::DiagnosticId::ExpectedToken,
@@ -3202,6 +3569,106 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::evaluateVariabl
     return initializer;
 }
 
+bool ProjectMethodBodyModel::isFreshObjectCreation(
+    const ast::AstNode* syntax,
+    const ExpressionResult& result) const
+{
+    return syntax != nullptr && syntax->kind() == ast::AstNodeKind::ObjectCreationExpression &&
+        result.valid && result.ownershipFreshOwner && !result.ownershipTransfer &&
+        typeKeyIsOwnable(result.typeKey);
+}
+
+void ProjectMethodBodyModel::reportLostOwnership(
+    const ast::AstNode* syntax,
+    std::string_view context,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    diagnostics.report(
+        diagnostics::DiagnosticId::LostOwnership,
+        diagnostics::DiagnosticSeverity::Error,
+        syntax->range(),
+        "the object created by 'new' reaches no owner through " + std::string(context) +
+            " and would leak; store it in a raii or owned local, pass it to an owned parameter, "
+            "or return it through an owned return type");
+}
+
+// EN: Freeze 3.0 (plan item 131a): the value borrows the temporary of an owned-returning call, which the full
+//     expression destroys; keeping it in `destination` would leave it pointing at a destroyed object.
+// ES: Congelamiento 3.0 (elemento 131a del plan): el valor toma prestado el temporal de una llamada con retorno
+//     owned, que la expresion completa destruye; guardarlo en `destination` lo dejaria apuntando a un objeto
+//     destruido.
+void ProjectMethodBodyModel::rejectOwnedTemporaryBorrowEscape(
+    const ExpressionResult& value,
+    const ast::AstNode* syntax,
+    std::string_view destination,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!knownLifeSourcesOfResult(value).ownedTemporary || syntax == nullptr) return;
+    // EN: Freeze 3.0 (plan item 135): a call, `?:` or `??` has no text of its own.
+    // ES: Congelamiento 3.0 (elemento 135 del plan): una llamada, `?:` o `??` no tiene texto propio.
+    const std::string shown = syntax->text().empty() ? std::string("the value") : "'" + syntax->text() + "'";
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidOperand,
+        diagnostics::DiagnosticSeverity::Error,
+        syntax->range(),
+        shown + " borrows an owned temporary (the result of an owned-returning call or of "
+            "'new'), which is destroyed at the end of the full expression, so " + std::string(destination) +
+            " cannot keep it; store the temporary in a raii or owned local first");
+}
+
+// EN: Freeze 3.0 C-01 (plan item 115a): `return new T();` from a callable whose return type is not `owned`
+//     hands the caller a reference that owns nothing; the object would leak.
+// ES: Congelamiento 3.0 C-01 (elemento 115a del plan): `return new T();` desde un callable cuyo retorno no es
+//     `owned` entrega al llamador una referencia que no es dueña de nada; el objeto se perdería.
+void ProjectMethodBodyModel::rejectNewToNonOwnedReturn(
+    const ast::AstNode* statement,
+    const ClassMemberSymbol& method,
+    const ExpressionResult& value,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (method.declaredOwnership == sema::OwnershipKind::Owned || !isFreshObjectCreation(statement->first(), value))
+        return;
+    reportLostOwnership(
+        statement->first(), "the return of '" + method.name + "', whose return type is not owned", diagnostics);
+}
+
+bool ProjectMethodBodyModel::newReachesOrdinaryParameter(
+    const MethodParameterSymbol& parameter,
+    const ast::AstNode* argumentSyntax,
+    bool freshOwner,
+    bool ownershipTransfer,
+    std::string_view argumentTypeKey) const
+{
+    return parameter.ownership == sema::OwnershipKind::None &&
+        parameter.passKind == ParameterPassKind::Value && !parameter.isParameterPack &&
+        argumentSyntax != nullptr && argumentSyntax->kind() == ast::AstNodeKind::ObjectCreationExpression &&
+        freshOwner && !ownershipTransfer && typeKeyIsOwnable(argumentTypeKey);
+}
+
+void ProjectMethodBodyModel::reportNewToOrdinaryParameter(
+    const ast::AstNode* argumentSyntax,
+    const MethodParameterSymbol& parameter,
+    std::string_view calleeName,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    // EN: A `__nsc_` callee is a compiler desugaring (the opaque-result factory wraps `return new T()`), not
+    //     a parameter the program wrote; its ownership is the rewritten return's, not this rule's.
+    // ES: Un llamado `__nsc_` es una traducción del compilador (la fábrica de resultado opaco envuelve
+    //     `return new T()`), no un parámetro que escribió el programa; su ownership es el del retorno reescrito.
+    if (calleeName.starts_with("__nsc_")) return;
+    // EN: A generic instantiation is named <name>__g<arity>__<arguments>__h<16 hex>; the message shows <name>.
+    // ES: Una instanciacion generica se llama <name>__g<arity>__<arguments>__h<16 hex>; el mensaje muestra <name>.
+    const std::size_t generic = calleeName.find("__g");
+    const std::size_t hash = calleeName.rfind("__h");
+    if (generic != std::string_view::npos && hash != std::string_view::npos && hash > generic &&
+        hash + 3U + 16U == calleeName.size())
+        calleeName = calleeName.substr(0, generic);
+    reportLostOwnership(
+        argumentSyntax,
+        "the parameter '" + parameter.name + "' of '" + std::string(calleeName) + "', which is not owned",
+        diagnostics);
+}
+
 void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     const ExpressionResult& initializer,
     const ast::AstNode* variable,
@@ -3225,6 +3692,9 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     const bool isCompilerGeneratedForeachViewSnapshot =
         variable->text().starts_with("$__foreach_") &&
         variable->text().ends_with("_source") && typeKeyIsViewLike(typeKey);
+    if (!variable->text().starts_with("$"))
+        rejectOwnedTemporaryBorrowEscape(
+            initializer, variable->first(), "the local '" + variable->text() + "'", diagnostics);
     if (isMoveOnly && initializer.valid && initializer.addressable &&
         !isCompilerGeneratedMatchSnapshot && !isCompilerGeneratedForeachViewSnapshot &&
         variable->first()->kind() != ast::AstNodeKind::MoveExpression)
@@ -3234,18 +3704,23 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
             variable->first()->range(),
             "move-only value of type '" + std::string(typeKey) +
                 "' cannot be copied into local '" + variable->text() + "'; use move(source)");
-    if (!isRaii && !isBorrowed &&
+    // EN: Freeze 3.0 C-01: only a local that can hold the reference copies the owner. A local
+    //     of a value type (`int primitive = sum;` through a user conversion) reads it.
+    // ES: Congelamiento 3.0 C-01: solo un local que puede guardar la referencia copia al owner.
+    //     Un local de tipo valor (`int primitive = sum;` por una conversion de usuario) lo lee.
+    const bool localHoldsReference = isReferenceTypeKey(typeKey) || typeKey == "builtin:string";
+    if (!isRaii && !isBorrowed && localHoldsReference &&
         variable->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
-        const std::optional<ScopeName> sourceName =
-            lookupScopeName(scopeOrdinal, variable->first()->text());
-        if (sourceName.has_value() && sourceName->kind == ScopeNameKind::Local &&
-            sourceName->semanticOrdinal < locals_.size() && locals_[sourceName->semanticOrdinal].isRaii)
+        // EN: Freeze 3.0 (plan item 136): the classifier names the raii owner.
+        // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra al owner raii.
+        const KnownLifeSources source = knownLifeSourcesOfValue(variable->first(), nullptr, scopeOrdinal);
+        if (source.raiiOwner)
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error,
                 variable->first()->range(),
-                "RAII owner '" + locals_[sourceName->semanticOrdinal].name +
+                "RAII owner '" + locals_[*source.local].name +
                     "' cannot be copied into a non-owning local; Stage 49 requires ownership transfer with move(...)");
     }
     // Stage 52: an "owned"/"borrowed"-returning call whose declared return type is a
@@ -3257,6 +3732,17 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     // local's own declared type actually needs ownership tracking.
     const bool localTypeOwnable = isReferenceTypeKey(typeKey) || typeKey == "builtin:string" ||
         managedDelegate || raiiOwnsNativeArrayBuffer;
+    // EN: Freeze 3.0 C-01: `T x = new T();` without raii/owned makes x a non-owning alias of an
+    //     object nobody owns. Compiler-generated snapshots ($-prefixed) never hold a `new`.
+    // ES: Congelamiento 3.0 C-01: `T x = new T();` sin raii/owned deja a x como alias no dueno de
+    //     un objeto que nadie posee. Los snapshots del compilador (prefijo $) nunca llevan `new`.
+    // A `scope` local is itself the owner: its object lives in the frame and dies with it.
+    // Un local `scope` es el dueno: su objeto vive en el marco y muere con el.
+    if (!isRaii && !variable->text().starts_with("$") &&
+        variable->auxiliaryText() != "local:scope" &&
+        isFreshObjectCreation(variable->first(), initializer))
+        reportLostOwnership(
+            variable->first(), "the non-owning local '" + variable->text() + "'", diagnostics);
     if (!isRaii && initializer.valid && initializer.ownership == sema::OwnershipKind::Owned &&
         initializer.ownershipTransfer && !isBorrowed && localTypeOwnable)
         diagnostics.report(
@@ -3716,6 +4202,14 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     local.syntax = variable;
     local.name = variable->text();
     local.typeKey = typeKey;
+    // EN: Freeze 3.0 DEC-10: `T alias = e;` inside a handler names the caught exception too.
+    // ES: Congelamiento 3.0 DEC-10: `T alias = e;` dentro de un handler tambien nombra la excepcion
+    //     atrapada.
+    local.caughtExceptionScopeOrdinal = caughtExceptionScopeOfValue(variable->first(), scopeOrdinal);
+    // EN: Freeze 3.0 P10: `T alias = e;` of an exception parameter loan inherits the loan.
+    // ES: Congelamiento 3.0 P10: `T alias = e;` de un prestamo de parametro de excepcion lo hereda.
+    local.loanedExceptionParameterOrdinal = loanedExceptionParameterOfValue(
+        variable->first(), methodSymbol(methodMemberOrdinal), scopeOrdinal);
     local.isStatic = isStaticLocal;
     local.isReference = isReferenceLocal;
     local.referenceMutable = isReferenceLocal && !isReadonlyReference;
@@ -3734,6 +4228,10 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     if (!isVariableLengthArray && variable->first() != nullptr && typeKey.ends_with("*"))
         local.variableLengthArrayRootLocalOrdinal =
             variableArrayRootLocalOfExpression(variable->first(), scopeOrdinal);
+    if (!isReferenceLocal && !isVariableLengthArray && variable->first() != nullptr &&
+        typeKey.ends_with("*"))
+        local.pointerValueOrigin =
+            pointerValueEscapeOriginOfExpression(variable->first(), scopeOrdinal);
     local.isConst = variable->flag();
     local.isVolatile = isVolatile;
     local.onePastEndPointer = pendingOnePastEndPointer;
@@ -3747,11 +4245,14 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     local.isScope = isScope;
     local.isMoveOnly = isMoveOnly;
     local.callableTrait = pendingCallableTrait;
-    local.requiresValueDrop = memberModel_->typeRequiresValueDrop(typeKey);
+    // EN: Freeze 3.0 P3: a `ref` local aliases storage that some other owner destroys.
+    // ES: Congelamiento 3.0 P3: un local `ref` es alias de almacenamiento que destruye otro dueno.
+    local.requiresValueDrop = !local.isReference && memberModel_->typeRequiresValueDrop(typeKey);
     local.isPinned = isPinnedLocal;
     local.ownership = isBorrowed ? sema::OwnershipKind::Borrowed : sema::OwnershipKind::None;
     local.objectLifetimeOwnership = pendingObjectLifetimeOwnership;
     local.storageOwnership = pendingStorageOwnership;
+    local.borrowedElementSlots = initializerStoresStringLiterals(variable->first());
     // NS304-T13-F03: the frame object owns object destruction (exactly once at scope exit) while its
     // storage is the frame itself, so there is no heap deallocator to call.
     if (isScope)
@@ -3968,8 +4469,11 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     MethodEscapeOrigin pendingReferenceEscapeOrigin;
     std::string pendingReferencePlaceKey;
     std::optional<std::size_t> pendingReferenceReborrowSourceLocalOrdinal;
+    // EN: Freeze 3.0 (owned arrays): `owned T[]` owns its buffer exactly like `raii T[]`.
+    // ES: Congelamiento 3.0 (arreglos owned): `owned T[]` posee su buffer igual que `raii T[]`.
     const bool raiiOwnsNativeArrayBuffer =
-        variable->hasModifier(TokenKind::KwRaii) && ProjectTypeConversion::isNativeArray(typeKey);
+        (variable->hasModifier(TokenKind::KwRaii) || declaredOwnership == sema::OwnershipKind::Owned) &&
+        ProjectTypeConversion::isNativeArray(typeKey);
     // T41: `raii borrowed T[]` owns the allocation that stores the slots, while every T slot is
     // an alias. The two keywords are not contradictory for an array: `raii` qualifies the
     // buffer and `borrowed` qualifies its elements. For non-arrays the old contradiction remains.
@@ -4078,7 +4582,11 @@ void ProjectMethodBodyModel::analyzeVariable(
             : memberModel_->canonicalTypeKey(variable->typeSyntax(), *nameLookup_));
     const sema::OwnershipKind declaredOwnership = ownershipKindFromSyntax(variable->typeSyntax());
     const bool isBorrowed = declaredOwnership == sema::OwnershipKind::Borrowed;
-    const bool isMoveOnly = memberModel_->typeIsMoveOnly(typeKey);
+    // EN: Freeze 3.0 P3: a `ref` local aliases its place; it neither copies nor owns a move-only value
+    //     (`ref Guard r = ref a[0]`, `foreach (ref Guard g in list)`).
+    // ES: Congelamiento 3.0 P3: un local `ref` es alias de su lugar; no copia ni posee un valor
+    //     move-only (`ref Guard r = ref a[0]`, `foreach (ref Guard g in list)`).
+    const bool isMoveOnly = !isReferenceLocal && memberModel_->typeIsMoveOnly(typeKey);
     // Bloque 1 item 1/6/7 fix -- `owned T x = ...` declares an OWNING local, exactly like
     // `raii T x = ...`. Before this, the `owned` qualifier on a local was computed here (into
     // `declaredOwnership`) and then silently DISCARDED: only the Borrowed case was ever consulted,
@@ -4109,10 +4617,21 @@ void ProjectMethodBodyModel::analyzeVariable(
     // array does not currently destroy its elements at all, so treating that local as an owner
     // would either reject the idiom outright or promise a destruction traversal the compiler does
     // not yet perform -- both worse than leaving it exactly as it was.
+    //
+    // EN: Freeze 3.0 (owned arrays): an array destroys its elements now (C-12), so `owned T[]` is an
+    //     owner like `raii T[]`: released at scope exit and move-only. DEC-06: unlike `raii T[]`, an
+    //     explicit `delete[]` consumes it (see analyzeExpressionKindDeleteExpression), so the
+    //     relocation buffers of LinkedList<T> keep their delete[].
+    // ES: Congelamiento 3.0 (arreglos owned): un arreglo ya destruye sus elementos (C-12), asi que
+    //     `owned T[]` es dueno como `raii T[]`: se libera al salir del scope y es move-only. DEC-06: a
+    //     diferencia de `raii T[]`, un `delete[]` explicito lo consume (ver
+    //     analyzeExpressionKindDeleteExpression), asi los buffers de reubicacion de LinkedList<T>
+    //     conservan su delete[].
     const bool isOwnedQualified = declaredOwnership == sema::OwnershipKind::Owned;
     const bool managedDelegate = isAnyDelegateTypeKey(typeKey) && !isExternCDelegateTypeKey(typeKey);
     const bool ownedQualifierOwnsStorage =
-        isOwnedQualified && (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate);
+        isOwnedQualified && (isReferenceTypeKey(typeKey) || typeKey == "builtin:string" || managedDelegate ||
+            ProjectTypeConversion::isNativeArray(typeKey));
     const bool isRaii = variableRequiresRaii(
         variable, typeKey, isForeachEnumerator, isDeferValueCapture,
         ownedQualifierOwnsStorage, managedDelegate);
@@ -4664,6 +5183,7 @@ bool ProjectMethodBodyModel::analyzeLambdaReturn(
             "non-void lambda must return a value");
         return true;
     }
+    reportCaughtExceptionReturn(statement->first(), scopeOrdinal, diagnostics);
     if (statement->first()->kind() == ast::AstNodeKind::IdentifierExpression)
     {
         const std::optional<ScopeName> returnedName = lookupScopeName(
@@ -4826,6 +5346,27 @@ bool ProjectMethodBodyModel::validateReferenceReturnLifetime(
     return false;
 }
 
+bool ProjectMethodBodyModel::indexesReceiverFieldStorage(
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal) const
+{
+    if (expression == nullptr || expression->kind() != ast::AstNodeKind::IndexExpression) return false;
+    const ast::AstNode* base = expression->first();
+    if (base == nullptr) return false;
+    const MethodExpressionTypeBinding* type = expressionTypeBinding(base, methodMemberOrdinal);
+    if (type == nullptr || (!ProjectTypeConversion::isNativeArray(type->typeKey) &&
+                            !ProjectTypeConversion::isPointer(type->typeKey))) return false;
+    if (base->kind() == ast::AstNodeKind::MemberExpression)
+        return base->first() != nullptr &&
+            (base->first()->kind() == ast::AstNodeKind::ThisExpression ||
+             base->first()->kind() == ast::AstNodeKind::BaseExpression);
+    if (base->kind() != ast::AstNodeKind::IdentifierExpression ||
+        lookupScopeName(scopeOrdinal, base->text()).has_value()) return false;
+    const MethodNameBinding* binding = nameBinding(base, methodMemberOrdinal);
+    return binding != nullptr && binding->kind == MethodNameBindingKind::ImplicitField;
+}
+
 bool ProjectMethodBodyModel::analyzeReferenceReturn(
     const ast::AstNode* statement,
     const ClassMemberSymbol& method,
@@ -4856,13 +5397,18 @@ bool ProjectMethodBodyModel::analyzeReferenceReturn(
                 "' but method returns ref '" + method.declaredTypeKey + "'");
         return true;
     }
-    if (!value.addressable || !value.assignable)
+    // EN: Freeze 3.0 P3: a `ref readonly` return may alias storage the method can only read.
+    // ES: Congelamiento 3.0 P3: un retorno `ref readonly` puede ser alias de almacenamiento que el
+    //     metodo solo puede leer.
+    const bool readonlyReference = isReadonlyReferenceReturn(method);
+    if (!value.addressable || (!value.assignable && !readonlyReference))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidReturn,
             diagnostics::DiagnosticSeverity::Error,
             statement->first()->range(),
-            "ref return requires a mutable addressable storage location");
+            readonlyReference ? "ref readonly return requires an addressable storage location"
+                              : "ref return requires a mutable addressable storage location");
         return true;
     }
     const MethodEscapeOrigin escape =
@@ -4886,7 +5432,19 @@ bool ProjectMethodBodyModel::analyzeReferenceReturn(
             "ref return cannot expose a by-value or readonly parameter");
         return true;
     }
-    if (!validateReferenceReturnLifetime(statement, method, escape, diagnostics)) return true;
+    // EN: Freeze 3.0 P3: an element of an array or of a pointer the receiver keeps in a field
+    //     (`return ref items[i];` in a collection, `return ref start[i];` in a span) lives while
+    //     the receiver's storage does, so it may be returned with the receiver lifetime. The
+    //     escape evaluator itself still reports such an element as external storage.
+    // ES: Congelamiento 3.0 P3: un elemento de un arreglo o de un puntero que el receptor guarda en
+    //     un campo (`return ref items[i];` en una coleccion, `return ref start[i];` en un span) vive
+    //     mientras vive el almacenamiento del receptor, asi que puede devolverse con la vida del
+    //     receptor. El evaluador de escape sigue reportando ese elemento como almacenamiento externo.
+    const bool receiverElement = method.returnLifetimeName == "this" &&
+        escape.kind == MethodEscapeOriginKind::ExternalStorage && escape.lifetimeName.empty() &&
+        indexesReceiverFieldStorage(statement->first(), methodMemberOrdinal, scopeOrdinal);
+    if (!receiverElement &&
+        !validateReferenceReturnLifetime(statement, method, escape, diagnostics)) return true;
     if (escape.ordinal.has_value())
         noteParameterEscape(
             methodMemberOrdinal, *escape.ordinal, language::EscapeClass::Return);
@@ -4920,17 +5478,16 @@ bool ProjectMethodBodyModel::reportDirectOwnerReturnWithoutMove(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
+    if (reportCaughtExceptionReturn(statement->first(), scopeOrdinal, diagnostics)) return true;
+    if (reportExceptionLoanReturn(statement->first(), method, scopeOrdinal, diagnostics)) return true;
     if (method.declaredOwnership == sema::OwnershipKind::Borrowed ||
         statement->first()->kind() != ast::AstNodeKind::IdentifierExpression) return false;
-    const std::optional<ScopeName> returnedName = lookupScopeName(
-        scopeOrdinal, statement->first()->text());
-    if (!returnedName.has_value()) return false;
-    if (returnedName->kind == ScopeNameKind::Local &&
-        returnedName->semanticOrdinal < locals_.size() &&
-        (locals_[returnedName->semanticOrdinal].isRaii ||
-         locals_[returnedName->semanticOrdinal].isMoveOnly))
+    // EN: Freeze 3.0 (plan item 136): the classifier names the owner local or parameter.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el local o parametro owner.
+    const KnownLifeSources returned = knownLifeSourcesOfValue(statement->first(), &method, scopeOrdinal);
+    if (returned.raiiOwner || returned.moveOnlyOwner)
     {
-        const MethodLocalSymbol& local = locals_[returnedName->semanticOrdinal];
+        const MethodLocalSymbol& local = locals_[*returned.local];
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidReturn,
             diagnostics::DiagnosticSeverity::Error,
@@ -4942,13 +5499,11 @@ bool ProjectMethodBodyModel::reportDirectOwnerReturnWithoutMove(
                     "' requires return move(value)");
         return true;
     }
-    if (returnedName->kind != ScopeNameKind::Parameter ||
-        returnedName->semanticOrdinal >= method.parameters.size()) return false;
-    const MethodParameterSymbol& parameter = method.parameters[returnedName->semanticOrdinal];
+    if (!returned.parameter.has_value()) return false;
+    const MethodParameterSymbol& parameter = method.parameters[*returned.parameter];
     // Stage 52: an "owned T" parameter closed over a Copy value type needs no
     // ownership ceremony; a move-only value is handled by the next alternative.
-    const bool ownedReference = parameter.ownership == sema::OwnershipKind::Owned &&
-        (isReferenceTypeKey(parameter.typeKey) || parameter.typeKey == "builtin:string");
+    const bool ownedReference = returned.ownedReferenceParameter;
     const bool moveOnlyValue = parameter.passKind == ParameterPassKind::Value &&
         memberModel_->typeIsMoveOnly(parameter.typeKey);
     if (!ownedReference && !moveOnlyValue) return false;
@@ -5015,6 +5570,34 @@ bool ProjectMethodBodyModel::rejectRefFieldReturn(
         return true;
     }
     return false;
+}
+
+// EN: Freeze 3.0 DEC-12: returning a field, an element or any other place of a move-only type copies
+//     it; the caller drops the copy and the owner drops the original (`list[i].Id` on List<Guard>
+//     destroyed the element twice). Only move(...) returns such a place by value; a reference
+//     return is analyzed earlier. A local or a by-value parameter is reported by
+//     reportDirectOwnerReturnWithoutMove.
+// ES: Congelamiento 3.0 DEC-12: devolver un campo, un elemento u otro lugar de tipo move-only lo
+//     copia; el llamador destruye la copia y el dueno destruye el original (`list[i].Id` sobre
+//     List<Guard> destruia el elemento dos veces). Solo move(...) devuelve ese lugar por valor; el
+//     retorno por referencia se analiza antes. Un local o un parametro por valor los reporta
+//     reportDirectOwnerReturnWithoutMove.
+bool ProjectMethodBodyModel::rejectMoveOnlyPlaceReturn(
+    const ast::AstNode* statement,
+    const ExpressionResult& value,
+    bool directOwnerReturnWithoutMove,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (directOwnerReturnWithoutMove || memberModel_ == nullptr || !value.addressable ||
+        statement->first()->kind() == ast::AstNodeKind::MoveExpression ||
+        !memberModel_->typeIsMoveOnly(value.typeKey)) return false;
+    diagnostics.report(
+        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+        diagnostics::DiagnosticSeverity::Error,
+        statement->first()->range(),
+        "move-only value of type '" + value.typeKey +
+            "' cannot be copied into the return value; use return move(source) or a ref return");
+    return true;
 }
 
 bool ProjectMethodBodyModel::rejectBoundMethodReturn(
@@ -5207,16 +5790,15 @@ bool ProjectMethodBodyModel::validateScopeReturn(
     // a method call on it produces a copy and is legal.
     if (statement->first() == nullptr ||
         statement->first()->kind() != ast::AstNodeKind::IdentifierExpression) return true;
-    const std::optional<ScopeName> name = lookupScopeName(
-        scopeOrdinal, statement->first()->text());
-    if (!name.has_value() || name->kind != ScopeNameKind::Local ||
-        name->semanticOrdinal >= locals_.size() || !locals_[name->semanticOrdinal].isScope)
-        return true;
+    // EN: Freeze 3.0 (plan item 136): the classifier names the scope object.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el objeto scope.
+    const KnownLifeSources returned = knownLifeSourcesOfValue(statement->first(), nullptr, scopeOrdinal);
+    if (!returned.scopeObject) return true;
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidReturn,
         diagnostics::DiagnosticSeverity::Error,
         statement->first()->range(),
-        "scope object '" + locals_[name->semanticOrdinal].name +
+        "scope object '" + locals_[*returned.local].name +
             "' lives in the current frame and cannot be returned");
     return false;
 }
@@ -5503,6 +6085,7 @@ void ProjectMethodBodyModel::analyzeReturn(
     if (!value.valid) return;
     if (rejectRefFieldReturn(statement, value, diagnostics)) return;
     if (rejectBoundMethodReturn(statement, value, diagnostics)) return;
+    if (rejectMoveOnlyPlaceReturn(statement, value, directOwnerReturnWithoutMove, diagnostics)) return;
     const ProjectImplicitConversion conversion = classifyImplicit(
         value.typeKey, declaredReturnTypeKey, value.integerConstant);
     if (!conversion.exists())
@@ -5523,6 +6106,9 @@ void ProjectMethodBodyModel::analyzeReturn(
     if (!validateMustTailReturn(
             statement, *method, conversion, methodMemberOrdinal, diagnostics)) return;
     if (!validatePointerReturn(statement, *method, value, diagnostics)) return;
+    rejectNewToNonOwnedReturn(statement, *method, value, diagnostics);
+    rejectOwnedTemporaryBorrowEscape(
+        value, statement->first(), "the return of '" + method->name + "'", diagnostics);
     noteReturnEscape(
         statement, *method, value, methodMemberOrdinal, scopeOrdinal);
     // Stage 52: a generic method's declared "owned T"/"borrowed T" return type may monomorphize

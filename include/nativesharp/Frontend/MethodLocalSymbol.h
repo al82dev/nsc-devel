@@ -79,6 +79,15 @@ struct MethodLocalSymbol final
     // transitive escapes (`ref alias = ref local; return ref alias`) without guessing again at
     // the return site and also propagates through reference-returning calls.
     MethodEscapeOrigin referenceEscapeOrigin;
+    // ES: Para un local puntero por valor: el origen más inseguro de cualquier dirección que se le
+    // haya asignado (inicializador y asignaciones; unión sin flujo). `p = &local` lo marca como
+    // almacenamiento del marco; `p = Allocate(n)` o `p = Global` no. Al pasar `p` a un parámetro
+    // retenido se valida este origen, no el del propio slot de `p`.
+    // EN: For a by-value pointer local: the least safe origin of any address ever assigned to it
+    // (initializer and assignments; flow-insensitive join). `p = &local` marks it as frame
+    // storage; `p = Allocate(n)` or `p = Global` does not. Passing `p` to a retained parameter
+    // validates this origin, not the one of `p`'s own slot.
+    MethodEscapeOrigin pointerValueOrigin;
     std::optional<std::size_t> referenceLifetimeScopeOrdinal;
     // NativeSharp 3.0 T06-F03. Mutable reference locals are exclusive borrows of a canonical
     // storage place.  The key is rooted in a local/parameter (L#/P#) and contains field/index
@@ -110,6 +119,28 @@ struct MethodLocalSymbol final
     // usa para una pregunta concreta --¿el divisor es cero?-- y no para tipar nada.
     std::optional<std::int64_t> constantIntegerValue;
     bool isRaii = false;
+    // EN: Freeze 3.0 DEC-10. The exception a catch handles belongs to the handler until the handler
+    //     ends or `move(e)` takes it out. `isCatchVariable` marks the catch parameter;
+    //     `caughtExceptionScopeOrdinal` is the catch scope of the exception this local names. It is
+    //     set on the catch parameter and on every local of that handler that copies it, so storing
+    //     either where it outlives the handler (a field, a static, an outer local, a return) is a
+    //     compile error.
+    // ES: Congelamiento 3.0 DEC-10. La excepcion que maneja un catch pertenece al handler hasta que
+    //     termina o `move(e)` la saca. `isCatchVariable` marca el parametro del catch;
+    //     `caughtExceptionScopeOrdinal` es el scope del catch cuya excepcion nombra este local. Se
+    //     fija en el parametro del catch y en cada local de ese handler que lo copia, asi guardar
+    //     cualquiera donde sobrevive al handler (un campo, un static, un local exterior, un return)
+    //     es error de compilacion.
+    bool isCatchVariable = false;
+    std::optional<std::size_t> caughtExceptionScopeOrdinal;
+    // EN: Freeze 3.0 P10. The ordinal of the exception parameter this local copies: a non-owned
+    //     parameter of an exception type is a loan from the caller (it may be a caught exception), so
+    //     neither it nor a local that copies it may be stored where it outlives the call.
+    // ES: Congelamiento 3.0 P10. El ordinal del parametro de excepcion que copia este local: un
+    //     parametro no owned de tipo excepcion es un prestamo del llamador (puede ser una excepcion
+    //     atrapada), asi que ni el ni un local que lo copia pueden guardarse donde sobreviven a la
+    //     llamada.
+    std::optional<std::size_t> loanedExceptionParameterOrdinal;
     // NS304-T13-F03: `scope T x = new T(...)` — the object's physical storage lives in the current
     // frame (stack), never heap; the destructor runs once at lexical-scope exit and never calls the
     // heap deallocator. Escape (return/capture/field/static) is rejected by Sema.
@@ -132,6 +163,11 @@ struct MethodLocalSymbol final
     // Item 320. A placement result owns object destruction while borrowing supplied bytes.
     sema::OwnershipKind objectLifetimeOwnership = sema::OwnershipKind::None;
     sema::OwnershipKind storageOwnership = sema::OwnershipKind::None;
+    // ES: Array cuyo inicializador guardó literales de cadena: esos slots no le pertenecen (los
+    // literales duran todo el proceso), así que `delete[]` libera sólo el bloque.
+    // EN: Array whose initializer stored string literals: it does not own those slots (literals
+    // last for the whole process), so `delete[]` releases the block only.
+    bool borrowedElementSlots = false;
     std::optional<std::size_t> localBorrowBindingOrdinal;
     std::optional<std::size_t> lambdaOrdinal;
     std::optional<std::size_t> lambdaParameterOrdinal;

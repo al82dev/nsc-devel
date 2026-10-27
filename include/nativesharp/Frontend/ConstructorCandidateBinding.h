@@ -16,6 +16,13 @@ struct ConstructorCandidateBinding final
     bool implicitDefault = false;
     bool accessible = false;
     bool viable = false;
+    // EN: Freeze 3.0 P1: the candidate fit the arguments but its member clause fails for this
+    //     closed type (`where T : copy` with a move-only T); the clause is reported if no other
+    //     candidate is viable.
+    // ES: Congelamiento 3.0 P1: el candidato aceptaba los argumentos pero su clausula de miembro
+    //     falla en este tipo cerrado (`where T : copy` con un T move-only); la clausula se informa
+    //     si ningun otro candidato es viable.
+    bool constraintRejected = false;
     std::vector<ProjectImplicitConversion> conversions;
     std::vector<std::size_t> argumentParameterOrdinals;
     std::vector<std::size_t> defaultedParameterOrdinals;

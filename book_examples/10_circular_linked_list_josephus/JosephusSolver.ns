@@ -3,7 +3,7 @@ namespace NativeSharp.BookExamples.CircularJosephus
 {
     public class JosephusSolver
     {
-        public static int Solve(int people, int step)
+        public static int Solve(int people, int step) throws Exception
         {
             if (people <= 0 || step <= 0)
             {

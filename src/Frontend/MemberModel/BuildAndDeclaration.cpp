@@ -874,6 +874,14 @@ void ProjectMemberModel::collectTypePartMembers(
     for (const ast::AstNode* memberNode : expandedMembers)
     {
         if (memberNode == nullptr || !isClassMemberNode(memberNode->kind())) continue;
+        // EN: A member of a restored API unit with a snapshot entry is installed (plan 3.3).
+        // ES: Un miembro de una unidad de API restaurada con entrada en el snapshot se instala (plan 3.3).
+        if (installSnapshotMember(
+                typeOrdinal, type, partOrdinal, part, memberNode, declarationOrdinal, byName, diagnostics))
+        {
+            ++declarationOrdinal;
+            continue;
+        }
         collectTypeMember(
             typeOrdinal,
             type,
@@ -1258,7 +1266,14 @@ void ProjectMemberModel::validateReferenceReturnLifetime(
             diagnostics::DiagnosticSeverity::Error,
             symbol.range,
             "lifetime 'this' is available only on instance ref returns");
-    else if (symbol.returnLifetimeName != "static" &&
+    // EN: Freeze 3.0 P3: an explicit `ref[this]` on an instance member names the receiver, which
+    //     is always in scope. The public surface of a precompiled library writes the inferred
+    //     lifetime explicitly, so without this the consumer rejected every ref-returning method.
+    // ES: Congelamiento 3.0 P3: un `ref[this]` explicito en un miembro de instancia nombra el
+    //     receptor, que siempre esta en alcance. La superficie publica de una biblioteca precompilada
+    //     escribe la vida inferida explicitamente, asi que sin esto el consumidor rechazaba todo
+    //     metodo que devuelve ref.
+    else if (symbol.returnLifetimeName != "static" && symbol.returnLifetimeName != "this" &&
              !declaresLifetime(memberNode, symbol.returnLifetimeName) &&
              !declaresLifetime(type.syntax, symbol.returnLifetimeName))
         diagnostics.report(

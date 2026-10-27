@@ -13,7 +13,7 @@ int DeadTail()
 int Main()
 {
     int value = 0;
-    int maybe;
+    int maybe = 0;
     int addressed = 7;
     int* pointer = &addressed;
 

@@ -257,7 +257,7 @@ public class Cell
     private int Value;
     public ref int this[int index] { get { return ref Value; } }
 }
-public class Program { public static int Main() { Cell cell = new Cell(); ref int first = ref cell[0]; ref int second = ref cell[1]; return 0; } }
+public class Program { public static int Main() { raii Cell cell = new Cell(); ref int first = ref cell[0]; ref int second = ref cell[1]; return 0; } }
 )NS", observed),
         "user indexers may return aliases without implicit exclusivity (" +
             observed + ")");

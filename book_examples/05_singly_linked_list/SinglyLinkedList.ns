@@ -25,33 +25,34 @@ namespace NativeSharp.BookExamples.LinkedList
 
         public void AddFirst(T value)
         {
-            SinglyNode<T> node = new SinglyNode<T>(value);
-            node.Next = head;
-            head = node;
+            // Congelamiento 3.0 (C-01): el `new` va directo al campo que lo guarda; la lista es su
+            // dueno manual y lo libera con `delete` al quitarlo.
+            SinglyNode<T> oldHead = head;
+            head = new SinglyNode<T>(value);
+            head.Next = oldHead;
             if (tail == null)
             {
-                tail = node;
+                tail = head;
             }
             count = count + 1;
         }
 
         public void AddLast(T value)
         {
-            SinglyNode<T> node = new SinglyNode<T>(value);
             if (tail == null)
             {
-                head = node;
-                tail = node;
+                head = new SinglyNode<T>(value);
+                tail = head;
             }
             else
             {
-                tail.Next = node;
-                tail = node;
+                tail.Next = new SinglyNode<T>(value);
+                tail = tail.Next;
             }
             count = count + 1;
         }
 
-        private SinglyNode<T> NodeAt(int index)
+        private SinglyNode<T> NodeAt(int index) throws ArgumentOutOfRangeException
         {
             if (index < 0 || index >= count)
             {
@@ -68,17 +69,17 @@ namespace NativeSharp.BookExamples.LinkedList
             return current;
         }
 
-        public T GetAt(int index)
+        public T GetAt(int index) throws ArgumentOutOfRangeException
         {
             return NodeAt(index).Value;
         }
 
-        public void SetAt(int index, T value)
+        public void SetAt(int index, T value) throws ArgumentOutOfRangeException
         {
             NodeAt(index).Value = value;
         }
 
-        public void InsertAt(int index, T value)
+        public void InsertAt(int index, T value) throws ArgumentOutOfRangeException
         {
             if (index < 0 || index > count)
             {
@@ -98,13 +99,13 @@ namespace NativeSharp.BookExamples.LinkedList
             }
 
             SinglyNode<T> previous = NodeAt(index - 1);
-            SinglyNode<T> node = new SinglyNode<T>(value);
-            node.Next = previous.Next;
-            previous.Next = node;
+            SinglyNode<T> following = previous.Next;
+            previous.Next = new SinglyNode<T>(value);
+            previous.Next.Next = following;
             count = count + 1;
         }
 
-        public void RemoveFirst(T[] result)
+        public void RemoveFirst(T[] result) throws InvalidOperationException
         {
             if (head == null)
             {
@@ -124,7 +125,7 @@ namespace NativeSharp.BookExamples.LinkedList
             }
         }
 
-        public void RemoveAt(int index, T[] result)
+        public void RemoveAt(int index, T[] result) throws Exception
         {
             if (index < 0 || index >= count)
             {

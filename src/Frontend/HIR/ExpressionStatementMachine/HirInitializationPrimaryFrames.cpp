@@ -199,18 +199,25 @@ LoopBlockAdvance ProjectOopHirModel::initializeScheduledAwaitExpressionFrame(
             currentInputKind, lowered, error)) return LoopBlockAdvance::Descend;
             return LoopBlockAdvance::Error;
         }
-        if (!loweringAsyncBody_ && !activeHirExceptionHandlers_.empty())
-        {
-            const auto& handler = activeHirExceptionHandlers_.back();
-            for (std::size_t index = activeHirCleanupRegions_.size();
-                index > handler.retainedCleanupDepth; --index)
-            {
-                frame.awaitCleanupRegionOrdinals.push_back(
-                    activeHirCleanupRegions_[index - 1U]);
-            }
-            frame.awaitExceptionTargetRegionOrdinal = handler.hirRegionOrdinal;
-        }
     }
+    // EN: Freeze 3.0 C-13: an await inside a try of an async body also hands its error to that
+    //     catch; before, only a synchronous await did, so the async catch never ran.
+    // ES: Congelamiento 3.0 C-13: un await dentro de un try de un cuerpo async tambien entrega su
+    //     error a ese catch; antes solo lo hacia un await sincrono, y el catch async nunca corria.
+    // EN: Freeze 3.0 C-17: this holds for every awaited future, not only a direct async call: the
+    //     future of `MoveNextAsync` or of a variable also carries its error to the catch. Without a
+    //     handler the await keeps every active cleanup region, as a `throw` does, so a synchronous
+    //     await that propagates the error destroys the live locals of this callable.
+    // ES: Congelamiento 3.0 C-17: esto vale para todo future esperado, no solo para una llamada async
+    //     directa: el future de `MoveNextAsync` o de una variable tambien lleva su error al catch. Sin
+    //     handler el await conserva todas las regiones de cleanup activas, como un `throw`, para que
+    //     un await sincrono que propaga el error destruya los locales vivos de este callable.
+    const std::size_t retainedDepth = activeHirExceptionHandlers_.empty()
+        ? 0U : activeHirExceptionHandlers_.back().retainedCleanupDepth;
+    for (std::size_t index = activeHirCleanupRegions_.size(); index > retainedDepth; --index)
+        frame.awaitCleanupRegionOrdinals.push_back(activeHirCleanupRegions_[index - 1U]);
+    if (!activeHirExceptionHandlers_.empty())
+        frame.awaitExceptionTargetRegionOrdinal = activeHirExceptionHandlers_.back().hirRegionOrdinal;
 
     return LoopBlockAdvance::Complete;
 }

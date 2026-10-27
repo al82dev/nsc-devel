@@ -258,7 +258,7 @@ class Program
 {
     public static int Main()
     {
-        Box source = new Box();
+        raii Box source = new Box();
         Box changed = source with { Value = 42 };
         return 0;
     }

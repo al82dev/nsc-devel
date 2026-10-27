@@ -162,7 +162,7 @@ namespace Capabilities
         public static int Main()
         {
             Pod pod; pod.Value = 1;
-            Resource resource = new Resource();
+            raii Resource resource = new Resource();
             return Value(pod) + Reference(resource);
         }
     }

@@ -112,6 +112,7 @@ LLVMMetadataRef createDebugFile(
     LLVMDIBuilderRef debugBuilder,
     const source::SourceManager* sourceManager,
     std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const std::string> sourceChecksums,
     std::unordered_map<std::uint32_t, LLVMMetadataRef>& debugFiles,
     std::unordered_map<std::uint32_t, unsigned>& debugCodeViewFileNumbers,
     SourceLocation location)
@@ -131,10 +132,18 @@ LLVMMetadataRef createDebugFile(
     const std::string directory = separator == std::string::npos
         ? std::string()
         : normalized.substr(0, separator == 0 ? 1 : separator);
-    const std::string_view sourceBytes = sourceFile->buffer();
-    const auto bytes = std::span(
-        reinterpret_cast<const std::uint8_t*>(sourceBytes.data()), sourceBytes.size());
-    const std::string checksum = basic::sha256Hex(basic::sha256(bytes));
+    // A checksum computed once per compilation for all code units is used when present; it is
+    // the same sha256Hex(sha256(buffer)) computed here otherwise.
+    std::string checksum;
+    if (fileKey < sourceChecksums.size() && !sourceChecksums[fileKey].empty())
+        checksum = sourceChecksums[fileKey];
+    else
+    {
+        const std::string_view sourceBytes = sourceFile->buffer();
+        const auto bytes = std::span(
+            reinterpret_cast<const std::uint8_t*>(sourceBytes.data()), sourceBytes.size());
+        checksum = basic::sha256Hex(basic::sha256(bytes));
+    }
     LLVMMetadataRef file = LLVMDIBuilderCreateFileWithChecksum(
         debugBuilder, filename.data(), filename.size(), directory.data(), directory.size(),
         CSK_SHA256, checksum.data(), checksum.size(), nullptr, 0);
@@ -152,6 +161,7 @@ unsigned debugCodeViewFileNumberFor(
     LLVMDIBuilderRef debugBuilder,
     const source::SourceManager* sourceManager,
     std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const std::string> sourceChecksums,
     std::unordered_map<std::uint32_t, LLVMMetadataRef>& debugFiles,
     std::unordered_map<std::uint32_t, unsigned>& debugCodeViewFileNumbers,
     SourceLocation location)
@@ -159,7 +169,7 @@ unsigned debugCodeViewFileNumberFor(
     if (debugBuilder == nullptr || !location.isValid()) return 0;
     const std::uint32_t fileKey = location.fileId().value();
     if (debugFiles.find(fileKey) == debugFiles.end() &&
-        createDebugFile(debugBuilder, sourceManager, debugPrefixMaps, debugFiles,
+        createDebugFile(debugBuilder, sourceManager, debugPrefixMaps, sourceChecksums, debugFiles,
                         debugCodeViewFileNumbers, location) == nullptr)
         return 0;
     const auto found = debugCodeViewFileNumbers.find(fileKey);
@@ -184,6 +194,13 @@ bool emitGlobalDebugInfo(
         debugCompileUnit == nullptr || global == nullptr || field.isImported ||
         !field.sourceRange.isValid())
         return true;
+    // Un miembro de enum es un enumerador del tipo enum (LF_ENUMERATE), no una variable: su
+    // global solo materializa el valor. Describirlo tambien como variable global hacia que el
+    // depurador listara `StringComparison.Ordinal` entre los globales del programa.
+    // An enum member is an enumerator of the enum type (LF_ENUMERATE), not a variable: its
+    // global only materializes the value. Describing it as a global variable too made the
+    // debugger list `StringComparison.Ordinal` among the program's globals.
+    if (field.isEnumConstant) return true;
     LLVMMetadataRef file = debugFileLookup(field.sourceRange.begin());
     const std::string& displayName =
         field.debugDisplayName.empty() ? field.name : field.debugDisplayName;
@@ -254,9 +271,16 @@ bool emitThisDebugInfo(
     }
     const auto flags = static_cast<LLVMDIFlags>(LLVMDIFlagArtificial | LLVMDIFlagObjectPointer);
     static constexpr std::string_view thisName = "this";
+    // ES: `this` es el argumento 1. Antes se pasaba 0 como numero de argumento (y 1 en
+    // AlwaysPreserve), asi que LLVM lo trataba como un local: el PDB no lo marcaba como
+    // parametro y el depurador lo listaba en Locals.
+    // EN: `this` is argument 1. It used to pass 0 as the argument number (and 1 as
+    // AlwaysPreserve), so LLVM treated it as a local: the PDB did not flag it as a parameter and
+    // the debugger listed it in Locals.
+    static constexpr unsigned thisArgumentNumber = 1;
     LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
-        debugBuilder, currentDebugSubprogram, thisName.data(), thisName.size(), 0,
-        file, position.line, type, 1, flags);
+        debugBuilder, currentDebugSubprogram, thisName.data(), thisName.size(),
+        thisArgumentNumber, file, position.line, type, 1, flags);
     LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder, nullptr, 0);
     LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
         context, position.line, position.column, currentDebugSubprogram, nullptr);
@@ -277,6 +301,19 @@ bool emitThisDebugInfo(
 
 // NSC305-L03. Emits the debug metadata for a catch parameter (moved out of the lowerer's
 // emitDebugCatchParameter as a pure move).
+//
+// ES: La variable del `catch` es un local del bloque `catch`, no un parámetro del método: el cuerpo
+// del `catch` es código ordinario de la función padre (no un funclet con argumentos). Se describe
+// como variable automática del ámbito léxico del `catch`. Como parámetro, dos `try` con variable
+// de `catch` en el mismo método recibían el mismo número de argumento y el verificador de LLVM
+// rechazaba el módulo con `-g`; además CodeView la marcaba `param` y el depurador la mostraba entre
+// los argumentos.
+// EN: The `catch` variable is a local of the `catch` block, not a parameter of the method: the
+// `catch` body is ordinary code of the parent function (not a funclet with arguments). It is
+// described as an automatic variable of the `catch` lexical scope. As a parameter, two `try`
+// statements with a `catch` variable in the same method received the same argument number and the
+// LLVM verifier rejected the module under `-g`; CodeView also flagged it `param` and the debugger
+// listed it among the arguments.
 bool emitCatchParameterDebugInfo(
     DebugInformationKind debugInformation,
     LLVMDIBuilderRef debugBuilder,
@@ -284,14 +321,12 @@ bool emitCatchParameterDebugInfo(
     LLVMBuilderRef builder,
     LLVMMetadataRef currentDebugSubprogram,
     LLVMMetadataRef currentDebugScope,
-    const frontend::ProjectOopMirFunction* currentMirFunction,
     const source::SourceManager* sourceManager,
     std::unordered_set<std::size_t>& debugDeclaredLocals,
     const std::function<LLVMMetadataRef(SourceLocation)>& debugFileLookup,
     const std::function<LLVMMetadataRef(std::string_view, std::string_view)>& debugTypeLookup,
     const frontend::ProjectOopMirNode* node,
     LLVMValueRef storage,
-    std::size_t handlerIndex,
     std::string& error)
 {
     if (debugInformation != DebugInformationKind::Full || currentDebugSubprogram == nullptr ||
@@ -308,13 +343,9 @@ bool emitCatchParameterDebugInfo(
         currentDebugScope != nullptr ? currentDebugScope : currentDebugSubprogram;
     if (file == nullptr || type == nullptr || scope == nullptr) return true;
     const source::SourcePosition position = sourceManager->getPosition(range.begin());
-    const unsigned ordinaryParameters = currentMirFunction != nullptr
-        ? static_cast<unsigned>(currentMirFunction->parameterTypeKeys.size())
-        : 0U;
-    LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
+    LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
         debugBuilder, scope, node->stringValue.data(), node->stringValue.size(),
-        ordinaryParameters + static_cast<unsigned>(handlerIndex) + 1U,
-        file, position.line, type, 1, LLVMDIFlagZero);
+        file, position.line, type, 1, LLVMDIFlagZero, 0);
     LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder, nullptr, 0);
     LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
         context, position.line, position.column, scope, nullptr);
@@ -395,9 +426,14 @@ bool emitParameterDebugInfo(
                 function.parameterTypeKeys[index], ownership, false, range);
     if (file == nullptr || type == nullptr) return true;
     const source::SourcePosition position = sourceManager->getPosition(range.begin());
+    // ES: En un metodo de instancia `this` ocupa el argumento 1, asi que los parametros del
+    // codigo fuente empiezan en el 2.
+    // EN: In an instance method `this` takes argument 1, so the source parameters start at 2.
+    const std::size_t firstArgumentNumber = !function.isStatic && !function.isLambda ? 2U : 1U;
     LLVMMetadataRef variable = LLVMDIBuilderCreateParameterVariable(
         debugBuilder, currentDebugSubprogram, name.data(), name.size(),
-        static_cast<unsigned>(index + 1), file, position.line, type, 1, LLVMDIFlagZero);
+        static_cast<unsigned>(index + firstArgumentNumber), file, position.line, type, 1,
+        LLVMDIFlagZero);
     LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder, nullptr, 0);
     LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
         context, position.line, position.column, currentDebugSubprogram, nullptr);

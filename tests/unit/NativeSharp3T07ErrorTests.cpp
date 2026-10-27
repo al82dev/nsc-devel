@@ -705,7 +705,11 @@ public class Program
             std::string(name) + " compiles without forcing typed-exception handling (" +
                 evidence.error + evidence.diagnostics + ")");
     };
-    expectAccepted("UnhandledCall", R"NS(
+    // EN: Freeze 3.0 C-13: a call or an accessor access that reaches `throws E` must be caught or
+    //     propagated; a written `throw` stays unchecked, as UnhandledThrow shows.
+    // ES: Congelamiento 3.0 C-13: una llamada o un acceso a un accesor que llega a `throws E` debe
+    //     atraparse o propagarse; un `throw` escrito sigue sin chequeo, como muestra UnhandledThrow.
+    expectRejected("UnhandledCall", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Program
@@ -713,13 +717,22 @@ public class Program
     private static int Risk() throws Error { throw new Error(); }
     public static int Main() { return Risk(); }
 }
-)NS");
-    expectAccepted("UnhandledThrow", R"NS(
+)NS", "which is neither caught here nor declared");
+    // Freeze 3.0 (checked throw): a written `throw` follows the same rule as a call now.
+    expectRejected("UnhandledThrow", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Program { public static int Main() { throw new Error(); } }
+)NS", "is neither caught here nor declared");
+    expectAccepted("HandledThrow", R"NS(
+namespace NativeSharp.Core { public class Exception {} }
+public class Error : NativeSharp.Core.Exception {}
+public class Program
+{
+    public static int Main() { try { throw new Error(); } catch (Error problem) { return 1; } }
+}
 )NS");
-    expectAccepted("UnhandledPropertyGet", R"NS(
+    expectRejected("UnhandledPropertyGet", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Source
@@ -730,8 +743,8 @@ public class Program
 {
     public static int Main() { owned Source source = new Source(); return source.Value; }
 }
-)NS");
-    expectAccepted("UnhandledIndexerSet", R"NS(
+)NS", "which is neither caught here nor declared");
+    expectRejected("UnhandledIndexerSet", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Source
@@ -746,7 +759,7 @@ public class Program
 {
     public static int Main() { owned Source source = new Source(); source[0] = 1; return 42; }
 }
-)NS");
+)NS", "which is neither caught here nor declared");
     expectRejected("DelegateMismatch", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
@@ -754,7 +767,7 @@ public delegate int Work() throws Error;
 public class Program
 {
     private static int Plain() { return 42; }
-    public static int Main() { Work work = Plain; return work(); }
+    public static int Main() throws Error { Work work = Plain; return work(); }
 }
 )NS", "method group");
     expectRejected("OverrideWidening", R"NS(
@@ -771,7 +784,7 @@ public class Error : NativeSharp.Core.Exception {}
 public extern C delegate int NativeWork() throws Error;
 public class Program { public static int Main() { return 0; } }
 )NS", "cannot declare throws");
-    expectAccepted("UnrelatedCatchPattern", R"NS(
+    expectRejected("UnrelatedCatchPattern", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Other : NativeSharp.Core.Exception {}
@@ -785,8 +798,8 @@ public class Program
         return 42;
     }
 }
-)NS");
-    expectAccepted("NonExhaustiveCatch", R"NS(
+)NS", "which is neither caught here nor declared");
+    expectRejected("NonExhaustiveCatch", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}
 public class Narrow : Error {}
@@ -800,7 +813,7 @@ public class Program
         return 42;
     }
 }
-)NS");
+)NS", "which is neither caught here nor declared");
     expectRejected("CatchFilterType", R"NS(
 namespace NativeSharp.Core { public class Exception {} }
 public class Error : NativeSharp.Core.Exception {}

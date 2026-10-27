@@ -2,6 +2,8 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 
 #include <array>
+#include <cstddef>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -87,7 +89,27 @@ constexpr std::array kOrdinaryEntries{
     DiagnosticEntry{DiagnosticId::MissingMain, "MissingMain"},
     DiagnosticEntry{DiagnosticId::InvalidMainSignature, "InvalidMainSignature"},
     DiagnosticEntry{DiagnosticId::InvalidExternCSignature, "InvalidExternCSignature"},
+    // EN: Freeze 3.0 diagnostics, appended after NS3099 with the values 74, 75 and 76.
+    // ES: Diagnosticos del congelamiento 3.0, agregados despues de NS3099 con los valores 74, 75 y 76.
+    DiagnosticEntry{DiagnosticId::LostOwnership, "LostOwnership"},
+    DiagnosticEntry{DiagnosticId::SynchronousAwaitCanSuspend, "SynchronousAwaitCanSuspend"},
+    DiagnosticEntry{DiagnosticId::UnhandledDeclaredError, "UnhandledDeclaredError"},
 };
+
+// EN: Count of the historical ordinary IDs (values 0..68); the short codes follow with 69..73 and the
+//     freeze diagnostics are appended after them.
+// ES: Cantidad de IDs ordinarios historicos (valores 0..68); los codigos cortos siguen con 69..73 y los
+//     diagnosticos del congelamiento se agregan despues.
+constexpr std::size_t kHistoricalOrdinaryCount = 69;
+constexpr std::size_t kFirstShortCodeValue = 69;
+constexpr std::size_t kFirstFreezeValue = 74;
+
+// EN: Returns the frozen numeric value of the ordinary entry at `index`. Complexity is O(1).
+// ES: Devuelve el valor numerico congelado de la entrada ordinaria en `index`. Complejidad O(1).
+constexpr std::size_t ordinaryValue(std::size_t index) noexcept
+{
+    return index < kHistoricalOrdinaryCount ? index : kFirstFreezeValue + (index - kHistoricalOrdinaryCount);
+}
 
 constexpr std::array kNativeSharp3Entries{
     DiagnosticEntry{DiagnosticId::NS3010InvalidCompilationStage, "NS3010"},
@@ -124,7 +146,7 @@ void registerCatalogCase(TestRegistry& registry)
             context.expect(names.insert(entry.second).second,
                 "TD-DIA-003 every diagnostic name must be unique");
         }
-        context.expect(names.size() == 74, "TD-DIA-003 the independent catalog must contain 74 names");
+        context.expect(names.size() == 77, "TD-DIA-003 the independent catalog must contain 77 names");
     });
 }
 
@@ -132,21 +154,29 @@ void registerCatalogCase(TestRegistry& registry)
 void registerClassificationCases(TestRegistry& registry)
 {
     addCase(registry, "TD-DIA-004", [](TestContext& context) {
-        context.expect(kOrdinaryEntries.size() == 69,
-            "TD-DIA-004 the ordinary diagnostic partition must contain exactly 69 IDs");
-        for (const DiagnosticEntry& entry : kOrdinaryEntries)
+        context.expect(kOrdinaryEntries.size() == 72,
+            "TD-DIA-004 the ordinary diagnostic partition must contain exactly 72 IDs");
+        for (std::size_t index = 0; index < kOrdinaryEntries.size(); ++index)
+        {
+            const DiagnosticEntry& entry = kOrdinaryEntries[index];
             context.expect(!isNativeSharp3Diagnostic(entry.first),
                 "TD-DIA-004 every ordinary diagnostic ID must remain outside the short-code subset");
+            context.expect(static_cast<std::size_t>(entry.first) == ordinaryValue(index),
+                "TD-DIA-004 every ordinary diagnostic ID must keep its frozen numeric value");
+        }
     });
     addCase(registry, "TD-DIA-005", [](TestContext& context) {
         context.expect(kNativeSharp3Entries.size() == 5,
             "TD-DIA-005 the short-code diagnostic partition must contain exactly five IDs");
-        for (const DiagnosticEntry& entry : kNativeSharp3Entries)
+        for (std::size_t index = 0; index < kNativeSharp3Entries.size(); ++index)
         {
+            const DiagnosticEntry& entry = kNativeSharp3Entries[index];
             context.expect(isNativeSharp3Diagnostic(entry.first),
                 "TD-DIA-005 every short-code diagnostic ID must remain classified");
             context.expect(diagnosticIdName(entry.first) == entry.second,
                 "TD-DIA-005 every classified ID must preserve its short code");
+            context.expect(static_cast<std::size_t>(entry.first) == kFirstShortCodeValue + index,
+                "TD-DIA-005 every short-code diagnostic ID must keep its historical value 69..73");
         }
     });
 }
@@ -156,8 +186,12 @@ void registerUnknownCase(TestRegistry& registry)
 {
     addCase(registry, "TD-DIA-006", [](TestContext& context) {
         // The frozen API intentionally defines behavior outside the enumerator set.
+        // EN: Freeze 3.0: the largest int is outside the enumerator domain no matter how many IDs are
+        //     appended later; 74 stopped being unknown once the freeze diagnostics were added.
+        // ES: Congelamiento 3.0: el int mas grande queda fuera del dominio de enumeradores sin importar
+        //     cuantos IDs se agreguen despues; 74 dejo de ser desconocido al agregar los del congelamiento.
         // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
-        constexpr auto unknown = static_cast<DiagnosticId>(74);
+        constexpr auto unknown = static_cast<DiagnosticId>((std::numeric_limits<int>::max)());
         context.expect(diagnosticIdName(unknown) == "UnknownDiagnostic",
             "TD-DIA-006 an unknown diagnostic ID must use the stable fallback name");
         context.expect(!isNativeSharp3Diagnostic(unknown),

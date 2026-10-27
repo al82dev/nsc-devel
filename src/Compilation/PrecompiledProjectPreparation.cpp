@@ -6,6 +6,8 @@
 #include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 
+#include "PrecompiledSurfaceReachability.h"
+
 #include "../Driver/Internal/DriverInternal.h"
 #include "../Frontend/Cache/SyntaxProductCacheCodec.h"
 
@@ -41,6 +43,12 @@ std::shared_ptr<const interop::LibraryMetadata> readMetadata(
             std::string& decodeError) {
             return codec.read(bytes, result, decodeError);
         },
+        [&codec](
+            std::span<const std::uint8_t> bytes,
+            interop::LibraryMetadata& result,
+            std::string& decodeError) {
+            return codec.readAuthenticated(bytes, result, decodeError);
+        },
         error);
     if (decoded == nullptr) return {};
     if (!repository.verify(
@@ -71,6 +79,17 @@ std::string precompiledProductCacheKey(
     const std::span<const std::uint8_t> bytes{
         reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
     return basic::sha256Hex(basic::sha256(bytes));
+}
+
+// EN: SHA-256 (hex) of the NSMETA bytes of `entry`, or empty when the repository cannot load them.
+// ES: SHA-256 (hex) de los bytes de la NSMETA de `entry`, o vacío si el repositorio no los carga.
+std::string moduleMetadataDigest(
+    const LoadedMetadata& entry,
+    const LibraryMetadataRepository& repository)
+{
+    std::string ignoredError;
+    const LibraryMetadataRepositoryEntry* file = repository.load(entry.metadataPath, ignoredError);
+    return file == nullptr ? std::string{} : basic::sha256Hex(file->contentDigest());
 }
 
 bool restorePrecompiledSourceProducts(
@@ -151,6 +170,7 @@ bool materializeModuleProducts(
     std::string& templateSource,
     std::string& publicSyntax,
     std::string& templateSyntax,
+    std::string& publicApiSnapshot,
     bool& restoredPublishedProducts,
     std::string& error)
 {
@@ -163,6 +183,7 @@ bool materializeModuleProducts(
         templateSource = std::move(publishedProducts->publicTemplateSource);
         publicSyntax = std::move(publishedProducts->publicApiSyntax);
         templateSyntax = std::move(publishedProducts->publicTemplateSyntax);
+        publicApiSnapshot = std::move(publishedProducts->publicApiSnapshot);
         restoredPublishedProducts = true;
         return true;
     }
@@ -273,30 +294,134 @@ std::vector<frontend::PrecompiledGenericSpecialization> genericSpecializations(
     return result;
 }
 
+// The namespaces whose declarations the compiler refers to by key (strings, exceptions, numerics,
+// atomics, files), without any name in the consumer's source.
+bool isCompilerKnownNamespace(std::string_view name) noexcept
+{
+    return name == "NativeSharp.Core" || name == "NativeSharp.Core.Numerics" ||
+        name == "NativeSharp.Core.Threading" || name == "NativeSharp.Core.IO";
+}
+
+// A module that declares a compiler-known namespace is never pruned. This covers the standard
+// library and any library that embeds its own copy of it. The closed generic types every library
+// publishes (`NativeSharp.Core.Span__g1__...`) do not count.
+bool isStandardLibraryModule(const interop::LibraryMetadata& metadata)
+{
+    if (metadata.moduleName == "NativeSharpCore") return true;
+    for (const interop::LibraryMetadataType& type : metadata.types)
+    {
+        const std::string_view name = type.fullyQualifiedName;
+        if (name.find("__g") != std::string_view::npos) continue;
+        const std::size_t nesting = name.find('+');
+        const std::string_view outer = nesting == std::string_view::npos ? name : name.substr(0, nesting);
+        const std::size_t separator = outer.find_last_of('.');
+        if (separator != std::string_view::npos && isCompilerKnownNamespace(outer.substr(0, separator)))
+            return true;
+    }
+    return false;
+}
+
+// Returns, in the order of `loaded`, the metadata whose surface each module materializes: the
+// complete metadata without a demand, and otherwise only what the demanded names reach.
+std::vector<std::shared_ptr<const interop::LibraryMetadata>> surfaceMetadata(
+    const std::vector<LoadedMetadata>& loaded,
+    const PrecompiledSurfaceDemand* demand)
+{
+    std::vector<std::shared_ptr<const interop::LibraryMetadata>> modules;
+    modules.reserve(loaded.size());
+    for (const LoadedMetadata& entry : loaded)
+    {
+        modules.push_back(entry.metadata);
+    }
+    if (demand == nullptr || !demand->enabled) return modules;
+    std::vector<bool> fullModules;
+    fullModules.reserve(loaded.size());
+    for (const LoadedMetadata& entry : loaded)
+    {
+        fullModules.push_back(isStandardLibraryModule(*entry.metadata));
+    }
+    PrecompiledSurfaceReachability reachability(modules, fullModules);
+    reachability.reach(demand->names);
+    for (std::size_t index = 0; index < modules.size(); ++index)
+    {
+        modules[index] = reachability.prunedMetadata(index);
+    }
+    return modules;
+}
+
+// The cache key of a pruned surface: the key of the complete products plus the generated text, so a
+// local syntax cache entry is shared only by compilations that materialize the same surface.
+std::string prunedProductCacheKey(
+    std::string_view productCacheKey,
+    std::string_view publicSource,
+    std::string_view templateSource)
+{
+    if (productCacheKey.empty()) return {};
+    std::string material;
+    appendCacheIdentityField(material, "nsc-precompiled-pruned-products-v1");
+    appendCacheIdentityField(material, productCacheKey);
+    appendCacheIdentityField(material, publicSource);
+    appendCacheIdentityField(material, templateSource);
+    const std::span<const std::uint8_t> bytes{
+        reinterpret_cast<const std::uint8_t*>(material.data()), material.size()};
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
+bool materializePrunedProducts(
+    const interop::LibraryMetadata& surface,
+    std::string& publicSource,
+    std::string& templateSource,
+    std::string& error)
+{
+    if (!driver::buildPrecompiledPublicSource(surface, publicSource, error))
+    {
+        error = "cannot materialize public API for module '" + surface.moduleName + "': " + error;
+        return false;
+    }
+    if (!driver::buildPrecompiledGenericTemplateSource(surface, templateSource, error))
+    {
+        error = "cannot materialize public templates for module '" + surface.moduleName + "': " + error;
+        return false;
+    }
+    return true;
+}
+
 bool materializeModules(
     std::vector<LoadedMetadata>& loaded,
     const LibraryMetadataRepository& repository,
     const std::filesystem::path& cacheRoot,
+    const PrecompiledSurfaceDemand* demand,
     std::vector<frontend::PrecompiledSyntaxModule>& modules,
     std::string& error)
 {
+    const std::vector<std::shared_ptr<const interop::LibraryMetadata>> surfaces =
+        surfaceMetadata(loaded, demand);
     modules.reserve(loaded.size());
-    for (LoadedMetadata& entry : loaded)
+    for (std::size_t index = 0; index < loaded.size(); ++index)
     {
-        const interop::LibraryMetadata& metadata = *entry.metadata;
+        LoadedMetadata& entry = loaded[index];
+        const interop::LibraryMetadata& surface = *surfaces[index];
+        const bool pruned = surfaces[index] != entry.metadata;
         std::unordered_set<std::string_view> concreteMemberNames;
-        concreteMemberNames.reserve(metadata.members.size());
-        for (const interop::LibraryMetadataMember& member : metadata.members)
+        concreteMemberNames.reserve(surface.members.size());
+        for (const interop::LibraryMetadataMember& member : surface.members)
         {
             concreteMemberNames.insert(member.name);
         }
-        const std::string productCacheKey = precompiledProductCacheKey(entry, repository);
+        std::string productCacheKey = precompiledProductCacheKey(entry, repository);
         std::string publicSource;
         std::string templateSource;
         std::string publicSyntax;
         std::string templateSyntax;
+        std::string publicApiSnapshot;
         bool restoredPublishedProducts = false;
-        if (!materializeModuleProducts(
+        if (pruned)
+        {
+            // The published products and the product cache hold the complete surface.
+            if (!materializePrunedProducts(surface, publicSource, templateSource, error)) return false;
+            productCacheKey = prunedProductCacheKey(productCacheKey, publicSource, templateSource);
+        }
+        else if (!materializeModuleProducts(
                 entry,
                 repository,
                 cacheRoot,
@@ -305,6 +430,7 @@ bool materializeModules(
                 templateSource,
                 publicSyntax,
                 templateSyntax,
+                publicApiSnapshot,
                 restoredPublishedProducts,
                 error))
         {
@@ -313,18 +439,21 @@ bool materializeModules(
         modules.push_back({
             entry.ownerProjectFile,
             entry.metadataPath,
-            metadata.moduleName,
+            surface.moduleName,
             productCacheKey,
             std::move(publicSource),
             std::move(templateSource),
             std::move(publicSyntax),
             std::move(templateSyntax),
-            memberIdentities(metadata),
-            namespaceIdentities(metadata),
-            genericSpecializations(metadata, concreteMemberNames),
+            memberIdentities(surface),
+            namespaceIdentities(surface),
+            genericSpecializations(surface, concreteMemberNames),
             restoredPublishedProducts
                 ? entry.productSidecarPath
-                : std::filesystem::path{}});
+                : std::filesystem::path{},
+            moduleMetadataDigest(entry, repository),
+            std::move(publicApiSnapshot),
+            pruned});
     }
     return true;
 }
@@ -625,14 +754,23 @@ bool expandBinaryClosure(
         discoveredByOwner,
     std::string& error)
 {
+    // Each known dependency may append one entry; reserving them avoids most reallocations
+    // of loaded while the closure grows.
+    std::size_t knownDependencies = 0;
+    for (const LoadedMetadata& entry : loaded)
+        knownDependencies += entry.metadata->binaryDependencies.size();
+    loaded.reserve(loaded.size() + knownDependencies);
     for (std::size_t cursor = 0; cursor < loaded.size(); ++cursor)
     {
         const std::filesystem::path parentOwner = loaded[cursor].ownerProjectFile;
         const std::filesystem::path parentMetadataPath = loaded[cursor].metadataPath;
-        const std::string parentModule = loaded[cursor].metadata->moduleName;
-        const std::vector<interop::LibraryMetadataBinaryDependency> dependencies =
-            loaded[cursor].metadata->binaryDependencies;
-        for (const interop::LibraryMetadataBinaryDependency& dependency : dependencies)
+        // The metadata is shared and immutable: holding its pointer keeps the dependency list
+        // valid while expansion appends to loaded, without copying the list.
+        const std::shared_ptr<const interop::LibraryMetadata> parentMetadata =
+            loaded[cursor].metadata;
+        const std::string& parentModule = parentMetadata->moduleName;
+        for (const interop::LibraryMetadataBinaryDependency& dependency :
+             parentMetadata->binaryDependencies)
         {
             if (!expandBinaryDependency(
                     loadOptions,
@@ -734,6 +872,17 @@ bool preparePrecompiledProject(
     std::string& error,
     const PrecompiledMaterializationGate& gate)
 {
+    return preparePrecompiledProject(std::move(graph), loadOptions, compilation, error, gate, nullptr);
+}
+
+bool preparePrecompiledProject(
+    ProjectGraph graph,
+    const ProjectLoadOptions& loadOptions,
+    frontend::ProjectCompilation& compilation,
+    std::string& error,
+    const PrecompiledMaterializationGate& gate,
+    const PrecompiledSurfaceSourceProvider* surfaceDemandSources)
+{
     interop::LibraryMetadataCodec codec;
     std::vector<LoadedMetadata> loaded;
     std::unordered_map<std::string, std::size_t> loadedByModule;
@@ -784,11 +933,17 @@ bool preparePrecompiledProject(
     {
         return compilation.setPreloadedProjectGraph(std::move(graph), error);
     }
+    std::optional<PrecompiledSurfaceDemand> demand;
+    if (surfaceDemandSources != nullptr)
+    {
+        demand = collectPrecompiledSurfaceDemand(graph, *surfaceDemandSources);
+    }
     std::vector<frontend::PrecompiledSyntaxModule> modules;
     if (!materializeModules(
             loaded,
             compilation.libraryMetadataRepository(),
             compilation.precompiledProductCacheRoot(),
+            demand.has_value() ? &*demand : nullptr,
             modules,
             error) ||
         !compilation.setPrecompiledModules(std::move(modules), error))

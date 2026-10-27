@@ -20,7 +20,7 @@ namespace NativeSharp.BookExamples.DoublyLinkedList
         public DoublyNode<T> First { get { return head; } }
         public DoublyNode<T> Last { get { return tail; } }
 
-        private DoublyNode<T> NodeAt(int index)
+        private DoublyNode<T> NodeAt(int index) throws ArgumentOutOfRangeException
         {
             if (index < 0 || index >= count)
             {
@@ -56,37 +56,39 @@ namespace NativeSharp.BookExamples.DoublyLinkedList
 
         public void AddFirst(T value)
         {
-            DoublyNode<T> node = new DoublyNode<T>(value);
-            node.Next = head;
-            if (head != null)
+            // Congelamiento 3.0 (C-01): el `new` va directo al campo que lo guarda; la lista es su
+            // dueno manual y lo libera con `delete` al quitarlo.
+            DoublyNode<T> oldHead = head;
+            head = new DoublyNode<T>(value);
+            head.Next = oldHead;
+            if (oldHead != null)
             {
-                head.Previous = node;
+                oldHead.Previous = head;
             }
             else
             {
-                tail = node;
+                tail = head;
             }
-            head = node;
             count = count + 1;
         }
 
         public void AddLast(T value)
         {
-            DoublyNode<T> node = new DoublyNode<T>(value);
-            node.Previous = tail;
-            if (tail != null)
+            DoublyNode<T> oldTail = tail;
+            tail = new DoublyNode<T>(value);
+            tail.Previous = oldTail;
+            if (oldTail != null)
             {
-                tail.Next = node;
+                oldTail.Next = tail;
             }
             else
             {
-                head = node;
+                head = tail;
             }
-            tail = node;
             count = count + 1;
         }
 
-        public void InsertAt(int index, T value)
+        public void InsertAt(int index, T value) throws ArgumentOutOfRangeException
         {
             if (index < 0 || index > count)
             {
@@ -105,7 +107,8 @@ namespace NativeSharp.BookExamples.DoublyLinkedList
 
             DoublyNode<T> after = NodeAt(index);
             DoublyNode<T> before = after.Previous;
-            DoublyNode<T> node = new DoublyNode<T>(value);
+            before.Next = new DoublyNode<T>(value);
+            DoublyNode<T> node = before.Next;
             node.Previous = before;
             node.Next = after;
             before.Next = node;
@@ -138,7 +141,7 @@ namespace NativeSharp.BookExamples.DoublyLinkedList
             count = count - 1;
         }
 
-        public void RemoveAt(int index, T[] result)
+        public void RemoveAt(int index, T[] result) throws ArgumentOutOfRangeException
         {
             DoublyNode<T> node = NodeAt(index);
             result[0] = node.Value;

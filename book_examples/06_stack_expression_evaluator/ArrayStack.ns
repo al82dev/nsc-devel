@@ -47,7 +47,7 @@ namespace NativeSharp.BookExamples.StackEvaluator
             count = count + 1;
         }
 
-        public void Peek(T[] result)
+        public void Peek(T[] result) throws InvalidOperationException
         {
             if (count == 0)
             {
@@ -56,7 +56,7 @@ namespace NativeSharp.BookExamples.StackEvaluator
             result[0] = items[count - 1];
         }
 
-        public void Pop(T[] result)
+        public void Pop(T[] result) throws InvalidOperationException
         {
             if (count == 0)
             {

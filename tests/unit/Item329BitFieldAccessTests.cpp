@@ -203,7 +203,7 @@ public class Program
         promoted.Low = 6u;
         if (promoted.Low != 6u || promoted.High != 19u) { return 9; }
 
-        Box box = new Box();
+        raii Box box = new Box();
         box.Value = 41u;
         box.Signed = -7;
         if (box.Value != 41u || box.Signed != -7) { return 10; }

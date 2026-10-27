@@ -109,15 +109,16 @@ void ProjectMethodBodyModel::reportScopeAssignmentEscape(
             if (node == nullptr) continue;
             if (node->kind() == ast::AstNodeKind::IdentifierExpression)
             {
-                const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, node->text());
-                if (name.has_value() && name->kind == ScopeNameKind::Local &&
-                    name->semanticOrdinal < locals_.size() && locals_[name->semanticOrdinal].isScope)
+                // EN: Freeze 3.0 (plan item 136): the classifier names the scope object.
+                // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el objeto scope.
+                const KnownLifeSources named = knownLifeSourcesOfValue(node, nullptr, scopeOrdinal);
+                if (named.scopeObject)
                 {
                     diagnostics.report(
                         diagnostics::DiagnosticId::InvalidOperand,
                         diagnostics::DiagnosticSeverity::Error,
                         expression->second()->range(),
-                        "scope object '" + locals_[name->semanticOrdinal].name +
+                        "scope object '" + locals_[*named.local].name +
                             "' cannot be stored in a field or static because it would outlive its frame");
                     break;
                 }
@@ -1007,6 +1008,13 @@ bool ProjectMethodBodyModel::validateAssignmentTargetStorage(
         // a pointer readonly or one-past, later dereference must remain conservative.
         locals_[*assignmentTargetLocal].onePastEndPointer =
             locals_[*assignmentTargetLocal].onePastEndPointer || right.onePastEndPointer;
+        // ES: La dirección asignada se une al origen del valor del puntero (ver
+        // MethodLocalSymbol::pointerValueOrigin). EN: The assigned address joins the pointer's value
+        // origin (see MethodLocalSymbol::pointerValueOrigin).
+        if (!target.isReference)
+            joinPointerValueOrigin(
+                locals_[*assignmentTargetLocal].pointerValueOrigin,
+                pointerValueEscapeOriginOfExpression(expression->second(), scopeOrdinal));
     }
     const std::optional<std::size_t> assignedVlaRoot =
         variableArrayRootLocalOfExpression(expression->second(), scopeOrdinal);
@@ -1334,27 +1342,23 @@ bool ProjectMethodBodyModel::rejectOwnerCopyAssignment(
     if (borrowedReassignment || borrowedArrayElementTarget || raiiTargetLocal.has_value() ||
         expression->second() == nullptr ||
         expression->second()->kind() != ast::AstNodeKind::IdentifierExpression) return false;
-    const std::optional<ScopeName> sourceName =
-        lookupScopeName(scopeOrdinal, expression->second()->text());
-    if (sourceName.has_value() && sourceName->kind == ScopeNameKind::Local &&
-        sourceName->semanticOrdinal < locals_.size() && locals_[sourceName->semanticOrdinal].isRaii)
+    // EN: Freeze 3.0 (plan item 136): the classifier names the raii owner or the owned parameter.
+    // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra al owner raii o al parametro owned.
+    const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
+    const KnownLifeSources copied = knownLifeSourcesOfValue(expression->second(), enclosing, scopeOrdinal);
+    if (copied.raiiOwner)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             expression->second()->range(),
-            "RAII owner '" + locals_[sourceName->semanticOrdinal].name +
+            "RAII owner '" + locals_[*copied.local].name +
                 "' cannot be copied by assignment; Stage 49 requires ownership transfer to "
                 "another RAII local with move(...)");
         return true;
     }
-    if (!sourceName.has_value() || sourceName->kind != ScopeNameKind::Parameter) return false;
-    const ClassMemberSymbol* enclosing = methodSymbol(methodMemberOrdinal);
-    if (enclosing == nullptr || sourceName->semanticOrdinal >= enclosing->parameters.size()) return false;
-    const MethodParameterSymbol& source = enclosing->parameters[sourceName->semanticOrdinal];
-    const bool sourceOwnsStorage =
-        isReferenceTypeKey(source.typeKey) || source.typeKey == "builtin:string";
-    if (source.ownership != sema::OwnershipKind::Owned || !sourceOwnsStorage) return false;
+    if (!copied.ownedReferenceParameter) return false;
+    const MethodParameterSymbol& source = enclosing->parameters[*copied.parameter];
     diagnostics.report(
         diagnostics::DiagnosticId::InvalidOperand,
         diagnostics::DiagnosticSeverity::Error,
@@ -1978,6 +1982,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishPlainAssi
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (!validatePlainAssignmentConversion(expression, left, right, diagnostics)) return {};
+    rejectOwnedTemporaryBorrowEscape(right, expression->second(), "the assignment", diagnostics);
+    // EN: Freeze 3.0 C-01: `x = new T();` into a local that is neither raii nor owned leaves the
+    //     object without an owner.
+    // ES: Congelamiento 3.0 C-01: `x = new T();` sobre un local que no es raii ni owned deja al
+    //     objeto sin dueno.
+    if (assignmentTargetLocal.has_value() && !raiiTargetLocal.has_value() &&
+        *assignmentTargetLocal < locals_.size() && !locals_[*assignmentTargetLocal].isRaii &&
+        isFreshObjectCreation(expression->second(), right))
+    {
+        reportLostOwnership(
+            expression->second(),
+            "the non-owning local '" + locals_[*assignmentTargetLocal].name + "'", diagnostics);
+    }
     updatePlainAssignmentState(
         expression, right, raiiTargetLocal, assignmentTargetLocal, moveOnlyTargetLocal,
         moveOnlyTargetParameter, assignedUnionStorage, assignedUnionMember,
@@ -2152,6 +2169,14 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
     if (rejectBorrowedAssignmentEscape(
             expression, left, right, borrowedReassignment,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
+    // EN: Freeze 3.0 DEC-10: the caught exception stays in its handler.
+    // ES: Congelamiento 3.0 DEC-10: la excepcion atrapada se queda en su handler.
+    if (rejectCaughtExceptionAssignment(expression, assignmentTargetLocal, scopeOrdinal, diagnostics))
+        return false;
+    // EN: Freeze 3.0 P10: an exception parameter is a loan that stays in its call.
+    // ES: Congelamiento 3.0 P10: un parametro de excepcion es un prestamo que se queda en su llamada.
+    if (rejectExceptionLoanAssignment(
+            expression, assignmentTargetLocal, methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
     if (rejectOwnerCopyAssignment(
             expression, borrowedReassignment, borrowedArrayElementTarget, raiiTargetLocal,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;
@@ -2260,6 +2285,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignme
     recordReferenceFieldAssignmentOrigin(
         expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
     reportScopeAssignmentEscape(expression, scopeOrdinal, diagnostics);
+    // ES: Un literal de cadena guardado en un elemento de un array local: ese slot no pertenece al
+    // array (el literal dura todo el proceso), así que un `delete[]` posterior libera sólo el bloque.
+    // EN: A string literal stored into an element of a local array: that slot does not belong to
+    // the array (the literal lasts for the whole process), so a later `delete[]` releases the
+    // block only.
+    if (expression->tokenKind() == TokenKind::Equal && expression->first() != nullptr &&
+        expression->second() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
+        expression->first()->first() != nullptr &&
+        expression->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        expression->second()->kind() == ast::AstNodeKind::StringLiteralExpression)
+    {
+        const std::optional<ScopeName> arrayName =
+            lookupScopeName(scopeOrdinal, expression->first()->first()->text());
+        if (arrayName.has_value() && arrayName->kind == ScopeNameKind::Local &&
+            arrayName->semanticOrdinal < locals_.size())
+            locals_[arrayName->semanticOrdinal].borrowedElementSlots = true;
+    }
     if (assignmentConflictsWithIterationBorrow(expression, scopeOrdinal, diagnostics)) return {};
     if (expression->tokenKind() == TokenKind::QuestionQuestionEqual)
     {

@@ -45,8 +45,8 @@ namespace Tutorial.RttiIsAs
     {
         public static int Main()
         {
-            Dog rex = new Dog();
-            Animal asAnimal = rex; // upcast implicito -- una referencia Dog vista como Animal
+            raii Dog rex = new Dog();
+            borrowed Animal asAnimal = rex; // upcast implicito -- una referencia Dog vista como Animal
 
             // is (K&R no tiene equivalente -- esto es puramente C#): pregunta booleana sobre el
             // tipo REAL del objeto, sin importar el tipo de la variable que lo sostiene.

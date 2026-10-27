@@ -1,7 +1,7 @@
 #include "../Internal/OopLlvmImplementation.h"
+#include "../Internal/LlvmInstrumentationSwitches.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
-#include "../Internal/LlvmInstrumentationSwitches.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
 
@@ -78,7 +78,7 @@ bool OopLlvmImplementation::declareRuntimeAllocatorDebug(
 {
         if constexpr (!kRuntimeDebugTraceEnabled) return true;
         LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-        if (debugInformation_ == DebugInformationKind::Full)
+        if (kRuntimeDebugTraceEnabled && debugInformation_ == DebugInformationKind::Full)
         {
             constexpr std::string_view allocationRecordText =
                 "[NSC RUNTIME DEBUG INSTRUMENTATION CODE] event=ALLOCATE|allocator=runtime\r\n";
@@ -99,7 +99,7 @@ bool OopLlvmImplementation::declareRuntimeAllocatorDebug(
             applyFunctionAttribute(allocationWrapper, "nounwind");
             LLVMBasicBlockRef allocationEntry = LLVMAppendBasicBlockInContext(
                 context_, allocationWrapper, "entry");
-            LLVMPositionBuilderAtEnd(builder_, allocationEntry);
+            enterBlock(allocationEntry);
             LLVMValueRef allocationArguments[] = {LLVMGetParam(allocationWrapper, 0)};
             LLVMValueRef allocated = LLVMBuildCall2(
                 builder_, allocationFunctionType_, runtimeAllocationFunction,
@@ -120,7 +120,7 @@ bool OopLlvmImplementation::declareRuntimeAllocatorDebug(
             applyFunctionAttribute(deallocationWrapper, "nounwind");
             LLVMBasicBlockRef deallocationEntry = LLVMAppendBasicBlockInContext(
                 context_, deallocationWrapper, "entry");
-            LLVMPositionBuilderAtEnd(builder_, deallocationEntry);
+            enterBlock(deallocationEntry);
             LLVMValueRef deallocationTraceArguments[] = {
                 LLVMConstInt(i32, 2U, 0),
                 deallocationRecord,

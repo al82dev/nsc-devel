@@ -3,6 +3,7 @@
 #include "../Frontend/Cache/CacheEntryStore.h"
 #include "Internal/ArtifactCacheFilesystemPath.h"
 #include "Internal/CacheEntryLock.h"
+#include "Internal/CachePruneIndex.h"
 #include "Internal/CachePruneEntry.h"
 #include "Internal/CachePruneMeasurement.h"
 
@@ -138,6 +139,280 @@ bool cacheEntryFilesAvailable(
         return true;
     if (reason != nullptr) *reason = CacheMissReason::IncompletePublication;
     return false;
+}
+
+/// Publishes one object entry under its entry lock: stages the payload, invalidates the
+/// metadata, replaces the payload, then writes the metadata (moved out of storeObject so the
+/// lock is released before the prune index is updated).
+bool publishObjectEntry(
+    std::string_view key,
+    const std::filesystem::path& cachedObject,
+    const std::filesystem::path& cachedMetadata,
+    const std::filesystem::path& source,
+    const basic::Sha256Digest& digest,
+    std::uintmax_t size,
+    std::string& error)
+{
+    std::error_code filesystemError;
+    CacheEntryLock entryLock;
+    if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
+    const std::filesystem::path temporaryObject =
+        objectEntryStore.temporarySibling(cachedObject);
+    std::filesystem::copy_file(cacheFilesystemPath(source), cacheFilesystemPath(temporaryObject),
+        std::filesystem::copy_options::overwrite_existing, filesystemError);
+    if (filesystemError)
+    {
+        error = "cannot stage cached object '" + cachedObject.string() + "': " +
+            filesystemError.message();
+        return false;
+    }
+    std::filesystem::remove(cacheFilesystemPath(cachedMetadata), filesystemError);
+    if (filesystemError)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(cacheFilesystemPath(temporaryObject), ignored);
+        error = "cannot invalidate artifact-cache metadata '" + cachedMetadata.string() +
+            "': " + filesystemError.message();
+        return false;
+    }
+    filesystemError.clear();
+    if (!objectEntryStore.replaceFileAtomically(temporaryObject, cachedObject, error)) return false;
+    return objectEntryStore.writeMetadataAtomically(
+        cachedMetadata, key, basic::sha256Hex(digest), size, error);
+}
+
+/// Publishes one code-partition plan under its entry lock (moved out of storeCodePartitionPlan
+/// so the lock is released before the prune index is updated).
+bool publishCodePartitionEntry(
+    const std::filesystem::path& payloadFile,
+    const std::filesystem::path& metadataFile,
+    std::string_view key,
+    std::string_view payload,
+    std::string& error)
+{
+    std::error_code filesystemError;
+    CacheEntryLock entryLock;
+    if (!entryLock.acquire(payloadFile.string() + ".lock", error)) return false;
+    const std::filesystem::path temporary =
+        codePartitionEntryStore.temporarySibling(payloadFile);
+    {
+        std::ofstream stream(cacheFilesystemPath(temporary), std::ios::binary | std::ios::trunc);
+        if (!stream)
+        {
+            error = "cannot open code-partition payload temporary '" + temporary.string() + "'";
+            return false;
+        }
+        stream.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+        if (!stream)
+        {
+            std::error_code ignored;
+            std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
+            error = "cannot write code-partition payload '" + temporary.string() + "'";
+            return false;
+        }
+    }
+    std::filesystem::remove(cacheFilesystemPath(metadataFile), filesystemError);
+    if (filesystemError)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
+        error = "cannot invalidate code-partition metadata '" + metadataFile.string() +
+            "': " + filesystemError.message();
+        return false;
+    }
+    if (!codePartitionEntryStore.replaceFileAtomically(temporary, payloadFile, error)) return false;
+    const std::span<const std::uint8_t> bytes(
+        reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
+    return codePartitionEntryStore.writeMetadataAtomically(
+        metadataFile, key, basic::sha256Hex(basic::sha256(bytes)), payload.size(), error);
+}
+
+/// Appends a publication to the prune index of `root`. When that fails the index is marked
+/// stale, so the next prune walks the folders. The entry is published either way: the index
+/// only saves work, so this never fails the store.
+void recordPrunePublication(
+    const std::filesystem::path& root,
+    char kind,
+    std::string_view key,
+    const std::filesystem::path& metadata,
+    std::uintmax_t size)
+{
+    const CachePruneIndex index(root);
+    CachePruneIndexRecord record;
+    record.kind = kind;
+    record.key = std::string(key);
+    record.size = size;
+    std::error_code filesystemError;
+    record.publication = std::filesystem::last_write_time(
+        cacheFilesystemPath(metadata), filesystemError);
+    std::string ignored;
+    if (!filesystemError && index.appendPublication(record, ignored)) return;
+    index.markStale(ignored);
+}
+
+/// Turns the records of a valid prune-index snapshot into the entries a walk of the cache
+/// folders would have produced: same key, payload and metadata paths, publication and size.
+void appendIndexedEntries(
+    const std::filesystem::path& root,
+    const CachePruneIndexSnapshot& snapshot,
+    std::vector<CachePruneEntry>& entries,
+    std::uintmax_t& totalBytes)
+{
+    entries.reserve(entries.size() + snapshot.records.size());
+    for (const CachePruneIndexRecord& record : snapshot.records)
+    {
+        const bool plan = record.kind == 'p';
+        entries.push_back({
+            record.key,
+            plan ? codePartitionPayloadPath(root, record.key) : objectPath(root, record.key),
+            plan ? codePartitionMetadataPath(root, record.key) : metadataPath(root, record.key),
+            record.publication,
+            record.size});
+        totalBytes += record.size;
+    }
+}
+
+/// Rewrites the prune index with the entries prune kept (and whatever other processes appended
+/// meanwhile). A failure only costs a later walk of the folders, so it is not reported.
+void rewritePruneIndex(
+    const CachePruneIndex& index,
+    const CachePruneIndexSnapshot& snapshot,
+    const std::vector<CachePruneEntry>& entries,
+    const std::vector<bool>& removed,
+    bool walked)
+{
+    std::vector<CachePruneIndexRecord> kept;
+    kept.reserve(entries.size());
+    for (std::size_t position = 0; position < entries.size(); ++position)
+    {
+        if (removed[position]) continue;
+        const CachePruneEntry& entry = entries[position];
+        CachePruneIndexRecord record;
+        record.kind = entry.payload.extension() == ".plan" ? 'p' : 'o';
+        record.key = entry.key;
+        record.publication = entry.publication;
+        record.size = entry.size;
+        kept.push_back(std::move(record));
+    }
+    std::string ignored;
+    index.rewrite(snapshot, kept, walked, ignored);
+}
+
+/// Verifies and copies one cached object under its entry lock (moved out of restoreObject so
+/// the lock is released before the prune index is updated). `quarantined` tells whether the
+/// entry was moved to quarantine.
+bool restoreObjectEntry(
+    const std::filesystem::path& root,
+    std::string_view key,
+    const std::filesystem::path& cachedObject,
+    const std::filesystem::path& cachedMetadata,
+    const std::filesystem::path& destination,
+    bool& hit,
+    std::string& error,
+    CacheMissReason* reason,
+    bool& quarantined)
+{
+    std::error_code filesystemError;
+    CacheEntryLock entryLock;
+    if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
+    if (!cacheEntryFilesAvailable(cachedObject, cachedMetadata, reason)) return true;
+
+    frontend::internal::CacheMetadata metadata;
+    if (!objectEntryStore.readMetadata(cachedMetadata, metadata) || metadata.key != key)
+    {
+        if (reason != nullptr) *reason = CacheMissReason::Corruption;
+        quarantineInvalidEntry(root, key, cachedObject, cachedMetadata);
+        quarantined = true;
+        return true;
+    }
+    basic::Sha256Digest digest{};
+    std::uintmax_t size = 0;
+    std::string hashError;
+    if (!basic::sha256File(cacheFilesystemPath(cachedObject), digest, size, hashError)) return true;
+    if (size != metadata.size || basic::sha256Hex(digest) != metadata.digest)
+    {
+        if (reason != nullptr) *reason = CacheMissReason::Corruption;
+        quarantineInvalidEntry(root, key, cachedObject, cachedMetadata);
+        quarantined = true;
+        return true;
+    }
+
+    std::filesystem::copy_file(
+        cacheFilesystemPath(cachedObject), cacheFilesystemPath(destination),
+        std::filesystem::copy_options::overwrite_existing,
+        filesystemError);
+    if (filesystemError)
+    {
+        error = "cannot restore cached object '" + cachedObject.string() + "' to '" +
+            destination.string() + "': " + filesystemError.message();
+        return false;
+    }
+    hit = true;
+    if (reason != nullptr) *reason = CacheMissReason::Hit;
+    return true;
+}
+
+/// Verifies and reads one cached code-partition plan under its entry lock (moved out of
+/// restoreCodePartitionPlan so the lock is released before the prune index is updated).
+/// `quarantined` tells whether the plan was moved to quarantine.
+bool restoreCodePartitionEntry(
+    const std::filesystem::path& root,
+    std::string_view key,
+    const std::filesystem::path& payloadFile,
+    const std::filesystem::path& metadataFile,
+    std::string& payload,
+    bool& hit,
+    std::string& error,
+    bool& quarantined)
+{
+    std::error_code filesystemError;
+    CacheEntryLock entryLock;
+    if (!entryLock.acquire(payloadFile.string() + ".lock", error)) return false;
+    frontend::internal::CacheMetadata metadata;
+    if (!codePartitionEntryStore.readMetadata(metadataFile, metadata) || metadata.key != key)
+    {
+        quarantineInvalidCodePartitionPlan(root, key, payloadFile, metadataFile);
+        quarantined = true;
+        return true;
+    }
+    const std::uintmax_t size =
+        std::filesystem::file_size(cacheFilesystemPath(payloadFile), filesystemError);
+    if (filesystemError || size != metadata.size ||
+        size > std::numeric_limits<std::size_t>::max())
+    {
+        quarantineInvalidCodePartitionPlan(root, key, payloadFile, metadataFile);
+        quarantined = true;
+        return true;
+    }
+    std::ifstream stream(cacheFilesystemPath(payloadFile), std::ios::binary);
+    payload.resize(static_cast<std::size_t>(size));
+    if (!stream.read(payload.data(), static_cast<std::streamsize>(size)))
+    {
+        payload.clear();
+        quarantineInvalidCodePartitionPlan(root, key, payloadFile, metadataFile);
+        quarantined = true;
+        return true;
+    }
+    const std::span<const std::uint8_t> bytes(
+        reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
+    if (basic::sha256Hex(basic::sha256(bytes)) != metadata.digest)
+    {
+        payload.clear();
+        quarantineInvalidCodePartitionPlan(root, key, payloadFile, metadataFile);
+        quarantined = true;
+        return true;
+    }
+    hit = true;
+    return true;
+}
+
+/// Appends the removal of a quarantined entry to the prune index of `root`; when that fails
+/// the index is marked stale so the next prune walks the folders.
+void recordPruneRemoval(const std::filesystem::path& root, char kind, std::string_view key)
+{
+    const CachePruneIndex index(root);
+    std::string ignored;
+    if (!index.appendRemoval(kind, key, ignored)) index.markStale(ignored);
 }
 
 bool collectPrunableEntries(
@@ -309,44 +584,14 @@ bool CompilationArtifactCache::restoreObject(
     }
     const std::filesystem::path cachedObject = objectPath(root_, key);
     const std::filesystem::path cachedMetadata = metadataPath(root_, key);
-    std::error_code filesystemError;
     if (!cacheEntryFilesAvailable(cachedObject, cachedMetadata, reason)) return true;
 
-    CacheEntryLock entryLock;
-    if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
-    if (!cacheEntryFilesAvailable(cachedObject, cachedMetadata, reason)) return true;
-
-    frontend::internal::CacheMetadata metadata;
-    if (!objectEntryStore.readMetadata(cachedMetadata, metadata) || metadata.key != key)
-    {
-        if (reason != nullptr) *reason = CacheMissReason::Corruption;
-        quarantineInvalidEntry(root_, key, cachedObject, cachedMetadata);
-        return true;
-    }
-    basic::Sha256Digest digest{};
-    std::uintmax_t size = 0;
-    std::string hashError;
-    if (!basic::sha256File(cacheFilesystemPath(cachedObject), digest, size, hashError)) return true;
-    if (size != metadata.size || basic::sha256Hex(digest) != metadata.digest)
-    {
-        if (reason != nullptr) *reason = CacheMissReason::Corruption;
-        quarantineInvalidEntry(root_, key, cachedObject, cachedMetadata);
-        return true;
-    }
-
-    std::filesystem::copy_file(
-        cacheFilesystemPath(cachedObject), cacheFilesystemPath(destination),
-        std::filesystem::copy_options::overwrite_existing,
-        filesystemError);
-    if (filesystemError)
-    {
-        error = "cannot restore cached object '" + cachedObject.string() + "' to '" +
-            destination.string() + "': " + filesystemError.message();
-        return false;
-    }
-    hit = true;
-    if (reason != nullptr) *reason = CacheMissReason::Hit;
-    return true;
+    bool quarantined = false;
+    const bool restored = restoreObjectEntry(
+        root_, key, cachedObject, cachedMetadata, destination, hit, error, reason, quarantined);
+    // The entry lock is released here: a quarantined entry leaves the prune index.
+    if (quarantined) recordPruneRemoval(root_, 'o', key);
+    return restored;
 }
 
 bool CompilationArtifactCache::storeObject(
@@ -375,32 +620,13 @@ bool CompilationArtifactCache::storeObject(
         return false;
     }
     const std::filesystem::path cachedObject = objectPath(root_, key);
-    CacheEntryLock entryLock;
-    if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
-    const std::filesystem::path temporaryObject =
-        objectEntryStore.temporarySibling(cachedObject);
-    std::filesystem::copy_file(cacheFilesystemPath(source), cacheFilesystemPath(temporaryObject),
-        std::filesystem::copy_options::overwrite_existing, filesystemError);
-    if (filesystemError)
-    {
-        error = "cannot stage cached object '" + cachedObject.string() + "': " +
-            filesystemError.message();
+    // The entry lock is released before the prune index is updated: prune takes the index lock
+    // and the entry locks one at a time, never one inside the other.
+    if (!publishObjectEntry(
+            key, cachedObject, metadataPath(root_, key), source, digest, size, error))
         return false;
-    }
-    const std::filesystem::path cachedMetadata = metadataPath(root_, key);
-    std::filesystem::remove(cacheFilesystemPath(cachedMetadata), filesystemError);
-    if (filesystemError)
-    {
-        std::error_code ignored;
-        std::filesystem::remove(cacheFilesystemPath(temporaryObject), ignored);
-        error = "cannot invalidate artifact-cache metadata '" + cachedMetadata.string() +
-            "': " + filesystemError.message();
-        return false;
-    }
-    filesystemError.clear();
-    if (!objectEntryStore.replaceFileAtomically(temporaryObject, cachedObject, error)) return false;
-    return objectEntryStore.writeMetadataAtomically(
-        cachedMetadata, key, basic::sha256Hex(digest), size, error);
+    recordPrunePublication(root_, 'o', key, metadataPath(root_, key), size);
+    return true;
 }
 
 bool CompilationArtifactCache::restoreCodePartitionPlan(
@@ -425,40 +651,12 @@ bool CompilationArtifactCache::restoreCodePartitionPlan(
             cacheFilesystemPath(payloadFile), filesystemError) || filesystemError)
         return true;
 
-    CacheEntryLock entryLock;
-    if (!entryLock.acquire(payloadFile.string() + ".lock", error)) return false;
-    frontend::internal::CacheMetadata metadata;
-    if (!codePartitionEntryStore.readMetadata(metadataFile, metadata) || metadata.key != key)
-    {
-        quarantineInvalidCodePartitionPlan(root_, key, payloadFile, metadataFile);
-        return true;
-    }
-    const std::uintmax_t size =
-        std::filesystem::file_size(cacheFilesystemPath(payloadFile), filesystemError);
-    if (filesystemError || size != metadata.size ||
-        size > std::numeric_limits<std::size_t>::max())
-    {
-        quarantineInvalidCodePartitionPlan(root_, key, payloadFile, metadataFile);
-        return true;
-    }
-    std::ifstream stream(cacheFilesystemPath(payloadFile), std::ios::binary);
-    payload.resize(static_cast<std::size_t>(size));
-    if (!stream.read(payload.data(), static_cast<std::streamsize>(size)))
-    {
-        payload.clear();
-        quarantineInvalidCodePartitionPlan(root_, key, payloadFile, metadataFile);
-        return true;
-    }
-    const std::span<const std::uint8_t> bytes(
-        reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
-    if (basic::sha256Hex(basic::sha256(bytes)) != metadata.digest)
-    {
-        payload.clear();
-        quarantineInvalidCodePartitionPlan(root_, key, payloadFile, metadataFile);
-        return true;
-    }
-    hit = true;
-    return true;
+    bool quarantined = false;
+    const bool restored = restoreCodePartitionEntry(
+        root_, key, payloadFile, metadataFile, payload, hit, error, quarantined);
+    // The entry lock is released here: a quarantined plan leaves the prune index.
+    if (quarantined) recordPruneRemoval(root_, 'p', key);
+    return restored;
 }
 
 bool CompilationArtifactCache::storeCodePartitionPlan(
@@ -483,40 +681,9 @@ bool CompilationArtifactCache::storeCodePartitionPlan(
             payloadFile.parent_path().string() + "': " + filesystemError.message();
         return false;
     }
-    CacheEntryLock entryLock;
-    if (!entryLock.acquire(payloadFile.string() + ".lock", error)) return false;
-    const std::filesystem::path temporary =
-        codePartitionEntryStore.temporarySibling(payloadFile);
-    {
-        std::ofstream stream(cacheFilesystemPath(temporary), std::ios::binary | std::ios::trunc);
-        if (!stream)
-        {
-            error = "cannot open code-partition payload temporary '" + temporary.string() + "'";
-            return false;
-        }
-        stream.write(payload.data(), static_cast<std::streamsize>(payload.size()));
-        if (!stream)
-        {
-            std::error_code ignored;
-            std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
-            error = "cannot write code-partition payload '" + temporary.string() + "'";
-            return false;
-        }
-    }
-    std::filesystem::remove(cacheFilesystemPath(metadataFile), filesystemError);
-    if (filesystemError)
-    {
-        std::error_code ignored;
-        std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
-        error = "cannot invalidate code-partition metadata '" + metadataFile.string() +
-            "': " + filesystemError.message();
-        return false;
-    }
-    if (!codePartitionEntryStore.replaceFileAtomically(temporary, payloadFile, error)) return false;
-    const std::span<const std::uint8_t> bytes(
-        reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
-    return codePartitionEntryStore.writeMetadataAtomically(
-        metadataFile, key, basic::sha256Hex(basic::sha256(bytes)), payload.size(), error);
+    if (!publishCodePartitionEntry(payloadFile, metadataFile, key, payload, error)) return false;
+    recordPrunePublication(root_, 'p', key, metadataFile, payload.size());
+    return true;
 }
 
 bool CompilationArtifactCache::prune(
@@ -530,9 +697,17 @@ bool CompilationArtifactCache::prune(
     evictedBytes = 0;
     error.clear();
     if (!enabled()) return true;
+    // The prune index lists what a walk of objects/ and partitions/ would find. When it cannot
+    // be read or is not valid, the folders are walked as before.
+    const CachePruneIndex index(root_);
+    CachePruneIndexSnapshot snapshot;
+    std::string indexError;
+    if (!index.read(snapshot, indexError)) snapshot = CachePruneIndexSnapshot{};
     std::vector<CachePruneEntry> entries;
     std::uintmax_t totalBytes = 0;
-    if (!collectPrunableEntries(root_ / "objects", ".obj", entries, totalBytes, error) ||
+    if (snapshot.valid)
+        appendIndexedEntries(root_, snapshot, entries, totalBytes);
+    else if (!collectPrunableEntries(root_ / "objects", ".obj", entries, totalBytes, error) ||
         !collectPrunableEntries(root_ / "partitions", ".plan", entries, totalBytes, error))
         return false;
     lastPruneTelemetry_.inspectedEntries = entries.size();
@@ -542,8 +717,11 @@ bool CompilationArtifactCache::prune(
         return left.key < right.key;
     });
     std::error_code filesystemError;
-    for (const CachePruneEntry& entry : entries)
+    // Entries evicted here or found gone; the index is rewritten without them.
+    std::vector<bool> removed(entries.size(), false);
+    for (std::size_t position = 0; position < entries.size(); ++position)
     {
+        const CachePruneEntry& entry = entries[position];
         if (totalBytes <= maximumBytes) break;
         CacheEntryLock entryLock;
         if (!entryLock.acquire(entry.payload.string() + ".lock", error)) return false;
@@ -552,6 +730,10 @@ bool CompilationArtifactCache::prune(
         if (filesystemError)
         {
             filesystemError.clear();
+            // An indexed entry that is gone (removed by hand or by another process) stops counting,
+            // as a walk of the folders would not have counted it.
+            if (snapshot.valid) totalBytes = entry.size > totalBytes ? 0 : totalBytes - entry.size;
+            removed[position] = true;
             continue;
         }
         std::filesystem::remove(entry.metadata, filesystemError);
@@ -569,11 +751,16 @@ bool CompilationArtifactCache::prune(
             return false;
         }
         totalBytes = currentSize > totalBytes ? 0 : totalBytes - currentSize;
+        removed[position] = true;
         ++evictedEntries;
         evictedBytes += currentSize;
         lastPruneTelemetry_.evictedEntries = evictedEntries;
         lastPruneTelemetry_.evictedBytes = evictedBytes;
     }
+    // After a walk the index is regenerated from what the walk found; otherwise it is rewritten
+    // only when entries left.
+    if (!snapshot.valid || std::ranges::find(removed, true) != removed.end())
+        rewritePruneIndex(index, snapshot, entries, removed, !snapshot.valid);
     return true;
 }
 

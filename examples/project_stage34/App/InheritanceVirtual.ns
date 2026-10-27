@@ -42,7 +42,7 @@ public class Dog : Animal
 
 public class Harness
 {
-    public Animal Make()
+    public owned Animal Make()
     {
         return new Dog(5, 20);
     }
@@ -54,7 +54,7 @@ public class Harness
 
     public int Run()
     {
-        Animal a = new Dog(5, 20);
+        raii Animal a = new Dog(5, 20);
         return a.Speak();
     }
 

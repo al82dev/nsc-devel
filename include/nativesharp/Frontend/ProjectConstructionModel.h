@@ -19,12 +19,14 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Frontend/PrecompiledSnapshotUnit.h"
 
 #include <cstddef>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace nativesharp::diagnostics
@@ -35,6 +37,7 @@ class DiagnosticEngine;
 namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess;
+class PrecompiledSnapshotReader;
 
 class ProjectConstructionModel final
 {
@@ -58,6 +61,43 @@ public:
     const ProjectConstructionStatistics& statistics() const noexcept;
     bool isBuilt() const noexcept;
 
+    // EN: Plan item 3.11. Accepted snapshots, set before build(). A class whose parts are all in a
+    //     snapshot unit takes its implicit default-constructor binding from the `construction`
+    //     section at the point where it is bound today; its base type still comes from the
+    //     inheritance model.
+    // ES: Punto 3.11 del plan. Snapshots aceptados, asignados antes de build(). Una clase con todas
+    //     sus partes en una unidad con snapshot toma su binding de constructor por defecto implícito
+    //     de la sección `construction` en el punto donde hoy se enlaza; su tipo base sigue viniendo
+    //     del modelo de herencia.
+    void setPrecompiledSnapshots(std::span<const PrecompiledSnapshotUnit> snapshots) noexcept;
+    std::size_t installedSnapshotClassCount() const noexcept;
+    // EN: Producer side: writes the bindings of the classes whose parts are all in `fileId`.
+    // ES: Lado productor: escribe los bindings de las clases con todas sus partes en `fileId`.
+    void setPrecompiledSnapshotCaptureFile(FileId fileId) noexcept;
+    bool writePrecompiledSnapshotConstruction(std::string& payload, std::string& error) const;
+
+    // EN: Freeze 3.0 (item 130a). A resolver instance only receives the models, before the method-body
+    //     model finishes, and answers which explicit constructor a construction site or a constructor's
+    //     this/base initializer selects, with the same overload rules as build(). It reports nothing:
+    //     build() still binds and diagnoses every site. An empty result means "no explicit constructor
+    //     selected" (implicit default, no viable or ambiguous candidate).
+    // ES: Congelamiento 3.0 (elemento 130a). Una instancia resolvedora solo recibe los modelos, antes de
+    //     que termine el modelo de cuerpos, y responde que constructor explicito elige un sitio de
+    //     construccion o el inicializador this/base de un constructor, con las mismas reglas de
+    //     sobrecarga que build(). No reporta nada: build() sigue enlazando y diagnosticando cada sitio.
+    //     Un resultado vacio significa "ningun constructor explicito elegido" (default implicito, ningun
+    //     candidato viable o ambiguo).
+    void attachDemandResolver(
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel,
+        const ProjectInterfaceModel& interfaceModel,
+        const ProjectMethodBodyModel& methodBodyModel,
+        const ProjectNamespaceFunctionModel& namespaceFunctionModel) noexcept;
+    std::optional<std::size_t> previewConstructionConstructor(const ProjectConstructionSite& site) const;
+    std::optional<std::size_t> previewInitializerConstructor(std::size_t constructorMemberOrdinal) const;
+    std::optional<std::size_t> previewImplicitChainConstructor(std::size_t typeOrdinal) const;
+
 private:
     friend struct ProjectOopHirModelTestAccess;
 
@@ -68,6 +108,9 @@ private:
     void bindImplicitDefaultConstructor(
         std::size_t typeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    void readSnapshotConstruction();
+    bool readSnapshotImplicitDefault(PrecompiledSnapshotReader& reader);
+    bool installSnapshotImplicitDefault(std::size_t typeOrdinal);
     void bindExplicitBaseDefaultConstructor(
         std::size_t typeOrdinal,
         std::span<const std::size_t> baseConstructors,
@@ -158,6 +201,18 @@ private:
     void selectConstructionCandidate(
         ObjectConstructionBinding& binding,
         std::size_t selectedIndex) const;
+    void rejectNewToOrdinaryConstructorParameters(
+        const ConstructorCandidateBinding& selected,
+        std::span<const MethodExpressionTypeBinding> argumentTypes,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 C-13: a selected `throws E` constructor must be caught or propagated.
+    // ES: Congelamiento 3.0 C-13: un constructor `throws E` elegido debe atraparse o propagarse.
+    void requireConstructorErrorHandled(
+        std::optional<std::size_t> constructorMemberOrdinal,
+        const ast::AstNode* site,
+        std::span<const std::string> handlers,
+        std::string_view enclosingErrorTypeKey,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     ConstructorCandidateBinding evaluateConstructorCandidate(
         const ClassMemberSymbol& constructor,
         std::size_t constructorOrdinal,
@@ -177,8 +232,24 @@ private:
         std::size_t argumentOrdinal,
         const ProjectConversionClassifier& conversions,
         ConstructorCandidateBinding& candidate) const;
+    std::optional<std::size_t> previewSelectedCandidate(
+        const std::vector<ConstructorCandidateBinding>& candidates) const;
+    void reportUndemandedConstructors(diagnostics::DiagnosticEngine& diagnostics) const;
     std::vector<std::size_t> viableConstructorCandidates(
         const std::vector<ConstructorCandidateBinding>& candidates) const;
+    // EN: Freeze 3.0 P1: drops a viable candidate whose member clause fails for its closed type,
+    //     and reports those clauses at `site` when no candidate survived. Report returns true when
+    //     it emitted something.
+    // ES: Congelamiento 3.0 P1: descarta un candidato viable cuya clausula de miembro falla en su
+    //     tipo cerrado, e informa esas clausulas en `site` cuando no sobrevivio ningun candidato.
+    //     Report devuelve true si emitio algo.
+    void rejectConstraintFailedCandidate(
+        const ClassMemberSymbol& constructor,
+        ConstructorCandidateBinding& candidate) const;
+    bool reportConstraintRejectedCandidates(
+        const std::vector<ConstructorCandidateBinding>& candidates,
+        const ast::AstNode* site,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     std::vector<std::size_t> nonDominatedConstructorCandidates(
         const std::vector<ConstructorCandidateBinding>& candidates,
         std::span<const std::size_t> viable) const;
@@ -239,6 +310,10 @@ private:
     std::vector<ImplicitDefaultConstructorBinding> implicitDefaultConstructorBindings_;
     std::vector<std::optional<std::size_t>> implicitDefaultBindingByType_;
     ProjectConstructionStatistics statistics_;
+    std::span<const PrecompiledSnapshotUnit> precompiledSnapshots_;
+    std::unordered_map<std::size_t, ImplicitDefaultConstructorBinding> snapshotImplicitDefaults_;
+    std::size_t installedSnapshotClasses_ = 0;
+    std::optional<FileId> snapshotCaptureFile_;
     bool built_ = false;
 };
 

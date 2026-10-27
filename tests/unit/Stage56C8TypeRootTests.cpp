@@ -276,18 +276,18 @@ namespace proj {
     }
     class Program {
         public static int Main() {
-            Widget widget = new Widget();
+            raii Widget widget = new Widget();
             if (!String.Equals(widget.ToString(), "Widget")) { return 1; }
-            Gadget gadget = new Gadget();
+            raii Gadget gadget = new Gadget();
             if (!String.Equals(gadget.ToString(), "Gadget")) { return 2; }
 
             // The default name comes from the object's RUNTIME descriptor, so a root reference
             // answers the real type, and an override dispatches virtually through it.
-            object asRoot = widget;
+            borrowed object asRoot = widget;
             if (!String.Equals(asRoot.ToString(), "Widget")) { return 3; }
-            object asRootGadget = gadget;
+            borrowed object asRootGadget = gadget;
             if (!String.Equals(asRootGadget.ToString(), "Gadget")) { return 4; }
-            Gadget asBase = new Cog();
+            raii Gadget asBase = new Cog();
             if (!String.Equals(asBase.ToString(), "Cog")) { return 5; }
 
             if (!widget.Equals(widget)) { return 6; }
@@ -335,13 +335,13 @@ namespace proj {
     public class Derived : Named { }
     class Program {
         public static int Main() {
-            Named named = new Named();
+            raii Named named = new Named();
             if (!String.Equals(named.ToString(), "Named")) { return 1; }
             // Derived names Named as its base, so its chain is Derived -> Named -> Object and it
             // inherits Named's override rather than being silently re-parented.
-            Derived derived = new Derived();
+            raii Derived derived = new Derived();
             if (!String.Equals(derived.ToString(), "Derived")) { return 2; }
-            Named asBase = derived;
+            borrowed Named asBase = derived;
             if (!String.Equals(asBase.ToString(), "Derived")) { return 3; }
             return 42;
         }
@@ -362,7 +362,7 @@ namespace proj {
     public class Widget { public int value; }
     class Program {
         public static int Main() {
-            Widget w = new Widget();
+            raii Widget w = new Widget();
             w.value = 42;
             return w.value;
         }

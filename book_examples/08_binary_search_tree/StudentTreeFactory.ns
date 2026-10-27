@@ -2,7 +2,7 @@ namespace NativeSharp.BookExamples.BinarySearchTree
 {
     public class StudentTreeFactory
     {
-        public static void Fill(BinarySearchTree tree)
+        public static void Fill(BinarySearchTree tree) throws NativeSharp.Core.ArgumentException
         {
             tree.Insert(new Student(50, "Ana", 90));
             tree.Insert(new Student(25, "Bruno", 82));

@@ -7,7 +7,7 @@
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {"mode": "contains", "text": "mir.module"}
+    "stdout": {"mode": "contains", "text": "project.oop.mir"}
   },
   "tags": ["integration", "legacy-parity", "mir"],
   "requires": []

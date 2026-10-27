@@ -35,7 +35,7 @@ std::optional<StaticLocalGuard> OopLlvmImplementation::beginStaticLocalInitializ
         emitStaticLocalFastState(
             *storage, i8, two, three, done, fastFailure, failed, casAttempt);
 
-        LLVMPositionBuilderAtEnd(builder_, casAttempt);
+        enterBlock(casAttempt);
         LLVMValueRef threadId = buildNoUnwindCall(
             getCurrentThreadIdFunctionType_, getCurrentThreadIdFunction_, nullptr, 0,
             "static.local.current_tid");
@@ -47,30 +47,30 @@ std::optional<StaticLocalGuard> OopLlvmImplementation::beginStaticLocalInitializ
         LLVMValueRef won = LLVMBuildExtractValue(builder_, cas, 1, "static.local.won");
         LLVMBuildCondBr(builder_, won, initialize, casTerminal);
 
-        LLVMPositionBuilderAtEnd(builder_, casTerminal);
+        enterBlock(casTerminal);
         LLVMValueRef observedDone = LLVMBuildICmp(builder_, LLVMIntEQ, observed, two, "static.local.cas_done");
         LLVMBasicBlockRef casFailure = appendBlock("static.local.cas_failure");
         LLVMBuildCondBr(builder_, observedDone, done, casFailure);
-        LLVMPositionBuilderAtEnd(builder_, casFailure);
+        enterBlock(casFailure);
         LLVMValueRef observedFailed = LLVMBuildICmp(builder_, LLVMIntEQ, observed, three, "static.local.cas_failed");
         LLVMBuildCondBr(builder_, observedFailed, failed, recursion);
 
-        LLVMPositionBuilderAtEnd(builder_, recursion);
+        enterBlock(recursion);
         LLVMValueRef owner = LLVMBuildLoad2(builder_, i32, storage->owner, "static.local.owner_tid");
         LLVMSetOrdering(owner, LLVMAtomicOrderingSequentiallyConsistent);
         LLVMValueRef sameThread = LLVMBuildICmp(builder_, LLVMIntEQ, owner, threadId, "static.local.is_self");
         LLVMBuildCondBr(builder_, sameThread, done, spin);
 
-        LLVMPositionBuilderAtEnd(builder_, spin);
+        enterBlock(spin);
         LLVMValueRef spinState = LLVMBuildLoad2(builder_, i8, storage->state, "static.local.state.spin");
         LLVMSetOrdering(spinState, LLVMAtomicOrderingSequentiallyConsistent);
         LLVMValueRef pending = LLVMBuildICmp(builder_, LLVMIntEQ, spinState, one, "static.local.pending");
         LLVMBuildCondBr(builder_, pending, spin, spinTerminal);
-        LLVMPositionBuilderAtEnd(builder_, spinTerminal);
+        enterBlock(spinTerminal);
         LLVMValueRef spinDone = LLVMBuildICmp(builder_, LLVMIntEQ, spinState, two, "static.local.spin_done");
         LLVMBuildCondBr(builder_, spinDone, done, failed);
 
-        LLVMPositionBuilderAtEnd(builder_, initialize);
+        enterBlock(initialize);
         LLVMValueRef ownerStore = LLVMBuildStore(builder_, threadId, storage->owner);
         LLVMSetOrdering(ownerStore, LLVMAtomicOrderingSequentiallyConsistent);
         LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
@@ -111,7 +111,7 @@ void OopLlvmImplementation::emitStaticLocalFastState(
         LLVMValueRef initialized = LLVMBuildICmp(builder_, LLVMIntEQ, state, two, "static.local.fast_done");
         LLVMBuildCondBr(builder_, initialized, done, fastFailure);
 
-        LLVMPositionBuilderAtEnd(builder_, fastFailure);
+        enterBlock(fastFailure);
         LLVMValueRef isFailed = LLVMBuildICmp(builder_, LLVMIntEQ, state, three, "static.local.fast_failed");
         LLVMBuildCondBr(builder_, isFailed, failed, casAttempt);
     }
@@ -127,7 +127,7 @@ bool OopLlvmImplementation::finishStaticLocalInitialization(const StaticLocalGua
             LLVMBuildBr(builder_, guard.done);
         }
 
-        LLVMPositionBuilderAtEnd(builder_, guard.failed);
+        enterBlock(guard.failed);
         LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
         if (mirModel_.panicProfile() == language::PanicProfile::Abort)
         {
@@ -145,13 +145,13 @@ bool OopLlvmImplementation::finishStaticLocalInitialization(const StaticLocalGua
         }
         LLVMBuildUnreachable(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, guard.failureUnwind);
+        enterBlock(guard.failureUnwind);
         LLVMValueRef pad = LLVMBuildCleanupPad(builder_, nullptr, nullptr, 0, "static.local.failure.pad");
         if (pad == nullptr) return fail(error, "T01-F06 failed to create static-local failure cleanuppad");
         LLVMValueRef failed = LLVMBuildStore(builder_, LLVMConstInt(i8, 3, 0), guard.state);
         LLVMSetOrdering(failed, LLVMAtomicOrderingSequentiallyConsistent);
         LLVMBuildCleanupRet(builder_, pad, nullptr);
-        LLVMPositionBuilderAtEnd(builder_, guard.done);
+        enterBlock(guard.done);
         return true;
     }
 
@@ -209,7 +209,7 @@ bool OopLlvmImplementation::defineStaticLocalDestructors(std::string& error)
             LLVMBasicBlockRef entry = appendBlock("static.local.destroy.entry");
             LLVMBasicBlockRef destroy = appendBlock("static.local.destroy.value");
             LLVMBasicBlockRef done = appendBlock("static.local.destroy.done");
-            LLVMPositionBuilderAtEnd(builder_, entry);
+            enterBlock(entry);
             LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
             LLVMValueRef state = LLVMBuildLoad2(builder_, i8, item.state, "static.local.destroy.state");
             LLVMSetOrdering(state, LLVMAtomicOrderingSequentiallyConsistent);
@@ -217,12 +217,12 @@ bool OopLlvmImplementation::defineStaticLocalDestructors(std::string& error)
                 builder_, LLVMIntEQ, state, LLVMConstInt(i8, 2, 0), "static.local.destroy.live");
             LLVMBuildCondBr(builder_, initialized, destroy, done);
 
-            LLVMPositionBuilderAtEnd(builder_, destroy);
+            enterBlock(destroy);
             LLVMValueRef claim = LLVMBuildStore(builder_, LLVMConstInt(i8, 3, 0), item.state);
             LLVMSetOrdering(claim, LLVMAtomicOrderingSequentiallyConsistent);
             if (!emitStaticLocalDestruction(item.declaration, item.storage, error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, done);
-            LLVMPositionBuilderAtEnd(builder_, done);
+            enterBlock(done);
             LLVMBuildRetVoid(builder_);
             destructors.push_back(function);
         }

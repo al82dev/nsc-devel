@@ -19,7 +19,7 @@ namespace NativeSharp.BookExamples.GraphTraversal
 
         private int Cell(int from, int to) { return from * capacity + to; }
 
-        public int AddCity(string name)
+        public int AddCity(string name) throws InvalidOperationException
         {
             if (vertexCount == capacity) { throw new InvalidOperationException(); }
             int id = vertexCount;
@@ -43,7 +43,7 @@ namespace NativeSharp.BookExamples.GraphTraversal
             Console.WriteLine(a);
         }
 
-        public void BreadthFirst(int start)
+        public void BreadthFirst(int start) throws InvalidOperationException
         {
             bool[] visited = new bool[vertexCount];
             raii IntQueue queue = new IntQueue(4);
@@ -67,7 +67,7 @@ namespace NativeSharp.BookExamples.GraphTraversal
             delete[] visited;
         }
 
-        public void DepthFirstIterative(int start)
+        public void DepthFirstIterative(int start) throws InvalidOperationException
         {
             bool[] visited = new bool[vertexCount];
             raii IntStack stack = new IntStack(4);
@@ -109,7 +109,7 @@ namespace NativeSharp.BookExamples.GraphTraversal
             delete[] visited;
         }
 
-        public void ShortestUnweightedPath(int start, int goal)
+        public void ShortestUnweightedPath(int start, int goal) throws InvalidOperationException
         {
             bool[] visited = new bool[vertexCount];
             int[] previous = new int[vertexCount];

@@ -63,11 +63,11 @@ LLVMValueRef OopLlvmImplementation::lowerSafeReferenceCast(
         LLVMBasicBlockRef doneBlock = appendBlock("cast.safe.done");
         LLVMBuildCondBr(builder_, compatible, successBlock, failureBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, successBlock);
+        enterBlock(successBlock);
         LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, failureBlock);
+        enterBlock(failureBlock);
         LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         LLVMValueRef result = LLVMBuildPhi(builder_, ptr, "cast.safe.result");
         LLVMValueRef incomingValues[] = {object, LLVMConstNull(ptr)};
         LLVMBasicBlockRef incomingBlocks[] = {successBlock, failureBlock};
@@ -94,12 +94,12 @@ LLVMValueRef OopLlvmImplementation::lowerCheckedReferenceCast(
             builder_, LLVMIntEQ, object, LLVMConstNull(ptr), "cast.checked.null");
         LLVMBuildCondBr(builder_, isNull, okBlock, testBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, testBlock);
+        enterBlock(testBlock);
         LLVMValueRef compatible = emitRuntimeTypeTest(node, object, error);
         if (compatible == nullptr) return nullptr;
         LLVMBuildCondBr(builder_, compatible, okBlock, trapBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, trapBlock);
+        enterBlock(trapBlock);
         LLVMValueRef reason = LLVMConstInt(
             LLVMInt32TypeInContext(context_),
             static_cast<std::uint64_t>(LlvmTrapReason::InvalidCast),
@@ -108,7 +108,7 @@ LLVMValueRef OopLlvmImplementation::lowerCheckedReferenceCast(
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
         LLVMBuildUnreachable(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, okBlock);
+        enterBlock(okBlock);
         return object;
     }
 
@@ -371,12 +371,12 @@ bool OopLlvmImplementation::resolveDecimalMultiplyOverflow(
         LLVMBasicBlockRef okBlock = appendBlock("decimal.mul.ok");
         LLVMBasicBlockRef trapBlock = appendBlock("decimal.mul.trap");
         LLVMBuildCondBr(builder_, overflow, trapBlock, okBlock);
-        LLVMPositionBuilderAtEnd(builder_, trapBlock);
+        enterBlock(trapBlock);
         if (currentOverflowPolicy_ == "saturating")
         {
             LLVMValueRef saturated = buildSaturatedDecimalMultiply(left, right, mask96, wide);
             LLVMBuildBr(builder_, okBlock);
-            LLVMPositionBuilderAtEnd(builder_, okBlock);
+            enterBlock(okBlock);
             mergeSaturatedDecimalMultiply(
                 saturated, preheader, trapBlock, combined, effectiveScale, wide);
             return true;
@@ -389,7 +389,7 @@ bool OopLlvmImplementation::resolveDecimalMultiplyOverflow(
         LLVMValueRef trapArguments[] = { reason };
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
         LLVMBuildUnreachable(builder_);
-        LLVMPositionBuilderAtEnd(builder_, okBlock);
+        enterBlock(okBlock);
         return true;
 }
 

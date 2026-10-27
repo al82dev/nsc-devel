@@ -10,6 +10,7 @@ namespace nativesharp::driver
 {
 enum class ProgressFormat
 {
+    Files,
     Text,
     Json
 };

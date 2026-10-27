@@ -15,7 +15,7 @@ namespace NativeSharp.BookExamples.Polynomial
         public double this[int power]
         {
             get { if(power<0 || power>degree){return 0.0;} return coefficients[power]; }
-            set { if(power<0 || power>degree){throw new ArgumentOutOfRangeException();} coefficients[power]=value; }
+            set throws ArgumentOutOfRangeException { if(power<0 || power>degree){throw new ArgumentOutOfRangeException();} coefficients[power]=value; }
         }
         public double Evaluate(double x)
         {
@@ -23,27 +23,27 @@ namespace NativeSharp.BookExamples.Polynomial
             while(p>=0){result=result*x+coefficients[p];p=p-1;}
             return result;
         }
-        public Polynomial Derivative()
+        public owned Polynomial Derivative() throws ArgumentOutOfRangeException
         {
             if(degree==0){return new Polynomial(0);}
-            Polynomial result=new Polynomial(degree-1);int p=1;
+            raii Polynomial result=new Polynomial(degree-1);int p=1;
             while(p<=degree){result[p-1]=coefficients[p]*(double)p;p=p+1;}
-            return result;
+            return move(result);
         }
-        public static Polynomial operator +(Polynomial a,Polynomial b)
+        public static owned Polynomial operator +(Polynomial a,Polynomial b) throws ArgumentOutOfRangeException
         {
-            int d=a.degree;if(b.degree>d){d=b.degree;}Polynomial r=new Polynomial(d);int p=0;
-            while(p<=d){r[p]=a[p]+b[p];p=p+1;}return r;
+            int d=a.degree;if(b.degree>d){d=b.degree;}raii Polynomial r=new Polynomial(d);int p=0;
+            while(p<=d){r[p]=a[p]+b[p];p=p+1;}return move(r);
         }
-        public static Polynomial operator -(Polynomial a,Polynomial b)
+        public static owned Polynomial operator -(Polynomial a,Polynomial b) throws ArgumentOutOfRangeException
         {
-            int d=a.degree;if(b.degree>d){d=b.degree;}Polynomial r=new Polynomial(d);int p=0;
-            while(p<=d){r[p]=a[p]-b[p];p=p+1;}return r;
+            int d=a.degree;if(b.degree>d){d=b.degree;}raii Polynomial r=new Polynomial(d);int p=0;
+            while(p<=d){r[p]=a[p]-b[p];p=p+1;}return move(r);
         }
-        public static Polynomial operator *(Polynomial a,Polynomial b)
+        public static owned Polynomial operator *(Polynomial a,Polynomial b) throws ArgumentOutOfRangeException
         {
-            Polynomial r=new Polynomial(a.degree+b.degree);int i=0;
-            while(i<=a.degree){int j=0;while(j<=b.degree){r[i+j]=r[i+j]+a[i]*b[j];j=j+1;}i=i+1;}return r;
+            raii Polynomial r=new Polynomial(a.degree+b.degree);int i=0;
+            while(i<=a.degree){int j=0;while(j<=b.degree){r[i+j]=r[i+j]+a[i]*b[j];j=j+1;}i=i+1;}return move(r);
         }
         public void Print(string name)
         {

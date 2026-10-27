@@ -220,41 +220,11 @@ bool prepareCodeGenerationModule(
     std::unique_ptr<llvm_backend::LlvmModule>& llvmModule,
     std::ostream& error)
 {
-    frontend::FrontendCompilation compilation;
-    std::string loadError;
-    const bool success = compilation.compileFile(std::filesystem::path(inputPath), loadError, false);
-    if (!loadError.empty())
-    {
-        error << "nsc: error: " << loadError << '\n';
-        return false;
-    }
-    if (!success || compilation.optimizationModule() == nullptr || compilation.semanticAnalyzer() == nullptr)
-    {
-        if (compilation.diagnostics().hasErrors())
-        {
-            diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
-            renderer.renderAll(compilation.diagnostics(), error);
-        }
-        error << "nsc: error: code generation requires a successful optimized "
-                 "compilation\n";
-        return false;
-    }
-
-    llvm_backend::LlvmLowerer lowerer(compilation.semanticAnalyzer()->globalSymbols());
-    llvmModule = lowerer.lower(compilation.optimizationModule());
-    if (llvmModule == nullptr)
-    {
-        error << "nsc: internal error: LLVM lowering failed: " << lowerer.error() << '\n';
-        return false;
-    }
-
-    std::string verificationError;
-    if (!llvmModule->verify(verificationError))
-    {
-        error << "nsc: internal error: LLVM verification failed: " << verificationError << '\n';
-        return false;
-    }
-    return true;
+    // EN: Freeze 3.0 C-05: a source file compiles as its implicit project; the 1.x pipeline is
+    //     no longer reached from the driver.
+    // ES: Congelamiento 3.0 C-05: un archivo fuente compila como su proyecto implicito; el driver
+    //     ya no llega al pipeline 1.x.
+    return lowerSourceFileModule(inputPath, false, llvmModule, error);
 }
 
 bool optimizeCodeGenerationModule(
@@ -426,67 +396,22 @@ ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
         error << "nsc: error: executable output path is empty\n";
         return ExitCode::CommandLineError;
     }
-
-    frontend::FrontendCompilation compilation;
-    std::string loadError;
-    const bool success = compilation.compileFile(std::filesystem::path(inputPath), loadError, true);
-    if (!loadError.empty())
+    // EN: Freeze 3.0 C-05: the executable of a source file is the executable of its implicit
+    //     project (Exe, referencing NativeSharp.Core), built by the project pipeline.
+    // ES: Congelamiento 3.0 C-05: el ejecutable de un archivo fuente es el de su proyecto implicito
+    //     (Exe, con referencia a NativeSharp.Core), construido por el pipeline de proyectos.
+    std::string projectError;
+    const std::optional<std::filesystem::path> project =
+        registerImplicitProject(inputPath, true, projectError);
+    if (!project.has_value())
     {
-        error << "nsc: error: " << loadError << '\n';
+        error << "nsc: error: " << projectError << '\n';
         return ExitCode::CompilationError;
     }
-    if (!success || compilation.optimizationModule() == nullptr || compilation.semanticAnalyzer() == nullptr)
-    {
-        if (compilation.diagnostics().hasErrors())
-        {
-            diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
-            renderer.renderAll(compilation.diagnostics(), error);
-        }
-        error << "nsc: error: executable generation requires a valid int Main() "
-                 "program\n";
-        return ExitCode::CompilationError;
-    }
-
-    llvm_backend::LlvmLowerer lowerer(compilation.semanticAnalyzer()->globalSymbols());
-    std::unique_ptr<llvm_backend::LlvmModule> module = lowerer.lower(compilation.optimizationModule());
-    if (module == nullptr)
-    {
-        error << "nsc: internal error: LLVM lowering failed: " << lowerer.error() << '\n';
-        return ExitCode::CompilationError;
-    }
-
-    std::string verificationError;
-    if (!module->verify(verificationError))
-    {
-        error << "nsc: internal error: LLVM verification failed: " << verificationError << '\n';
-        return ExitCode::CompilationError;
-    }
-
-    linker::WindowsExecutableBuilder builder;
-    builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
-    builder.setSubsystem(subsystem);
-    std::string buildError;
-    const std::filesystem::path destination = pathFromUtf8(outputPath);
-    if (!builder.build(*module, destination, optimizationLevel, buildError))
-    {
-        error << "nsc: error: Windows executable generation failed: " << buildError << '\n';
-        return ExitCode::CompilationError;
-    }
-
-    output << "PE executable emission: ok\n"
-           << "machine: AMD64 (0x8664)\n"
-           << "format: PE32+\n"
-           << "subsystem: " << subsystemDisplayName(subsystem) << '\n'
-           << "optimization: " << llvm_backend::llvmOptimizationLevelName(optimizationLevel) << '\n'
-           << "sections: " << builder.info().sectionCount << '\n'
-           << "entry-rva: " << builder.info().entryPointRva << '\n'
-           << "imports:";
-    for (const std::string &library : builder.info().importedLibraries)
-    {
-        output << ' ' << library;
-    }
-    output << '\n';
-    return ExitCode::Success;
+    const std::string projectText = project->string();
+    return runProjectOopExecutableGeneration(
+        projectText, outputPath, optimizationLevel, llvm_backend::DebugInformationKind::None, {},
+        llvm_backend::LinkTimeOptimizationMode::None, false, subsystem, {}, output, error);
 }
 
 void Driver::printVersion(std::ostream &output)

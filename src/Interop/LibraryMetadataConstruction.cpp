@@ -17,10 +17,13 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include "Internal/TemplateSourceReplacement.h"
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
 #include "Internal/TemplateSourcePiece.h"
 #include "Internal/ByteReader.h"
 #include "Internal/ByteWriter.h"
@@ -433,6 +436,7 @@ std::uint32_t memberFlags(const frontend::ClassMemberSymbol& member) noexcept
     flags |= static_cast<std::uint32_t>(member.inliningPolicy) << kMetadataMemberInliningShift;
     if (member.isVolatile) flags |= kMetadataMemberVolatile;
     if (member.isReferenceReturn) flags |= kMetadataMemberReferenceReturn;
+    if (frontend::isReadonlyReferenceReturn(member)) flags |= kMetadataMemberReadonlyReferenceReturn;
     if (member.isNoHeap) flags |= kMetadataMemberNoHeap;
     if (member.isVariadic) flags |= kMetadataMemberVariadic;
     if (member.declaredTypeSyntax != nullptr && member.declaredTypeSyntax->isDynamicTrait())
@@ -2349,6 +2353,8 @@ void initializeMetadataMemberRecord(
 
 const frontend::ProjectOopMirFunction* resolveMemberPhysicalIdentity(
     const frontend::ProjectCompilation& compilation,
+    const std::unordered_map<std::size_t, const frontend::ProjectOopMirFunction*>&
+        generatorConstructors,
     std::size_t ordinal,
     LibraryMetadataMember& record)
 {
@@ -2361,15 +2367,25 @@ const frontend::ProjectOopMirFunction* resolveMemberPhysicalIdentity(
     // call the constructor, not the drop glue.
     if (function == nullptr || !function->isGeneratorConstructor)
     {
-        for (const frontend::ProjectOopMirFunction& candidate :
-             compilation.oopMirModel()->functions())
+        const auto constructor = generatorConstructors.find(ordinal);
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
         {
-            if (candidate.memberOrdinal == ordinal && candidate.isGeneratorConstructor)
+            const frontend::ProjectOopMirFunction* scanned = nullptr;
+            for (const frontend::ProjectOopMirFunction& candidate :
+                 compilation.oopMirModel()->functions())
             {
-                record.mangledName = candidate.mangledName;
+                if (candidate.memberOrdinal != ordinal || !candidate.isGeneratorConstructor) continue;
+                scanned = &candidate;
                 break;
             }
+            if (scanned != (constructor == generatorConstructors.end() ? nullptr : constructor->second))
+            {
+                frontend::internal::reportIndexShadowMismatch(
+                    "resolveMemberPhysicalIdentity", std::to_string(ordinal));
+            }
         }
+        if (constructor != generatorConstructors.end())
+            record.mangledName = constructor->second->mangledName;
     }
     return function;
 }
@@ -2509,6 +2525,8 @@ bool buildMetadataMember(
     std::span<const frontend::ClassMemberSymbol> members,
     const std::unordered_map<std::size_t, const frontend::ProjectOopMirStaticField*>&
         staticFields,
+    const std::unordered_map<std::size_t, const frontend::ProjectOopMirFunction*>&
+        generatorConstructors,
     std::size_t rootProjectOrdinal,
     std::size_t ordinal,
     bool publishLifetimeContracts,
@@ -2521,7 +2539,7 @@ bool buildMetadataMember(
     initializeMetadataMemberRecord(
         compilation, types, member, ordinal, publishLifetimeContracts, record);
     const frontend::ProjectOopMirFunction* function =
-        resolveMemberPhysicalIdentity(compilation, ordinal, record);
+        resolveMemberPhysicalIdentity(compilation, generatorConstructors, ordinal, record);
     appendInlineMemberSource(compilation, member, function, metadata, record);
     const auto staticField = staticFields.find(ordinal);
     const frontend::ProjectOopMirStaticField* field =
@@ -2546,6 +2564,8 @@ bool appendMetadataMembers(
     const std::vector<std::size_t>& memberOrdinals,
     const std::unordered_map<std::size_t, const frontend::ProjectOopMirStaticField*>&
         staticFields,
+    const std::unordered_map<std::size_t, const frontend::ProjectOopMirFunction*>&
+        generatorConstructors,
     std::size_t rootProjectOrdinal,
     bool publishLifetimeContracts,
     LibraryMetadata& metadata,
@@ -2560,6 +2580,7 @@ bool appendMetadataMembers(
                 types,
                 members,
                 staticFields,
+                generatorConstructors,
                 rootProjectOrdinal,
                 ordinal,
                 publishLifetimeContracts,
@@ -2581,6 +2602,8 @@ bool appendExternalTraitImplMetadata(
     std::span<const frontend::ClassMemberSymbol> members,
     const std::unordered_map<std::size_t, const frontend::ProjectOopMirStaticField*>&
         staticFields,
+    const std::unordered_map<std::size_t, const frontend::ProjectOopMirFunction*>&
+        generatorConstructors,
     std::size_t rootProjectOrdinal,
     bool publishLifetimeContracts,
     LibraryMetadata& metadata,
@@ -2618,6 +2641,7 @@ bool appendExternalTraitImplMetadata(
                     types,
                     members,
                     staticFields,
+                    generatorConstructors,
                     rootProjectOrdinal,
                     ordinal,
                     publishLifetimeContracts,
@@ -2664,6 +2688,14 @@ bool buildMemberMetadata(
     {
         staticFields.emplace(field.memberOrdinal, &field);
     }
+    // memberOrdinal -> the first generator constructor of that member in function order (the one
+    // the former per-member scan of every MIR function found), built once per metadata build.
+    std::unordered_map<std::size_t, const frontend::ProjectOopMirFunction*> generatorConstructors;
+    for (const frontend::ProjectOopMirFunction& function : compilation.oopMirModel()->functions())
+    {
+        if (function.isGeneratorConstructor)
+            generatorConstructors.emplace(function.memberOrdinal, &function);
+    }
     std::vector<std::size_t> memberOrdinals;
     collectMetadataMemberOrdinals(types, members, rootTypes, memberOrdinals);
     std::vector<std::string> missingPhysicalCallables;
@@ -2673,6 +2705,7 @@ bool buildMemberMetadata(
             members,
             memberOrdinals,
             staticFields,
+            generatorConstructors,
             rootProjectOrdinal,
             publishLifetimeContracts,
             metadata,
@@ -2686,6 +2719,7 @@ bool buildMemberMetadata(
             types,
             members,
             staticFields,
+            generatorConstructors,
             rootProjectOrdinal,
             publishLifetimeContracts,
             metadata,

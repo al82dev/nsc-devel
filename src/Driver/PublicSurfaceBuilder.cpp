@@ -1,5 +1,7 @@
 #include "PublicSurfaceBuilder.h"
 #include "PublicSurfaceEmitterSupport.h"
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
 
 #include <algorithm>
 #include <array>
@@ -396,7 +398,9 @@ bool PublicSurfaceBuilder::emitAccessorContract(const AccessorContract &contract
     (*generated) << "    " << sourceAccessibility(accessibility) << ' ';
     emitAccessorModifiers(shape, interfaceContext, preserveStatic, declarationReadonly);
     if ((shape.flags & interop::kMetadataMemberReferenceReturn) != 0U)
-        (*generated) << "ref" << lifetimeAnnotation(shape.returnLifetimeName) << ' ';
+        (*generated) << "ref"
+                     << ((shape.flags & interop::kMetadataMemberReadonlyReferenceReturn) != 0U ? " readonly" : "")
+                     << lifetimeAnnotation(shape.returnLifetimeName) << ' ';
     (*generated) << ownershipPrefix(declaredOwnership)
                  << ((shape.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "") << declaredType << ' ';
     if (contract.isIndexer)
@@ -562,7 +566,9 @@ bool PublicSurfaceBuilder::emitInterfaceMethod(
     if ((member.flags & interop::kMetadataMemberNoHeap) != 0U)
         (*generated) << "noheap ";
     if ((member.flags & interop::kMetadataMemberReferenceReturn) != 0U)
-        (*generated) << "ref" << lifetimeAnnotation(member.returnLifetimeName) << ' ';
+        (*generated) << "ref"
+                     << ((member.flags & interop::kMetadataMemberReadonlyReferenceReturn) != 0U ? " readonly" : "")
+                     << lifetimeAnnotation(member.returnLifetimeName) << ' ';
     (*generated) << ownershipPrefix(member.declaredOwnership)
                  << ((member.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "") << returnType << ' '
                  << member.name;
@@ -1025,7 +1031,9 @@ bool PublicSurfaceBuilder::emitOrdinaryMethod(const interop::LibraryMetadataMemb
     if ((member.flags & interop::kMetadataMemberNoHeap) != 0U)
         (*generated) << "noheap ";
     if ((member.flags & interop::kMetadataMemberReferenceReturn) != 0U)
-        (*generated) << "ref" << lifetimeAnnotation(member.returnLifetimeName) << ' ';
+        (*generated) << "ref"
+                     << ((member.flags & interop::kMetadataMemberReadonlyReferenceReturn) != 0U ? " readonly" : "")
+                     << lifetimeAnnotation(member.returnLifetimeName) << ' ';
     (*generated) << ownershipPrefix(member.declaredOwnership)
                  << ((member.flags & interop::kMetadataMemberDynamicTrait) != 0U ? "dyn " : "") << returnType << ' '
                  << member.name;
@@ -1144,20 +1152,26 @@ bool PublicSurfaceBuilder::emitNominalType(const interop::LibraryMetadataType &t
 std::vector<const interop::LibraryMetadataMember *> PublicSurfaceBuilder::orderedPublishedMethods(
     const interop::LibraryMetadataType &type, const std::vector<const interop::LibraryMetadataMember *> &methods)
 {
-    std::vector<const interop::LibraryMetadataMember *> orderedMethods = methods;
     const std::string declaringTypeKey = "type:" + type.identityKey;
     const auto dispatch =
         std::ranges::find_if(metadata.dispatchTables, [&](const interop::LibraryMetadataDispatch &candidate)
                              { return candidate.typeKey == declaringTypeKey; });
+    const interop::LibraryMetadataDispatch *dispatchTable =
+        dispatch == metadata.dispatchTables.end() ? nullptr : &*dispatch;
 
-    std::stable_sort(orderedMethods.begin(), orderedMethods.end(),
-                     [&](const auto *left, const auto *right)
-                     {
-                         return dispatchRank(type, declaringTypeKey,
-                                             dispatch == metadata.dispatchTables.end() ? nullptr : &*dispatch, left) <
-                                dispatchRank(type, declaringTypeKey,
-                                             dispatch == metadata.dispatchTables.end() ? nullptr : &*dispatch, right);
-                     });
+    // The rank of each method is computed once instead of twice per comparison. A stable sort
+    // of (rank, method) pairs that compares only the ranks keeps methods of equal rank in their
+    // original order, so the result is the one of stable-sorting the methods by rank.
+    std::vector<std::pair<std::size_t, const interop::LibraryMetadataMember *>> rankedMethods;
+    rankedMethods.reserve(methods.size());
+    for (const interop::LibraryMetadataMember *method : methods)
+        rankedMethods.emplace_back(dispatchRank(type, declaringTypeKey, dispatchTable, method), method);
+    std::stable_sort(rankedMethods.begin(), rankedMethods.end(),
+                     [](const auto &left, const auto &right) { return left.first < right.first; });
+    std::vector<const interop::LibraryMetadataMember *> orderedMethods;
+    orderedMethods.reserve(rankedMethods.size());
+    for (const auto &rankedMethod : rankedMethods)
+        orderedMethods.push_back(rankedMethod.second);
     return orderedMethods;
 }
 
@@ -1289,19 +1303,33 @@ void PublicSurfaceBuilder::collectPublishedTypes()
 
 bool PublicSurfaceBuilder::collectPublishedMembers()
 {
+    // Declaring types by their "type:" key, built once instead of concatenating the key of
+    // every type for every member; emplace keeps the first type of a key, as find_if did.
+    std::unordered_map<std::string, const interop::LibraryMetadataType *> typesByKey;
+    typesByKey.reserve(metadata.types.size());
+    for (const interop::LibraryMetadataType &candidate : metadata.types)
+        typesByKey.emplace("type:" + candidate.identityKey, &candidate);
     for (const interop::LibraryMetadataMember &member : metadata.members)
     {
         if (!canMaterializePrecompiledDeclaration(metadata, member))
         {
             continue;
         }
-        const auto type = std::find_if(metadata.types.begin(), metadata.types.end(), [&](const auto &candidate)
-                                       { return "type:" + candidate.identityKey == member.declaringTypeKey; });
-        if (type == metadata.types.end())
+        const auto typeEntry = typesByKey.find(member.declaringTypeKey);
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        {
+            const auto scanned = std::find_if(metadata.types.begin(), metadata.types.end(), [&](const auto &candidate)
+                                              { return "type:" + candidate.identityKey == member.declaringTypeKey; });
+            const interop::LibraryMetadataType *scannedType = scanned == metadata.types.end() ? nullptr : &*scanned;
+            if (scannedType != (typeEntry == typesByKey.end() ? nullptr : typeEntry->second))
+                frontend::internal::reportIndexShadowMismatch("collectPublishedMembers", member.declaringTypeKey);
+        }
+        if (typeEntry == typesByKey.end())
         {
             error = "metadata member '" + member.name + "' refers to a declaring type that is not present";
             return false;
         }
+        const interop::LibraryMetadataType *type = typeEntry->second;
         const bool contractDependency = contractTypeIdentities.contains(type->identityKey);
         if (!isPubliclyReachableMetadataType(metadata, *type) && !contractDependency)
             continue;
@@ -1316,7 +1344,7 @@ bool PublicSurfaceBuilder::collectPublishedMembers()
                 continue;
         }
         PublishedType &group = published[type->identityKey];
-        group.type = &*type;
+        group.type = type;
         group.methods.push_back(&member);
         collectMaterializedContractTypes(metadata, member.declaredTypeKey, contractTypeIdentities);
         collectMaterializedContractTypes(metadata, member.declaredErrorTypeKey, contractTypeIdentities);
@@ -1342,16 +1370,28 @@ void PublicSurfaceBuilder::collectNamespaceContractTypes()
 
 bool PublicSurfaceBuilder::publishContractTypes()
 {
+    // Types by identity, built once; emplace keeps the first type of an identity, as find_if did.
+    std::unordered_map<std::string_view, const interop::LibraryMetadataType *> typesByIdentity;
+    typesByIdentity.reserve(metadata.types.size());
+    for (const interop::LibraryMetadataType &candidate : metadata.types)
+        typesByIdentity.emplace(candidate.identityKey, &candidate);
     for (const std::string &identity : contractTypeIdentities)
     {
-        const auto type = std::ranges::find_if(metadata.types, [&](const auto &candidate)
-                                               { return candidate.identityKey == identity; });
-        if (type == metadata.types.end())
+        const auto type = typesByIdentity.find(identity);
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        {
+            const auto scanned = std::ranges::find_if(metadata.types, [&](const auto &candidate)
+                                                      { return candidate.identityKey == identity; });
+            const interop::LibraryMetadataType *scannedType = scanned == metadata.types.end() ? nullptr : &*scanned;
+            if (scannedType != (type == typesByIdentity.end() ? nullptr : type->second))
+                frontend::internal::reportIndexShadowMismatch("publishContractTypes", identity);
+        }
+        if (type == typesByIdentity.end())
         {
             error = "metadata contract refers to missing type '" + identity + "'";
             return false;
         }
-        published[identity].type = &*type;
+        published[identity].type = type->second;
     }
     return true;
 }

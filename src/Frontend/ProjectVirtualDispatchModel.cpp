@@ -3,6 +3,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 
 #include <string>
@@ -41,6 +42,7 @@ bool ProjectVirtualDispatchModel::build(
     virtualInfoByMember_.resize(memberModel.members().size());
     tableByType_.resize(nameLookup.namedTypes().size());
     buildingType_.resize(nameLookup.namedTypes().size(), false);
+    readSnapshotDispatch();
 
     bool ok = true;
     for (const ClassInheritanceInfo& info : inheritanceModel.classes())
@@ -243,7 +245,8 @@ bool ProjectVirtualDispatchModel::validateOverrideSignature(
         return false;
     }
     if (baseMethod.declaredTypeKey != method.declaredTypeKey ||
-        baseMethod.isReferenceReturn != method.isReferenceReturn)
+        baseMethod.isReferenceReturn != method.isReferenceReturn ||
+        isReadonlyReferenceReturn(baseMethod) != isReadonlyReferenceReturn(method))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOverride,
@@ -487,17 +490,25 @@ bool ProjectVirtualDispatchModel::buildClass(
         return false;
     }
 
+    // EN: A class of a restored API unit with a snapshot entry takes its own slots from it (plan 3.9).
+    // ES: Una clase de una unidad de API restaurada con entrada en el snapshot toma de ella sus slots
+    //     (plan 3.9).
     bool ok = true;
-    for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
+    if (!installSnapshotClassTable(table))
     {
-        if (!processClassMethod(typeOrdinal, memberOrdinal, table, diagnostics))
+        const std::size_t methodsBegin = virtualMethods_.size();
+        for (const std::size_t memberOrdinal : memberModel_->membersOfType(typeOrdinal))
+        {
+            if (!processClassMethod(typeOrdinal, memberOrdinal, table, diagnostics))
+            {
+                ok = false;
+            }
+        }
+        if (!validateConcreteVirtualSlots(typeOrdinal, table, diagnostics))
         {
             ok = false;
         }
-    }
-    if (!validateConcreteVirtualSlots(typeOrdinal, table, diagnostics))
-    {
-        ok = false;
+        captureSnapshotClassTable(typeOrdinal, methodsBegin);
     }
     tableByType_[typeOrdinal] = classTables_.size();
     classTables_.push_back(std::move(table));

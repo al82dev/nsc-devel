@@ -327,6 +327,38 @@ public:
         const ast::AstNode* syntax) const noexcept;
     const MethodLoopExpressionBinding* loopExpressionBinding(
         const ast::AstNode* syntax) const noexcept;
+    // EN: Freeze 3.0 (owned arrays): `delete[]` of an owned array field releases it and clears the
+    //     field, so the container's destruction entry, which now releases owned array fields too,
+    //     never releases the same block again. DEC-06: the same holds for a local declared
+    //     `owned T[]`, whose cleared slot the lexical cleanup then skips.
+    // ES: Congelamiento 3.0 (arreglos owned): `delete[]` de un campo de arreglo owned lo libera y
+    //     deja el campo vacio, asi la entrada de destruccion del contenedor, que ahora tambien libera
+    //     los campos de arreglo owned, nunca libera otra vez el mismo bloque. DEC-06: lo mismo vale
+    //     para un local declarado `owned T[]`, cuyo slot vacio la limpieza lexica omite.
+    bool arrayDeleteClearsOwnedField(const ast::AstNode* syntax) const noexcept
+    {
+        return arrayDeleteClearsOwnedField_.contains(syntax);
+    }
+    // EN: Freeze 3.0 (item 121): `delete p` of an owned class or interface parameter consumes it,
+    //     like move(p). The HIR addresses the parameter, so the slot is cleared before destruction and
+    //     the parameter's exit cleanup finds it empty.
+    // ES: Congelamiento 3.0 (elemento 121): `delete p` de un parametro owned de clase o interfaz lo
+    //     consume, como move(p). El HIR direcciona el parametro, asi el slot queda vacio antes de la
+    //     destruccion y la limpieza de salida del parametro lo encuentra vacio.
+    bool deleteClearsOwnedParameter(const ast::AstNode* syntax) const noexcept
+    {
+        return deleteClearsOwnedParameter_.contains(syntax);
+    }
+    // EN: Freeze 3.0 (item 130, F2): `delete[]` of a local array declared without owned/raii whose
+    //     element type is a class or interface releases only the block; such an array stores
+    //     references it does not own, even when it was created with `new T[n]`.
+    // ES: Congelamiento 3.0 (elemento 130, F2): `delete[]` de un local arreglo declarado sin owned/raii
+    //     cuyo elemento es una clase o interfaz libera solo el bloque; ese arreglo guarda referencias
+    //     que no posee, aunque se haya creado con `new T[n]`.
+    bool arrayDeleteKeepsElements(const ast::AstNode* syntax) const noexcept
+    {
+        return arrayDeleteKeepsElements_.contains(syntax);
+    }
     const MethodLoopBreakBinding* loopBreakBinding(
         const ast::AstNode* syntax) const noexcept;
     const std::string* staticInterpolationValue(const ast::AstNode* syntax) const noexcept;
@@ -335,6 +367,23 @@ public:
     // regla de propiedad que las llamadas ordinarias, y volver a escribirlo alli seria la segunda
     // definicion de ownable -- que es la forma exacta del defecto que este ID cierra.
     bool typeKeyIsOwnable(std::string_view typeKey) const noexcept;
+    // EN: Freeze 3.0 C-01 (plan item 115): a `new T(...)` handed straight to a by-value parameter without
+    //     `owned` reaches no owner. Public because ProjectConstructionModel applies the same rule to
+    //     constructor arguments.
+    // ES: Congelamiento 3.0 C-01 (elemento 115 del plan): un `new T(...)` entregado directo a un parámetro por
+    //     valor sin `owned` no llega a ningún dueño. Público porque ProjectConstructionModel aplica la misma
+    //     regla a los argumentos de constructor.
+    bool newReachesOrdinaryParameter(
+        const MethodParameterSymbol& parameter,
+        const ast::AstNode* argumentSyntax,
+        bool freshOwner,
+        bool ownershipTransfer,
+        std::string_view argumentTypeKey) const;
+    void reportNewToOrdinaryParameter(
+        const ast::AstNode* argumentSyntax,
+        const MethodParameterSymbol& parameter,
+        std::string_view calleeName,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     std::span<const MethodRuntimeTypeBinding> runtimeTypeBindings() const noexcept;
     std::span<const MethodCoreBinding> coreBindings() const noexcept;
     const MethodVariableArrayIndexBinding* variableArrayIndexBinding(
@@ -367,6 +416,11 @@ public:
     // bodies reached from real source; libraries additionally analyze every public/protected body
     // in their exported closed types. HIR uses this exact set so an unbound body is never lowered.
     bool callableBodyAnalyzed(std::size_t memberOrdinal) const noexcept;
+    // EN: Freeze 3.0 (item 130a): an instance constructor of a closed generic type that no construction,
+    //     this(...) or base(...) selected; its body was not analyzed and is never lowered.
+    // ES: Congelamiento 3.0 (elemento 130a): un constructor de instancia de un tipo generico cerrado que
+    //     ninguna construccion, this(...) ni base(...) eligio; su cuerpo no se analizo y nunca se baja.
+    bool constructorBodyDeferred(std::size_t memberOrdinal) const;
     bool namespaceFunctionBodyAnalyzed(std::size_t functionOrdinal) const noexcept;
     bool aggregateAllowsSynthesizedMember(
         std::string_view typeKey,
@@ -377,8 +431,25 @@ public:
     const ProjectEscapePropagationStatistics& escapePropagationStatistics() const noexcept;
     const ProjectCallableAnalysisStatistics& callableAnalysisStatistics() const noexcept;
     bool isBuilt() const noexcept;
+    // EN: Freeze 3.0 P1: the constraint model this body model consults (null when none was given);
+    //     construction binding reads it to reject a constructor whose member clause fails.
+    // ES: Congelamiento 3.0 P1: el modelo de constraints que consulta este modelo de cuerpos (nulo si
+    //     no se dio); el binding de construcciones lo lee para rechazar un constructor cuya clausula
+    //     de miembro falla.
+    const ProjectGenericConstraintModel* genericConstraintModel() const noexcept
+    {
+        return genericConstraintModel_;
+    }
     // NS304-T08-F04: resolves a callable ordinal to a class member or a namespace-callable adapter.
     const ClassMemberSymbol* callableSymbol(std::size_t ordinal) const noexcept;
+    // EN: Freeze 3.0 C-13: true when `errorTypeKey` is caught by one of `handlers` (catch types,
+    //     "<any-exception>" for a catch-all) or propagates through `enclosingErrorTypeKey`.
+    // ES: Congelamiento 3.0 C-13: verdadero si `errorTypeKey` lo atrapa uno de `handlers` (tipos de
+    //     catch, "<any-exception>" para un catch-all) o se propaga por `enclosingErrorTypeKey`.
+    bool declaredErrorIsCovered(
+        std::string_view errorTypeKey,
+        std::span<const std::string> handlers,
+        std::string_view enclosingErrorTypeKey) const;
 
 private:
 #include "nativesharp/Frontend/Internal/MethodBody/ScopeNameKind.h"
@@ -670,6 +741,9 @@ private:
         const ast::AstNode* block,
         std::size_t activeScope,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    bool blockMatchIsExhaustive(const ast::AstNode* block, std::size_t activeScope) const;
+    void recordMatchArmExit(const ast::AstNode* block);
+    void closeExhaustiveMatch(const ast::AstNode* block, std::size_t activeScope);
     void finishBlockFrame(
         std::vector<StatementFrame>& frames,
         BlockFrame& frame,
@@ -914,6 +988,75 @@ private:
         bool isVarInferred,
         bool isRaii,
         bool isMoveOnly);
+    // EN: Freeze 3.0 C-01. True when `syntax` is `new T(...)` of an ownable type whose result
+    //     is a fresh owner. A local without raii/owned and a discarded expression give it no
+    //     owner, so it leaks deterministically. A parameter, return or field without `owned`
+    //     stays the manual-ownership form (the receiver may `delete` it), see ExpressionResult.
+    //     Plan item 115 replaced the parameter case (newReachesOrdinaryParameter), 115a the return
+    //     (rejectNewToNonOwnedReturn) and 115b the instance field (analyzeFieldInitializer).
+    // ES: Congelamiento 3.0 C-01. Verdadero cuando `syntax` es `new T(...)` de un tipo poseible
+    //     cuyo resultado es un dueno nuevo. Un local sin raii/owned y una expresion descartada no
+    //     le dan dueno, asi que se fuga siempre. Un parametro, retorno o campo sin `owned` sigue
+    //     siendo la forma de propiedad manual (quien lo recibe puede hacer `delete`).
+    //     El elemento 115 del plan reemplazó el caso del parámetro (newReachesOrdinaryParameter), el 115a el
+    //     retorno (rejectNewToNonOwnedReturn) y el 115b el campo de instancia (analyzeFieldInitializer).
+    bool isFreshObjectCreation(
+        const ast::AstNode* syntax,
+        const ExpressionResult& result) const;
+    void rejectNewToNonOwnedReturn(
+        const ast::AstNode* statement,
+        const ClassMemberSymbol& method,
+        const ExpressionResult& value,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void reportLostOwnership(
+        const ast::AstNode* syntax,
+        std::string_view context,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 (plan item 131a): a field read from an owned-returning call's temporary borrows the
+    //     temporary (markOwnedTemporaryFieldBorrow); storing, returning or yielding it is rejected
+    //     (rejectOwnedTemporaryBorrowEscape), because the temporary dies at the end of the full expression.
+    // ES: Congelamiento 3.0 (elemento 131a del plan): leer un campo del temporal de una llamada con retorno owned
+    //     toma prestado el temporal (markOwnedTemporaryFieldBorrow); guardarlo, devolverlo o entregarlo con
+    //     yield se rechaza (rejectOwnedTemporaryBorrowEscape), porque el temporal muere al final de la expresion
+    //     completa.
+    void markOwnedTemporaryFieldBorrow(
+        ExpressionResult& result,
+        const ExpressionResult& receiver,
+        bool typeReceiver) const;
+    // EN: Freeze 3.0 (plan item 135): provenance of a known-life temporary through `new`, getters, calls, `?:`
+    //     and `??` (carriesOwnedTemporary, markCallTemporaryBorrow).
+    // ES: Congelamiento 3.0 (elemento 135 del plan): procedencia de un temporal de vida conocida a traves de
+    //     `new`, getters, llamadas, `?:` y `??` (carriesOwnedTemporary, markCallTemporaryBorrow).
+    bool carriesOwnedTemporary(const ExpressionResult& receiver) const;
+    // EN: Freeze 3.0 (plan item 135a): an argument that is itself an owned temporary handed to a parameter
+    //     that does not take ownership is borrowed until the end of the full expression, so a non-owned call
+    //     result may alias it (isOwnedTemporaryValue, ownedArgumentParameters, ownedDelegateArgumentParameters).
+    // ES: Congelamiento 3.0 (elemento 135a del plan): un argumento que es el propio temporal owned entregado a un
+    //     parametro que no toma ownership queda prestado hasta el final de la expresion completa, asi que un
+    //     resultado no owned de la llamada puede ser alias de el (isOwnedTemporaryValue, ownedArgumentParameters,
+    //     ownedDelegateArgumentParameters).
+    bool isOwnedTemporaryValue(const ExpressionResult& value) const;
+    std::vector<bool> ownedArgumentParameters(
+        std::span<const std::size_t> argumentParameterOrdinals,
+        const ClassMemberSymbol& callable) const;
+    std::vector<bool> ownedDelegateArgumentParameters(
+        std::size_t delegateOrdinal,
+        std::size_t argumentCount,
+        bool& returnsOwned) const;
+    void markDelegateCallTemporaryBorrow(
+        ExpressionResult& result,
+        std::span<const ExpressionResult> arguments,
+        std::size_t delegateOrdinal) const;
+    void markCallTemporaryBorrow(
+        ExpressionResult& result,
+        bool receiverBorrows,
+        std::span<const ExpressionResult> arguments,
+        const std::vector<bool>& ownedParameters) const;
+    void rejectOwnedTemporaryBorrowEscape(
+        const ExpressionResult& value,
+        const ast::AstNode* syntax,
+        std::string_view destination,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void validateVariableOwnershipInitializer(
         const ExpressionResult& initializer,
         const ast::AstNode* variable,
@@ -1269,17 +1412,111 @@ private:
         const ClassMemberSymbol& method,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 P3: true for `field[i]` (implicit or `this.field`) where the field is a native
+    //     array or a pointer of the receiver: storage the receiver owns or views.
+    // ES: Congelamiento 3.0 P3: verdadero para `campo[i]` (implicito o `this.campo`) cuando el campo
+    //     es un arreglo nativo o un puntero del receptor: almacenamiento que el receptor posee o ve.
+    bool indexesReceiverFieldStorage(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal) const;
     bool reportDirectOwnerReturnWithoutMove(
         const ast::AstNode* statement,
         const ClassMemberSymbol& method,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 (plan item 136). One place answers which sources of statically known life a value, a
+    //     local or a parameter carries: the borrow of an owned temporary (135), a caught exception (DEC-10), an
+    //     exception parameter loan (P10), a scope object (NS304-T13-F03), a raii or move-only owner, an owned
+    //     parameter, and a pinned local that a suspension does not preserve (NS304-T05-F05). Every escape check
+    //     of those sources asks it; each check keeps its own sinks and its own diagnostic.
+    // ES: Congelamiento 3.0 (elemento 136 del plan). Un solo lugar responde que fuentes de vida conocida
+    //     estaticamente lleva un valor, un local o un parametro: el prestamo de un temporal owned (135), una
+    //     excepcion atrapada (DEC-10), un prestamo de parametro de excepcion (P10), un objeto scope
+    //     (NS304-T13-F03), un owner raii o move-only, un parametro owned, y un local pin que una suspension no
+    //     conserva (NS304-T05-F05). Toda comprobacion de escape de esas fuentes le pregunta; cada una conserva
+    //     sus sumideros y su diagnostico.
+    struct KnownLifeSources
+    {
+        bool ownedTemporary = false;
+        std::optional<std::size_t> caughtExceptionScope;
+        std::optional<std::size_t> exceptionLoanParameter;
+        std::optional<std::size_t> local;
+        std::optional<std::size_t> parameter;
+        bool scopeObject = false;
+        bool raiiOwner = false;
+        bool moveOnlyOwner = false;
+        bool pinned = false;
+        bool ownedReferenceParameter = false;
+    };
+    KnownLifeSources knownLifeSourcesOfResult(const ExpressionResult& result) const noexcept;
+    KnownLifeSources knownLifeSourcesOfLocal(const MethodLocalSymbol& local) const noexcept;
+    KnownLifeSources knownLifeSourcesOfParameter(
+        const MethodParameterSymbol& parameter,
+        std::size_t parameterOrdinal) const;
+    KnownLifeSources knownLifeSourcesOfValue(
+        const ast::AstNode* value,
+        const ClassMemberSymbol* method,
+        std::size_t scopeOrdinal) const;
+    // EN: Freeze 3.0 DEC-10 (caught exception). The catch scope whose exception `value` names, when
+    //     `value` is an identifier of such a local; `scopeIsWithin` tells whether `scope` is
+    //     `ancestor` or nested in it. The report functions reject storing the caught exception
+    //     where it outlives its handler, and `throw;` after it was moved out.
+    // ES: Congelamiento 3.0 DEC-10 (excepcion atrapada). El scope del catch cuya excepcion nombra
+    //     `value`, cuando `value` es el identificador de un local asi; `scopeIsWithin` dice si
+    //     `scope` es `ancestor` o esta anidado en el. Las funciones report rechazan guardar la
+    //     excepcion atrapada donde sobrevive a su handler, y `throw;` despues de sacarla con move.
+    std::optional<std::size_t> caughtExceptionScopeOfValue(
+        const ast::AstNode* value,
+        std::size_t scopeOrdinal) const;
+    bool scopeIsWithin(std::size_t scope, std::size_t ancestor) const noexcept;
+    bool reportCaughtExceptionReturn(
+        const ast::AstNode* value,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool rejectCaughtExceptionAssignment(
+        const ast::AstNode* expression,
+        const std::optional<std::size_t>& assignmentTargetLocal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
+    bool reportRethrowOfMovedCatch(
+        const ast::AstNode* statement,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 P10 (exception parameter loan). A non-owned parameter of an exception type is a
+    //     loan from the caller: it may not be stored in a field, a static, an element or another
+    //     parameter, captured by a lambda or returned. A local that copies it inherits the loan.
+    // ES: Congelamiento 3.0 P10 (prestamo del parametro de excepcion). Un parametro no owned de tipo
+    //     excepcion es un prestamo del llamador: no puede guardarse en un campo, un static, un
+    //     elemento u otro parametro, capturarse en un lambda ni retornarse. Un local que lo copia
+    //     hereda el prestamo.
+    bool parameterIsExceptionLoan(const MethodParameterSymbol& parameter) const;
+    std::optional<std::size_t> loanedExceptionParameterOfValue(
+        const ast::AstNode* value,
+        const ClassMemberSymbol* method,
+        std::size_t scopeOrdinal) const;
+    bool reportExceptionLoanReturn(
+        const ast::AstNode* value,
+        const ClassMemberSymbol& method,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool rejectExceptionLoanAssignment(
+        const ast::AstNode* expression,
+        const std::optional<std::size_t>& assignmentTargetLocal,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     ExpressionResult analyzeReturnValue(
         const ast::AstNode* statement,
         const ClassMemberSymbol& method,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool rejectMoveOnlyPlaceReturn(
+        const ast::AstNode* statement,
+        const ExpressionResult& value,
+        bool directOwnerReturnWithoutMove,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     bool rejectRefFieldReturn(
         const ast::AstNode* statement,
         const ExpressionResult& value,
@@ -1425,7 +1662,7 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
-    void validateUsingInitializer(
+    bool validateUsingInitializer(
         const ast::AstNode* statement,
         std::string_view resourceTypeKey,
         std::size_t methodMemberOrdinal,
@@ -1470,7 +1707,33 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    // Freeze 3.0 C-01: throw operand ownership (see StatementAnalyzer.cpp).
+    bool isCatchLocalExpression(const ast::AstNode* expression, std::size_t scopeOrdinal) const;
+    void validateThrowOwnership(
+        const ast::AstNode* operand,
+        const ExpressionResult& value,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     std::string delegateErrorTypeKey(std::string_view delegateTypeKey) const;
+    // EN: Freeze 3.0 C-13: handle-or-propagate check for a call site of a callable `throws E`.
+    // ES: Congelamiento 3.0 C-13: chequeo manejar-o-propagar en la llamada a un callable `throws E`.
+    void requireDeclaredErrorHandled(
+        const ast::AstNode* site,
+        std::string_view errorTypeKey,
+        std::string_view calleeName,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 (checked throw): a `throw` or `throw;` follows the same rule as a call.
+    // ES: Congelamiento 3.0 (throw chequeado): un `throw` o `throw;` sigue la misma regla que una
+    //     llamada.
+    void requireThrownErrorHandled(
+        const ast::AstNode* site,
+        std::string_view errorTypeKey,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    std::vector<std::string> activeErrorHandlers() const;
+    std::string enclosingErrorTypeKey(std::size_t methodMemberOrdinal) const;
+    std::vector<std::string> tryErrorHandlers(const ast::AstNode* statement) const;
     std::optional<std::size_t> exceptionRootTypeOrdinal() const noexcept;
     bool isExceptionTypeOrdinal(std::size_t typeOrdinal) const noexcept;
     std::size_t addCatchLocal(
@@ -1785,6 +2048,12 @@ private:
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         bool compilerVariantResultTransfer,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void recordPlainArrayLocalDelete(const ast::AstNode* expression, std::size_t scopeOrdinal);
+    bool consumeDeletedOwnedParameter(
+        const ast::AstNode* expression,
+        std::size_t methodMemberOrdinal,
+        std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
     bool validateParameterMoveState(
         const MethodParameterSymbol& parameter,
@@ -3221,6 +3490,32 @@ private:
         bool coreStringForwarding,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal);
+    void rejectDelegateNewToOrdinaryParameters(
+        const ast::AstNode* expression,
+        std::span<const ExpressionResult> arguments,
+        std::size_t delegateOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void rejectNonTrivialImportedCArguments(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> resolvedArguments,
+        const MethodCallCandidate& selected,
+        const ClassMemberSymbol& selectedMember,
+        bool coreStringForwarding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void rejectSelectedNewToOrdinaryParameters(
+        const ast::AstNode* expression,
+        const ExpressionResult& callee,
+        std::span<const ExpressionResult> resolvedArguments,
+        const MethodCallCandidate& selected,
+        const ClassMemberSymbol& selectedMember,
+        bool coreStringForwarding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    void rejectNewCallReceiver(
+        const ExpressionResult& callee,
+        const ClassMemberSymbol& selectedMember,
+        bool coreStringForwarding,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void finalizeSelectedCallResult(
         ExpressionResult& result,
         const ast::AstNode* expression,
@@ -3656,6 +3951,12 @@ private:
         const ClassMemberSymbol& callable,
         const MethodCallCandidate& selected,
         NamespaceFunctionCallBinding& call) const;
+    void rejectNamespaceNewToOrdinaryParameters(
+        const ClassMemberSymbol& callable,
+        std::span<ast::AstNode* const> argumentSyntaxes,
+        const std::vector<ExpressionResult>& arguments,
+        const MethodCallCandidate& selected,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     ExpressionResult completeNamespaceFunctionCall(
         const ast::AstNode* expression,
         std::size_t callerCallableOrdinal,
@@ -4255,6 +4556,12 @@ private:
         bool diagnoseFailure,
         bool readonlyReceiver,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool validateSyntheticConstraints(
+        const ast::AstNode* syntax,
+        MethodCallBinding& call,
+        const MethodCallCandidate& selected,
+        bool diagnoseFailure,
+        diagnostics::DiagnosticEngine& diagnostics);
     ExpressionResult finishSyntheticCall(
         const ast::AstNode* syntax,
         MethodCallBinding& call,
@@ -4467,6 +4774,14 @@ private:
         MethodLambdaCapture capture) const;
     MethodLambdaCapture routeLambdaCaptureThroughParents(
         MethodLambdaCapture capture);
+    bool validateExceptionLocalCapture(
+        const MethodNameBinding& name,
+        const MethodLocalSymbol& local,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateExceptionParameterCapture(
+        const MethodNameBinding& name,
+        const MethodParameterSymbol& parameter,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     bool validateLambdaLocalCaptureLifetime(
         const MethodNameBinding& name,
         const MethodLocalSymbol& local,
@@ -4630,6 +4945,36 @@ private:
     std::unordered_set<std::size_t> analyzedCallableMembers_;
     void verifyOutParameterAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
     void verifyRequiredFieldAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 C-02 and D-04. A synchronous `await` (outside an async callable) polls its
+    //     future once, so a producer known to suspend is a compile error. A source async producer
+    //     suspends when its body has `yield;` or awaits, directly or through other producers, one
+    //     that does. The origins of a future are the producers named by the calls that can reach it
+    //     (a local's initializers and assignments, the generator of a local iterator). An unknown
+    //     origin (parameter, field, a future returned by a non-async or precompiled callable) is
+    //     not "suspends": it is accepted, and if it is still pending after the poll the program
+    //     panics (DEC-04). `memo` holds 1 (does not suspend) or 2 (suspends).
+    // ES: Congelamiento 3.0 C-02 y D-04. Un `await` sincrono (fuera de un callable async) hace un
+    //     solo poll de su future, asi que un productor que se sabe que se suspende es error de
+    //     compilacion. Un productor async de fuente se suspende si su cuerpo tiene `yield;` o
+    //     espera, directamente o a traves de otros productores, a uno que se suspende. Los origenes
+    //     de un future son los productores que nombran las llamadas que pueden llegar a el (los
+    //     inicializadores y asignaciones de un local, el generador de un iterador local). Un origen
+    //     desconocido (parametro, campo, un future devuelto por un callable no async o precompilado)
+    //     no es «se suspende»: se acepta, y si sigue pendiente despues del poll el programa entra
+    //     en panico (DEC-04). `memo` guarda 1 (no se suspende) o 2 (se suspende).
+    void verifySynchronousAwaits(diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: Freeze 3.0 C-05 (found): a method with a result whose block body can reach its end.
+    // ES: Congelamiento 3.0 C-05 (hallazgo): un metodo con resultado cuyo cuerpo puede llegar al final.
+    void reportMissingReturn(
+        const ClassMemberSymbol& callable, diagnostics::DiagnosticEngine& diagnostics) const;
+    bool awaitProducerCanSuspend(
+        std::size_t producerOrdinal,
+        std::unordered_map<std::size_t, int>& memo) const;
+    bool awaitOperandCanSuspend(
+        const ast::AstNode* operand,
+        const ast::AstNode* callerBody,
+        std::size_t callerOrdinal,
+        std::unordered_map<std::size_t, int>& memo) const;
     // C7 "definite assignment". Three questions, one per helper:
     //
     //  - is this local's type one the analysis reports on at all? (see the definition: aggregates
@@ -4701,6 +5046,15 @@ private:
     MethodEscapeOrigin referenceEscapeOriginOfExpression(
         const ast::AstNode* expression,
         std::size_t scopeOrdinal) const;
+    // ES: Origen del VALOR de una expresión puntero (a dónde apunta), ver
+    // MethodLocalSymbol::pointerValueOrigin. EN: Origin of a pointer expression's VALUE (where it
+    // points), see MethodLocalSymbol::pointerValueOrigin.
+    MethodEscapeOrigin pointerValueEscapeOriginOfExpression(
+        const ast::AstNode* expression,
+        std::size_t scopeOrdinal) const;
+    static void joinPointerValueOrigin(
+        MethodEscapeOrigin& target,
+        const MethodEscapeOrigin& source) noexcept;
     bool aggregateIsBorrowedView(std::string_view typeKey) const noexcept;
     bool typeKeyIsViewLike(std::string_view typeKey) const noexcept;
     bool typeKeyCarriesLifetime(std::string_view typeKey) const noexcept;
@@ -4955,6 +5309,19 @@ private:
         const ProjectInterfaceModel& interfaceModel,
         std::optional<std::size_t> publicSurfaceProjectOrdinal,
         std::unordered_set<std::size_t>& demandedGenericMethods) const;
+    void seedImplicitChainConstructors(
+        const ProjectConstructionModel* resolver,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::unordered_set<std::size_t>& demandedGenericMethods) const;
+    void collectConstructorDemands(
+        const ProjectConstructionModel* resolver,
+        std::span<const std::size_t> analyzedCallables,
+        bool everySite,
+        const ProjectNameLookup& nameLookup,
+        const ProjectMemberModel& memberModel,
+        std::unordered_set<std::size_t>& demandedGenericMethods,
+        std::vector<std::size_t>& newlyDemanded) const;
     std::vector<std::size_t> createCallableWorklist(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
@@ -4985,7 +5352,7 @@ private:
     void mergeCallableWave(
         std::vector<ProjectCallableAnalysisResult> waveResults,
         std::size_t waveOrdinal,
-        std::size_t analyzedCount,
+        std::span<const std::size_t> analyzedCallables,
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         const ProjectMethodBodyBuildOptions& options,
@@ -5098,6 +5465,9 @@ private:
         borrowedParameterReassignmentBindings_;
 #include "nativesharp/Frontend/Internal/MethodBody/ActiveIterationBorrow.h"
     std::vector<ActiveIterationBorrow> activeIterationBorrows_;
+    std::unordered_set<const ast::AstNode*> arrayDeleteClearsOwnedField_;
+    std::unordered_set<const ast::AstNode*> deleteClearsOwnedParameter_;
+    std::unordered_set<const ast::AstNode*> arrayDeleteKeepsElements_;
     std::unordered_set<std::size_t> movedRaiiLocals_;
     std::unordered_set<std::size_t> maybeMovedRaiiLocals_;
     std::unordered_set<std::size_t> movedOwnedParameters_;
@@ -5144,6 +5514,12 @@ private:
     bool inUnevaluatedOperand_ = false;
     bool formingAddressOperand_ = false;
     bool ownershipFlowReachable_ = true;
+    // EN: Freeze 3.0 C-05. Per lowered match statement (its `$__nsc_match_N` temporary), whether
+    //     some arm body reached its end; an exhaustive match whose arms all exit ends the flow.
+    // ES: Congelamiento 3.0 C-05. Por cada match bajado (su temporal `$__nsc_match_N`), si algun
+    //     cuerpo de brazo llego a su final; un match exhaustivo cuyos brazos salen todos termina
+    //     el flujo.
+    std::unordered_map<std::string, bool> matchArmFallthrough_;
     // While a MemberExpression recursively analyzes its receiver, a partially moved aggregate
     // root may be inspected only long enough to select a still-live field. The completed member
     // path is validated immediately afterward; methods/properties still require the whole value.
@@ -5155,6 +5531,9 @@ private:
     IterativeExpressionAnalysis* iterativeExpressionAnalysis_ = nullptr;
     std::vector<OwnershipFlowSnapshot> throwFlowStates_;
     std::vector<std::string> currentCatchErrorTypes_;
+    // EN: Freeze 3.0 C-13: unfiltered catch types of each try body being analyzed, outermost first.
+    // ES: Congelamiento 3.0 C-13: tipos de catch sin filtro de cada cuerpo try en analisis.
+    std::vector<std::vector<std::string>> activeErrorHandlers_;
     std::vector<MethodSwitchBinding> switchBindings_;
     std::vector<MethodStructuredExitBinding> structuredExits_;
     std::vector<MethodCleanupContinuation> cleanupContinuations_;

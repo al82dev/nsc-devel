@@ -44,7 +44,7 @@ namespace NativeSharp.BookExamples.QueueSimulation
             Console.WriteLine(line);
         }
 
-        public int Run(Customer[] customers, int customerCount)
+        public int Run(Customer[] customers, int customerCount) throws InvalidOperationException
         {
             int nextArrival = 0;
             int clock = 0;

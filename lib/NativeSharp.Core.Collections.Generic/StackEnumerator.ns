@@ -24,9 +24,13 @@ namespace NativeSharp.Core.Collections.Generic
             return index < source.Count();
         }
 
-        public T Current
+        // EN: Freeze 3.0 P3: the element by reference, so `foreach (ref ...)` reaches it without a copy
+        //     and a by-value foreach copies only a copyable T.
+        // ES: Congelamiento 3.0 P3: el elemento por referencia, asi que `foreach (ref ...)` llega a el
+        //     sin copia y un foreach por valor copia solo un T copiable.
+        public ref T Current
         {
-            get { return source[index]; }
+            get { return ref source.RefAt(index); }
         }
     }
 }

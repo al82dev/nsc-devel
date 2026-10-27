@@ -45,7 +45,7 @@ namespace cc1finallyswitch
         // (una copia para la salida normal y otra como funclet para la excepcional), pero UNA sola
         // vez por ejecucion. Que `Tails` cuente exactamente una por vuelta es tambien la prueba de
         // que el cleanup no se duplico.
-        private static void ThrowThroughFinallyWithSwitch(int tag)
+        private static void ThrowThroughFinallyWithSwitch(int tag) throws InvalidOperationException
         {
             try
             {

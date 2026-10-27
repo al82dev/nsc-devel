@@ -7,7 +7,7 @@
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {"mode": "regex", "text": "CompoundAssignment.*read-conversion=integral-promotion"}
+    "stdout": {"mode": "regex", "text": "compound-store type=builtin:byte op=Plus"}
   },
   "tags": ["integration", "legacy-parity", "hir"],
   "requires": []

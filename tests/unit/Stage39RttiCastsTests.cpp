@@ -159,8 +159,8 @@ namespace Demo
     {
         public static int Run()
         {
-            Derived d = new Derived();
-            Base b = d;
+            raii Derived d = new Derived();
+            borrowed Base b = d;
             bool classTest = b is Derived;
             Derived safeClass = b as Derived;
             Derived checkedClass = (Derived)b;
@@ -266,8 +266,8 @@ class H
 {
     public static int Run()
     {
-        Leaf leaf = new Leaf();
-        Root root = leaf;
+        raii Leaf leaf = new Leaf();
+        borrowed Root root = leaf;
         bool classOk = root is Leaf;
         bool interfaceOk = root is IMarker;
         Leaf safeClass = root as Leaf;

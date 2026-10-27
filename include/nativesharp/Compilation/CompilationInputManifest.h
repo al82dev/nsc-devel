@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Compilation/CompilationBundleCache.h"
+#include "nativesharp/Compilation/FileDigestCache.h"
 #include "nativesharp/Compilation/LibraryMetadataRepository.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Compilation/ProjectLoadOptions.h"
@@ -30,7 +31,8 @@ namespace nativesharp::driver
 bool configurePrecompiledModules(
     compilation::CompilationInputManifest& manifest,
     frontend::ProjectCompilation& compilation,
-    std::string& error);
+    std::string& error,
+    bool materializeDemandedSurface);
 std::string fingerprintFiles(
     const compilation::CompilationInputManifest& manifest,
     std::vector<std::filesystem::path> files);
@@ -59,6 +61,8 @@ public:
         std::filesystem::path path,
         std::string digest,
         std::uintmax_t size);
+    // Inputs that are neither sources nor loaded metadata are hashed through this cache.
+    void setInputDigestCacheRoot(std::filesystem::path root);
     bool calculateIdentity(
         const LibraryMetadataRepository& metadataRepository,
         std::string& error);
@@ -78,7 +82,8 @@ private:
     friend bool driver::configurePrecompiledModules(
         CompilationInputManifest& manifest,
         frontend::ProjectCompilation& compilation,
-        std::string& error);
+        std::string& error,
+        bool materializeDemandedSurface);
     friend std::string driver::fingerprintFiles(
         const CompilationInputManifest& manifest,
         std::vector<std::filesystem::path> files);
@@ -100,6 +105,7 @@ private:
     std::vector<std::filesystem::path> inputFiles_;
     std::unordered_set<std::string> sourceInputKeys_;
     std::unordered_map<std::string, std::string> sourceBuffers_;
+    FileDigestCache inputDigestCache_;
     std::unordered_map<std::string, std::string> inputDigests_;
     std::unordered_map<std::string, std::uintmax_t> inputSizes_;
     std::vector<std::pair<std::string, std::string>> identityFields_;

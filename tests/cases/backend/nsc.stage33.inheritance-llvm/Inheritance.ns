@@ -54,7 +54,7 @@ public class Kennel
 
     public int Construct()
     {
-        Dog dog = new Dog(5, 20);
+        raii Dog dog = new Dog(5, 20);
         return dog.Sum();
     }
 }

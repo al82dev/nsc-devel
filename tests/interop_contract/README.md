@@ -86,3 +86,7 @@ Códigos de salida esperados:
   propósito: el caso es que dos identidades que comparten nombre de símbolo puedan coexistir).
 - `c1_14` → **141** (`128 + LlvmTrapReason::CallbackExceptionEscape`), no 0. Una salida 0 ahí
   significaría que la excepción se escapó por el borde C.
+  Actualización (congelamiento 3.0, `throw` chequeado): ese escape ya no se puede escribir. Un
+  `throw` se atrapa o se declara, un delegate `extern C` no puede declarar `throws` y un método
+  que lanza no se enlaza a él; el caso muestra el adaptador que exige el borde y sale **14**.
+  La trampa 141 queda como guarda en tiempo de ejecución detrás de esa regla.

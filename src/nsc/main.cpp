@@ -258,7 +258,12 @@ void configureCompilerRun(
     CompilerRunConfiguration& configuration)
 {
     configuration.arguments.reserve(consoleArguments.arguments.size());
-    configuration.automaticErrorLog = automaticErrorLogEnabled();
+    // EN: Freeze 3.0 D-10: a failure no longer writes error.log, error1.log, ... into the working
+    //     directory unless --error-log asks for it; NSC_NO_ERROR_LOG=1 and --no-error-log still turn it
+    //     off.
+    // ES: Congelamiento 3.0 D-10: un fallo ya no escribe error.log, error1.log, ... en el directorio de
+    //     trabajo salvo que lo pida --error-log; NSC_NO_ERROR_LOG=1 y --no-error-log lo siguen apagando.
+    bool errorLogRequested = false;
     for (const std::string_view argument : consoleArguments.arguments)
     {
         if (argument.starts_with("--log=")) { configuration.logPath = argument.substr(6); continue; }
@@ -274,9 +279,11 @@ void configureCompilerRun(
         if (argument == "--quiet") { configuration.quiet = true; continue; }
         if (argument == "--no-banner") { configuration.banner = false; continue; }
         if (argument == "--verbose") { configuration.verbose = true; continue; }
-        if (argument == "--no-error-log") { configuration.automaticErrorLog = false; continue; }
+        if (argument == "--no-error-log") { errorLogRequested = false; continue; }
+        if (argument == "--error-log") { errorLogRequested = true; continue; }
         configuration.arguments.emplace_back(argument);
     }
+    configuration.automaticErrorLog = errorLogRequested && automaticErrorLogEnabled();
 }
 
 void addImplicitCompilerOptions(CompilerRunConfiguration& configuration)
@@ -298,7 +305,7 @@ void addImplicitCompilerOptions(CompilerRunConfiguration& configuration)
          configuration.arguments.front() == "--emit-project-c-header" ||
          configuration.arguments.front() == "--emit-project-library-metadata");
     if (buildCommand && !configuration.quiet && !explicitProgress)
-        configuration.arguments.emplace_back("--progress");
+        configuration.arguments.emplace_back("--progress=files");
     if (!configuration.timeTracePath.empty()) configuration.arguments.emplace_back("--time");
 }
 
@@ -396,11 +403,11 @@ nativesharp::ExitCode executeObservedCompiler(
     const std::string targetDetail = configuration.arguments.empty()
         ? std::string{} : std::string(configuration.arguments.front());
     const auto started = std::chrono::steady_clock::now();
-    if (progress && !projectDetail.empty())
+    if (progress && progressFormat != nativesharp::driver::ProgressFormat::Files && !projectDetail.empty())
         observedOutput << nativesharp::driver::renderCompilationEvent(
             {nativesharp::basic::CompilationEventKind::WorkStarted, "project", projectDetail, 0, 1, {}},
             progressFormat) << '\n';
-    if (progress && !targetDetail.empty())
+    if (progress && progressFormat != nativesharp::driver::ProgressFormat::Files && !targetDetail.empty())
         observedOutput << nativesharp::driver::renderCompilationEvent(
             {nativesharp::basic::CompilationEventKind::WorkStarted, "target", targetDetail, 0, 1, {}},
             progressFormat) << '\n';
@@ -411,11 +418,11 @@ nativesharp::ExitCode executeObservedCompiler(
     const auto completion = exitCode == nativesharp::ExitCode::Success
         ? nativesharp::basic::CompilationEventKind::WorkFinished
         : nativesharp::basic::CompilationEventKind::Failed;
-    if (progress && !targetDetail.empty())
+    if (progress && progressFormat != nativesharp::driver::ProgressFormat::Files && !targetDetail.empty())
         observedOutput << nativesharp::driver::renderCompilationEvent(
             {completion, "target", targetDetail, exitCode == nativesharp::ExitCode::Success ? 1U : 0U, 1, elapsed},
             progressFormat) << '\n';
-    if (progress && !projectDetail.empty())
+    if (progress && progressFormat != nativesharp::driver::ProgressFormat::Files && !projectDetail.empty())
         observedOutput << nativesharp::driver::renderCompilationEvent(
             {completion, "project", projectDetail, exitCode == nativesharp::ExitCode::Success ? 1U : 0U, 1, elapsed},
             progressFormat) << '\n';
@@ -503,7 +510,15 @@ int runCompiler(int argc, char** argv)
 #endif
     std::ostringstream capturedOutput;
     std::ostringstream capturedError;
-    TeeBuffer outputBuffer(configuration.quiet ? nullptr : std::cout.rdbuf(), capturedOutput.rdbuf());
+    nativesharp::driver::ProgressFormat consoleProgressFormat = nativesharp::driver::ProgressFormat::Text;
+    const bool conciseConsole = progressFormatFromArguments(
+        configuration.arguments, consoleProgressFormat) &&
+        consoleProgressFormat == nativesharp::driver::ProgressFormat::Files &&
+        std::ranges::none_of(configuration.arguments, [](std::string_view argument) {
+            return argument == "--time";
+        });
+    TeeBuffer outputBuffer(
+        configuration.quiet ? nullptr : std::cout.rdbuf(), capturedOutput.rdbuf(), conciseConsole);
     TeeBuffer errorBuffer(std::cerr.rdbuf(), capturedError.rdbuf());
     std::ostream observedOutput(&outputBuffer);
     std::ostream observedError(&errorBuffer);

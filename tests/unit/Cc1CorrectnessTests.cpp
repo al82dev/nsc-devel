@@ -1123,7 +1123,7 @@ namespace limit010sincalif
         public static int Main()
         {
             owned Carga c = new Carga(7);
-            Caja b = new Caja(move(c));
+            raii Caja b = new Caja(move(c));
             return 42;
         }
     }
@@ -1508,7 +1508,7 @@ namespace limit007tipo
     {
         public int Medir(T v) { return v.MetodoInexistente(); }
     }
-    class P { public static int Main() { Caja<Valor> c = new Caja<Valor>(); return 42; } }
+    class P { public static int Main() { raii Caja<Valor> c = new Caja<Valor>(); return 42; } }
 }
 )NS",
              "requires a reference type",
@@ -1529,7 +1529,7 @@ namespace limit007mala
     {
         public int Medir(T x) { return x.MetodoInexistente(); }
     }
-    class P { public static int Main() { Mala<int> m = new Mala<int>(); return 42; } }
+    class P { public static int Main() { raii Mala<int> m = new Mala<int>(); return 42; } }
 }
 )NS",
              "cannot constrain 'T'",
@@ -1661,14 +1661,14 @@ namespace limit009sym
     public class Caja
     {
         public class Pieza { public int Peso() { return 21; } }
-        public int Interno() { Pieza p = new Pieza(); return p.Peso(); }
+        public int Interno() { raii Pieza p = new Pieza(); return p.Peso(); }
     }
     class P
     {
         public static int Main()
         {
-            Caja c = new Caja();
-            limit009sym.Caja.Pieza n = new limit009sym.Caja.Pieza();
+            raii Caja c = new Caja();
+            raii limit009sym.Caja.Pieza n = new limit009sym.Caja.Pieza();
             return c.Interno() + n.Peso();
         }
     }
@@ -1714,8 +1714,8 @@ namespace limit009u
     {
         public static int Main()
         {
-            A_B directo = new A_B();
-            limit009u.A.B anidado = new limit009u.A.B();
+            raii A_B directo = new A_B();
+            raii limit009u.A.B anidado = new limit009u.A.B();
             return directo.Valor() + anidado.Valor();
         }
     }
@@ -1750,7 +1750,7 @@ namespace limit018used
     {
         public static int Main()
         {
-            Box<Pair> box = new Box<Pair>();
+            raii Box<Pair> box = new Box<Pair>();
             Pair a; Pair b;
             return box.NeedsOrder(a, b) ? 1 : 0;
         }
@@ -1826,7 +1826,7 @@ namespace limit007clase
     {
         public int Medir(T pieza) { return 0; }
     }
-    class P { public static int Main() { Caja<Valor> c = new Caja<Valor>(); return 42; } }
+    class P { public static int Main() { raii Caja<Valor> c = new Caja<Valor>(); return 42; } }
 }
 )NS",
         "requires a reference type ('where T : class'), but the argument 'Valor' is not a class, "
@@ -1845,7 +1845,7 @@ namespace limit007ifazvalor
     {
         public int Medir(T pieza) { return 0; }
     }
-    class P { public static int Main() { Caja<Valor> c = new Caja<Valor>(); return 42; } }
+    class P { public static int Main() { raii Caja<Valor> c = new Caja<Valor>(); return 42; } }
 }
 )NS",
         "requires an implementation of 'IComponente', but the argument 'Valor' does not implement it");
@@ -1863,7 +1863,7 @@ namespace limit007ifazclase
     {
         public int Medir(T pieza) { return 0; }
     }
-    class P { public static int Main() { Caja<Suelta> c = new Caja<Suelta>(); return 42; } }
+    class P { public static int Main() { raii Caja<Suelta> c = new Caja<Suelta>(); return 42; } }
 }
 )NS",
         "requires an implementation of 'IComponente', but the argument 'Suelta' does not implement it");
@@ -1881,7 +1881,7 @@ namespace limit007base
     {
         public int Marcar(T valor) { return 0; }
     }
-    class P { public static int Main() { Derivada<Suelta> d = new Derivada<Suelta>(); return 42; } }
+    class P { public static int Main() { raii Derivada<Suelta> d = new Derivada<Suelta>(); return 42; } }
 }
 )NS",
         "requires a type derived from 'Base', but the argument 'Suelta' does not derive from it");
@@ -1990,7 +1990,7 @@ namespace limit007struct
         public static int Main()
         {
             Valor valor;
-            Caja<Valor> caja = new Caja<Valor>();
+            raii Caja<Valor> caja = new Caja<Valor>();
             return caja.Medir(valor) + 42;
         }
     }
@@ -2065,7 +2065,7 @@ namespace limit007puntero
     {
         public int Medir() { return 0; }
     }
-    class P { public static int Main() { Caja<Valor*> c = new Caja<Valor*>(); return 42; } }
+    class P { public static int Main() { raii Caja<Valor*> c = new Caja<Valor*>(); return 42; } }
 }
 )NS",
         "is not a class, interface, delegate, string or dynamic array");
@@ -2083,7 +2083,7 @@ namespace limit007arreglofijo
     {
         public int Uno() { return 1; }
     }
-    class P { public static int Main() { Caja<int[4]> c = new Caja<int[4]>(); return 42; } }
+    class P { public static int Main() { raii Caja<int[4]> c = new Caja<int[4]>(); return 42; } }
 }
 )NS",
         "is not a class, interface, delegate, string or dynamic array");
@@ -2168,7 +2168,7 @@ namespace limit009protegido
     class Base { protected class Reservada { public int Codigo() { return 40; } } }
     class Ajena
     {
-        public int Usar() { Base.Reservada r = new Base.Reservada(); return r.Codigo(); }
+        public int Usar() { raii Base.Reservada r = new Base.Reservada(); return r.Codigo(); }
     }
     class P { public static int Main() { return 42; } }
 }
@@ -2240,7 +2240,7 @@ namespace limit009receptorok
 {
     class Base { protected class Reservada { public static int Codigo() { return 42; } } }
     class Derivada : Base { public int Usar() { return Base.Reservada.Codigo(); } }
-    class P { public static int Main() { Derivada d = new Derivada(); return d.Usar(); } }
+    class P { public static int Main() { raii Derivada d = new Derivada(); return d.Usar(); } }
 }
 )NS");
 
@@ -2261,7 +2261,7 @@ namespace limit007sobrecarga
         private static int Elegir<T>(T primera, T segunda) where T : IPesado { return 2; }
         public static int Main()
         {
-            Pieza p = new Pieza();
+            raii Pieza p = new Pieza();
             if (Elegir<Pieza>(p) != 7) { return 1; }
             return 42;
         }
@@ -2295,9 +2295,9 @@ namespace cc1ehir
                 index = index + 1;
                 try
                 {
-                    if (index == 1) { throw problem; }
-                    if (index == 2) { throw problem; }
-                    if (index == 3) { throw problem; }
+                    if (index == 1) { throw new Exception(); }
+                    if (index == 2) { throw new Exception(); }
+                    if (index == 3) { throw new Exception(); }
                 }
                 catch
                 {
@@ -2337,7 +2337,7 @@ namespace cc1ehir2
             int seen = 0;
             try
             {
-                throw problem;
+                throw new Exception();
             }
             catch
             {
@@ -2376,7 +2376,7 @@ namespace cc1ehir3
             int seen = 0;
             try
             {
-                throw problem;
+                throw new Exception();
             }
             catch
             {

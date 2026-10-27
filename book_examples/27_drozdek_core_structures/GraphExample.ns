@@ -7,7 +7,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
         private int vertexCount;
         private int[] weights;
 
-        public WeightedGraph(int vertices)
+        public WeightedGraph(int vertices) throws ArgumentOutOfRangeException
         {
             if (vertices <= 0)
             {
@@ -34,7 +34,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return from * vertexCount + to;
         }
 
-        private void ValidateVertex(int vertex)
+        private void ValidateVertex(int vertex) throws ArgumentOutOfRangeException
         {
             if (vertex < 0 || vertex >= vertexCount)
             {
@@ -42,7 +42,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             }
         }
 
-        public void AddUndirectedEdge(int from, int to, int weight)
+        public void AddUndirectedEdge(int from, int to, int weight) throws ArgumentOutOfRangeException
         {
             ValidateVertex(from);
             ValidateVertex(to);
@@ -54,14 +54,14 @@ namespace NativeSharp.BookExamples.DrozdekCore
             weights[Cell(to, from)] = weight;
         }
 
-        public int EdgeWeight(int from, int to)
+        public int EdgeWeight(int from, int to) throws ArgumentOutOfRangeException
         {
             ValidateVertex(from);
             ValidateVertex(to);
             return weights[Cell(from, to)];
         }
 
-        public int BreadthFirstChecksum(int start)
+        public int BreadthFirstChecksum(int start) throws ArgumentOutOfRangeException
         {
             ValidateVertex(start);
             bool[] visited = new bool[vertexCount];
@@ -113,7 +113,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return checksum;
         }
 
-        public int DepthFirstChecksum(int start)
+        public int DepthFirstChecksum(int start) throws ArgumentOutOfRangeException
         {
             ValidateVertex(start);
             bool[] visited = new bool[vertexCount];
@@ -141,7 +141,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return selected;
         }
 
-        public int[] Dijkstra(int start)
+        public int[] Dijkstra(int start) throws ArgumentOutOfRangeException
         {
             ValidateVertex(start);
             int[] distance = new int[vertexCount];
@@ -182,7 +182,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return distance;
         }
 
-        public int PrimMinimumSpanningTreeWeight()
+        public int PrimMinimumSpanningTreeWeight() throws InvalidOperationException
         {
             int[] cheapest = new int[vertexCount];
             bool[] included = new bool[vertexCount];
@@ -231,7 +231,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
 
     public class GraphExample
     {
-        public static int Run()
+        public static int Run() throws Exception
         {
             raii WeightedGraph graph = new WeightedGraph(7);
             graph.AddUndirectedEdge(0, 1, 7);

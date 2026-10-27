@@ -31,6 +31,24 @@ namespace NativeSharp.Core.Collections.Generic
     // Mirrors System.Action<T>: used by List<T>.ForEach and the other collections' ForEach.
     public delegate void Action<T>(T value);
 
+    // EN: Freeze 3.0 P2 (DEC-12). Comparison<T>, Predicate<T> and Action<T> receive their operands BY
+    //     VALUE, so calling them with an element copies it, which a move-only T (a struct with a
+    //     destructor or owned fields) does not allow: every API that takes one of them requires
+    //     `T : copy`. These three receive the operands as `in` (a read-only borrow, no copy), and
+    //     every such API has an overload that takes them and works for any T:
+    //         list.Sort((in Guard a, in Guard b) => a.Id - b.Id);
+    // ES: Congelamiento 3.0 P2 (DEC-12). Comparison<T>, Predicate<T> y Action<T> reciben sus operandos
+    //     POR VALOR, asi que llamarlos con un elemento lo copia, y un T move-only (un struct con
+    //     destructor o con campos owned) no lo permite: toda API que recibe uno de ellos exige
+    //     `T : copy`. Estos tres reciben los operandos como `in` (un prestamo de solo lectura, sin
+    //     copia), y cada una de esas APIs tiene una sobrecarga que los recibe y sirve para todo T:
+    //         list.Sort((in Guard a, in Guard b) => a.Id - b.Id);
+    public delegate int InComparison<T>(in T a, in T b);
+
+    public delegate bool InPredicate<T>(in T value);
+
+    public delegate void InAction<T>(in T value);
+
     // Used by Dictionary<TKey,TValue>.ForEach (and any other paired-key/value iteration in this
     // package) in place of `Action<KeyValuePair<TKey,TValue>>`: two plain parameters instead of
     // one struct parameter sidesteps Stage 40's Windows x64 struct-value ABI limitation (a struct

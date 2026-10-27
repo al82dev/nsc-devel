@@ -25,3 +25,5 @@ __pycache__/
 Claude outputs/nsc-all-commits.txt
 /Claude outputs
 *.obj
+/lib/**/obj/
+/tests/**/obj/

@@ -165,6 +165,7 @@ private:
     bool mergeParallelRegularFunctions(
         std::vector<internal::RegularFunctionResult>& results,
         std::string& error);
+    void recordCoroutineBody(std::size_t wrapperIndex);
     bool buildRegularFunctionsSequentially(
         std::optional<std::size_t> memberFilter,
         std::string& error);
@@ -181,6 +182,21 @@ private:
     void appendImportedCRegularFunction(
         std::size_t memberOrdinal,
         const ClassMemberSymbol& member);
+    // The bodyless function of a precompiled method or constructor, built from the member alone.
+    static bool makePrecompiledRegularFunction(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member,
+        ProjectOopHirFunction& imported,
+        std::string& error);
+    // The bodyless function of an imported C member, built from the member alone.
+    static ProjectOopHirFunction makeImportedCRegularFunction(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member);
+    // Fills the parallel-build result of a declaration-only member without a worker model.
+    static void buildDeclarationOnlyFunction(
+        std::size_t memberOrdinal,
+        const ClassMemberSymbol& member,
+        internal::RegularFunctionResult& result);
     void initializeRegularFunction(
         ProjectOopHirFunction& function,
         std::size_t memberOrdinal,
@@ -3946,6 +3962,7 @@ private:
         const ObjectConstructionBinding& binding,
         std::size_t constructionOrdinal,
         std::size_t computedSize,
+        std::size_t computedAlignment,
         std::size_t temporaryOrdinal,
         std::size_t contextOrdinal,
         std::optional<std::size_t> allocatorTypeOrdinal,
@@ -3958,6 +3975,7 @@ private:
         const ast::AstNode* expression,
         const ObjectConstructionBinding& binding,
         std::size_t computedSize,
+        std::size_t computedAlignment,
         std::size_t temporaryOrdinal,
         std::size_t contextOrdinal,
         std::unique_ptr<ProjectOopHirNode> receiver);
@@ -4065,6 +4083,16 @@ private:
         ProjectOopHirFunction& function,
         const std::string& futureKey,
         const ast::AstNode* syntax);
+    // EN: Freeze 3.0 C-02: `static async int Main()` is an entry point. The executable enters
+    //     through a synthesized `Main$entry` that awaits Main's future and drives it to
+    //     completion: the one place where a synchronous await loops over a suspending producer.
+    // ES: Congelamiento 3.0 C-02: `static async int Main()` es un punto de entrada. El ejecutable
+    //     entra por un `Main$entry` sintetizado que espera el future de Main y lo lleva hasta el
+    //     final: el unico lugar donde un await sincrono itera sobre un productor que se suspende.
+    bool isAsyncEntryMain(const ProjectOopHirFunction& function) const;
+    std::unique_ptr<ProjectOopHirFunction> createAsyncEntryFunction(
+        const ProjectOopHirFunction& asyncFunction,
+        std::string& error);
 
     // NS304-T06-F03: splits a generator into a lazy constructor (function.body becomes
     // `return default(iterator:<T>)`) and a MoveNext function (returned; `bool(self)` runs the body
@@ -4110,6 +4138,10 @@ private:
     std::unique_ptr<ProjectOopHirFunction> createAsyncGeneratorDrop(
         const ProjectOopHirFunction& function,
         const std::string& iteratorKey,
+        const ast::AstNode* syntax);
+    std::unique_ptr<ProjectOopHirFunction> createAsyncFunctionDrop(
+        const ProjectOopHirFunction& function,
+        const std::string& futureKey,
         const ast::AstNode* syntax);
     void buildAsyncGeneratorConstructorBody(
         ProjectOopHirFunction& function,
@@ -4165,10 +4197,63 @@ private:
         std::unique_ptr<ProjectOopHirNode> value,
         const ast::AstNode* argumentSyntax,
         bool& hasOwnedTemporary);
+    // EN: Freeze 3.0 (plan item 118): the hidden owner of an argument handed to an `owned` parameter
+    //     (HirConversion.cpp).
+    // ES: Congelamiento 3.0 (elemento 118 del plan): el dueño oculto de un argumento entregado a un
+    //     parámetro `owned` (HirConversion.cpp).
+    std::unique_ptr<ProjectOopHirNode> wrapOwnedArgumentTransfer(
+        std::unique_ptr<ProjectOopHirNode> value,
+        const ast::AstNode* argumentSyntax,
+        bool ownedParameter,
+        bool& hasOwnedTemporary);
+    static bool ownedValueParameter(const MethodParameterSymbol& parameter) noexcept;
+    bool ownedTransferType(std::string_view typeKey) const;
+    bool delegateParameterOwned(std::size_t delegateTypeOrdinal, std::size_t index) const;
+    bool constructionParameterOwned(std::optional<std::size_t> constructorOrdinal, std::size_t parameterIndex) const;
     std::unique_ptr<ProjectOopHirNode> wrapFullExpressionCleanup(
         std::unique_ptr<ProjectOopHirNode> value,
         const ast::AstNode* syntax,
         bool hasOwnedTemporary);
+    // EN: Freeze 3.0 C-11: owned and non-trivial temporaries (HirExceptionAndCleanup.cpp).
+    // ES: Congelamiento 3.0 C-11: temporales owned y no triviales (HirExceptionAndCleanup.cpp).
+    void ownDroppableTemporaries(ProjectOopHirNode* root);
+    bool ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>& consumer);
+    bool isFreshDroppableTemporary(const ProjectOopHirNode* node) const;
+    std::unique_ptr<ProjectOopHirNode> ownTemporary(std::unique_ptr<ProjectOopHirNode> value);
+    // EN: Freeze 3.0 (plan item 131a): receivers whose temporary must live until the end of the full
+    //     expression (a borrowed field read, a call that returns a new owner, a field store target).
+    // ES: Congelamiento 3.0 (elemento 131a del plan): receptores cuyo temporal debe vivir hasta el final de la
+    //     expresion completa (una lectura de campo prestada, una llamada que devuelve un owner nuevo, el destino
+    //     de una escritura de campo).
+    // EN: Freeze 3.0 (plan item 135): the provenance of a borrow taken from the temporary follows field
+    //     reads, non-owned call and getter results, `?:` and `??`; `(new T()).Field` is a temporary too.
+    // ES: Congelamiento 3.0 (elemento 135 del plan): la procedencia de un prestamo tomado del temporal sigue
+    //     lecturas de campo, resultados no owned de llamadas y getters, `?:` y `??`; `(new T()).Campo` tambien
+    //     es un temporal.
+    using HirParentMap = std::unordered_map<const ProjectOopHirNode*, ProjectOopHirNode*>;
+    void ownReceiversUntilFullExpression(ProjectOopHirNode* root);
+    ProjectOopHirNode* fullExpressionTemporaryStart(
+        ProjectOopHirNode& consumer, const HirParentMap& parents, bool& crossesBranch) const;
+    ProjectOopHirNode* temporaryBorrowConsumer(
+        ProjectOopHirNode& borrowed, const HirParentMap& parents, bool& crossesBranch) const;
+    bool consumesIntoPlainValue(const ProjectOopHirNode& consumer) const;
+    bool isOwnedNewObject(const ProjectOopHirNode& node) const;
+    bool endsInNewOwner(const ProjectOopHirNode& consumer, const ProjectOopHirNode& borrowed) const;
+    bool passesBorrowThrough(const ProjectOopHirNode& consumer, const ProjectOopHirNode& borrowed) const;
+    bool planFullExpressionClose(
+        ProjectOopHirNode& start,
+        const HirParentMap& parents,
+        bool crossesBranch,
+        ProjectOopHirNode*& root,
+        ProjectOopHirNode*& enclosing) const;
+    void closeAtFullExpression(
+        ProjectOopHirNode* root, ProjectOopHirNode* enclosing, bool crossesBranch, HirParentMap& parents);
+    // EN: Freeze 3.0 (plan item 135a): a call that lends an owned temporary argument and returns a reference may
+    //     return that temporary; its cleanup moves out to the full expression.
+    // ES: Congelamiento 3.0 (elemento 135a del plan): una llamada que presta un temporal owned argumento y
+    //     devuelve una referencia puede devolver ese temporal; su limpieza sale a la expresion completa.
+    void extendLentArgumentCleanups(ProjectOopHirNode* root);
+    bool resultMayAliasLentArgument(const ProjectOopHirNode& fullExpression) const;
     void applyStructuredExitBinding(
         ProjectOopHirNode& node,
         const ast::AstNode* syntax) const;
@@ -4301,6 +4386,14 @@ private:
     std::vector<std::optional<std::size_t>> functionByMember_;
     std::vector<std::optional<std::size_t>> functionByNamespaceFunction_;
     std::vector<std::optional<std::size_t>> functionByLambda_;
+    // EN: Freeze 3.0 C-05 (found while porting the file-mode cases): a coroutine's body moves into
+    //     its poll or MoveNext, so the locals a lambda captures there belong to that function and
+    //     not to the constructor left at the member's index. Wrapper index -> body index.
+    // ES: Congelamiento 3.0 C-05 (hallazgo al portar los casos de modo archivo): el cuerpo de una
+    //     corrutina se muda a su poll o MoveNext, asi que los locales que ahi captura una lambda
+    //     son de esa funcion y no del constructor que queda en el indice del miembro.
+    //     Indice del envoltorio -> indice del cuerpo.
+    std::unordered_map<std::size_t, std::size_t> coroutineBodyFunction_;
     std::unordered_map<const ast::AstNode*, const MethodNameBinding*> nameBindingBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodExpressionTypeBinding*> expressionTypeBySyntax_;
     std::unordered_map<const ast::AstNode*, const MethodCallBinding*> callBySyntax_;

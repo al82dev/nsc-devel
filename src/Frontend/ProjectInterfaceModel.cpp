@@ -4,9 +4,13 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "Internal/ProjectInterfaceImplementingType.h"
 
 #include <algorithm>
+#include <array>
+#include <string_view>
+#include <vector>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -119,8 +123,12 @@ bool ProjectInterfaceModel::build(
         interfaces_.push_back(std::move(info));
     }
 
-    bool ok = collectInterfaceBases(diagnostics);
     std::vector<VisitState> states(nameLookup.namedTypes().size(), VisitState::Unvisited);
+    // EN: Interfaces and implementing types of restored API units with snapshot entries (plan 3.7).
+    // ES: Interfaces y tipos implementadores de unidades de API restauradas con entradas en el
+    //     snapshot (plan 3.7).
+    installSnapshotInterfaces(states);
+    bool ok = collectInterfaceBases(diagnostics);
     for (const InterfaceTypeInfo& info : interfaces_)
     {
         if (!visitInterface(info.typeOrdinal, states, diagnostics))
@@ -370,6 +378,8 @@ bool ProjectInterfaceModel::collectInterfaceBases(diagnostics::DiagnosticEngine&
     bool ok = true;
     for (InterfaceTypeInfo& info : interfaces_)
     {
+        if (info.typeOrdinal < snapshotInstalledInterfaces_.size() && snapshotInstalledInterfaces_[info.typeOrdinal])
+            continue;
         const NamedTypeDeclaration& type = nameLookup_->namedTypes()[info.typeOrdinal];
         for (const NamedTypeDeclarationPart& part : type.parts)
         {
@@ -454,6 +464,7 @@ bool ProjectInterfaceModel::inheritInterfaceMethod(
     if (previous.declaredTypeKey != method.declaredTypeKey ||
         previous.declaredErrorTypeKey != method.declaredErrorTypeKey ||
         previous.isReferenceReturn != method.isReferenceReturn ||
+        isReadonlyReferenceReturn(previous) != isReadonlyReferenceReturn(method) ||
         lifetimeContractKey(previous) != lifetimeContractKey(method))
     {
         diagnostics.report(
@@ -667,6 +678,7 @@ bool ProjectInterfaceModel::mergeDeclaredInterfaceMethod(
     if (previous.declaredTypeKey != method.declaredTypeKey ||
         previous.declaredErrorTypeKey != method.declaredErrorTypeKey ||
         previous.isReferenceReturn != method.isReferenceReturn ||
+        isReadonlyReferenceReturn(previous) != isReadonlyReferenceReturn(method) ||
         lifetimeContractKey(previous) != lifetimeContractKey(method))
     {
         diagnostics.report(
@@ -1076,6 +1088,9 @@ bool ProjectInterfaceModel::appendInterfaceMethodImplementation(
             ok = false;
         }
     }
+    if (!implementation.has_value() && !type.isAbstract &&
+        reportReplacedAllocatorSignature(classOrdinal, interfaceOrdinal, interfaceMethod, diagnostics))
+        return false;
     if (!implementation.has_value() && !type.isAbstract)
     {
         diagnostics.report(
@@ -1088,6 +1103,52 @@ bool ProjectInterfaceModel::appendInterfaceMethodImplementation(
         ok = false;
     }
     return ok;
+}
+
+// EN: Freeze 3.0 P6 (DEC-09). IAllocator keeps only the signature frozen by C-08. A class that still
+//     implements one of the replaced members -- Allocate(int), Resize(byte*, int, int),
+//     Deallocate(byte*) -- gets a diagnostic on that member naming the new signature, instead of the
+//     generic "does not implement" on the class.
+// ES: Congelamiento 3.0 P6 (DEC-09). IAllocator conserva solo la firma congelada por C-08. Una clase
+//     que aun implementa uno de los miembros reemplazados -- Allocate(int), Resize(byte*, int, int),
+//     Deallocate(byte*) -- recibe en ese miembro un diagnostico con la firma nueva, en lugar del
+//     generico "does not implement" sobre la clase.
+bool ProjectInterfaceModel::reportReplacedAllocatorSignature(
+    std::size_t classOrdinal,
+    std::size_t interfaceOrdinal,
+    const ClassMemberSymbol& interfaceMethod,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    struct ReplacedSignature
+    {
+        std::string_view name;
+        std::vector<std::string_view> oldParameters;
+        std::string_view current;
+    };
+    static const std::array<ReplacedSignature, 3> replaced = {{
+        {"Allocate", {"builtin:int"}, "byte* Allocate(long bytes, int alignment)"},
+        {"Resize", {"builtin:byte*", "builtin:int", "builtin:int"},
+            "byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment)"},
+        {"Deallocate", {"builtin:byte*"}, "void Deallocate(byte* ptr, long bytes, int alignment)"}}};
+    if (nameLookup_->namedTypes()[interfaceOrdinal].identity.key() !=
+        "NativeSharpCore::NativeSharp.Core.IAllocator") return false;
+    const auto entry = std::ranges::find(replaced, interfaceMethod.name, &ReplacedSignature::name);
+    if (entry == replaced.end()) return false;
+    for (const std::size_t ordinal : memberModel_->findMembers(classOrdinal, interfaceMethod.name))
+    {
+        const ClassMemberSymbol& member = memberModel_->members()[ordinal];
+        if (member.isStatic || member.parameters.size() != entry->oldParameters.size() ||
+            !std::ranges::equal(member.parameters, entry->oldParameters, {},
+                &MethodParameterSymbol::typeKey)) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOverride,
+            diagnostics::DiagnosticSeverity::Error,
+            member.range,
+            "'" + member.signatureKey + "' implements the IAllocator signature replaced in 3.0 (C-08); "
+                "implement '" + std::string(entry->current) + "'");
+        return true;
+    }
+    return false;
 }
 
 void ProjectInterfaceModel::appendOperatorWitness(
@@ -1239,6 +1300,7 @@ bool ProjectInterfaceModel::buildImplementingTypePlans(
     bool valueType,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    if (installSnapshotImplementingType(classOrdinal)) return true;
     std::vector<std::size_t>& implemented = interfacesByClass_[classOrdinal];
     if (baseOrdinal.has_value() && *baseOrdinal < interfacesByClass_.size())
     {
@@ -1313,6 +1375,7 @@ std::optional<std::size_t> ProjectInterfaceModel::findImplementation(
             if (candidate.isStatic || candidate.accessibility != ClassMemberAccessibility::Public ||
                 candidate.declaredTypeKey != interfaceMethod.declaredTypeKey ||
                 candidate.isReferenceReturn != interfaceMethod.isReferenceReturn ||
+                isReadonlyReferenceReturn(candidate) != isReadonlyReferenceReturn(interfaceMethod) ||
                 lifetimeContractKey(candidate) != lifetimeContractKey(interfaceMethod) ||
                 candidate.isAbstract)
             {
@@ -1343,6 +1406,7 @@ std::optional<std::size_t> ProjectInterfaceModel::findStaticImplementation(
                 candidate.accessibility != ClassMemberAccessibility::Public ||
                 candidate.declaredTypeKey != requirement.declaredTypeKey ||
                 candidate.isReferenceReturn != requirement.isReferenceReturn ||
+                isReadonlyReferenceReturn(candidate) != isReadonlyReferenceReturn(requirement) ||
                 lifetimeContractKey(candidate) != lifetimeContractKey(requirement) ||
                 candidate.isAbstract)
                 return std::nullopt;

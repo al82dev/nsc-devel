@@ -444,6 +444,9 @@ bool ProjectOopHirModel::acceptOrdinaryCallArgumentChild(
             child = wrapCallArgumentBorrow(
                 std::move(child), argumentSyntax, call.selectedMemberOrdinal,
                 parameterIndex, call.hasOwnedTemporary);
+            child = wrapOwnedArgumentTransfer(
+                std::move(child), argumentSyntax,
+                ownedValueParameter(selectedMember.parameters[parameterIndex]), call.hasOwnedTemporary);
         }
         call.node->children.push_back(std::move(child));
         call.node->argumentParameterOrdinals.push_back(parameterIndex);
@@ -715,6 +718,11 @@ bool ProjectOopHirModel::acceptNamespaceCallArgumentChild(
             call.targetCallableOrdinal,
             parameterOrdinal,
             call.hasOwnedTemporary);
+        child = wrapOwnedArgumentTransfer(
+            std::move(child), argumentSyntax,
+            parameterOrdinal < call.target->parameters.size() &&
+                ownedValueParameter(call.target->parameters[parameterOrdinal]),
+            call.hasOwnedTemporary);
         call.node->children.push_back(std::move(child));
         call.node->argumentParameterOrdinals.push_back(parameterOrdinal);
         call.node->argumentTypeKeys.push_back(
@@ -936,6 +944,9 @@ void ProjectOopHirModel::acceptDelegateInvokeChild(
                 std::move(child), conversion, argumentSyntax);
         }
     }
+    child = wrapOwnedArgumentTransfer(
+        std::move(child), argumentSyntax,
+        delegateParameterOwned(call.binding->delegateTypeOrdinal, index), call.hasOwnedTemporary);
     call.node->children.push_back(std::move(child));
     if (call.nextArgument == frame.syntax->children().size())
         call.stage = internal::DelegateInvokeFrameStage::Ready;

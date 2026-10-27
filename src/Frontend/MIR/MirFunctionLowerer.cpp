@@ -1,5 +1,8 @@
 #include "nativesharp/Driver/CompilationWorkerPool.h"
+#include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
+#include "../Internal/IndexShadowCheckSwitch.h"
+#include "../Internal/IndexShadowMismatch.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include <algorithm>
@@ -253,29 +256,60 @@ void copyFunctionMetadata(
     function.localOrdinals = source.localOrdinals;
 }
 
-ProjectOopMirAbiPassing abiPassingForType(
+/// Struct layout of typeKey among the function-lowering layouts. When the shared MIR layout
+/// index is built it was built from exactly these layouts (importLayouts appends every layout
+/// before rebuildMirLayouts) and keeps the first layout of a key, so it answers like the scan;
+/// without it the scan runs as before.
+const ProjectOopMirStructLayout* functionStructLayout(
+    const ProjectCompilationIndexes* indexes,
     std::span<const ProjectOopMirStructLayout> layouts,
     std::string_view typeKey) noexcept
 {
+    if (indexes != nullptr && indexes->hasMirLayoutIndexes())
+    {
+        const ProjectOopMirStructLayout* indexed = indexes->mirStructLayoutForTypeKey(typeKey);
+        if constexpr (internal::kIndexShadowCheckEnabled)
+        {
+            const ProjectOopMirStructLayout* scanned = nullptr;
+            for (const ProjectOopMirStructLayout& layout : layouts)
+            {
+                if (layout.typeKey != typeKey) continue;
+                scanned = &layout;
+                break;
+            }
+            if (scanned != indexed) internal::reportIndexShadowMismatch("functionStructLayout", typeKey);
+        }
+        return indexed;
+    }
     for (const ProjectOopMirStructLayout& layout : layouts)
-        if (layout.typeKey == typeKey) return layout.abiPassing;
-    return ProjectOopMirAbiPassing::Direct;
+        if (layout.typeKey == typeKey) return &layout;
+    return nullptr;
+}
+
+ProjectOopMirAbiPassing abiPassingForType(
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::string_view typeKey) noexcept
+{
+    const ProjectOopMirStructLayout* layout = functionStructLayout(indexes, layouts, typeKey);
+    return layout != nullptr ? layout->abiPassing : ProjectOopMirAbiPassing::Direct;
 }
 
 void configureFunctionAbi(
     ProjectOopMirFunction& function,
+    const ProjectCompilationIndexes* indexes,
     std::span<const ProjectOopMirStructLayout> layouts)
 {
     function.abi.returnPassing = function.referenceReturn
         ? ProjectOopMirAbiPassing::Direct
-        : abiPassingForType(layouts, function.returnTypeKey);
+        : abiPassingForType(indexes, layouts, function.returnTypeKey);
     std::size_t physicalOrdinal = function.isStatic ? 0U : 1U;
     if (function.abi.returnPassing == ProjectOopMirAbiPassing::Indirect)
         function.abi.hiddenReturnParameterOrdinal = physicalOrdinal++;
     for (const std::string& parameterTypeKey : function.parameterTypeKeys)
     {
         function.abi.parameterPassing.push_back(
-            abiPassingForType(layouts, parameterTypeKey));
+            abiPassingForType(indexes, layouts, parameterTypeKey));
         function.abi.parameterPhysicalOrdinals.push_back(physicalOrdinal++);
     }
     function.abi.physicalParameterCount = physicalOrdinal;
@@ -289,6 +323,7 @@ std::uint64_t alignFrameOffset(std::uint64_t value, std::uint64_t alignment) noe
 
 void sumAwaitedFrameSizeNodes(
     const ProjectOopMirNode* root,
+    const ProjectCompilationIndexes* indexes,
     std::span<const ProjectOopMirStructLayout> layouts,
     std::uint64_t& frameSize)
 {
@@ -300,12 +335,9 @@ void sumAwaitedFrameSizeNodes(
         if (node == nullptr) continue;
         if (node->kind == ProjectOopMirNodeKind::AwaitFuture)
         {
-            for (const ProjectOopMirStructLayout& layout : layouts)
-            {
-                if (layout.typeKey != node->elementTypeKey) continue;
-                frameSize += layout.size;
-                break;
-            }
+            if (const ProjectOopMirStructLayout* layout =
+                    functionStructLayout(indexes, layouts, node->elementTypeKey))
+                frameSize += layout->size;
         }
         for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
             work.push_back(child->get());
@@ -449,23 +481,6 @@ void collectLivePollLocalNodes(
     }
 }
 
-void closeLiveBorrowSources(
-    const std::unordered_map<std::size_t, std::size_t>& borrowSource,
-    OrdinalSet& liveSet)
-{
-    bool changed = true;
-    while (changed)
-    {
-        changed = false;
-        for (const auto& [borrowedLocal, sourceLocal] : borrowSource)
-        {
-            if (!liveSet.contains(borrowedLocal) || liveSet.contains(sourceLocal)) continue;
-            liveSet.insert(sourceLocal);
-            changed = true;
-        }
-    }
-}
-
 bool validateNonLocalBorrowSources(
     const OrdinalSet& borrowNonLocalSource,
     const PositionMap& localDefinition,
@@ -556,29 +571,157 @@ void appendMoveNextFrameLocalNodes(
     }
 }
 
-void appendLiveFrameParameters(
-    const PositionMap& parameterLastUse,
-    std::span<const std::uint64_t> boundaries,
+// EN: Freeze 3.0 C-02 (D2): each await keeps its child future in a slot of its own at the start of
+//     the frame (secondaryImmediate holds the offset), so two awaits never share storage.
+// ES: Congelamiento 3.0 C-02 (D2): cada await guarda su future hijo en un slot propio al inicio del
+//     frame (secondaryImmediate lleva el offset), asi dos awaits nunca comparten almacenamiento.
+void assignAwaitFrameSlotNodes(
+    ProjectOopMirNode* root,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    std::vector<ProjectOopMirNode*> work{root};
+    while (!work.empty())
+    {
+        ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind == ProjectOopMirNodeKind::AwaitFuture)
+        {
+            if (const ProjectOopMirStructLayout* layout =
+                    functionStructLayout(indexes, layouts, node->elementTypeKey))
+            {
+                frameSize = alignFrameOffset(frameSize, 8);
+                node->secondaryImmediate = frameSize;
+                frameSize += layout->size;
+            }
+        }
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
+    }
+}
+
+// EN: Freeze 3.0 C-14: a frame slot's size and alignment. A future or iterator has no object
+//     layout, only a MIR struct layout; without this fallback a future local or parameter was left
+//     out of the frame (lost across a suspension, read as garbage by the poll).
+// ES: Congelamiento 3.0 C-14: tamano y alineacion de un slot del frame. Un future o iterator no
+//     tiene layout de objeto, solo layout MIR; sin este respaldo un future local o parametro quedaba
+//     fuera del frame (perdido tras una suspension, leido como basura por el poll).
+std::optional<std::pair<std::uint64_t, std::uint64_t>> frameValueLayout(
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    const std::string& typeKey)
+{
+    std::optional<std::pair<std::uint64_t, std::uint64_t>> layout =
+        objectLayoutModel.valueLayoutForTypeKey(nameLookup, typeKey);
+    if (layout.has_value()) return layout;
+    if (const ProjectOopMirStructLayout* mir = functionStructLayout(indexes, layouts, typeKey))
+        return std::pair<std::uint64_t, std::uint64_t>{mir->size, mir->alignment};
+    return std::nullopt;
+}
+
+// EN: Freeze 3.0 C-02 (D1/D4): every local of a coroutine lives in its heap frame, so a resumed
+//     poll sees the values it left and an address taken before a suspension stays valid. Linear
+//     liveness missed locals reused by a later loop iteration; keeping them all is exact.
+// ES: Congelamiento 3.0 C-02 (D1/D4): todo local de una corrutina vive en su frame del heap, asi el
+//     poll reanudado ve los valores que dejo y una direccion tomada antes de suspender sigue
+//     valida. La vivacidad lineal perdia locales que reusa la siguiente vuelta de un ciclo.
+void appendCoroutineFrameLocalNodes(
+    const ProjectOopMirNode* root,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
     ProjectOopMirFunction& function,
     std::uint64_t& frameSize)
 {
+    OrdinalSet seen;
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
+    {
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        // EN: Freeze 3.0 D-01: the hidden owner of an owned temporary is a local too; a statement
+        //     resumed after an await destroys the temporary its first pass made.
+        // ES: Congelamiento 3.0 D-01: el dueno oculto de un temporal owned tambien es un local; una
+        //     sentencia reanudada tras un await destruye el temporal que hizo su primera pasada.
+        const bool declares = (node->kind == ProjectOopMirNodeKind::LocalDeclaration ||
+                node->kind == ProjectOopMirNodeKind::UsingRegion ||
+                node->kind == ProjectOopMirNodeKind::OwnedTemporaryBorrow) &&
+            node->localOrdinal.has_value() && !node->staticLocal;
+        const std::string& typeKey = node->kind == ProjectOopMirNodeKind::UsingRegion
+            ? node->elementTypeKey : node->typeKey;
+        if (declares && !typeKey.empty() && typeKey != "builtin:never" &&
+            seen.insert(*node->localOrdinal).second)
+        {
+            // EN: A reference local stores an address; its slot is a pointer. A local a lambda
+            //     captures lives in a heap cell, and its slot keeps that cell across suspensions.
+            // ES: Un local referencia guarda una direccion; su slot es un puntero. Un local que una
+            //     lambda captura vive en una celda del heap, y su slot conserva esa celda entre
+            //     suspensiones.
+            const bool captured = std::ranges::find(
+                function.capturedLocalOrdinals, *node->localOrdinal) !=
+                function.capturedLocalOrdinals.end();
+            const bool pointerSlot = captured || node->referenceLocal || typeKey.ends_with("*");
+            const std::string storageKey =
+                captured || node->referenceLocal ? typeKey + "*" : typeKey;
+            std::optional<std::pair<std::uint64_t, std::uint64_t>> layout;
+            if (pointerSlot) layout = std::pair<std::uint64_t, std::uint64_t>{8, 8};
+            else layout = frameValueLayout(objectLayoutModel, nameLookup, indexes, layouts, storageKey);
+            if (layout.has_value())
+            {
+                frameSize = alignFrameOffset(frameSize, layout->second);
+                function.asyncFrameLocals.emplace_back(*node->localOrdinal, frameSize, storageKey);
+                frameSize += layout->first;
+            }
+        }
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
+    }
+}
+
+// EN: Freeze 3.0 C-02 (D3): every parameter the body reads or addresses is captured into the
+//     frame by the constructor; a use inside a loop is needed again after any suspension.
+// ES: Congelamiento 3.0 C-02 (D3): todo parametro que el cuerpo lee o direcciona lo captura el
+//     constructor en el frame; un uso dentro de un ciclo se necesita tras cualquier suspension.
+void appendUsedFrameParameterNodes(
+    const ProjectOopMirNode* root,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    ProjectOopMirFunction& function,
+    std::uint64_t& frameSize)
+{
+    OrdinalSet used;
+    std::vector<const ProjectOopMirNode*> work{root};
+    while (!work.empty())
+    {
+        const ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        // EN: Freeze 3.0 C-14: an owned parameter is captured even when unread, so its cleanup (or
+        //     the future's drop) destroys the value its caller handed over.
+        // ES: Congelamiento 3.0 C-14: un parametro owned se captura aunque no se lea, para que su
+        //     cleanup (o el drop del future) destruya el valor que entrego quien llama.
+        if ((node->kind == ProjectOopMirNodeKind::ParameterValue ||
+             node->kind == ProjectOopMirNodeKind::ParameterAddress ||
+             node->kind == ProjectOopMirNodeKind::OwnedParameterCleanup) &&
+            node->parameterOrdinal.has_value())
+            used.insert(*node->parameterOrdinal);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            work.push_back(child->get());
+    }
     for (std::size_t parameter = 0;
          parameter < function.generatorParameterTypeKeys.size(); ++parameter)
     {
-        const auto lastUse = parameterLastUse.find(parameter);
-        if (lastUse == parameterLastUse.end()) continue;
-        bool live = false;
-        for (const std::uint64_t boundary : boundaries)
-        {
-            if (boundary >= lastUse->second) continue;
-            live = true;
-            break;
-        }
-        if (!live) continue;
+        if (!used.contains(parameter)) continue;
         const std::string& typeKey = function.generatorParameterTypeKeys[parameter];
-        const auto layout = objectLayoutModel.valueLayoutForTypeKey(nameLookup, typeKey);
+        const auto layout = frameValueLayout(objectLayoutModel, nameLookup, indexes, layouts, typeKey);
         if (!layout.has_value()) continue;
         frameSize = alignFrameOffset(frameSize, layout->second);
         function.asyncFrameParameters.emplace_back(parameter, frameSize, typeKey);
@@ -586,15 +729,316 @@ void appendLiveFrameParameters(
     }
 }
 
+// EN: Freeze 3.0 D-01: where the climb from a suspending await toward its statement ends. A
+//     control statement ends it before its other children are taken (its body is statements, and
+//     a resume never re-enters it from the top); a simple statement ends it after.
+// ES: Congelamiento 3.0 D-01: donde termina el ascenso desde un await que suspende hacia su
+//     sentencia. Una sentencia de control lo termina antes de tomar sus otros hijos (su cuerpo son
+//     sentencias, y una reanudacion nunca vuelve a entrar desde arriba); una simple, despues.
+bool replayClimbStopsBefore(ProjectOopMirNodeKind kind) noexcept
+{
+    switch (kind)
+    {
+        case ProjectOopMirNodeKind::Block:
+        case ProjectOopMirNodeKind::BlockExpression:
+        case ProjectOopMirNodeKind::If:
+        case ProjectOopMirNodeKind::While:
+        case ProjectOopMirNodeKind::DoWhile:
+        case ProjectOopMirNodeKind::For:
+        case ProjectOopMirNodeKind::Switch:
+        case ProjectOopMirNodeKind::SwitchSection:
+        case ProjectOopMirNodeKind::TryRegion:
+        case ProjectOopMirNodeKind::CatchRegion:
+        case ProjectOopMirNodeKind::FinallyRegion:
+        case ProjectOopMirNodeKind::UsingRegion:
+        case ProjectOopMirNodeKind::LoopExpression:
+        case ProjectOopMirNodeKind::MatchExpression:
+        case ProjectOopMirNodeKind::MatchArm:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool replayClimbStopsAfter(ProjectOopMirNodeKind kind) noexcept
+{
+    return kind == ProjectOopMirNodeKind::LocalDeclaration ||
+        kind == ProjectOopMirNodeKind::ExpressionStatement ||
+        kind == ProjectOopMirNodeKind::Return ||
+        kind == ProjectOopMirNodeKind::YieldValue ||
+        kind == ProjectOopMirNodeKind::AsyncYieldValue;
+}
+
+// EN: An operand worth a slot: a value with side effects or one that may change before the
+//     resume. Constants, `this`, the fixed address of a variable and storage made in the poll's
+//     own stack are not.
+// ES: Un operando que merece slot: un valor con efectos o que puede cambiar antes de reanudar.
+//     Las constantes, `this`, la direccion fija de una variable y el almacenamiento de la pila
+//     del propio poll no.
+bool replaySpillCandidateKind(ProjectOopMirNodeKind kind) noexcept
+{
+    if (replayClimbStopsBefore(kind) || replayClimbStopsAfter(kind)) return false;
+    switch (kind)
+    {
+        case ProjectOopMirNodeKind::IntegerConstant:
+        case ProjectOopMirNodeKind::FloatingConstant:
+        case ProjectOopMirNodeKind::BooleanConstant:
+        case ProjectOopMirNodeKind::NullConstant:
+        case ProjectOopMirNodeKind::DefaultValue:
+        case ProjectOopMirNodeKind::StringLiteral:
+        case ProjectOopMirNodeKind::Utf8StringLiteral:
+        case ProjectOopMirNodeKind::EnumName:
+        case ProjectOopMirNodeKind::ThisValue:
+        case ProjectOopMirNodeKind::LocalAddress:
+        case ProjectOopMirNodeKind::ParameterAddress:
+        case ProjectOopMirNodeKind::StaticFieldAddress:
+        case ProjectOopMirNodeKind::NamespaceStateAddress:
+        case ProjectOopMirNodeKind::TemporaryAddress:
+        case ProjectOopMirNodeKind::StackAllocation:
+        case ProjectOopMirNodeKind::ParameterPack:
+        case ProjectOopMirNodeKind::AggregateElementStore:
+        case ProjectOopMirNodeKind::AggregateSpreadStore:
+        case ProjectOopMirNodeKind::TupleDeconstructElementStore:
+        case ProjectOopMirNodeKind::BitFieldAddress:
+        case ProjectOopMirNodeKind::FutureFieldAddress:
+        case ProjectOopMirNodeKind::InlineAssembly:
+        case ProjectOopMirNodeKind::InlineAssemblyLine:
+        case ProjectOopMirNodeKind::InlineAssemblyInput:
+        case ProjectOopMirNodeKind::InlineAssemblyOutput:
+        case ProjectOopMirNodeKind::InlineAssemblyClobber:
+        case ProjectOopMirNodeKind::Break:
+        case ProjectOopMirNodeKind::Continue:
+        case ProjectOopMirNodeKind::Throw:
+        case ProjectOopMirNodeKind::Rethrow:
+        case ProjectOopMirNodeKind::CleanupContinuation:
+        case ProjectOopMirNodeKind::OwnedParameterCleanup:
+        case ProjectOopMirNodeKind::SuspendPoint:
+        case ProjectOopMirNodeKind::YieldBreak:
+        case ProjectOopMirNodeKind::GeneratorFrameInit:
+        case ProjectOopMirNodeKind::DropFrame:
+            return false;
+        default:
+            return true;
+    }
+}
+
+bool replaySpillAddressKind(ProjectOopMirNodeKind kind) noexcept
+{
+    return kind == ProjectOopMirNodeKind::FieldAddress ||
+        kind == ProjectOopMirNodeKind::RawElementAddress;
+}
+
+// EN: Freeze 3.0 DEC-11: an array element address is not kept whole; its operands (the array and
+//     the indices) are, and the address is recomputed. Its store, move or delete then always sees
+//     the live bit computed next to it.
+// ES: Congelamiento 3.0 DEC-11: la direccion de un elemento de arreglo no se guarda entera; se
+//     guardan sus operandos (el arreglo y los indices) y la direccion se recalcula. Su store, move
+//     o delete siempre ve entonces el bit de vida calculado junto a ella.
+bool replaySpillDescends(ProjectOopMirNodeKind kind) noexcept
+{
+    return kind == ProjectOopMirNodeKind::ArrayElementAddress ||
+        kind == ProjectOopMirNodeKind::RangeArrayElementAddress;
+}
+
+// EN: Freeze 3.0 D-01: gives a frame slot to every child of `ancestor` other than `onPath` (an
+//     array element address passes the slot to its operands). A slot is at least 8 bytes and
+//     8-aligned; a node already slotted for another await keeps its slot. Iterative; O(subtree).
+// ES: Congelamiento 3.0 D-01: da un slot del frame a cada hijo de `ancestor` distinto de `onPath`
+//     (la direccion de un elemento de arreglo pasa el slot a sus operandos). Un slot mide al menos
+//     8 bytes, alineado a 8; un nodo con slot por otro await lo conserva. Iterativo; O(subarbol).
+void assignReplaySpillSlotsTo(
+    std::vector<ProjectOopMirNode*> pending,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    while (!pending.empty())
+    {
+        ProjectOopMirNode* candidate = pending.back();
+        pending.pop_back();
+        if (replaySpillDescends(candidate->kind))
+        {
+            for (const auto& operand : candidate->children)
+                if (operand != nullptr) pending.push_back(operand.get());
+            continue;
+        }
+        if (candidate->replaySpillOffset.has_value() ||
+            !replaySpillCandidateKind(candidate->kind) || candidate->typeKey.empty() ||
+            candidate->typeKey == "builtin:void" || candidate->typeKey == "builtin:never")
+            continue;
+        std::optional<std::pair<std::uint64_t, std::uint64_t>> layout;
+        if (replaySpillAddressKind(candidate->kind))
+            layout = std::pair<std::uint64_t, std::uint64_t>{8, 8};
+        else
+            layout = frameValueLayout(objectLayoutModel, nameLookup, indexes, layouts, candidate->typeKey);
+        if (!layout.has_value()) continue;
+        frameSize = alignFrameOffset(frameSize, std::max<std::uint64_t>(8, layout->second));
+        candidate->replaySpillOffset = frameSize;
+        frameSize += std::max<std::uint64_t>(8, layout->first);
+    }
+}
+
+void assignReplaySpillSlotsBeside(
+    ProjectOopMirNode* ancestor,
+    const ProjectOopMirNode* onPath,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    std::vector<ProjectOopMirNode*> pending;
+    for (const auto& child : ancestor->children)
+        if (child != nullptr && child.get() != onPath) pending.push_back(child.get());
+    assignReplaySpillSlotsTo(std::move(pending), objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+}
+
+using ReplayParentMap = std::unordered_map<const ProjectOopMirNode*, ProjectOopMirNode*>;
+
+void climbReplaySpillSlots(
+    const ProjectOopMirNode* onPath,
+    const ReplayParentMap& parents,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    for (auto parent = parents.find(onPath); parent != parents.end(); parent = parents.find(onPath))
+    {
+        ProjectOopMirNode* ancestor = parent->second;
+        if (replayClimbStopsBefore(ancestor->kind)) break;
+        assignReplaySpillSlotsBeside(
+            ancestor, onPath, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+        if (replayClimbStopsAfter(ancestor->kind)) break;
+        onPath = ancestor;
+    }
+}
+
+// EN: Freeze 3.0 (plan item 117): a match or a loop expression is part of the statement around it, so the
+//     resume of an await inside it replays that statement (a loop then jumps back to the statement of its body
+//     that suspended). That replay must load what already ran: the governing value of a match, the guard of
+//     the selected arm and the operands evaluated before the match or the loop. The climb from the await stops
+//     at the arm, the match or the loop body; this walk goes on from each of them to the root.
+// ES: Congelamiento 3.0 (elemento 117 del plan): un match o una expresión loop es parte de la sentencia que lo
+//     rodea, así que la reanudación de un await dentro de él repite esa sentencia (un loop salta después a la
+//     sentencia de su cuerpo que se suspendió). Esa repetición debe cargar lo que ya corrió: el valor que
+//     gobierna un match, el guard del brazo elegido y los operandos evaluados antes del match o del loop. El
+//     ascenso desde el await se detiene en el brazo, el match o el cuerpo del loop; este recorrido sigue desde
+//     cada uno de ellos hasta la raíz.
+void assignMatchReplaySpillSlots(
+    const ProjectOopMirNode* await,
+    const ReplayParentMap& parents,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    const ProjectOopMirNode* below = await;
+    for (auto parent = parents.find(below); parent != parents.end(); parent = parents.find(below))
+    {
+        ProjectOopMirNode* ancestor = parent->second;
+        if (ancestor->kind == ProjectOopMirNodeKind::LoopExpression)
+            climbReplaySpillSlots(ancestor, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+        if (ancestor->kind == ProjectOopMirNodeKind::MatchArm && ancestor->children.size() > 1 &&
+            ancestor->children[1] != nullptr && ancestor->children[1].get() != below)
+            assignReplaySpillSlotsTo(
+                {ancestor->children[1].get()}, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+        if (ancestor->kind == ProjectOopMirNodeKind::MatchExpression)
+        {
+            assignReplaySpillSlotsBeside(
+                ancestor, below, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+            climbReplaySpillSlots(ancestor, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+        }
+        below = ancestor;
+    }
+}
+
+// EN: Freeze 3.0 D-01: a resumed poll re-enters the innermost statement around the await that
+//     suspended, so every operand that runs before the await in that statement used to run twice
+//     (a call made twice, an index taken twice, a temporary made twice). Each such operand gets a
+//     frame slot: the backend stores the value on the first pass and loads it on the replay. The
+//     climb goes from the await to its statement and takes every child off the path; one that
+//     runs after the await is stored and never loaded, which costs a store and keeps the rule
+//     independent of each node's evaluation order. An address is a pointer slot; a value needs a
+//     known layout.
+// ES: Congelamiento 3.0 D-01: un poll reanudado vuelve a entrar a la sentencia mas interna que
+//     rodea al await que suspendio, asi todo operando que corre antes del await en esa sentencia
+//     corria dos veces (una llamada hecha dos veces, un indice tomado dos veces, un temporal hecho
+//     dos veces). Cada operando asi recibe un slot del frame: el backend guarda el valor en la
+//     primera pasada y lo carga en la repeticion. El ascenso va del await a su sentencia y toma
+//     todo hijo fuera del camino; uno que corre despues del await se guarda y nunca se carga, lo
+//     que cuesta un store y deja la regla independiente del orden de evaluacion de cada nodo. Una
+//     direccion es un slot de puntero; un valor necesita layout conocido.
+void assignReplaySpillSlotNodes(
+    ProjectOopMirNode* root,
+    const ProjectObjectLayoutModel& objectLayoutModel,
+    const ProjectNameLookup& nameLookup,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
+    std::uint64_t& frameSize)
+{
+    ReplayParentMap parents;
+    std::vector<ProjectOopMirNode*> awaits;
+    std::vector<ProjectOopMirNode*> yields;
+    std::vector<ProjectOopMirNode*> work{root};
+    while (!work.empty())
+    {
+        ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind == ProjectOopMirNodeKind::AwaitFuture && node->integerValue == 1)
+            awaits.push_back(node);
+        // EN: Freeze 3.0 (plan item 117): a yield is a statement, so D-01 has nothing to climb from it; inside a
+        //     loop expression its resume replays the statement around the loop like an await's.
+        // ES: Congelamiento 3.0 (elemento 117 del plan): un yield es una sentencia, así que D-01 no asciende desde
+        //     él; dentro de una expresión loop su reanudación repite la sentencia del loop como la de un await.
+        if (node->kind == ProjectOopMirNodeKind::SuspendPoint || node->kind == ProjectOopMirNodeKind::YieldValue ||
+            node->kind == ProjectOopMirNodeKind::AsyncYieldValue)
+            yields.push_back(node);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+        {
+            if (*child == nullptr) continue;
+            parents.emplace(child->get(), node);
+            work.push_back(child->get());
+        }
+    }
+    for (ProjectOopMirNode* await : awaits)
+    {
+        climbReplaySpillSlots(await, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+        assignMatchReplaySpillSlots(await, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+    }
+    for (ProjectOopMirNode* yield : yields)
+        assignMatchReplaySpillSlots(yield, parents, objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+}
+
+// EN: Freeze 3.0 C-02: one drop-flag byte per frame local closes the frame, 8-aligned, so a
+//     destructor guard survives a suspension too. The backend finds the area at
+//     asyncFrameSize - align8(locals); the constructor zeroes it.
+// ES: Congelamiento 3.0 C-02: un byte de bandera de destruccion por local del frame cierra el
+//     frame, alineado a 8, para que la guarda del destructor tambien sobreviva una suspension. El
+//     backend halla el area en asyncFrameSize - align8(locales); el constructor la pone en cero.
+void appendCoroutineDropFlags(const ProjectOopMirFunction& function, std::uint64_t& frameSize) noexcept
+{
+    if (function.asyncFrameLocals.empty()) return;
+    frameSize = alignFrameOffset(frameSize, 8) + function.asyncFrameLocals.size();
+}
+
 bool buildPollFrame(
     ProjectOopMirFunction& function,
+    const ProjectCompilationIndexes* indexes,
     std::span<const ProjectOopMirStructLayout> layouts,
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup,
     std::string& error)
 {
     std::uint64_t frameSize = 0;
-    sumAwaitedFrameSizeNodes(function.body.get(), layouts, frameSize);
+    assignAwaitFrameSlotNodes(function.body.get(), indexes, layouts, frameSize);
+    assignReplaySpillSlotNodes(
+        function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, frameSize);
     std::uint64_t order = 0;
     PositionMap localDefinition;
     PositionMap localLastUse;
@@ -606,57 +1050,71 @@ bool buildPollFrame(
     std::unordered_map<std::size_t, std::size_t> borrowSource;
     OrdinalSet borrowNonLocalSource;
     collectBorrowSourcesNodes(function.body.get(), borrowSource, borrowNonLocalSource);
-    OrdinalSet liveSet;
-    collectLivePollLocalNodes(
-        function.body.get(), localDefinition, localLastUse, suspendOrders, liveSet);
-    closeLiveBorrowSources(borrowSource, liveSet);
+    // EN: Liveness still decides the borrow rule; the frame itself keeps every local (C-02).
+    // ES: La vivacidad aun decide la regla de prestamos; el frame guarda todo local (C-02).
     if (!validateNonLocalBorrowSources(
             borrowNonLocalSource, localDefinition, localLastUse, suspendOrders, error))
         return false;
-    appendPollFrameLocalNodes(
-        function.body.get(), liveSet, objectLayoutModel, nameLookup, function, frameSize);
-    appendLiveFrameParameters(
-        parameterLastUse, suspendOrders, objectLayoutModel, nameLookup, function, frameSize);
+    appendCoroutineFrameLocalNodes(
+        function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
+    appendUsedFrameParameterNodes(
+        function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
+    appendCoroutineDropFlags(function, frameSize);
     function.asyncFrameSize = alignFrameOffset(frameSize, 8);
     return true;
 }
 
 void buildMoveNextFrame(
     ProjectOopMirFunction& function,
+    const ProjectCompilationIndexes* indexes,
+    std::span<const ProjectOopMirStructLayout> layouts,
     const ProjectObjectLayoutModel& objectLayoutModel,
     const ProjectNameLookup& nameLookup)
 {
-    std::uint64_t order = 0;
-    PositionMap localDefinition;
-    PositionMap localLastUse;
-    PositionMap parameterLastUse;
-    std::vector<std::uint64_t> yieldOrders;
-    collectMoveNextLivenessNodes(
-        function.body.get(), order, localDefinition, localLastUse,
-        parameterLastUse, yieldOrders);
+    // EN: Freeze 3.0 C-02: like a poll, a MoveNext keeps every local and every used parameter in
+    //     the frame; the linear liveness this replaced lost values across loop iterations.
+    // ES: Congelamiento 3.0 C-02: como un poll, un MoveNext guarda todo local y todo parametro
+    //     usado en el frame; la vivacidad lineal que esto sustituye perdia valores entre vueltas.
     std::uint64_t frameSize = 0;
-    appendMoveNextFrameLocalNodes(
-        function.body.get(), localDefinition, localLastUse, yieldOrders,
-        objectLayoutModel, nameLookup, function, frameSize);
-    appendLiveFrameParameters(
-        parameterLastUse, yieldOrders, objectLayoutModel, nameLookup, function, frameSize);
+    // EN: Freeze 3.0 (plan item 117): a yield inside a loop expression replays the statement around the loop.
+    // ES: Congelamiento 3.0 (elemento 117 del plan): un yield dentro de una expresión loop repite la sentencia del
+    //     loop.
+    assignReplaySpillSlotNodes(function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, frameSize);
+    appendCoroutineFrameLocalNodes(
+        function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
+    appendUsedFrameParameterNodes(
+        function.body.get(), objectLayoutModel, nameLookup, indexes, layouts, function, frameSize);
+    appendCoroutineDropFlags(function, frameSize);
     function.asyncFrameSize = alignFrameOffset(frameSize, 8);
 }
 
 void inheritMoveNextDropFrames(std::vector<ProjectOopMirFunction>& functions)
 {
+    // mangledName -> first function with that name (the candidate the former scan found). Built
+    // once; the loop below changes frames only, never names.
+    std::unordered_map<std::string_view, std::size_t> firstByName;
+    firstByName.reserve(functions.size());
+    for (std::size_t index = 0; index < functions.size(); ++index)
+        firstByName.try_emplace(functions[index].mangledName, index);
     for (ProjectOopMirFunction& function : functions)
     {
         if (!function.mangledName.ends_with("$moveNext")) continue;
         const std::string dropName =
             function.mangledName.substr(0, function.mangledName.size() - 9) + "$drop";
-        for (ProjectOopMirFunction& candidate : functions)
+        const auto drop = firstByName.find(dropName);
+        if constexpr (internal::kIndexShadowCheckEnabled)
         {
-            if (candidate.mangledName != dropName) continue;
-            candidate.asyncFrameLocals = function.asyncFrameLocals;
-            candidate.asyncFrameSize = function.asyncFrameSize;
-            break;
+            const auto scanned = std::ranges::find(functions, dropName, &ProjectOopMirFunction::mangledName);
+            const bool same = drop == firstByName.end()
+                ? scanned == functions.end()
+                : scanned != functions.end() &&
+                    static_cast<std::size_t>(scanned - functions.begin()) == drop->second;
+            if (!same) internal::reportIndexShadowMismatch("inheritMoveNextDropFrames", dropName);
         }
+        if (drop == firstByName.end()) continue;
+        ProjectOopMirFunction& candidate = functions[drop->second];
+        candidate.asyncFrameLocals = function.asyncFrameLocals;
+        candidate.asyncFrameSize = function.asyncFrameSize;
     }
 }
 
@@ -664,6 +1122,13 @@ void insertGeneratorFrameInit(ProjectOopMirFunction& function)
 {
     if (function.body == nullptr || function.body->children.empty() ||
         function.body->children[0]->kind != ProjectOopMirNodeKind::LocalDeclaration)
+        return;
+    // EN: Freeze 3.0 C-17: an async generator inherits from both `$moveNext` and `$moveNext$poll`;
+    //     a second init allocated a second frame and lost the first.
+    // ES: Congelamiento 3.0 C-17: un generador async hereda de `$moveNext` y de `$moveNext$poll`;
+    //     una segunda inicializacion reservaba un segundo frame y perdia el primero.
+    if (function.body->children.size() > 1U &&
+        function.body->children[1]->kind == ProjectOopMirNodeKind::GeneratorFrameInit)
         return;
     auto frameInit = std::make_unique<ProjectOopMirNode>();
     frameInit->kind = ProjectOopMirNodeKind::GeneratorFrameInit;
@@ -679,22 +1144,40 @@ void inheritConstructorFrames(
     std::size_t suffixLength,
     bool excludeMoveNextPoll)
 {
+    // mangledName -> first generator constructor with that name (the candidate the former scan
+    // found, which required isGeneratorConstructor). Built once; the loop below changes frames
+    // and bodies only, never names or the generator flag.
+    std::unordered_map<std::string_view, std::size_t> constructorByName;
+    for (std::size_t index = 0; index < functions.size(); ++index)
+    {
+        if (functions[index].isGeneratorConstructor)
+            constructorByName.try_emplace(functions[index].mangledName, index);
+    }
     for (ProjectOopMirFunction& function : functions)
     {
         if (!function.mangledName.ends_with(suffix)) continue;
         if (excludeMoveNextPoll && function.mangledName.ends_with("$moveNext$poll")) continue;
         const std::string constructorName =
             function.mangledName.substr(0, function.mangledName.size() - suffixLength);
-        for (ProjectOopMirFunction& candidate : functions)
+        const auto constructor = constructorByName.find(constructorName);
+        if constexpr (internal::kIndexShadowCheckEnabled)
         {
-            if (candidate.mangledName != constructorName || !candidate.isGeneratorConstructor)
-                continue;
-            candidate.asyncFrameLocals = function.asyncFrameLocals;
-            candidate.asyncFrameParameters = function.asyncFrameParameters;
-            candidate.asyncFrameSize = function.asyncFrameSize;
-            insertGeneratorFrameInit(candidate);
-            break;
+            const auto scanned = std::ranges::find_if(functions, [&](const ProjectOopMirFunction& candidate)
+            {
+                return candidate.mangledName == constructorName && candidate.isGeneratorConstructor;
+            });
+            const bool same = constructor == constructorByName.end()
+                ? scanned == functions.end()
+                : scanned != functions.end() &&
+                    static_cast<std::size_t>(scanned - functions.begin()) == constructor->second;
+            if (!same) internal::reportIndexShadowMismatch("inheritConstructorFrames", constructorName);
         }
+        if (constructor == constructorByName.end()) continue;
+        ProjectOopMirFunction& candidate = functions[constructor->second];
+        candidate.asyncFrameLocals = function.asyncFrameLocals;
+        candidate.asyncFrameParameters = function.asyncFrameParameters;
+        candidate.asyncFrameSize = function.asyncFrameSize;
+        insertGeneratorFrameInit(candidate);
     }
 }
 }
@@ -721,7 +1204,8 @@ void ProjectOopMirModel::sumAwaitedFrameSize(
     std::span<const ProjectOopMirStructLayout> layouts,
     std::uint64_t& frameSize)
 {
-    sumAwaitedFrameSizeNodes(root, layouts, frameSize);
+    // The layouts given here may not be the ones the shared index was built from: scan them.
+    sumAwaitedFrameSizeNodes(root, nullptr, layouts, frameSize);
 }
 
 void ProjectOopMirModel::collectPollLiveness(
@@ -804,14 +1288,18 @@ ProjectOopMirFunction ProjectOopMirModel::lowerOneFunction(
 {
     ProjectOopMirFunction function;
     copyFunctionMetadata(function, source);
-    configureFunctionAbi(function, functionLayouts);
+    configureFunctionAbi(function, indexes_, functionLayouts);
     if (source.isImportedC || source.isImportedNative) return function;
     function.body = lowerNode(source.body.get(), error, functionLayouts);
     if (function.mangledName.ends_with("$poll") &&
-        !buildPollFrame(function, functionLayouts, objectLayoutModel, nameLookup, error))
+        !buildPollFrame(function, indexes_, functionLayouts, objectLayoutModel, nameLookup, error))
         return function;
-    if (function.mangledName.ends_with("$moveNext"))
-        buildMoveNextFrame(function, objectLayoutModel, nameLookup);
+    // EN: Freeze 3.0 C-14: only a synchronous generator's MoveNext is a coroutine; an async
+    //     generator's $moveNext just builds the demand future, whose local must stay off the frame.
+    // ES: Congelamiento 3.0 C-14: solo el MoveNext de un generador sincrono es una corrutina; el
+    //     $moveNext de un generador async solo arma el future de demanda, cuyo local no va al frame.
+    if (function.mangledName.ends_with("$moveNext") && function.returnTypeKey == "builtin:bool")
+        buildMoveNextFrame(function, indexes_, functionLayouts, objectLayoutModel, nameLookup);
     if (function.body == nullptr)
     {
         error += "\n  while lowering '" + source.mangledName + "'";

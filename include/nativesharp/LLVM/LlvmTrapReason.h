@@ -42,6 +42,9 @@ enum class LlvmTrapReason : std::uint32_t
     // T07-F06 explicit unreachable(). Reaching it is a program defect, not an optimizer hint.
     Unreachable = 16,
     // T15-F05: decimal coefficient arithmetic overflowed the 96-bit coefficient. Exit 128 + 17.
-    DecimalOverflow = 17
+    DecimalOverflow = 17,
+    // Freeze 3.0 DEC-11: a dead slot of an array of structs with a destructor (never written,
+    // moved out or deleted) was read as a live value. Exit 128 + 18 = 146.
+    DeadElementRead = 18
 };
 }

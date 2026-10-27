@@ -50,18 +50,18 @@ namespace contract {
         public static int Main() {
 
             // -- clases: los tres miembros de la raiz, con despacho virtual ---------------------
-            Widget widget = new Widget();
+            raii Widget widget = new Widget();
             if (!String.Equals(widget.ToString(), "Widget")) { return 1; }
 
-            Gadget gadget = new Gadget();
+            raii Gadget gadget = new Gadget();
             if (!String.Equals(gadget.ToString(), "Gadget")) { return 2; }
 
             // El nombre sale del descriptor del objeto EN TIEMPO DE EJECUCION, no del tipo
             // estatico: una referencia a la raiz sigue respondiendo el nombre real.
-            object asRoot = widget;
+            borrowed object asRoot = widget;
             if (!String.Equals(asRoot.ToString(), "Widget")) { return 3; }
 
-            object asRootGadget = gadget;
+            borrowed object asRootGadget = gadget;
             if (!String.Equals(asRootGadget.ToString(), "Gadget")) { return 4; }
 
             // Equals por identidad de referencia, que es la unica igualdad que la raiz conoce.

@@ -7,7 +7,7 @@
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {"mode": "contains", "text": "conversion implicit-string-literal-to-char-pointer"},
+    "stdout": {"mode": "contains", "text": "full_frontend::Native.GetCurrentProcessId() -> builtin:uint"},
     "stderr": ""
   },
   "tags": ["integration", "semantic-dump"],

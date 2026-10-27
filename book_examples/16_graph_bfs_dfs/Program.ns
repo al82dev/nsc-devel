@@ -3,7 +3,7 @@ namespace NativeSharp.BookExamples.GraphTraversal
 {
     class Program
     {
-        public static int Main()
+        public static int Main() throws InvalidOperationException
         {
             Console.WriteLine("NativeSharp Book Example 16 - Graph, BFS and DFS");
             Console.WriteLine("------------------------------------------------");

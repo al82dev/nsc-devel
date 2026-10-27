@@ -173,7 +173,7 @@ public class Program { public static int Main() { return 0; } }
 public class Box { }
 public struct Holder
 {
-    public Box Value = new Box();
+    public owned Box Value = new Box();
     public noheap Holder() { }
 }
 public class Program

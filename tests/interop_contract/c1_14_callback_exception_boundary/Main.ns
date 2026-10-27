@@ -9,6 +9,12 @@
 //
 // The exception base is declared inline, the way every Stage 45 exception-handling fixture
 // declares it, so this contract case stays self-contained (no ProjectReference needed).
+//
+// UPDATE (Freeze 3.0, checked throw): a `throw` must now be caught or declared, an extern C
+// delegate cannot declare throws, and a callable that throws does not bind to one. So the
+// escape this case used to provoke at run time is rejected at compile time, and the case now
+// shows the non-throwing adapter the boundary requires: it exits 14. The 141 trap stays as the
+// runtime guard behind that rule.
 namespace NativeSharp.Core { public class Exception { } }
 
 using NativeSharp.Core;
@@ -19,11 +25,18 @@ class Boom : Exception { }
 
 class Case
 {
-    public static int Throws(int value) { throw new Boom(); }
+    public static int Throws(int value) throws Boom { throw new Boom(); }
+
+    // The non-throwing adapter: the error is handled before control returns to C.
+    public static int Adapter(int value)
+    {
+        try { return Throws(value); }
+        catch (Boom error) { return 14; }
+    }
 
     public static int Main()
     {
-        Failing f = Throws;
+        Failing f = Adapter;
         return f(1);
     }
 }

@@ -29,6 +29,7 @@
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
 #include "nativesharp/Language/GenericSemantics.h"
+#include "nativesharp/Language/IterationSemantics.h"
 #include "nativesharp/Language/MemoryModel.h"
 #include "nativesharp/Language/SumTypeSemantics.h"
 #include "nativesharp/Language/TraitSemantics.h"
@@ -44,6 +45,7 @@
 #include <limits>
 #include <ranges>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -101,12 +103,14 @@ void ProjectMethodBodyModel::resetCallableScratch(const ClassMemberSymbol& calla
     definiteAssignmentWriteTarget_ = nullptr;
     activeUnionWriteTarget_ = nullptr;
     ownershipFlowReachable_ = true;
+    matchArmFallthrough_.clear();
     activeRequiredFieldAssignments_.clear();
     hasRequiredConstructorExit_ = false;
     requiredConstructorExitAssignments_.clear();
     partialProjectionReceiverDepth_ = 0;
     throwFlowStates_.clear();
     awaitExpressions_.clear();
+    activeErrorHandlers_.clear();
 }
 
 void ProjectMethodBodyModel::recordRequiredConstructorNormalExit(
@@ -230,7 +234,9 @@ void ProjectMethodBodyModel::analyzeCallable(
     {
         for (const MethodLocalSymbol& local : locals())
         {
-            if (local.isPinned)
+            // EN: Freeze 3.0 (plan item 136): the classifier names the pinned local.
+            // ES: Congelamiento 3.0 (elemento 136 del plan): el clasificador nombra el local pin.
+            if (knownLifeSourcesOfLocal(local).pinned)
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidOperand,
@@ -241,6 +247,7 @@ void ProjectMethodBodyModel::analyzeCallable(
             }
         }
     }
+    reportMissingReturn(callable, diagnostics);
     finalizeRequiredConstructorAssignments(callable, callableOrdinal);
     closeOwnedParameterCleanups(
         cleanupOrdinals, callable, callableOrdinal, rootScopeOrdinal);
@@ -369,6 +376,254 @@ void ProjectMethodBodyModel::verifyOutParameterAssignments(
                 member.parameters[index].range,
                 "out parameter '" + member.parameters[index].name +
                     "' is never assigned in the body of '" + member.name + "'");
+        }
+    }
+}
+
+namespace
+{
+// EN: Collects the await expressions and reports whether a bare `yield;` appears in `root`,
+//     without entering lambdas (each lambda is a callable of its own).
+// ES: Reune las expresiones await e informa si aparece un `yield;` en `root`, sin entrar en
+//     lambdas (cada lambda es un callable propio).
+void collectAwaitSites(
+    const ast::AstNode* root,
+    std::vector<const ast::AstNode*>& awaits,
+    bool& suspends)
+{
+    std::unordered_set<const ast::AstNode*> visited;
+    std::vector<const ast::AstNode*> pending = {root};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::SuspendStatement) suspends = true;
+        if (node->kind() == ast::AstNodeKind::AwaitExpression) awaits.push_back(node);
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+    }
+    std::sort(awaits.begin(), awaits.end(), [](const ast::AstNode* left, const ast::AstNode* right)
+    {
+        return left->range().begin().offset() < right->range().begin().offset();
+    });
+}
+
+// EN: Freeze 3.0 D-04. Appends to `origins` every value written to a local named `name` in `body`:
+//     the initializer of each declaration and the right side of each assignment. Nothing is
+//     appended for a parameter or a field, whose origin is unknown here.
+// ES: Congelamiento 3.0 D-04. Agrega a `origins` todo valor escrito en un local llamado `name` en
+//     `body`: el inicializador de cada declaracion y el lado derecho de cada asignacion. Para un
+//     parametro o un campo, cuyo origen aqui es desconocido, no agrega nada.
+void appendLocalOrigins(
+    const ast::AstNode* body,
+    std::string_view name,
+    std::vector<const ast::AstNode*>& origins)
+{
+    std::unordered_set<const ast::AstNode*> visited;
+    std::vector<const ast::AstNode*> pending = {body};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::VariableDeclarationStatement && node->text() == name &&
+            node->first() != nullptr) origins.push_back(node->first());
+        if (node->kind() == ast::AstNodeKind::AssignmentExpression && node->first() != nullptr &&
+            node->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+            node->first()->text() == name && node->second() != nullptr) origins.push_back(node->second());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+    }
+}
+
+// EN: Freeze 3.0 D-04. The expressions whose call bindings may name the producer of an awaited
+//     future: a local is replaced by every value written to it, and `it.MoveNextAsync()` over a
+//     local iterator by the origins of `it` (the generator that created it). Iterative; each
+//     expression is expanded once, so a local whose origin leads back to itself terminates.
+// ES: Congelamiento 3.0 D-04. Las expresiones cuyos bindings de llamada pueden nombrar al
+//     productor de un future esperado: un local se sustituye por cada valor escrito en el, y
+//     `it.MoveNextAsync()` sobre un iterador local por los origenes de `it` (el generador que lo
+//     creo). Iterativo; cada expresion se expande una vez, asi que un local cuyo origen vuelve a si
+//     mismo termina.
+void collectAwaitOperandOrigins(
+    const ast::AstNode* operand,
+    const ast::AstNode* callerBody,
+    std::vector<const ast::AstNode*>& origins)
+{
+    std::unordered_set<const ast::AstNode*> visited;
+    std::vector<const ast::AstNode*> pending = {operand};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            appendLocalOrigins(callerBody, node->text(), pending);
+            continue;
+        }
+        const bool localIteratorStep = node->kind() == ast::AstNodeKind::CallExpression &&
+            node->first() != nullptr && node->first()->kind() == ast::AstNodeKind::MemberExpression &&
+            node->first()->text() == "MoveNextAsync" && node->first()->first() != nullptr &&
+            node->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression;
+        if (localIteratorStep)
+        {
+            pending.push_back(node->first()->first());
+            continue;
+        }
+        origins.push_back(node);
+    }
+}
+
+// EN: The producer named by a resolved call binding; nullopt means an unknown producer.
+// ES: El productor que nombra un binding de llamada resuelto; nullopt es productor desconocido.
+std::optional<std::size_t> boundAwaitProducer(const MethodCallBinding* binding)
+{
+    if (binding == nullptr || binding->resolution != MethodCallResolutionKind::Resolved) return std::nullopt;
+    return binding->selectedMemberOrdinal;
+}
+}
+
+void ProjectMethodBodyModel::reportMissingReturn(
+    const ClassMemberSymbol& callable,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    // EN: Freeze 3.0 C-05 (found while porting the single-file cases): the 3.x pipeline accepted
+    //     a method whose body falls off its end without a value, and the backend closed that path
+    //     with `unreachable`, so the call had undefined behavior. A generator's end is its normal
+    //     completion, and an expression body always yields its value.
+    // ES: Congelamiento 3.0 C-05 (hallazgo al portar los casos de un archivo): el pipeline 3.x
+    //     aceptaba un metodo cuyo cuerpo llega al final sin valor, y el backend cerraba esa ruta
+    //     con `unreachable`, asi que la llamada tenia comportamiento indefinido. El final de un
+    //     generador es su terminacion normal, y un cuerpo de expresion siempre produce su valor.
+    if (!ownershipFlowReachable_ || callable.kind != ClassMemberKind::Method || callable.syntax == nullptr ||
+        callable.syntax->first() == nullptr ||
+        callable.syntax->first()->kind() != ast::AstNodeKind::BlockStatement) return;
+    // EN: An async method's body yields the future's inner type; `async void` ends normally.
+    // ES: El cuerpo de un metodo async produce el tipo interior del future; `async void` termina
+    //     normalmente.
+    const std::string result = effectiveReturnTypeKey(callable);
+    if (result.empty() || result == "builtin:void" || result == "builtin:never" ||
+        language::iteratorInnerTypeKey(result).has_value() ||
+        language::asyncIteratorInnerTypeKey(result).has_value()) return;
+    diagnostics.report(
+        diagnostics::DiagnosticId::NotAllPathsReturn,
+        diagnostics::DiagnosticSeverity::Error,
+        callable.syntax->range(),
+        "not all reachable control paths return a value from function '" + callable.name + "'");
+}
+
+bool ProjectMethodBodyModel::awaitOperandCanSuspend(
+    const ast::AstNode* operand,
+    const ast::AstNode* callerBody,
+    std::size_t callerOrdinal,
+    std::unordered_map<std::size_t, int>& memo) const
+{
+    // EN: Freeze 3.0 D-04: the await can suspend only when some known origin names a producer that
+    //     suspends; an unknown origin contributes nothing.
+    // ES: Congelamiento 3.0 D-04: el await puede suspenderse solo si algun origen conocido nombra a
+    //     un productor que se suspende; un origen desconocido no aporta nada.
+    std::vector<const ast::AstNode*> origins;
+    collectAwaitOperandOrigins(operand, callerBody, origins);
+    for (const ast::AstNode* origin : origins)
+    {
+        const std::optional<std::size_t> producer = boundAwaitProducer(callBinding(origin, callerOrdinal));
+        if (producer.has_value() && awaitProducerCanSuspend(*producer, memo)) return true;
+    }
+    return false;
+}
+
+bool ProjectMethodBodyModel::awaitProducerCanSuspend(
+    std::size_t producerOrdinal,
+    std::unordered_map<std::size_t, int>& memo) const
+{
+    // EN: Freeze 3.0 D-04. Reachability over the await graph with an explicit worklist: the producer
+    //     suspends when a source async producer with `yield;` is reachable through the producers its
+    //     awaits name. The answer does not depend on the order in which callers are checked (the
+    //     former cycle rule read a producer under visit as "does not suspend" and kept that answer).
+    //     A producer that is not a source async callable analyzed here is an unknown origin and is
+    //     not expanded. When nothing suspends, every visited producer is memoized as 1.
+    // ES: Congelamiento 3.0 D-04. Alcanzabilidad sobre el grafo de awaits con lista de trabajo
+    //     explicita: el productor se suspende si alcanza, a traves de los productores que nombran sus
+    //     awaits, un productor async de fuente con `yield;`. La respuesta no depende del orden en que
+    //     se revisan los llamadores (la regla anterior de ciclos leia un productor en visita como «no
+    //     se suspende» y conservaba esa respuesta). Un productor que no es un callable async de fuente
+    //     analizado aqui es origen desconocido y no se expande. Si nada se suspende, todo productor
+    //     visitado queda en el memo como 1.
+    const auto known = memo.find(producerOrdinal);
+    if (known != memo.end()) return known->second == 2;
+    std::unordered_set<std::size_t> visited;
+    std::vector<std::size_t> pending = {producerOrdinal};
+    bool suspends = false;
+    while (!pending.empty() && !suspends)
+    {
+        const std::size_t ordinal = pending.back();
+        pending.pop_back();
+        if (!visited.insert(ordinal).second) continue;
+        const auto answered = memo.find(ordinal);
+        if (answered != memo.end())
+        {
+            suspends = answered->second == 2;
+            continue;
+        }
+        const ClassMemberSymbol* producer = methodSymbol(ordinal);
+        const bool analyzable = producer != nullptr && producer->syntax != nullptr &&
+            producer->syntax->first() != nullptr && !producer->isPrecompiled &&
+            (producer->effects.contains(sema::Effect::Async) ||
+                language::asyncIteratorInnerTypeKey(producer->declaredTypeKey).has_value()) &&
+            analyzedCallableMembers_.contains(ordinal);
+        if (!analyzable) continue;
+        std::vector<const ast::AstNode*> awaits;
+        collectAwaitSites(producer->syntax->first(), awaits, suspends);
+        for (const ast::AstNode* await : awaits)
+        {
+            std::vector<const ast::AstNode*> origins;
+            collectAwaitOperandOrigins(await->first(), producer->syntax->first(), origins);
+            for (const ast::AstNode* origin : origins)
+            {
+                const std::optional<std::size_t> awaited = boundAwaitProducer(callBinding(origin, ordinal));
+                if (awaited.has_value()) pending.push_back(*awaited);
+            }
+        }
+    }
+    if (suspends)
+    {
+        memo[producerOrdinal] = 2;
+        return true;
+    }
+    for (const std::size_t ordinal : visited) memo[ordinal] = 1;
+    return false;
+}
+
+void ProjectMethodBodyModel::verifySynchronousAwaits(
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    std::vector<std::size_t> callers(analyzedCallableMembers_.begin(), analyzedCallableMembers_.end());
+    std::sort(callers.begin(), callers.end());
+    std::unordered_map<std::size_t, int> memo;
+    for (const std::size_t callerOrdinal : callers)
+    {
+        const ClassMemberSymbol* caller = methodSymbol(callerOrdinal);
+        if (caller == nullptr || caller->syntax == nullptr || caller->syntax->first() == nullptr ||
+            caller->isPrecompiled || caller->effects.contains(sema::Effect::Async)) continue;
+        std::vector<const ast::AstNode*> awaits;
+        bool ignored = false;
+        collectAwaitSites(caller->syntax->first(), awaits, ignored);
+        for (const ast::AstNode* await : awaits)
+        {
+            if (!awaitOperandCanSuspend(
+                    await->first(), caller->syntax->first(), callerOrdinal, memo)) continue;
+            diagnostics.report(
+                diagnostics::DiagnosticId::SynchronousAwaitCanSuspend,
+                diagnostics::DiagnosticSeverity::Error,
+                await->range(),
+                "synchronous await of a producer that can suspend: the producer must be awaited "
+                "from an async context; declare '" + caller->name + "' async (an entry point "
+                "can be 'static async int Main()')");
         }
     }
 }

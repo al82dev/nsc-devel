@@ -7,7 +7,7 @@
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {"mode": "contains", "text": "phi @value"}
+    "stdout": {"mode": "regex", "text": "ssa_features[$]3A[$]3A__Main phis=[1-9]"}
   },
   "tags": ["integration", "ssa", "dump"],
   "requires": []

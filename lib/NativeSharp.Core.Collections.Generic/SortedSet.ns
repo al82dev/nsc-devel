@@ -28,7 +28,17 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Mirrors real C#'s SortedSet<T>(IComparer<T>) -- see SortedList.ns's own
         // `Comparison<T>` constructor for why a delegate stands in for IComparer<T>.
-        public SortedSet(Comparison<T> comparerFunc)
+        //
+        // EN: Freeze 3.0 P2: the Comparison constructor requires `T : copy` (see SortedList); the
+        //     InComparison one serves any T.
+        // ES: Congelamiento 3.0 P2: el constructor con Comparison exige `T : copy` (ver SortedList); el
+        //     de InComparison sirve para todo T.
+        public SortedSet(Comparison<T> comparerFunc) where T : copy
+        {
+            items = new SortedList<T, bool>(comparerFunc);
+        }
+
+        public SortedSet(InComparison<T> comparerFunc)
         {
             items = new SortedList<T, bool>(comparerFunc);
         }
@@ -50,25 +60,26 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Mirrors real C#'s SortedSet<T>.Add: returns whether `value` was actually a NEW element
         // (false if it was already present).
+        //
+        // EN: Freeze 3.0 P3: Add, Contains and Remove hand their own parameter on with move(...)
+        //     (SortedList.TryAdd, ContainsKey, Remove), so none copies an element and they serve a
+        //     move-only T.
+        // ES: Congelamiento 3.0 P3: Add, Contains y Remove entregan su propio parametro con move(...)
+        //     (SortedList.TryAdd, ContainsKey, Remove), asi que ninguno copia un elemento y sirven
+        //     para un T move-only.
         public bool Add(owned T value)
         {
-            if (items.ContainsKey(value))
-            {
-                delete value;
-                return false;
-            }
-            items.AddOrUpdate(move(value), true);
-            return true;
+            return items.TryAdd(move(value), true);
         }
 
         public bool Contains(T value)
         {
-            return items.ContainsKey(value);
+            return items.ContainsKey(move(value));
         }
 
         public bool Remove(T value)
         {
-            return items.Remove(value);
+            return items.Remove(move(value));
         }
 
         public void Clear()
@@ -78,25 +89,41 @@ namespace NativeSharp.Core.Collections.Generic
 
         // O(1): the backing SortedList<T, bool> keeps its keys sorted at all times, so the
         // element at a given position is already known without any extra work.
-        public T Min() throws InvalidOperationException
+        // EN: Freeze 3.0 P3: Min, Max and RefAt lend an element readonly (changing it in place would
+        //     break the order), for any T. ToArray, Reverse, GetViewBetween, the set operations and
+        //     GetEnumerator work on copies of the elements and require `T : copy`.
+        // ES: Congelamiento 3.0 P3: Min, Max y RefAt prestan un elemento de solo lectura (cambiarlo en
+        //     su lugar romperia el orden), para todo T. ToArray, Reverse, GetViewBetween, las
+        //     operaciones de conjuntos y GetEnumerator trabajan sobre copias de los elementos y exigen
+        //     `T : copy`.
+        public ref readonly T Min() throws InvalidOperationException
         {
             if (items.Count() == 0)
             {
                 throw new InvalidOperationException();
             }
-            return items.KeyAt(0);
+            return ref items.KeyAt(0);
         }
 
-        public T Max() throws InvalidOperationException
+        public ref readonly T Max() throws InvalidOperationException
         {
             if (items.Count() == 0)
             {
                 throw new InvalidOperationException();
             }
-            return items.KeyAt(items.Count() - 1);
+            return ref items.KeyAt(items.Count() - 1);
         }
 
-        public T[] ToArray()
+        public ref readonly T RefAt(int index)
+        {
+            if (index < 0 || index >= items.Count())
+            {
+                panic("SortedSet index out of range");
+            }
+            return ref items.KeyAt(index);
+        }
+
+        public T[] ToArray() where T : copy
         {
             return items.Keys();
         }
@@ -105,7 +132,7 @@ namespace NativeSharp.Core.Collections.Generic
         // array (see the class comment on ToArray()'s own snapshot semantics -- NativeSharp has no
         // IEnumerable<T>/lazy enumerator, so a reversed-order array is the ownership-safe
         // equivalent).
-        public T[] Reverse()
+        public T[] Reverse() where T : copy
         {
             const T[] ascending = items.Keys();
             const T[] result = new T[ascending.Length];
@@ -127,9 +154,12 @@ namespace NativeSharp.Core.Collections.Generic
         // brand-new SortedSet<T> with its own copies instead. Uses T's own `<` for the bounds test
         // even when this set was constructed with a custom comparer (a documented simplification --
         // see the class comment on T needing only `<`).
-        public SortedSet<T> GetViewBetween(T lowerValue, T upperValue)
+        //
+        // Freeze 3.0 (C-01): the snapshot is a new set the caller owns, so the return is `owned`
+        // and the caller binds it to a raii local.
+        public owned SortedSet<T> GetViewBetween(T lowerValue, T upperValue) where T : copy
         {
-            SortedSet<T> result = new SortedSet<T>();
+            raii SortedSet<T> result = new SortedSet<T>();
             const T[] snapshot = items.Keys();
             int i = 0;
             while (i < snapshot.Length)
@@ -141,12 +171,19 @@ namespace NativeSharp.Core.Collections.Generic
                 i = i + 1;
             }
             delete[] snapshot;
-            return result;
+            return move(result);
         }
 
         // Mirrors SortedSet<T>.RemoveWhere: removes every element matching `predicate`, returns how
         // many were removed.
-        public int RemoveWhere(Predicate<T> predicate)
+        //
+        // EN: Freeze 3.0 P2: the Predicate overload copies every element into a snapshot and into
+        //     the predicate, so it requires `T : copy`; the InPredicate overload lends the elements
+        //     in place.
+        // ES: Congelamiento 3.0 P2: la sobrecarga con Predicate copia cada elemento a una instantanea y
+        //     al predicado, asi que exige `T : copy`; la de InPredicate presta los elementos en su
+        //     sitio.
+        public int RemoveWhere(Predicate<T> predicate) where T : copy
         {
             const T[] snapshot = items.Keys();
             int removed = 0;
@@ -164,8 +201,13 @@ namespace NativeSharp.Core.Collections.Generic
             return removed;
         }
 
+        public int RemoveWhere(InPredicate<T> predicate)
+        {
+            return items.RemoveKeysWhere(predicate);
+        }
+
         // Same cross-set ownership caveat as HashSet<T>.UnionWith -- see its comment.
-        public void UnionWith(SortedSet<T> other)
+        public void UnionWith(SortedSet<T> other) where T : copy
         {
             const T[] snapshot = other.ToArray();
             int i = 0;
@@ -180,7 +222,7 @@ namespace NativeSharp.Core.Collections.Generic
             delete[] snapshot;
         }
 
-        public void IntersectWith(SortedSet<T> other)
+        public void IntersectWith(SortedSet<T> other) where T : copy
         {
             const T[] snapshot = items.Keys();
             int i = 0;
@@ -195,7 +237,7 @@ namespace NativeSharp.Core.Collections.Generic
             delete[] snapshot;
         }
 
-        public void ExceptWith(SortedSet<T> other)
+        public void ExceptWith(SortedSet<T> other) where T : copy
         {
             const T[] snapshot = other.ToArray();
             int i = 0;
@@ -208,7 +250,7 @@ namespace NativeSharp.Core.Collections.Generic
         }
 
         // Same cross-set ownership caveat as HashSet<T>.UnionWith for the elements it adds.
-        public void SymmetricExceptWith(SortedSet<T> other)
+        public void SymmetricExceptWith(SortedSet<T> other) where T : copy
         {
             const T[] snapshot = other.ToArray();
             int i = 0;
@@ -227,7 +269,7 @@ namespace NativeSharp.Core.Collections.Generic
             delete[] snapshot;
         }
 
-        public bool IsSubsetOf(SortedSet<T> other)
+        public bool IsSubsetOf(SortedSet<T> other) where T : copy
         {
             const T[] snapshot = items.Keys();
             int i = 0;
@@ -244,12 +286,12 @@ namespace NativeSharp.Core.Collections.Generic
             return true;
         }
 
-        public bool IsProperSubsetOf(SortedSet<T> other)
+        public bool IsProperSubsetOf(SortedSet<T> other) where T : copy
         {
             return Count() < other.Count() && IsSubsetOf(other);
         }
 
-        public bool IsSupersetOf(SortedSet<T> other)
+        public bool IsSupersetOf(SortedSet<T> other) where T : copy
         {
             const T[] snapshot = other.ToArray();
             int i = 0;
@@ -266,12 +308,12 @@ namespace NativeSharp.Core.Collections.Generic
             return true;
         }
 
-        public bool IsProperSupersetOf(SortedSet<T> other)
+        public bool IsProperSupersetOf(SortedSet<T> other) where T : copy
         {
             return Count() > other.Count() && IsSupersetOf(other);
         }
 
-        public bool Overlaps(SortedSet<T> other)
+        public bool Overlaps(SortedSet<T> other) where T : copy
         {
             const T[] snapshot = items.Keys();
             int i = 0;
@@ -288,12 +330,14 @@ namespace NativeSharp.Core.Collections.Generic
             return false;
         }
 
-        public bool SetEquals(SortedSet<T> other)
+        public bool SetEquals(SortedSet<T> other) where T : copy
         {
             return Count() == other.Count() && IsSubsetOf(other);
         }
 
-        public void ForEach(Action<T> action)
+        // EN: Freeze 3.0 P2: same split as RemoveWhere.
+        // ES: Congelamiento 3.0 P2: la misma division que RemoveWhere.
+        public void ForEach(Action<T> action) where T : copy
         {
             const T[] snapshot = items.Keys();
             int i = 0;
@@ -305,11 +349,16 @@ namespace NativeSharp.Core.Collections.Generic
             delete[] snapshot;
         }
 
+        public void ForEach(InAction<T> action)
+        {
+            items.ForEachKey(action);
+        }
+
         // P1.2 of STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md -- see
         // HashSet<T>.GetEnumerator()'s comment for why this is snapshot-based (via the already
         // sorted ToArray()) rather than a live indexer: SortedSet<T> wraps SortedList<T, bool>
         // the same way HashSet<T> wraps Dictionary<T, bool>.
-        public owned SortedSetEnumerator<T> GetEnumerator()
+        public owned SortedSetEnumerator<T> GetEnumerator() where T : copy
         {
             return new SortedSetEnumerator<T>(this);
         }

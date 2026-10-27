@@ -10,6 +10,7 @@
 #include "nativesharp/Frontend/PendingReexport.h"
 #include "nativesharp/Frontend/TypeNameBindingKind.h"
 #include "nativesharp/Frontend/TypeNameBinding.h"
+#include "nativesharp/Frontend/PrecompiledSnapshotUnit.h"
 #include "nativesharp/Frontend/ExpressionTypeNameBinding.h"
 #include "nativesharp/Frontend/ModuleDeclarationSpace.h"
 #include "nativesharp/AST/TypeSyntax.h"
@@ -114,6 +115,30 @@ public:
         std::span<const std::size_t> enclosingTypeOrdinals) const noexcept;
     bool isBuilt() const noexcept;
 
+    // EN: Plan item 3.1. Accepted snapshots of restored public API units, set before build(). The
+    //     type-name and expression bindings of such a unit are installed from its `names` section
+    //     instead of resolving the unit; any missing section or unresolved identity makes that unit
+    //     resolve as today.
+    // ES: Punto 3.1 del plan. Snapshots aceptados de unidades de API pública restauradas, asignados
+    //     antes de build(). Los bindings de nombres de tipo y de expresiones de esa unidad se
+    //     instalan desde su sección `names` en lugar de resolver la unidad; una sección ausente o
+    //     una identidad sin resolver hace que esa unidad se resuelva como hoy.
+    void setPrecompiledSnapshots(std::span<const PrecompiledSnapshotUnit> snapshots) noexcept;
+    std::size_t installedSnapshotUnitCount() const noexcept;
+    std::size_t installedDeclarationUnitCount() const noexcept;
+    // EN: Producer side. The reference compilation names its captured API unit before build(); the
+    //     declaration index computed for that unit is kept and written by
+    //     writePrecompiledSnapshotDeclarations as the `name-declarations` section.
+    // ES: Lado productor. La compilación de referencia nombra su unidad de API capturada antes de
+    //     build(); el índice de declaraciones calculado para esa unidad se conserva y lo escribe
+    //     writePrecompiledSnapshotDeclarations como la sección `name-declarations`.
+    void setPrecompiledSnapshotCaptureUnit(std::size_t unitOrdinal) noexcept;
+    bool writePrecompiledSnapshotDeclarations(
+        const PrecompiledSyntaxNodeIndex& index,
+        const ProjectSyntaxUnit& unit,
+        std::string& payload,
+        std::string& error) const;
+
 private:
     friend struct ProjectOopHirModelTestAccess;
 
@@ -156,6 +181,16 @@ private:
         const NamespaceStateDeclaration& right);
     void finalizeNamespaceDeclarations();
     void mergeBindingIndexes(std::vector<UnitBindingIndex>& bindingIndexes);
+    const PrecompiledSnapshotUnit* snapshotForUnit(std::size_t unitOrdinal) const noexcept;
+    bool installUnitBindings(
+        const ProjectSyntaxUnit& unit,
+        const PrecompiledSnapshotUnit& snapshot,
+        UnitBindingIndex& index) const;
+    bool installUnitDeclarations(
+        const ProjectSyntaxUnit& unit,
+        const std::string& sourcePath,
+        const PrecompiledSnapshotUnit& snapshot,
+        UnitDeclarationIndex& index) const;
     void collectBindingIndexes(
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics,
@@ -245,6 +280,16 @@ private:
         std::size_t groupBegin,
         std::size_t groupEnd,
         diagnostics::DiagnosticEngine& diagnostics);
+    // EN: Freeze 3.0 C-05 (found): declarations the 1.x grammar still parses but no 3.x model
+    //     registers -- an `extern C` import outside a class, a variable outside any namespace.
+    //     They used to vanish silently; a later use then failed as an unknown identifier.
+    // ES: Congelamiento 3.0 C-05 (hallazgo): declaraciones que la gramatica 1.x aun analiza pero
+    //     que ningun modelo 3.x registra -- un import `extern C` fuera de una clase, una variable
+    //     fuera de todo namespace. Desaparecian en silencio; un uso posterior fallaba como
+    //     identificador desconocido.
+    void reportUnsupportedGlobalDeclarations(
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void validateTraitImplementationTarget(
         std::size_t groupBegin,
         std::size_t groupEnd,
@@ -537,11 +582,21 @@ private:
     std::unordered_map<const ast::AstNode*, std::size_t> typeOrdinalBySyntax_;
     std::vector<std::string> packageByProject_;
     std::vector<std::vector<std::string>> friendsByProject_;
+    // packageByProject_ lower-cased once in initializeModules, for typeIsVisibleTo.
+    std::vector<std::string> foldedPackageByProject_;
+    // Each project's module name and its friend modules, lower-cased once in initializeModules.
+    std::vector<std::string> foldedModuleByProject_;
+    std::vector<std::unordered_set<std::string>> foldedFriendsByProject_;
     std::unordered_map<const ast::TypeSyntax*, std::size_t> bindingBySyntax_;
     std::vector<ExpressionTypeNameBinding> expressionTypeBindings_;
     std::unordered_map<const ast::AstNode*, std::size_t> expressionTypeBindingBySyntax_;
     std::unique_ptr<ProjectCompilationIndexes> ownedIndexes_;
     ProjectCompilationIndexes* indexes_ = nullptr;
+    std::span<const PrecompiledSnapshotUnit> precompiledSnapshots_;
+    std::size_t installedSnapshotUnits_ = 0;
+    std::size_t installedDeclarationUnits_ = 0;
+    std::optional<std::size_t> snapshotCaptureUnit_;
+    std::optional<UnitDeclarationIndex> capturedDeclarations_;
     bool built_ = false;
 };
 

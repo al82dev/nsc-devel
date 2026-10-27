@@ -172,7 +172,7 @@ bool OopLlvmImplementation::defineStaticFieldAccessors(std::string& error)
             currentDebugFileKey_ = 0;
 
             LLVMBasicBlockRef entry = appendBlock("static.accessor.entry");
-            LLVMPositionBuilderAtEnd(builder_, entry);
+            enterBlock(entry);
             if (!ensureTypeInitialized(field.declaringTypeOrdinal, error)) return false;
             LLVMBuildRet(builder_, globalFound->second);
         }
@@ -360,11 +360,11 @@ LLVMValueRef OopLlvmImplementation::emitTypeInitializerGuard(
         LLVMSetOrdering(fastState, LLVMAtomicOrderingSequentiallyConsistent);
         LLVMValueRef fastDone = LLVMBuildICmp(builder_, LLVMIntEQ, fastState, two, "cctor.fast_done");
         LLVMBuildCondBr(builder_, fastDone, done, fastFailureCheck);
-        LLVMPositionBuilderAtEnd(builder_, fastFailureCheck);
+        enterBlock(fastFailureCheck);
         LLVMValueRef fastFailed = LLVMBuildICmp(
             builder_, LLVMIntEQ, fastState, three, "cctor.fast_failed");
         LLVMBuildCondBr(builder_, fastFailed, failed, casAttempt);
-        LLVMPositionBuilderAtEnd(builder_, casAttempt);
+        enterBlock(casAttempt);
         // Computed here (in the block that dominates BOTH `initialize` -- the CAS-won path --
         // and `recursionCheck` -- the CAS-lost path) so the same SSA value `currentTid` is
         // valid to use in either successor: `initialize` needs it to publish ownership below,
@@ -381,21 +381,21 @@ LLVMValueRef OopLlvmImplementation::emitTypeInitializerGuard(
         LLVMValueRef observedState = LLVMBuildExtractValue(builder_, cas, 0, "cctor.cas.observed");
         LLVMValueRef won = LLVMBuildExtractValue(builder_, cas, 1, "cctor.cas.won");
         LLVMBuildCondBr(builder_, won, initialize, casInitializedCheck);
-        LLVMPositionBuilderAtEnd(builder_, casInitializedCheck);
+        enterBlock(casInitializedCheck);
         LLVMValueRef observedInitialized = LLVMBuildICmp(
             builder_, LLVMIntEQ, observedState, two, "cctor.cas_initialized");
         LLVMBasicBlockRef casFailureCheck = appendBlock("cctor.cas_failure_check");
         LLVMBuildCondBr(builder_, observedInitialized, done, casFailureCheck);
-        LLVMPositionBuilderAtEnd(builder_, casFailureCheck);
+        enterBlock(casFailureCheck);
         LLVMValueRef observedFailed = LLVMBuildICmp(
             builder_, LLVMIntEQ, observedState, three, "cctor.cas_failed");
         LLVMBuildCondBr(builder_, observedFailed, failed, recursionCheck);
-        LLVMPositionBuilderAtEnd(builder_, recursionCheck);
+        enterBlock(recursionCheck);
         LLVMValueRef ownerTid = LLVMBuildLoad2(builder_, i32, ownerGlobal, "cctor.owner_tid");
         LLVMSetOrdering(ownerTid, LLVMAtomicOrderingSequentiallyConsistent);
         LLVMValueRef isSelf = LLVMBuildICmp(builder_, LLVMIntEQ, ownerTid, currentTid, "cctor.is_self");
         LLVMBuildCondBr(builder_, isSelf, done, spinWait);
-        LLVMPositionBuilderAtEnd(builder_, spinWait);
+        enterBlock(spinWait);
         // A losing thread (confirmed, via recursionCheck above, to be a genuinely DIFFERENT
         // thread from whichever one is initializing) spins on an atomic load until the winner
         // publishes terminal state 2 or 3. This window is only ever hit by the rare threads
@@ -408,7 +408,7 @@ LLVMValueRef OopLlvmImplementation::emitTypeInitializerGuard(
         LLVMSetOrdering(spinState, LLVMAtomicOrderingSequentiallyConsistent);
         LLVMValueRef spinPending = LLVMBuildICmp(builder_, LLVMIntEQ, spinState, one, "cctor.spin_pending");
         LLVMBuildCondBr(builder_, spinPending, spinWait, spinTerminal);
-        LLVMPositionBuilderAtEnd(builder_, spinTerminal);
+        enterBlock(spinTerminal);
         LLVMValueRef spinDone = LLVMBuildICmp(builder_, LLVMIntEQ, spinState, two, "cctor.spin_done");
         LLVMBuildCondBr(builder_, spinDone, done, failed);
         return currentTid;
@@ -425,7 +425,7 @@ bool OopLlvmImplementation::emitTypeInitializerBody(
         LLVMBasicBlockRef failureUnwind,
         std::string& error)
 {
-        LLVMPositionBuilderAtEnd(builder_, initialize);
+        enterBlock(initialize);
         // Publish this thread's id BEFORE running any field initializer below -- a
         // self-referencing initializer's recursive call (see the header comment above) must
         // see ITS OWN thread id here in order for recursionCheck to recognize it as
@@ -443,6 +443,7 @@ bool OopLlvmImplementation::emitTypeInitializerBody(
                 staticInitializationFailureUnwindBlock_ = nullptr;
                 return fail(error, "Stage 37 runtime static initializer lost its field global");
             }
+            classifyArrayElementAccesses(initializer.value.get());
             LLVMValueRef value = lowerExpression(initializer.value.get(), error);
             if (value == nullptr)
             {
@@ -464,7 +465,7 @@ bool OopLlvmImplementation::emitTypeInitializerBody(
         LLVMValueRef publish = LLVMBuildStore(builder_, initializedState, stateGlobal);
         LLVMSetOrdering(publish, LLVMAtomicOrderingSequentiallyConsistent);
         if (!terminated()) LLVMBuildBr(builder_, done);
-        LLVMPositionBuilderAtEnd(builder_, done);
+        enterBlock(done);
         LLVMBuildRetVoid(builder_);
         return true;
     }
@@ -477,7 +478,7 @@ bool OopLlvmImplementation::emitTypeInitializerFailure(
         std::string& error)
 {
         LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-        LLVMPositionBuilderAtEnd(builder_, failed);
+        enterBlock(failed);
         if (mirModel_.panicProfile() == language::PanicProfile::Abort)
         {
             LLVMValueRef reason = LLVMConstInt(
@@ -499,7 +500,7 @@ bool OopLlvmImplementation::emitTypeInitializerFailure(
             buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
         }
         LLVMBuildUnreachable(builder_);
-        LLVMPositionBuilderAtEnd(builder_, failureUnwind);
+        enterBlock(failureUnwind);
         LLVMValueRef cleanupPad = LLVMBuildCleanupPad(
             builder_, nullptr, nullptr, 0, "cctor.failure.pad");
         if (cleanupPad == nullptr)
@@ -562,7 +563,7 @@ bool OopLlvmImplementation::defineTypeInitializer(
             LLVMBasicBlockRef failed = appendBlock("cctor.failed");
             LLVMBasicBlockRef failureUnwind = appendBlock("cctor.failure_unwind");
             LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
-            LLVMPositionBuilderAtEnd(builder_, entry);
+            enterBlock(entry);
             ScopedDebugLocation generatedLocation(
                 builder_, debugSubprogramLocation(debugRange, currentDebugSubprogram_));
             LLVMValueRef stateGlobal = staticInitStateGlobals_[typeOrdinal];

@@ -25,6 +25,29 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionIterative(
                 values.push_back(nullptr);
                 continue;
             }
+            // EN: Freeze 3.0 D-01: an operand with a replay slot opens it before its first phase
+            //     and closes it, through a marker frame, once its value is on the stack.
+            // ES: Congelamiento 3.0 D-01: un operando con slot de repeticion lo abre antes de su
+            //     primera fase y lo cierra, con un frame marcador, cuando su valor esta en la pila.
+            if (frame.replayJoin)
+            {
+                LLVMValueRef value = values.back();
+                values.pop_back();
+                values.push_back(finishCoroutineReplaySpill(
+                    {current, frame.replaySlot, frame.replayLoad, frame.replayCompute}, value, error));
+                continue;
+            }
+            if (OopLlvmReplaySpill spill; frame.phase == 0 && beginCoroutineReplaySpill(current, spill, error))
+            {
+                LlvmExpressionFrame join{current};
+                join.replayJoin = true;
+                join.replaySlot = spill.slot;
+                join.replayLoad = spill.loadBlock;
+                join.replayCompute = spill.computeBlock;
+                frames.push_back(join);
+                frames.push_back(frame);
+                continue;
+            }
             if (lowerExpressionFrameGroup01(frame, frames, values, error)) continue;
             if (lowerExpressionFrameGroup02(frame, frames, values, error)) continue;
             if (lowerExpressionFrameGroup03(frame, frames, values, error)) continue;
@@ -311,7 +334,7 @@ bool OopLlvmImplementation::lowerShortCircuitBinaryFrame(
         LLVMBuildCondBr(
             builder_, left, isAnd ? rhsBlock : endBlock,
             isAnd ? endBlock : rhsBlock);
-        LLVMPositionBuilderAtEnd(builder_, rhsBlock);
+        enterBlock(rhsBlock);
         frames.push_back(
             {current, 4, nullptr, 0, {}, nullptr, nullptr, leftBlock, endBlock});
         frames.push_back({current->children[1].get(), 0, nullptr});
@@ -327,7 +350,7 @@ bool OopLlvmImplementation::lowerShortCircuitBinaryFrame(
     LLVMBasicBlockRef rightBlock = LLVMGetInsertBlock(builder_);
     const bool rightReachesEnd = !terminated();
     if (rightReachesEnd) LLVMBuildBr(builder_, frame.endBlock);
-    LLVMPositionBuilderAtEnd(builder_, frame.endBlock);
+    enterBlock(frame.endBlock);
     const bool isAnd = current->operation == lexer::TokenKind::AmpAmp;
     LLVMValueRef shortValue = LLVMConstInt(
         LLVMInt1TypeInContext(context_), isAnd ? 0U : 1U, 0);
@@ -552,6 +575,14 @@ void OopLlvmImplementation::finishArrayElementFrame(
         std::vector<LLVMValueRef>& values, std::string& error)
 {
     LLVMValueRef address = arrayElementAddressFromParts(current, object, index, stringValue, error);
+    // EN: Freeze 3.0 DEC-11: liveness work of an element of an array of structs with a destructor.
+    // ES: Congelamiento 3.0 DEC-11: trabajo de vida de un elemento de un arreglo de structs con
+    //     destructor.
+    if (address != nullptr && !stringValue && current->alignment != 0 &&
+        !applyArrayElementAccess(
+            current, object, address, (8U + current->alignment - 1U) / current->alignment * current->alignment,
+            current->immediate, error))
+        address = nullptr;
     if (current->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress ||
         current->kind == frontend::ProjectOopMirNodeKind::StringCharacterPointer)
     {
@@ -662,6 +693,10 @@ bool OopLlvmImplementation::lowerExpressionFrame009FullExpressionCleanup(
             values.push_back(failValue(error, "NSC-LIMIT-021 full expression requires exactly one value"));
             return true;
         }
+        // EN: Freeze 3.0 (plan item 135): a borrow crosses a `?:` or `??`; see clearTemporaryOwnerSlots.
+        // ES: Congelamiento 3.0 (elemento 135 del plan): un prestamo cruza un `?:` o `??`; ver
+        //     clearTemporaryOwnerSlots.
+        if (current->booleanValue) clearTemporaryOwnerSlots(*current);
         frames.push_back({current, 1, nullptr, activeCleanupRegions_.size()});
         frames.push_back({current->children.front().get(), 0, nullptr});
         return true;
@@ -813,8 +848,26 @@ bool OopLlvmImplementation::lowerExpressionFrame014IteratorCancel(
     if (self == nullptr) { values.push_back(nullptr); return true; }
     LLVMTypeRef intType = llvmType("builtin:int", error);
     if (intType == nullptr) { values.push_back(nullptr); return true; }
-    LLVMBuildStore(
-        builder_, LLVMConstInt(intType, static_cast<unsigned long long>(-3), 1), self);
+    // EN: Freeze 3.0 C-17: the poll is a coroutine, so a cancel parks the iterator in the cancel
+    //     state of the yield it is stopped at (kCancelStateBase - k): the next MoveNextAsync runs
+    //     the cleanup active there and answers false. One never started just finishes.
+    // ES: Congelamiento 3.0 C-17: el poll es una corrutina, asi que cancelar deja el iterador en
+    //     el estado de cancelacion del yield donde esta detenido (kCancelStateBase - k): el
+    //     siguiente MoveNextAsync corre la limpieza activa ahi y responde false. Uno que nunca
+    //     empezo solo termina.
+    LLVMValueRef state = LLVMBuildLoad2(builder_, intType, self, "cancel.state");
+    LLVMValueRef parked = LLVMBuildICmp(
+        builder_, LLVMIntSGT, state, LLVMConstInt(intType, 0, 0), "cancel.parked");
+    LLVMValueRef fresh = LLVMBuildICmp(
+        builder_, LLVMIntEQ, state, LLVMConstInt(intType, 0, 0), "cancel.fresh");
+    LLVMValueRef unwind = LLVMBuildSub(
+        builder_,
+        LLVMConstInt(intType, static_cast<unsigned long long>(OopLlvmCoroutineState::kCancelStateBase), 1),
+        state, "cancel.unwind");
+    LLVMValueRef settled = LLVMBuildSelect(
+        builder_, fresh, LLVMConstInt(intType, static_cast<unsigned long long>(-1), 1), state,
+        "cancel.settled");
+    LLVMBuildStore(builder_, LLVMBuildSelect(builder_, parked, unwind, settled, "cancel.next"), self);
     values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
     return true;
 }
@@ -905,7 +958,7 @@ bool OopLlvmImplementation::lowerExpressionFrame016IteratorMoveNext(
             builder_,
             LLVMBuildICmp(builder_, LLVMIntEQ, state, erroredConst, "iterator.movenext.errored"),
             errorBlock, normalBlock);
-        LLVMPositionBuilderAtEnd(builder_, errorBlock);
+        enterBlock(errorBlock);
         std::uint64_t errorOffset = 0;
         if (const frontend::ProjectOopMirStructLayout* layout =
                 findStructLayout(mirModel_, current->elementTypeKey))
@@ -927,7 +980,7 @@ bool OopLlvmImplementation::lowerExpressionFrame016IteratorMoveNext(
             values.push_back(nullptr);
             return true;
         }
-        LLVMPositionBuilderAtEnd(builder_, normalBlock);
+        enterBlock(normalBlock);
     }
     values.push_back(result);
     return true;
@@ -1137,7 +1190,7 @@ bool OopLlvmImplementation::lowerExpressionFrame021ObjectDestroy(
     LLVMBasicBlockRef destroyBlock = appendBlock("destroy.object");
     LLVMBasicBlockRef doneBlock = appendBlock("destroy.object.done");
     LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
-    LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+    enterBlock(destroyBlock);
     LLVMValueRef descriptor = LLVMBuildLoad2(
         builder_, ptr, object, "destroy.object.descriptor");
     LLVMValueRef entryAddress = LLVMBuildStructGEP2(
@@ -1153,7 +1206,7 @@ bool OopLlvmImplementation::lowerExpressionFrame021ObjectDestroy(
         return true;
     }
     if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-    LLVMPositionBuilderAtEnd(builder_, doneBlock);
+    enterBlock(doneBlock);
     values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
     return true;
 }
@@ -1292,6 +1345,17 @@ bool OopLlvmImplementation::lowerExpressionFrame026AwaitFuture(
             values.push_back(failValue(error, "await future requires one operand"));
             return true;
         }
+        // EN: Freeze 3.0 C-02: a suspending await lowers its operand itself, on the path that
+        //     creates the child; evaluating it here would call the producer again on every resume.
+        // ES: Congelamiento 3.0 C-02: un await que suspende baja su operando el mismo, en la ruta
+        //     que crea el hijo; evaluarlo aqui llamaria otra vez al productor en cada reanudacion.
+        // EN: Freeze 3.0 (plan item 113): a field operand is lowered by lowerAwaitOperand, which zeroes it.
+        // ES: Congelamiento 3.0 (elemento 113 del plan): lowerAwaitOperand baja un operando campo y lo pone en cero.
+        if (current->integerValue == 1 || awaitOperandIsField(current->children.front().get()))
+        {
+            values.push_back(lowerAwaitExpression(current, error, nullptr));
+            return true;
+        }
         frames.push_back({current, 1, nullptr, 0});
         frames.push_back({current->children.front().get(), 0, nullptr});
         return true;
@@ -1371,10 +1435,20 @@ bool OopLlvmImplementation::lowerExpressionFrame029MoveArrayElement(
     LLVMTypeRef elementType = llvmType(current->typeKey, error);
     if (elementType == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef value = LLVMBuildLoad2(builder_, elementType, address, "move.array.element.load");
-    if (current->booleanValue)
+    // EN: Freeze 3.0 C-12: a moved-out struct with a destructor or owned fields leaves a zeroed
+    //     slot, so dropping the array later destroys an empty value instead of the moved one.
+    // ES: Congelamiento 3.0 C-12: un struct movido con destructor o campos owned deja el slot en
+    //     cero, asi que destruir el arreglo despues destruye un valor vacio y no el movido.
+    if (current->booleanValue ||
+        (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(current->typeKey)))
     {
         LLVMBuildStore(builder_, LLVMConstNull(elementType), address);
     }
+    // EN: Freeze 3.0 DEC-11: the moved-out slot is dead.
+    // ES: Congelamiento 3.0 DEC-11: el slot del que se movio queda muerto.
+    if (const std::optional<OopLlvmArrayElementLiveness> liveness =
+            takeArrayElementLiveness(current->children.front().get()))
+        setArrayElementAlive(*liveness, false);
     values.push_back(value);
     return true;
 }
@@ -4585,6 +4659,28 @@ bool OopLlvmImplementation::lowerExpressionFrame098SpanFromArray(
     return true;
 }
 
+// EN: Freeze 3.0 P4: a span over a native array also records the array and its first index (fields 2
+//     and 3 of NativeSharp.Core.Span/ReadOnlySpan), so the span's accessors reach elements through
+//     the array and its liveness map. An empty span keeps them null and zero, like a raw span; a
+//     layout without those fields (an older library) is left as it was.
+// ES: Congelamiento 3.0 P4: un span sobre un arreglo nativo guarda tambien el arreglo y su primer
+//     indice (campos 2 y 3 de NativeSharp.Core.Span/ReadOnlySpan), asi que sus accesos llegan a los
+//     elementos por el arreglo y su mapa de vida. Un span vacio los deja nulos y en cero, como un span
+//     crudo; un layout sin esos campos (una biblioteca anterior) queda como estaba.
+void OopLlvmImplementation::storeArraySpanSource(
+        std::string_view spanTypeKey, LLVMValueRef slot, LLVMValueRef countIsZero,
+        LLVMValueRef object, LLVMValueRef index)
+{
+    const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, spanTypeKey);
+    if (layout == nullptr || layout->fields.size() < 4U) return;
+    LLVMValueRef nullArray = LLVMConstNull(LLVMPointerTypeInContext(context_, 0));
+    LLVMValueRef source = LLVMBuildSelect(builder_, countIsZero, nullArray, object, "span.source");
+    LLVMBuildStore(builder_, source, byteOffset(slot, layout->fields[2].offset, "span.source.addr"));
+    LLVMValueRef first = LLVMBuildTrunc(
+        builder_, index, LLVMInt32TypeInContext(context_), "span.first");
+    LLVMBuildStore(builder_, first, byteOffset(slot, layout->fields[3].offset, "span.first.addr"));
+}
+
 void OopLlvmImplementation::finishArraySpanFrame(
         const frontend::ProjectOopMirNode* current, LLVMValueRef object,
         LLVMValueRef index, LLVMValueRef count, LLVMValueRef countIsZero,
@@ -4614,8 +4710,10 @@ void OopLlvmImplementation::finishArraySpanFrame(
         values.push_back(failValue(error, "Span rest capture could not reserve storage"));
         return;
     }
+    LLVMBuildStore(builder_, LLVMConstNull(carrier), slot);
     LLVMBuildStore(builder_, data, byteOffset(slot, 0, "span.start.addr"));
     LLVMBuildStore(builder_, count, byteOffset(slot, 8, "span.count.addr"));
+    storeArraySpanSource(current->typeKey, slot, countIsZero, object, index);
     LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "span.init.value");
     if (carrierAlignment > 1U) LLVMSetAlignment(loaded, carrierAlignment);
     values.push_back(loaded);
@@ -4735,6 +4833,7 @@ void OopLlvmImplementation::finishFixedArraySpanFrame(
         values.push_back(failValue(error, "fixed-array Span rest capture could not reserve storage"));
         return;
     }
+    LLVMBuildStore(builder_, LLVMConstNull(carrier), slot);
     LLVMBuildStore(builder_, data, byteOffset(slot, 0, "fixed.span.start.addr"));
     LLVMBuildStore(builder_, countNative, byteOffset(slot, 8, "fixed.span.count.addr"));
     LLVMValueRef loaded = LLVMBuildLoad2(builder_, carrier, slot, "fixed.span.init.value");

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nativesharp/Compilation/PrecompiledSurfaceDemandCollection.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Compilation/ProjectLoadOptions.h"
 
@@ -53,4 +54,19 @@ bool preparePrecompiledProject(
     frontend::ProjectCompilation& compilation,
     std::string& error,
     const PrecompiledMaterializationGate& gate);
+
+// Same as the overload above. When `surfaceDemandSources` is not null, the names written by the
+// sources of the closed graph (read through it, or from disk when it has no text) select the
+// precompiled declarations that are materialized: each module outside the standard library
+// materializes only the declarations those names reach (see PrecompiledSurfaceReachability). A
+// source that may need compile-time expansion, or one that cannot be read or tokenized, keeps every
+// surface complete. Only code generation passes sources: analysis dumps, checks and the language
+// service keep the complete surfaces.
+bool preparePrecompiledProject(
+    ProjectGraph graph,
+    const ProjectLoadOptions& loadOptions,
+    frontend::ProjectCompilation& compilation,
+    std::string& error,
+    const PrecompiledMaterializationGate& gate,
+    const PrecompiledSurfaceSourceProvider* surfaceDemandSources);
 }

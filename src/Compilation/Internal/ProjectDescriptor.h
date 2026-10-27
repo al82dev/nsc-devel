@@ -28,5 +28,10 @@ struct ProjectDescriptor final
     std::vector<LibraryReferenceDescriptor> libraryReferences;
     std::vector<std::string> sdkReferences;
     std::vector<std::string> friendModules;
+    // EN: Freeze 3.0 C-05: an implicit (in-memory) project names its source files literally, so
+    //     they are taken directly instead of walking the directory, which may be any folder.
+    // ES: Congelamiento 3.0 C-05: un proyecto implicito (en memoria) nombra sus fuentes
+    //     literalmente; se toman directo en lugar de recorrer el directorio, que puede ser cualquiera.
+    bool implicitProject = false;
 };
 }

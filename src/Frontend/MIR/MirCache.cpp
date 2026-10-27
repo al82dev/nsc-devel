@@ -341,6 +341,7 @@ void appendMirNodeOptionals(std::string& out, const ProjectOopMirNode& node)
     appendMirOptionalEnum(out, node.conversionKind);
     appendMirOptionalU64(out, node.bitOffset);
     appendMirOptionalU64(out, node.bitWidth);
+    appendMirOptionalU64(out, node.replaySpillOffset);
 }
 
 void appendMirNodeVectors(std::string& out, const ProjectOopMirNode& node)
@@ -583,7 +584,8 @@ bool readMirNodeOptionals(internal::CachePayloadReader& reader, ProjectOopMirNod
         !readMirOptionalEnum(reader, node.localBorrowSourceKind) ||
         !readMirOptionalEnum(reader, node.conversionKind) ||
         !readMirOptionalU64(reader, node.bitOffset) ||
-        !readMirOptionalU64(reader, node.bitWidth))
+        !readMirOptionalU64(reader, node.bitWidth) ||
+        !readMirOptionalU64(reader, node.replaySpillOffset))
         return false;
     return true;
 }

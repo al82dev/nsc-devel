@@ -32,7 +32,7 @@ public class Harness
 {
     public static int Run()
     {
-        Counter c = new Counter(7);
+        raii Counter c = new Counter(7);
         Counter.Add(3);
         return c.Read();
     }

@@ -35,6 +35,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <chrono>
@@ -57,6 +58,21 @@ using method_body_detail::writeMethodBodyTrace;
 namespace
 {
 constexpr std::string_view kGenericRawNewAuxiliary = "stage52-generic-raw-new";
+
+// EN: True when `member` takes exactly the parameter types in `expected`, in order.
+// ES: Verdadero cuando `member` recibe exactamente los tipos de `expected`, en orden.
+template <std::size_t Count>
+bool allocatorMemberHasParameters(
+    const ClassMemberSymbol& member,
+    const std::array<std::string_view, Count>& expected)
+{
+    if (member.parameters.size() != Count) return false;
+    for (std::size_t index = 0; index < Count; ++index)
+    {
+        if (member.parameters[index].typeKey != expected[index]) return false;
+    }
+    return true;
+}
 }
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressionKindOffsetofExpression(
@@ -226,6 +242,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     ? namedTypeOrdinalForTypeKey(objectType)
                     : nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
                 site.argumentsTyped = true;
+                site.activeErrorHandlers = activeErrorHandlers();
+                site.enclosingErrorTypeKey = enclosingErrorTypeKey(methodMemberOrdinal);
                 bool argumentsValid = true;
                 for (const ast::AstNode* argument : expression->children())
                 {
@@ -294,11 +312,23 @@ void ProjectMethodBodyModel::configureAllocatorConstruction(
         !interfaceModel_->classImplementsInterface(*storageType, *allocatorTrait)) return;
     site.kind = ProjectConstructionSiteKind::Allocator;
     site.allocatorTypeKey = storage.typeKey;
+    // EN: Freeze 3.0 C-08: select the members that implement the frozen IAllocator protocol by
+    //     signature -- Allocate(long, int) and Deallocate(byte*, long, int). A class may also keep
+    //     other overloads (ArenaAllocator keeps the historic Allocator.Allocate(int)), and taking
+    //     the first member named "Allocate" would call the wrong one.
+    // ES: Congelamiento 3.0 C-08: se eligen por firma los miembros que implementan el protocolo
+    //     congelado de IAllocator -- Allocate(long, int) y Deallocate(byte*, long, int). Una clase
+    //     puede conservar otras sobrecargas (ArenaAllocator conserva Allocate(int) de Allocator), y
+    //     tomar el primer miembro llamado "Allocate" llamaria al equivocado.
+    const std::array<std::string_view, 2> allocateParameters = {"builtin:long", "builtin:int"};
+    const std::array<std::string_view, 3> deallocateParameters = {
+        "builtin:byte*", "builtin:long", "builtin:int"};
     for (const std::size_t memberOrdinal :
          memberModel_->findMembers(*storageType, "Allocate"))
     {
         if (memberOrdinal >= memberModel_->members().size()) continue;
-        if (memberModel_->members()[memberOrdinal].isStatic) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.isStatic || !allocatorMemberHasParameters(member, allocateParameters)) continue;
         site.allocatorAllocateMemberOrdinal = memberOrdinal;
         break;
     }
@@ -308,7 +338,8 @@ void ProjectMethodBodyModel::configureAllocatorConstruction(
          memberModel_->findMembers(*storageType, "Deallocate"))
     {
         if (memberOrdinal >= memberModel_->members().size()) continue;
-        if (memberModel_->members()[memberOrdinal].isStatic) continue;
+        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+        if (member.isStatic || !allocatorMemberHasParameters(member, deallocateParameters)) continue;
         site.allocatorDeallocateMemberOrdinal = memberOrdinal;
         break;
     }
@@ -443,6 +474,8 @@ ProjectMethodBodyModel::analyzeExpressionKindPlacementConstructionExpression(
     site.targetTypeKey = targetType;
     site.targetTypeOrdinal = nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
     site.argumentsTyped = true;
+    site.activeErrorHandlers = activeErrorHandlers();
+    site.enclosingErrorTypeKey = enclosingErrorTypeKey(methodMemberOrdinal);
     const NamedTypeDeclaration* target =
         nameLookup_->resolvedDeclaration(expression->typeSyntax());
     const bool constructible = target != nullptr &&
@@ -909,12 +942,33 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         case ast::AstNodeKind::DeleteExpression:
         {
             bool deletesRaiiLocal = false;
+            // EN: Freeze 3.0 DEC-06: `delete[]` of a local declared `owned T[]` consumes it. The
+            //     local is moved-from afterwards (a later read or delete is a use of a moved value),
+            //     the operation clears its slot and the lexical cleanup skips it, so it is destroyed
+            //     exactly once on every path. `raii T[]` keeps lexical cleanup as its only owner.
+            // ES: Congelamiento 3.0 DEC-06: `delete[]` de un local declarado `owned T[]` lo consume.
+            //     Despues el local queda movido (leerlo o borrarlo otra vez es usar un valor movido),
+            //     la operacion vacia su slot y la limpieza lexica lo omite, asi se destruye
+            //     exactamente una vez en todo camino. `raii T[]` conserva la limpieza lexica como
+            //     unico dueno.
+            std::optional<std::size_t> consumedOwnedArrayLocal;
             if (expression->first() != nullptr &&
                 expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
             {
                 const std::optional<ScopeName> target = lookupScopeName(scopeOrdinal, expression->first()->text());
                 deletesRaiiLocal = target.has_value() && target->kind == ScopeNameKind::Local &&
                     target->semanticOrdinal < locals_.size() && locals_[target->semanticOrdinal].isRaii;
+                if (deletesRaiiLocal)
+                {
+                    const MethodLocalSymbol& local = locals_[target->semanticOrdinal];
+                    const bool ownedArrayLocal = expression->flag() && !local.isPinned &&
+                        ProjectTypeConversion::isNativeArray(local.typeKey) && local.syntax != nullptr &&
+                        local.syntax->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
+                        local.syntax->typeSyntax() != nullptr &&
+                        local.syntax->typeSyntax()->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::Owned;
+                    if (ownedArrayLocal) consumedOwnedArrayLocal = target->semanticOrdinal;
+                    deletesRaiiLocal = !ownedArrayLocal;
+                }
                 if (deletesRaiiLocal)
                 {
                     diagnostics.report(
@@ -926,6 +980,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             const ExpressionResult operand = analyzeExpression(
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            const bool parameterConsumable = !operand.valid ||
+                consumeDeletedOwnedParameter(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            recordPlainArrayLocalDelete(expression, scopeOrdinal);
+            bool consumesBorrowedOwner = false;
+            if (consumedOwnedArrayLocal.has_value() && operand.valid)
+            {
+                const std::size_t ordinal = *consumedOwnedArrayLocal;
+                consumesBorrowedOwner = hasActiveBorrowOfOwnerLocal(ordinal, scopeOrdinal);
+                if (consumesBorrowedOwner)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        expression->range(),
+                        "cannot delete[] owned local '" + locals_[ordinal].name +
+                            "' while a borrowed local is alive");
+                }
+                else
+                {
+                    arrayDeleteClearsOwnedField_.insert(expression);
+                    maybeMovedRaiiLocals_.erase(ordinal);
+                    movedRaiiLocals_.insert(ordinal);
+                    invalidateHistoricalBorrowsOfOwnerLocal(ordinal);
+                }
+            }
             const ClassMemberSymbol* context = methodSymbol(methodMemberOrdinal);
             const bool deletesCurrentThis = context != nullptr &&
                 context->kind == ClassMemberKind::Destructor &&
@@ -971,6 +1050,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     deletedMember.declaredOwnership == sema::OwnershipKind::Owned &&
                     (isReferenceTypeKey(deletedMember.declaredTypeKey) ||
                      deletedMember.declaredTypeKey == "builtin:string");
+                // EN: Freeze 3.0 (owned arrays): an owned array field is released by its container
+                //     now; `delete[]` on it stays the manual spelling, and it clears the field.
+                // ES: Congelamiento 3.0 (arreglos owned): el contenedor ahora libera un campo de
+                //     arreglo owned; `delete[]` sobre el sigue siendo la forma manual, y vacia el campo.
+                if (deletedMember.kind == ClassMemberKind::Field && !deletedMember.isStatic &&
+                    deletedMember.declaredOwnership == sema::OwnershipKind::Owned &&
+                    ProjectTypeConversion::isNativeArray(deletedMember.declaredTypeKey))
+                    arrayDeleteClearsOwnedField_.insert(expression);
                 if (deletesOwnedField)
                 {
                     diagnostics.report(
@@ -984,13 +1071,68 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             result.typeKey = "builtin:void";
             result.valid = operand.valid && !deletesCurrentThis && !deletesRaiiLocal &&
-                !deletesOwnedField;
+                !deletesOwnedField && !consumesBorrowedOwner && parameterConsumable;
             break;
         }
         default:
             break;
     }
     return result;
+}
+
+/// EN: Freeze 3.0 (item 130, F2). Marks `delete[] a` when `a` is a local declared without owned/raii whose
+///     elements are class or interface references: the array does not own them, so only the block is
+///     released. Struct elements (DEC-11) and owned/raii locals keep their behavior.
+/// ES: Congelamiento 3.0 (elemento 130, F2). Marca `delete[] a` cuando `a` es un local declarado sin
+///     owned/raii cuyos elementos son referencias de clase o interfaz: el arreglo no los posee, asi que
+///     solo se libera el bloque. Los elementos struct (DEC-11) y los locales owned/raii no cambian.
+void ProjectMethodBodyModel::recordPlainArrayLocalDelete(
+    const ast::AstNode* expression,
+    std::size_t scopeOrdinal)
+{
+    const ast::AstNode* operand = expression->first();
+    if (!expression->flag() || operand == nullptr ||
+        operand->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const std::optional<ScopeName> target = lookupScopeName(scopeOrdinal, operand->text());
+    if (!target.has_value() || target->kind != ScopeNameKind::Local ||
+        target->semanticOrdinal >= locals_.size()) return;
+    const MethodLocalSymbol& local = locals_[target->semanticOrdinal];
+    if (local.isRaii || local.isReference) return;
+    const std::optional<std::string> element = ProjectTypeConversion::nativeArrayElementType(local.typeKey);
+    if (!element.has_value() || !isReferenceTypeKey(*element)) return;
+    arrayDeleteKeepsElements_.insert(expression);
+}
+
+/// EN: Freeze 3.0 (item 121). `delete p` of an owned class or interface parameter consumes `p`, like
+///     move(p): it is moved-from afterwards and the HIR clears its slot before destruction. Returns
+///     false after reporting a delete of a moved parameter or of one a borrowed local still uses.
+/// ES: Congelamiento 3.0 (elemento 121). `delete p` de un parametro owned de clase o interfaz consume
+///     `p`, como move(p): despues queda movido y el HIR vacia su slot antes de la destruccion. Devuelve
+///     false despues de reportar el delete de un parametro movido o de uno que un local prestado usa.
+bool ProjectMethodBodyModel::consumeDeletedOwnedParameter(
+    const ast::AstNode* expression,
+    std::size_t methodMemberOrdinal,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    const ast::AstNode* operand = expression->first();
+    if (expression->flag() || operand == nullptr ||
+        operand->kind() != ast::AstNodeKind::IdentifierExpression) return true;
+    const std::optional<ScopeName> target = lookupScopeName(scopeOrdinal, operand->text());
+    const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+    if (!target.has_value() || target->kind != ScopeNameKind::Parameter || method == nullptr ||
+        target->semanticOrdinal >= method->parameters.size()) return true;
+    const MethodParameterSymbol& parameter = method->parameters[target->semanticOrdinal];
+    if (parameter.ownership != sema::OwnershipKind::Owned || !isReferenceTypeKey(parameter.typeKey))
+        return true;
+    if (!validateParameterMoveState(
+            parameter, expression, target->semanticOrdinal, scopeOrdinal, true, diagnostics))
+        return false;
+    deleteClearsOwnedParameter_.insert(expression);
+    maybeMovedOwnedParameters_.erase(target->semanticOrdinal);
+    movedOwnedParameters_.insert(target->semanticOrdinal);
+    invalidateHistoricalBorrowsOfOwnedParameter(target->semanticOrdinal);
+    return true;
 }
 
 bool ProjectMethodBodyModel::validateDestroyTarget(

@@ -21,7 +21,7 @@ void OopLlvmImplementation::emitCleanupGuardBranch(
             (std::string(namePrefix) + ".isnull").c_str());
         LLVMBuildCondBr(builder_, skip, doneBlock, destroyBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
         // Cleared BEFORE the destructor runs: that is what makes a cleanup entered twice destroy
         // only once, and it keeps the slot from holding a dangling pointer afterwards on any path
         // that legitimately survives the cleanup.
@@ -160,14 +160,14 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
             {
                 activeCleanupRegions_.push_back(savedActive[index]);
             }
-            LLVMPositionBuilderAtEnd(builder_, block);
+            enterBlock(block);
             LLVMValueRef cleanupPad = LLVMBuildCleanupPad(
                 builder_, parentPad, nullptr, 0, "eh.cleanuppad");
             if (cleanupPad == nullptr)
             {
                 activeCleanupRegions_ = savedActive;
                 funcletStack_ = savedFunclets;
-                LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+                enterBlock(sourceBlock);
                 error = "Stage 45.10 failed to create cleanuppad";
                 return nullptr;
             }
@@ -178,7 +178,7 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
             {
                 activeCleanupRegions_ = savedActive;
                 funcletStack_ = savedFunclets;
-                LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+                enterBlock(sourceBlock);
                 return nullptr;
             }
             if (!terminated())
@@ -192,7 +192,7 @@ LLVMBasicBlockRef OopLlvmImplementation::emitExceptionalCleanupChain(
 
         activeCleanupRegions_ = savedActive;
         funcletStack_ = savedFunclets;
-        LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+        enterBlock(sourceBlock);
         return next;
     }
 
@@ -214,7 +214,7 @@ bool OopLlvmImplementation::resolveExceptionalCleanupPath(
             if (cleanupFound == cleanupRegions_.end() || cleanupFound->second == nullptr ||
                 !regionIndex.has_value())
             {
-                LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+                enterBlock(sourceBlock);
                 error = "Stage 45.10 exceptional cleanup path references an inactive MIR cleanup region";
                 return false;
             }
@@ -306,7 +306,7 @@ LLVMValueRef OopLlvmImplementation::buildPotentiallyThrowingCall(
             error = "Stage 45.10 failed to emit invoke for a potentially throwing call";
             return nullptr;
         }
-        LLVMPositionBuilderAtEnd(builder_, normalBlock);
+        enterBlock(normalBlock);
         return invoke;
     }
 
@@ -365,7 +365,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
             builder_, LLVMIntNE, map, LLVMConstNull(ptr), "dispose.interface.map.nonnull");
         LLVMBuildCondBr(builder_, hasMap, mapBlock, missingBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, mapBlock);
+        enterBlock(mapBlock);
         LLVMValueRef countAddress = LLVMBuildStructGEP2(
             builder_, interfaceMapType_, map, 0, "dispose.interface.map.count.addr");
         LLVMValueRef count = LLVMBuildLoad2(builder_, i64, countAddress, "dispose.interface.map.count");
@@ -374,7 +374,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
         LLVMValueRef entries = LLVMBuildLoad2(builder_, ptr, entriesAddress, "dispose.interface.map.entries");
         LLVMBuildBr(builder_, searchBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, searchBlock);
+        enterBlock(searchBlock);
         LLVMValueRef index = LLVMBuildPhi(builder_, i64, "dispose.interface.map.index");
         LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
         LLVMValueRef initialValues[] = {zero};
@@ -384,7 +384,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
             builder_, LLVMIntULT, index, count, "dispose.interface.map.inrange");
         LLVMBuildCondBr(builder_, inRange, probeBlock, missingBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, probeBlock);
+        enterBlock(probeBlock);
         LLVMValueRef entryIndices[] = {index};
         LLVMValueRef entry = LLVMBuildGEP2(
             builder_, interfaceMapEntryType_, entries, entryIndices, 1, "dispose.interface.entry");
@@ -396,7 +396,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
             builder_, LLVMIntEQ, id, wanted, "dispose.interface.entry.matches");
         LLVMBuildCondBr(builder_, matches, foundBlock, nextBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, nextBlock);
+        enterBlock(nextBlock);
         LLVMValueRef one = LLVMConstInt(i64, 1, 0);
         LLVMValueRef nextIndex = LLVMBuildAdd(builder_, index, one, "dispose.interface.map.next");
         LLVMBuildBr(builder_, searchBlock);
@@ -404,7 +404,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
         LLVMBasicBlockRef nextBlocks[] = {nextBlock};
         LLVMAddIncoming(index, nextValues, nextBlocks, 1);
 
-        LLVMPositionBuilderAtEnd(builder_, missingBlock);
+        enterBlock(missingBlock);
         LLVMValueRef reason = LLVMConstInt(
             LLVMInt32TypeInContext(context_),
             static_cast<std::uint64_t>(LlvmTrapReason::InterfaceDispatchFailure), 0);
@@ -412,7 +412,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeSearch(
         buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
         LLVMBuildUnreachable(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, foundBlock);
+        enterBlock(foundBlock);
         return emitInterfaceDisposeTarget(receiver, entry, slot, doneBlock, error);
     }
 
@@ -443,7 +443,7 @@ bool OopLlvmImplementation::emitInterfaceDisposeTarget(
             return false;
         }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -470,7 +470,7 @@ bool OopLlvmImplementation::emitUsingDispose(const frontend::ProjectOopMirNode* 
         LLVMBasicBlockRef doneBlock = appendBlock("using.dispose.done");
         LLVMBuildCondBr(builder_, isNull, doneBlock, disposeBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, disposeBlock);
+        enterBlock(disposeBlock);
         if (node->interfaceCleanupDispatch)
         {
             if (!emitInterfaceDispose(resource, *node->disposeContractMemberOrdinal, error)) return false;
@@ -500,8 +500,34 @@ bool OopLlvmImplementation::emitUsingDispose(const frontend::ProjectOopMirNode* 
                 return false;
             }
         }
+        // EN: Freeze 3.0 C-01: an owning using local (initialized by `new`) is destroyed right
+        //     after Dispose. The slot is cleared before the release entry runs, the same guard
+        //     emitRaiiDestroy uses, so a cleanup entered twice disposes and destroys once.
+        // ES: Congelamiento 3.0 C-01: un local de using dueno (inicializado con `new`) se destruye
+        //     justo despues de Dispose. El slot se limpia antes de la entrada de liberacion, la
+        //     misma guarda de emitRaiiDestroy, asi que un cleanup que entra dos veces lo hace una.
+        if (node->automaticDestruction && !terminated())
+        {
+            if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
+                return fail(error, "freeze 3.0 owning using cleanup has no descriptor ABI");
+            LLVMBasicBlockRef releaseBlock = appendBlock("using.release");
+            emitCleanupGuardBranch(
+                localFound->second, resource, releaseBlock, doneBlock, "using.owner");
+            LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, resource, "using.descriptor");
+            LLVMValueRef entryAddress = LLVMBuildStructGEP2(
+                builder_, descriptorType_, descriptor, 5U, "using.release.entry.addr");
+            LLVMValueRef releaseEntry = LLVMBuildLoad2(
+                builder_, ptr, entryAddress, "using.release.entry");
+            LLVMValueRef releaseArguments[] = {resource};
+            if (buildPotentiallyThrowingCall(
+                    destructionEntryFunctionType_, releaseEntry, releaseArguments, 1, "", error) ==
+                    nullptr && !error.empty())
+            {
+                return false;
+            }
+        }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -526,18 +552,134 @@ bool OopLlvmImplementation::emitNativeArrayDestroy(
         LLVMBasicBlockRef destroyBlock = appendBlock(prefix + ".destroy");
         LLVMBasicBlockRef doneBlock = appendBlock(prefix + ".done");
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
 
         if (destroyElements && requiresOwnedDestruction(*elementType))
         {
             if (!emitNativeArrayElementDestruction(
                     array, arrayTypeKey, *elementType, prefix, destroyBlock, error)) return false;
         }
+        else if (destroyElements && memberModel_ != nullptr &&
+                 memberModel_->typeRequiresValueDrop(*elementType))
+        {
+            if (!emitNativeArrayValueElementDrop(array, arrayTypeKey, *elementType, prefix, error))
+                return false;
+        }
 
         LLVMValueRef arguments[] = {array};
         buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
+        return true;
+    }
+
+// EN: Freeze 3.0 C-12: an owning array of structs with a destructor or owned fields destroyed only
+//     its buffer, so every element's resources leaked. The elements are dropped in place, last
+//     to first, before the buffer is released; a moved-out element was left zeroed by its move.
+//     Freeze 3.0 DEC-11: only live elements are dropped (see the live bits after the data).
+// ES: Congelamiento 3.0 C-12: un arreglo dueno de structs con destructor o campos owned solo
+//     liberaba su buffer, asi que los recursos de cada elemento se fugaban. Los elementos se
+//     destruyen en su lugar, del ultimo al primero, antes de liberar el buffer; un elemento movido
+//     quedo en cero por su move.
+bool OopLlvmImplementation::emitNativeArrayValueElementDrop(
+        LLVMValueRef array,
+        std::string_view arrayTypeKey,
+        std::string_view elementType,
+        const std::string& prefix,
+        std::string& error)
+{
+        const auto [elementSize, elementAlignment] = captureValueLayout(elementType, error);
+        if (!error.empty()) return false;
+        if (elementSize == 0 || elementAlignment == 0)
+            return fail(error, "Freeze 3.0 C-12 array element has no value layout");
+        const std::size_t rank = frontend::ProjectTypeConversion::nativeArrayRank(arrayTypeKey);
+        const std::uint64_t header = rank > 1 ? 8U * (1U + 2U * rank) : 8U;
+        const std::uint64_t dataOffset = (header + elementAlignment - 1U) / elementAlignment * elementAlignment;
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMValueRef length = LLVMBuildLoad2(builder_, i64, array, (prefix + ".values.length").c_str());
+        LLVMBasicBlockRef entryBlock = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef conditionBlock = appendBlock(prefix + ".values.cond");
+        LLVMBasicBlockRef bodyBlock = appendBlock(prefix + ".values.body");
+        LLVMBasicBlockRef doneBlock = appendBlock(prefix + ".values.done");
+        LLVMBuildBr(builder_, conditionBlock);
+
+        enterBlock(conditionBlock);
+        LLVMValueRef remaining = LLVMBuildPhi(builder_, i64, (prefix + ".values.remaining").c_str());
+        LLVMAddIncoming(remaining, &length, &entryBlock, 1);
+        LLVMValueRef more = LLVMBuildICmp(
+            builder_, LLVMIntNE, remaining, LLVMConstInt(i64, 0, 0), (prefix + ".values.more").c_str());
+        LLVMBuildCondBr(builder_, more, bodyBlock, doneBlock);
+
+        enterBlock(bodyBlock);
+        LLVMValueRef index = LLVMBuildSub(
+            builder_, remaining, LLVMConstInt(i64, 1, 0), (prefix + ".values.index").c_str());
+        LLVMValueRef offset = LLVMBuildAdd(
+            builder_,
+            LLVMBuildMul(builder_, index, LLVMConstInt(i64, elementSize, 0), (prefix + ".values.scaled").c_str()),
+            LLVMConstInt(i64, dataOffset, 0), (prefix + ".values.offset").c_str());
+        LLVMValueRef indices[] = {offset};
+        LLVMValueRef address = LLVMBuildGEP2(
+            builder_, LLVMInt8TypeInContext(context_), array, indices, 1, (prefix + ".values.addr").c_str());
+        // EN: Freeze 3.0 DEC-11: only a live element is dropped; a never-written, moved-out or
+        //     deleted one is skipped.
+        // ES: Congelamiento 3.0 DEC-11: solo se destruye un elemento vivo; uno nunca escrito, movido o
+        //     borrado se salta.
+        const OopLlvmArrayElementLiveness liveness =
+            arrayElementLiveness(array, index, dataOffset, elementSize);
+        LLVMBasicBlockRef dropBlock = appendBlock(prefix + ".values.drop");
+        LLVMBasicBlockRef nextBlock = appendBlock(prefix + ".values.next");
+        LLVMBuildCondBr(builder_, arrayElementIsAlive(liveness), dropBlock, nextBlock);
+        enterBlock(dropBlock);
+        if (!emitValueDropAddress(address, elementType, prefix + ".value", error)) return false;
+        if (!terminated()) LLVMBuildBr(builder_, nextBlock);
+        enterBlock(nextBlock);
+        LLVMBasicBlockRef latch = LLVMGetInsertBlock(builder_);
+        LLVMBuildBr(builder_, conditionBlock);
+        LLVMAddIncoming(remaining, &index, &latch, 1);
+        enterBlock(doneBlock);
+        return true;
+    }
+
+// EN: Freeze 3.0 C-12: `delete items[i]` of a struct element that needs a drop destroys the element
+//     in place and zeroes its slot, so the slot holds the default value afterwards.
+// ES: Congelamiento 3.0 C-12: `delete items[i]` de un elemento struct que requiere drop destruye el
+//     elemento en su lugar y pone su slot en cero, asi el slot queda con el valor por defecto.
+// EN: Freeze 3.0 DEC-11: with `liveness`, only a live element is dropped, zeroed and marked dead;
+//     deleting a dead one does nothing.
+// ES: Congelamiento 3.0 DEC-11: con `liveness`, solo un elemento vivo se destruye, se pone en cero
+//     y queda muerto; borrar uno muerto no hace nada.
+bool OopLlvmImplementation::emitValueElementDelete(
+        LLVMValueRef address,
+        std::string_view elementType,
+        const std::optional<OopLlvmArrayElementLiveness>& liveness,
+        std::string& error)
+{
+        const auto [elementSize, elementAlignment] = captureValueLayout(elementType, error);
+        if (!error.empty()) return false;
+        if (elementSize == 0 || elementAlignment == 0 || memsetFunction_ == nullptr)
+            return fail(error, "Freeze 3.0 C-12 deleted element has no value layout");
+        LLVMBasicBlockRef doneBlock = nullptr;
+        if (liveness.has_value())
+        {
+            LLVMBasicBlockRef deleteBlock = appendBlock("delete.value.alive");
+            doneBlock = appendBlock("delete.value.done");
+            LLVMBuildCondBr(builder_, arrayElementIsAlive(*liveness), deleteBlock, doneBlock);
+            enterBlock(deleteBlock);
+        }
+        if (!emitValueDropAddress(address, elementType, "delete.value", error)) return false;
+        if (!terminated())
+        {
+            LLVMValueRef arguments[] = {
+                address,
+                LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+                LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0),
+                LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+            buildNoUnwindCall(memsetFunctionType_, memsetFunction_, arguments, 4, "");
+            if (liveness.has_value()) setArrayElementAlive(*liveness, false);
+        }
+        if (doneBlock == nullptr) return true;
+        if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -557,7 +699,7 @@ bool OopLlvmImplementation::emitNativeArrayElementDestruction(
         LLVMBasicBlockRef releaseBlock = appendBlock(prefix + ".release");
         LLVMBuildBr(builder_, conditionBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, conditionBlock);
+        enterBlock(conditionBlock);
         LLVMValueRef index = LLVMBuildPhi(builder_, i64, (prefix + ".index").c_str());
         LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
         LLVMAddIncoming(index, &zero, &destroyBlock, 1);
@@ -565,7 +707,7 @@ bool OopLlvmImplementation::emitNativeArrayElementDestruction(
             builder_, LLVMIntULT, index, length, (prefix + ".inrange").c_str());
         LLVMBuildCondBr(builder_, inRange, bodyBlock, releaseBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        enterBlock(bodyBlock);
         LLVMValueRef scaled = LLVMBuildMul(
             builder_, index, LLVMConstInt(i64, 8, 0), (prefix + ".scaled").c_str());
         const std::size_t rank = frontend::ProjectTypeConversion::nativeArrayRank(arrayTypeKey);
@@ -591,7 +733,7 @@ bool OopLlvmImplementation::emitNativeArrayElementDestruction(
             LLVMAddIncoming(index, &next, &incrementBlock, 1);
         }
 
-        LLVMPositionBuilderAtEnd(builder_, releaseBlock);
+        enterBlock(releaseBlock);
         return true;
     }
 
@@ -611,7 +753,7 @@ bool OopLlvmImplementation::emitOwnedPointerDestroy(
         LLVMBasicBlockRef destroyBlock = appendBlock(prefix + ".destroy");
         LLVMBasicBlockRef doneBlock = appendBlock(prefix + ".done");
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
 
         if (isDelegateReferenceType(nameLookup_, typeKey))
         {
@@ -639,7 +781,7 @@ bool OopLlvmImplementation::emitOwnedPointerDestroy(
                 return false;
         }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -721,7 +863,7 @@ bool OopLlvmImplementation::emitVariantDropCases(
         for (std::size_t ordinal = 0; ordinal < dropCases.size(); ++ordinal)
         {
             const DropCase& item = dropCases[ordinal];
-            LLVMPositionBuilderAtEnd(builder_, blocks[ordinal]);
+            enterBlock(blocks[ordinal]);
             LLVMValueRef payloadAddress = byteOffset(
                 address, payloadField.offset + item.field->offset,
                 (std::string(stem) + ".payload.addr").c_str());
@@ -745,7 +887,7 @@ bool OopLlvmImplementation::emitVariantDropCases(
                 return false;
             if (!terminated()) LLVMBuildBr(builder_, done);
         }
-        LLVMPositionBuilderAtEnd(builder_, done);
+        enterBlock(done);
         return true;
     }
 
@@ -941,13 +1083,42 @@ bool OopLlvmImplementation::emitValueDrop(
         LLVMBasicBlockRef destroyBlock = appendBlock(std::string(stem) + ".destroy");
         LLVMBasicBlockRef doneBlock = appendBlock(std::string(stem) + ".done");
         LLVMBuildCondBr(builder_, live, destroyBlock, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
         LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag);
         if (!emitValueDropAddress(storage, node->typeKey, stem, error)) return false;
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
+
+// EN: Freeze 3.0 (plan item 135). Allocas are not zero-initialized and a branch region stays active after the
+//     join, so a full expression whose borrow crosses a `?:` or `??` (booleanValue) clears every pointer owner
+//     slot it holds before evaluating anything. emitRaiiDestroy already skips a null owner. A value-drop struct
+//     has its own drop flag, and a lambda body belongs to another function, so neither is touched.
+// ES: Congelamiento 3.0 (elemento 135 del plan). Los allocas no se inicializan en cero y una region de rama sigue
+//     activa despues de la union, asi que una expresion completa cuyo prestamo cruza un `?:` o `??`
+//     (booleanValue) pone en null cada slot de dueno puntero que contiene antes de evaluar nada. emitRaiiDestroy
+//     ya omite un dueno null. Un struct con drop tiene su propia bandera, y el cuerpo de una lambda pertenece a
+//     otra funcion, asi que ninguno se toca.
+void OopLlvmImplementation::clearTemporaryOwnerSlots(const frontend::ProjectOopMirNode& fullExpression)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+    std::vector<const frontend::ProjectOopMirNode*> pending{&fullExpression};
+    while (!pending.empty())
+    {
+        const frontend::ProjectOopMirNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind == frontend::ProjectOopMirNodeKind::LambdaCreate) continue;
+        for (const auto& child : node->children) pending.push_back(child.get());
+        if (node->kind != frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow || !node->localOrdinal.has_value())
+            continue;
+        if (!requiresOwnedDestruction(node->typeKey)) continue;
+        if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(node->typeKey)) continue;
+        const auto storage = localStorage_.find(*node->localOrdinal);
+        if (storage == localStorage_.end() || storage->second == nullptr) continue;
+        LLVMBuildStore(builder_, LLVMConstNull(ptr), storage->second);
+    }
+}
 
 bool OopLlvmImplementation::emitRaiiDestroy(const frontend::ProjectOopMirNode* node, std::string& error)
 {
@@ -1030,7 +1201,7 @@ bool OopLlvmImplementation::emitRaiiDestroy(const frontend::ProjectOopMirNode* n
             return true;
         }
         LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -1060,7 +1231,7 @@ bool OopLlvmImplementation::emitRaiiSpecialDestroy(
             LLVMValueRef arguments[] = {value};
             buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
             LLVMBuildBr(builder_, doneBlock);
-            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            enterBlock(doneBlock);
             return true;
         }
         else
@@ -1069,9 +1240,46 @@ bool OopLlvmImplementation::emitRaiiSpecialDestroy(
             return true;
         }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
+
+// EN: Freeze 3.0 C-14: the frame slot of a parameter a $poll/$moveNext captured, or null. The poll's
+//     own parameter 0 is `self`; the original parameters live in the frame the constructor filled.
+// ES: Congelamiento 3.0 C-14: el slot del frame de un parametro capturado por un $poll/$moveNext, o
+//     null. El parametro 0 del poll es `self`; los parametros originales viven en el frame que llenó
+//     el constructor.
+LLVMValueRef OopLlvmImplementation::capturedParameterSlot(
+        std::size_t parameterOrdinal, std::string_view typeKey)
+{
+        if (currentMirFunction_ == nullptr || currentMirFunction_->asyncFrameParameters.empty() ||
+            parameterStorage_.empty()) return nullptr;
+        const auto* captured = mirModel_.asyncFrameParameter(
+            *currentMirFunction_, parameterOrdinal, std::string(typeKey));
+        if (captured == nullptr) return nullptr;
+        const auto& [ordinal, offset, capturedType] = *captured;
+        if (ordinal != parameterOrdinal || capturedType != typeKey) return nullptr;
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef self = LLVMBuildLoad2(builder_, ptr, parameterStorage_[0], "captured.self");
+        if (currentMirFunction_->mangledName.ends_with("$moveNext$poll"))
+            self = LLVMBuildLoad2(builder_, ptr, byteOffset(self, 8, "captured.iter.addr"), "captured.iter");
+        LLVMValueRef frame = LLVMBuildLoad2(
+            builder_, ptr, byteOffset(self, 8, "captured.frame.addr"), "captured.frame");
+        return byteOffset(frame, offset, "captured.slot");
+}
+
+bool OopLlvmImplementation::destroyCapturedOwnedParameter(
+        LLVMValueRef slot, std::string_view typeKey, std::string& error)
+{
+        if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(typeKey))
+            return emitValueDropAddress(slot, typeKey, "captured.value", error);
+        if (!requiresOwnedDestruction(typeKey)) return true;
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef value = LLVMBuildLoad2(builder_, ptr, slot, "captured.owned");
+        // Clear first: the slot never reaches a second destruction.
+        LLVMBuildStore(builder_, LLVMConstNull(ptr), slot);
+        return emitOwnedPointerDestroy(value, typeKey, "captured.owned.destroy", error);
+}
 
 bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOopMirNode* node, std::string& error)
 {
@@ -1080,6 +1288,12 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
         {
             return fail(error, "Stage 50.8 owned-parameter cleanup is missing parameter/region identity");
         }
+        // EN: Freeze 3.0 C-14: in a poll the owned parameter lives in the frame; reading parameter
+        //     0 here destroyed the future itself as if it were the parameter (a crash).
+        // ES: Congelamiento 3.0 C-14: en un poll el parametro owned vive en el frame; leer el
+        //     parametro 0 aqui destruia el future mismo como si fuera el parametro (un crash).
+        if (LLVMValueRef captured = capturedParameterSlot(*node->parameterOrdinal, node->typeKey))
+            return destroyCapturedOwnedParameter(captured, node->typeKey, error);
         const auto found = parameterStorage_.find(*node->parameterOrdinal);
         if (found == parameterStorage_.end() || found->second == nullptr)
         {
@@ -1132,7 +1346,7 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
         {
             if (!emitDelegateDestroy(value, "owned.param.delegate", error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            enterBlock(doneBlock);
             return true;
         }
         if (frontend::ProjectTypeConversion::isNativeArray(node->typeKey))
@@ -1140,7 +1354,7 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
             if (!emitNativeArrayDestroy(
                     value, node->typeKey, "owned.param.array", true, error)) return false;
             if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            enterBlock(doneBlock);
             return true;
         }
         if (node->typeKey == "builtin:string")
@@ -1148,7 +1362,7 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
             LLVMValueRef arguments[] = {value};
             buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
             LLVMBuildBr(builder_, doneBlock);
-            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            enterBlock(doneBlock);
             return true;
         }
         if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
@@ -1168,7 +1382,7 @@ bool OopLlvmImplementation::emitOwnedParameterDestroy(const frontend::ProjectOop
             return false;
         }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return true;
     }
 
@@ -1227,12 +1441,82 @@ bool OopLlvmImplementation::structuredExitLeavesCatchBody(
         return targetLoopIndex < activeCatchExceptions_.back().loopDepthAtEntry;
     }
 
-void OopLlvmImplementation::emitCatchBodyExceptionClear()
+bool OopLlvmImplementation::emitCatchBodyExceptionClear(
+        bool isReturn, std::size_t targetLoopIndex, std::string& error)
 {
         LLVMBasicBlockRef leaveBlock = appendBlock("eh.catch.leave");
         LLVMBuildBr(builder_, leaveBlock);
-        LLVMPositionBuilderAtEnd(builder_, leaveBlock);
+        enterBlock(leaveBlock);
         buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+        // EN: Freeze 3.0 C-01: every catch body this exit leaves releases its exception. The
+        //     copy keeps the frames stable while the release calls are lowered.
+        // ES: Congelamiento 3.0 C-01: cada cuerpo de catch que esta salida abandona libera su
+        //     excepcion. La copia mantiene estables los marcos mientras se bajan las liberaciones.
+        const std::vector<ActiveCatchBody> frames = activeCatchExceptions_;
+        for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
+        {
+            if (!isReturn && targetLoopIndex >= frame->loopDepthAtEntry) break;
+            if (frame->ownerSlot == nullptr) continue;
+            if (!emitCaughtExceptionRelease(frame->ownerSlot, error)) return false;
+            if (terminated()) return true;
+        }
+        return true;
+    }
+
+bool OopLlvmImplementation::emitCaughtExceptionRelease(LLVMValueRef ownerSlot, std::string& error)
+{
+        if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
+            return fail(error, "freeze 3.0 catch ownership has no descriptor ABI");
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef owned = LLVMBuildLoad2(builder_, ptr, ownerSlot, "eh.catch.owned");
+        LLVMBasicBlockRef releaseBlock = appendBlock("eh.catch.release");
+        LLVMBasicBlockRef doneBlock = appendBlock("eh.catch.release.done");
+        emitCleanupGuardBranch(ownerSlot, owned, releaseBlock, doneBlock, "eh.catch.owner");
+        LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, owned, "eh.catch.descriptor");
+        LLVMValueRef entryAddress = LLVMBuildStructGEP2(
+            builder_, descriptorType_, descriptor, 5U, "eh.catch.release.entry.addr");
+        LLVMValueRef releaseEntry = LLVMBuildLoad2(builder_, ptr, entryAddress, "eh.catch.release.entry");
+        LLVMValueRef arguments[] = {owned};
+        if (buildPotentiallyThrowingCall(
+                destructionEntryFunctionType_, releaseEntry, arguments, 1, "", error) == nullptr &&
+            !error.empty()) return false;
+        if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+        enterBlock(doneBlock);
+        return true;
+    }
+
+void OopLlvmImplementation::emitCatchOwnershipHandover(LLVMValueRef value, const ActiveCatchBody& frame)
+{
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef owned = LLVMBuildLoad2(builder_, ptr, frame.ownerSlot, "eh.catch.owned");
+        LLVMValueRef same = LLVMBuildICmp(builder_, LLVMIntEQ, owned, value, "eh.catch.rethrown");
+        LLVMBasicBlockRef handOver = appendBlock("eh.catch.handover");
+        LLVMBasicBlockRef next = appendBlock("eh.catch.handover.done");
+        LLVMBuildCondBr(builder_, same, handOver, next);
+        enterBlock(handOver);
+        LLVMBuildStore(builder_, LLVMConstNull(ptr), frame.ownerSlot);
+        LLVMBuildBr(builder_, next);
+        enterBlock(next);
+    }
+
+bool OopLlvmImplementation::emitCatchOwnershipOnThrow(LLVMValueRef exception, std::string& error)
+{
+        const std::vector<ActiveCatchBody> frames = activeCatchExceptions_;
+        for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
+        {
+            if (frame->ownerSlot == nullptr) continue;
+            // EN: Throwing the caught object itself (`throw;` or `throw e;`) hands it over.
+            // ES: Lanzar el mismo objeto atrapado (`throw;` o `throw e;`) lo entrega.
+            emitCatchOwnershipHandover(exception, *frame);
+            // EN: A throw with no try of its own inside this body leaves it: the catch releases
+            //     the exception it still owns before the new one propagates.
+            // ES: Un throw sin un try propio dentro de este cuerpo sale de el: el catch libera la
+            //     excepcion que todavia posee antes de que la nueva se propague.
+            if (frame->handlerDepthAtEntry != exceptionHandlerStack_.size()) continue;
+            if (!emitCaughtExceptionRelease(frame->ownerSlot, error)) return false;
+            if (terminated()) return true;
+        }
+        return true;
     }
 
 }

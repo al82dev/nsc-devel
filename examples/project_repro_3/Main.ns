@@ -19,9 +19,8 @@ class Repro3
 {
     public static int Main()
     {
-        Holder3 h = new Holder3();
+        raii Holder3 h = new Holder3();
         h.Consume(7);
-        delete h;
         return 1;
     }
 }

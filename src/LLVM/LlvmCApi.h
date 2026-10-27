@@ -330,6 +330,10 @@ LLVMMetadataRef LLVMDIBuilderCreateUnionType(
     unsigned runtimeLanguage,
     const char* uniqueId,
     std::size_t uniqueIdLength);
+// ES: Tamaño y alineación de un tipo de depuración (arreglos fijos en OopLlvmDebugInfo.cpp).
+// EN: Size and alignment of a debug type (fixed arrays in OopLlvmDebugInfo.cpp).
+std::uint64_t LLVMDITypeGetSizeInBits(LLVMMetadataRef type);
+std::uint32_t LLVMDITypeGetAlignInBits(LLVMMetadataRef type);
 LLVMMetadataRef LLVMDIBuilderGetOrCreateSubrange(
     LLVMDIBuilderRef builder,
     std::int64_t lowerBound,
@@ -469,6 +473,30 @@ void LLVMInitializeX86Target();
 void LLVMInitializeX86TargetMC();
 void LLVMInitializeX86AsmParser();
 void LLVMInitializeX86AsmPrinter();
+// ES: Desensamblador de LLVM (llvm-c/Disassembler.h). CodeViewProcedureRanges lo usa para conocer las fronteras
+// de instruccion de cada funcion y ubicar su ultimo epilogo.
+// EN: LLVM's disassembler (llvm-c/Disassembler.h). CodeViewProcedureRanges uses it to know each function's
+// instruction boundaries and locate its last epilogue.
+void LLVMInitializeX86Disassembler();
+using LLVMDisasmContextRef = void*;
+using LLVMOpInfoCallback = int (*)(void* disassemblerInfo, std::uint64_t pc, std::uint64_t offset,
+    std::uint64_t operandSize, std::uint64_t instructionSize, int tagType, void* tagBuffer);
+using LLVMSymbolLookupCallback = const char* (*)(void* disassemblerInfo, std::uint64_t referenceValue,
+    std::uint64_t* referenceType, std::uint64_t referencePc, const char** referenceName);
+LLVMDisasmContextRef LLVMCreateDisasm(
+    const char* tripleName,
+    void* disassemblerInfo,
+    int tagType,
+    LLVMOpInfoCallback getOperandInfo,
+    LLVMSymbolLookupCallback symbolLookup);
+std::size_t LLVMDisasmInstruction(
+    LLVMDisasmContextRef context,
+    std::uint8_t* bytes,
+    std::uint64_t byteCount,
+    std::uint64_t pc,
+    char* outputString,
+    std::size_t outputStringSize);
+void LLVMDisasmDispose(LLVMDisasmContextRef context);
 void LLVMInitializeAArch64TargetInfo();
 void LLVMInitializeAArch64Target();
 void LLVMInitializeAArch64TargetMC();
@@ -518,17 +546,28 @@ LLVMErrorRef LLVMRunPasses(
 // the functions that actually declare a Windows SEH personality (LLVMHasPersonalityFn), instead
 // of promoting every -O0 local in the whole program -- see that function's own header comment
 // for why a module-wide mem2reg-at-O0 would be the wrong fix.
-LLVMErrorRef LLVMRunPassesOnFunction(
-    LLVMValueRef function,
-    const char* passes,
-    LLVMTargetMachineRef targetMachine,
-    LLVMPassBuilderOptionsRef options);
+// LEGALIZACION SEH DE B-001 RETIRADA / B-001 SEH LEGALIZATION RETIRED.
+// ES: La legalizacion se retiro (commit "Retire the -O0 mem2reg legalization of functions with a catch") y
+// ya nadie llama a LLVMRunPassesOnFunction, asi que su declaracion se quito; el comentario de arriba queda como
+// historia.
+// EN: The legalization was retired (commit "Retire the -O0 mem2reg legalization of functions with a catch")
+// and nothing calls LLVMRunPassesOnFunction anymore, so its declaration was removed; the comment above stays
+// as history.
 char* LLVMGetErrorMessage(LLVMErrorRef error);
 void LLVMDisposeErrorMessage(char* errorMessage);
 LLVMValueRef LLVMGetFirstFunction(LLVMModuleRef module);
 LLVMValueRef LLVMGetNextFunction(LLVMValueRef function);
+// Locales visibles en el depurador a -O0: la legalizacion SEH de B-001 solo debe tocar funciones
+// con un `catch` real. Estos tres simbolos recorren los bloques de una funcion y reconocen su
+// `catchswitch`. / Debugger-visible locals at -O0: the B-001 SEH legalization must only touch
+// functions with a real `catch`. These three symbols walk a function's blocks and recognize its
+// `catchswitch`.
+// ES: Con la legalizacion retirada, LLVMGetFirstBasicBlock, LLVMGetNextBasicBlock, LLVMIsACatchSwitchInst y
+// LLVMHasPersonalityFn ya no se usan y se quitaron. LLVMIsDeclaration sigue en uso (LlvmNativeSanitizer).
+// EN: With the legalization retired, LLVMGetFirstBasicBlock, LLVMGetNextBasicBlock, LLVMIsACatchSwitchInst and
+// LLVMHasPersonalityFn are no longer used and were removed. LLVMIsDeclaration is still used
+// (LlvmNativeSanitizer).
 LLVMBool LLVMIsDeclaration(LLVMValueRef global);
-LLVMBool LLVMHasPersonalityFn(LLVMValueRef function);
 
 LLVMTypeRef LLVMVoidTypeInContext(LLVMContextRef context);
 LLVMTypeRef LLVMInt1TypeInContext(LLVMContextRef context);
@@ -662,6 +701,11 @@ void LLVMSetFastMathFlags(LLVMValueRef floatingPointInstruction, LLVMFastMathFla
 LLVMBool LLVMCanValueUseFastMathFlags(LLVMValueRef instruction);
 
 LLVMBasicBlockRef LLVMGetEntryBasicBlock(LLVMValueRef function);
+// ES: Orden de bloques en el orden de emisión (OopLlvmImplementation::enterBlock).
+// EN: Block order in emission order (OopLlvmImplementation::enterBlock).
+LLVMBasicBlockRef LLVMGetLastBasicBlock(LLVMValueRef function);
+LLVMValueRef LLVMGetBasicBlockParent(LLVMBasicBlockRef block);
+void LLVMMoveBasicBlockAfter(LLVMBasicBlockRef block, LLVMBasicBlockRef movePosition);
 LLVMValueRef LLVMGetFirstInstruction(LLVMBasicBlockRef block);
 void LLVMPositionBuilderBefore(LLVMBuilderRef builder, LLVMValueRef instruction);
 
@@ -674,6 +718,26 @@ void LLVMDisposeBuilder(LLVMBuilderRef builder);
 void LLVMPositionBuilderAtEnd(LLVMBuilderRef builder, LLVMBasicBlockRef block);
 LLVMBasicBlockRef LLVMGetInsertBlock(LLVMBuilderRef builder);
 LLVMValueRef LLVMGetBasicBlockTerminator(LLVMBasicBlockRef block);
+// EN: Freeze 3.0 DEC-05: LlvmModuleInspector walks blocks, edges, instructions and phis of the
+//     generated module (and clones it for the SSA form). LLVMGetFirstBasicBlock and
+//     LLVMGetNextBasicBlock return for this read-only use.
+// ES: Congelamiento 3.0 DEC-05: LlvmModuleInspector recorre bloques, aristas, instrucciones y phis del
+//     modulo generado (y lo clona para la forma SSA). LLVMGetFirstBasicBlock y LLVMGetNextBasicBlock
+//     vuelven para este uso de solo lectura.
+LLVMBasicBlockRef LLVMGetFirstBasicBlock(LLVMValueRef function);
+LLVMBasicBlockRef LLVMGetNextBasicBlock(LLVMBasicBlockRef block);
+const char* LLVMGetBasicBlockName(LLVMBasicBlockRef block);
+unsigned LLVMGetNumSuccessors(LLVMValueRef terminator);
+LLVMBasicBlockRef LLVMGetSuccessor(LLVMValueRef terminator, unsigned index);
+LLVMValueRef LLVMGetNextInstruction(LLVMValueRef instruction);
+int LLVMGetNumOperands(LLVMValueRef value);
+LLVMValueRef LLVMGetOperand(LLVMValueRef value, unsigned index);
+LLVMValueRef LLVMIsAPHINode(LLVMValueRef value);
+LLVMValueRef LLVMIsAAllocaInst(LLVMValueRef value);
+unsigned LLVMCountIncoming(LLVMValueRef phi);
+LLVMValueRef LLVMGetIncomingValue(LLVMValueRef phi, unsigned index);
+LLVMBasicBlockRef LLVMGetIncomingBlock(LLVMValueRef phi, unsigned index);
+LLVMModuleRef LLVMCloneModule(LLVMModuleRef module);
 
 LLVMValueRef LLVMBuildAlloca(
     LLVMBuilderRef builder,

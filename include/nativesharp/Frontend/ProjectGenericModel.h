@@ -19,6 +19,7 @@
 #include "nativesharp/Basic/CompilationEvent.h"
 #endif // INSTRUMENTATION CODE
 #include "nativesharp/Basic/SourceRange.h"
+#include "nativesharp/Basic/TransparentStringHash.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Frontend/TemplateParseCache.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
@@ -148,6 +149,11 @@ private:
         // records se copian uno a uno y en orden. La validacion de constraints necesita ir de una
         // especializacion a su plantilla, y este es el enlace.
         std::size_t ordinal = 0;
+        // Type templates only: qualifiedName(namespaceName, qualifiedTypeName), computed once in
+        // buildTemplateIndexes together with the bucket keys that are built from the same fields.
+        // Last member, so the positional initializers of the members above keep their meaning
+        // (they pass {} for it).
+        std::string qualifiedTypeSpelling;
     };
 
     // A lightweight predeclaration used only while the generic pass is choosing a cache key.
@@ -215,6 +221,10 @@ private:
         const std::string& ownerName,
         bool insideGenericType,
         diagnostics::DiagnosticEngine& diagnostics);
+    void assignTemplateCacheKey(
+        const ProjectSyntaxUnit& unit,
+        const ast::AstNode* node,
+        GenericTemplateRecord& record) const;
     static void pushCollectTemplateChildren(
         ast::AstNode* node,
         const std::string& currentNamespace,
@@ -389,17 +399,59 @@ private:
         // refcount) instead of deep-copying a map/vector on each traversal descent. `read()` is the
         // const view; `write()` clones the container only when it is shared, then returns a mutable
         // reference. Small lexical containers get cloned rarely, so the clone cost is negligible.
+        // EN: The container is allocated on the first `write()`. A scope is built for every node of every unit and
+        //     most of its six containers are never written, so a default scope allocates nothing; until then
+        //     `read()` returns one shared empty container.
+        // ES: El contenedor se reserva en el primer `write()`. Se construye un scope por cada nodo de cada unidad y
+        //     casi nunca se escribe en sus seis contenedores, así que un scope por defecto no reserva nada;
+        //     mientras tanto `read()` devuelve un único contenedor vacío compartido.
         template <typename T>
         struct Cow final
         {
-            Cow() : value_(std::make_shared<T>()) {}
-            const T& read() const { return *value_; }
-            T& write()
+            Cow() = default;
+
+            // EN: Returns the current container, or the shared empty one when nothing was written. The reference
+            //     stays valid until the next `write()` on this wrapper. Thread safe for concurrent readers; the
+            //     empty container is never modified.
+            // ES: Devuelve el contenedor actual, o el vacío compartido si nunca se escribió. La referencia vale
+            //     hasta el siguiente `write()` sobre este envoltorio. Seguro para lectores concurrentes; el
+            //     contenedor vacío nunca se modifica.
+            const T& read() const
             {
-                if (value_.use_count() > 1)
-                    value_ = std::make_shared<T>(*value_);
+                if (value_ == nullptr)
+                {
+                    return emptyValue();
+                }
                 return *value_;
             }
+
+            // EN: Returns a container owned only by this wrapper: allocates an empty one on the first call and
+            //     clones a shared one, so a write never shows through another scope.
+            // ES: Devuelve un contenedor que solo posee este envoltorio: reserva uno vacío en la primera llamada y
+            //     clona uno compartido, de modo que una escritura nunca se ve desde otro scope.
+            T& write()
+            {
+                if (value_ == nullptr)
+                {
+                    value_ = std::make_shared<T>();
+                }
+                else if (value_.use_count() > 1)
+                {
+                    value_ = std::make_shared<T>(*value_);
+                }
+                return *value_;
+            }
+
+            // EN: The empty container `read()` returns before the first write. Constructed once per process (a
+            //     thread-safe function-local static) and never modified.
+            // ES: El contenedor vacío que `read()` devuelve antes de la primera escritura. Se construye una vez por
+            //     proceso (static local, seguro entre hilos) y nunca se modifica.
+            static const T& emptyValue()
+            {
+                static const T empty;
+                return empty;
+            }
+
             std::shared_ptr<T> value_;
         };
         Cow<std::vector<std::string>> importedNamespaces;
@@ -549,7 +601,7 @@ private:
         std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
         diagnostics::DiagnosticEngine& diagnostics);
     bool materializePendingDemandsForBuild(diagnostics::DiagnosticEngine& diagnostics);
-    void finalizeBuildState();
+    void finalizeBuildState(const diagnostics::DiagnosticEngine& diagnostics);
 
     bool specializeGenericLambdaCall(
         ProjectSyntaxUnit& unit,
@@ -1553,6 +1605,9 @@ private:
     const DeclaredTypeIdentity* resolveModuleQualifiedDeclaredTypeIdentity(
         std::string_view writtenName,
         std::size_t projectOrdinal) const;
+    // Validation builds only (index shadow checks): the positions recorded for sourceName must
+    // be those a scan of declaredTypeIdentities_ finds, in vector order.
+    void shadowCheckDeclaredTypeNameIndex(std::string_view sourceName, std::string_view function) const;
     static void appendTypeModifiers(std::string& identity, const ast::TypeSyntax* syntax);
     static std::string namespaceAppend(std::string_view prefix, std::string_view suffix);
     static std::string sanitize(std::string_view text);
@@ -1575,8 +1630,16 @@ private:
     // module-qualified spelling (`module::namespace.Outer.Inner`) to its type templates; the second
     // maps a terminal type name to its type templates. Both preserve source order and contain only
     // type templates (no methods), so a lookup examines homonyms instead of the whole catalog.
-    std::unordered_map<std::string, std::vector<TemplateState*>> typesByModuleQualified_;
-    std::unordered_map<std::string, std::vector<TemplateState*>> typesByVisibleName_;
+    std::unordered_map<
+        std::string,
+        std::vector<TemplateState*>,
+        basic::TransparentStringHash,
+        std::equal_to<>> typesByModuleQualified_;
+    std::unordered_map<
+        std::string,
+        std::vector<TemplateState*>,
+        basic::TransparentStringHash,
+        std::equal_to<>> typesByVisibleName_;
     // NSC305-G03. Method-only candidate bucket keyed by method name, in source order. Used by
     // `templatesNamedBy` and the owner-less `resolveMethodTemplate` path so a lookup examines
     // homonymous methods instead of the whole catalog.
@@ -1585,6 +1648,13 @@ private:
     std::unordered_map<const ast::AstNode*, std::size_t> genericLambdaTemplateOrdinals_;
     std::unordered_map<const ast::AstNode*, std::string> genericLambdaCarrierKeys_;
     std::vector<DeclaredTypeIdentity> declaredTypeIdentities_;
+    // Positions in declaredTypeIdentities_ by sourceName, in vector order; appended together
+    // with the vector by collectDeclaredTypeIdentity, its only writer.
+    std::unordered_map<
+        std::string,
+        std::vector<std::size_t>,
+        basic::TransparentStringHash,
+        std::equal_to<>> declaredTypeIdentitiesBySourceName_;
     std::vector<GenericTemplateRecord> templateRecords_;
     std::vector<GenericSpecializationRecord> specializations_;
     // NSC305-G07. Deduplication and slot lifecycle for specialization demands. ensure*Specialization

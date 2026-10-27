@@ -224,70 +224,97 @@ def validate_classifications(
     return frozenset(defects)
 
 
-def cmake_shim(case_root: Path) -> tuple[Path, Path]:
+def load_builder_deploy(repository_root: Path) -> object:
+    """Import nsc_builder.deploy from the builder kept in the repository (nsc-builder/)."""
+    builder_root = str(repository_root / "nsc-builder")
+    if builder_root not in sys.path:
+        sys.path.insert(0, builder_root)
+    return importlib.import_module("nsc_builder.deploy")
+
+
+def tool_shims(case_root: Path, names: tuple[str, ...]) -> Path:
+    """Create empty command shims so tool discovery resolves without running real tools."""
     shim_root = case_root / "shim"
     shim_root.mkdir(parents=True, exist_ok=True)
-    log = case_root / "cmake-arguments.txt"
-    shim = shim_root / "cmake.cmd"
-    write_text(shim, "@echo off\r\n>\"%NSC_PACKAGING_CMAKE_LOG%\" echo %*\r\nexit /b 0\r\n")
-    return shim_root, log
+    for name in names:
+        write_text(shim_root / f"{name}.cmd", "@echo off\r\nexit /b 0\r\n")
+    return shim_root
 
 
-def run_deploy_batch(
+def create_plan(deploy: object, config: object, build_mode: str) -> tuple[object | None, str]:
+    """Return (plan, "") or (None, error) from nsc_builder.deploy.create_deploy_plan."""
+    try:
+        return deploy.create_deploy_plan(config, build_mode), ""
+    except ValueError as error:
+        return None, str(error)
+
+
+def check_deploy_variant(
+    deploy: object,
+    config: object,
+    build_mode: str,
+    build_dir: Path,
+    prefix: Path,
+    variant: int,
+    case_root: Path,
+) -> tuple[bool, str]:
+    """Evaluate one deploy-plan variant; nothing is installed or executed."""
+    plan, error = create_plan(deploy, config, build_mode)
+    write_text(case_root / "plan.log", repr(plan.commands) if plan is not None else error)
+    if variant in {1, 2}:
+        expected = [
+            "--install", build_dir.resolve().as_posix(), "--config", build_mode,
+            "--prefix", prefix.resolve().as_posix(),
+        ]
+        return (
+            plan is not None
+            and plan.commands[0][1][1:] == expected
+            and plan.installed_compiler == prefix.resolve() / "bin" / "nsc.exe"
+        ), "deploy plan ignored the selected build tree or prefix"
+    if variant == 3:
+        return plan is None and "cmake" in error, "missing CMake must fail before any command"
+    if variant == 4:
+        return plan is None and "unsafe deploy prefix" in error, "drive-root prefix was not rejected"
+    if variant == 5:
+        return (
+            plan is None and "overlaps compiler build tree" in error
+        ), "prefix inside the build tree was not rejected"
+    if variant == 6:
+        second, _ = create_plan(deploy, config, build_mode)
+        return plan is not None and plan == second, "deploy plan differs across repetitions"
+    return False, f"unsupported deploy plan variant {variant}"
+
+
+def run_deploy_plan(
     repository_root: Path,
     case_root: Path,
     variant: int,
-    environment: dict[str, str],
+    build_mode: str,
 ) -> tuple[bool, str]:
-    shim_root, log = cmake_shim(case_root)
-    selected_build = case_root / ("build unicode" if variant == 2 else "build")
-    selected_prefix = case_root / ("prefix unicode" if variant == 2 else "prefix")
+    """Check the builder deploy plan for one variant with a case-local build tree and prefix."""
+    deploy = load_builder_deploy(repository_root)
+    configuration = importlib.import_module("nsc_builder.configuration")
+    build_root = case_root / ("build unicode" if variant == 2 else "build")
+    config = configuration.BuilderConfig(compiler_build_root=str(build_root))
+    build_dir = deploy.compiler_build_dir(config, build_mode)
+    build_dir.mkdir(parents=True, exist_ok=True)
+    write_text(build_dir / "cmake_install.cmake", "")
+    prefix = case_root / ("prefix unicode" if variant == 2 else "prefix")
     if variant == 4:
-        selected_prefix = Path(selected_prefix.anchor)
+        prefix = Path(case_root.anchor)
     if variant == 5:
-        selected_prefix = selected_build
-    command = [
-        os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
-        "/d", "/c", str(repository_root / "deploy.bat"),
-        "--build", str(selected_build), "--prefix", str(selected_prefix),
-    ]
-
-    def invoke(stem: str, dependency_present: bool) -> subprocess.CompletedProcess[str]:
-        if log.exists():
-            log.unlink()
-        local_environment = dict(environment)
-        local_environment["NSC_PACKAGING_CMAKE_LOG"] = str(log)
-        system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
-        path_entries = [str(system_root / "System32")]
-        if dependency_present:
-            path_entries.insert(0, str(shim_root))
-        local_environment["PATH"] = os.pathsep.join(path_entries)
-        completed = run_process(command, case_root, local_environment)
-        log_process(case_root, stem, completed)
-        if log.exists():
-            write_text(case_root / f"{stem}.arguments.log", log.read_text(encoding="utf-8"))
-        return completed
-
-    if variant == 3:
-        completed = invoke("missing-cmake", False)
-        return completed.returncode != 0 and not log.exists(), "missing CMake must fail before deployment"
-    if variant == 6:
-        first = invoke("first", True)
-        first_arguments = log.read_text(encoding="utf-8") if log.exists() else ""
-        second = invoke("second", True)
-        second_arguments = log.read_text(encoding="utf-8") if log.exists() else ""
-        return (
-            first.returncode == 0
-            and second.returncode == 0
-            and first_arguments == second_arguments
-        ), "deploy wrapper command differs across repetitions"
-
-    completed = invoke("deploy", True)
-    arguments = log.read_text(encoding="utf-8", errors="replace") if log.exists() else ""
-    selected = str(selected_build) in arguments and str(selected_prefix) in arguments
-    if variant in {4, 5}:
-        return completed.returncode != 0 and not log.exists(), "invalid path structure was not rejected"
-    return completed.returncode == 0 and selected, "deploy wrapper ignored caller-selected paths"
+        prefix = build_dir
+    shim_root = tool_shims(case_root, ("ninja",) if variant == 3 else ("cmake", "ninja"))
+    original_prefix = deploy.DEPLOY_PREFIX
+    original_path = os.environ.get("PATH", "")
+    deploy.DEPLOY_PREFIX = prefix
+    system32 = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
+    os.environ["PATH"] = os.pathsep.join((str(shim_root), str(system32)))
+    try:
+        return check_deploy_variant(deploy, config, build_mode, build_dir, prefix, variant, case_root)
+    finally:
+        deploy.DEPLOY_PREFIX = original_prefix
+        os.environ["PATH"] = original_path
 
 
 def stage_installation(installation_root: Path, case_root: Path) -> Path:
@@ -475,7 +502,7 @@ def run_case(
     contract = required_manifest_integer(inputs, "contract_ordinal", "Packaging")
     variant = required_manifest_integer(inputs, "variant", "Packaging")
     if contract == 1:
-        return run_deploy_batch(options.repository_root, case_root, variant, environment)
+        return run_deploy_plan(options.repository_root, case_root, variant, options.build_mode)
     if contract == 3:
         return run_package_native_sharp(options, case_root, variant, environment)
     return False, f"unsupported executable Packaging contract {contract}"

@@ -135,13 +135,11 @@ namespace DynamicMethodValues
     {
         public static int Main()
         {
-            Base polymorphic = new Derived();
-            ITransform contract = new InterfaceTransform();
+            raii Base polymorphic = new Derived();
+            raii ITransform contract = new InterfaceTransform();
             raii Transform virtualMethod = polymorphic.Apply;
             raii Transform interfaceMethod = contract.Apply;
             int answer = virtualMethod(1) + interfaceMethod(1);
-            delete polymorphic;
-            delete contract;
             return answer;
         }
     }

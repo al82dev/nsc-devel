@@ -4,7 +4,7 @@ namespace NativeSharp.BookExamples.StackEvaluator
 {
     class Program
     {
-        private static void EvaluateAndPrint(ExpressionEvaluator evaluator, string expression)
+        private static void EvaluateAndPrint(ExpressionEvaluator evaluator, string expression) throws Exception
         {
             int result = evaluator.Evaluate(expression);
             raii string resultText = String.ToString(result);
@@ -13,7 +13,7 @@ namespace NativeSharp.BookExamples.StackEvaluator
             Console.WriteLine(line);
         }
 
-        public static int Main()
+        public static int Main() throws Exception
         {
             Console.WriteLine("NativeSharp Book Example 06 - Stack + Expression Evaluator");
             Console.WriteLine("----------------------------------------------------------");

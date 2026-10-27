@@ -178,7 +178,7 @@ public class Program
             raii Token token = new Token(4);
             defer [move token] { Record(token.Value); }
         }
-        Counter counter = new Counter();
+        raii Counter counter = new Counter();
         counter.Arm();
         if (counter.Value != 7) return 1;
         return state == 3251249 ? 42 : 2;

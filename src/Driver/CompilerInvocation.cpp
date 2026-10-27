@@ -316,6 +316,20 @@ ExitCode validateCompilerLinkOptions(
                  "OOP executable\n";
         return ExitCode::CommandLineError;
     }
+    // EN: Freeze 3.0 DEC-13: only a linked executable or DLL imports from DLLs at load time.
+    // ES: Congelamiento 3.0 DEC-13: solo un ejecutable o DLL enlazado importa de DLL al cargar.
+    const bool fileExecutableInvocation = arguments.size() == 3U && arguments[1] == "-o" &&
+        !arguments[0].empty() && arguments[0].front() != '-';
+    const bool systemImportCapableInvocation = fileExecutableInvocation ||
+        (arguments.size() == 4U && arguments[2] == "-o" &&
+         (arguments[0] == "--emit-project-oop-exe" || arguments[0] == "--emit-project-oop-dll" ||
+          arguments[0] == "--emit-exe"));
+    if (invocation.validateSystemImports && !systemImportCapableInvocation)
+    {
+        error << "nsc: error: --validate-system-imports is supported when emitting an executable "
+                 "or a project OOP DLL\n";
+        return ExitCode::CommandLineError;
+    }
     return ExitCode::Success;
 }
 }

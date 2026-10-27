@@ -74,7 +74,7 @@ public class Program
         if (bits.Low != 5u || bits.High != 17u || bits.Signed != -3 || !bits.FlagA || bits.FlagB) { return 4; }
         if (PlacementRoundTrip() != 7) { return 5; }
 
-        AtomicInt64 atomic = new AtomicInt64(40L);
+        raii AtomicInt64 atomic = new AtomicInt64(40L);
         if (atomic.Load() != 40L) { return 6; }
         if (atomic.Add(2L) != 42L) { return 7; }
         if (atomic.CompareExchange(44L, 42L) != 42L) { return 8; }

@@ -55,7 +55,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             count = count + 1;
         }
 
-        public int Top()
+        public int Top() throws InvalidOperationException
         {
             if (count == 0)
             {
@@ -64,7 +64,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return data[count - 1];
         }
 
-        public int Pop()
+        public int Pop() throws InvalidOperationException
         {
             int value = Top();
             count = count - 1;
@@ -79,7 +79,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
 
     public class StackExample
     {
-        public static int Run()
+        public static int Run() throws InvalidOperationException
         {
             raii IntArrayStack stack = new IntArrayStack(2);
             int value = 1;

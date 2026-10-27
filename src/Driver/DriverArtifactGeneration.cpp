@@ -1,4 +1,7 @@
 #include "Internal/DriverInternal.h"
+#include "ThinLtoLibraryLinking.h"
+
+#include "nativesharp/Linker/ExternalImportValidation.h"
 
 namespace nativesharp::driver
 {
@@ -11,9 +14,10 @@ using target::BuiltinLayoutKind;
 std::vector<linker::ExternalImportModule> collectExternalImports(const frontend::ProjectOopMirModel &mirModel)
 {
     std::vector<linker::ExternalImportModule> modules;
+    ExternalImportListBuilder moduleList(modules);
     bool anyRuntimeBoundImport = false;
-    const auto addSymbol = [&modules](const std::string &dllName, const std::string &symbol)
-    { appendExternalImport(modules, dllName, symbol); };
+    const auto addSymbol = [&moduleList](const std::string &dllName, const std::string &symbol)
+    { moduleList.append(dllName, symbol); };
     for (const frontend::ProjectOopMirFunction &function : mirModel.functions())
     {
         if (!function.isImportedC || function.importDllName.empty())
@@ -49,10 +53,15 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
     frontend::ProjectCompilation &compilation, llvm_backend::DebugInformationKind debugInformation,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
-    llvm_backend::LinkTimeOptimizationMode linkTimeOptimization, std::string &error)
+    llvm_backend::LinkTimeOptimizationMode linkTimeOptimization, std::string &error,
+    bool captureThinLtoUnits = false, std::vector<llvm_backend::ThinLtoLibraryUnits> thinLtoLibraries = {},
+    std::optional<std::vector<std::string>> thinLtoPreservedSymbols = std::nullopt)
 {
     llvm_backend::ProjectOopObjectGenerator objectGenerator;
     configureObjectGeneratorProgress(objectGenerator);
+    objectGenerator.setThinLtoUnitBitcodeCapture(captureThinLtoUnits);
+    objectGenerator.setThinLtoLibraryUnits(std::move(thinLtoLibraries));
+    objectGenerator.setThinLtoPreservedSymbols(std::move(thinLtoPreservedSymbols));
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle =
         measureDriverPhase("llvm-object-generation",
                            [&]
@@ -80,7 +89,7 @@ bool prepareExecutableProject(std::string_view inputPath,
     std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(manifest, compilation, loadError); }))
+            [&] { return configurePrecompiledModules(manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return false;
@@ -156,6 +165,8 @@ void printExecutableGenerationResult(const frontend::ProjectOopMirFunction &entr
            << "thinlto-summaries: " << objectBundle.thinLtoSummaryCount() << '\n'
            << "thinlto-index: "
            << (objectBundle.thinLtoIndexDigest().empty() ? "none" : objectBundle.thinLtoIndexDigest()) << '\n'
+           << "thinlto-imports: " << objectBundle.thinLtoImportCount() << '\n'
+           << "thinlto-cached-backends: " << objectBundle.thinLtoCachedBackendCount() << '\n'
            << "incremental-link: "
            << (incrementalLink ? (builder.reusedIncrementalLink() ? "hit" : "miss") : "disabled") << '\n'
            << "linked-libraries: " << linkedLibraryCount << '\n'
@@ -170,6 +181,24 @@ void printExecutableGenerationResult(const frontend::ProjectOopMirFunction &entr
     output << '\n';
     if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
         appendCodeUnitTelemetry(output, objectBundle);
+}
+
+/// EN: Freeze 3.0 DEC-13. Under --validate-system-imports, checks the complete import list (own and
+///     inherited) against the DLLs found on this host; without the option it does nothing, so the
+///     artifact never depends on the host. Returns false and reports on `error` when a symbol is not
+///     exported by its DLL.
+/// ES: Congelamiento 3.0 DEC-13. Con --validate-system-imports comprueba la lista completa de
+///     imports (propios y heredados) contra las DLL que se encuentran en este host; sin la opcion no
+///     hace nada, asi que el artefacto nunca depende del host. Devuelve false y lo reporta en `error`
+///     cuando la DLL no exporta un simbolo.
+bool validateSystemImportsWhenRequested(std::span<const linker::ExternalImportModule> externalImports,
+                                        std::ostream &error)
+{
+    if (activeExecutionScope == nullptr || !activeExecutionScope->validateSystemImports) return true;
+    std::string validationError;
+    if (linker::validateExternalImportExports(externalImports, validationError)) return true;
+    error << "nsc: error: system import validation failed: " << validationError << '\n';
+    return false;
 }
 
 bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
@@ -195,9 +224,11 @@ bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
     builder.setDebugInformation(debugInformation);
     builder.setIncrementalLink(incrementalLink);
     std::vector<linker::ExternalImportModule> externalImports = collectExternalImports(*compilation.oopMirModel());
+    ExternalImportListBuilder externalImportList(externalImports);
     for (const linker::ExternalImportModule &module : inheritedImports)
         for (const std::string &symbol : module.symbols)
-            appendExternalImport(externalImports, module.dllName, symbol);
+            externalImportList.append(module.dllName, symbol);
+    if (!validateSystemImportsWhenRequested(externalImports, error)) return false;
     builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(linkLibraries);
     return true;
@@ -313,21 +344,43 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
         return ExitCode::Success;
     }
     std::string codeGenerationError;
-    std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
-        compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError);
-    if (objectBundle == nullptr)
+    ThinLtoLibraryLinking thinLtoLibraries;
+    if (!thinLtoLibraries.collect(
+            compilation, linkTimeOptimization, optimizationLevel, debugInformation, codeGenerationError))
     {
         error << "nsc: error: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;
     }
-
+    // The link inputs are known before code generation, so ThinLTO can keep visible exactly the
+    // program symbols they need and internalize the rest (item 50).
+    // Las entradas del enlace se conocen antes de generar codigo, asi que ThinLTO puede dejar visibles
+    // exactamente los simbolos del programa que necesitan e internalizar el resto (punto 50).
     std::vector<std::filesystem::path> linkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     linker::WindowsExecutableBuilder builder;
     std::vector<std::filesystem::path> packagedRuntimes;
     if (!prepareExecutableBuilder(compilation, extraLinkLibraries, debugInformation, incrementalLink, subsystem,
-                                  linkLibraries, runtimeLibraries, builder, error) ||
-        !publishExecutableArtifact(outputPath, *entryFunction, *objectBundle, optimizationLevel, debugInformation,
+                                  linkLibraries, runtimeLibraries, builder, error))
+        return ExitCode::CompilationError;
+    const std::vector<std::string> entrySymbols = {entryFunction->mangledName};
+    std::optional<std::vector<std::string>> preservedSymbols =
+        thinLtoLibraries.preservedSymbols(linkLibraries, entrySymbols);
+    std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
+        compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError,
+        false, thinLtoLibraries.takeLibraries(), std::move(preservedSymbols));
+    if (objectBundle == nullptr)
+    {
+        error << "nsc: error: " << codeGenerationError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!thinLtoLibraries.replaceLinkLibraries(*objectBundle, linkLibraries, codeGenerationError))
+    {
+        error << "nsc: error: ThinLTO library linking failed: " << codeGenerationError << '\n';
+        return ExitCode::CompilationError;
+    }
+    builder.setExtraLinkLibraries(linkLibraries);
+    builder.setRemoveUnreferencedSections(objectBundle->thinLtoInternalized());
+    if (!publishExecutableArtifact(outputPath, *entryFunction, *objectBundle, optimizationLevel, debugInformation,
                                    incrementalLink, runtimeLibraries, builder, packagedRuntimes, error))
         return ExitCode::CompilationError;
     for (const std::filesystem::path &runtime : packagedRuntimes)
@@ -336,6 +389,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     printExecutableGenerationResult(*entryFunction, *objectBundle, builder, optimizationLevel, debugInformation,
                                     linkTimeOptimization, incrementalLink, subsystem, linkLibraries.size(),
                                     packagedRuntimes.size(), resultOutput);
+    thinLtoLibraries.printResult(resultOutput);
     manifest->setBundleResultOutput(resultOutput.str());
     publishCompilationBundle(*manifest);
     output << resultOutput.str();
@@ -354,7 +408,7 @@ bool prepareStaticLibraryProject(std::string_view inputPath,
     std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(manifest, compilation, loadError); }))
+            [&] { return configurePrecompiledModules(manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return false;
@@ -410,9 +464,10 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
     builder.setProgramObjectsVerified(true);
     builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     std::vector<linker::ExternalImportModule> externalImports = collectExternalImports(*compilation.oopMirModel());
+    ExternalImportListBuilder externalImportList(externalImports);
     for (const linker::ExternalImportModule &module : inheritedImports)
         for (const std::string &symbol : module.symbols)
-            appendExternalImport(externalImports, module.dllName, symbol);
+            externalImportList.append(module.dllName, symbol);
     builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(
         std::vector<std::filesystem::path>(referencedLibraries.begin(), referencedLibraries.end()));
@@ -449,10 +504,32 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
         error << "nsc: error: Stage 48.2 static-library metadata generation failed: " << metadataError << '\n';
         return false;
     }
+    publishPrecompiledSnapshot(compilation, publication.metadataStage);
+    if (!objectBundle.thinLtoUnitBitcode().empty())
+    {
+        // The sidecar binds the staged .lib and .nsmeta, so it is written after both (item 48).
+        // El sidecar liga la .lib y la .nsmeta en staging, asi que se escribe despues de ambas.
+        if (!ThinLtoLibraryLinking::writeSidecar(objectBundle, compilation, publication.stage,
+                                                 publication.metadataStage, publication.thinLtoSidecarStage,
+                                                 buildError) ||
+            !artifactPublisher.addStaticLibraryThinLtoSidecar(publication, buildError))
+        {
+            error << "nsc: error: static-library ThinLTO sidecar generation failed: " << buildError << '\n';
+            return false;
+        }
+        publication.thinLtoSidecarStaged = true;
+    }
     if (!artifactPublisher.commit(buildError))
     {
         error << "nsc: error: static-library publication failed: " << buildError << '\n';
         return false;
+    }
+    if (!publication.thinLtoSidecarStaged)
+    {
+        // A sidecar left by an earlier ThinLTO build would only be rejected; remove it anyway.
+        // Un sidecar de un build ThinLTO anterior solo seria rechazado; se borra de todos modos.
+        std::error_code staleError;
+        std::filesystem::remove(publication.thinLtoSidecarDestination, staleError);
     }
     return true;
 }
@@ -484,6 +561,8 @@ void printStaticLibraryGenerationResult(const llvm_backend::ProjectOopObjectBund
            << "thinlto-summaries: " << objectBundle.thinLtoSummaryCount() << '\n'
            << "thinlto-index: "
            << (objectBundle.thinLtoIndexDigest().empty() ? "none" : objectBundle.thinLtoIndexDigest()) << '\n'
+           << "thinlto-imports: " << objectBundle.thinLtoImportCount() << '\n'
+           << "thinlto-cached-backends: " << objectBundle.thinLtoCachedBackendCount() << '\n'
            << "debug-companion: "
            << (debugInformation == llvm_backend::DebugInformationKind::None ? "none"
                                                                             : "CodeView in COFF archive members")
@@ -492,6 +571,8 @@ void printStaticLibraryGenerationResult(const llvm_backend::ProjectOopObjectBund
            << "archive-members: " << builder.archiveInfo().memberCount << '\n'
            << "host-header: " << publication.headerDestination.generic_string() << '\n'
            << "library-metadata: " << publication.metadataDestination.generic_string() << '\n';
+    if (publication.thinLtoSidecarStaged)
+        output << "thinlto-library-sidecar: " << publication.thinLtoSidecarDestination.generic_string() << '\n';
     if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
         appendCodeUnitTelemetry(output, objectBundle);
 }
@@ -516,6 +597,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     addCompilationCodegenIdentity(
         *manifest, optimizationLevel, debugInformation,
         debugPrefixMaps, linkTimeOptimization);
+    addCompilationLinkToolIdentity(*manifest);
     frontend::ProjectCompilation compilation;
     std::vector<std::filesystem::path> referencedLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
@@ -530,9 +612,17 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
         return ExitCode::Success;
     }
 
+    // A static library publishes a ThinLTO sidecar only when its archive holds exactly the objects of
+    // its units, that is, with the NativeSharp runtime configured as a separate library (item 48).
+    // Una biblioteca estatica publica sidecar ThinLTO solo cuando su archivo contiene exactamente los
+    // objetos de sus unidades, es decir, con el runtime de NativeSharp configurado aparte (punto 48).
+    const bool captureThinLtoUnits =
+        llvm_backend::ProjectOopObjectGenerator::thinLtoRuns(linkTimeOptimization, optimizationLevel) &&
+        !linker::configuredWindowsRuntimeLibrary().empty();
     std::string codeGenerationError;
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
-        compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError);
+        compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError,
+        captureThinLtoUnits);
     if (objectBundle == nullptr)
     {
         error << "nsc: error: " << codeGenerationError << '\n';
@@ -562,7 +652,7 @@ bool prepareDynamicLibraryProject(std::string_view inputPath,
     std::string loadError;
     if (!measureDriverPhase(
             "precompiled-metadata",
-            [&] { return configurePrecompiledModules(manifest, compilation, loadError); }))
+            [&] { return configurePrecompiledModules(manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
         return false;
@@ -795,9 +885,11 @@ bool prepareDynamicLibraryBuilder(const frontend::ProjectCompilation &compilatio
     builder.setProgramObjectsVerified(true);
     builder.setRuntimeLibrary(linker::configuredWindowsRuntimeLibrary());
     std::vector<linker::ExternalImportModule> externalImports = collectExternalImports(*compilation.oopMirModel());
+    ExternalImportListBuilder externalImportList(externalImports);
     for (const linker::ExternalImportModule &module : inheritedImports)
         for (const std::string &symbol : module.symbols)
-            appendExternalImport(externalImports, module.dllName, symbol);
+            externalImportList.append(module.dllName, symbol);
+    if (!validateSystemImportsWhenRequested(externalImports, error)) return false;
     builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(linkLibraries);
     return true;
@@ -853,6 +945,7 @@ bool buildDynamicLibraryProduct(const std::filesystem::path &destination,
         error << "nsc: error: Stage 48.2 DLL metadata generation failed: " << metadataError << '\n';
         return false;
     }
+    publishPrecompiledSnapshot(compilation, publication.metadataStage);
     return true;
 }
 
@@ -962,20 +1055,39 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     if (!collectDynamicLibraryExports(compilation, exportSymbols, error))
         return ExitCode::CompilationError;
     std::string codeGenerationError;
-    std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
-        compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError);
-    if (objectBundle == nullptr)
+    ThinLtoLibraryLinking thinLtoLibraries;
+    if (!thinLtoLibraries.collect(
+            compilation, linkTimeOptimization, optimizationLevel, debugInformation, codeGenerationError))
     {
         error << "nsc: error: " << codeGenerationError << '\n';
         return ExitCode::CompilationError;
     }
-
+    // As for an executable, the link inputs come first so ThinLTO knows what to keep visible (item 50).
+    // Igual que en un ejecutable, las entradas del enlace van primero para que ThinLTO sepa que dejar
+    // visible (punto 50).
     const std::filesystem::path destination = pathFromUtf8(outputPath);
     std::vector<std::filesystem::path> linkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     linker::WindowsLibraryBuilder builder;
     if (!prepareDynamicLibraryBuilder(compilation, extraLinkLibraries, linkLibraries, runtimeLibraries, builder, error))
         return ExitCode::CompilationError;
+    std::optional<std::vector<std::string>> preservedSymbols =
+        thinLtoLibraries.preservedSymbols(linkLibraries, exportSymbols);
+    std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle = generateProjectObjects(
+        compilation, debugInformation, optimizationLevel, debugPrefixMaps, linkTimeOptimization, codeGenerationError,
+        false, thinLtoLibraries.takeLibraries(), std::move(preservedSymbols));
+    if (objectBundle == nullptr)
+    {
+        error << "nsc: error: " << codeGenerationError << '\n';
+        return ExitCode::CompilationError;
+    }
+    if (!thinLtoLibraries.replaceLinkLibraries(*objectBundle, linkLibraries, codeGenerationError))
+    {
+        error << "nsc: error: ThinLTO library linking failed: " << codeGenerationError << '\n';
+        return ExitCode::CompilationError;
+    }
+    builder.setExtraLinkLibraries(linkLibraries);
+    builder.setRemoveUnreferencedSections(objectBundle->thinLtoInternalized());
 
     std::string buildError;
     ArtifactPublisher artifactPublisher;
@@ -995,6 +1107,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     std::ostringstream resultOutput;
     printDynamicLibraryGenerationResult(*objectBundle, builder, publication, optimizationLevel, debugInformation,
                                         linkLibraries.size(), packagedRuntimes.size(), resultOutput);
+    thinLtoLibraries.printResult(resultOutput);
     manifest->setBundleResultOutput(resultOutput.str());
     publishCompilationBundle(*manifest);
     output << resultOutput.str();

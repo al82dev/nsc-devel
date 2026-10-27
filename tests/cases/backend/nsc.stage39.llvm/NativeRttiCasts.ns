@@ -24,8 +24,8 @@ namespace Stage39.Demo
     {
         public static int Run()
         {
-            Player player = new Player();
-            Entity entity = player;
+            raii Player player = new Player();
+            borrowed Entity entity = player;
 
             bool isPlayer = entity is Player;
             bool isMovable = entity is IMovable;
@@ -36,7 +36,7 @@ namespace Stage39.Demo
             Player checkedPlayer = (Player)entity;
             IMovable checkedMovable = (IMovable)entity;
 
-            IMovable interfaceReference = player;
+            borrowed IMovable interfaceReference = player;
             bool interfaceContainsPlayer = interfaceReference is Player;
             Player fromInterface = interfaceReference as Player;
             Player checkedFromInterface = (Player)interfaceReference;

@@ -16,7 +16,7 @@ namespace NativeSharp.BookExamples.BinaryHeap
             sequence = sequence + 1;
         }
         public void PrintHeap() { queue.PrintHeapArray(); }
-        public void RunAll()
+        public void RunAll() throws InvalidOperationException
         {
             while (!queue.IsEmpty)
             {

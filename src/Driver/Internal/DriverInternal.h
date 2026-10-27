@@ -73,6 +73,18 @@ bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std
 bool writeVerifiedLibraryMetadata(const frontend::ProjectCompilation &compilation,
                                   const std::filesystem::path &destination, std::string &error,
                                   interop::LibraryMetadata *writtenModel = nullptr);
+// EN: Plan items 2.1-2.4. After the verified NSMETA and its `.nsproducts` are written, compiles an
+//     empty consumer of the library in memory and publishes the semantic snapshot of its public
+//     API unit. Never fails the build: without a snapshot consumers take today's path.
+// ES: Puntos 2.1 a 2.4 del plan. Después de escribir la NSMETA verificada y su `.nsproducts`,
+//     compila en memoria un consumidor vacío de la biblioteca y publica el snapshot semántico de su
+//     unidad de API pública. Nunca hace fallar el build: sin snapshot los consumidores van por la
+//     ruta de hoy.
+void publishPrecompiledSnapshot(const frontend::ProjectCompilation &compilation,
+                                const std::filesystem::path &metadataPath);
+bool buildPrecompiledSnapshotReference(const frontend::ProjectCompilation &producer,
+                                       const std::filesystem::path &metadataPath,
+                                       frontend::ProjectCompilation &reference, std::string &error);
 
 std::optional<compilation::CompilationInputManifest> loadCompilationInputManifest(
     const std::filesystem::path &projectFile, std::string &error);
@@ -89,8 +101,16 @@ void addCompilationLinkIdentity(
     compilation::CompilationInputManifest &manifest, bool incrementalLink,
     linker::WindowsExecutableSubsystem subsystem,
     std::span<const std::filesystem::path> extraLinkLibraries);
+// Adds NSLink, the librarian, the Windows runtime library and the canonical import libraries
+// that the product's link step reads to the bundle identity. addCompilationLinkIdentity calls it
+// for executables and DLLs; static libraries call it directly.
+void addCompilationLinkToolIdentity(compilation::CompilationInputManifest &manifest);
+// `materializeDemandedSurface` is true for code generation: each precompiled module outside the
+// standard library then materializes only the declarations its sources can reach. Analysis dumps
+// and checks pass false and keep the complete surfaces.
 bool configurePrecompiledModules(compilation::CompilationInputManifest &manifest,
-                                 frontend::ProjectCompilation &compilation, std::string &error);
+                                 frontend::ProjectCompilation &compilation, std::string &error,
+                                 bool materializeDemandedSurface = false);
 bool restoreCompilationBundle(
     const compilation::CompilationInputManifest &manifest,
     bool &restored,
@@ -100,6 +120,22 @@ void publishCompilationBundle(
 void configureObjectGeneratorProgress(llvm_backend::ProjectOopObjectGenerator &generator);
 void appendExternalImport(std::vector<linker::ExternalImportModule> &modules, const std::string &dllName,
                           const std::string &symbol);
+// Appends to a list of external import modules with the result of appendExternalImport (one
+// module per DLL, matched with foldedName; symbols in first-appearance order without duplicates),
+// using indexes that live while the list is built. Modules already in the list are indexed
+// first. The list must not change by other means while the builder appends to it.
+class ExternalImportListBuilder final
+{
+public:
+    explicit ExternalImportListBuilder(std::vector<linker::ExternalImportModule> &modules);
+    void append(const std::string &dllName, const std::string &symbol);
+
+private:
+    std::vector<linker::ExternalImportModule> &modules_;
+    std::unordered_map<std::string, std::size_t> moduleByFoldedName_;
+    // Symbols of each module, by module position, for the duplicate check.
+    std::vector<std::unordered_set<std::string>> symbolsByModule_;
+};
 bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compilation,
                                       std::vector<std::filesystem::path> &libraries,
                                       std::vector<std::filesystem::path> &runtimeLibraries, std::string &error,
@@ -107,6 +143,28 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
 bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtimeLibraries,
                                   const linker::PeExecutableInfo &image, std::string &error);
 std::filesystem::path pathFromUtf8(std::string_view value);
+// EN: Shared by file code generation and the project `-opt` actions: creates the target machine
+//     of the level and runs the LLVM pipeline over the module.
+// ES: Compartida por la generacion de codigo de archivo y las acciones `-opt` de proyecto: crea la
+//     maquina destino del nivel y corre el pipeline de LLVM sobre el modulo.
+bool optimizeCodeGenerationModule(llvm_backend::LlvmModule &llvmModule,
+                                  llvm_backend::LlvmOptimizationLevel optimizationLevel,
+                                  std::unique_ptr<llvm_backend::LlvmTargetMachine> &targetMachine,
+                                  std::ostream &error);
+// EN: Freeze 3.0 C-05 (DriverImplicitProject.cpp). Registers the in-memory project of a lone
+//     source file -- the file plus a ProjectReference to NativeSharp.Core, Exe or Library -- and
+//     returns its virtual project path, beside the source.
+// ES: Congelamiento 3.0 C-05 (DriverImplicitProject.cpp). Registra el proyecto en memoria de un
+//     archivo fuente suelto -- el archivo y una ProjectReference a NativeSharp.Core, Exe o Library
+//     -- y devuelve su ruta de proyecto virtual, junto a la fuente.
+std::optional<std::filesystem::path> registerImplicitProject(std::string_view sourcePath, bool executable,
+                                                             std::string &error);
+// EN: Compiles the implicit project of a source file to one verified LLVM module (no debug info).
+// ES: Compila el proyecto implicito de un archivo fuente a un modulo LLVM verificado (sin debug).
+//     An executable must have exactly one entry point.
+//     Un ejecutable debe tener exactamente un punto de entrada.
+bool lowerSourceFileModule(std::string_view sourcePath, bool executable,
+                           std::unique_ptr<llvm_backend::LlvmModule> &llvmModule, std::ostream &error);
 bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibraries,
                            const std::filesystem::path &destination, std::vector<std::filesystem::path> &copiedFiles,
                            std::string &error);

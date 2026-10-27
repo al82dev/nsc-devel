@@ -244,7 +244,11 @@ void ProjectGenericModel::indexOrdinaryCallableReturnTypes(
                 typeSpelling(entry->second) != typeSpelling(node->typeSyntax()))
                 entry->second = nullptr;
         }
-        const std::vector<ast::AstNode*> children(node->children().begin(), node->children().end());
+        // EN: The children are read in place: the frames below only record the pointers and nothing
+        //     here edits the child list of `node`.
+        // ES: Los hijos se leen en su lugar: los frames de abajo solo guardan los punteros y aquí
+        //     nada modifica la lista de hijos de `node`.
+        const std::vector<ast::AstNode*>& children = node->children();
         for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
             ordinaryReturnStack.push_back(*iterator);
         if (node->third() != nullptr) ordinaryReturnStack.push_back(node->third());
@@ -353,9 +357,9 @@ void ProjectGenericModel::buildTemplateIndexes()
         stateByCanonicalKey_.emplace(state.record.canonicalKey, &state);
         if (state.record.kind != GenericTemplateKind::Method)
         {
-            typesByModuleQualified_[
-                state.record.moduleName + "::" +
-                qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName)]
+            state.qualifiedTypeSpelling =
+                qualifiedName(state.record.namespaceName, state.record.qualifiedTypeName);
+            typesByModuleQualified_[state.record.moduleName + "::" + state.qualifiedTypeSpelling]
                 .push_back(&state);
             typesByVisibleName_[state.record.name].push_back(&state);
         }
@@ -541,12 +545,14 @@ bool ProjectGenericModel::materializePendingDemandsForBuild(
     return true;
 }
 
-void ProjectGenericModel::finalizeBuildState()
+void ProjectGenericModel::finalizeBuildState(const diagnostics::DiagnosticEngine& diagnostics)
 {
     telemetry_.maximumLogicalDepth = instantiationBudget_.maximumObservedDepth();
     // NSC305-C01. Persist the collected template records (the C1 metadata) when the cache is enabled.
-    restoreTemplateRecords();
-    storeTemplateRecords();
+    // restoreTemplateRecords is not called here: it only counted hits after the build, and those
+    // counts went into the instantiation-cache hit statistics. Nothing is stored from a
+    // compilation that reported errors.
+    if (!diagnostics.hasErrors()) storeTemplateRecords();
     indexes_->rebuildGenerics(templateRecords_, specializations_);
     built_ = true;
 }
@@ -601,7 +607,7 @@ bool ProjectGenericModel::build(
     {
         return false;
     }
-    finalizeBuildState();
+    finalizeBuildState(diagnostics);
     return !diagnostics.hasErrors();
 }
 

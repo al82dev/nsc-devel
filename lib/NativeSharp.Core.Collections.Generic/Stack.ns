@@ -94,13 +94,17 @@ namespace NativeSharp.Core.Collections.Generic
             return move(items[index]);
         }
 
-        public T Peek() throws InvalidOperationException
+        // EN: Freeze 3.0 P3: Peek lends the element by reference, for any T; TryPeek copies it and
+        //     requires `T : copy`.
+        // ES: Congelamiento 3.0 P3: Peek presta el elemento por referencia, para todo T; TryPeek lo
+        //     copia y exige `T : copy`.
+        public ref T Peek() throws InvalidOperationException
         {
             if (count == 0)
             {
                 throw new InvalidOperationException();
             }
-            return items[count - 1];
+            return ref items[count - 1];
         }
 
         // Mirrors `bool TryPop(out T result)` -- see Dictionary.ns's TryGetValue comment for why
@@ -109,13 +113,18 @@ namespace NativeSharp.Core.Collections.Generic
         public bool TryPop(T[] result)
         {
             if (count == 0) { return false; }
-            result[0] = Pop();
+            // EN: Freeze 3.0 C-13: Pop() declares throws; the empty case is answered above, so the
+            //     catch only satisfies the checked contract.
+            // ES: Congelamiento 3.0 C-13: Pop() declara throws; el caso vacio ya se respondio arriba,
+            //     asi que el catch solo cumple el contrato verificado.
+            try { result[0] = Pop(); }
+            catch (InvalidOperationException problem) { return false; }
             return true;
         }
 
         // Mirrors `bool TryPeek(out T result)`. No ownership transfer: `result[0]` aliases the
         // still-stacked element, same as Peek()'s own return.
-        public bool TryPeek(T[] result)
+        public bool TryPeek(T[] result) where T : copy
         {
             if (count == 0) { return false; }
             result[0] = items[count - 1];
@@ -138,9 +147,23 @@ namespace NativeSharp.Core.Collections.Generic
         // live reference to this Stack<T> and read elements back through a public accessor,
         // exactly the same design ListEnumerator<T>/QueueEnumerator<T> already use (P1.2 of
         // STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md).
+        //
+        // EN: Freeze 3.0 P3: the getter copies and requires `T : copy`; RefAt lends the same element
+        //     for any T (StackEnumerator uses it).
+        // ES: Congelamiento 3.0 P3: el getter copia y exige `T : copy`; RefAt presta el mismo
+        //     elemento para todo T (StackEnumerator lo usa).
         public T this[int index]
         {
-            get { return items[count - 1 - index]; }
+            get where T : copy { return items[count - 1 - index]; }
+        }
+
+        public ref T RefAt(int index)
+        {
+            if (index < 0 || index >= count)
+            {
+                panic("Stack index out of range");
+            }
+            return ref items[count - 1 - index];
         }
 
         public void Clear()
@@ -156,7 +179,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Mirrors real C#'s Stack<T>.ToArray(): element order is top-to-bottom (index 0 is the
         // most-recently-pushed element).
-        public T[] ToArray()
+        public T[] ToArray() where T : copy
         {
             const T[] result = new T[count];
             int i = 0;
@@ -169,7 +192,7 @@ namespace NativeSharp.Core.Collections.Generic
         }
 
         // Mirrors Stack<T>.CopyTo: top-to-bottom order, same as ToArray().
-        public void CopyTo(T[] destination, int destinationIndex)
+        public void CopyTo(T[] destination, int destinationIndex) where T : copy
         {
             int i = 0;
             while (i < count)

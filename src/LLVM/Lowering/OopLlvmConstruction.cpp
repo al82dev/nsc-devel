@@ -78,6 +78,7 @@ LLVMValueRef OopLlvmImplementation::lowerValueConstruction(
             ctorArgs.reserve(1 + orderedArguments.size());
             ctorArgs.push_back(slot);
             ctorArgs.insert(ctorArgs.end(), orderedArguments.begin(), orderedArguments.end());
+            releaseTransferredArguments(node);
             if (buildPotentiallyThrowingCall(
                     target->second.functionType, target->second.function, ctorArgs.data(),
                     static_cast<unsigned>(ctorArgs.size()), "", error) == nullptr && !error.empty())
@@ -432,7 +433,7 @@ LLVMValueRef OopLlvmImplementation::allocateConstructionStorage(
             LLVMBasicBlockRef initBlock = appendBlock("object.init");
             endBlock = appendBlock("object.end");
             LLVMBuildCondBr(builder_, isNull, endBlock, initBlock);
-            LLVMPositionBuilderAtEnd(builder_, initBlock);
+            enterBlock(initBlock);
         }
         if (node->zeroInitialize)
         {
@@ -485,6 +486,7 @@ bool OopLlvmImplementation::invokeConstructionInitializer(
             ctorArgs.reserve(1 + orderedArguments.size());
             ctorArgs.push_back(object);
             ctorArgs.insert(ctorArgs.end(), orderedArguments.begin(), orderedArguments.end());
+            releaseTransferredArguments(node);
             if (buildPotentiallyThrowingCall(
                     target->second.functionType, target->second.function,
                     ctorArgs.data(), static_cast<unsigned>(ctorArgs.size()), "", error) == nullptr &&
@@ -535,7 +537,7 @@ LLVMValueRef OopLlvmImplementation::lowerConstruction(
         if (!node->stackPromotedObject)
         {
             if (!terminated()) LLVMBuildBr(builder_, endBlock);
-            LLVMPositionBuilderAtEnd(builder_, endBlock);
+            enterBlock(endBlock);
         }
         return object;
     }
@@ -591,9 +593,15 @@ bool OopLlvmImplementation::initializePlacementStorage(
                         "NS304-T13-F07 allocator provenance has no context storage");
                 LLVMValueRef context = LLVMBuildLoad2(
                     builder_, pointerType, found->second, "allocator.context.load");
+                // EN: the object was allocated with Allocate(sizeof(T), alignof(T)), which is the
+                //     layout size and alignment this node carries (C-08).
+                // ES: el objeto se pidio con Allocate(sizeof(T), alignof(T)), que son el tamano y
+                //     la alineacion del layout que lleva este nodo (C-08).
                 LLVMValueRef thunk = allocatorDeallocateThunk(
                     *node->allocatorTypeOrdinal,
                     node->allocatorDeallocateCalleeName,
+                    node->immediate,
+                    node->alignment,
                     error);
                 if (thunk == nullptr) return false;
                 if (!installAllocatorDescriptorSidecar(
@@ -629,6 +637,7 @@ bool OopLlvmImplementation::invokePlacementConstructor(
             constructorArguments.push_back(storage);
             constructorArguments.insert(
                 constructorArguments.end(), orderedArguments.begin(), orderedArguments.end());
+            releaseTransferredArguments(node);
             LLVMBasicBlockRef allocatorFailureCleanup = nullptr;
             if (targetType.kind == frontend::NamedTypeDeclarationKind::Class &&
                 node->allocatorContextLocalOrdinal.has_value() &&
@@ -656,7 +665,7 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                 if (invoke == nullptr)
                     return fail(error,
                         "NS304-T13-F07 failed to emit allocator constructor invoke");
-                LLVMPositionBuilderAtEnd(builder_, normalBlock);
+                enterBlock(normalBlock);
             }
             else if (buildPotentiallyThrowingCall(
                          constructor->second.functionType,
@@ -765,7 +774,7 @@ LLVMValueRef OopLlvmImplementation::lowerObjectDestruction(
         LLVMBasicBlockRef doneBlock = appendBlock("destroy.object.done");
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
         LLVMValueRef descriptor = LLVMBuildLoad2(
             builder_, ptr, object, "destroy.object.descriptor");
         LLVMValueRef entryAddress = LLVMBuildStructGEP2(
@@ -781,7 +790,7 @@ LLVMValueRef OopLlvmImplementation::lowerObjectDestruction(
         }
         if (!terminated()) LLVMBuildBr(builder_, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 
@@ -809,6 +818,13 @@ LLVMValueRef OopLlvmImplementation::lowerDeallocation(
         // allocator, which would misbehave or fail LLVM verification.
         if (node->valueTypeNoOpDeletion)
         {
+            // EN: Freeze 3.0 C-12: an addressed struct element is dropped in place, then zeroed.
+            // ES: Congelamiento 3.0 C-12: un elemento struct con direccion se destruye y queda en cero.
+            if (node->booleanValue &&
+                !emitValueElementDelete(
+                    loweredOperand, node->elementTypeKey,
+                    takeArrayElementLiveness(node->children.front().get()), error))
+                return nullptr;
             return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
         }
 
@@ -863,7 +879,7 @@ LLVMValueRef OopLlvmImplementation::lowerDeallocation(
         LLVMBasicBlockRef doneBlock = appendBlock("delete.done");
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
         LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, pointer, "delete.descriptor");
         LLVMValueRef entryAddress = LLVMBuildStructGEP2(
             builder_, descriptorType_, descriptor, 5, "delete.entry.addr");
@@ -881,7 +897,7 @@ LLVMValueRef OopLlvmImplementation::lowerDeallocation(
             LLVMBuildBr(builder_, doneBlock);
         }
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 

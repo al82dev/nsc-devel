@@ -1,6 +1,7 @@
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 
 #include "LlvmCApi.h"
+#include "Internal/CodeViewProcedureRanges.h"
 
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/Target/TargetInfo.h"
@@ -25,6 +26,7 @@ void initializeX86Backend()
     llvm_api::LLVMInitializeX86TargetMC();
     llvm_api::LLVMInitializeX86AsmParser();
     llvm_api::LLVMInitializeX86AsmPrinter();
+    llvm_api::LLVMInitializeX86Disassembler();
 }
 
 void initializeAArch64Backend()
@@ -316,7 +318,18 @@ bool LlvmTargetMachine::emitImpl(
         const std::string attemptError =
             message != nullptr ? message : "LLVM target emission failed";
         if (message != nullptr) llvm_api::LLVMDisposeMessage(message);
-        if (failed == 0) return true;
+        if (failed == 0)
+        {
+            // ES: LLVM deja DbgStart y DbgEnd en 0 en los procedimientos CodeView; se escriben aqui, sobre el
+            // objeto recien emitido y antes de que el cache o el enlazador lo lean.
+            // EN: LLVM leaves DbgStart and DbgEnd at 0 in CodeView procedures; they are written here, on the
+            // freshly emitted object and before the cache or the linker reads it.
+            if (fileType != LlvmCodeGenFileType::Object) return true;
+            std::string rangesError;
+            if (CodeViewProcedureRanges::apply(outputPath, rangesError)) return true;
+            error = "cannot write CodeView procedure ranges: " + rangesError;
+            return false;
+        }
 
         const bool transientOutputLock =
             attemptError.find("user-mapped section open") != std::string::npos ||

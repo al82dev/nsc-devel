@@ -16,7 +16,9 @@
 #include "nativesharp/LLVM/ProjectOopFunctionReachability.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 #include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
+#include "nativesharp/Linker/WindowsExecutableBuilder.h"
 #include "nativesharp/Linker/WindowsLibraryBuilder.h"
+#include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 
 #include "../support/TestContext.h"
 
@@ -2266,9 +2268,9 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
     writeFile(directory / "B.ns",
         "namespace Demo; public partial class Counter { "
         "public int AddTwice(int delta) { return Add(delta) + Add(delta); } "
-        "public Counter Make(int start) { return new Counter(start); } "
-        "public Counter MakeAfterAdd(int delta) { return new Counter(Add(delta)); } } "
-        "public class Empty { } public class Factory { public Empty MakeEmpty() { return new Empty(); } }");
+        "public owned Counter Make(int start) { return new Counter(start); } "
+        "public owned Counter MakeAfterAdd(int delta) { return new Counter(Add(delta)); } } "
+        "public class Empty { } public class Factory { public owned Empty MakeEmpty() { return new Empty(); } }");
 
     ProjectCompilation compilation;
     std::string error;
@@ -2472,12 +2474,20 @@ void testEndToEndOopLowering(TestContext& tests, const std::filesystem::path& ro
             *compilation.nameLookup(), *compilation.memberModel(), mir,
             compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
             nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 4, {}, objectGenerationError);
-        tests.expect(objectBundle != nullptr && objectGenerationError.empty() &&
-                objectBundle->codeUnitCount() == serialPartition.units().size() &&
-                objectBundle->objectFiles().size() == serialPartition.units().size() + 1 &&
+        // EN: O0 asks for eight code units whatever the worker count, so the expected count is the
+        //     size of an eight-unit partition of the same MIR. ES: O0 pide ocho unidades sea cual sea
+        //     el numero de workers; lo esperado es el tamano de una particion de ocho del mismo MIR.
+        nativesharp::llvm_backend::ProjectOopCodePartition eightUnitPartition;
+        std::string eightUnitError;
+        const bool eightUnitOk = eightUnitPartition.build(
+            mir, 8, eightUnitError,
+            nativesharp::llvm_backend::ProjectOopCodePartitionPolicy::DeterministicIncremental);
+        tests.expect(eightUnitOk && objectBundle != nullptr && objectGenerationError.empty() &&
+                objectBundle->codeUnitCount() == eightUnitPartition.units().size() &&
+                objectBundle->objectFiles().size() == eightUnitPartition.units().size() + 1 &&
                 objectBundle->cacheHitCount() == 0 &&
                 objectBundle->cacheMissCount() == objectBundle->objectFiles().size(),
-            "four-worker code generation emits one verified coordinator object and one object per code unit");
+            "four-worker code generation emits one verified coordinator object and one object per stable code unit");
         if (objectBundle != nullptr)
         {
             objectGenerationError.clear();
@@ -3016,6 +3026,295 @@ public class Work
             prunedPlanRestoreOk && !prunedPlanHit,
         "the artifact-cache byte budget evicts private partition plans with objects (" +
             error + ")");
+}
+
+/// EN: The code partition no longer depends on the worker count: the same MIR generated with one
+///     worker and with sixteen workers must give byte-identical objects (O2 without debug
+///     information and O0 with full debug information, whose CodeView feeds the PDB), and objects
+///     cached by a one-worker build must be reused by a sixteen-worker build.
+/// ES: La particion de codigo ya no depende del numero de workers: el mismo MIR generado con un
+///     worker y con dieciseis debe dar objetos identicos byte a byte (O2 sin informacion de
+///     depuracion y O0 con informacion completa, cuyo CodeView alimenta el PDB), y los objetos que
+///     guarda un build de un worker deben reutilizarse en un build de dieciseis.
+/// EN: Links the objects of a bundle into `<directory>/WorkerIndependent.exe` with a full PDB and
+///     reads back the executable and PDB bytes. Returns false with `error` when the link fails.
+///     Side effects: replaces `directory`.
+/// ES: Enlaza los objetos de un paquete en `<directory>/WorkerIndependent.exe` con PDB completo y
+///     lee los bytes del ejecutable y del PDB. Devuelve false con `error` si el enlace falla.
+///     Efectos laterales: reemplaza `directory`.
+bool linkedArtifactBytes(
+    const nativesharp::llvm_backend::ProjectOopObjectBundle& bundle,
+    const std::filesystem::path& directory,
+    std::string_view mainSymbol,
+    std::string& executableBytes,
+    std::string& pdbBytes,
+    std::string& error)
+{
+    std::error_code ignored;
+    std::filesystem::remove_all(directory, ignored);
+    std::filesystem::create_directories(directory, ignored);
+    nativesharp::linker::WindowsExecutableBuilder builder;
+    builder.setRuntimeLibrary(nativesharp::linker::configuredWindowsRuntimeLibrary());
+    builder.setDebugInformation(nativesharp::llvm_backend::DebugInformationKind::Full);
+    const std::filesystem::path executable = directory / "WorkerIndependent.exe";
+    if (!builder.buildObjects(bundle.objectFiles(), bundle.combinedLlvmText(), executable,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O0, mainSymbol, error)) return false;
+    std::ifstream executableStream(executable, std::ios::binary);
+    executableBytes.assign(std::istreambuf_iterator<char>(executableStream), {});
+    std::ifstream pdbStream(directory / "WorkerIndependent.pdb", std::ios::binary);
+    pdbBytes.assign(std::istreambuf_iterator<char>(pdbStream), {});
+    return !executableBytes.empty() && !pdbBytes.empty();
+}
+
+void testWorkerIndependentPartitions(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "WorkerIndependentPartitions";
+    writeProject(directory, "WorkerIndependent");
+    std::string source = "public class Work\n{\n";
+    for (int index = 0; index < 24; ++index)
+    {
+        source += "    public static noinline int F" + std::to_string(index) + "(int value) { return value * " +
+            std::to_string(index + 3) + " + " + std::to_string(index) + "; }\n";
+    }
+    source += "    public static int Main() { return F0(1) + F23(2); }\n}\n";
+    writeFile(directory / "Work.ns", source);
+
+    ProjectCompilation compilation;
+    compilation.setCompilationJobs(4);
+    std::string error;
+    const bool compiled = compilation.compileProjectOopMir(
+        directory / "WorkerIndependent.nsproj", error);
+    tests.expect(compiled && compilation.oopMirModel() != nullptr,
+        "worker-independent partition fixture produces OOP MIR (" + error + ")");
+    if (!compiled || compilation.oopMirModel() == nullptr) return;
+    bool ambiguousEntry = false;
+    const nativesharp::frontend::ProjectOopMirFunction* entry =
+        compilation.namespaceFunctionModel() == nullptr
+            ? nullptr
+            : compilation.oopMirModel()->executableEntryPoint(
+                *compilation.namespaceFunctionModel(), ambiguousEntry);
+    tests.expect(entry != nullptr && !ambiguousEntry,
+        "worker-independent partition fixture has one executable entry point");
+
+    struct Profile
+    {
+        nativesharp::llvm_backend::DebugInformationKind debugInformation;
+        nativesharp::llvm_backend::LlvmOptimizationLevel optimizationLevel;
+        std::string name;
+    };
+    const Profile profiles[] = {
+        {nativesharp::llvm_backend::DebugInformationKind::None,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O2, "O2"},
+        {nativesharp::llvm_backend::DebugInformationKind::Full,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O0, "O0-g"}};
+    nativesharp::llvm_backend::ProjectOopObjectGenerator generator;
+    for (const Profile& profile : profiles)
+    {
+        nativesharp::llvm_backend::CompilationArtifactCache sharedCache;
+        sharedCache.setRoot(directory / ("shared-cache-" + profile.name));
+        sharedCache.setCodegenIdentity("worker-independent-partitions");
+        std::unique_ptr<nativesharp::llvm_backend::ProjectOopObjectBundle> oneWorker;
+        std::unique_ptr<nativesharp::llvm_backend::ProjectOopObjectBundle> reused;
+        {
+            nativesharp::llvm_backend::CompilationArtifactCacheScope scope(sharedCache);
+            error.clear();
+            oneWorker = generator.generate(
+                *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+                compilation.sourceManager(), profile.debugInformation, profile.optimizationLevel,
+                1, {}, error);
+            std::string reusedError;
+            reused = generator.generate(
+                *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+                compilation.sourceManager(), profile.debugInformation, profile.optimizationLevel,
+                16, {}, reusedError);
+            tests.expect(oneWorker != nullptr && reused != nullptr && oneWorker->codeUnitCount() > 1 &&
+                    reused->cacheMissCount() == 0 &&
+                    reused->cacheHitCount() == reused->objectFiles().size(),
+                profile.name + ": a sixteen-worker build reuses every object of a one-worker build (" +
+                    error + reusedError + ")");
+        }
+        nativesharp::llvm_backend::CompilationArtifactCache cleanCache;
+        cleanCache.setRoot(directory / ("clean-cache-" + profile.name));
+        cleanCache.setCodegenIdentity("worker-independent-partitions");
+        nativesharp::llvm_backend::CompilationArtifactCacheScope cleanScope(cleanCache);
+        error.clear();
+        auto sixteenWorkers = generator.generate(
+            *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+            compilation.sourceManager(), profile.debugInformation, profile.optimizationLevel,
+            16, {}, error);
+        tests.expect(oneWorker != nullptr && sixteenWorkers != nullptr &&
+                sixteenWorkers->cacheHitCount() == 0 && sameObjectFiles(*oneWorker, *sixteenWorkers),
+            profile.name + ": one worker and sixteen workers emit byte-identical objects (" + error + ")");
+        // The PDB must not depend on the worker count either: NSLink spells the input objects
+        // into it and hashes them into the GUID that the executable repeats.
+        // El PDB tampoco debe depender del numero de workers: NSLink escribe en el los objetos de
+        // entrada y los mete en el hash del GUID que el ejecutable repite.
+        if (profile.debugInformation == nativesharp::llvm_backend::DebugInformationKind::None ||
+            entry == nullptr || oneWorker == nullptr || sixteenWorkers == nullptr) continue;
+        std::string oneExecutable;
+        std::string onePdb;
+        std::string sixteenExecutable;
+        std::string sixteenPdb;
+        std::string linkError;
+        const bool linked =
+            linkedArtifactBytes(*oneWorker, directory / ("link-one-" + profile.name),
+                entry->mangledName, oneExecutable, onePdb, linkError) &&
+            linkedArtifactBytes(*sixteenWorkers, directory / ("link-sixteen-" + profile.name),
+                entry->mangledName, sixteenExecutable, sixteenPdb, linkError);
+        tests.expect(linked && onePdb == sixteenPdb && oneExecutable == sixteenExecutable,
+            profile.name + ": one worker and sixteen workers link byte-identical executables and PDBs (" +
+                linkError + ")");
+    }
+}
+
+/// EN: Optimization part 2, item 46. Generates a 24-function project at O2 with -flto=thin and four
+///     workers, keeping the optimized IR of every unit after its ThinLTO backend. The backends must
+///     import definitions across units, and the unit that defines Main must keep no call to any F<k>,
+///     including at least one F<k> defined in another unit: cross-partition inlining is observable.
+/// ES: Punto 46 de la parte 2. Genera un proyecto de 24 funciones en O2 con -flto=thin y cuatro
+///     workers, conservando el IR optimizado de cada unidad tras su backend ThinLTO. Los backends
+///     deben importar definiciones entre unidades y la unidad que define Main no debe conservar
+///     ninguna llamada a F<k>, incluida al menos una F<k> definida en otra unidad: el inlining entre
+///     particiones es observable.
+void testThinLtoCrossPartitionInlining(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "ThinLtoCrossPartitionInlining";
+    writeProject(directory, "ThinInline");
+    std::string source = "public class Work\n{\n";
+    for (int index = 0; index < 24; ++index)
+    {
+        source += "    public static int F" + std::to_string(index) + "(int value) { return value * " +
+            std::to_string(index + 2) + " + " + std::to_string(index) + "; }\n";
+    }
+    source += "    public static int Main()\n    {\n        int total = 0;\n";
+    for (int index = 0; index < 24; ++index)
+        source += "        total = total + F" + std::to_string(index) + "(" + std::to_string(index) + ");\n";
+    source += "        return total;\n    }\n}\n";
+    writeFile(directory / "Work.ns", source);
+
+    ProjectCompilation compilation;
+    compilation.setCompilationJobs(4);
+    std::string error;
+    const bool compiled = compilation.compileProjectOopMir(directory / "ThinInline.nsproj", error);
+    tests.expect(compiled && compilation.oopMirModel() != nullptr,
+        "ThinLTO inlining fixture produces OOP MIR (" + error + ")");
+    if (!compiled || compilation.oopMirModel() == nullptr) return;
+
+    nativesharp::llvm_backend::ProjectOopObjectGenerator generator;
+    generator.setThinLtoFinalModuleTextCapture(true);
+    error.clear();
+    const auto bundle = generator.generate(
+        *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+        compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+        nativesharp::llvm_backend::LlvmOptimizationLevel::O2, 4, {},
+        nativesharp::llvm_backend::LinkTimeOptimizationMode::Thin, error);
+    tests.expect(bundle != nullptr && bundle->codeUnitCount() > 1 && bundle->thinLtoImportCount() > 0,
+        "ThinLTO backends import definitions across code units (" + error + ")");
+    if (bundle == nullptr) return;
+
+    const auto lines = [](const std::string& text, std::string_view needle, std::string_view prefix)
+    {
+        std::istringstream stream(text);
+        std::string line;
+        while (std::getline(stream, line))
+            if (line.find(needle) != std::string::npos && line.find(prefix) != std::string::npos) return true;
+        return false;
+    };
+    const std::string* mainUnit = nullptr;
+    for (const std::string& text : bundle->thinLtoFinalModuleTexts())
+        if (lines(text, "Work__Main", "define ")) mainUnit = &text;
+    tests.expect(mainUnit != nullptr, "the final ThinLTO IR contains the unit that defines Main");
+    if (mainUnit == nullptr) return;
+    bool everyCallInlined = true;
+    bool crossUnitCallee = false;
+    for (int index = 0; index < 24; ++index)
+    {
+        const std::string callee = "Work__F" + std::to_string(index) + "__";
+        const bool called = lines(*mainUnit, callee, "call ");
+        const bool definedHere = lines(*mainUnit, callee, "define ");
+        everyCallInlined = everyCallInlined && !called;
+        crossUnitCallee = crossUnitCallee || !definedHere;
+    }
+    tests.expect(crossUnitCallee, "at least one callee of Main lives in another code unit");
+    tests.expect(everyCallInlined, "ThinLTO inlines every callee into Main, across code units");
+}
+
+// Optimization part 2, item 50: with the symbols native objects need (here only Main), ThinLTO may
+// internalize every other definition, so a function nothing reaches leaves no definition behind.
+// Without them every definition stays visible, as a static library needs.
+// Parte 2, punto 50: con los simbolos que necesitan los objetos nativos (aqui solo Main), ThinLTO
+// puede internalizar toda otra definicion, asi que una funcion que nada alcanza no deja definicion.
+// Sin ellos toda definicion queda visible, como necesita una biblioteca estatica.
+bool thinLtoTextDefines(const std::string& text, std::string_view name)
+{
+    std::istringstream stream(text);
+    std::string line;
+    while (std::getline(stream, line))
+    {
+        if (line.rfind("define ", 0) == 0 && line.find(name) != std::string::npos) return true;
+    }
+    return false;
+}
+
+void testThinLtoInternalization(TestContext& tests, const std::filesystem::path& root)
+{
+    const auto directory = root / "ThinLtoInternalization";
+    writeProject(directory, "ThinInternal");
+    std::string source = "public class Work\n{\n";
+    for (int index = 0; index < 24; ++index)
+    {
+        source += "    public static int F" + std::to_string(index) + "(int value) { return value * " +
+            std::to_string(index + 2) + " + " + std::to_string(index) + "; }\n";
+    }
+    source += "    public static int Orphan(int value) { return value * 97 + 13; }\n";
+    source += "    public static int Main()\n    {\n        int total = 0;\n";
+    for (int index = 0; index < 24; ++index)
+        source += "        total = total + F" + std::to_string(index) + "(" + std::to_string(index) + ");\n";
+    source += "        return total;\n    }\n}\n";
+    writeFile(directory / "Work.ns", source);
+
+    ProjectCompilation compilation;
+    compilation.setCompilationJobs(4);
+    std::string error;
+    const bool compiled = compilation.compileProjectOopMir(directory / "ThinInternal.nsproj", error);
+    tests.expect(compiled && compilation.oopMirModel() != nullptr,
+        "ThinLTO internalization fixture produces OOP MIR (" + error + ")");
+    if (!compiled || compilation.oopMirModel() == nullptr) return;
+    std::string mainSymbol;
+    for (const auto& function : compilation.oopMirModel()->functions())
+    {
+        if (function.mangledName.find("Work__Main") != std::string::npos) mainSymbol = function.mangledName;
+    }
+    tests.expect(!mainSymbol.empty(), "the internalization fixture exposes the mangled name of Main");
+    if (mainSymbol.empty()) return;
+
+    for (int internalize = 0; internalize < 2; ++internalize)
+    {
+        nativesharp::llvm_backend::ProjectOopObjectGenerator generator;
+        generator.setThinLtoFinalModuleTextCapture(true);
+        if (internalize == 1) generator.setThinLtoPreservedSymbols(std::vector<std::string>{mainSymbol});
+        error.clear();
+        const auto bundle = generator.generate(
+            *compilation.nameLookup(), *compilation.memberModel(), *compilation.oopMirModel(),
+            compilation.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+            nativesharp::llvm_backend::LlvmOptimizationLevel::O2, 4, {},
+            nativesharp::llvm_backend::LinkTimeOptimizationMode::Thin, error);
+        tests.expect(bundle != nullptr && bundle->thinLtoInternalized() == (internalize == 1),
+            "the ThinLTO bundle reports whether it internalized (" + error + ")");
+        if (bundle == nullptr) continue;
+        bool orphanDefined = false;
+        bool mainDefined = false;
+        for (const std::string& text : bundle->thinLtoFinalModuleTexts())
+        {
+            orphanDefined = orphanDefined || thinLtoTextDefines(text, "Work__Orphan");
+            mainDefined = mainDefined || thinLtoTextDefines(text, mainSymbol);
+        }
+        tests.expect(mainDefined, "a preserved entry point keeps its definition after ThinLTO");
+        if (internalize == 1)
+            tests.expect(!orphanDefined, "an internalizing ThinLTO link deletes a function nothing reaches");
+        else
+            tests.expect(orphanDefined, "without preserved symbols every ThinLTO definition stays visible");
+    }
 }
 
 void testPartitionStaticFieldReachability(TestContext& tests, const std::filesystem::path& root)
@@ -21406,6 +21705,18 @@ int main()
     {
         testPreciseIncrementalInvalidation(tests, root);
     }
+    else if (focusValue == "worker-independent-partitions")
+    {
+        testWorkerIndependentPartitions(tests, root);
+    }
+    else if (focusValue == "thinlto-cross-partition-inlining")
+    {
+        testThinLtoCrossPartitionInlining(tests, root);
+    }
+    else if (focusValue == "thinlto-internalization")
+    {
+        testThinLtoInternalization(tests, root);
+    }
     else if (focusValue == "hir-default-argument-depth")
     {
         testDeepOptionalDefaultHir(tests, root);
@@ -21780,6 +22091,9 @@ int main()
         testAggregateCallableBoundary(tests, root);
         testNarrowSignedEnumNameLowering(tests, root);
         testPreciseIncrementalInvalidation(tests, root);
+        testWorkerIndependentPartitions(tests, root);
+        testThinLtoCrossPartitionInlining(tests, root);
+        testThinLtoInternalization(tests, root);
         testPartitionStaticFieldReachability(tests, root);
         testImportedConstantCoordinatorReachability(tests);
         testSharedLlvmAnalysis(tests, root);

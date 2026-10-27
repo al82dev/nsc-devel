@@ -26,19 +26,19 @@ namespace NativeSharp.BookExamples.RationalNumbers
             Console.WriteLine(line);
         }
 
-        public static int Main()
+        public static int Main() throws ZeroDenominatorException
         {
             Console.WriteLine("NativeSharp Book Example 01 - Rational Numbers");
             Console.WriteLine("------------------------------------------------");
 
-            Rational a = new Rational(2, 3);
-            Rational b = new Rational(5, 7);
+            raii Rational a = new Rational(2, 3);
+            raii Rational b = new Rational(5, 7);
 
-            Rational sum = a + b;
-            Rational difference = a - b;
-            Rational product = a * b;
-            Rational quotient = a / b;
-            Rational negative = -a;
+            raii Rational sum = a + b;
+            raii Rational difference = a - b;
+            raii Rational product = a * b;
+            raii Rational quotient = a / b;
+            raii Rational negative = -a;
 
             PrintBinaryOperation("", a, "+", b, sum);
             PrintBinaryOperation("", a, "-", b, difference);
@@ -56,20 +56,20 @@ namespace NativeSharp.BookExamples.RationalNumbers
 
             Console.WriteLine("");
             Console.WriteLine("Harmonic series H(10) = 1 + 1/2 + ... + 1/10");
-            Rational harmonic = RationalSeries.Harmonic(10);
+            raii Rational harmonic = RationalSeries.Harmonic(10);
             raii string harmonicText = harmonic.ToText();
             Console.WriteLine(harmonicText);
 
             Console.WriteLine("");
             Console.WriteLine("First 8 terms of the Leibniz series for pi/4:");
-            Rational piQuarter = RationalSeries.LeibnizPiQuarter(8);
+            raii Rational piQuarter = RationalSeries.LeibnizPiQuarter(8);
             raii string piQuarterText = piQuarter.ToText();
             Console.WriteLine(piQuarterText);
 
             Console.WriteLine("");
             Console.WriteLine("Normalization examples:");
-            Rational normalizedA = new Rational(42, 56);
-            Rational normalizedB = new Rational(-18, -24);
+            raii Rational normalizedA = new Rational(42, 56);
+            raii Rational normalizedB = new Rational(-18, -24);
             raii string normalizedAText = normalizedA.ToText();
             raii string normalizedBText = normalizedB.ToText();
             raii string normalizedALine = String.Concat("  42/56  -> ", normalizedAText);
@@ -80,8 +80,7 @@ namespace NativeSharp.BookExamples.RationalNumbers
             bool caughtInvalid = false;
             try
             {
-                Rational invalid = new Rational(1, 0);
-                delete invalid;
+                raii Rational invalid = new Rational(1, 0);
             }
             catch (ZeroDenominatorException problem)
             {
@@ -89,17 +88,6 @@ namespace NativeSharp.BookExamples.RationalNumbers
                 Console.WriteLine("  Invalid denominator correctly rejected with an exception.");
             }
 
-            delete a;
-            delete b;
-            delete sum;
-            delete difference;
-            delete product;
-            delete quotient;
-            delete negative;
-            delete harmonic;
-            delete piQuarter;
-            delete normalizedA;
-            delete normalizedB;
 
             if (!caughtInvalid)
             {

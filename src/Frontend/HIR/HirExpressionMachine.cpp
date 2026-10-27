@@ -1,4 +1,5 @@
 #include "HirLoweringSupport.h"
+#include "../Internal/TypeIndexShadowCheck.h"
 #include "ExpressionStatementMachine/HirExpressionStatementMachineTypes.h"
 
 #include "nativesharp/Compilation/TypeIdentity.h"
@@ -477,6 +478,17 @@ bool ProjectOopHirModel::isEnumBinaryTypeKey(std::string_view typeKey) const noe
 {
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
     const std::string_view identity = typeKey.substr(5);
+    if constexpr (internal::kIndexShadowCheckEnabled)
+        internal::shadowCheckTypeIdentityIndex(*nameLookup_, identity, "ProjectOopHirModel::isEnumBinaryTypeKey");
+    // Identities are unique in namedTypes() (parts are aggregated by identity), so the indexed
+    // type is the only one the scan below can match; the scan only runs for hand-assembled
+    // models that have no type index.
+    if (const std::optional<std::size_t> ordinal = nameLookup_->typeOrdinalForIdentity(identity))
+    {
+        const NamedTypeDeclaration* type = nameLookup_->typeForOrdinal(*ordinal);
+        return type != nullptr && isEnumTypeWithIdentity(identity, *type);
+    }
+    if (nameLookup_->hasTypeIndex()) return false;
     return std::any_of(
         nameLookup_->namedTypes().begin(),
         nameLookup_->namedTypes().end(),
@@ -3211,6 +3223,20 @@ bool ProjectOopHirModel::isNaturallyAddressable([[maybe_unused]] const ast::AstN
             return accessor->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
                 *accessor->selectedMemberOrdinal < memberModel_->members().size() &&
                 memberModel_->members()[*accessor->selectedMemberOrdinal].isReferenceReturn;
+        }
+        case ast::AstNodeKind::CallExpression:
+        {
+            // EN: Freeze 3.0 P3: a method that returns `ref T` returns existing storage, exactly
+            //     like a ref-returning accessor above. `holder.Get().Field = v` and
+            //     `holder.Get().Mutate()` must reach that storage, not a temporary copy of it.
+            // ES: Congelamiento 3.0 P3: un metodo que devuelve `ref T` devuelve almacenamiento que
+            //     ya existe, igual que un accesor ref de arriba. `holder.Get().Field = v` y
+            //     `holder.Get().Mutar()` deben llegar a ese almacenamiento, no a una copia temporal.
+            const MethodCallBinding* call = callBinding(expression);
+            return call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+                call->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *call->selectedMemberOrdinal < memberModel_->members().size() &&
+                memberModel_->members()[*call->selectedMemberOrdinal].isReferenceReturn;
         }
         case ast::AstNodeKind::ThisExpression:
         case ast::AstNodeKind::BaseExpression:

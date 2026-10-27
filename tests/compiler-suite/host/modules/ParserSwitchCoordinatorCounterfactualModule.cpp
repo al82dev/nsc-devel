@@ -183,9 +183,15 @@ bool testRecovery(std::string& detail)
     const bool closeDiagnostic = hasExactDiagnostic(
         close, DiagnosticId::ExpectedToken,
         "expected '}' to close the switch, found ''");
+    // EN: Freeze 3.0 C-06: a list pattern in a case label is a deliberate rejection (list patterns are
+    //     implemented in match and is), reported as UnexpectedToken with this exact message.
+    // ES: Congelamiento 3.0 C-06: un list pattern en una etiqueta case es un rechazo deliberado (los
+    //     list patterns estan implementados en match e is), reportado como UnexpectedToken con este texto.
     const bool listDiagnostic = !list.diagnostics().diagnostics().empty() &&
-        list.diagnostics().diagnostics().front().id() ==
-            DiagnosticId::NS3049DeferredLanguageSurface;
+        list.diagnostics().diagnostics().front().id() == DiagnosticId::UnexpectedToken &&
+        list.diagnostics().diagnostics().front().message() ==
+            "list patterns are supported in 'match' and 'is', not in 'case' labels; "
+            "use a match expression over the value";
     const bool cursorOk = labels.parser().current().kind() == TokenKind::EndOfFile &&
         close.parser().current().kind() == TokenKind::EndOfFile;
     const bool ok = shapeOk && labelDiagnostic && colonDiagnostic && closeDiagnostic &&

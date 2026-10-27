@@ -61,9 +61,9 @@ void testPrimary(TestContext& tests, const std::filesystem::path& root)
         "public class Empty {}\n");
     writeFile(directory / "B.ns",
         "namespace Demo; public partial class Widget { public Widget(float value) { this.Value = 0; } "
-        "public Widget MakeInt() { return new Widget(1); } "
-        "public Widget MakeFloat() { return new Widget(1.0f); } "
-        "public Empty MakeEmpty() { return new Empty(); } }\n");
+        "public owned Widget MakeInt() { return new Widget(1); } "
+        "public owned Widget MakeFloat() { return new Widget(1.0f); } "
+        "public owned Empty MakeEmpty() { return new Empty(); } }\n");
 
     ProjectCompilation compilation;
     std::string error;
@@ -175,7 +175,7 @@ void testAccessibility(TestContext& tests, const std::filesystem::path& root)
         const auto directory = root / "PrivateSameType";
         writeProject(directory, "PrivateSameType");
         writeFile(directory / "Main.ns",
-            "class Secret { private Secret() { } Secret Clone() { return new Secret(); } }\n");
+            "class Secret { private Secret() { } owned Secret Clone() { return new Secret(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         tests.expect(compilation.compileProjectConstructions(directory / "PrivateSameType.nsproj", error),
@@ -202,7 +202,7 @@ void testAccessibility(TestContext& tests, const std::filesystem::path& root)
         writeFile(core / "Thing.ns", "namespace Shared; public class Thing { internal Thing() { } }\n");
         writeProject(app, "App", "<ProjectReference Include=\"../Core/Core.nsproj\" />");
         writeFile(app / "Maker.ns",
-            "using Shared; class Maker { Thing Make() { return new Thing(); } }\n");
+            "using Shared; class Maker { owned Thing Make() { return new Thing(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(app / "App.nsproj", error);
@@ -218,7 +218,7 @@ void testAccessibility(TestContext& tests, const std::filesystem::path& root)
         writeFile(core / "Thing.ns", "namespace Shared; public class Thing { }\n");
         writeProject(app, "DefaultApp", "<ProjectReference Include=\"../DefaultCore/DefaultCore.nsproj\" />");
         writeFile(app / "Maker.ns",
-            "using Shared; class Maker { Thing Make() { return new Thing(); } }\n");
+            "using Shared; class Maker { owned Thing Make() { return new Thing(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(app / "DefaultApp.nsproj", error);
@@ -236,7 +236,7 @@ void testAccessibility(TestContext& tests, const std::filesystem::path& root)
             "namespace Shared; public class Thing { public Thing(int value) { } }\n");
         writeProject(app, "PublicAliasApp", "<ProjectReference Include=\"../PublicAliasCore/PublicAliasCore.nsproj\" />");
         writeFile(app / "Maker.ns",
-            "using Alias = Shared.Thing; class Maker { Alias Make() { return new Alias(1); } }\n");
+            "using Alias = Shared.Thing; class Maker { owned Alias Make() { return new Alias(1); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(app / "PublicAliasApp.nsproj", error);
@@ -319,7 +319,7 @@ void testInvalidTargetsAndBodies(TestContext& tests, const std::filesystem::path
         const auto directory = root / "GlobalConstruction";
         writeProject(directory, "GlobalConstruction");
         writeFile(directory / "Main.ns",
-            "namespace Demo { class Box { } Box Make() { return new Box(); } }\n");
+            "namespace Demo { class Box { } owned Box Make() { return new Box(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(
@@ -364,7 +364,7 @@ void testRanking(TestContext& tests, const std::filesystem::path& root)
         const auto directory = root / "ConstantRanking";
         writeProject(directory, "ConstantRanking");
         writeFile(directory / "Main.ns",
-            "class Box { Box(byte x) { } Box(long x) { } Box Make() { return new Box(1); } }\n");
+            "class Box { Box(byte x) { } Box(long x) { } owned Box Make() { return new Box(1); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(directory / "ConstantRanking.nsproj", error);
@@ -382,7 +382,7 @@ void testRanking(TestContext& tests, const std::filesystem::path& root)
         const auto directory = root / "NullReferenceArgument";
         writeProject(directory, "NullReferenceArgument");
         writeFile(directory / "Main.ns",
-            "class Node { } class Box { Box(Node value) { } Box Make() { return new Box(null); } }\n");
+            "class Node { } class Box { Box(Node value) { } owned Box Make() { return new Box(null); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(directory / "NullReferenceArgument.nsproj", error);
@@ -418,7 +418,7 @@ void testImplicitBaseConstructorChains(TestContext& tests, const std::filesystem
         writeProject(directory, "ImplicitChain");
         writeFile(directory / "Main.ns",
             "public class A { public A() { } } public class B : A { } public class Leaf : B { "
-            "public Leaf Make() { return new Leaf(); } }\n");
+            "public owned Leaf Make() { return new Leaf(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectConstructions(directory / "ImplicitChain.nsproj", error);
@@ -599,9 +599,9 @@ void testTypedSiteOrdering(TestContext& tests, const std::filesystem::path& root
     writeProject(directory, "TypedSiteOrdering");
     writeFile(directory / "Main.ns",
         "namespace Demo; public class Node { "
-        "public Node() {} public Node(Node child) {} "
-        "public Node Field = new Node(); "
-        "public Node Make() { return new Node(new Node()); } }");
+        "public Node() {} public Node(owned Node child) {} "
+        "public owned Node Field = new Node(); "
+        "public owned Node Make() { return new Node(new Node()); } }");
 
     ProjectCompilation compilation;
     std::string error;

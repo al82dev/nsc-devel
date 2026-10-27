@@ -14,6 +14,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectMemberAccessibility.h"
 #include "nativesharp/Frontend/ProjectReferenceEscapeEvaluator.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Language/AbiSemantics.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
@@ -568,10 +569,16 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
         arguments[argumentOrdinal].typeKey,
         conversionTarget,
         arguments[argumentOrdinal].integerConstant);
+    // EN: Freeze 3.0 P3: an `in` parameter only reads its argument, so a readonly place (another
+    //     `in` parameter, a readonly field, a `ref readonly` result) may be lent to it.
+    // ES: Congelamiento 3.0 P3: un parametro `in` solo lee su argumento, asi que se le puede prestar
+    //     un lugar readonly (otro parametro `in`, un campo readonly, un resultado `ref readonly`).
+    const bool parameterPointeeReadonly =
+        parameter.pointerPointeeReadonly || parameter.passKind == ParameterPassKind::In;
     const bool discardsPointeeConst = !packElement &&
         arguments[argumentOrdinal].pointerPointeeReadonly &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
-        !parameter.pointerPointeeReadonly;
+        !parameterPointeeReadonly;
     const bool violatesPointerContract = !packElement &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(
@@ -583,7 +590,7 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
                 arguments[argumentOrdinal].pointerAddressSpace),
             pointerContract(
                 parameter.pointerNullable,
-                parameter.pointerPointeeReadonly,
+                parameterPointeeReadonly,
                 parameter.pointerHasProvenance,
                 parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
@@ -851,6 +858,32 @@ void ProjectMethodBodyModel::recordNamespaceFunctionBorrows(
     }
 }
 
+// EN: Freeze 3.0 C-01 (plan item 115): `F(new T())` where the parameter of F is not `owned` gives the object
+//     no owner: F only observes it, and destroying it after the call would free what F may have kept.
+// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): `F(new T())` con un parámetro de F sin `owned` deja al
+//     objeto sin dueño: F sólo lo observa, y destruirlo después de la llamada liberaría lo que F pudo guardar.
+void ProjectMethodBodyModel::rejectNamespaceNewToOrdinaryParameters(
+    const ClassMemberSymbol& callable,
+    std::span<ast::AstNode* const> argumentSyntaxes,
+    const std::vector<ExpressionResult>& arguments,
+    const MethodCallCandidate& selected,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < arguments.size() && argumentOrdinal < argumentSyntaxes.size() &&
+         argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
+    {
+        const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+        if (parameterOrdinal >= callable.parameters.size()) continue;
+        const ExpressionResult& argument = arguments[argumentOrdinal];
+        if (newReachesOrdinaryParameter(
+                callable.parameters[parameterOrdinal], argumentSyntaxes[argumentOrdinal],
+                argument.ownershipFreshOwner, argument.ownershipTransfer, argument.typeKey))
+            reportNewToOrdinaryParameter(
+                argumentSyntaxes[argumentOrdinal], callable.parameters[parameterOrdinal], callable.name, diagnostics);
+    }
+}
+
 void ProjectMethodBodyModel::recordNamespaceFunctionDefaults(
     const ClassMemberSymbol& callable,
     const MethodCallCandidate& selected,
@@ -892,6 +925,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     recordNamespaceFunctionBorrows(
         expression, callerCallableOrdinal, scopeOrdinal, functionOrdinal,
         argumentSyntaxes, arguments, selected);
+    rejectNamespaceNewToOrdinaryParameters(callable, argumentSyntaxes, arguments, selected, diagnostics);
     recordNamespaceFunctionDefaults(callable, selected, call);
     call.resultTypeKey = callable.declaredTypeKey;
     ExpressionResult result;
@@ -912,6 +946,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
         result.objectLifetimeOwnership = result.ownership;
         result.storageOwnership = result.ownership;
     }
+    // EN: Freeze 3.0 (plan item 135a): a forwarded extension receiver is one of the arguments.
+    // ES: Congelamiento 3.0 (elemento 135a del plan): un receptor de extension reenviado es uno de los argumentos.
+    markCallTemporaryBorrow(
+        result, false, arguments, ownedArgumentParameters(selected.argumentParameterOrdinals, callable));
     return result;
 }
 
@@ -3611,6 +3649,10 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
+        // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
+        // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
+        //     argumento prestado.
+        markDelegateCallTemporaryBorrow(result, arguments, delegateOrdinal);
         return result;
     }
 
@@ -3767,13 +3809,24 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         binding.resultTypeKey = returnType;
         if (!bindDelegateInvocationArguments(
                 expression, arguments, parameterTypes, binding, diagnostics)) return result;
+        rejectDelegateNewToOrdinaryParameters(expression, arguments, delegateOrdinal, diagnostics);
         if (!validateCallableTraitInvocation(
                 expression, callee, scopeOrdinal, diagnostics)) return result;
         binding.selectedDefaultArguments = std::move(defaultedSyntaxes);
         binding.selectedDefaultArgumentTypeKeys = std::move(defaultedTypeKeys);
+        // EN: Freeze 3.0 C-13: invoking a `throws E` delegate is a call to a `throws E` callable.
+        // ES: Congelamiento 3.0 C-13: invocar un delegate `throws E` es llamar a un callable `throws E`.
+        requireDeclaredErrorHandled(
+            expression, delegateErrorTypeKey(callee.typeKey),
+            expression->first() != nullptr ? expression->first()->text() : std::string_view("delegate"),
+            methodMemberOrdinal, diagnostics);
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;
+        // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
+        // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
+        //     argumento prestado.
+        markDelegateCallTemporaryBorrow(result, arguments, delegateOrdinal);
         return result;
     }
 
@@ -3839,6 +3892,39 @@ bool ProjectMethodBodyModel::collectDelegateDefaultArguments(
         return false;
     }
     return true;
+}
+
+// EN: Freeze 3.0 C-01 (plan item 115): a delegate parameter declared without `owned` takes no ownership, as a
+//     method parameter does. A structural function type has no declaration and is not checked here.
+// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): un parámetro de delegate declarado sin `owned` no recibe
+//     ownership, como el de un método. Un tipo función estructural no tiene declaración y no se revisa aquí.
+void ProjectMethodBodyModel::rejectDelegateNewToOrdinaryParameters(
+    const ast::AstNode* expression,
+    std::span<const ExpressionResult> arguments,
+    std::size_t delegateOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (nameLookup_ == nullptr || delegateOrdinal >= nameLookup_->namedTypes().size()) return;
+    const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[delegateOrdinal];
+    if (declaration.kind != NamedTypeDeclarationKind::Delegate || declaration.syntax == nullptr) return;
+    std::vector<const ast::AstNode*> parameters;
+    for (const ast::AstNode* child : declaration.syntax->children())
+        if (child != nullptr && child->kind() == ast::AstNodeKind::ParameterDeclaration) parameters.push_back(child);
+    for (std::size_t index = 0;
+         index < arguments.size() && index < parameters.size() && index < expression->children().size(); ++index)
+    {
+        const ast::TypeSyntax* type = parameters[index]->typeSyntax();
+        const ast::AstNode* argumentSyntax = expression->children()[index];
+        if (type == nullptr || type->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::None ||
+            arguments[index].argumentPassKind != ParameterPassKind::Value ||
+            !isFreshObjectCreation(argumentSyntax, arguments[index]))
+            continue;
+        reportLostOwnership(
+            argumentSyntax,
+            "the parameter '" + parameters[index]->text() + "' of delegate '" + declaration.syntax->text() +
+                "', which is not owned",
+            diagnostics);
+    }
 }
 
 bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
@@ -4085,8 +4171,12 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     ProjectImplicitConversion conversion = classifyImplicit(
         argument.typeKey, conversionTarget, argument.integerConstant);
     const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
+    // EN: Freeze 3.0 P3: as above, an `in` parameter accepts a readonly place.
+    // ES: Congelamiento 3.0 P3: como arriba, un parametro `in` acepta un lugar readonly.
+    const bool parameterPointeeReadonly =
+        parameter.pointerPointeeReadonly || parameter.passKind == ParameterPassKind::In;
     const bool discardsPointeeConst = !packElement && argument.pointerPointeeReadonly &&
-        ProjectTypeConversion::isPointer(parameter.typeKey) && !parameter.pointerPointeeReadonly;
+        ProjectTypeConversion::isPointer(parameter.typeKey) && !parameterPointeeReadonly;
     const bool violatesPointerContract = !packElement &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(
@@ -4095,7 +4185,7 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
                 argument.pointerHasProvenance, argument.pointerKnownAlignment,
                 argument.pointerAddressSpace),
             pointerContract(
-                parameter.pointerNullable, parameter.pointerPointeeReadonly,
+                parameter.pointerNullable, parameterPointeeReadonly,
                 parameter.pointerHasProvenance, parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
     if (!conversion.exists() || discardsPointeeConst || violatesPointerContract)
@@ -4568,13 +4658,138 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
         recordSelectedBorrows(
             expression, callee, resolvedArguments, selected, selectedMember,
             coreStringForwarding, methodMemberOrdinal, scopeOrdinal);
+        rejectSelectedNewToOrdinaryParameters(
+            expression, callee, resolvedArguments, selected, selectedMember, coreStringForwarding, diagnostics);
+        rejectNonTrivialImportedCArguments(
+            expression, callee, resolvedArguments, selected, selectedMember, coreStringForwarding, diagnostics);
+        rejectNewCallReceiver(callee, selectedMember, coreStringForwarding, diagnostics);
         applySelectedCoreOperations(
             expression, selectedMember, methodMemberOrdinal, scopeOrdinal, call, result, diagnostics);
+        // EN: Freeze 3.0 C-13: an async callee reports its error at the await, not at the call.
+        // ES: Congelamiento 3.0 C-13: un callee async reporta su error en el await, no en la llamada.
+        if (!selectedMember.effects.contains(sema::Effect::Async))
+            requireDeclaredErrorHandled(
+                expression, selectedMember.declaredErrorTypeKey, selectedMember.name,
+                methodMemberOrdinal, diagnostics);
     }
     finalizeSelectedCallResult(
         result, expression, call, nullConditionalCall, provenVariantCase, diagnostics);
+    // EN: Freeze 3.0 (plan item 135a): the parameters that take ownership do not lend their argument.
+    // ES: Congelamiento 3.0 (elemento 135a del plan): los parametros que toman ownership no prestan su argumento.
+    if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
+    {
+        const ClassMemberSymbol& selectedCallable = memberModel_->members()[selected.memberOrdinal];
+        markCallTemporaryBorrow(
+            result, callee.receiverBorrowsOwnedTemporary, resolvedArguments,
+            ownedArgumentParameters(selected.argumentParameterOrdinals, selectedCallable));
+    }
     recordCallBinding(std::move(call));
     return result;
+}
+
+// EN: Freeze 3.0 (plan item 135). A reference or string result that is not a new owner may point into the
+//     receiver or into an argument, so it keeps their borrow of an owned temporary (`Make().GetName()`,
+//     `Id(Make().Name)`). The rule is conservative: the analysis does not know which input the result came from.
+// ES: Congelamiento 3.0 (elemento 135 del plan). Un resultado referencia o string que no es un owner nuevo puede
+//     apuntar dentro del receptor o de un argumento, asi que conserva su prestamo de un temporal owned
+//     (`Make().GetName()`, `Id(Make().Name)`). La regla es conservadora: el analisis no sabe de que entrada vino
+//     el resultado.
+//
+// EN: Freeze 3.0 (plan item 135a): an argument also lends when it is itself an owned temporary of any reference
+//     type handed to a parameter that does not take ownership (`Id(MakeText())`); the call keeps it only until
+//     the end of the full expression. The same rule covers method, namespace function and delegate calls.
+// ES: Congelamiento 3.0 (elemento 135a del plan): un argumento tambien presta cuando es el propio temporal owned,
+//     de cualquier tipo referencia, entregado a un parametro que no toma ownership (`Id(MakeText())`); la llamada
+//     lo conserva solo hasta el final de la expresion completa. La misma regla cubre llamadas a metodos, a
+//     funciones de namespace y a delegates.
+void ProjectMethodBodyModel::markCallTemporaryBorrow(
+    ExpressionResult& result,
+    bool receiverBorrows,
+    std::span<const ExpressionResult> arguments,
+    const std::vector<bool>& ownedParameters) const
+{
+    if (!result.valid) return;
+    if (!isReferenceTypeKey(result.typeKey) && result.typeKey != "builtin:string") return;
+    if (result.ownership == sema::OwnershipKind::Owned && result.ownershipTransfer) return;
+    bool borrows = receiverBorrows;
+    for (std::size_t index = 0; index < arguments.size(); ++index)
+    {
+        const bool ownedParameter = index < ownedParameters.size() && ownedParameters[index];
+        const bool lentTemporary = !ownedParameter && isOwnedTemporaryValue(arguments[index]);
+        borrows = borrows || arguments[index].borrowsOwnedTemporary || lentTemporary;
+    }
+    result.borrowsOwnedTemporary = borrows;
+}
+
+// EN: Freeze 3.0 (plan item 135a): the result of an owned-returning call or a `new` of a class, as a value of a
+//     reference type that is not a delegate (a delegate cannot be what a reference result aliases).
+// ES: Congelamiento 3.0 (elemento 135a del plan): el resultado de una llamada con retorno owned o un `new` de una
+//     clase, como valor de un tipo referencia que no es delegate (un delegate no puede ser aquello de lo que un
+//     resultado referencia es alias).
+bool ProjectMethodBodyModel::isOwnedTemporaryValue(const ExpressionResult& value) const
+{
+    if (!value.valid || isAnyDelegateTypeKey(value.typeKey)) return false;
+    if (!isReferenceTypeKey(value.typeKey) && value.typeKey != "builtin:string") return false;
+    const bool ownedResult = value.ownership == sema::OwnershipKind::Owned && value.ownershipTransfer &&
+        !value.ownershipSourceLocalOrdinal.has_value() && !value.ownershipSourceParameterOrdinal.has_value();
+    const bool newObject = value.ownershipFreshOwner &&
+        value.objectLifetimeOwnership == sema::OwnershipKind::Owned &&
+        value.storageOwnership == sema::OwnershipKind::Owned;
+    return ownedResult || newObject;
+}
+
+std::vector<bool> ProjectMethodBodyModel::ownedArgumentParameters(
+    std::span<const std::size_t> argumentParameterOrdinals,
+    const ClassMemberSymbol& callable) const
+{
+    std::vector<bool> owned(argumentParameterOrdinals.size(), false);
+    for (std::size_t index = 0; index < argumentParameterOrdinals.size(); ++index)
+    {
+        const std::size_t parameter = argumentParameterOrdinals[index];
+        owned[index] = parameter < callable.parameters.size() &&
+            callable.parameters[parameter].ownership == sema::OwnershipKind::Owned;
+    }
+    return owned;
+}
+
+// EN: Freeze 3.0 (plan item 135a): the parameters of a declared delegate that take ownership, and whether it
+//     returns an owner. A structural function type declares neither, so every parameter lends.
+// ES: Congelamiento 3.0 (elemento 135a del plan): los parametros de un delegate declarado que toman ownership, y
+//     si devuelve un owner. Un tipo de funcion estructural no declara ninguno, asi que todo parametro presta.
+std::vector<bool> ProjectMethodBodyModel::ownedDelegateArgumentParameters(
+    std::size_t delegateOrdinal,
+    std::size_t argumentCount,
+    bool& returnsOwned) const
+{
+    std::vector<bool> owned(argumentCount, false);
+    returnsOwned = false;
+    if (nameLookup_ == nullptr || delegateOrdinal >= nameLookup_->namedTypes().size()) return owned;
+    const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[delegateOrdinal];
+    if (declaration.kind != NamedTypeDeclarationKind::Delegate || declaration.syntax == nullptr) return owned;
+    const ast::TypeSyntax* returnType = declaration.syntax->typeSyntax();
+    returnsOwned = returnType != nullptr &&
+        returnType->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::Owned;
+    std::size_t index = 0;
+    for (const ast::AstNode* child : declaration.syntax->children())
+    {
+        if (child == nullptr || child->kind() != ast::AstNodeKind::ParameterDeclaration) continue;
+        const ast::TypeSyntax* type = child->typeSyntax();
+        if (index < argumentCount)
+            owned[index] = type != nullptr && type->ownershipQualifier() == ast::OwnershipQualifierSyntaxKind::Owned;
+        ++index;
+    }
+    return owned;
+}
+
+void ProjectMethodBodyModel::markDelegateCallTemporaryBorrow(
+    ExpressionResult& result,
+    std::span<const ExpressionResult> arguments,
+    std::size_t delegateOrdinal) const
+{
+    bool returnsOwned = false;
+    const std::vector<bool> ownedParameters =
+        ownedDelegateArgumentParameters(delegateOrdinal, arguments.size(), returnsOwned);
+    if (!returnsOwned) markCallTemporaryBorrow(result, false, arguments, ownedParameters);
 }
 
 bool ProjectMethodBodyModel::validateSelectedCallReceiver(
@@ -4873,65 +5088,97 @@ void ProjectMethodBodyModel::validateThreadExecutorCaptures(
 
 bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
 {
-    if (typeKey.ends_with("*")) return false;
-    if (typeKey.starts_with("ref:") || typeKey.starts_with("refmut:"))
-    {
-        const std::size_t colon = typeKey.find(':');
-        return callTypeIsSend(typeKey.substr(colon + 1));
-    }
-    const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(typeKey);
-    if (!typeOrdinal.has_value()) return true;
+    // Depth-first walk over the field types with an explicit stack instead of recursion. The
+    // answer is the conjunction of the leaf tests the recursion made; a named type already
+    // walked in this query adds no new field types, so it is not walked again (the recursion
+    // had no such guard, so a cycle of field types never terminated).
+    std::vector<std::string> pending{typeKey};
+    std::unordered_set<std::size_t> walkedTypes;
     std::vector<std::size_t> fallbackMemberOrdinals;
-    std::span<const std::size_t> memberOrdinals =
-        memberModel_->membersDeclaredByType(*typeOrdinal);
-    if (!memberModel_->hasMembersDeclaredByTypeIndex())
+    while (!pending.empty())
     {
-        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+        std::string current = std::move(pending.back());
+        pending.pop_back();
+        // ref:/refmut: are stripped one at a time, each time after the pointer test, as the
+        // recursion did.
+        while (true)
         {
-            if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
-                fallbackMemberOrdinals.push_back(ordinal);
+            if (current.ends_with("*")) return false;
+            if (!current.starts_with("ref:") && !current.starts_with("refmut:")) break;
+            current = current.substr(current.find(':') + 1);
         }
-        memberOrdinals = fallbackMemberOrdinals;
-    }
-    for (const std::size_t memberOrdinal : memberOrdinals)
-    {
-        if (memberOrdinal >= memberModel_->members().size()) continue;
-        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-        if (member.kind != ClassMemberKind::Field) continue;
-        if (!callTypeIsSend(member.declaredTypeKey)) return false;
+        const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
+        if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
+        std::span<const std::size_t> memberOrdinals =
+            memberModel_->membersDeclaredByType(*typeOrdinal);
+        if (!memberModel_->hasMembersDeclaredByTypeIndex())
+        {
+            fallbackMemberOrdinals.clear();
+            for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+            {
+                if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
+                    fallbackMemberOrdinals.push_back(ordinal);
+            }
+            memberOrdinals = fallbackMemberOrdinals;
+        }
+        // Pushed in reverse so the fields are taken in declaration order, as the recursion did.
+        for (auto memberOrdinal = memberOrdinals.rbegin(); memberOrdinal != memberOrdinals.rend();
+             ++memberOrdinal)
+        {
+            if (*memberOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& member = memberModel_->members()[*memberOrdinal];
+            if (member.kind != ClassMemberKind::Field) continue;
+            pending.push_back(member.declaredTypeKey);
+        }
     }
     return true;
 }
 
 bool ProjectMethodBodyModel::callTypeIsSync(const std::string& typeKey) const
 {
-    if (typeKey.ends_with("*")) return false;
-    if (typeKey.starts_with("refmut:")) return false;
-    if (typeKey.starts_with("ref:"))
-    {
-        const std::size_t colon = typeKey.find(':');
-        return callTypeIsSync(typeKey.substr(colon + 1));
-    }
-    const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(typeKey);
-    if (!typeOrdinal.has_value()) return true;
+    // Depth-first walk over the field types with an explicit stack instead of recursion. The
+    // answer is the conjunction of the leaf tests the recursion made; a named type already
+    // walked in this query adds no new field types, so it is not walked again (the recursion
+    // had no such guard, so a cycle of field types never terminated).
+    std::vector<std::string> pending{typeKey};
+    std::unordered_set<std::size_t> walkedTypes;
     std::vector<std::size_t> fallbackMemberOrdinals;
-    std::span<const std::size_t> memberOrdinals =
-        memberModel_->membersDeclaredByType(*typeOrdinal);
-    if (!memberModel_->hasMembersDeclaredByTypeIndex())
+    while (!pending.empty())
     {
-        for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+        std::string current = std::move(pending.back());
+        pending.pop_back();
+        // ref: is stripped one at a time, each time after the pointer and refmut: tests, as the
+        // recursion did.
+        while (true)
         {
-            if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
-                fallbackMemberOrdinals.push_back(ordinal);
+            if (current.ends_with("*")) return false;
+            if (current.starts_with("refmut:")) return false;
+            if (!current.starts_with("ref:")) break;
+            current = current.substr(current.find(':') + 1);
         }
-        memberOrdinals = fallbackMemberOrdinals;
-    }
-    for (const std::size_t memberOrdinal : memberOrdinals)
-    {
-        if (memberOrdinal >= memberModel_->members().size()) continue;
-        const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
-        if (member.kind != ClassMemberKind::Field) continue;
-        if (!callTypeIsSync(member.declaredTypeKey)) return false;
+        const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
+        if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
+        std::span<const std::size_t> memberOrdinals =
+            memberModel_->membersDeclaredByType(*typeOrdinal);
+        if (!memberModel_->hasMembersDeclaredByTypeIndex())
+        {
+            fallbackMemberOrdinals.clear();
+            for (std::size_t ordinal = 0; ordinal < memberModel_->members().size(); ++ordinal)
+            {
+                if (memberModel_->members()[ordinal].declaringTypeOrdinal == *typeOrdinal)
+                    fallbackMemberOrdinals.push_back(ordinal);
+            }
+            memberOrdinals = fallbackMemberOrdinals;
+        }
+        // Pushed in reverse so the fields are taken in declaration order, as the recursion did.
+        for (auto memberOrdinal = memberOrdinals.rbegin(); memberOrdinal != memberOrdinals.rend();
+             ++memberOrdinal)
+        {
+            if (*memberOrdinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& member = memberModel_->members()[*memberOrdinal];
+            if (member.kind != ClassMemberKind::Field) continue;
+            pending.push_back(member.declaredTypeKey);
+        }
     }
     return true;
 }
@@ -4975,8 +5222,14 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
         result.objectLifetimeOwnership = selectedMember.declaredOwnership;
         result.storageOwnership = selectedMember.declaredOwnership;
     }
-    result.assignable = selectedMember.isReferenceReturn;
+    // EN: Freeze 3.0 P3: a `ref readonly` result is an addressable place that cannot be written;
+    //     like an `in` parameter it admits reads and readonly members only.
+    // ES: Congelamiento 3.0 P3: un resultado `ref readonly` es un lugar direccionable que no se
+    //     puede escribir; como un parametro `in` solo admite lecturas y miembros readonly.
+    const bool readonlyReference = isReadonlyReferenceReturn(selectedMember);
+    result.assignable = selectedMember.isReferenceReturn && !readonlyReference;
     result.addressable = selectedMember.isReferenceReturn;
+    result.readonlyReceiver = result.readonlyReceiver || readonlyReference;
     result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
     // An owned return crosses the call boundary without a named owner. It is therefore a
     // fresh owner in the caller, just like `new T(...)`, and may participate in the
@@ -5076,6 +5329,92 @@ void ProjectMethodBodyModel::recordSelectedOwnershipTransfers(
         else
             transfer.kind = MethodOwnershipTransferKind::OwnedReturnToOwnedParameter;
         ownershipTransferBindings_.push_back(std::move(transfer));
+    }
+}
+
+// EN: Freeze 3.0 (item 130b). A by-value parameter of an `extern C` import must be ABI-trivial: native code
+//     cannot run a destructor or release owned fields, so a struct that has either is rejected at the
+//     call. Trivial structs, pointers and handles keep compiling.
+// ES: Congelamiento 3.0 (elemento 130b). Un parametro por valor de un import `extern C` debe ser
+//     ABI-trivial: el codigo nativo no puede correr un destructor ni liberar campos owned, asi que un
+//     struct que tiene alguno se rechaza en la llamada. Los structs triviales, punteros y handles siguen
+//     compilando.
+void ProjectMethodBodyModel::rejectNonTrivialImportedCArguments(
+    const ast::AstNode* expression,
+    const ExpressionResult& callee,
+    std::span<const ExpressionResult> resolvedArguments,
+    const MethodCallCandidate& selected,
+    const ClassMemberSymbol& selectedMember,
+    bool coreStringForwarding,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!selectedMember.isImportedC || memberModel_ == nullptr) return;
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < resolvedArguments.size() &&
+         argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
+    {
+        const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+        if (parameterOrdinal >= selectedMember.parameters.size()) continue;
+        const MethodParameterSymbol& parameter = selectedMember.parameters[parameterOrdinal];
+        if (parameter.passKind != ParameterPassKind::Value ||
+            !memberModel_->typeRequiresValueDrop(parameter.typeKey)) continue;
+        const ast::AstNode* argumentSyntax = resolvedCallArgumentSyntax(
+            expression, callee, argumentOrdinal, coreStringForwarding);
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            argumentSyntax != nullptr ? argumentSyntax->range() : expression->range(),
+            "extern C parameter '" + parameter.name + "' of '" + selectedMember.name + "' takes '" +
+                parameter.typeKey + "' by value, but native code cannot run its destructor or release its "
+                "owned fields; pass an ABI-trivial struct, a pointer or a handle");
+    }
+}
+
+// EN: Freeze 3.0 C-01 (plan item 131b). `(new T(...)).Method()` calls an instance method on an object that no
+//     owner holds: the method receives a borrowed `this` and may let it escape, and nothing destroys the object
+//     afterwards. The owner comes first (`raii T x = new T(...); x.Method();`).
+// ES: Congelamiento 3.0 C-01 (elemento 131b del plan). `(new T(...)).Metodo()` llama un metodo de instancia
+//     sobre un objeto que ningun dueno tiene: el metodo recibe un `this` prestado y puede hacerlo escapar, y nada
+//     destruye el objeto despues. Primero va el dueno (`raii T x = new T(...); x.Metodo();`).
+void ProjectMethodBodyModel::rejectNewCallReceiver(
+    const ExpressionResult& callee,
+    const ClassMemberSymbol& selectedMember,
+    bool coreStringForwarding,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const ast::AstNode* receiver = callee.receiverSyntax;
+    if (receiver == nullptr || selectedMember.isStatic || coreStringForwarding ||
+        receiver->kind() != ast::AstNodeKind::ObjectCreationExpression ||
+        !typeKeyIsOwnable(callee.receiverTypeKey))
+        return;
+    reportLostOwnership(
+        receiver, "the receiver of '" + selectedMember.name + "', which does not take ownership of it",
+        diagnostics);
+}
+
+void ProjectMethodBodyModel::rejectSelectedNewToOrdinaryParameters(
+    const ast::AstNode* expression,
+    const ExpressionResult& callee,
+    std::span<const ExpressionResult> resolvedArguments,
+    const MethodCallCandidate& selected,
+    const ClassMemberSymbol& selectedMember,
+    bool coreStringForwarding,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < resolvedArguments.size() &&
+         argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
+    {
+        const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+        if (parameterOrdinal >= selectedMember.parameters.size()) continue;
+        const ast::AstNode* argumentSyntax = resolvedCallArgumentSyntax(
+            expression, callee, argumentOrdinal, coreStringForwarding);
+        const ExpressionResult& argument = resolvedArguments[argumentOrdinal];
+        if (newReachesOrdinaryParameter(
+                selectedMember.parameters[parameterOrdinal], argumentSyntax,
+                argument.ownershipFreshOwner, argument.ownershipTransfer, argument.typeKey))
+            reportNewToOrdinaryParameter(
+                argumentSyntax, selectedMember.parameters[parameterOrdinal], selectedMember.name, diagnostics);
     }
 }
 
@@ -5664,6 +6003,39 @@ bool ProjectMethodBodyModel::validateSyntheticReadonlyReceiver(
     return false;
 }
 
+// EN: Freeze 3.0 P3: an indexer accessor of a closed generic type may carry a member `where`
+//     (`get where T : copy`). The synthetic call that selects it reports the deferred constraint
+//     failure at the access, exactly as an ordinary call does. The getter bound only for the
+//     target of a plain `=` (activeUnionWriteTarget_, see analyzeAssignmentLeft) is exempt: that
+//     store runs the setter, unless the getter returns a reference and the store writes through it.
+// ES: Congelamiento 3.0 P3: un accesor de indexador de un tipo generico cerrado puede llevar un
+//     `where` de miembro (`get where T : copy`). La llamada sintetica que lo elige reporta en el
+//     acceso el constraint aplazado que falla, igual que una llamada ordinaria. El getter ligado
+//     solo para el destino de un `=` simple (activeUnionWriteTarget_, ver analyzeAssignmentLeft)
+//     queda exento: ese store ejecuta el setter, salvo que el getter devuelva una referencia y el
+//     store escriba por ella.
+bool ProjectMethodBodyModel::validateSyntheticConstraints(
+    const ast::AstNode* syntax,
+    MethodCallBinding& call,
+    const MethodCallCandidate& selected,
+    bool diagnoseFailure,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    if (genericConstraintModel_ == nullptr || memberModel_ == nullptr ||
+        selected.memberOrdinal >= memberModel_->members().size()) return true;
+    const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+    if (syntax != nullptr && syntax == activeUnionWriteTarget_ && !selectedMember.isReferenceReturn)
+        return true;
+    const ast::AstNode* member = selectedMember.syntax;
+    if (genericConstraintModel_->specializationSatisfiesConstraints(member)) return true;
+    if (diagnoseFailure)
+        genericConstraintModel_->reportSpecializationConstraintViolations(
+            member, syntax != nullptr ? syntax->range() : SourceRange{}, diagnostics);
+    call.resolution = MethodCallResolutionKind::NoViableCandidate;
+    recordCallBinding(std::move(call));
+    return false;
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishSyntheticCall(
     const ast::AstNode* syntax,
     MethodCallBinding& call,
@@ -5688,8 +6060,32 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishSynthetic
     {
         call.resultTypeKey = memberPtr->declaredTypeKey;
         call.staticCall = memberPtr->isStatic;
-        result.assignable = memberPtr->isReferenceReturn;
+        // EN: Freeze 3.0 P3: an accessor declared `ref readonly` (see configureSelectedCallBinding).
+        // ES: Congelamiento 3.0 P3: un accesor declarado `ref readonly` (ver
+        //     configureSelectedCallBinding).
+        const bool readonlyReference = isReadonlyReferenceReturn(*memberPtr);
+        result.assignable = memberPtr->isReferenceReturn && !readonlyReference;
         result.addressable = memberPtr->isReferenceReturn;
+        result.readonlyReceiver = readonlyReference;
+        // EN: Freeze 3.0 C-01: a user operator or conversion that declares an `owned` return
+        //     transfers ownership exactly like an ordinary owned-returning call, so
+        //     `raii T sum = a + b;` takes ownership of the operator's new object.
+        // ES: Congelamiento 3.0 C-01: un operador o conversion de usuario con retorno `owned`
+        //     transfiere la propiedad igual que una llamada ordinaria, asi que
+        //     `raii T sum = a + b;` toma la propiedad del objeto nuevo del operador.
+        if (memberPtr->declaredOwnership == sema::OwnershipKind::Owned)
+        {
+            result.ownership = sema::OwnershipKind::Owned;
+            result.ownershipTransfer = true;
+            result.ownershipFreshOwner = true;
+        }
+        // EN: Freeze 3.0 C-13: an accessor or a user operator is a call to its `throws E` member.
+        // ES: Congelamiento 3.0 C-13: un accesor o un operador de usuario es una llamada a su miembro
+        //     `throws E`.
+        if (diagnoseFailure)
+            requireDeclaredErrorHandled(
+                syntax, memberPtr->declaredErrorTypeKey, memberPtr->name,
+                call.callerMethodMemberOrdinal, diagnostics);
         if (call.staticCall)
         {
             call.implicitThis = false;
@@ -5787,10 +6183,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::resolveSyntheti
 
     const MethodCallCandidate& selected = call.evaluatedCandidates[nonDominated.front()];
     if (!validateSyntheticReadonlyReceiver(
-            syntax, call, selected, diagnoseFailure, readonlyReceiver, diagnostics))
-    {
+            syntax, call, selected, diagnoseFailure, readonlyReceiver, diagnostics) ||
+        !validateSyntheticConstraints(syntax, call, selected, diagnoseFailure, diagnostics))
         return result;
-    }
     return finishSyntheticCall(
         syntax, call, selected, arguments, diagnoseFailure, diagnostics);
 }

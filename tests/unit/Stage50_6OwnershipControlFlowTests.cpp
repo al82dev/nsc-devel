@@ -111,7 +111,7 @@ class Positive
         return owner.Read();
     }
 
-    public static int ThrowPathDoesNotPoisonJoin(bool choose)
+    public static int ThrowPathDoesNotPoisonJoin(bool choose) throws Problem
     {
         raii Resource owner = new Resource(2);
         if (choose)

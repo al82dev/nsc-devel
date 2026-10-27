@@ -159,6 +159,7 @@ cuando el contrato exige limpieza.
 | TB-BAS-086 | CB-BAS-016 | fuente es directorio | rama de plataforma documentada; no se publica archivo | NIGHTLY |
 | TB-BAS-087 | CB-BAS-016 | stage en directorio ausente | directorio creado y copia exitosa | PR |
 | TB-BAS-088 | CB-BAS-016 | inspección/copia/flush falla | `false`; error clasificado con ruta del stage | NIGHTLY |
+| TB-BAS-089 | CB-BAS-013 | destino sin componente de directorio | publicado en el directorio actual; bytes exactos; sin residuos | PR |
 
 ## Oráculos y aislamiento requeridos
 

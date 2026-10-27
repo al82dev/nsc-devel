@@ -105,7 +105,7 @@ class Runner
         {
             if (fail)
             {
-                throw problem;
+                throw new Problem();
             }
             result = 20;
         }
@@ -192,7 +192,7 @@ class Runner
 {
     public static void Run(Problem problem)
     {
-        try { throw problem; }
+        try { throw new Problem(); }
         catch (Problem caught) { }
     }
 }
@@ -225,7 +225,7 @@ class Runner
 {
     public static void Run(Problem problem)
     {
-        try { throw problem; }
+        try { throw new Problem(); }
         catch { }
         finally { int marker = 0; }
     }

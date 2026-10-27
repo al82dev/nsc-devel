@@ -141,9 +141,12 @@ bool ProjectMemberModel::typeRequiresValueDrop(std::string_view typeKey) const
 {
     // NS304-T06-F07: iterator/async-iterator carry a Drop function pointer and therefore always
     // require a value drop (the drop glue dispatches through it), like a custom-destructor struct.
+    // EN: Freeze 3.0 C-14: a future carries its Drop function pointer too.
+    // ES: Congelamiento 3.0 C-14: un future tambien lleva su puntero a funcion Drop.
     return typeTransitivelyOwnsStorage(typeKey) ||
         typeTransitivelyHasCustomDestructor(typeKey) ||
-        typeKey.starts_with("iterator:") || typeKey.starts_with("async-iterator:");
+        typeKey.starts_with("iterator:") || typeKey.starts_with("async-iterator:") ||
+        (typeKey.starts_with("future:") && !typeKey.ends_with("*"));
 }
 
 bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) const
@@ -189,8 +192,61 @@ bool ProjectMemberModel::typeIsImplicitlyCopyable(std::string_view typeKey) cons
         {
             if (memberOrdinal >= members_.size()) continue;
             const ClassMemberSymbol& field = members_[memberOrdinal];
+            // EN: Freeze 3.0 C-11: a destructor is a non-trivial lifetime. A plain copy of such a
+            //     value ran the destructor once per copy (a returned local was destroyed in the
+            //     callee and again in the caller), so the value is move-only, as with an owned
+            //     field.
+            // ES: Congelamiento 3.0 C-11: un destructor es un lifetime no trivial. Una copia simple
+            //     de ese valor corria el destructor una vez por copia (un local retornado se
+            //     destruia en el llamado y otra vez en el llamador), asi que el valor es move-only,
+            //     igual que con un campo owned.
+            if (field.kind == ClassMemberKind::Destructor && !field.isStatic) return false;
             if (field.kind != ClassMemberKind::Field || field.isStatic || field.isConst) continue;
             if (field.declaredOwnership == sema::OwnershipKind::Owned) return false;
+            pending.push_back(field.declaredTypeKey);
+        }
+    }
+    return true;
+}
+
+bool ProjectMemberModel::typeIsPlainData(std::string_view typeKey) const
+{
+    std::vector<std::string> pending{std::string(typeKey)};
+    std::unordered_set<std::size_t> visited;
+    while (!pending.empty())
+    {
+        std::string candidate = std::move(pending.back());
+        pending.pop_back();
+        if (candidate.empty() || candidate == "<error>" || candidate == "builtin:void" ||
+            candidate == "builtin:string" || candidate == "builtin:null" ||
+            candidate.ends_with("*") || candidate.ends_with("[]") ||
+            language::isFunctionTypeIdentity(candidate))
+            return false;
+        if (candidate.starts_with("builtin:")) continue;
+        if (const std::optional<std::vector<std::string>> tuple =
+                ProjectTypeConversion::tupleElementTypeKeys(candidate))
+        {
+            pending.insert(pending.end(), tuple->begin(), tuple->end());
+            continue;
+        }
+        if (const std::optional<std::string> element = fixedArrayElementTypeKey(candidate))
+        {
+            pending.push_back(*element);
+            continue;
+        }
+        if (nameLookup_ == nullptr) return false;
+        const std::optional<std::size_t> ordinal = typeOrdinalForKey(candidate);
+        if (!ordinal.has_value()) return false;
+        const NamedTypeDeclaration& declaration = nameLookup_->namedTypes()[*ordinal];
+        if (declaration.kind == NamedTypeDeclarationKind::Enum) continue;
+        if (declaration.kind != NamedTypeDeclarationKind::Struct) return false;
+        if (typeRequiresValueDrop(candidate)) return false;
+        if (!visited.insert(*ordinal).second) continue;
+        for (const std::size_t memberOrdinal : membersByType_[*ordinal])
+        {
+            if (memberOrdinal >= members_.size()) continue;
+            const ClassMemberSymbol& field = members_[memberOrdinal];
+            if (field.kind != ClassMemberKind::Field || field.isStatic || field.isConst) continue;
             pending.push_back(field.declaredTypeKey);
         }
     }
@@ -208,6 +264,9 @@ bool ProjectMemberModel::typeIsMoveOnly(std::string_view typeKey) const
             candidate.starts_with("builtin:") || candidate.ends_with("*") ||
             candidate.ends_with("[]"))
             continue;
+        // EN: Freeze 3.0 C-14: a future owns its frame, so a copy would release it twice.
+        // ES: Congelamiento 3.0 C-14: un future es dueno de su frame; una copia lo liberaria dos veces.
+        if (candidate.starts_with("future:")) return true;
         if (const std::optional<std::vector<std::string>> tuple =
                 ProjectTypeConversion::tupleElementTypeKeys(candidate))
         {

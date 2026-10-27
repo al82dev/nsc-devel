@@ -23,13 +23,13 @@ bool OopLlvmImplementation::emitGuard(
         LLVMBasicBlockRef okBlock = appendBlock(std::string(stem) + ".ok");
         LLVMBasicBlockRef trapBlock = appendBlock(std::string(stem) + ".trap");
         LLVMBuildCondBr(builder_, valid, okBlock, trapBlock);
-        LLVMPositionBuilderAtEnd(builder_, trapBlock);
+        enterBlock(trapBlock);
         LLVMValueRef reasonValue = LLVMConstInt(
             LLVMInt32TypeInContext(context_), static_cast<std::uint64_t>(reason), 0);
         LLVMValueRef args[] = {reasonValue};
         buildNoUnwindCall(trapFunctionType_, trapFunction_, args, 1, "");
         LLVMBuildUnreachable(builder_);
-        LLVMPositionBuilderAtEnd(builder_, okBlock);
+        enterBlock(okBlock);
         return true;
     }
 
@@ -214,13 +214,13 @@ LLVMBasicBlockRef OopLlvmImplementation::captureCellExceptionalCleanup(std::stri
 
         const std::vector<FuncletContext> savedFunclets = funcletStack_;
         captureCellExceptionalCleanupBlock_ = appendBlock("eh.capture.cells");
-        LLVMPositionBuilderAtEnd(builder_, captureCellExceptionalCleanupBlock_);
+        enterBlock(captureCellExceptionalCleanupBlock_);
         LLVMValueRef cleanupPad = LLVMBuildCleanupPad(
             builder_, nullptr, nullptr, 0, "eh.capture.cells.pad");
         if (cleanupPad == nullptr)
         {
             captureCellExceptionalCleanupBlock_ = nullptr;
-            LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+            enterBlock(sourceBlock);
             error = "E11 failed to create the function-level capture-cell cleanuppad";
             return nullptr;
         }
@@ -234,7 +234,7 @@ LLVMBasicBlockRef OopLlvmImplementation::captureCellExceptionalCleanup(std::stri
         releaseOwnedCaptureCells();
         LLVMBuildCleanupRet(builder_, cleanupPad, nullptr);
         funcletStack_ = savedFunclets;
-        LLVMPositionBuilderAtEnd(builder_, sourceBlock);
+        enterBlock(sourceBlock);
         return captureCellExceptionalCleanupBlock_;
     }
 
@@ -383,7 +383,7 @@ bool OopLlvmImplementation::emitClosureContextDestroyFunctionBody(
             captureCellExceptionalCleanupBlock_ = savedCaptureCellCleanup;
         };
         LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context_, function, "entry");
-        LLVMPositionBuilderAtEnd(builder_, entry);
+        enterBlock(entry);
         {
             ScopedDebugLocation generatedLocation(
                 builder_, debugSubprogramLocation(debugRange, subprogram));
@@ -460,7 +460,7 @@ bool OopLlvmImplementation::emitDelegateDestroy(LLVMValueRef cell, std::string_v
         LLVMValueRef isNull = LLVMBuildICmp(builder_, LLVMIntEQ, cell, LLVMConstNull(ptr),
                                             (std::string(stem) + ".isnull").c_str());
         LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
-        LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+        enterBlock(destroyBlock);
 
         LLVMValueRef context = LLVMBuildLoad2(
             builder_, ptr, byteOffset(cell, 8, "delegate.destroy.context.addr"),
@@ -478,13 +478,13 @@ bool OopLlvmImplementation::emitDelegateDestroy(LLVMValueRef cell, std::string_v
         LLVMBasicBlockRef freeCellBlock = appendBlock(std::string(stem) + ".cell");
         LLVMBuildCondBr(builder_, destroyEnvironment, environmentBlock, freeCellBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, environmentBlock);
+        enterBlock(environmentBlock);
         LLVMValueRef contextArguments[] = {context};
         buildNoUnwindCall(
             deallocationFunctionType_, destroyContext, contextArguments, 1, "");
         LLVMBuildBr(builder_, freeCellBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, freeCellBlock);
+        enterBlock(freeCellBlock);
         LLVMValueRef freeCell = LLVMBuildLoad2(
             builder_, ptr, byteOffset(cell, 24, "delegate.destroy.cell.callback.addr"),
             "delegate.destroy.cell.callback");
@@ -492,22 +492,26 @@ bool OopLlvmImplementation::emitDelegateDestroy(LLVMValueRef cell, std::string_v
             builder_, LLVMIntNE, freeCell, LLVMConstNull(ptr), "delegate.destroy.cell.callback.present");
         LLVMBasicBlockRef callbackBlock = appendBlock(std::string(stem) + ".cell.callback");
         LLVMBuildCondBr(builder_, callbackPresent, callbackBlock, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, callbackBlock);
+        enterBlock(callbackBlock);
         LLVMValueRef cellArguments[] = {cell};
         buildNoUnwindCall(deallocationFunctionType_, freeCell, cellArguments, 1, "");
         LLVMBuildBr(builder_, doneBlock);
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return error.empty();
     }
 
 LLVMValueRef OopLlvmImplementation::closureCaptureCell(const frontend::ProjectOopMirNode* node, std::string& error)
+{
+        return closureCaptureCellAt(static_cast<std::size_t>(node->immediate), error);
+    }
+
+LLVMValueRef OopLlvmImplementation::closureCaptureCellAt(std::size_t capture, std::string& error)
 {
         if (currentMirFunction_ == nullptr || !currentMirFunction_->isLambda ||
             !currentMirFunction_->hasClosureEnvironment || closureEnvironment_ == nullptr)
         {
             return failValue(error, "E11 closure capture has no environment receiver");
         }
-        const std::size_t capture = static_cast<std::size_t>(node->immediate);
         if (capture >= currentMirFunction_->captureTypeKeys.size())
             return failValue(error, "E11 closure capture ordinal is invalid");
         LLVMValueRef slot = byteOffset(
@@ -519,49 +523,107 @@ LLVMValueRef OopLlvmImplementation::closureCaptureCell(const frontend::ProjectOo
 
 LLVMValueRef OopLlvmImplementation::closureCaptureAddress(const frontend::ProjectOopMirNode* node, std::string& error)
 {
-        LLVMValueRef cell = closureCaptureCell(node, error);
+        const std::size_t capture = static_cast<std::size_t>(node->immediate);
+        if (const auto cached = closureCaptureAddresses_.find(capture);
+            cached != closureCaptureAddresses_.end())
+            return cached->second;
+        return closureCaptureValueAddress(capture, node->typeKey, error);
+    }
+
+LLVMValueRef OopLlvmImplementation::closureCaptureValueAddress(
+        std::size_t capture,
+        std::string_view typeKey,
+        std::string& error)
+{
+        LLVMValueRef cell = closureCaptureCellAt(capture, error);
         if (cell == nullptr) return nullptr;
-        const auto [valueSize, valueAlignment] = captureValueLayout(node->typeKey, error);
+        const auto [valueSize, valueAlignment] = captureValueLayout(typeKey, error);
         if (valueSize == 0 || valueAlignment == 0) return nullptr;
         const std::uint64_t valueOffset =
             ((8U + valueAlignment - 1U) / valueAlignment) * valueAlignment;
-        LLVMValueRef address = byteOffset(cell, valueOffset, "closure.capture.value.addr");
-        const std::size_t capture = static_cast<std::size_t>(node->immediate);
-        if (debugInformation_ == DebugInformationKind::Full &&
-            currentDebugSubprogram_ != nullptr &&
-            !debugCaptureVariables_.contains(capture))
+        return byteOffset(cell, valueOffset, "closure.capture.value.addr");
+    }
+
+// ES: La dirección de cada captura se calcula aquí, al entrar a la lambda, y la reutilizan todos
+// los accesos (closureCaptureAddress); así sigue viva en todo el cuerpo y la variable de
+// depuración tiene ubicación en todo él.
+// EN: Each capture's address is computed here, on entry to the lambda, and every access reuses it
+// (closureCaptureAddress); it therefore stays live across the whole body and the debug variable
+// has a location throughout it.
+//
+// ES: Antes, la variable de depuración de una captura se declaraba en su primer uso, sobre una
+// dirección calculada ahí, y cada lectura añadía además un dbg.value con el valor cargado. LLVM
+// mezclaba ambas descripciones: en DeepFunctional, dentro de la lambda, `calls` aparecía como
+// `<optimized out>` y `bias` no aparecía antes de su primera lectura. Ahora cada captura se declara
+// una sola vez al entrar a la lambda, sobre la dirección de su valor dentro de la celda compartida,
+// así el depurador lee el valor vivo (las capturas son por referencia) en todo el cuerpo.
+// EN: The debug variable of a capture used to be declared at its first use, over an address computed
+// there, and every read also added a dbg.value with the loaded value. LLVM mixed both descriptions:
+// in DeepFunctional, inside the lambda, `calls` showed as `<optimized out>` and `bias` did not exist
+// before its first read. Each capture is now declared once on entry to the lambda, over the address
+// of its value inside the shared cell, so the debugger reads the live value (captures are by
+// reference) throughout the body.
+void OopLlvmImplementation::emitClosureCaptureDebugVariables(
+        const frontend::ProjectOopMirFunction& function)
+{
+        if (!function.isLambda || !function.hasClosureEnvironment || closureEnvironment_ == nullptr)
+            return;
+        for (std::size_t capture = 0; capture < function.captureTypeKeys.size(); ++capture)
         {
-            const std::string name = capture < currentMirFunction_->captureNames.size() &&
-                    !currentMirFunction_->captureNames[capture].empty()
-                ? currentMirFunction_->captureNames[capture]
-                : "capture#" + std::to_string(capture);
-            LLVMMetadataRef type = debugType(currentMirFunction_->captureTypeKeys[capture]);
-            SourceRange range;
-            if (node->syntax != nullptr) range = node->syntax->range();
-            if (!range.isValid() && currentMirFunction_->body != nullptr &&
-                currentMirFunction_->body->syntax != nullptr)
-                range = currentMirFunction_->body->syntax->range();
-            if (type != nullptr && range.isValid())
-            {
-                LLVMMetadataRef file = debugFile(range.begin());
-                const source::SourcePosition position = sourceManager_->getPosition(range.begin());
-                LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
-                    debugBuilder_, currentDebugSubprogram_, name.data(), name.size(), file,
-                    position.line, type, 1, LLVMDIFlagZero, 0);
-                LLVMMetadataRef expression =
-                    LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
-                LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
-                    context_, position.line, position.column, currentDebugSubprogram_, nullptr);
-                if (variable == nullptr || expression == nullptr || location == nullptr ||
-                    LLVMDIBuilderInsertDeclareRecordAtEnd(
-                        debugBuilder_, address, variable, expression, location,
-                        LLVMGetInsertBlock(builder_)) == nullptr)
-                    return failValue(error, "failed to emit debug storage for captured variable '" +
-                        name + "'");
-                debugCaptureVariables_.emplace(capture, variable);
-            }
+            std::string ignored;
+            LLVMValueRef address =
+                closureCaptureValueAddress(capture, function.captureTypeKeys[capture], ignored);
+            if (address != nullptr) closureCaptureAddresses_.emplace(capture, address);
         }
-        return address;
+        if (debugInformation_ != DebugInformationKind::Full || currentDebugSubprogram_ == nullptr ||
+            function.body == nullptr || function.body->syntax == nullptr ||
+            !function.body->syntax->range().isValid())
+            return;
+        const SourceRange range = function.body->syntax->range();
+        LLVMMetadataRef file = debugFile(range.begin());
+        if (file == nullptr) return;
+        const source::SourcePosition position = sourceManager_->getPosition(range.begin());
+        // ES: En orden de captura, para que la salida sea determinista.
+        // EN: In capture order, so the output is deterministic.
+        for (std::size_t capture = 0; capture < function.captureTypeKeys.size(); ++capture)
+        {
+            const auto cached = closureCaptureAddresses_.find(capture);
+            if (cached == closureCaptureAddresses_.end()) continue;
+            LLVMValueRef address = cached->second;
+            const std::string name = capture < function.captureNames.size() &&
+                    !function.captureNames[capture].empty()
+                ? function.captureNames[capture]
+                : "capture#" + std::to_string(capture);
+            LLVMMetadataRef type = debugType(function.captureTypeKeys[capture]);
+            if (type == nullptr) continue;
+            // ES: La dirección se guarda en una ranura del bloque de entrada y la variable se declara
+            // sobre esa ranura con DW_OP_deref: la variable vive en la dirección guardada. Así tiene
+            // ubicación en memoria durante todo el cuerpo (una dirección en registro dura sólo hasta
+            // que el registro se reutiliza) y CodeView la describe como referencia al tipo de la
+            // captura, que es lo que es: las capturas son por referencia.
+            // EN: The address is stored in an entry-block slot and the variable is declared over that
+            // slot with DW_OP_deref: the variable lives at the stored address. It thus has a memory
+            // location throughout the body (an address held in a register only lasts until the
+            // register is reused) and CodeView describes it as a reference to the capture's type,
+            // which is what it is: captures are by reference.
+            LLVMValueRef slot = entryBlockAlloca(
+                LLVMPointerTypeInContext(context_, 0), 8,
+                ("capture" + std::to_string(capture) + ".debug.addr").c_str());
+            LLVMBuildStore(builder_, address, slot);
+            LLVMMetadataRef variable = LLVMDIBuilderCreateAutoVariable(
+                debugBuilder_, currentDebugSubprogram_, name.data(), name.size(), file,
+                position.line, type, 1, LLVMDIFlagZero, 0);
+            std::uint64_t dereference[] = {0x06};
+            LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, dereference, 1);
+            LLVMMetadataRef location = LLVMDIBuilderCreateDebugLocation(
+                context_, position.line, position.column, currentDebugSubprogram_, nullptr);
+            if (variable == nullptr || expression == nullptr || location == nullptr ||
+                LLVMDIBuilderInsertDeclareRecordAtEnd(
+                    debugBuilder_, slot, variable, expression, location,
+                    LLVMGetInsertBlock(builder_)) == nullptr)
+                continue;
+            debugCaptureVariables_.emplace(capture, variable);
+        }
     }
 
 LLVMValueRef OopLlvmImplementation::lowerClosureCaptureLoad(const frontend::ProjectOopMirNode* node, std::string& error)
@@ -572,19 +634,7 @@ LLVMValueRef OopLlvmImplementation::lowerClosureCaptureLoad(const frontend::Proj
         LLVMTypeRef type = llvmType(currentMirFunction_->captureTypeKeys[capture], error);
         if (type == nullptr || type == LLVMVoidTypeInContext(context_))
             return failValue(error, "E11 closure capture has invalid LLVM type");
-        LLVMValueRef value = LLVMBuildLoad2(builder_, type, address, "closure.capture.load");
-        const auto debugVariable = debugCaptureVariables_.find(capture);
-        if (debugVariable != debugCaptureVariables_.end())
-        {
-            LLVMMetadataRef expression = LLVMDIBuilderCreateExpression(debugBuilder_, nullptr, 0);
-            LLVMMetadataRef location = LLVMGetCurrentDebugLocation2(builder_);
-            if (expression == nullptr || location == nullptr ||
-                LLVMDIBuilderInsertDbgValueRecordAtEnd(
-                    debugBuilder_, value, debugVariable->second, expression, location,
-                    LLVMGetInsertBlock(builder_)) == nullptr)
-                return failValue(error, "failed to emit the loaded value of a captured variable");
-        }
-        return value;
+        return LLVMBuildLoad2(builder_, type, address, "closure.capture.load");
     }
 
 LLVMValueRef OopLlvmImplementation::lowerCaptureCellReference(
@@ -873,7 +923,7 @@ LLVMValueRef OopLlvmImplementation::emitDelegateCall(
             instanceIncoming, error);
         if (instanceResult == nullptr) return nullptr;
 
-        LLVMPositionBuilderAtEnd(builder_, mergeBlock);
+        enterBlock(mergeBlock);
         if (sretSlot != nullptr)
         {
             LLVMTypeRef carrier = llvmType(returnTypeKey, error);
@@ -904,7 +954,7 @@ LLVMValueRef OopLlvmImplementation::emitDelegateBranchCall(
         LLVMBasicBlockRef& incomingBlock,
         std::string& error)
 {
-        LLVMPositionBuilderAtEnd(builder_, branchBlock);
+        enterBlock(branchBlock);
         std::vector<LLVMValueRef> arguments;
         arguments.reserve(argumentValues.size() + 2);
         if (receiver != nullptr) arguments.push_back(receiver);
@@ -1089,6 +1139,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             }
             arguments.push_back(value);
         }
+        releaseTransferredArguments(node);
         if (externC)
         {
             return emitExternCDelegateCall(
@@ -1146,11 +1197,11 @@ LLVMValueRef OopLlvmImplementation::lowerEventAdd(const frontend::ProjectOopMirN
             builder_, LLVMIntEQ, head, LLVMConstNull(ptr), "event.add.is.empty");
         LLVMBuildCondBr(builder_, empty, emptyBlock, loopBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, emptyBlock);
+        enterBlock(emptyBlock);
         LLVMBuildStore(builder_, eventNode, backingAddress);
         LLVMBuildBr(builder_, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, loopBlock);
+        enterBlock(loopBlock);
         LLVMValueRef current = LLVMBuildPhi(builder_, ptr, "event.add.current");
         LLVMValueRef initialValues[] = {head};
         LLVMBasicBlockRef initialBlocks[] = {preheader};
@@ -1163,17 +1214,17 @@ LLVMValueRef OopLlvmImplementation::lowerEventAdd(const frontend::ProjectOopMirN
         LLVMBasicBlockRef advanceBlock = appendBlock("event.add.advance");
         LLVMBuildCondBr(builder_, atTail, appendBlockRef, advanceBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, advanceBlock);
+        enterBlock(advanceBlock);
         LLVMBuildBr(builder_, loopBlock);
         LLVMValueRef nextValues[] = {currentNext};
         LLVMBasicBlockRef nextBlocks[] = {advanceBlock};
         LLVMAddIncoming(current, nextValues, nextBlocks, 1);
 
-        LLVMPositionBuilderAtEnd(builder_, appendBlockRef);
+        enterBlock(appendBlockRef);
         LLVMBuildStore(builder_, eventNode, currentNextAddress);
         LLVMBuildBr(builder_, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 
@@ -1197,7 +1248,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventRemove(const frontend::ProjectOopM
         LLVMBasicBlockRef doneBlock = appendBlock("event.remove.done");
         LLVMBuildBr(builder_, loopBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, loopBlock);
+        enterBlock(loopBlock);
         LLVMValueRef currentPhi = LLVMBuildPhi(builder_, ptr, "event.remove.current");
         LLVMValueRef linkPhi = LLVMBuildPhi(builder_, ptr, "event.remove.link");
         LLVMValueRef initialValues[] = {initial};
@@ -1209,12 +1260,12 @@ LLVMValueRef OopLlvmImplementation::lowerEventRemove(const frontend::ProjectOopM
             builder_, LLVMIntNE, currentPhi, LLVMConstNull(ptr), "event.remove.has.current");
         LLVMBuildCondBr(builder_, hasCurrent, bodyBlock, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        enterBlock(bodyBlock);
         LLVMValueRef currentHandler = LLVMBuildLoad2(builder_, ptr, currentPhi, "event.remove.handler");
         LLVMValueRef equal = delegateCellsEqual(currentHandler, target);
         LLVMBuildCondBr(builder_, equal, removeBlock, advanceBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, removeBlock);
+        enterBlock(removeBlock);
         LLVMValueRef removeNextAddress = byteOffset(currentPhi, 8, "event.remove.next.addr");
         LLVMValueRef removeNext = LLVMBuildLoad2(builder_, ptr, removeNextAddress, "event.remove.next");
         LLVMBuildStore(builder_, removeNext, linkPhi);
@@ -1222,7 +1273,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventRemove(const frontend::ProjectOopM
         buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, freeArgs, 1, "");
         LLVMBuildBr(builder_, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, advanceBlock);
+        enterBlock(advanceBlock);
         LLVMValueRef nextAddress = byteOffset(currentPhi, 8, "event.advance.next.addr");
         LLVMValueRef next = LLVMBuildLoad2(builder_, ptr, nextAddress, "event.advance.next");
         LLVMBuildBr(builder_, loopBlock);
@@ -1232,7 +1283,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventRemove(const frontend::ProjectOopM
         LLVMValueRef linkValues[] = {nextAddress};
         LLVMAddIncoming(linkPhi, linkValues, advanceIncoming, 1);
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 
@@ -1266,7 +1317,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventInvoke(
         LLVMBasicBlockRef bodyBlock = appendBlock("event.invoke.body");
         LLVMBasicBlockRef doneBlock = appendBlock("event.invoke.done");
         LLVMBuildBr(builder_, loopBlock);
-        LLVMPositionBuilderAtEnd(builder_, loopBlock);
+        enterBlock(loopBlock);
         LLVMValueRef currentPhi = LLVMBuildPhi(builder_, ptr, "event.invoke.current");
         LLVMValueRef initialValues[] = {head};
         LLVMBasicBlockRef initialBlocks[] = {preheader};
@@ -1275,7 +1326,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventInvoke(
             builder_, LLVMIntNE, currentPhi, LLVMConstNull(ptr), "event.invoke.has.current");
         LLVMBuildCondBr(builder_, hasCurrent, bodyBlock, doneBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, bodyBlock);
+        enterBlock(bodyBlock);
         LLVMValueRef handler = LLVMBuildLoad2(builder_, ptr, currentPhi, "event.invoke.handler");
         LLVMValueRef next = LLVMBuildLoad2(
             builder_, ptr, byteOffset(currentPhi, 8, "event.invoke.next.addr"), "event.invoke.next");
@@ -1302,7 +1353,7 @@ LLVMValueRef OopLlvmImplementation::lowerEventInvoke(
         LLVMBasicBlockRef nextBlocks[] = {afterCall};
         LLVMAddIncoming(currentPhi, nextValues, nextBlocks, 1);
 
-        LLVMPositionBuilderAtEnd(builder_, doneBlock);
+        enterBlock(doneBlock);
         return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
     }
 

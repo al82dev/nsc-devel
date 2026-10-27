@@ -56,6 +56,14 @@ struct ExpectedSurfaceEntry final
     std::string_view rationale;
 };
 
+// EN: Freeze 3.0 C-06 and DEC-07/DEC-08: the frozen surface publishes async-await, async-streams,
+//     yield-generators, default-interface-implementations and list-patterns as implemented, and the
+//     move-only rule names the structs with a destructor (C-11) and the futures (C-14). This table is
+//     the independent oracle of src/Language/Language3Surface.cpp.
+// ES: Congelamiento 3.0 C-06 y DEC-07/DEC-08: la superficie congelada publica async-await,
+//     async-streams, yield-generators, default-interface-implementations y list-patterns como
+//     implementados, y la regla move-only nombra los structs con destructor (C-11) y los futures
+//     (C-14). Esta tabla es el oraculo independiente de src/Language/Language3Surface.cpp.
 constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
     {Language3Feature::RecordStructs, "record-structs", Language3Disposition::Implemented,
         "productive parser, layout, metadata and code-generation vertical"},
@@ -63,17 +71,20 @@ constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
         "lowered to ordinary fields and constructors before name binding"},
     {Language3Feature::RawStringLiterals, "raw-string-literals", Language3Disposition::Implemented,
         "delimiter-aware UTF-8 literal with exact multiline contents"},
-    {Language3Feature::AsyncAwait, "async-await", Language3Disposition::PlannedFor304,
-        "requires productive state-machine lowering, cleanup, pinning, cancellation and debugger metadata"},
-    {Language3Feature::AsyncStreams, "async-streams", Language3Disposition::PlannedFor304,
-        "requires an async iterator ABI with backpressure, cancellation and deterministic cleanup"},
-    {Language3Feature::YieldGenerators, "yield-generators", Language3Disposition::PlannedFor304,
-        "requires productive generator frames, suspension ownership and deterministic cleanup"},
+    {Language3Feature::AsyncAwait, "async-await", Language3Disposition::Implemented,
+        "async callables lower to a future constructor and a poll state machine; await suspends, resumes "
+        "and propagates errors"},
+    {Language3Feature::AsyncStreams, "async-streams", Language3Disposition::Implemented,
+        "AsyncIterator<T, E> with MoveNextAsync, cooperative cancellation and deterministic cleanup of "
+        "active finally regions"},
+    {Language3Feature::YieldGenerators, "yield-generators", Language3Disposition::Implemented,
+        "Iterator<T> generator frames with MoveNext, yield break and early-stop destruction of live locals"},
     {Language3Feature::DefaultInterfaceImplementations, "default-interface-implementations",
-        Language3Disposition::PlannedFor304,
-        "requires versioned dispatch, coherence and metadata rules for interface bodies"},
-    {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::PlannedFor304,
-        "requires exhaustiveness and usefulness analysis integrated with borrow and move semantics"},
+        Language3Disposition::Implemented,
+        "interface and trait method bodies dispatched through the interface map, most-derived default wins"},
+    {Language3Feature::ListPatterns, "list-patterns", Language3Disposition::Implemented,
+        "list patterns in match and is with length-domain exhaustiveness and redundancy analysis; not in "
+        "case labels"},
     {Language3Feature::StaticConstructors, "static-constructors", Language3Disposition::Implemented,
         "thread-safe once initialization with reentrancy and terminal failure"},
     {Language3Feature::Decimal, "decimal", Language3Disposition::Implemented,
@@ -83,7 +94,9 @@ constexpr std::array<ExpectedSurfaceEntry, 16> kExpectedSurface = {{
     {Language3Feature::TraitOperators, "trait-operators", Language3Disposition::Implemented,
         "stable lang-item witnesses with builtin precedence and intrinsic short-circuit control flow"},
     {Language3Feature::MoveOnlyDefaults, "move-only-defaults", Language3Disposition::Implemented,
-        "value types require explicit Copy and named consuming reads require move(value)"},
+        "structs without a destructor whose fields are all copyable copy implicitly; structs with a "
+        "destructor or owned fields, variants and opaque types without the copy modifier, and futures "
+        "are move-only; named consuming reads require move(value) and await consumes its future"},
     {Language3Feature::LongDouble, "long-double", Language3Disposition::RejectedFor3,
         "Windows x64 MSVC ABI aliases long double to double; use double in NativeSharp 3.0"},
     {Language3Feature::ConditionDeclarations, "condition-declarations", Language3Disposition::Implemented,
@@ -332,16 +345,16 @@ std::string expectedManifest()
         "record-structs=implemented:productive parser, layout, metadata and code-generation vertical\n"
         "primary-constructors=implemented:lowered to ordinary fields and constructors before name binding\n"
         "raw-string-literals=implemented:delimiter-aware UTF-8 literal with exact multiline contents\n"
-        "async-await=planned-3.0.4:requires productive state-machine lowering, cleanup, pinning, cancellation "
-        "and debugger metadata\n"
-        "async-streams=planned-3.0.4:requires an async iterator ABI with backpressure, cancellation and "
-        "deterministic cleanup\n"
-        "yield-generators=planned-3.0.4:requires productive generator frames, suspension ownership and "
-        "deterministic cleanup\n"
-        "default-interface-implementations=planned-3.0.4:requires versioned dispatch, coherence and metadata "
-        "rules for interface bodies\n"
-        "list-patterns=planned-3.0.4:requires exhaustiveness and usefulness analysis integrated with borrow "
-        "and move semantics\n"
+        "async-await=implemented:async callables lower to a future constructor and a poll state machine; "
+        "await suspends, resumes and propagates errors\n"
+        "async-streams=implemented:AsyncIterator<T, E> with MoveNextAsync, cooperative cancellation and "
+        "deterministic cleanup of active finally regions\n"
+        "yield-generators=implemented:Iterator<T> generator frames with MoveNext, yield break and early-stop "
+        "destruction of live locals\n"
+        "default-interface-implementations=implemented:interface and trait method bodies dispatched through "
+        "the interface map, most-derived default wins\n"
+        "list-patterns=implemented:list patterns in match and is with length-domain exhaustiveness and "
+        "redundancy analysis; not in case labels\n"
         "static-constructors=implemented:thread-safe once initialization with reentrancy and terminal failure\n"
         "decimal=implemented:frozen 128-bit value ABI (coefficient 96 + scale + sign) with arithmetic, overflow, "
         "conversion, formatting and FFI contracts\n"
@@ -349,8 +362,10 @@ std::string expectedManifest()
         "receiver-type mutation\n"
         "trait-operators=implemented:stable lang-item witnesses with builtin precedence and intrinsic "
         "short-circuit control flow\n"
-        "move-only-defaults=implemented:value types require explicit Copy and named consuming reads require "
-        "move(value)\n"
+        "move-only-defaults=implemented:structs without a destructor whose fields are all copyable copy "
+        "implicitly; structs with a destructor or owned fields, variants and opaque types without the copy "
+        "modifier, and futures are move-only; named consuming reads require move(value) and await consumes "
+        "its future\n"
         "long-double=rejected-3.0:Windows x64 MSVC ABI aliases long double to double; use double in "
         "NativeSharp 3.0\n"
         "condition-declarations=implemented:edge-scoped if, while and switch locals with definite assignment "
@@ -458,8 +473,8 @@ void registerUnavailableDiagnosticCase(TestRegistry& registry)
             context.expect(language3SurfaceDiagnostic(entry.feature) == expectedDiagnostic(entry),
                 "TL-LANG-160 every planned, deferred, or rejected feature must return its exact status diagnostic");
         }
-        context.expect(planned == 5 && deferred == 0 && rejected == 1,
-            "TL-LANG-160 the catalog must expose five nonproductive 3.0.4 plans and one rejected feature");
+        context.expect(planned == 0 && deferred == 0 && rejected == 1,
+            "TL-LANG-160 the catalog must expose no 3.0.4 plans, no 4.0 deferrals and one rejected feature");
     });
 }
 
@@ -1126,10 +1141,10 @@ class Program
 {
     public static int Main()
     {
-        TraitItem traitItem = new TraitItem();
-        dyn ITraitDefaults traitView = traitItem;
-        InterfaceItem interfaceItem = new InterfaceItem();
-        IInterfaceDefaults interfaceView = interfaceItem;
+        raii TraitItem traitItem = new TraitItem();
+        borrowed dyn ITraitDefaults traitView = traitItem;
+        raii InterfaceItem interfaceItem = new InterfaceItem();
+        borrowed IInterfaceDefaults interfaceView = interfaceItem;
         return traitView.Method() + traitView.Value + traitView[1]
             + interfaceView.Method() + interfaceView.Value + interfaceView[1];
     }
@@ -1189,12 +1204,12 @@ class Program
 {
     public static int Main()
     {
-        ExplicitItem explicitItem = new ExplicitItem();
-        dyn IExplicit explicitView = explicitItem;
-        NominalItem nominalItem = new NominalItem();
-        dyn INominal nominalView = nominalItem;
-        DefaultItem defaultItem = new DefaultItem();
-        ICombined defaultView = defaultItem;
+        raii ExplicitItem explicitItem = new ExplicitItem();
+        borrowed dyn IExplicit explicitView = explicitItem;
+        raii NominalItem nominalItem = new NominalItem();
+        borrowed dyn INominal nominalView = nominalItem;
+        raii DefaultItem defaultItem = new DefaultItem();
+        borrowed ICombined defaultView = defaultItem;
         if (explicitView.Value() != 42) return 11;
         if (nominalView.Value() != 42) return 12;
         if (defaultView.Value() != 42) return 13;
@@ -1257,8 +1272,8 @@ class Program
 {
     public static int Main()
     {
-        Item item = new Item();
-        IResolved value = item;
+        raii Item item = new Item();
+        borrowed IResolved value = item;
         return value.Value();
     }
 }
@@ -1323,8 +1338,8 @@ class Program
 {
     public static int Main()
     {
-        Local local = new Local();
-        dyn IScore score = local;
+        raii Local local = new Local();
+        borrowed dyn IScore score = local;
         return score.Score();
     }
 }
@@ -1387,8 +1402,8 @@ class Program
 
     public static int Main()
     {
-        Number number = new Number();
-        dyn IValue<int> erased = number;
+        raii Number number = new Number();
+        borrowed dyn IValue<int> erased = number;
         var opaque = Factory.Make();
         if (Echo<Number>(42) != 42) return 11;
         if (erased.Score() != 42) return 12;
@@ -1525,8 +1540,8 @@ class Program
 {
     public static int Main()
     {
-        Local local = new Local();
-        dyn IDefaults value = local;
+        raii Local local = new Local();
+        borrowed dyn IDefaults value = local;
         return value.Method() + value.Value + value[1];
     }
 }
@@ -1631,8 +1646,8 @@ class Program
 
     public static int Main()
     {
-        Local local = new Local();
-        dyn IDefaults dynamicValue = local;
+        raii Local local = new Local();
+        borrowed dyn IDefaults dynamicValue = local;
         return StaticRead<Local>(local) + dynamicValue.First() + dynamicValue.Second();
     }
 }
@@ -3559,7 +3574,7 @@ class Program
 {
     public static int Main()
     {
-        Box b = new Box();
+        raii Box b = new Box();
         int value = b?[3];
         Box n = null;
         int none = n?[3];
@@ -3678,7 +3693,7 @@ class Program
 {
     public static int Main()
     {
-        External e = new External();
+        raii External e = new External();
         return e.F();
     }
 }
@@ -3793,7 +3808,7 @@ class Program
 {
     public static int Main()
     {
-        External e = new External();
+        raii External e = new External();
         return e.F();
     }
 }
@@ -3847,9 +3862,9 @@ class C
 
 class Program
 {
-    public static int Main()
+    public static int Main() throws E
     {
-        C c = new C();
+        raii C c = new C();
         return 0;
     }
 }
@@ -4147,7 +4162,7 @@ class Program
 {
     public static int Main()
     {
-        Foo f = new Foo();
+        raii Foo f = new Foo();
         return f.M();
     }
 }
@@ -4185,7 +4200,7 @@ class Program
 {
     public static int Main()
     {
-        Foo f = new Foo();
+        raii Foo f = new Foo();
         return f.P;
     }
 }
@@ -4224,7 +4239,7 @@ class Program
 {
     public static int Main()
     {
-        Foo f = new Foo();
+        raii Foo f = new Foo();
         return f.X;
     }
 }
@@ -4268,7 +4283,7 @@ class Program
 {
     public static int Main()
     {
-        Foo f = new Foo();
+        raii Foo f = new Foo();
         f.Changed += (int x) => { };
         f.Changed -= (int x) => { };
         return f.Result;
@@ -4816,7 +4831,7 @@ class Program
 {
     public static int Main()
     {
-        Holder h = new Holder();
+        raii Holder h = new Holder();
         { scope Enemy temporary = new Enemy(42); h.e = temporary; }
         return 0;
     }
@@ -4849,16 +4864,16 @@ class Program
 {
     public static int Main()
     {
-        scope ArenaAllocator arena = new ArenaAllocator();
+        raii scope ArenaAllocator arena = new ArenaAllocator();
         A a = new (arena) A(42);
         if (a.X != 42) return 1;
         byte* p = arena.Allocate(8);
         Span<byte> s = Spans.OfRaw<byte>(p, 8);
         s[0] = 1; s[1] = 2; s[7] = 8;
-        byte* q = arena.Resize(p, 8, 64);
+        byte* q = arena.Resize(p, 8, 64, 8);
         Span<byte> t = Spans.OfRaw<byte>(q, 64);
         if (t[0] != 1 || t[1] != 2 || t[7] != 8) return 2;
-        arena.Deallocate(q);
+        arena.Deallocate(q, 64, 8);
         return arena.ActiveAllocationCount() == 1 ? 0 : 3;
     }
 }
@@ -4902,15 +4917,15 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         Packet p = new (alloc, trailing: 8) Packet(4, 8);
         if (p.Length != 4) return 1;
         if (p.Capacity != 8) return 2;
@@ -4961,15 +4976,15 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         Packet p = new (alloc, trailing: 8) Packet(4, 8);
         p.Data[4] = 7;
         return 0;
@@ -5015,15 +5030,15 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         Packet p = new (alloc, trailing: 8) Packet(2, 8);
         p.Data[1] = 3;
         if (p.Data[1] != 3) return 9;
@@ -5069,16 +5084,16 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
     public static int Main()
     {
         try { S s1 = new S(1); } catch { }
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         try { S* s2 = new (alloc) S(1); } catch { }
         byte[] buf = new byte[64];
         S* storage = (S*)Spans.Of<byte>(buf).Data();
@@ -5121,15 +5136,15 @@ class BlockAllocator : IAllocator
     private owned byte[] pool;
     public int Deallocs;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { Deallocs = Deallocs + 1; }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { Deallocs = Deallocs + 1; }
 }
 class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(4096);
+        raii BlockAllocator alloc = new BlockAllocator(4096);
         { owned B b = new (alloc) B(3, 4); }
         { owned A a = new (alloc) A(8); }
         // two objects, two destructor runs (B's base A + A), two Deallocate calls, no double-free.
@@ -5170,15 +5185,15 @@ class BlockAllocator : IAllocator
     private owned byte[] pool;
     public int Deallocs;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { Deallocs = Deallocs + 1; }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { Deallocs = Deallocs + 1; }
 }
 class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         try { owned Failing value = new (alloc) Failing(); } catch { }
         return alloc.Deallocs == 1 ? 0 : 1;
     }
@@ -5222,9 +5237,9 @@ public class BlockAllocator : IAllocator
     private owned byte[] pool;
     public int Deallocs;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { Deallocs = Deallocs + 1; }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { Deallocs = Deallocs + 1; }
 }
 public class ProductFactory
 {
@@ -5251,7 +5266,7 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         {
             owned Product product = ProductFactory.Make(alloc, 42);
             if (product.Value != 42) return 2;
@@ -5295,23 +5310,23 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class NullAllocator : IAllocator
 {
-    public byte* Allocate(int bytes) { return null; }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return null; }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
     public static int Main()
     {
-        BlockAllocator ba = new BlockAllocator(1024);
+        raii BlockAllocator ba = new BlockAllocator(1024);
         A ok = new (ba, failure: null) A(7);
-        NullAllocator na = new NullAllocator();
+        raii NullAllocator na = new NullAllocator();
         A fail = new (na, failure: null) A(9);
         return (ok != null && ok.X == 7 && fail == null && A.Ctors == 1) ? 0 : 1;
     }
@@ -5347,15 +5362,15 @@ using NativeSharp.Core;
 class A { public int X; public A(int x) { X = x; } }
 class NullAllocator : IAllocator
 {
-    public byte* Allocate(int bytes) { return null; }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return null; }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
     public static int Main()
     {
-        NullAllocator na = new NullAllocator();
+        raii NullAllocator na = new NullAllocator();
         try { A a = new (na, failure: throws) A(42); }
         catch (AllocationFailureException) { return 0; }
         return 1;
@@ -5392,15 +5407,15 @@ using NativeSharp.Core;
 class A { public int X; public A(int x) { X = x; } }
 class NullAllocator : IAllocator
 {
-    public byte* Allocate(int bytes) { return null; }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return null; }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
     public static int Main()
     {
-        NullAllocator na = new NullAllocator();
+        raii NullAllocator na = new NullAllocator();
         A a = new (na, failure: panic) A(42);
         return 0;
     }
@@ -5438,23 +5453,23 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class NullAllocator : IAllocator
 {
-    public byte* Allocate(int bytes) { return null; }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return null; }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
     public static int Main()
     {
-        BlockAllocator ba = new BlockAllocator(1024);
+        raii BlockAllocator ba = new BlockAllocator(1024);
         Result<A, AllocationFailure> ok = new (ba, failure: result) A(7);
-        NullAllocator na = new NullAllocator();
+        raii NullAllocator na = new NullAllocator();
         Result<A, AllocationFailure> fail = new (na, failure: result) A(9);
         return (ok.IsOk() && fail.IsError()) ? 0 : 1;
     }
@@ -5492,17 +5507,17 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
     public static int Main()
     {
         { scope A s = new A(1); }
-        A h = new A(2);
-        BlockAllocator ba = new BlockAllocator(1024);
+        raii A h = new A(2);
+        raii BlockAllocator ba = new BlockAllocator(1024);
         A a = new (ba) A(3);
         return h.X + a.X;
     }
@@ -6009,7 +6024,7 @@ class Program
 {
     public static int Main()
     {
-        Foo f = new Foo();
+        raii Foo f = new Foo();
         return f.Twice();
     }
 }
@@ -6046,9 +6061,9 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
@@ -6058,7 +6073,7 @@ class Program
     }
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         A a = new (alloc) A(42);
         int* stack = stackalloc int[2];
         stack[0] = a.X;
@@ -6286,8 +6301,10 @@ class Program
     {
         AsyncIterator<int, Exception> it = Gen(-5);
         bool h1 = await it.MoveNextAsync();
-        bool h2 = await it.MoveNextAsync();
-        return (h1 && Log.FinallyCount == 1 && Log.DropCount == 1) ? 0 : 1;
+        // Freeze 3.0 C-17: the error reaches the await of MoveNextAsync; before, it was lost.
+        bool caught = false;
+        try { bool h2 = await it.MoveNextAsync(); } catch (Exception e) { caught = true; }
+        return (h1 && caught && Log.FinallyCount == 1 && Log.DropCount == 1) ? 0 : 1;
     }
 }
 )ns", "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"
@@ -6503,7 +6520,7 @@ class BlockAllocator : IAllocator
         used = new bool[blockCount];
     }
 
-    public byte* Allocate(int bytes)
+    public byte* Allocate(long bytes, int alignment)
     {
         if (bytes <= 0 || bytes > blockSize) return null;
         for (int i = 0; i < blockCount; i++)
@@ -6513,14 +6530,14 @@ class BlockAllocator : IAllocator
         return null;
     }
 
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes)
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment)
     {
         if (ptr == null || newBytes <= 0) return null;
         if (newBytes <= blockSize) return ptr;
         return null;
     }
 
-    public void Deallocate(byte* ptr)
+    public void Deallocate(byte* ptr, long bytes, int alignment)
     {
         if (ptr == null) return;
         byte* base0 = Spans.Of<byte>(pool).Data();
@@ -6535,19 +6552,19 @@ class Program
 {
     public static int Main()
     {
-        BlockAllocator a = new BlockAllocator(16, 8);
-        if (a.Allocate(0) != null) return 1;
-        if (a.Allocate(20) != null) return 2;
-        byte* p = a.Allocate(8);
+        raii BlockAllocator a = new BlockAllocator(16, 8);
+        if (a.Allocate(0, 8) != null) return 1;
+        if (a.Allocate(20, 8) != null) return 2;
+        byte* p = a.Allocate(8, 8);
         if (p == null) return 3;
         p[0] = 42;
         p[1] = 7;
-        byte* q = a.Resize(p, 8, 12);
+        byte* q = a.Resize(p, 8, 12, 8);
         if (q == null) return 4;
         if (q[0] != 42 || q[1] != 7) return 5;
-        if (a.Resize(p, 8, 20) != null) return 6;
-        a.Deallocate(q);
-        byte* r = a.Allocate(8);
+        if (a.Resize(p, 8, 20, 8) != null) return 6;
+        a.Deallocate(q, 12, 8);
+        byte* r = a.Allocate(8, 8);
         if (r == null) return 7;
         if (r != q) return 8;
         return 0;
@@ -6771,7 +6788,7 @@ class Program
         return value + 1;
     }
 
-    public static int Main()
+    public static async int Main()
     {
         int result = await Read();
         return result;
@@ -6860,7 +6877,7 @@ class Program
         return 42;
     }
 
-    public static int Main()
+    public static async int Main()
     {
         int result = await Read();
         return Box.Drops * 100 + result;
@@ -6899,7 +6916,7 @@ class Program
         return value;
     }
 
-    public static int Main()
+    public static async int Main()
     {
         int result = await Read();
         return result;
@@ -6939,7 +6956,7 @@ class Program
         return live;
     }
 
-    public static int Main()
+    public static async int Main()
     {
         return await Read();
     }
@@ -6979,7 +6996,7 @@ class Program
         return view.Value;
     }
 
-    public static int Main()
+    public static async int Main()
     {
         return await Read();
     }
@@ -7061,7 +7078,7 @@ class Program
         return 42;
     }
 
-    public static int Main()
+    public static int Main() throws Exception
     {
         int result = await Read();
         return result;
@@ -7085,6 +7102,18 @@ class Program
         }});
 }
 
+// EN: Freeze 3.0 DEC-15: C-17 makes a synchronous `await` outside `try` propagate the future's error
+//     as an exception. The case proves that propagation with a stable result: Forward awaits outside
+//     any try, Main catches and returns 9. Exit 9 is reachable only through the catch, so neither the
+//     value after the await (142) nor a default (100) can pass. An error escaping Main ends the process
+//     with the native code 0xE04E5301, and Windows Error Reporting delayed that path intermittently at
+//     -O2, so the case does not depend on it.
+// ES: Congelamiento 3.0 DEC-15: C-17 hace que un `await` sincrono fuera de `try` propague el error del
+//     future como excepcion. El caso prueba esa propagacion con un resultado estable: Forward espera
+//     fuera de todo try, Main atrapa y devuelve 9. El 9 solo se alcanza por el catch, asi que ni el
+//     valor despues del await (142) ni un valor por defecto (100) pueden pasar. Un error que sale de
+//     Main termina el proceso con el codigo nativo 0xE04E5301 y el reporte de errores de Windows demoro
+//     esa ruta de forma intermitente en -O2, por eso el caso no depende de ella.
 void registerAsyncThrowErrorCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-376", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -7112,10 +7141,22 @@ class Program
         return 42;
     }
 
-    public static int Main()
+    public static int Forward() throws Exception
     {
         int result = await Read();
-        return result;
+        return result + 100;
+    }
+
+    public static int Main()
+    {
+        try
+        {
+            return Forward();
+        }
+        catch (Exception e)
+        {
+            return 9;
+        }
     }
 }
 )ns", "<Compile Include=\"Object.ns\"/><Compile Include=\"Number.ns\"/>"
@@ -7130,9 +7171,9 @@ class Program
             if (!emitted.started || emitted.exitCode != 0) return;
             const auto result = external_program_support::run(
                 executable, {}, {}, products.directory());
-            context.expect(result.started && result.error.empty() &&
-                    result.exitCode == static_cast<decltype(result.exitCode)>(-1),
-                "TL-LANG-376 a throw in the async body must surface as a future error (state=-2): " +
+            context.expect(result.started && result.error.empty() && result.exitCode == 9,
+                "TL-LANG-376 a throw in the async body must propagate through a synchronous await outside "
+                "try to the caller's catch (C-17): " +
                     result.error + result.output + " exit=" + std::to_string(result.exitCode));
         }});
 }
@@ -7258,7 +7299,7 @@ class Program
         return await Inner();
     }
 
-    public static int Main()
+    public static async int Main()
     {
         int a = await Inner();
         int b = await Outer();
@@ -7303,7 +7344,7 @@ public class Async
                 "T05FutureConsumer", "Exe", R"ns(
 class Program
 {
-    public static int Main()
+    public static async int Main()
     {
         return await Async.Make();
     }
@@ -7981,7 +8022,7 @@ class Program
         yield return 42;
     }
 
-    public static int Main()
+    public static int Main() throws Exception
     {
         int r = 0;
         try { foreach (int x in Fail()) { r += x; } }
@@ -8508,7 +8549,7 @@ class Program
         yield;
         value = value + 1;
     }
-    public static int Main()
+    public static async int Main()
     {
         int value = 41;
         Future<void> f = Child(ref value);
@@ -9004,7 +9045,7 @@ public class Lib
                 "T07AsyncIterMetadataConsumer", "Exe", R"ns(
 class Program
 {
-    public static int Main()
+    public static async int Main()
     {
         AsyncIterator<int, int> it = Lib.Gen();
         bool has = await it.MoveNextAsync();
@@ -9344,15 +9385,15 @@ class BlockAllocator : IAllocator
 {
     private owned byte[] pool;
     public BlockAllocator(int size) { pool = new byte[size]; }
-    public byte* Allocate(int bytes) { return Spans.Of<byte>(pool).Data(); }
-    public byte* Resize(byte* ptr, int oldBytes, int newBytes) { return ptr; }
-    public void Deallocate(byte* ptr) { }
+    public byte* Allocate(long bytes, int alignment) { return Spans.Of<byte>(pool).Data(); }
+    public byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment) { return ptr; }
+    public void Deallocate(byte* ptr, long bytes, int alignment) { }
 }
 class Program
 {
     public static int Main()
     {
-        BlockAllocator alloc = new BlockAllocator(1024);
+        raii BlockAllocator alloc = new BlockAllocator(1024);
         A a = new (alloc) A(42);
         return a.X;
     }
@@ -9811,7 +9852,7 @@ class Program
 
     public static int Main()
     {
-        Program p = new Program();
+        raii Program p = new Program();
         return p.Value;
     }
 }
@@ -9838,7 +9879,7 @@ class Program
 
     public static int Main()
     {
-        Program p = new Program();
+        raii Program p = new Program();
         p.Value = 42;
         return p.Value;
     }
@@ -9896,7 +9937,7 @@ class Program
     {
         if (first) { Value = 42; } else { Value = 7; }
     }
-    public static int Main() { Program p = new Program(true); return p.Value; }
+    public static int Main() { raii Program p = new Program(true); return p.Value; }
 }
 )ns");
     context.expect(
@@ -9914,12 +9955,12 @@ namespace RequiredFlow
     public class Program
     {
         public required int Value;
-        public Program(bool fail)
+        public Program(bool fail) throws RequiredFlow.ConstructionFailure
         {
             if (fail) { throw new ConstructionFailure(); }
             Value = 42;
         }
-        public static int Main() { Program p = new Program(false); return p.Value; }
+        public static int Main() throws RequiredFlow.ConstructionFailure { raii Program p = new Program(false); return p.Value; }
     }
 }
 )ns");
@@ -9962,7 +10003,7 @@ class Program
 
     public static int Main()
     {
-        Program p = new Program();
+        raii Program p = new Program();
         return p.Value;
     }
 }
@@ -10106,7 +10147,7 @@ class Program
 
     public static int Main()
     {
-        Program p = new Program();
+        raii Program p = new Program();
         p.Changed += Handle;
         p.Fire();
         return Result;
@@ -10129,6 +10170,12 @@ class Program
         }});
 }
 
+// EN: Freeze 3.0 DEC-02: a `new` stored in a local without `owned` or `raii` is a compile error
+//     (LostOwnership, C-01). The case keeps testing target-typed construction, so the local takes the
+//     object through an explicit `raii` owner and the type still comes only from the target.
+// ES: Congelamiento 3.0 DEC-02: un `new` guardado en un local sin `owned` ni `raii` es error de
+//     compilacion (LostOwnership, C-01). El caso sigue probando la construccion target-typed, asi que
+//     el local recibe el objeto con un dueno `raii` explicito y el tipo sigue saliendo solo del destino.
 void registerTargetTypedNewCase(TestRegistry& registry)
 {
     registry.add(TestCase{"TL-LANG-339", "CL-LANG-020", "Host.Language", "integration", "PR",
@@ -10153,7 +10200,7 @@ class Program
 {
     public static int Main()
     {
-        Point p = new(3, 4);
+        raii Point p = new(3, 4);
         return p.X + p.Y;
     }
 }
@@ -10208,7 +10255,7 @@ class Program
     {
         Box b = null;
         int skipped = (Receiver(b)?.Value = NextValue(1));
-        Box c = new Box();
+        raii Box c = new Box();
         int stored = (Receiver(c)?.Value = NextValue(42));
         if (skipped != 0) return 100;
         if (stored != 42 || c.Value != 42) return 101;
@@ -10258,7 +10305,7 @@ class Program
 
     public static int Main()
     {
-        Program p = new Program();
+        raii Program p = new Program();
         p.Changed += Handle;
         p.Changed -= Handle;
         return Result;
@@ -10311,7 +10358,7 @@ class Program
     {
         Box b = null;
         int skipped = (Receiver(b)?.Value += Addend(1));
-        Box c = new Box();
+        raii Box c = new Box();
         c.Value = 10;
         int stored = (Receiver(c)?.Value += Addend(5));
         if (skipped != 0) return 100;
@@ -10352,7 +10399,7 @@ class Program
 {
     public static int Main()
     {
-        Box b = new Box();
+        raii Box b = new Box();
         return b?[0];
     }
 }
@@ -10389,7 +10436,7 @@ class Program
 {
     public static int Main()
     {
-        Point p = new Point(3, 4);
+        raii Point p = new Point(3, 4);
         return p.Sum();
     }
 }

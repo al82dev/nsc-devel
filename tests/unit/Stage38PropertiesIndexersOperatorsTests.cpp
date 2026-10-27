@@ -219,16 +219,16 @@ namespace Demo
             set { Value = value - row - column; }
         }
 
-        public static Number operator +(Number left, Number right)
+        public static owned Number operator +(Number left, Number right)
         { return new Number(left.Value + right.Value); }
-        public static Number operator -(Number value)
+        public static owned Number operator -(Number value)
         { return new Number(-value.Value); }
         public static bool operator ==(Number left, Number right)
         { return left.Value == right.Value; }
         public static bool operator !=(Number left, Number right)
         { return left.Value != right.Value; }
         public static implicit operator int(Number value) { return value.Value; }
-        public static explicit operator Number(int value) { return new Number(value); }
+        public static explicit operator owned Number(int value) { return new Number(value); }
     }
 
     public class Holder
@@ -243,23 +243,22 @@ namespace Demo
         public static int Consume(int value) { return value; }
         public static int Run()
         {
-            Number a = new Number(10);
-            Number b = new Number(20);
-            Number c = a + b;
-            Number d = -c;
+            raii Number a = new Number(10);
+            raii Number b = new Number(20);
+            raii Number c = a + b;
+            raii Number d = -c;
             bool equal = a == b;
             int primitive = c;
             int consumed = Consume(c);
-            Holder holder = new Holder(c);
-            Number casted = (Number)primitive;
-            IValue iv = casted;
+            raii Holder holder = new Holder(c);
+            raii Number casted = (Number)primitive;
+            borrowed IValue iv = casted;
             iv[2] = consumed;
             int one = iv[2];
             casted[1, 2] = one;
             int two = casted[1, 2];
             Number.Count = Number.Count + 1;
             int result = holder.Read() + one + two + d.Value + Number.Count;
-            delete a; delete b; delete c; delete d; delete holder; delete casted;
             return result;
         }
     }
@@ -446,11 +445,18 @@ class Number : I
     public Number(int value) { Value = value; }
     public int Value { get; set; }
     public int this[int i] { get { return Value + i; } set { Value = value - i; } }
-    public static Number operator +(Number a, Number b) { return new Number(a.Value + b.Value); }
+    public static owned Number operator +(Number a, Number b) { return new Number(a.Value + b.Value); }
     public static implicit operator int(Number value) { return value.Value; }
-    public static explicit operator Number(int value) { return new Number(value); }
+    public static explicit operator owned Number(int value) { return new Number(value); }
 }
-class H { public static int Run() { Number a = new Number(2); Number b = new Number(3); Number c = a + b; int x = c; Number d = (Number)x; I i = d; i[1] = x; int r = i[1] + i.Value; delete a; delete b; delete c; delete d; return r; } }
+class H
+{
+    public static int Run()
+    {
+        raii Number a = new Number(2); raii Number b = new Number(3); raii Number c = a + b; int x = c;
+        raii Number d = (Number)x; borrowed I i = d; i[1] = x; int r = i[1] + i.Value; return r;
+    }
+}
 )NS");
 
     ProjectCompilation compilation;

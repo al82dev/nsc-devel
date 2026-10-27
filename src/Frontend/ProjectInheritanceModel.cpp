@@ -462,7 +462,14 @@ bool ProjectInheritanceModel::resolveBaseSpecifications(
     const std::optional<std::size_t> objectRootOrdinal = objectRootTypeOrdinal();
     bool ok = true;
     for (ClassInheritanceInfo& info : classes_)
+    {
+        // EN: A class of a restored API unit with a snapshot entry takes its base from it (plan 3.6).
+        // ES: Una clase de una unidad de API restaurada con entrada en el snapshot toma de ella su base
+        //     (plan 3.6).
+        if (installSnapshotBase(info)) continue;
         if (!resolveClassBaseSpecifications(info, objectRootOrdinal, diagnostics)) ok = false;
+        captureSnapshotBase(info);
+    }
     return ok;
 }
 

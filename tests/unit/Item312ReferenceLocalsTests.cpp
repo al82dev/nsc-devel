@@ -125,7 +125,7 @@ public class Program
         element += 2;
         if (buffer[0] != 7 || buffer[1] != 10) { return 6; }
 
-        Holder holder = new Holder();
+        raii Holder holder = new Holder();
         holder.Value = 40;
         ref int member = ref holder.Value;
         member = 42;

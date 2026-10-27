@@ -3,6 +3,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "../../Frontend/Internal/TypeIndexShadowCheck.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -114,7 +115,7 @@ bool OopLlvmImplementation::emitCallbackBoundaryHandler(std::string& error)
         {
             LLVMBasicBlockRef padBlock = appendBlock(std::string(stem) + ".catchpad");
             LLVMAddHandler(catchSwitch, padBlock);
-            LLVMPositionBuilderAtEnd(builder_, padBlock);
+            enterBlock(padBlock);
             LLVMValueRef catchArguments[] = {filter};
             LLVMValueRef catchPad = LLVMBuildCatchPad(
                 builder_, catchSwitch, catchArguments, 1,
@@ -275,7 +276,7 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
         {
             currentFunction_ = savedFunction;
             blockCounter_ = savedBlockCounter;
-            if (savedBlock != nullptr) LLVMPositionBuilderAtEnd(builder_, savedBlock);
+            if (savedBlock != nullptr) enterBlock(savedBlock);
         };
         currentFunction_ = thunk;
         blockCounter_ = 0;
@@ -284,7 +285,7 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
         LLVMBasicBlockRef entryBlock = appendBlock("boundary.entry");
         LLVMBasicBlockRef returnBlock = appendBlock("boundary.return");
         LLVMBasicBlockRef unwindBlock = appendBlock("boundary.unwind");
-        LLVMPositionBuilderAtEnd(builder_, entryBlock);
+        enterBlock(entryBlock);
         std::vector<LLVMValueRef> forwarded;
         LLVMValueRef internalSretSlot = nullptr;
         if (!prepareCallbackGuardArguments(
@@ -307,7 +308,7 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
                 { LLVMAddCallSiteAttribute(result, index, attribute); },
                 0U, function.returnTypeKey);
         }
-        LLVMPositionBuilderAtEnd(builder_, returnBlock);
+        enterBlock(returnBlock);
         if (vectorReturnType != nullptr)
         {
             LLVMValueRef externalResult = LLVMBuildLoad2(
@@ -317,7 +318,7 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
         else if (externalSretReturn || function.returnTypeKey == "builtin:void")
             LLVMBuildRetVoid(builder_);
         else LLVMBuildRet(builder_, result);
-        LLVMPositionBuilderAtEnd(builder_, unwindBlock);
+        enterBlock(unwindBlock);
         if (!emitCallbackBoundaryHandler(error))
         {
             restore();
@@ -458,13 +459,13 @@ bool OopLlvmImplementation::defineRuntimeBoundImport(
         LLVMBasicBlockRef entryBlock = appendBlock("import.entry");
         LLVMBasicBlockRef bindBlock = appendBlock("import.bind");
         LLVMBasicBlockRef callBlock = appendBlock("import.call");
-        LLVMPositionBuilderAtEnd(builder_, entryBlock);
+        enterBlock(entryBlock);
         LLVMValueRef cached = LLVMBuildLoad2(builder_, ptr, cache, "import.cached");
         LLVMValueRef needsBinding =
             LLVMBuildICmp(builder_, LLVMIntEQ, cached, LLVMConstNull(ptr), "import.unbound");
         LLVMBuildCondBr(builder_, needsBinding, bindBlock, callBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, bindBlock);
+        enterBlock(bindBlock);
         LLVMValueRef loadArguments[] = {libraryName};
         LLVMValueRef moduleHandle = LLVMBuildCall2(
             builder_, loadLibraryFunctionType_, loadLibraryFunction_, loadArguments, 1,
@@ -476,7 +477,7 @@ bool OopLlvmImplementation::defineRuntimeBoundImport(
         LLVMBuildStore(builder_, address, cache);
         LLVMBuildBr(builder_, callBlock);
 
-        LLVMPositionBuilderAtEnd(builder_, callBlock);
+        enterBlock(callBlock);
         LLVMValueRef target = LLVMBuildPhi(builder_, ptr, "import.target");
         LLVMValueRef incomingValues[] = {cached, address};
         LLVMBasicBlockRef incomingBlocks[] = {entryBlock, bindBlock};
@@ -571,6 +572,20 @@ bool OopLlvmImplementation::isExternCDelegateType(std::string_view typeKey) cons
             return functionType->carrier == language::FunctionCarrier::Pointer;
         if (!typeKey.starts_with("type:")) return false;
         const std::string_view key = typeKey.substr(5);
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        {
+            frontend::internal::shadowCheckTypeIdentityIndex(
+                nameLookup_, key, "OopLlvmImplementation::isExternCDelegateType");
+        }
+        // The shared type index keeps the first type of an identity, as the scan below; the
+        // scan only runs for hand-assembled models that have no type index.
+        if (const std::optional<std::size_t> ordinal = nameLookup_.typeOrdinalForIdentity(key))
+        {
+            const frontend::NamedTypeDeclaration* type = nameLookup_.typeForOrdinal(*ordinal);
+            return type != nullptr && type->kind == frontend::NamedTypeDeclarationKind::Delegate &&
+                type->syntax != nullptr && type->syntax->hasModifier(lexer::TokenKind::KwExtern);
+        }
+        if (nameLookup_.hasTypeIndex()) return false;
         for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
         {
             if (type.identity.key() != key) continue;
@@ -587,6 +602,21 @@ bool OopLlvmImplementation::isVectorCallDelegateType(std::string_view typeKey) c
             return functionType->callingConvention == language::CallingConvention::VectorCall;
         if (!typeKey.starts_with("type:")) return false;
         const std::string_view key = typeKey.substr(5);
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        {
+            frontend::internal::shadowCheckTypeIdentityIndex(
+                nameLookup_, key, "OopLlvmImplementation::isVectorCallDelegateType");
+        }
+        // The shared type index keeps the first type of an identity, as the scan below; the
+        // scan only runs for hand-assembled models that have no type index.
+        if (const std::optional<std::size_t> ordinal = nameLookup_.typeOrdinalForIdentity(key))
+        {
+            const frontend::NamedTypeDeclaration* type = nameLookup_.typeForOrdinal(*ordinal);
+            return type != nullptr && type->kind == frontend::NamedTypeDeclarationKind::Delegate &&
+                type->syntax != nullptr &&
+                type->syntax->hasModifier(lexer::TokenKind::KwVectorCall);
+        }
+        if (nameLookup_.hasTypeIndex()) return false;
         for (const frontend::NamedTypeDeclaration& type : nameLookup_.namedTypes())
         {
             if (type.identity.key() != key) continue;
@@ -688,7 +718,7 @@ bool OopLlvmImplementation::defineCAbiWrapper(
         ScopedDebugLocation generatedDebugLocation(
             builder_, debugSubprogramLocation(function, subprogram));
         LLVMBasicBlockRef entry = appendBlock("cabi.entry");
-        LLVMPositionBuilderAtEnd(builder_, entry);
+        enterBlock(entry);
         std::vector<LLVMValueRef> arguments;
         arguments.reserve(function.parameterTypeKeys.size() + 1);
         // The internal function shares this exact ABI (declareFunctions applies the same
@@ -728,10 +758,10 @@ bool OopLlvmImplementation::defineCAbiWrapper(
                 { LLVMAddCallSiteAttribute(result, index, attribute); },
                 0U, function.returnTypeKey);
         }
-        LLVMPositionBuilderAtEnd(builder_, returnBlock);
+        enterBlock(returnBlock);
         if (returnType == LLVMVoidTypeInContext(context_)) LLVMBuildRetVoid(builder_);
         else LLVMBuildRet(builder_, result);
-        LLVMPositionBuilderAtEnd(builder_, unwindBlock);
+        enterBlock(unwindBlock);
         return emitCallbackBoundaryHandler(error);
     }
 
@@ -768,7 +798,7 @@ bool OopLlvmImplementation::defineValueDropEntries(std::string& error)
             blockCounter_ = 0;
 
             LLVMBasicBlockRef entry = appendBlock("value.drop.entry");
-            LLVMPositionBuilderAtEnd(builder_, entry);
+            enterBlock(entry);
             LLVMValueRef storage = LLVMGetParam(currentFunction_, 0);
             LLVMSetValueName2(storage, "storage", 7);
             if (layout.typeKey.starts_with("iterator:") ||
@@ -784,6 +814,32 @@ bool OopLlvmImplementation::defineValueDropEntries(std::string& error)
                 LLVMValueRef args[] = { storage };
                 if (LLVMBuildCall2(builder_, fnType, dropFn, args, 1U, "") == nullptr)
                     return fail(error, "iterator drop glue call failed");
+                LLVMBuildRetVoid(builder_);
+            }
+            else if (layout.typeKey.starts_with("future:"))
+            {
+                // EN: Freeze 3.0 C-14: a future dispatches through its Drop pointer (member 5). A
+                //     default or consumed (zeroed) future has none and drops nothing.
+                // ES: Congelamiento 3.0 C-14: un future despacha por su puntero Drop (miembro 5).
+                //     Uno por defecto o consumido (en cero) no tiene y no destruye nada.
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef dropFn = LLVMBuildLoad2(
+                    builder_, ptr,
+                    byteOffset(storage, futureFieldOffset(layout.typeKey, 5), "drop.fn.addr"),
+                    "drop.fn");
+                LLVMBasicBlockRef call = appendBlock("future.drop.call");
+                LLVMBasicBlockRef done = appendBlock("future.drop.done");
+                LLVMBuildCondBr(
+                    builder_, LLVMBuildICmp(builder_, LLVMIntEQ, dropFn, LLVMConstNull(ptr), "drop.fn.none"),
+                    done, call);
+                enterBlock(call);
+                LLVMTypeRef fnParams[] = { ptr };
+                LLVMTypeRef fnType = LLVMFunctionType(LLVMVoidTypeInContext(context_), fnParams, 1, 0);
+                LLVMValueRef args[] = { storage };
+                if (LLVMBuildCall2(builder_, fnType, dropFn, args, 1U, "") == nullptr)
+                    return fail(error, "future drop glue call failed");
+                LLVMBuildBr(builder_, done);
+                enterBlock(done);
                 LLVMBuildRetVoid(builder_);
             }
             else if (!emitValueDropAddress(
@@ -836,7 +892,7 @@ LLVMValueRef OopLlvmImplementation::beginObjectDestructionEntry(
             if (debugRange.isValid()) currentDebugFileKey_ = debugRange.begin().fileId().value();
         }
         LLVMBasicBlockRef entry = appendBlock("destroy.entry");
-        LLVMPositionBuilderAtEnd(builder_, entry);
+        enterBlock(entry);
         LLVMValueRef object = LLVMGetParam(currentFunction_, 0);
         LLVMSetValueName2(object, "object", 6);
         return object;
@@ -849,6 +905,16 @@ bool OopLlvmImplementation::emitObjectDestructionSteps(
 {
         for (const frontend::ProjectOopMirDispatchTable::DestructionStep& step : table.destructionSteps)
         {
+            // EN: Freeze 3.0 C-11: a value field with a non-trivial lifetime is dropped in place.
+            // ES: Congelamiento 3.0 C-11: un campo de valor con lifetime no trivial se destruye en
+            //     su lugar.
+            if (step.isValueFieldDrop)
+            {
+                LLVMValueRef fieldAddress = byteOffset(object, step.ownedField.offset, "value.field.addr");
+                if (!emitValueDropAddress(fieldAddress, step.valueFieldTypeKey, "value.field", error))
+                    return false;
+                continue;
+            }
             if (!step.isFieldRelease)
             {
                 const auto bodyFound = functions_.find(step.destructorCalleeName);
@@ -877,9 +943,15 @@ bool OopLlvmImplementation::emitObjectDestructionSteps(
             LLVMBasicBlockRef destroyBlock = appendBlock("owned.field.destroy");
             LLVMBasicBlockRef doneBlock = appendBlock("owned.field.done");
             LLVMBuildCondBr(builder_, fieldIsNull, doneBlock, destroyBlock);
-            LLVMPositionBuilderAtEnd(builder_, destroyBlock);
+            enterBlock(destroyBlock);
             LLVMBuildStore(builder_, LLVMConstNull(ptr), fieldAddress);
-            if (ownedField.isNativeString)
+            if (ownedField.isNativeArray)
+            {
+                if (!emitNativeArrayDestroy(
+                        fieldValue, ownedField.arrayTypeKey, "owned.field.array", true, error))
+                    return false;
+            }
+            else if (ownedField.isNativeString)
             {
                 LLVMValueRef arguments[] = {fieldValue};
                 buildNoUnwindCall(deallocationFunctionType_, deallocationFunction_, arguments, 1, "");
@@ -900,7 +972,7 @@ bool OopLlvmImplementation::emitObjectDestructionSteps(
                     destructionEntryFunctionType_, destructionEntry, arguments, 1, "");
             }
             LLVMBuildBr(builder_, doneBlock);
-            LLVMPositionBuilderAtEnd(builder_, doneBlock);
+            enterBlock(doneBlock);
         }
         return true;
     }
@@ -942,7 +1014,7 @@ void OopLlvmImplementation::emitReleasingDestructionEntry(
         currentDebugScope_ = currentDebugSubprogram_;
         blockCounter_ = 0;
         LLVMBasicBlockRef releasingEntry = appendBlock("destroy-and-free.entry");
-        LLVMPositionBuilderAtEnd(builder_, releasingEntry);
+        enterBlock(releasingEntry);
         ScopedDebugLocation releasingLocation(
             builder_, debugSubprogramLocation(debugRange, currentDebugSubprogram_));
         LLVMValueRef object = LLVMGetParam(currentFunction_, 0);

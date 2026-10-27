@@ -842,9 +842,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::prepareBoundCallArgument(
         argument = wrapImplicitConversion(
             std::move(argument), binding.selectedConversions[argumentIndex], argumentSyntax);
     }
-    return wrapCallArgumentBorrow(
+    argument = wrapCallArgumentBorrow(
         std::move(argument), argumentSyntax, selectedMemberOrdinal,
         argumentIndex, hasOwnedTemporary);
+    const bool ownedParameter = memberModel_ != nullptr &&
+        selectedMemberOrdinal < memberModel_->members().size() &&
+        argumentIndex < memberModel_->members()[selectedMemberOrdinal].parameters.size() &&
+        ownedValueParameter(memberModel_->members()[selectedMemberOrdinal].parameters[argumentIndex]);
+    return wrapOwnedArgumentTransfer(std::move(argument), argumentSyntax, ownedParameter, hasOwnedTemporary);
 }
 
 std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishBoundCall(

@@ -103,8 +103,14 @@ public:
 
     bool isValid() const noexcept;
     const std::string& validationError() const noexcept;
-    std::string fullyQualifiedName() const;
-    std::string key() const;
+    // EN: Both names are computed once by the constructor and the identity never changes, so they are returned by
+    //     reference: a lookup that compares or hashes them allocates nothing. The reference lives as long as this
+    //     identity; copy it when the identity is a temporary.
+    // ES: Ambos nombres se calculan una vez en el constructor y la identidad nunca cambia, así que se devuelven por
+    //     referencia: una búsqueda que los compara o los hashea no reserva memoria. La referencia vive lo mismo que
+    //     esta identidad; cópiela si la identidad es un temporal.
+    const std::string& fullyQualifiedName() const noexcept;
+    const std::string& key() const noexcept;
     std::string_view fullyQualifiedNameView() const noexcept;
     std::string_view keyView() const noexcept;
 

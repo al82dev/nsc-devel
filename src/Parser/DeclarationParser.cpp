@@ -1580,6 +1580,12 @@ void Parser::parseClassBody(
     std::string_view className,
     bool isStatic)
 {
+    // EN: Freeze 3.0 P1: member `where` clauses may name this class's own generic parameters (not
+    //     those of an enclosing type).
+    // ES: Congelamiento 3.0 P1: las clausulas `where` de miembros pueden nombrar los parametros
+    //     propios de esta clase (no los de un tipo que la contiene).
+    std::vector<std::string> outerParameters = std::move(enclosingGenericParameters_);
+    enclosingGenericParameters_ = declaration->genericParameters();
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
         const std::size_t before = index_;
@@ -1615,6 +1621,7 @@ void Parser::parseClassBody(
         }
         if (index_ == before) consume();
     }
+    enclosingGenericParameters_ = std::move(outerParameters);
 }
 
 ast::AstNode* Parser::parseClassDeclaration(
@@ -1908,6 +1915,12 @@ ast::AstNode* Parser::parseStructBody(
         return node;
     }
 
+    // EN: Freeze 3.0 P1: member `where` clauses may name this struct's own generic parameters (not
+    //     those of an enclosing type).
+    // ES: Congelamiento 3.0 P1: las clausulas `where` de miembros pueden nombrar los parametros
+    //     propios de este struct (no los de un tipo que lo contiene).
+    std::vector<std::string> outerParameters = std::move(enclosingGenericParameters_);
+    enclosingGenericParameters_ = node->genericParameters();
     while (!at(TokenKind::RightBrace) && !at(TokenKind::EndOfFile))
     {
         const std::size_t before = index_;
@@ -1999,6 +2012,7 @@ ast::AstNode* Parser::parseStructBody(
             consume();
         }
     }
+    enclosingGenericParameters_ = std::move(outerParameters);
 
     expect(TokenKind::RightBrace, "'}'");
     node->setRange(tokenRangeFrom(beginIndex));

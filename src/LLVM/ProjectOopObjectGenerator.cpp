@@ -8,7 +8,9 @@
 
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
+#include "nativesharp/Frontend/ProjectMemberModelDumper.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ProjectNameLookupDumper.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
@@ -19,12 +21,17 @@
 #include "nativesharp/LLVM/ProjectOopCodePartition.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 #include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
+#include "nativesharp/Source/SourceAccessRecording.h"
+#include "nativesharp/Source/SourceManager.h"
 
 #include "Internal/ColdLlvmPreambleTelemetry.h"
 #include "Internal/ColdLlvmTrace.h"
 #include "Internal/ColdLlvmTraceScope.h"
 #include "Internal/CodeUnitProgress.h"
+#include "Internal/CodeViewProcedureRanges.h"
 #include "Internal/PhaseClock.h"
+#include "Internal/SourceDependencyIndex.h"
+#include "Internal/ThinLtoBackend.h"
 
 #include <algorithm>
 #include <atomic>
@@ -33,6 +40,7 @@
 #include <fstream>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <system_error>
 #include <utility>
 
@@ -72,46 +80,24 @@ std::optional<std::filesystem::path> createTemporaryDirectory(std::string& error
 
 
 
-void appendNodeSourceRanges(
-    const frontend::ProjectOopMirNode* root,
-    std::vector<SourceRange>& ranges)
+/// EN: The part of the source identity that every code unit shares with debug information: the
+///     debug prefix maps that remap the recorded paths. The files themselves enter each unit's
+///     object key through SourceDependencyIndex (optimization part 2, item 51); before that item
+///     every unit hashed the ranges and files of the whole project, so any edit missed every unit.
+/// ES: La parte de la identidad de fuentes que comparten todas las unidades con depuracion: los
+///     prefix maps que reescriben las rutas grabadas. Los archivos mismos entran a la llave de
+///     objeto de cada unidad por SourceDependencyIndex (parte 2, punto 51); antes de ese punto cada
+///     unidad hacia hash de los rangos y archivos de todo el proyecto, asi que cualquier edicion
+///     fallaba todas las unidades.
+std::string debugPrefixMapIdentity(std::span<const DebugPrefixMap> debugPrefixMaps)
 {
-    std::vector<const frontend::ProjectOopMirNode*> work;
-    work.push_back(root);
-    while (!work.empty())
+    std::string identity = "debug-prefix-maps " + std::to_string(debugPrefixMaps.size()) + "\n";
+    for (const DebugPrefixMap& map : debugPrefixMaps)
     {
-        const frontend::ProjectOopMirNode* node = work.back();
-        work.pop_back();
-        if (node == nullptr) continue;
-        if (node->syntax != nullptr) ranges.push_back(node->syntax->range());
-        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
-            work.push_back(child->get());
+        identity += map.sourcePrefix.lexically_normal().generic_string() + "\n";
+        identity += map.replacementPrefix.lexically_normal().generic_string() + "\n";
     }
-}
-
-std::vector<SourceRange> collectLineTableSourceRanges(
-    const frontend::ProjectNameLookup& nameLookup,
-    const frontend::ProjectMemberModel& memberModel,
-    const frontend::ProjectOopMirModel& mirModel)
-{
-    std::vector<SourceRange> ranges;
-    for (const frontend::NamedTypeDeclaration& type : nameLookup.namedTypes())
-        ranges.push_back(type.range);
-    for (const frontend::ClassMemberSymbol& member : memberModel.members())
-        ranges.push_back(member.range);
-    for (const frontend::ProjectOopMirStaticField& field : mirModel.staticFields())
-        ranges.push_back(field.sourceRange);
-    for (const frontend::ProjectOopMirFieldInitializer& initializer : mirModel.fieldInitializers())
-        appendNodeSourceRanges(initializer.value.get(), ranges);
-    for (const frontend::ProjectOopMirFunction& function : mirModel.functions())
-    {
-        appendNodeSourceRanges(function.body.get(), ranges);
-        for (const frontend::ProjectOopMirCleanupRegion& cleanup : function.cleanupRegions)
-            appendNodeSourceRanges(cleanup.action, ranges);
-        for (const frontend::ProjectOopMirNonlocalExit& exit : function.exceptionFlow.nonlocalExits)
-            appendNodeSourceRanges(exit.node, ranges);
-    }
-    return ranges;
+    return identity;
 }
 
 std::string combineLineTableCacheIdentity(
@@ -123,6 +109,88 @@ std::string combineLineTableCacheIdentity(
     combined += mirIdentity;
     combined += "source-size " + std::to_string(sourceIdentity.size()) + "\n";
     combined += sourceIdentity;
+    return combined;
+}
+
+/// EN: Removes from the model dumps what a function body alone changes and debug metadata never
+///     reads: the type-name bindings of the name lookup (one per type name written anywhere,
+///     bodies included) and the inferred effects of each member (optimization part 2, item 51).
+/// ES: Quita de los volcados de modelo lo que cambia un cuerpo por si solo y la metadata de
+///     depuracion nunca lee: los bindings de nombres de tipo (uno por nombre de tipo escrito en
+///     cualquier lugar, cuerpos incluidos) y los efectos inferidos de cada miembro (parte 2, punto 51).
+std::string withoutBodyDerivedModelData(std::string lookupText, std::string memberText)
+{
+    const std::size_t bindings = lookupText.find("\nbindings:\n");
+    if (bindings != std::string::npos) lookupText.erase(bindings + 1);
+    const std::size_t count = lookupText.find("type-bindings: ");
+    if (count != std::string::npos)
+    {
+        const std::size_t end = lookupText.find('\n', count);
+        lookupText.erase(count, end == std::string::npos ? std::string::npos : end - count + 1);
+    }
+    std::string filtered;
+    filtered.reserve(memberText.size());
+    std::size_t position = 0;
+    while (position < memberText.size())
+    {
+        const std::size_t effects = memberText.find(" effects=", position);
+        if (effects == std::string::npos)
+        {
+            filtered.append(memberText, position, std::string::npos);
+            break;
+        }
+        filtered.append(memberText, position, effects - position);
+        std::size_t end = effects + 9;
+        while (end < memberText.size() && memberText[end] >= '0' && memberText[end] <= '9') ++end;
+        position = end;
+    }
+    return lookupText + filtered;
+}
+
+/// Digest of the model data that full debug metadata reads besides the MIR and the source
+/// files: the dumps of the name lookup (type identities, ranges, imported types) and of the
+/// member model (members, signatures, parameters, ranges). It covers more than the metadata
+/// uses on purpose: a cache key may hold more than needed, never less.
+/// Since optimization part 2 item 51 it leaves out the body-derived data of
+/// withoutBodyDerivedModelData; otherwise editing one body changed the key of every unit. The files
+/// each unit reads are bound to its object key through SourceDependencyIndex.
+/// Desde el punto 51 de la parte 2 deja fuera los datos derivados de cuerpos de
+/// withoutBodyDerivedModelData; si no, editar un cuerpo cambiaba la llave de todas las unidades. Los
+/// archivos que lee cada unidad se ligan a su llave de objeto por SourceDependencyIndex.
+std::string fullDebugModelIdentity(
+    const frontend::ProjectNameLookup& nameLookup,
+    const frontend::ProjectMemberModel& memberModel)
+{
+    std::ostringstream lookupOutput;
+    frontend::ProjectNameLookupDumper{}.dump(nameLookup, lookupOutput);
+    std::ostringstream memberOutput;
+    frontend::ProjectMemberModelDumper{}.dump(memberModel, nameLookup, memberOutput);
+    const std::string text = withoutBodyDerivedModelData(lookupOutput.str(), memberOutput.str());
+    const auto bytes = std::span(
+        reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
+    return basic::sha256Hex(basic::sha256(bytes));
+}
+
+/// Pre-LLVM cache identity of one code unit with full debug information: the MIR identity of
+/// the unit, the source identity used for line tables (every range, the path, size and
+/// content digest of each file holding one, so also each DIFile checksum, and the debug prefix
+/// maps that remap the paths) and the model digest of fullDebugModelIdentity.
+/// Since optimization part 2 item 51 the source identity is debugPrefixMapIdentity; the files the
+/// unit reads enter its object key through SourceDependencyIndex.
+/// Desde el punto 51 de la parte 2 la identidad de fuentes es debugPrefixMapIdentity; los archivos
+/// que lee la unidad entran a su llave de objeto por SourceDependencyIndex.
+std::string combineFullDebugCacheIdentity(
+    std::string mirIdentity,
+    std::string_view sourceIdentity,
+    std::string_view modelIdentity)
+{
+    std::string combined = "NativeSharp.ProjectOopFullDebugObjectIdentity.v1\n";
+    combined += "mir-size " + std::to_string(mirIdentity.size()) + "\n";
+    combined += mirIdentity;
+    combined += "source-size " + std::to_string(sourceIdentity.size()) + "\n";
+    combined += sourceIdentity;
+    combined += "model-size " + std::to_string(modelIdentity.size()) + "\n";
+    combined += modelIdentity;
     return combined;
 }
 
@@ -170,10 +238,20 @@ std::vector<std::uint8_t> prepareCodeUnitTelemetry(
     return selectedStaticFields;
 }
 
+/// EN: Restores the object of a code unit before lowering. `unitKey` is the unit's MIR identity
+///     key; the manifest stored under it lists the source files the last lowering read, and the
+///     object key adds their current path, size and digest (SourceDependencyIndex, optimization
+///     part 2 item 51). No manifest, or a listed file that is no longer a source, is a miss.
+/// ES: Restaura el objeto de una unidad de codigo antes del lowering. `unitKey` es la llave de
+///     identidad MIR de la unidad; el manifiesto guardado con ella lista los archivos fuente que
+///     leyo el ultimo lowering, y la llave del objeto agrega su ruta, tamano y digest actuales
+///     (SourceDependencyIndex, parte 2 punto 51). Sin manifiesto, o con un archivo listado que ya no
+///     es fuente, es un fallo.
 bool restorePreLlvmObject(
     const CompilationArtifactCache* cache,
     bool usePreLlvmCache,
-    const std::string& cacheKey,
+    const std::string& unitKey,
+    const SourceDependencyIndex* sourceDependencies,
     const std::filesystem::path& objectFile,
     CodeUnitTelemetry& telemetry,
     std::uint8_t& cacheHit,
@@ -184,11 +262,20 @@ bool restorePreLlvmObject(
     bool& complete)
 {
     complete = false;
-    if (!usePreLlvmCache) return true;
+    if (!usePreLlvmCache || sourceDependencies == nullptr) return true;
     bool hit = false;
     CacheMissReason reason = CacheMissReason::Cold;
     const PhaseClock lookup;
-    if (!cache->restoreObject(cacheKey, objectFile, hit, moduleError, &reason)) return false;
+    std::string manifest;
+    bool manifestHit = false;
+    if (!cache->restoreCodePartitionPlan(
+            SourceDependencyIndex::manifestKey(unitKey), manifest, manifestHit, moduleError)) return false;
+    std::vector<FileId> sourceFiles;
+    if (manifestHit && sourceDependencies->manifestFiles(manifest, sourceFiles))
+    {
+        const std::string objectKey = sourceDependencies->objectKey(unitKey, sourceFiles);
+        if (!cache->restoreObject(objectKey, objectFile, hit, moduleError, &reason)) return false;
+    }
     telemetry.lookupMicros += lookup.elapsedMicros();
     telemetry.missReason = reason;
     if (hit)
@@ -214,6 +301,24 @@ bool restorePreLlvmObject(
     return true;
 }
 
+/// Computes the SHA-256 hex checksum of every source file once, indexed by FileId value (index
+/// 0, the invalid id, stays empty): the digest createDebugFile otherwise computes once per file
+/// and per code unit. The code units only read the table, so it needs no synchronization.
+std::vector<std::string> computeSourceChecksums(const source::SourceManager& sourceManager)
+{
+    std::vector<std::string> checksums(1);
+    for (std::uint32_t value = 1;; ++value)
+    {
+        const source::SourceFile* file = sourceManager.getFile(FileId(value));
+        if (file == nullptr) break;
+        const std::string_view sourceBytes = file->buffer();
+        const auto bytes = std::span(
+            reinterpret_cast<const std::uint8_t*>(sourceBytes.data()), sourceBytes.size());
+        checksums.push_back(basic::sha256Hex(basic::sha256(bytes)));
+    }
+    return checksums;
+}
+
 std::unique_ptr<LlvmModule> lowerCodeUnit(
     std::size_t ordinal,
     bool usePartitions,
@@ -228,30 +333,37 @@ std::unique_ptr<LlvmModule> lowerCodeUnit(
     std::span<const std::uint8_t> selectedStaticFields,
     std::span<const std::size_t> coordinatorFunctionDeclarations,
     const ProjectOopCodePartition& partition,
+    std::span<const std::string> sourceChecksums,
     std::string& moduleError,
     CodeUnitTelemetry& telemetry)
 {
     ProjectOopLlvmLowerer lowerer;
     const PhaseClock lowering;
     std::unique_ptr<LlvmModule> module;
+    // The request keeps the module name as a view, so the unit name lives until lowering ends.
+    std::string unitModuleName;
+    ProjectOopLlvmLoweringRequest request;
     if (!usePartitions)
-        module = lowerer.lower(ProjectOopLlvmLoweringRequest::withDebug(
+        request = ProjectOopLlvmLoweringRequest::withDebug(
             nameLookup, memberModel, mirModel, sourceManager, debugInformation,
-            optimizationLevel, debugPrefixMaps, reachableDefinitions, selectedStaticFields));
+            optimizationLevel, debugPrefixMaps, reachableDefinitions, selectedStaticFields);
     else if (ordinal == 0)
-        module = lowerer.lower(ProjectOopLlvmLoweringRequest::partition(
+        request = ProjectOopLlvmLoweringRequest::partition(
             nameLookup, memberModel, mirModel, sourceManager, debugInformation,
             optimizationLevel, {}, true, "NativeSharp.OOP.globals", debugPrefixMaps,
-            coordinatorFunctionDeclarations, reachableDefinitions, selectedStaticFields));
+            coordinatorFunctionDeclarations, reachableDefinitions, selectedStaticFields);
     else
     {
         const ProjectOopCodeUnit& unit = partition.units()[ordinal - 1];
-        module = lowerer.lower(ProjectOopLlvmLoweringRequest::partition(
+        unitModuleName = "NativeSharp.OOP." + unit.stableKey;
+        request = ProjectOopLlvmLoweringRequest::partition(
             nameLookup, memberModel, mirModel, sourceManager, debugInformation,
             optimizationLevel, unit.functionOrdinals, false,
-            "NativeSharp.OOP." + unit.stableKey, debugPrefixMaps,
-            unit.declarationOrdinals, reachableDefinitions, selectedStaticFields));
+            unitModuleName, debugPrefixMaps,
+            unit.declarationOrdinals, reachableDefinitions, selectedStaticFields);
     }
+    request.setSourceChecksums(sourceChecksums);
+    module = lowerer.lower(request);
     telemetry.loweringMicros += lowering.elapsedMicros();
     if (module == nullptr || !lowerer.error().empty())
     {
@@ -384,8 +496,10 @@ std::string preOptimizationObjectKey(
 
 /// EN: Second-level reuse: restores the object of a unit whose MIR identity missed but whose
 ///     pre-optimization IR equals one already compiled.
-///     Parameters: `cache` may be null; `usePreLlvmCache` gates the feature exactly like the MIR
-///     cache (off for full debug information and ThinLTO); `irKey` receives the key so the caller
+///     Parameters: `cache` may be null; `usePreOptimizationCache` gates the feature (off only for
+///     ThinLTO until optimization part 2 item 7, always on with a cache since then; unlike the MIR
+///     cache it stays on with full debug information, because every debug
+///     record is part of the IR that forms the key); `irKey` receives the key so the caller
 ///     can also store the freshly emitted object under it; `complete` becomes true on a hit, in
 ///     which case `cacheHit` is 1, `cacheMiss` is 0 and optimization and emission are skipped.
 ///     Returns false only on a cache I/O error (`moduleError` set). Telemetry: the print and hash
@@ -395,10 +509,12 @@ std::string preOptimizationObjectKey(
 ///     anywhere misses every unit even when its LLVM IR is unchanged (HECHO, audit 2026-10-22).
 /// ES: Reuso de segundo nivel: restaura el objeto de una unidad cuya identidad MIR fallo pero cuyo
 ///     IR previo a la optimizacion es igual a uno ya compilado.
-///     Parametros: `cache` puede ser null; `usePreLlvmCache` habilita la funcion igual que el cache
-///     MIR (apagado con depuracion completa y ThinLTO); `irKey` recibe la clave para que el
-///     llamador guarde tambien con ella el objeto recien emitido; `complete` queda en true en un
-///     acierto, con `cacheHit` en 1, `cacheMiss` en 0 y sin optimizar ni emitir.
+///     Parametros: `cache` puede ser null; `usePreOptimizationCache` habilita la funcion (apagada
+///     solo con ThinLTO hasta el punto 7 de la parte 2, siempre activa con cache desde entonces; a
+///     diferencia del cache MIR sigue activa con depuracion completa, porque
+///     toda la metadata de depuracion forma parte del IR de la clave); `irKey` recibe la clave
+///     para que el llamador guarde tambien con ella el objeto recien emitido; `complete` queda
+///     en true en un acierto, con `cacheHit` en 1, `cacheMiss` en 0 y sin optimizar ni emitir.
 ///     Retorno: false solo ante un error de E/S del cache (`moduleError` fijado). Telemetria: la
 ///     impresion y el hash se suman a `fingerprintMicros`, la restauracion a `lookupMicros`, la
 ///     verificacion COFF a `verificationMicros`; `irReuse` registra off/miss/hit.
@@ -407,7 +523,7 @@ std::string preOptimizationObjectKey(
 ///     (HECHO, auditoria 2026-10-22).
 bool restorePreOptimizationObject(
     const CompilationArtifactCache* cache,
-    bool usePreLlvmCache,
+    bool usePreOptimizationCache,
     const LlvmModule& module,
     const LlvmTargetMachine& targetMachine,
     const std::string& codeGenerationPolicy,
@@ -423,7 +539,7 @@ bool restorePreOptimizationObject(
     bool& complete)
 {
     complete = false;
-    if (cache == nullptr || !cache->enabled() || !usePreLlvmCache) return true;
+    if (cache == nullptr || !cache->enabled() || !usePreOptimizationCache) return true;
     const PhaseClock fingerprint;
     irKey = preOptimizationObjectKey(
         *cache, module, targetMachine, codeGenerationPolicy, optimizationLevel,
@@ -554,10 +670,38 @@ void storePreOptimizationObject(
     telemetry.storeMicros += store.elapsedMicros();
 }
 
+/// EN: Publishes what the next build needs to restore this unit before lowering: the manifest of
+///     the files its lowering read, under `unitKey`, and the object under `objectKey` (item 51).
+///     `storeObject` is false when the object was already stored under that key. Failures are
+///     reported in `moduleError`, as every other store.
+/// ES: Publica lo que el siguiente build necesita para restaurar esta unidad antes del lowering: el
+///     manifiesto de los archivos que leyo su lowering, con `unitKey`, y el objeto con `objectKey`
+///     (punto 51). `storeObject` es false cuando el objeto ya se guardo con esa llave. Las fallas
+///     se informan en `moduleError`, como cualquier otro guardado.
+void storeSourceBoundObject(
+    const CompilationArtifactCache* cache,
+    const SourceDependencyIndex* sourceDependencies,
+    const std::string& unitKey,
+    const std::string& objectKey,
+    std::span<const FileId> sourceFiles,
+    bool storeObject,
+    const std::filesystem::path& objectFile,
+    CodeUnitTelemetry& telemetry,
+    std::string& moduleError)
+{
+    if (cache == nullptr || !cache->enabled() || sourceDependencies == nullptr || !moduleError.empty()) return;
+    const PhaseClock store;
+    if (storeObject && !cache->storeObject(objectKey, objectFile, moduleError)) return;
+    cache->storeCodePartitionPlan(
+        SourceDependencyIndex::manifestKey(unitKey), sourceDependencies->manifestText(sourceFiles), moduleError);
+    telemetry.storeMicros += store.elapsedMicros();
+}
+
 void processObjectCodeUnit(
     std::size_t ordinal,
     bool usePartitions,
     bool usePreLlvmCache,
+    bool usePreOptimizationCache,
     bool preserveModuleText,
     bool requiresWholeModuleRequiredInlining,
     const frontend::ProjectNameLookup& nameLookup,
@@ -571,8 +715,11 @@ void processObjectCodeUnit(
     std::span<const std::size_t> coordinatorFunctionDeclarations,
     const ProjectOopCodePartition& partition,
     const ProjectOopFunctionReachabilityAnalysis& functionAnalysis,
+    std::span<const std::string> sourceChecksums,
     const CompilationArtifactCache* cache,
+    const SourceDependencyIndex* sourceDependencies,
     const std::string& codeGenerationPolicy,
+    ThinLtoBackend* thinLto,
     const std::filesystem::path& objectFile,
     std::string& moduleText,
     std::string& moduleError,
@@ -597,21 +744,59 @@ void processObjectCodeUnit(
         progressSink, completedModules, moduleProgressMutex, moduleCount, moduleName);
     bool complete = false;
     if (!restorePreLlvmObject(
-            cache, usePreLlvmCache, cacheKey, objectFile, telemetry,
+            cache, usePreLlvmCache, cacheKey, sourceDependencies, objectFile, telemetry,
             cacheHit, cacheMiss, moduleError, progressSink, moduleName, complete) || complete) return;
-    std::unique_ptr<LlvmModule> module = lowerCodeUnit(
-        ordinal, usePartitions, nameLookup, memberModel, mirModel, sourceManager,
-        debugInformation, optimizationLevel, debugPrefixMaps, reachableDefinitions,
-        selectedStaticFields, coordinatorFunctionDeclarations, partition, moduleError, telemetry);
+    // The lowering runs inside a recording of the source files it reads; with the pre-LLVM cache
+    // the object is stored under the unit key bound to those files (item 51).
+    // El lowering corre dentro de una grabacion de los archivos fuente que lee; con el cache
+    // pre-LLVM el objeto se guarda con la llave de unidad ligada a esos archivos (punto 51).
+    const std::string unitKey = cacheKey;
+    std::vector<FileId> sourceFiles;
+    std::unique_ptr<LlvmModule> module;
+    {
+        const source::SourceAccessRecording recording;
+        module = lowerCodeUnit(
+            ordinal, usePartitions, nameLookup, memberModel, mirModel, sourceManager,
+            debugInformation, optimizationLevel, debugPrefixMaps, reachableDefinitions,
+            selectedStaticFields, coordinatorFunctionDeclarations, partition, sourceChecksums,
+            moduleError, telemetry);
+        sourceFiles = recording.files();
+    }
     if (module == nullptr) return;
+    const bool sourceBound = usePreLlvmCache && sourceDependencies != nullptr;
+    if (sourceBound) cacheKey = sourceDependencies->objectKey(unitKey, sourceFiles);
     std::unique_ptr<LlvmTargetMachine> targetMachine = configureCodeUnitTarget(
         *module, optimizationLevel, moduleError, telemetry);
     if (targetMachine == nullptr) return;
+    if (thinLto != nullptr)
+    {
+        // ThinLTO: the unit leaves here as summary bitcode; its object is written by the backend
+        // after every unit is indexed (runThinLtoBackends).
+        // ThinLTO: la unidad sale de aqui como bitcode con resumen; su objeto lo escribe el backend
+        // cuando todas las unidades ya estan en el indice (runThinLtoBackends).
+        const PhaseClock prelink;
+        const bool added = thinLto->addModule(
+            ordinal, *module, *targetMachine, optimizationLevel, moduleError);
+        telemetry.optimizationMicros += prelink.elapsedMicros();
+        if (added) cacheMiss = 1;
+        return;
+    }
     std::string irKey;
     if (!restorePreOptimizationObject(
-            cache, usePreLlvmCache, *module, *targetMachine, codeGenerationPolicy,
+            cache, usePreOptimizationCache, *module, *targetMachine, codeGenerationPolicy,
             optimizationLevel, debugInformation, requiresWholeModuleRequiredInlining, objectFile,
-            irKey, telemetry, cacheHit, cacheMiss, moduleError, complete) || complete) return;
+            irKey, telemetry, cacheHit, cacheMiss, moduleError, complete)) return;
+    if (complete)
+    {
+        // The same IR was compiled before: keep its object under this unit's source-bound key too,
+        // so the next build skips the lowering as well.
+        // El mismo IR ya se compilo: su objeto se guarda tambien con la llave ligada a fuentes de esta
+        // unidad, para que el siguiente build se salte tambien el lowering.
+        if (sourceBound)
+            storeSourceBoundObject(
+                cache, sourceDependencies, unitKey, cacheKey, sourceFiles, true, objectFile, telemetry, moduleError);
+        return;
+    }
     if (!optimizeConfiguredCodeUnit(
             *module, *targetMachine, optimizationLevel, requiresWholeModuleRequiredInlining,
             moduleError, telemetry)) return;
@@ -623,6 +808,9 @@ void processObjectCodeUnit(
     emitAndStoreCodeUnit(
         *module, *targetMachine, cache, cacheKey, objectFile, telemetry, moduleError);
     storePreOptimizationObject(cache, irKey, objectFile, telemetry, moduleError);
+    if (sourceBound)
+        storeSourceBoundObject(
+            cache, sourceDependencies, unitKey, cacheKey, sourceFiles, false, objectFile, telemetry, moduleError);
 }
 
 /// EN: Builds the code partition of one generation with the DeterministicIncremental policy, for
@@ -697,7 +885,6 @@ void composeModuleCacheKeys(
     const frontend::ProjectNameLookup& nameLookup,
     const frontend::ProjectMemberModel& memberModel,
     const frontend::ProjectOopMirModel& mirModel,
-    const source::SourceManager& sourceManager,
     std::span<const DebugPrefixMap> debugPrefixMaps,
     std::span<const std::uint8_t> reachableDefinitions,
     std::span<const std::size_t> coordinatorFunctionDeclarations,
@@ -709,21 +896,30 @@ void composeModuleCacheKeys(
     const std::string& codeGenerationPolicy,
     std::vector<std::string>& cacheKeys,
     std::vector<CodeUnitTelemetry>& codeUnitTelemetry,
-    ColdLlvmPreambleTelemetry& telemetry)
+    ColdLlvmPreambleTelemetry& telemetry,
+    driver::CompilationWorkerPool* workerPool)
 {
     const PhaseClock identityIndexClock;
-    const ProjectOopMirCacheIdentityIndex identityIndex(mirModel);
+    // EN: The per-function digests run on the code-unit pool before any code unit is queued.
+    // ES: Los digests por función corren en el pool de unidades antes de encolar unidades.
+    const ProjectOopMirCacheIdentityIndex identityIndex(mirModel, workerPool);
     telemetry.identityIndexBuildMicros = identityIndexClock.elapsedMicros();
+    // Line tables and full debug information both depend on the sources and their paths: the
+    // prefix maps are shared here, and the files each unit reads join its object key after the
+    // lookup (SourceDependencyIndex, optimization part 2 item 51).
+    // Las tablas de lineas y la depuracion completa dependen de las fuentes y sus rutas: los prefix
+    // maps se comparten aqui, y los archivos que lee cada unidad se suman a su llave de objeto
+    // despues (SourceDependencyIndex, parte 2 punto 51).
     std::string lineTableSourceIdentity;
-    if (debugInformation == DebugInformationKind::LineTablesOnly)
+    if (debugInformation != DebugInformationKind::None)
     {
         const PhaseClock lineTableIdentityClock;
-        const std::vector<SourceRange> sourceRanges =
-            collectLineTableSourceRanges(nameLookup, memberModel, mirModel);
-        lineTableSourceIdentity = projectOopLineTableSourceIdentity(
-            sourceManager, debugPrefixMaps, sourceRanges);
+        lineTableSourceIdentity = debugPrefixMapIdentity(debugPrefixMaps);
         telemetry.lineTableIdentityMicros = lineTableIdentityClock.elapsedMicros();
     }
+    std::string debugModelIdentity;
+    if (debugInformation == DebugInformationKind::Full)
+        debugModelIdentity = fullDebugModelIdentity(nameLookup, memberModel);
     const std::vector<std::size_t> allFunctions =
         collectCacheFunctionOrdinals(mirModel, reachableDefinitions);
     const PhaseClock moduleKeyComposeClock;
@@ -751,6 +947,9 @@ void composeModuleCacheKeys(
         if (debugInformation == DebugInformationKind::LineTablesOnly)
             identity = combineLineTableCacheIdentity(
                 std::move(identity), lineTableSourceIdentity);
+        else if (debugInformation == DebugInformationKind::Full)
+            identity = combineFullDebugCacheIdentity(
+                std::move(identity), lineTableSourceIdentity, debugModelIdentity);
         cacheKeys[ordinal] = cache.inputObjectKey(
             identity, "windows-x64-msvc", codeGenerationPolicy,
             optimizationLevel, debugInformation);
@@ -839,31 +1038,140 @@ std::string combineModuleTexts(const std::vector<std::string>& moduleTexts)
     return combined;
 }
 
-std::string thinLtoIndexDigest(const std::vector<std::string>& moduleTexts)
+/// EN: Digest of the partitioned build that `-flto=thin` reports: the SHA-256 of every emitted
+///     object in ordinal order. Returns false with `error` when an object cannot be read.
+///     Why: v1 hashed the optimized textual IR, which forced ThinLTO to print every module and to
+///     skip the pre-LLVM and pre-optimization caches (a cache hit has no module to print). The
+///     objects are byte-identical for identical input whatever the worker count or cache state,
+///     so they give the same reproducibility without either cost (optimization part 2, item 7).
+/// ES: Digest del build particionado que reporta `-flto=thin`: el SHA-256 de cada objeto emitido
+///     en orden de ordinal. Devuelve false con `error` cuando no se puede leer un objeto.
+///     Motivo: v1 hacia hash del IR textual optimizado, lo que obligaba a ThinLTO a imprimir cada
+///     modulo y a saltarse los caches pre-LLVM y pre-optimizacion (un acierto no tiene modulo que
+///     imprimir). Los objetos son identicos byte a byte para la misma entrada sin importar workers
+///     ni estado del cache, asi que dan la misma reproducibilidad sin ningun costo (optimizacion
+///     parte 2, punto 7).
+bool thinLtoIndexDigest(
+    const std::vector<std::filesystem::path>& objectFiles,
+    std::string& digest,
+    std::string& error)
 {
     // The index is independent of temporary paths, scheduling and cache state. Each optimized
     // partition contributes in stable ordinal order, matching ThinLTO's summary-before-backend
     // contract while native object generation remains embarrassingly parallel.
-    std::string index = "NativeSharp.ThinLTO.Index.v1\n";
-    for (std::size_t ordinal = 0; ordinal < moduleTexts.size(); ++ordinal)
+    std::string index = "NativeSharp.ThinLTO.Index.v2\n";
+    for (std::size_t ordinal = 0; ordinal < objectFiles.size(); ++ordinal)
     {
-        const auto bytes = std::span<const std::uint8_t>(
-            reinterpret_cast<const std::uint8_t*>(moduleTexts[ordinal].data()),
-            moduleTexts[ordinal].size());
-        index += std::to_string(ordinal) + ":" +
-            basic::sha256Hex(basic::sha256(bytes)) + "\n";
+        basic::Sha256Digest objectDigest{};
+        std::uintmax_t size = 0;
+        if (!basic::sha256File(objectFiles[ordinal], objectDigest, size, error)) return false;
+        index += std::to_string(ordinal) + ":" + std::to_string(size) + ":" +
+            basic::sha256Hex(objectDigest) + "\n";
     }
     const auto bytes = std::span<const std::uint8_t>(
         reinterpret_cast<const std::uint8_t*>(index.data()), index.size());
-    return basic::sha256Hex(basic::sha256(bytes));
+    digest = basic::sha256Hex(basic::sha256(bytes));
+    return true;
 }
 
+/// EN: Runs the ThinLTO backends of one generation and finishes their objects like an ordinary
+///     emission: CodeView procedure ranges, then the COFF verifier. Returns false with `error`.
+/// ES: Ejecuta los backends ThinLTO de una generacion y termina sus objetos como una emision
+///     normal: rangos de procedimientos CodeView y luego el verificador COFF. Devuelve false con
+///     `error`.
+bool runThinLtoBackends(
+    ThinLtoBackend& thinLto,
+    std::span<const std::filesystem::path> objectFiles,
+    LlvmOptimizationLevel optimizationLevel,
+    std::size_t workerCount,
+    const std::filesystem::path& cacheDirectory,
+    std::string& error)
+{
+    std::unique_ptr<LlvmTargetMachine> targetMachine =
+        LlvmTargetMachine::createWindowsX64(optimizationLevel, error);
+    if (targetMachine == nullptr) return false;
+    if (!thinLto.run(objectFiles, *targetMachine, optimizationLevel, workerCount, cacheDirectory, error))
+        return false;
+    for (const std::filesystem::path& objectFile : objectFiles)
+    {
+        std::string rangesError;
+        if (!CodeViewProcedureRanges::apply(objectFile, rangesError))
+        {
+            error = "cannot write CodeView procedure ranges: " + rangesError;
+            return false;
+        }
+        CoffObjectVerifier verifier;
+        if (!verifier.verify(objectFile))
+        {
+            error = verifier.error();
+            return false;
+        }
+    }
+    return true;
+}
 }
 
 void ProjectOopObjectGenerator::setProgressSink(
     std::function<void(const basic::CompilationEvent&)> sink)
 {
     progressSink_ = std::move(sink);
+}
+
+void ProjectOopObjectGenerator::setThinLtoFinalModuleTextCapture(bool capture) noexcept
+{
+    captureThinLtoFinalModuleTexts_ = capture;
+}
+
+void ProjectOopObjectGenerator::setThinLtoUnitBitcodeCapture(bool capture) noexcept
+{
+    captureThinLtoUnitBitcode_ = capture;
+}
+
+void ProjectOopObjectGenerator::setThinLtoLibraryUnits(std::vector<ThinLtoLibraryUnits> libraries)
+{
+    thinLtoLibraries_ = std::move(libraries);
+}
+
+void ProjectOopObjectGenerator::setThinLtoPreservedSymbols(std::optional<std::vector<std::string>> symbols)
+{
+    thinLtoPreservedSymbols_ = std::move(symbols);
+}
+
+bool ProjectOopObjectGenerator::collectUndefinedSymbols(
+    const std::filesystem::path& file,
+    std::vector<std::string>& symbols,
+    std::string& error)
+{
+    return ThinLtoBackend::collectUndefinedSymbols(file, symbols, error);
+}
+
+bool ProjectOopObjectGenerator::thinLtoRuns(LinkTimeOptimizationMode mode, LlvmOptimizationLevel level) noexcept
+{
+    return mode == LinkTimeOptimizationMode::Thin && level != LlvmOptimizationLevel::O0 &&
+        ThinLtoBackend::available();
+}
+
+bool ProjectOopObjectGenerator::thinLtoCompatibility(
+    LlvmOptimizationLevel level,
+    DebugInformationKind debugInformation,
+    std::string& identity,
+    std::string& error)
+{
+    std::unique_ptr<LlvmTargetMachine> targetMachine = LlvmTargetMachine::createWindowsX64(level, error);
+    if (targetMachine == nullptr) return false;
+    identity = ThinLtoBackend::compatibilityIdentity(*targetMachine, level) +
+        "debug " + std::string(debugInformationKindName(debugInformation)) + "\n" +
+        "codegen " + std::string(kCodegenCacheIdentity) + "\n" +
+        "policy " + codeGenerationPolicyIdentity(LinkTimeOptimizationMode::Thin) + "\n";
+    // The optimization pipeline and the floating-point contract also shape every unit (item 53).
+    // El pipeline de optimizacion y el contrato de punto flotante tambien dan forma a cada unidad.
+    identity += "pipeline " + std::string(llvmOptimizationPipelineName(level)) + " " +
+        std::to_string(llvmOptimizationPipelineVersion(level)) + "\n";
+    identity += "floating-point " + std::string(floatingPointModeName(activeFloatingPointMode())) + " " +
+        std::string(fmaContractPolicyName(activeFmaContractPolicy())) + " " +
+        std::string(floatingPointRoundingModeName(activeFloatingPointRoundingMode())) + " " +
+        std::string(floatingPointDenormalModeName(activeFloatingPointDenormalMode())) + "\n";
+    return true;
 }
 
 ProjectOopObjectBundle::ProjectOopObjectBundle(
@@ -919,6 +1227,41 @@ const std::string& ProjectOopObjectBundle::thinLtoIndexDigest() const noexcept
     return thinLtoIndexDigest_;
 }
 
+std::size_t ProjectOopObjectBundle::thinLtoImportCount() const noexcept
+{
+    return thinLtoImportCount_;
+}
+
+std::size_t ProjectOopObjectBundle::thinLtoCachedBackendCount() const noexcept
+{
+    return thinLtoCachedBackendCount_;
+}
+
+std::span<const std::string> ProjectOopObjectBundle::thinLtoFinalModuleTexts() const noexcept
+{
+    return thinLtoFinalModuleTexts_;
+}
+
+std::span<const std::string> ProjectOopObjectBundle::thinLtoUnitBitcode() const noexcept
+{
+    return thinLtoUnitBitcode_;
+}
+
+const std::string& ProjectOopObjectBundle::thinLtoCompatibility() const noexcept
+{
+    return thinLtoCompatibility_;
+}
+
+std::span<const ThinLtoLibraryObjects> ProjectOopObjectBundle::thinLtoLibraryObjects() const noexcept
+{
+    return thinLtoLibraryObjects_;
+}
+
+bool ProjectOopObjectBundle::thinLtoInternalized() const noexcept
+{
+    return thinLtoInternalized_;
+}
+
 std::span<const CodeUnitTelemetry> ProjectOopObjectBundle::codeUnitTelemetry() const noexcept
 {
     return codeUnitTelemetry_;
@@ -942,8 +1285,12 @@ bool ProjectOopObjectGenerator::finishCodeUnitBundle(
     if (preserveModuleText) result.combinedLlvmText_ = combineModuleTexts(moduleTexts);
     if (linkTimeOptimization == LinkTimeOptimizationMode::Thin)
     {
-        result.thinLtoSummaryCount_ = moduleTexts.size();
-        result.thinLtoIndexDigest_ = thinLtoIndexDigest(moduleTexts);
+        result.thinLtoSummaryCount_ = result.objectFiles_.size();
+        if (!thinLtoIndexDigest(result.objectFiles_, result.thinLtoIndexDigest_, error))
+        {
+            error = "could not index the ThinLTO code units: " + error;
+            return false;
+        }
     }
     return true;
 }
@@ -1008,9 +1355,23 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     std::vector<CodeUnitTelemetry> codeUnitTelemetry(moduleCount);
     const FloatingPointState workerFloatingPointState = captureFloatingPointState();
     const std::string codeGenerationPolicy = codeGenerationPolicyIdentity(linkTimeOptimization);
-    const bool usePreLlvmCache = cache != nullptr && cache->enabled() &&
-        debugInformation != DebugInformationKind::Full &&
-        linkTimeOptimization != LinkTimeOptimizationMode::Thin;
+    // Full debug information uses the pre-LLVM cache too, with the identity of
+    // combineFullDebugCacheIdentity (sources, paths, prefix maps and model dumps).
+    // -flto=thin keeps both caches: its index hashes the emitted objects, and the code-generation
+    // policy in every key already separates its cache domain (optimization part 2, item 7).
+    // -flto=thin conserva ambos caches: su indice hace hash de los objetos emitidos y la politica
+    // de generacion de codigo de cada llave ya separa su dominio de cache (parte 2, punto 7).
+    // Real ThinLTO (O1-O3, item 44) is the exception: a unit's object then depends on what it
+    // imports from the others, so a per-unit key is not enough; its backend cache keys on the
+    // module, the index and the import set instead (item 45). At O0 thin stays partitioned.
+    // El ThinLTO real (O1-O3, punto 44) es la excepcion: el objeto de una unidad depende de lo que
+    // importa de las demas, asi que una llave por unidad no basta; su cache de backends usa el
+    // modulo, el indice y el conjunto de imports (punto 45). En O0 thin sigue particionado.
+    const bool useThinLto = thinLtoRuns(linkTimeOptimization, optimizationLevel);
+    const bool usePreLlvmCache = cache != nullptr && cache->enabled() && !useThinLto;
+    // Reuse by pre-optimization IR does not depend on the MIR identity, so it also covers full
+    // debug information: lowering is still paid, optimization and emission are skipped on a hit.
+    const bool usePreOptimizationCache = cache != nullptr && cache->enabled() && !useThinLto;
     ColdLlvmTrace coldLlvmTrace(
         kCodegenCacheIdentity, functionAnalysis.projectFingerprint(), debugInformation,
         optimizationLevel, moduleCount, usePartitions, usePreLlvmCache,
@@ -1019,28 +1380,48 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     std::vector<std::string> cacheKeys(moduleCount);
     if (usePreLlvmCache)
         composeModuleCacheKeys(
-            nameLookup, memberModel, mirModel, sourceManager, debugPrefixMaps,
+            nameLookup, memberModel, mirModel, debugPrefixMaps,
             reachableDefinitions, coordinatorFunctionDeclarations, partition, usePartitions,
             debugInformation, optimizationLevel, *cache, codeGenerationPolicy,
-            cacheKeys, codeUnitTelemetry, preambleTelemetry);
+            cacheKeys, codeUnitTelemetry, preambleTelemetry, workerPool);
     // Textual IR used to be serialized for every code unit even though the Windows import
     // planner no longer consumes it.  Keep it only for the two features whose keys/summaries
     // are intentionally based on IR.  Ordinary EXE/DLL/LIB production already fingerprints
     // the emitted objects when incremental linking is enabled.
-    const bool preserveModuleText =
-        (cache != nullptr && cache->enabled() && !usePreLlvmCache) ||
-        linkTimeOptimization == LinkTimeOptimizationMode::Thin;
+    // -flto=thin was the second of those features; its index hashes the emitted objects since
+    // optimization part 2 item 7, so it no longer prints every module (item 8).
+    // -flto=thin era la segunda de esas funciones; desde el punto 7 su indice hace hash de los
+    // objetos emitidos, asi que ya no imprime cada modulo (punto 8).
+    const bool preserveModuleText = cache != nullptr && cache->enabled() && !usePreLlvmCache && !useThinLto;
+    std::optional<ThinLtoBackend> thinLto;
+    if (useThinLto)
+    {
+        thinLto.emplace(moduleCount);
+        thinLto->setCaptureFinalModuleTexts(captureThinLtoFinalModuleTexts_);
+    }
     // Process one code unit end to end. The LLVM module and target machine are destroyed as soon
     // as its object is emitted instead of retaining every partition through three global waves.
+    // Every code unit that lowers with debug information hashed each source file it touches.
+    // With several units and no pre-LLVM cache (so every unit lowers), hash each file once
+    // here and share the read-only table instead; otherwise each unit computes as before.
+    std::vector<std::string> sourceChecksums;
+    if (usePartitions && debugInformation != DebugInformationKind::None && !usePreLlvmCache)
+        sourceChecksums = computeSourceChecksums(sourceManager);
+    // With the pre-LLVM cache every unit's object key is bound to the files its lowering reads.
+    // Con el cache pre-LLVM la llave de objeto de cada unidad se liga a los archivos que lee su lowering.
+    std::optional<SourceDependencyIndex> sourceDependencies;
+    if (usePreLlvmCache) sourceDependencies.emplace(sourceManager);
     std::atomic_size_t completedModules = 0;
     std::mutex moduleProgressMutex;
     const auto processModule = [&](std::size_t ordinal) {
         processObjectCodeUnit(
-            ordinal, usePartitions, usePreLlvmCache, preserveModuleText,
+            ordinal, usePartitions, usePreLlvmCache, usePreOptimizationCache, preserveModuleText,
             requiresWholeModuleRequiredInlining, nameLookup, memberModel, mirModel,
             sourceManager, debugInformation, optimizationLevel, debugPrefixMaps,
             reachableDefinitions, coordinatorFunctionDeclarations, partition,
-            functionAnalysis, cache, codeGenerationPolicy, result.objectFiles_[ordinal],
+            functionAnalysis, sourceChecksums, cache,
+            sourceDependencies.has_value() ? &*sourceDependencies : nullptr, codeGenerationPolicy,
+            thinLto.has_value() ? &*thinLto : nullptr, result.objectFiles_[ordinal],
             moduleTexts[ordinal], moduleErrors[ordinal], cacheKeys[ordinal],
             cacheHits[ordinal], cacheMisses[ordinal], codeUnitTelemetry[ordinal],
             coldLlvmTrace, progressSink_, completedModules, moduleProgressMutex, moduleCount);
@@ -1049,6 +1430,70 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     if (!executeCodeUnits(
             workerCount, moduleCount, usePartitions, workerFloatingPointState,
             processModule, moduleErrors, error, workerPool)) return false;
+    if (thinLto.has_value())
+    {
+        bool unitsReady = true;
+        for (const std::string& moduleError : moduleErrors) unitsReady = unitsReady && moduleError.empty();
+        if (unitsReady)
+        {
+            // LLVM keys each backend on its module, the combined index, its import and export sets, the
+            // resolutions, the target and options and the exact LLVM version (computeLTOCacheKey); the
+            // directory adds the codegen identity of this compiler (optimization part 2, item 45).
+            // LLVM identifica cada backend por su modulo, el indice combinado, sus imports y exports,
+            // las resoluciones, el target, las opciones y la version exacta de LLVM; el directorio
+            // agrega la identidad de codegen de este compilador (parte 2, punto 45).
+            std::filesystem::path backendCache = cache != nullptr && cache->enabled()
+                ? cache->root() / "thinlto-backends" / std::string(kCodegenCacheIdentity)
+                : std::filesystem::path{};
+            // A final link internalizes what native objects do not need and gives every function its
+            // own section (item 50); those objects live in their own cache directory.
+            // Un enlace final internaliza lo que no necesitan los objetos nativos y da a cada funcion
+            // su propia seccion (punto 50); esos objetos viven en su propio directorio de cache.
+            if (thinLtoPreservedSymbols_.has_value())
+            {
+                thinLto->setPreservedSymbols(*thinLtoPreservedSymbols_);
+                result.thinLtoInternalized_ = true;
+                if (!backendCache.empty()) backendCache /= "internalized";
+            }
+            // A static library keeps its units for its sidecar before any library unit joins them.
+            // Una biblioteca estatica guarda sus unidades para su sidecar antes de que se sumen otras.
+            if (captureThinLtoUnitBitcode_)
+            {
+                const std::span<const std::string> units = thinLto->unitBitcode();
+                result.thinLtoUnitBitcode_.assign(units.begin(), units.end());
+                if (!thinLtoCompatibility(optimizationLevel, debugInformation, result.thinLtoCompatibility_, error))
+                    return false;
+            }
+            // The units of accepted library sidecars follow the project's own units; their objects are
+            // written beside the project's and linked in place of each library (item 48).
+            // Las unidades de los sidecars de biblioteca aceptados van despues de las del proyecto; sus
+            // objetos se escriben junto a los del proyecto y se enlazan en lugar de cada biblioteca.
+            std::vector<std::filesystem::path> backendObjects(result.objectFiles_.begin(), result.objectFiles_.end());
+            result.thinLtoLibraryObjects_.clear();
+            for (std::size_t library = 0; library < thinLtoLibraries_.size(); ++library)
+            {
+                ThinLtoLibraryObjects objects;
+                objects.libraryPath = thinLtoLibraries_[library].libraryPath;
+                for (std::size_t unit = 0; unit < thinLtoLibraries_[library].units.size(); ++unit)
+                {
+                    const std::string name =
+                        "thinlto-library-" + std::to_string(library) + "-unit-" + std::to_string(unit);
+                    thinLto->appendBitcodeUnit(thinLtoLibraries_[library].units[unit], "nativesharp-" + name);
+                    objects.objectFiles.push_back(result.temporaryDirectory_ / (name + ".obj"));
+                    backendObjects.push_back(objects.objectFiles.back());
+                }
+                result.thinLtoLibraryObjects_.push_back(std::move(objects));
+            }
+            if (!runThinLtoBackends(
+                    *thinLto, backendObjects, optimizationLevel, workerCount, backendCache, error))
+                return false;
+            result.thinLtoImportCount_ = thinLto->importedFunctionCount();
+            result.thinLtoCachedBackendCount_ = thinLto->cachedBackendCount();
+            const std::span<const std::string> finalTexts = thinLto->finalModuleTexts();
+            if (captureThinLtoFinalModuleTexts_)
+                result.thinLtoFinalModuleTexts_.assign(finalTexts.begin(), finalTexts.end());
+        }
+    }
     preambleTelemetry.workerWallMicros = workerWallClock.elapsedMicros();
     for (const CodeUnitTelemetry& telemetry : codeUnitTelemetry)
         preambleTelemetry.staticFieldMaskMicros += telemetry.staticFieldMaskMicros;
@@ -1130,9 +1575,20 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     // emission, verification and cache publication exceed the scheduling gain.
     // Keep the requested worker pool, but cap only the number of O0 partitions.
     constexpr std::size_t maxColdO0CodeUnits = 8;
+    // EN: The partition no longer depends on the worker count: O0 always asks for the eight units
+    //     above and O1-O3 for sixteen, and the pool runs them with whatever workers it has. The
+    //     same sources therefore produce the same objects, PDB and object-cache keys with any -j
+    //     and on any machine; before, -j 4 and -j 16 split the program differently and missed
+    //     each other's cache. ProjectOopCodePartition still caps the count at the candidates.
+    // ES: La particion ya no depende del numero de workers: O0 siempre pide las ocho unidades de
+    //     arriba y O1-O3 dieciseis, y el pool las ejecuta con los workers que tenga. Las mismas
+    //     fuentes dan entonces los mismos objetos, el mismo PDB y las mismas llaves de cache con
+    //     cualquier -j y en cualquier maquina; antes -j 4 y -j 16 partian distinto el programa y
+    //     no aprovechaban la cache del otro. ProjectOopCodePartition sigue acotando por candidatas.
+    constexpr std::size_t stableOptimizedCodeUnits = 16;
     const std::size_t partitionCount = optimizationLevel == LlvmOptimizationLevel::O0
-        ? std::min(workerCount, maxColdO0CodeUnits)
-        : workerCount;
+        ? maxColdO0CodeUnits
+        : stableOptimizedCodeUnits;
     const CompilationArtifactCache* const cache = activeCompilationArtifactCache();
     ColdLlvmPreambleTelemetry preambleTelemetry;
     const PhaseClock reachabilityClock;
@@ -1163,8 +1619,12 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     // Full LTO deliberately keeps the complete program in one LLVM module. This makes
     // inter-unit inlining, global DCE and constant propagation happen before native object
     // emission instead of asking the PE linker to recover information already discarded.
+    // EN: A single worker runs the same partitions one after another instead of switching to a
+    //     monolithic module, so -j 1 emits exactly the objects of any other -j.
+    // ES: Un solo worker ejecuta las mismas particiones una tras otra en vez de pasar a un modulo
+    //     monolitico, asi que -j 1 emite exactamente los objetos de cualquier otro -j.
     const bool usePartitions = linkTimeOptimization != LinkTimeOptimizationMode::Full &&
-        workerCount > 1 && partition.units().size() > 1 &&
+        partition.units().size() > 1 &&
         !requiresWholeModuleDebugInlining && !requiresWholeModuleRequiredInlining;
     const std::size_t moduleCount = usePartitions ? partition.units().size() + 1 : 1;
     const bool parallelOptimization = usePartitions && optimizationLevel != LlvmOptimizationLevel::O0;
@@ -1180,6 +1640,14 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
         result->objectFiles_.push_back(
             *temporaryDirectory / ("program-" + std::to_string(ordinal) + ".obj"));
 
+    // EN: Partitions always run on a pool; a caller without one gets a pool of its worker count.
+    // ES: Las particiones siempre corren en un pool; quien no trae uno recibe uno de sus workers.
+    std::optional<driver::CompilationWorkerPool> ownedWorkerPool;
+    if (usePartitions && workerPool == nullptr)
+    {
+        ownedWorkerPool.emplace(workerCount);
+        workerPool = &*ownedWorkerPool;
+    }
     if (!generateCodeUnits(
             nameLookup, memberModel, mirModel, sourceManager, debugInformation,
             optimizationLevel, workerCount, debugPrefixMaps, linkTimeOptimization, cache,

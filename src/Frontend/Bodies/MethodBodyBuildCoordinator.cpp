@@ -7,6 +7,7 @@
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/ProjectCallableWaveReducer.h"
 #include "nativesharp/Frontend/ProjectCallableWaveScheduler.h"
+#include "nativesharp/Frontend/ProjectConstructionModel.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
@@ -227,8 +228,13 @@ bool ProjectMethodBodyModel::isDeferredGenericMethod(
 {
     if (ordinal >= memberModel.members().size()) return false;
     const ClassMemberSymbol& candidate = memberModel.members()[ordinal];
-    if (candidate.kind != ClassMemberKind::Method || candidate.isVirtual ||
-        candidate.isOverride || candidate.isAbstract) return false;
+    const bool deferredMethod = candidate.kind == ClassMemberKind::Method && !candidate.isVirtual &&
+        !candidate.isOverride && !candidate.isAbstract;
+    // EN: Freeze 3.0 (item 130a): an instance constructor of a closed generic type is demand-driven too.
+    // ES: Congelamiento 3.0 (elemento 130a): un constructor de instancia de un tipo generico cerrado
+    //     tambien es bajo demanda.
+    const bool deferredConstructor = candidate.kind == ClassMemberKind::Constructor && !candidate.isStatic;
+    if (!deferredMethod && !deferredConstructor) return false;
     constexpr std::string_view prefix = "stage44-specialization:";
     if (candidate.syntax != nullptr && candidate.syntax->auxiliaryText().starts_with(prefix))
     {
@@ -276,7 +282,11 @@ void ProjectMethodBodyModel::seedDemandedGenericMethods(
             const bool callableAccessibility =
                 member.accessibility == ClassMemberAccessibility::Public ||
                 member.accessibility == ClassMemberAccessibility::Protected;
-            if (callableAccessibility &&
+            // EN: Freeze 3.0 (item 130a): constructors are not seeded; a consumer demands the one it
+            //     selects.
+            // ES: Congelamiento 3.0 (elemento 130a): los constructores no se siembran; un consumidor
+            //     demanda el que elige.
+            if (callableAccessibility && member.kind == ClassMemberKind::Method &&
                 isDeferredGenericMethod(memberOrdinal, memberModel, nameLookup) &&
                 declaringTypeIsPubliclyReachable(
                     member.declaringTypeOrdinal, nameLookup, publicSurfaceProjectOrdinal))
@@ -304,6 +314,80 @@ void ProjectMethodBodyModel::seedDemandedGenericMethods(
             }
         }
     }
+}
+
+// EN: Freeze 3.0 (item 130a). A class without explicit constructors gets an implicit default that chains
+//     to the nearest base constructor callable without arguments; when that constructor belongs to a
+//     closed generic type it is demanded up front, because the implicit default is bound for every
+//     class whether or not it is constructed.
+// ES: Congelamiento 3.0 (elemento 130a). Una clase sin constructores explicitos recibe un default
+//     implicito que encadena al constructor base mas cercano invocable sin argumentos; si ese
+//     constructor es de un tipo generico cerrado se demanda de entrada, porque el default implicito se
+//     enlaza para toda clase, se construya o no.
+void ProjectMethodBodyModel::seedImplicitChainConstructors(
+    const ProjectConstructionModel* resolver,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    std::unordered_set<std::size_t>& demandedGenericMethods) const
+{
+    if (resolver == nullptr) return;
+    for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
+    {
+        if (nameLookup.namedTypes()[typeOrdinal].kind != NamedTypeDeclarationKind::Class ||
+            !memberModel.constructorsOfType(typeOrdinal).empty()) continue;
+        const std::optional<std::size_t> target = resolver->previewImplicitChainConstructor(typeOrdinal);
+        if (target.has_value() && isDeferredGenericMethod(*target, memberModel, nameLookup))
+            demandedGenericMethods.insert(*target);
+    }
+}
+
+// EN: Freeze 3.0 (item 130a). The constructors selected by the construction sites of the callables just
+//     analyzed (or of every site, after the field initializers) and by the this(...)/base(...)
+//     initializer of each constructor just analyzed. A closed generic constructor not demanded yet is
+//     queued, so the chain is followed constructor by constructor.
+// ES: Congelamiento 3.0 (elemento 130a). Los constructores que eligen los sitios de construccion de los
+//     callables recien analizados (o todos los sitios, despues de los inicializadores de campo) y el
+//     inicializador this(...)/base(...) de cada constructor recien analizado. Un constructor generico
+//     cerrado aun no demandado se encola, asi la cadena se sigue constructor por constructor.
+void ProjectMethodBodyModel::collectConstructorDemands(
+    const ProjectConstructionModel* resolver,
+    std::span<const std::size_t> analyzedCallables,
+    bool everySite,
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    std::unordered_set<std::size_t>& demandedGenericMethods,
+    std::vector<std::size_t>& newlyDemanded) const
+{
+    if (resolver == nullptr) return;
+    const std::unordered_set<std::size_t> analyzed(analyzedCallables.begin(), analyzedCallables.end());
+    std::vector<std::optional<std::size_t>> targets;
+    for (const ProjectConstructionSite& site : constructionSites_)
+    {
+        if (everySite || analyzed.contains(site.callableOrdinal))
+            targets.push_back(resolver->previewConstructionConstructor(site));
+    }
+    for (const std::size_t callable : analyzedCallables)
+    {
+        if (callable < memberModel.members().size() &&
+            memberModel.members()[callable].kind == ClassMemberKind::Constructor &&
+            !memberModel.members()[callable].isStatic)
+            targets.push_back(resolver->previewInitializerConstructor(callable));
+    }
+    for (const std::optional<std::size_t>& target : targets)
+    {
+        if (target.has_value() && isDeferredGenericMethod(*target, memberModel, nameLookup) &&
+            demandedGenericMethods.insert(*target).second) newlyDemanded.push_back(*target);
+    }
+}
+
+bool ProjectMethodBodyModel::constructorBodyDeferred(std::size_t memberOrdinal) const
+{
+    if (memberModel_ == nullptr || nameLookup_ == nullptr || memberOrdinal >= memberModel_->members().size())
+        return false;
+    const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+    return member.kind == ClassMemberKind::Constructor && !member.isPrecompiled &&
+        isDeferredGenericMethod(memberOrdinal, *memberModel_, *nameLookup_) &&
+        !analyzedCallableMembers_.contains(memberOrdinal);
 }
 
 std::vector<std::size_t> ProjectMethodBodyModel::createCallableWorklist(
@@ -370,7 +454,7 @@ std::vector<std::size_t> ProjectMethodBodyModel::collectEligibleCallables(
 void ProjectMethodBodyModel::mergeCallableWave(
     std::vector<ProjectCallableAnalysisResult> waveResults,
     std::size_t waveOrdinal,
-    std::size_t analyzedCount,
+    std::span<const std::size_t> analyzedCallables,
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
     const ProjectMethodBodyBuildOptions& options,
@@ -400,13 +484,16 @@ void ProjectMethodBodyModel::mergeCallableWave(
         if (isDeferredGenericMethod(target, memberModel, nameLookup) &&
             demandedGenericMethods.insert(target).second) newlyDemanded.push_back(target);
     }
+    collectConstructorDemands(
+        options.constructorDemandResolver, analyzedCallables, false, nameLookup, memberModel,
+        demandedGenericMethods, newlyDemanded);
     callableWorklist.insert(
         callableWorklist.end(), newlyDemanded.begin(), newlyDemanded.end());
     callableAnalysisStatistics_.callablesQueued += newlyDemanded.size();
     writeMethodBodyTrace(
         "WAVE-END",
         "wave=" + std::to_string(waveOrdinal) +
-            "|analyzed=" + std::to_string(analyzedCount) +
+            "|analyzed=" + std::to_string(analyzedCallables.size()) +
             "|discovered=" + std::to_string(newlyDemanded.size()));
 }
 
@@ -465,9 +552,8 @@ bool ProjectMethodBodyModel::analyzeCallableWaves(
             if (options.executionError != nullptr) *options.executionError = std::move(waveError);
             return false;
         }
-        const std::size_t analyzedCount = eligibleCallables.size();
         mergeCallableWave(
-            std::move(waveResults), waveOrdinal, analyzedCount, nameLookup, memberModel, options,
+            std::move(waveResults), waveOrdinal, eligibleCallables, nameLookup, memberModel, options,
             demandedGenericMethods, callableWorklist, diagnostics);
         ++waveOrdinal;
     }
@@ -563,6 +649,14 @@ void ProjectMethodBodyModel::analyzeFieldInitializer(
         memberOrdinal, field, rootScopeOrdinal, diagnostics);
     if (!initializer.valid || initializer.methodGroup) return;
     if (!validateFieldInitializerConversion(field, initializer, diagnostics)) return;
+    // EN: Freeze 3.0 C-01 (plan item 115b): an instance field that is not `owned` does not destroy what it
+    //     holds, so `new T()` as its initializer reaches no owner.
+    // ES: Congelamiento 3.0 C-01 (elemento 115b del plan): un campo de instancia que no es `owned` no destruye lo
+    //     que guarda, así que `new T()` como su inicializador no llega a ningún dueño.
+    if (!field.isStatic && field.declaredOwnership != sema::OwnershipKind::Owned &&
+        isFreshObjectCreation(field.syntax->first(), initializer))
+        reportLostOwnership(
+            field.syntax->first(), "the field '" + field.name + "', which is not owned", diagnostics);
     if (field.isConst &&
         !ProjectTypeConversion::isIntegral(field.declaredTypeKey) &&
         field.declaredTypeKey != "builtin:bool" &&
@@ -728,13 +822,20 @@ bool ProjectMethodBodyModel::build(
     // NSC-LIMIT-018. A closed generic type materializes all of its member SIGNATURES so normal
     // lookup and overload resolution can see the complete API. Its ordinary method BODIES remain
     // deferred for executables until a real call selects them. A library has external callers,
-    // however, so its public/protected closed surface is seeded explicitly below. Constructors/
-    // destructors are lifetime machinery and virtual methods can be referenced by a vtable
-    // without a syntactic call, so those remain eager for every product.
+    // however, so its public/protected closed surface is seeded explicitly below. Destructors are
+    // lifetime machinery and virtual methods can be referenced by a vtable without a syntactic call,
+    // so those remain eager for every product.
+    // EN: Freeze 3.0 (item 130a): instance constructors of a closed generic type are deferred too; a
+    //     construction, this(...) or base(...) that selects one demands it (collectConstructorDemands).
+    // ES: Congelamiento 3.0 (elemento 130a): los constructores de instancia de un tipo generico cerrado
+    //     tambien se difieren; una construccion, this(...) o base(...) que elige uno lo demanda
+    //     (collectConstructorDemands).
     std::unordered_set<std::size_t> demandedGenericMethods;
     seedDemandedGenericMethods(
         nameLookup, memberModel, interfaceModel,
         publicSurfaceProjectOrdinal, demandedGenericMethods);
+    seedImplicitChainConstructors(
+        options.constructorDemandResolver, nameLookup, memberModel, demandedGenericMethods);
     std::vector<std::size_t> callableWorklist = createCallableWorklist(
         nameLookup, memberModel, demandedGenericMethods);
     callableAnalysisStatistics_.callablesQueued = callableWorklist.size();
@@ -750,11 +851,26 @@ bool ProjectMethodBodyModel::build(
 
     writeMethodBodyTrace("FIELD-INITIALIZERS-BEGIN");
     analyzeFieldInitializers(memberModel, diagnostics);
+    // EN: Freeze 3.0 (item 130a): a field initializer can construct a closed generic type too; its
+    //     constructor, and whatever that one demands, is analyzed in further waves.
+    // ES: Congelamiento 3.0 (elemento 130a): un inicializador de campo tambien puede construir un tipo
+    //     generico cerrado; su constructor, y lo que ese demande, se analiza en olas adicionales.
+    std::vector<std::size_t> fieldInitializerDemands;
+    collectConstructorDemands(
+        options.constructorDemandResolver, {}, true, nameLookup, memberModel,
+        demandedGenericMethods, fieldInitializerDemands);
+    if (!fieldInitializerDemands.empty() &&
+        !analyzeCallableWaves(
+            nameLookup, memberModel, namespaceFunctionModel, inheritanceModel, interfaceModel,
+            genericModel, genericConstraintModel, options,
+            demandedGenericMethods, fieldInitializerDemands, diagnostics))
+        return false;
     writeMethodBodyTrace("FIELD-INITIALIZERS-END");
     validateConstantFieldInitializers(memberModel, diagnostics);
     writeMethodBodyTrace("POST-ANALYSIS-BEGIN");
     verifyOutParameterAssignments(diagnostics);
     verifyRequiredFieldAssignments(diagnostics);
+    verifySynchronousAwaits(diagnostics);
     validateRequiredInliningCycles(memberModel, diagnostics);
     writeMethodBodyTrace("ESCAPE-SUMMARIES-BEGIN");
     finalizeEscapeSummaries(diagnostics);

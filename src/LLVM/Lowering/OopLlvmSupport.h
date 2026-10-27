@@ -76,6 +76,7 @@ LLVMMetadataRef createDebugFile(
     LLVMDIBuilderRef debugBuilder,
     const source::SourceManager* sourceManager,
     std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const std::string> sourceChecksums,
     std::unordered_map<std::uint32_t, LLVMMetadataRef>& debugFiles,
     std::unordered_map<std::uint32_t, unsigned>& debugCodeViewFileNumbers,
     SourceLocation location);
@@ -84,6 +85,7 @@ unsigned debugCodeViewFileNumberFor(
     LLVMDIBuilderRef debugBuilder,
     const source::SourceManager* sourceManager,
     std::span<const DebugPrefixMap> debugPrefixMaps,
+    std::span<const std::string> sourceChecksums,
     std::unordered_map<std::uint32_t, LLVMMetadataRef>& debugFiles,
     std::unordered_map<std::uint32_t, unsigned>& debugCodeViewFileNumbers,
     SourceLocation location);
@@ -124,14 +126,12 @@ bool emitCatchParameterDebugInfo(
     LLVMBuilderRef builder,
     LLVMMetadataRef currentDebugSubprogram,
     LLVMMetadataRef currentDebugScope,
-    const frontend::ProjectOopMirFunction* currentMirFunction,
     const source::SourceManager* sourceManager,
     std::unordered_set<std::size_t>& debugDeclaredLocals,
     const std::function<LLVMMetadataRef(SourceLocation)>& debugFileLookup,
     const std::function<LLVMMetadataRef(std::string_view, std::string_view)>& debugTypeLookup,
     const frontend::ProjectOopMirNode* node,
     LLVMValueRef storage,
-    std::size_t handlerIndex,
     std::string& error);
 
 bool emitParameterDebugInfo(

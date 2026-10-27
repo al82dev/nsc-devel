@@ -107,18 +107,18 @@ public class Program
 {
     public static int Main()
     {
-        Cell direct = new Cell();
+        raii Cell direct = new Cell();
         direct[0] = 10;
         direct[1] += 2;
         ref int alias = ref direct[2];
         alias++;
         if (direct.Value != 13 || direct[3] != 13) { return 1; }
 
-        Cell virtualCell = new DerivedCell();
+        raii Cell virtualCell = new DerivedCell();
         virtualCell[0] = 20;
         if (((DerivedCell)virtualCell).Other != 20) { return 2; }
 
-        ICell interfaceCell = virtualCell;
+        borrowed ICell interfaceCell = virtualCell;
         interfaceCell[0] = 30;
         return ((DerivedCell)virtualCell).Other == 30 ? 0 : 3;
     }
@@ -214,7 +214,7 @@ public class Program
 {
     public static int Main()
     {
-        Cell cell = new Cell();
+        raii Cell cell = new Cell();
         ref int alias = ref cell[0];
         return alias;
     }
@@ -282,7 +282,7 @@ public class Program
 {
     public static int Main()
     {
-        Cell cell = new Cell();
+        raii Cell cell = new Cell();
         cell[0] = 77;
         return cell[1] == 77 ? 0 : 1;
     }

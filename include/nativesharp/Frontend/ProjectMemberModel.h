@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/AST/AstNode.h"
+#include "nativesharp/Basic/TransparentStringHash.h"
 #include "nativesharp/Frontend/ClassMemberKind.h"
 #include "nativesharp/Frontend/ClassMemberAccessibility.h"
 #include "nativesharp/Frontend/ParameterPassKind.h"
@@ -77,6 +78,12 @@ public:
     std::span<const std::size_t> membersDeclaredByType(
         std::size_t typeOrdinal) const noexcept;
     bool hasMembersDeclaredByTypeIndex() const noexcept;
+    // EN: Ordinals of membersOfType(typeOrdinal) whose symbol is a user conversion, in the same
+    //     order. Only meaningful when hasUserConversionIndex() is true (after build()).
+    // ES: Ordinales de membersOfType(typeOrdinal) cuyo símbolo es una conversión de usuario, en
+    //     el mismo orden. Solo tiene sentido cuando hasUserConversionIndex() es true (tras build()).
+    std::span<const std::size_t> userConversionsOfType(std::size_t typeOrdinal) const noexcept;
+    bool hasUserConversionIndex() const noexcept;
     std::span<const std::size_t> constructorsOfType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> promotedMembersOfType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> findMembers(
@@ -114,6 +121,13 @@ public:
     // capability, so constraints, calls and method-body flow all ask one canonical service.
     bool typeIsImplicitlyCopyable(std::string_view typeKey) const;
     bool typeIsMoveOnly(std::string_view typeKey) const;
+    // EN: Freeze 3.0 (receiver temporaries): plain data -- scalars, enums, and tuples, fixed
+    //     arrays and structs built only of plain data, with nothing to destroy. A copy of plain
+    //     data can never refer into the value it was read from.
+    // ES: Congelamiento 3.0 (temporales receptores): datos simples -- escalares, enums, y tuplas,
+    //     arreglos fijos y structs hechos solo de datos simples, sin nada que destruir. Una copia
+    //     de datos simples nunca puede apuntar dentro del valor del que se leyo.
+    bool typeIsPlainData(std::string_view typeKey) const;
 
     // C2.1 "fixed arrays". The compile-time value of a `T[N]` count expression, or nullopt when
     // it is not a constant. It lives here, next to canonicalTypeKey, because the CANONICAL TYPE
@@ -132,6 +146,29 @@ public:
     static std::optional<std::string> fixedArrayElementTypeKey(std::string_view typeKey);
     static std::optional<std::uint64_t> fixedArrayCount(std::string_view typeKey);
     static std::optional<std::string> flexibleArrayElementTypeKey(std::string_view typeKey);
+
+    // EN: Plan item 3.3. Accepted snapshots of restored public API units, set before build(). A
+    //     member of such a unit whose node has an entry in the `members` section takes its symbol
+    //     from it instead of computing it; position-derived fields, generic specialization,
+    //     duplicate checks and every index are still computed exactly as for a computed member.
+    // ES: Punto 3.3 del plan. Snapshots aceptados de unidades de API pública restauradas, asignados
+    //     antes de build(). Un miembro de esa unidad cuyo nodo tiene entrada en la sección `members`
+    //     toma de ella su símbolo en lugar de calcularlo; los campos derivados de la posición, la
+    //     especialización genérica, las comprobaciones de duplicados y todos los índices se siguen
+    //     calculando igual que para un miembro calculado.
+    void setPrecompiledSnapshots(std::span<const PrecompiledSnapshotUnit> snapshots);
+    std::size_t installedSnapshotMemberCount() const noexcept;
+    // EN: Producer side. The reference compilation names the FileId of its captured API unit before
+    //     build(); every member symbol collected from a part of that file is kept and written by
+    //     writePrecompiledSnapshotMembers as the `members` section.
+    // ES: Lado productor. La compilación de referencia nombra el FileId de su unidad de API capturada
+    //     antes de build(); cada símbolo de miembro recolectado de una parte de ese archivo se
+    //     conserva y lo escribe writePrecompiledSnapshotMembers como la sección `members`.
+    void setPrecompiledSnapshotCaptureFile(FileId fileId) noexcept;
+    bool writePrecompiledSnapshotMembers(
+        const PrecompiledSyntaxNodeIndex& index,
+        std::string& payload,
+        std::string& error) const;
 
 private:
     friend struct ProjectOopHirModelTestAccess;
@@ -160,14 +197,7 @@ private:
         std::string& result,
         const ast::TypeSyntax* syntax);
 
-    struct TransparentStringHash final
-    {
-        using is_transparent = void;
-
-        std::size_t operator()(std::string_view value) const noexcept;
-
-        std::size_t operator()(const std::string& value) const noexcept;
-    };
+    using TransparentStringHash = basic::TransparentStringHash;
 
     using MemberNameIndex = std::unordered_map<
         std::string,
@@ -232,6 +262,7 @@ private:
     void buildTransitiveOwnershipCache();
     void buildMemberNameIndex();
     void buildMembersDeclaredByTypeIndex();
+    void buildUserConversionIndex();
     bool collectTypeMembers(
         std::size_t typeOrdinal,
         const NamedTypeDeclaration& type,
@@ -453,6 +484,18 @@ private:
         const NamedTypeDeclaration& type,
         const std::unordered_map<std::string, std::vector<std::size_t>>& byName,
         diagnostics::DiagnosticEngine& diagnostics) const;
+    bool installSnapshotMember(
+        std::size_t typeOrdinal,
+        const NamedTypeDeclaration& type,
+        std::size_t partOrdinal,
+        const NamedTypeDeclarationPart& part,
+        const ast::AstNode* memberNode,
+        std::size_t declarationOrdinal,
+        std::unordered_map<std::string, std::vector<std::size_t>>& byName,
+        diagnostics::DiagnosticEngine& diagnostics);
+    void captureSnapshotMember(
+        const NamedTypeDeclarationPart& part,
+        const ClassMemberSymbol& symbol);
     void appendCollectedMember(
         ClassMemberSymbol symbol,
         std::size_t typeOrdinal,
@@ -536,6 +579,8 @@ private:
     std::vector<std::vector<std::size_t>> membersByType_;
     std::vector<std::vector<std::size_t>> membersDeclaredByType_;
     bool membersDeclaredByTypeIndexBuilt_ = false;
+    std::vector<std::vector<std::size_t>> userConversionsByType_;
+    bool userConversionIndexBuilt_ = false;
     std::vector<std::vector<std::size_t>> constructorsByType_;
     std::vector<std::vector<std::size_t>> promotedMembersByType_;
     std::vector<MemberNameIndex> membersByName_;
@@ -546,6 +591,10 @@ private:
         std::equal_to<>> typeOrdinalByKey_;
     std::vector<std::uint8_t> transitiveOwnershipCache_;
     std::unordered_map<const ast::AstNode*, std::size_t> memberBySyntax_;
+    std::unordered_map<const ast::AstNode*, ClassMemberSymbol> snapshotMembers_;
+    std::size_t installedSnapshotMembers_ = 0;
+    std::optional<FileId> snapshotCaptureFile_;
+    std::vector<ClassMemberSymbol> capturedMembers_;
     bool built_ = false;
 };
 

@@ -108,8 +108,9 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
             return TypeResolution{TypeResolutionKind::Missing, nullptr};
         }
 
-        const auto bucket = typesByModuleQualified_.find(
-            std::string(requestedModule) + "::" + std::string(requestedType));
+        // writtenName is exactly requestedModule + "::" + requestedType (the two parts are its
+        // text before and after the first "::"), so it is looked up as it is, without a copy.
+        const auto bucket = typesByModuleQualified_.find(writtenName);
         if (bucket == typesByModuleQualified_.end())
         {
             telemetry_.noteResolutionQuery(0);
@@ -130,13 +131,15 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
     // NSC305-G02. Bucket by terminal name; the original scan tested every catalog entry for
     // visibility, arity and candidate spelling. The bucket keeps source order, so the first-match
     // and ambiguity semantics are unchanged.
-    const std::string qualified = qualifiedName(namespaceName, writtenName);
+    // The namespace-qualified spelling is only compared for a visible candidate of an
+    // undotted name; it is built at that first comparison instead of for every query.
+    std::optional<std::string> qualified;
     const std::string_view terminalName = [&]() -> std::string_view
     {
         const std::size_t dot = writtenName.rfind('.');
         return dot == std::string_view::npos ? writtenName : writtenName.substr(dot + 1U);
     }();
-    const auto bucket = typesByVisibleName_.find(std::string(terminalName));
+    const auto bucket = typesByVisibleName_.find(terminalName);
     if (bucket == typesByVisibleName_.end())
     {
         telemetry_.noteResolutionQuery(0);
@@ -148,8 +151,9 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
     {
         if (!templateVisible(unit.projectOrdinal(), state->record)) continue;
         if (arity != sinFiltro && !genericArityAccepts(state->record, arity)) continue;
-        const std::string candidate =
-            qualifiedName(state->record.namespaceName, state->record.qualifiedTypeName);
+        // Built once per type template in buildTemplateIndexes (the buckets only hold type
+        // templates, and their records do not change after the buckets are built).
+        const std::string& candidate = state->qualifiedTypeSpelling;
         if (writtenName.find('.') != std::string_view::npos)
         {
             if (candidate == writtenName)
@@ -159,7 +163,8 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
             }
             continue;
         }
-        if (candidate == qualified) return TypeResolution{TypeResolutionKind::Unique, state};
+        if (!qualified.has_value()) qualified = qualifiedName(namespaceName, writtenName);
+        if (candidate == *qualified) return TypeResolution{TypeResolutionKind::Unique, state};
         if (state->record.name == writtenName)
         {
             if (fallback != nullptr) return TypeResolution{TypeResolutionKind::Ambiguous, nullptr};

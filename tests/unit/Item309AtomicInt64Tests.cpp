@@ -106,7 +106,7 @@ public class Program
 {
     public static int Main()
     {
-        AtomicInt64 value = new AtomicInt64(9223372036854775807l);
+        raii AtomicInt64 value = new AtomicInt64(9223372036854775807l);
         if (value.Increment() != -9223372036854775808l) { return 1; }
         if (value.Load() != -9223372036854775808l) { return 2; }
         if (value.Decrement(MemoryOrder.SequentiallyConsistent) != 9223372036854775807l) { return 3; }

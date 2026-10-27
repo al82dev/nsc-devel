@@ -131,16 +131,16 @@ public class Program
         GlobalSlot() = 30;
         if (Global != 30) { return 3; }
 
-        Holder holder = new Holder();
+        raii Holder holder = new Holder();
         holder.Value = 40;
         holder.Slot() = 42;
         if (holder.Value != 42) { return 4; }
 
-        Holder virtualHolder = new DerivedHolder();
+        raii Holder virtualHolder = new DerivedHolder();
         virtualHolder.Slot() = 50;
         if (((DerivedHolder)virtualHolder).DerivedValue != 50) { return 5; }
 
-        IHolder interfaceHolder = virtualHolder;
+        borrowed IHolder interfaceHolder = virtualHolder;
         interfaceHolder.Slot() = 60;
         return ((DerivedHolder)virtualHolder).DerivedValue == 60 ? 0 : 6;
     }

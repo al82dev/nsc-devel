@@ -259,7 +259,7 @@ namespace OwnedIntNestedCall
     {
         public static int Main()
         {
-            Holder h = new Holder();
+            raii Holder h = new Holder();
             h.Consume(7);
             h.Consume(7);
             return h.Total();
@@ -371,7 +371,7 @@ namespace OwnedRefStoredWithoutMove
     {
         public static int Main()
         {
-            BuggyHolder h = new BuggyHolder();
+            raii BuggyHolder h = new BuggyHolder();
             raii Payload p = new Payload();
             p.Value = 30;
             h.Add(move(p));
@@ -449,7 +449,7 @@ namespace OwnedRefStoredWithMove
     {
         public static int Main()
         {
-            FixedHolder h = new FixedHolder();
+            raii FixedHolder h = new FixedHolder();
             raii Payload p = new Payload();
             p.Value = 30;
             h.Add(move(p));

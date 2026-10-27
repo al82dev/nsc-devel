@@ -122,15 +122,15 @@ namespace c51defaultparameters
             if (trace != 21) { return 11; }
 
             trace = 0;
-            Encoder encoder = new Encoder();
+            raii Encoder encoder = new Encoder();
             if (encoder.Encode(
                     third: Mark(3, 3),
                     first: Mark(1, 1),
                     second: Mark(2, 2)) != 123) { return 12; }
             if (trace != 312) { return 13; }
-            DerivedPair derived = new DerivedPair();
+            raii DerivedPair derived = new DerivedPair();
             if (derived.Value != 42) { return 14; }
-            DelegatingPair delegated = new DelegatingPair();
+            raii DelegatingPair delegated = new DelegatingPair();
             if (delegated.Value != 42) { return 15; }
             return Choose(0);
         }

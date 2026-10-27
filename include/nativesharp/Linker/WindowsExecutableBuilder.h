@@ -62,6 +62,9 @@ public:
     void setDebugInformation(llvm_backend::DebugInformationKind debugInformation) noexcept;
     void setIncrementalLink(bool enabled) noexcept;
     void setProgramObjectsVerified(bool verified) noexcept;
+    // EN: Links with /opt:ref (ThinLTO objects of a final link, optimization part 2 item 50).
+    // ES: Enlaza con /opt:ref (objetos ThinLTO de un enlace final, parte 2 punto 50).
+    void setRemoveUnreferencedSections(bool remove) noexcept;
     bool reusedIncrementalLink() const noexcept;
 
 private:
@@ -73,6 +76,7 @@ private:
     llvm_backend::DebugInformationKind debugInformation_ = llvm_backend::DebugInformationKind::None;
     bool incrementalLink_ = false;
     bool programObjectsVerified_ = false;
+    bool removeUnreferencedSections_ = false;
     bool reusedIncrementalLink_ = false;
 };
 }

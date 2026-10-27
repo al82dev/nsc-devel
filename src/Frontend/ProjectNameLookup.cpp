@@ -113,6 +113,7 @@ bool ProjectNameLookup::build(
     buildVisibility(graph);
     driver::CompilationWorkerPool& workers = *workerPool;
     collectDeclarationIndexes(graph, units, workers);
+    reportUnsupportedGlobalDeclarations(units, diagnostics);
     finalizePredeclarations(diagnostics);
     finalizeReexports(units, diagnostics);
     indexes_->rebuildTypes(namedTypes_);

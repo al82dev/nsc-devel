@@ -4,8 +4,10 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
+#include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 namespace nativesharp::frontend
@@ -108,6 +110,96 @@ bool ProjectConstructionModel::initializeConstructionBinding(
     return true;
 }
 
+void ProjectConstructionModel::attachDemandResolver(
+    const ProjectNameLookup& nameLookup,
+    const ProjectMemberModel& memberModel,
+    const ProjectInheritanceModel& inheritanceModel,
+    const ProjectInterfaceModel& interfaceModel,
+    const ProjectMethodBodyModel& methodBodyModel,
+    const ProjectNamespaceFunctionModel& namespaceFunctionModel) noexcept
+{
+    nameLookup_ = &nameLookup;
+    memberModel_ = &memberModel;
+    inheritanceModel_ = &inheritanceModel;
+    interfaceModel_ = &interfaceModel;
+    methodBodyModel_ = &methodBodyModel;
+    namespaceFunctionModel_ = &namespaceFunctionModel;
+}
+
+// EN: Freeze 3.0 (item 130a). The same candidate evaluation and selection as bindConstruction, into a
+//     scratch binding and a scratch diagnostic engine.
+// ES: Congelamiento 3.0 (elemento 130a). La misma evaluacion y seleccion de candidatos que
+//     bindConstruction, sobre un binding y un motor de diagnosticos de descarte.
+std::optional<std::size_t> ProjectConstructionModel::previewConstructionConstructor(
+    const ProjectConstructionSite& site) const
+{
+    diagnostics::DiagnosticEngine scratch(std::numeric_limits<std::size_t>::max());
+    ObjectConstructionBinding binding;
+    binding.syntax = site.syntax;
+    binding.callerMemberOrdinal = site.callableOrdinal;
+    std::optional<std::size_t> targetOrdinal;
+    bool targetIsStruct = false;
+    if (!initializeConstructionBinding(site, binding, targetOrdinal, targetIsStruct, scratch))
+        return std::nullopt;
+    const std::span<const std::size_t> constructors = memberModel_->constructorsOfType(*targetOrdinal);
+    if (constructors.empty()) return previewImplicitChainConstructor(*targetOrdinal);
+    binding.explicitConstructorMemberOrdinals.assign(constructors.begin(), constructors.end());
+    const bool trailingConstruction = site.syntax->auxiliaryText() == "trailing";
+    const std::size_t constructorArgumentCount =
+        site.syntax->children().size() - (trailingConstruction ? 1U : 0U);
+    if (!site.argumentsTyped || site.argumentTypes.size() != constructorArgumentCount)
+        return std::nullopt;
+    bool anyAccessible = false;
+    bool anyMatchingArity = false;
+    bool accessibleMatchingArity = false;
+    evaluateConstructionCandidates(
+        binding, site.callableOrdinal, site.argumentTypes, constructorArgumentCount,
+        anyAccessible, anyMatchingArity, accessibleMatchingArity);
+    return previewSelectedCandidate(binding.evaluatedCandidates);
+}
+
+std::optional<std::size_t> ProjectConstructionModel::previewSelectedCandidate(
+    const std::vector<ConstructorCandidateBinding>& candidates) const
+{
+    const std::vector<std::size_t> viable = viableConstructorCandidates(candidates);
+    if (viable.empty()) return std::nullopt;
+    const std::vector<std::size_t> nonDominated = nonDominatedConstructorCandidates(candidates, viable);
+    if (nonDominated.size() != 1) return std::nullopt;
+    return candidates[nonDominated.front()].memberOrdinal;
+}
+
+// EN: Freeze 3.0 (item 130a). A type without explicit constructors chains to the nearest base that has
+//     them; the implicit default there runs its only constructor callable without arguments.
+// ES: Congelamiento 3.0 (elemento 130a). Un tipo sin constructores explicitos encadena hacia la base mas
+//     cercana que los tiene; el default implicito corre alli su unico constructor invocable sin
+//     argumentos.
+std::optional<std::size_t> ProjectConstructionModel::previewImplicitChainConstructor(
+    std::size_t typeOrdinal) const
+{
+    if (memberModel_ == nullptr || inheritanceModel_ == nullptr || nameLookup_ == nullptr)
+        return std::nullopt;
+    std::optional<std::size_t> current = typeOrdinal;
+    std::size_t steps = 0;
+    while (current.has_value() && memberModel_->constructorsOfType(*current).empty() &&
+           steps < nameLookup_->namedTypes().size())
+    {
+        current = inheritanceModel_->baseTypeOrdinal(*current);
+        ++steps;
+    }
+    if (!current.has_value()) return std::nullopt;
+    std::optional<std::size_t> selected;
+    for (const std::size_t constructorOrdinal : memberModel_->constructorsOfType(*current))
+    {
+        const ClassMemberSymbol& constructor = memberModel_->members()[constructorOrdinal];
+        const bool callableWithoutArguments = std::ranges::all_of(
+            constructor.parameters, &MethodParameterSymbol::defaultValueSyntax);
+        if (!callableWithoutArguments) continue;
+        if (selected.has_value()) return std::nullopt;
+        selected = constructorOrdinal;
+    }
+    return selected;
+}
+
 void ProjectConstructionModel::bindImplicitConstruction(
     ObjectConstructionBinding& binding,
     std::size_t targetOrdinal,
@@ -185,6 +277,12 @@ void ProjectConstructionModel::evaluateConstructionCandidates(
     bool& accessibleMatchingArity) const
 {
     const ProjectConversionClassifier conversions(*inheritanceModel_, interfaceModel_, memberModel_);
+    // EN: One evaluated candidate is appended per explicit constructor; reserving avoids moving
+    //     the already evaluated candidates on every growth. Contents and order are unchanged.
+    // ES: Se agrega un candidato evaluado por constructor explícito; reservar evita mover los
+    //     candidatos ya evaluados en cada crecimiento. Contenido y orden no cambian.
+    binding.evaluatedCandidates.reserve(
+        binding.evaluatedCandidates.size() + binding.explicitConstructorMemberOrdinals.size());
     for (const std::size_t constructorOrdinal : binding.explicitConstructorMemberOrdinals)
     {
         const ClassMemberSymbol& constructor = memberModel_->members()[constructorOrdinal];
@@ -208,12 +306,44 @@ void ProjectConstructionModel::evaluateConstructionCandidates(
             argumentTypes,
             conversions,
             matchingArity);
+        rejectConstraintFailedCandidate(constructor, candidate);
         anyAccessible = anyAccessible || candidate.accessible;
         anyMatchingArity = anyMatchingArity || matchingArity;
         accessibleMatchingArity = accessibleMatchingArity ||
             (candidate.accessible && matchingArity);
         binding.evaluatedCandidates.push_back(std::move(candidate));
     }
+}
+
+void ProjectConstructionModel::rejectConstraintFailedCandidate(
+    const ClassMemberSymbol& constructor,
+    ConstructorCandidateBinding& candidate) const
+{
+    const ProjectGenericConstraintModel* constraints = methodBodyModel_ != nullptr
+        ? methodBodyModel_->genericConstraintModel() : nullptr;
+    if (!candidate.viable || constraints == nullptr ||
+        constraints->specializationSatisfiesConstraints(constructor.syntax)) return;
+    candidate.viable = false;
+    candidate.constraintRejected = true;
+}
+
+bool ProjectConstructionModel::reportConstraintRejectedCandidates(
+    const std::vector<ConstructorCandidateBinding>& candidates,
+    const ast::AstNode* site,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const ProjectGenericConstraintModel* constraints = methodBodyModel_ != nullptr
+        ? methodBodyModel_->genericConstraintModel() : nullptr;
+    if (constraints == nullptr) return false;
+    bool reported = false;
+    for (const ConstructorCandidateBinding& candidate : candidates)
+    {
+        if (!candidate.constraintRejected || !candidate.memberOrdinal.has_value()) continue;
+        constraints->reportSpecializationConstraintViolations(
+            memberModel_->members()[*candidate.memberOrdinal].syntax, site->range(), diagnostics);
+        reported = true;
+    }
+    return reported;
 }
 
 bool ProjectConstructionModel::resolveConstructionAccessibility(
@@ -307,6 +437,13 @@ void ProjectConstructionModel::resolveConstructionCandidates(
 {
     const std::vector<std::size_t> viable =
         viableConstructorCandidates(binding.evaluatedCandidates);
+    if (viable.empty() &&
+        reportConstraintRejectedCandidates(binding.evaluatedCandidates, binding.syntax, diagnostics))
+    {
+        binding.resolution = ConstructionResolutionKind::NoViableCandidate;
+        constructions_.push_back(std::move(binding));
+        return;
+    }
     if (viable.empty())
     {
         // NSC-LIMIT-010. Si el unico estorbo fue el contrato de propiedad, se dice cual y
@@ -345,7 +482,37 @@ void ProjectConstructionModel::resolveConstructionCandidates(
     }
 
     selectConstructionCandidate(binding, nonDominated.front());
+    rejectNewToOrdinaryConstructorParameters(
+        binding.evaluatedCandidates[nonDominated.front()], argumentTypes, diagnostics);
     constructions_.push_back(std::move(binding));
+}
+
+// EN: Freeze 3.0 C-01 (plan item 115): a constructor that keeps an argument takes it through an `owned`
+//     parameter; `new C(new T())` into a parameter without `owned` gives the inner object no owner.
+// ES: Congelamiento 3.0 C-01 (elemento 115 del plan): un constructor que conserva un argumento lo recibe por
+//     un parámetro `owned`; `new C(new T())` hacia un parámetro sin `owned` deja al objeto interior sin dueño.
+void ProjectConstructionModel::rejectNewToOrdinaryConstructorParameters(
+    const ConstructorCandidateBinding& selected,
+    std::span<const MethodExpressionTypeBinding> argumentTypes,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (methodBodyModel_ == nullptr || !selected.memberOrdinal.has_value() ||
+        *selected.memberOrdinal >= memberModel_->members().size())
+        return;
+    const ClassMemberSymbol& constructor = memberModel_->members()[*selected.memberOrdinal];
+    for (std::size_t argumentOrdinal = 0;
+         argumentOrdinal < argumentTypes.size() &&
+         argumentOrdinal < selected.argumentParameterOrdinals.size(); ++argumentOrdinal)
+    {
+        const std::size_t parameterOrdinal = selected.argumentParameterOrdinals[argumentOrdinal];
+        if (parameterOrdinal >= constructor.parameters.size()) continue;
+        const MethodExpressionTypeBinding& argument = argumentTypes[argumentOrdinal];
+        if (methodBodyModel_->newReachesOrdinaryParameter(
+                constructor.parameters[parameterOrdinal], argument.syntax,
+                argument.ownershipFreshOwner, argument.ownershipTransfer, argument.typeKey))
+            methodBodyModel_->reportNewToOrdinaryParameter(
+                argument.syntax, constructor.parameters[parameterOrdinal], constructor.name, diagnostics);
+    }
 }
 
 void ProjectConstructionModel::bindConstruction(
@@ -418,6 +585,31 @@ void ProjectConstructionModel::bindConstruction(
         return;
     }
     resolveConstructionCandidates(binding, argumentTypes, diagnostics);
+    requireConstructorErrorHandled(
+        constructions_.back().selectedConstructorMemberOrdinal, expression,
+        site.activeErrorHandlers, site.enclosingErrorTypeKey, diagnostics);
+}
+
+void ProjectConstructionModel::requireConstructorErrorHandled(
+    std::optional<std::size_t> constructorMemberOrdinal,
+    const ast::AstNode* site,
+    std::span<const std::string> handlers,
+    std::string_view enclosingErrorTypeKey,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (!constructorMemberOrdinal.has_value() || site == nullptr || memberModel_ == nullptr ||
+        methodBodyModel_ == nullptr || *constructorMemberOrdinal >= memberModel_->members().size())
+        return;
+    const std::string& errorTypeKey =
+        memberModel_->members()[*constructorMemberOrdinal].declaredErrorTypeKey;
+    if (methodBodyModel_->declaredErrorIsCovered(errorTypeKey, handlers, enclosingErrorTypeKey))
+        return;
+    diagnostics.report(
+        diagnostics::DiagnosticId::UnhandledDeclaredError,
+        diagnostics::DiagnosticSeverity::Error,
+        site->range(),
+        "constructor throws '" + errorTypeKey + "', which is neither caught here nor declared by "
+            "the enclosing callable; catch it or declare a compatible 'throws'");
 }
 
 }

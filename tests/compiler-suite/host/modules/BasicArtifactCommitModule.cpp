@@ -265,6 +265,33 @@ bool hasTransactionResidue(const std::filesystem::path& directory)
     return residue;
 }
 
+// EN: Detects transaction siblings or backups of one destination name in a shared directory, so other
+//     files that live in that directory never count as residue. Complexity is O(n) in matching names.
+// ES: Detecta siblings o backups de transaccion de un nombre de destino en un directorio compartido, para
+//     que otros archivos de ese directorio nunca cuenten como residuo. Complejidad O(n) en nombres afines.
+bool hasTransactionResidueFor(const std::filesystem::path& directory, const std::wstring& name)
+{
+    const std::filesystem::path pattern = extendedPath(directory) / (name + L"*");
+    WIN32_FIND_DATAW data{};
+    HANDLE search = FindFirstFileW(pattern.c_str(), &data);
+    if (search == INVALID_HANDLE_VALUE)
+    {
+        return false;
+    }
+    bool residue = false;
+    do
+    {
+        const std::wstring_view found(data.cFileName);
+        if (found.find(L".nsc-transaction-") != std::wstring_view::npos)
+        {
+            residue = true;
+            break;
+        }
+    } while (FindNextFileW(search, &data));
+    FindClose(search);
+    return residue;
+}
+
 // Adds one product-owned stage and fills it with exact fixture bytes.
 std::filesystem::path prepare(
     nativesharp::basic::ArtifactTransaction& transaction,
@@ -379,6 +406,33 @@ void testMixedDestinations(TestContext& context)
     context.expect(!hasTransactionResidue(tree.root()), "mixed commit must remove all backups and siblings");
 }
 
+// EN: A destination without a directory component (what `nsc ... -o name.exe` passes) is published in
+//     the current directory. The free-space preflight used to query the empty parent and failed with
+//     Win32 error 123 before anything was installed.
+// ES: Un destino sin componente de directorio (lo que pasa `nsc ... -o name.exe`) se publica en el
+//     directorio actual. El preflight de espacio libre consultaba el padre vacio y fallaba con el error
+//     Win32 123 antes de instalar nada.
+void testDestinationWithoutDirectory(TestContext& context)
+{
+    const ADriveTemporaryEnvironment temporary;
+    CaseTree tree("TB-BAS-089");
+    const std::wstring name = L"TB-BAS-089-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+        std::to_wstring(GetTickCount64()) + L".lib";
+    const std::filesystem::path destination(name);
+    const std::filesystem::path published = std::filesystem::current_path() / destination;
+    tree.track(published);
+    context.expect(!destination.has_parent_path(), "fixture destination must have no directory component");
+    nativesharp::basic::ArtifactTransaction transaction;
+    std::string error;
+    prepare(transaction, destination, "relative product", error);
+    const bool committed = transaction.commit(error);
+    context.expect(committed, "destination without a directory must commit: " + error);
+    context.expect(error.empty(), "successful commit must leave no error");
+    context.expect(readText(published) == "relative product", "destination must be published in the current directory");
+    context.expect(!hasTransactionResidueFor(published.parent_path(), name),
+        "destination without a directory must not retain transaction residue");
+}
+
 void testUnicodeExtendedDestination(TestContext& context)
 {
     const ADriveTemporaryEnvironment temporary;
@@ -407,5 +461,6 @@ void registerBasicArtifactCommitModule(TestRegistry& registry)
     addCase(registry, "TB-BAS-070", "PR", testThreeNewDestinations);
     addCase(registry, "TB-BAS-071", "PR", testMixedDestinations);
     addCase(registry, "TB-BAS-072", "NIGHTLY", testUnicodeExtendedDestination);
+    addCase(registry, "TB-BAS-089", "PR", testDestinationWithoutDirectory);
 }
 }

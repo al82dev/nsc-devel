@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace nativesharp::frontend
@@ -61,6 +62,11 @@ public:
         std::span<const std::uint8_t> reachableDefinitions = {},
         std::span<const std::uint8_t> staticFieldDeclarations = {});
 
+    // Optional: SHA-256 hex checksum of each source file, indexed by FileId value (index 0
+    // unused), computed once for all code units. A missing or empty entry makes the debug file
+    // compute its checksum as before. The table must outlive the lowering.
+    void setSourceChecksums(std::span<const std::string> sourceChecksums) noexcept;
+
 private:
     friend class ProjectOopLlvmLowerer;
     const frontend::ProjectNameLookup* nameLookup_ = nullptr;
@@ -70,6 +76,7 @@ private:
     DebugInformationKind debugInformation_ = DebugInformationKind::None;
     LlvmOptimizationLevel optimizationLevel_ = LlvmOptimizationLevel::O0;
     std::span<const DebugPrefixMap> debugPrefixMaps_;
+    std::span<const std::string> sourceChecksums_;
     std::span<const std::size_t> functionOrdinals_;
     std::span<const std::size_t> declarationOrdinals_;
     std::span<const std::uint8_t> reachableDefinitions_;

@@ -48,7 +48,16 @@ void DriverExecutionScope::writeProgress(const basic::CompilationEvent &event)
     if (!reportProgress)
         return;
     const std::lock_guard<std::mutex> lock(progressMutex);
-    output << renderCompilationEvent(event, progressFormat) << '\n';
+    basic::CompilationEvent renderedEvent = event;
+    if (progressFormat == ProgressFormat::Files &&
+        event.kind == basic::CompilationEventKind::WorkFinished && event.phase == "syntax-read")
+    {
+        renderedEvent.current = ++reportedSourceCount;
+    }
+    const std::string rendered = renderCompilationEvent(renderedEvent, progressFormat);
+    if (rendered.empty())
+        return;
+    output << rendered << '\n';
     output.flush();
 }
 

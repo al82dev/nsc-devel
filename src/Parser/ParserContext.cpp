@@ -9,21 +9,6 @@
 
 namespace nativesharp::parser
 {
-std::size_t KnownTypeNameHash::operator()(std::string_view value) const noexcept
-{
-    return std::hash<std::string_view>{}(value);
-}
-
-std::size_t KnownTypeNameHash::operator()(const char* value) const noexcept
-{
-    return (*this)(std::string_view(value));
-}
-
-std::size_t KnownTypeNameHash::operator()(const std::string& value) const noexcept
-{
-    return (*this)(std::string_view(value));
-}
-
 KnownTypeNameSet buildKnownTypeNameSet(std::span<const std::string> knownTypeNames)
 {
     static constexpr std::array<std::string_view, 19> builtinNames = {

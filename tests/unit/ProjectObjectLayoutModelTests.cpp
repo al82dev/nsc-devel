@@ -72,10 +72,10 @@ void testPhysicalLayout(TestContext& tests, const std::filesystem::path& root)
     writeFile(directory / "A.ns",
         "namespace Demo; public struct Pair { short A; int B; } public class Empty {} "
         "public partial class Payload { byte Tag; int Count; Pair PairValue; Empty Child; int[3] Samples; "
-        "public Payload() { this.Count = 0; } public Payload Make() { return new Payload(); } }\n");
+        "public Payload() { this.Count = 0; } public owned Payload Make() { return new Payload(); } }\n");
     writeFile(directory / "B.ns",
         "namespace Demo; public partial class Payload { double Weight; "
-        "public Empty MakeEmpty() { return new Empty(); } }\n");
+        "public owned Empty MakeEmpty() { return new Empty(); } }\n");
 
     ProjectCompilation compilation;
     std::string error;
@@ -172,7 +172,7 @@ void testTypeLayoutCoverage(TestContext& tests, const std::filesystem::path& roo
     writeFile(directory / "Main.ns",
         "enum Mode { A, B } struct Node { Node* Next; int Value; } "
         "class Ref {} class Holder { bool Flag; Mode ModeValue; Node Root; Ref[2] Refs; int[3][2] Matrix; "
-        "Holder Make() { return new Holder(); } }\n");
+        "owned Holder Make() { return new Holder(); } }\n");
 
     ProjectCompilation compilation;
     std::string error;
@@ -202,7 +202,7 @@ void testDeterminismAndReferences(TestContext& tests, const std::filesystem::pat
         writeProject(directory, "DeterministicParts");
         // Deliberately create B before A. Project source discovery must still establish A before B.
         writeFile(directory / "B.ns",
-            "partial class Packet { double Z; Packet Make() { return new Packet(); } }\n");
+            "partial class Packet { double Z; owned Packet Make() { return new Packet(); } }\n");
         writeFile(directory / "A.ns",
             "partial class Packet { byte A; int B; }\n");
         ProjectCompilation compilation;
@@ -234,7 +234,7 @@ void testDeterminismAndReferences(TestContext& tests, const std::filesystem::pat
             "public class Large { byte A; double B; }\n");
         writeProject(app, "App", "<ProjectReference Include=\"../Core/Core.nsproj\" />");
         writeFile(app / "Host.ns",
-            "using Shared; class Host { Large Ref; Pair Inline; Host Make() { return new Host(); } }\n");
+            "using Shared; class Host { Large Ref; Pair Inline; owned Host Make() { return new Host(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectObjectLayouts(app / "App.nsproj", error);
@@ -296,7 +296,7 @@ void testInvalidLayouts(TestContext& tests, const std::filesystem::path& root)
     {
         const auto directory = root / "ExpressionArray";
         writeProject(directory, "ExpressionArray");
-        writeFile(directory / "Main.ns", "class Box { int[2 + 3 * 4] Data; Box Make() { return new Box(); } }\n");
+        writeFile(directory / "Main.ns", "class Box { int[2 + 3 * 4] Data; owned Box Make() { return new Box(); } }\n");
         ProjectCompilation compilation;
         std::string error;
         const bool ok = compilation.compileProjectObjectLayouts(directory / "ExpressionArray.nsproj", error);

@@ -257,15 +257,19 @@ bool ProjectGenericModel::commitTypeSpecializationProduct(
             state, product.clone, key, specializedName, product.ordinal, diagnostics);
     }
 
+    // The C3 payload is the clone as committed, before processNode: a restore commits it and runs
+    // processNode itself, as this path does, instead of processing an already processed tree.
+    std::string specializationPayload;
+    if (templateCache_.enabled()) specializationPayload = serializeAstNodeTree(product.clone);
     processNode(
         *state.unit, product.clone, state.record.namespaceName, specializedName,
         GenericLookupScope{}, false, diagnostics);
     // NSC305-C03. Persist the specialized clone (the C3 cache payload) under the specialization key.
-    if (templateCache_.enabled())
+    // Nothing is stored once the compilation has reported an error.
+    if (templateCache_.enabled() && !diagnostics.hasErrors())
     {
-        const std::string payload = serializeAstNodeTree(product.clone);
         std::string error;
-        (void)templateCache_.store(key, payload, error);
+        (void)templateCache_.store(key, specializationPayload, error);
     }
     // processNode may recursively materialize another generic and therefore replace all four
     // current-instantiation fields. They describe a call stack, not global "last call" state:
@@ -418,6 +422,8 @@ std::string ProjectGenericModel::executeTypeDemand(
                 activePackSubstitutions_ = callerContext.packSubstitutions;
                 telemetry_.noteSpecializationHit();
                 ++instantiationCacheHitCount_;
+                // The demanding syntax names the specialization, as on the cold path below.
+                rewriteSpecializedSyntax(syntax, state.record, key, specializedName);
                 return specializedName;
             }
         }

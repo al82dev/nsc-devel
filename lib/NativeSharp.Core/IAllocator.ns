@@ -4,28 +4,37 @@ namespace NativeSharp.Core
 {
     // NativeSharp.Core.IAllocator -- NS304-T13-F01. Surface #9: protocolo `IAllocator`.
     //
-    // Contrato de "de donde sale la memoria". Tres operaciones, y las tres estan congeladas aqui:
+    // Contrato de "de donde sale la memoria". Tres operaciones, y las tres estan congeladas aqui
+    // (congelamiento 3.0, C-08: tamano `long` y alineacion explicita en las tres):
     //
-    //   * byte* Allocate(int bytes)
-    //       Entrega un bloque de al menos `bytes` bytes, alineado a 8. `bytes <= 0` o un fallo de
-    //       memoria devuelve null (no hay "tamano cero" silencioso ni fallo escondido). El bloque
-    //       es propiedad del que llama hasta que lo libere.
+    //   * byte* Allocate(long bytes, int alignment)
+    //       Entrega un bloque de al menos `bytes` bytes, alineado a `alignment`. `alignment` es una
+    //       potencia de dos >= 1; el compilador pasa `alignof(T)` al construir con `new (alloc)`.
+    //       `bytes <= 0`, una alineacion que no es potencia de dos o un fallo de memoria devuelven
+    //       null (no hay "tamano cero" silencioso ni fallo escondido). El bloque es propiedad del
+    //       que llama hasta que lo libere.
     //
-    //   * byte* Resize(byte* ptr, int oldBytes, int newBytes)
-    //       Entrega un bloque de al menos `newBytes` conservando los primeros min(oldBytes,
-    //       newBytes) bytes. Si devuelve null, `ptr` sigue valido e intacto y el que llama
-    //       conserva la propiedad. Si devuelve un puntero distinto, `ptr` queda consumido (no se
-    //       libera por separado) y el nuevo puntero es la propiedad.
+    //   * byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment)
+    //       Entrega un bloque de al menos `newBytes`, alineado a `alignment`, conservando los
+    //       primeros min(oldBytes, newBytes) bytes. Si devuelve null, `ptr` sigue valido e intacto
+    //       y el que llama conserva la propiedad. Si devuelve un puntero distinto, `ptr` queda
+    //       consumido (no se libera por separado) y el nuevo puntero es la propiedad.
     //
-    //   * void Deallocate(byte* ptr)
-    //       Libera un bloque entregado por Allocate/Resize. `ptr` deja de ser valido en el acto.
+    //   * void Deallocate(byte* ptr, long bytes, int alignment)
+    //       Libera un bloque entregado por Allocate/Resize. `bytes` y `alignment` son exactamente
+    //       los que se pidieron (o el ultimo `newBytes` de Resize), asi que un allocator no tiene
+    //       que guardar tamanos. `ptr` deja de ser valido en el acto.
     //
     // Pairing: un Deallocate por cada Allocate; Resize sustituye el puntero (el viejo no se libera
     // aparte). Un bloque se libera exactamente una vez.
+    //
+    // EN: Memory-provider protocol, frozen for 3.0 (C-08): every operation carries a `long` size
+    //     and a power-of-two alignment; the compiler passes sizeof(T) and alignof(T) for
+    //     `new (alloc) T`, and the matching Deallocate receives the same size and alignment.
     public trait IAllocator
     {
-        byte* Allocate(int bytes);
-        byte* Resize(byte* ptr, int oldBytes, int newBytes);
-        void Deallocate(byte* ptr);
+        byte* Allocate(long bytes, int alignment);
+        byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment);
+        void Deallocate(byte* ptr, long bytes, int alignment);
     }
 }

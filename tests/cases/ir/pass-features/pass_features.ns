@@ -1,4 +1,6 @@
-int Trace = 0;
+namespace PassFeatures
+{
+    int Trace = 0;
 
 int Touch()
 {
@@ -14,64 +16,71 @@ int FoldAndBranch()
 
     int dead = sum * 10;
 
-    if (sum == 3)
-    {
-        return sum + 39;
+        if (sum == 3)
+        {
+            return sum + 39;
+        }
+        else
+        {
+            return dead;
+        }
     }
-    else
+
+    int KeepIntegerTrap(int divisor)
     {
-        return dead;
+        int trapped = 10 / divisor;
+        return 0;
+    }
+
+    int KeepBoundsCheck(int index)
+    {
+        int[4] values;
+        int value = values[index];
+        return 0;
+    }
+
+    int KeepCall()
+    {
+        int ignored = Touch();
+        return 0;
+    }
+
+    int Main()
+    {
+        return FoldAndBranch();
+    }
+
+    int SameConstant(bool condition)
+    {
+        int value;
+        if (condition)
+        {
+            value = 5;
+        }
+        else
+        {
+            value = 5;
+        }
+        return value;
+    }
+
+    int SameValue(bool condition)
+    {
+        int value = 5;
+        if (condition)
+        {
+            value = value;
+        }
+        else
+        {
+            value = value;
+        }
+        return value;
     }
 }
 
-int KeepIntegerTrap(int divisor)
-{
-    int trapped = 10 / divisor;
-    return 0;
-}
 
-int KeepBoundsCheck(int index)
-{
-    int[4] values;
-    int value = values[index];
-    return 0;
-}
 
-int KeepCall()
-{
-    int ignored = Touch();
-    return 0;
-}
 
-int Main()
-{
-    return FoldAndBranch();
-}
 
-int SameConstant(bool condition)
-{
-    int value;
-    if (condition)
-    {
-        value = 5;
-    }
-    else
-    {
-        value = 5;
-    }
-    return value;
-}
 
-int SameValue(bool condition)
-{
-    int value = 5;
-    if (condition)
-    {
-        value = value;
-    }
-    else
-    {
-        value = value;
-    }
-    return value;
-}

@@ -6,6 +6,7 @@
 
 
 #include "MethodBodyInternals.h"
+#include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "../Internal/Stage37ConstantValue.h"
 
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
@@ -92,6 +93,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeLocalIde
     applyIdentifierFlowFacts(result, scopeName.semanticOrdinal * 2U);
     result.objectLifetimeOwnership = local.objectLifetimeOwnership;
     result.storageOwnership = local.storageOwnership;
+    result.borrowedElementSlots = local.borrowedElementSlots;
     if (!applyLocalIdentifierOwnership(result, expression, scopeName, local, diagnostics)) return {};
     completeLocalIdentifier(
         result, expression, scopeName, local, methodMemberOrdinal, scopeOrdinal);
@@ -132,24 +134,27 @@ bool ProjectMethodBodyModel::validateLocalIdentifierRead(
                 "'; reinitialize every moved field before using the complete value");
         return false;
     }
-    if ((local.isRaii || local.isMoveOnly) && movedRaiiLocals_.contains(scopeName.semanticOrdinal))
+    // EN: Freeze 3.0 DEC-10: a catch variable moved out with move(e) is moved-from too.
+    // ES: Congelamiento 3.0 DEC-10: una variable de catch sacada con move(e) tambien queda movida.
+    const bool tracksMoves = local.isRaii || local.isMoveOnly || local.isCatchVariable;
+    const std::string movedKind = local.isRaii ? "RAII local '"
+        : (local.isCatchVariable ? "caught exception '" : "move-only local '");
+    if (tracksMoves && movedRaiiLocals_.contains(scopeName.semanticOrdinal))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::NS3020InvalidValueCategory,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "use of moved-from " +
-                std::string(local.isRaii ? "RAII local '" : "move-only local '") + local.name + "'");
+            "use of moved-from " + movedKind + local.name + "'");
         return false;
     }
-    if ((local.isRaii || local.isMoveOnly) && maybeMovedRaiiLocals_.contains(scopeName.semanticOrdinal))
+    if (tracksMoves && maybeMovedRaiiLocals_.contains(scopeName.semanticOrdinal))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::NS3020InvalidValueCategory,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "use of possibly moved " +
-                std::string(local.isRaii ? "RAII local '" : "move-only local '") + local.name +
+            "use of possibly moved " + movedKind + local.name +
                 "': value is possibly moved after a control-flow join");
         return false;
     }
@@ -722,11 +727,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeProperty
         true,
         !staticProperty && contextHasReadonlyReceiver(methodMemberOrdinal));
     // NS304-T08-F02: a ref-returning getter is assignable even without a setter.
+    // EN: Freeze 3.0 P3: a `ref readonly` getter is not.
+    // ES: Congelamiento 3.0 P3: un getter `ref readonly` no.
     const bool refGetter = std::any_of(
         propertyGetters.begin(), propertyGetters.end(), [&](std::size_t ordinal)
         {
             return ordinal < memberModel_->members().size() &&
-                memberModel_->members()[ordinal].isReferenceReturn;
+                memberModel_->members()[ordinal].isReferenceReturn &&
+                !isReadonlyReferenceReturn(memberModel_->members()[ordinal]);
         });
     result.assignable = !contextHasReadonlyReceiver(methodMemberOrdinal) &&
         (!propertySetters.empty() || refGetter);

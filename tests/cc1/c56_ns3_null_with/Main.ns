@@ -88,16 +88,17 @@ namespace c56ns3nullwith
             }
             delete[] items;
 
-            Node tail = new Node(42);
-            Node head = new Node(1);
-            head.Next = tail;
-            probe = head;
+            // Congelamiento 3.0 (C-01): los nodos se crean en el campo que los guarda; `head` es solo
+            // un alias y el `destroy` final los libera a mano.
+            probe = new Node(1);
+            probe.Next = new Node(42);
+            Node head = probe;
             trace = 0;
             Node next = Probe()?.Next;
             if (next == null || next.Value != 42 || trace != 3)
             {
+                destroy head.Next;
                 destroy head;
-                destroy tail;
                 return 7;
             }
             probe = null;
@@ -105,12 +106,12 @@ namespace c56ns3nullwith
             next = Probe()?.Next;
             if (next != null || trace != 3)
             {
+                destroy head.Next;
                 destroy head;
-                destroy tail;
                 return 8;
             }
+            destroy head.Next;
             destroy head;
-            destroy tail;
 
                 string formatted = $"answer={42:D4}-{255:X}-{true}";
                 if (formatted != "answer=0042-FF-true") { return 9; }

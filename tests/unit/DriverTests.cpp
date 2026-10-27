@@ -587,8 +587,8 @@ int main()
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>\n");
     writeFile(constructionProjectDirectory / "Main.ns",
         "class Box { public Box(int x) { } public Box(float x) { } "
-        "Box MakeInt() { return new Box(1); } Box MakeFloat() { return new Box(1.0f); } } "
-        "class Empty { } class Factory { Empty Make() { return new Empty(); } }\n");
+        "owned Box MakeInt() { return new Box(1); } owned Box MakeFloat() { return new Box(1.0f); } } "
+        "class Empty { } class Factory { owned Empty Make() { return new Empty(); } }\n");
 
     {
         std::ostringstream output;
@@ -630,9 +630,9 @@ int main()
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>\n");
     writeFile(layoutProjectDirectory / "A.ns",
         "struct Pair { short A; int B; } class Empty {} partial class Box { byte Tag; int Count; Pair PairValue; Empty Child; int[3] Samples; "
-        "Box() { } Box Make() { return new Box(); } }\n");
+        "Box() { } owned Box Make() { return new Box(); } }\n");
     writeFile(layoutProjectDirectory / "B.ns",
-        "partial class Box { double Weight; Empty MakeEmpty() { return new Empty(); } }\n");
+        "partial class Box { double Weight; owned Empty MakeEmpty() { return new Empty(); } }\n");
 
     {
         std::ostringstream output;
@@ -678,8 +678,9 @@ int main()
         "public Counter(int start) { this.Value = start; } "
         "public int Add(int delta) { this.Value = this.Value + delta; return this.Value; } }\n");
     writeFile(oopProjectDirectory / "B.ns",
-        "namespace Demo; public partial class Counter { public Counter Make(int start) { return new Counter(start); } } "
-        "public class Empty { } public class Factory { public Empty MakeEmpty() { return new Empty(); } }\n");
+        "namespace Demo; public partial class Counter { "
+        "public owned Counter Make(int start) { return new Counter(start); } } "
+        "public class Empty { } public class Factory { public owned Empty MakeEmpty() { return new Empty(); } }\n");
 
     {
         std::ostringstream output;
@@ -933,11 +934,14 @@ int main()
         const std::string path = classOnlyPath.string();
         const std::vector<std::string_view> arguments = {"--check", path};
         const ExitCode code = runDriver(arguments, output, error);
-        tests.expect(code == ExitCode::CompilationError,
-            "single-file procedural --check does not pretend the Stage 30 project OOP pipeline is the procedural single-file path");
-        tests.expect(error.str().find("Stage 34 project pipeline") != std::string::npos &&
-                error.str().find("does not lower classes") != std::string::npos,
-            "single-file class diagnostic explains the Stage 30 project/procedural boundary");
+        // EN: Freeze 3.0 C-05: a source file compiles as its implicit project, so classes reach
+        //     the same 3.x pipeline a project uses.
+        // ES: Congelamiento 3.0 C-05: un archivo fuente compila como su proyecto implicito, asi que
+        //     las clases llegan al mismo pipeline 3.x que usa un proyecto.
+        tests.expect(code == ExitCode::Success,
+            "--check compiles a class-only source file through its implicit project");
+        tests.expect(output.str().find("project OOP LLVM verification: ok") != std::string::npos,
+            "--check of a source file reports the implicit project's LLVM verification");
     }
 
     {
@@ -969,8 +973,8 @@ int main()
         const std::vector<std::string_view> arguments = {"--dump-sema", path};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--dump-sema succeeds on valid source");
-        tests.expect(output.str().find("conversion implicit-numeric int -> long") != std::string::npos,
-            "semantic dump exposes inserted conversions");
+        tests.expect(output.str().find("project-method-body-model") != std::string::npos,
+            "--dump-sema of a source file dumps its implicit project's method bodies");
     }
 
     {
@@ -980,9 +984,9 @@ int main()
         const std::vector<std::string_view> arguments = {"--dump-mir", path};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--dump-mir succeeds on valid source");
-        tests.expect(output.str().find("mir.module") != std::string::npos &&
+        tests.expect(output.str().find("project.oop.mir") != std::string::npos &&
                 output.str().find("convert") != std::string::npos,
-            "MIR dump is written to stdout and exposes lowered conversions");
+            "MIR dump is the implicit project's OOP MIR and exposes lowered conversions");
         tests.expect(error.str().empty(), "valid MIR dump keeps stderr empty");
     }
 
@@ -993,8 +997,8 @@ int main()
         const std::vector<std::string_view> arguments = {"--verify-mir", path};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--verify-mir succeeds on valid source");
-        tests.expect(output.str().find("MIR verification: ok") != std::string::npos,
-            "MIR verification result is written to stdout");
+        tests.expect(output.str().find("project OOP MIR check: ok") != std::string::npos,
+            "MIR verification of a source file checks its implicit project's OOP MIR");
         tests.expect(error.str().empty(), "valid MIR verification keeps stderr empty");
     }
 
@@ -1105,7 +1109,7 @@ int main()
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::Success, "--dump-pass-pipeline succeeds on valid source");
         tests.expect(output.str().find("pass.pipeline") != std::string::npos &&
-                output.str().find("dead-code-elimination") != std::string::npos,
+                output.str().find("pass-pipeline: default<O0>") != std::string::npos,
             "pass pipeline trace is written to stdout");
         tests.expect(error.str().empty(), "valid pass trace keeps stderr empty");
     }
@@ -1348,9 +1352,9 @@ int main()
         const std::vector<std::string_view> arguments = {"--emit-exe", input, "-o", destination};
         const ExitCode code = runDriver(arguments, output, error);
         tests.expect(code == ExitCode::CompilationError,
-            "--emit-exe propagates an unresolved external as a link failure");
+            "--emit-exe rejects an unresolved native symbol");
         tests.expect(error.str().find("MissingNativeSymbol") != std::string::npos,
-            "driver preserves lld-link's unresolved symbol name");
+            "driver names the unresolved native symbol");
         tests.expect(!std::filesystem::exists(unresolvedExecutablePath),
             "link failure leaves no executable artifact");
     }

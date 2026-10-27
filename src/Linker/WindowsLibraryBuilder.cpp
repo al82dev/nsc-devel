@@ -1,4 +1,5 @@
 #include "nativesharp/Linker/WindowsLibraryBuilder.h"
+#include "Internal/LinkToolIdentity.h"
 #include "Internal/ScopedTemporaryDirectory.h"
 
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
@@ -112,6 +113,31 @@ std::string cachedFileSetIdentity(
         if (!basic::sha256File(file, digest, size, error)) return {};
         identity += std::to_string(size) + ":" + basic::sha256Hex(digest) + "\n";
     }
+    return identity;
+}
+
+/// EN: Key material of a cached static archive: the archive inputs and the librarian that
+///     would write it (resolved like createStaticLibrary: NSC_LLVM_LIB, beside NSLink, PATH).
+///     An unavailable librarian makes the key differ from every stored one, so the archive
+///     step runs and reports the real error. Returns empty with `error` on a hashing failure.
+///     Why: v1 keyed only the inputs, so a different librarian still restored old archives.
+/// ES: Material de llave de un archivo estatico en cache: sus entradas y el bibliotecario que lo
+///     escribiria (resuelto como createStaticLibrary: NSC_LLVM_LIB, junto a NSLink, PATH). Un
+///     bibliotecario no disponible hace que la llave difiera de toda llave guardada, asi que el
+///     archivado corre y reporta el error real. Devuelve vacio con `error` si falla un hash.
+///     Motivo: v1 solo cubria las entradas, y otro bibliotecario seguia restaurando archivos
+///     viejos.
+std::string staticArchiveIdentity(
+    std::span<const std::filesystem::path> inputs,
+    std::string& error)
+{
+    std::string identity = cachedFileSetIdentity("NativeSharp.StaticArchive.v2", inputs, error);
+    if (identity.empty()) return {};
+    std::string discoveryError;
+    const std::unique_ptr<LldLinker> linker = LldLinker::discover(discoveryError);
+    const std::filesystem::path librarian =
+        linker != nullptr ? linker->librarianExecutablePath() : std::filesystem::path();
+    if (!appendLinkToolIdentity("librarian", librarian, identity, error)) return {};
     return identity;
 }
 
@@ -484,8 +510,7 @@ bool restoreStaticArchive(
     std::string& error)
 {
     if (!cacheEnabled) return false;
-    std::string identity = cachedFileSetIdentity(
-        "NativeSharp.StaticArchive.v1", inputs, error);
+    std::string identity = staticArchiveIdentity(inputs, error);
     if (identity.empty()) return false;
     const std::string key = cache->inputObjectKey(
         identity, "windows-x64-msvc-static-archive", codeGenerationPolicy,
@@ -516,8 +541,7 @@ bool storeStaticArchive(
     std::string& error)
 {
     if (!cacheEnabled) return true;
-    std::string identity = cachedFileSetIdentity(
-        "NativeSharp.StaticArchive.v1", inputs, error);
+    std::string identity = staticArchiveIdentity(inputs, error);
     if (identity.empty()) return false;
     const std::string key = cache->inputObjectKey(
         identity, "windows-x64-msvc-static-archive", codeGenerationPolicy,
@@ -795,6 +819,7 @@ bool WindowsLibraryBuilder::buildDynamicObjects(
     if (!discoverDynamicLibraryImports(
             temporaryDirectory->path(), {}, externalImports_, extraLinkLibraries_,
             runtimeLibrary_, independentRuntime, linker, importLibraries, error)) return false;
+    linker->setRemoveUnreferencedSections(removeUnreferencedSections_);
     std::vector<std::filesystem::path> objects(programObjects.begin(), programObjects.end());
     if (runtimeModule != nullptr) objects.push_back(runtimeObject);
     if (independentRuntime)
@@ -824,6 +849,11 @@ void WindowsLibraryBuilder::setExtraLinkLibraries(std::vector<std::filesystem::p
 void WindowsLibraryBuilder::setRuntimeLibrary(std::filesystem::path runtimeLibrary)
 {
     runtimeLibrary_ = std::move(runtimeLibrary);
+}
+
+void WindowsLibraryBuilder::setRemoveUnreferencedSections(bool remove) noexcept
+{
+    removeUnreferencedSections_ = remove;
 }
 
 void WindowsLibraryBuilder::setProgramObjectsVerified(bool verified) noexcept

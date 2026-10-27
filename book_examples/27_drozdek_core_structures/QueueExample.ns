@@ -62,7 +62,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             count = count + 1;
         }
 
-        public int Front()
+        public int Front() throws InvalidOperationException
         {
             if (count == 0)
             {
@@ -71,7 +71,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return data[first];
         }
 
-        public int Dequeue()
+        public int Dequeue() throws InvalidOperationException
         {
             int value = Front();
             first = (first + 1) % data.Length;
@@ -91,7 +91,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
 
     public class QueueExample
     {
-        public static int Run()
+        public static int Run() throws InvalidOperationException
         {
             raii IntCircularQueue queue = new IntCircularQueue(3);
             queue.Enqueue(11);

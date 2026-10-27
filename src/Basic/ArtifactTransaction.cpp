@@ -297,7 +297,13 @@ bool ArtifactTransaction::prepareCommitEntry(
         return false;
     }
     ULARGE_INTEGER available{};
-    if (::GetDiskFreeSpaceExW(extendedPath(entry.destination.parent_path()).c_str(),
+    // EN: The directory comes from the absolute extended destination: a destination given without a
+    //     directory (`-o name.exe`) has an empty parent_path(), whose extended spelling `\\?\` is an
+    //     invalid name (Win32 error 123). The parent of the absolute form is the current directory.
+    // ES: El directorio sale del destino extendido absoluto: un destino sin directorio (`-o name.exe`)
+    //     tiene parent_path() vacio, cuya forma extendida `\\?\` es un nombre invalido (error Win32
+    //     123). El padre de la forma absoluta es el directorio actual.
+    if (::GetDiskFreeSpaceExW(extendedPath(entry.destination).parent_path().c_str(),
             &available, nullptr, nullptr) == 0)
     {
         return failWin32(

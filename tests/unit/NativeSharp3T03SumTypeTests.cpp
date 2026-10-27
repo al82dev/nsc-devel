@@ -26,23 +26,23 @@ int main()
         "OR-pattern alternatives preserve identical ownership bindings");
 
     const std::array<std::string, 3> domain = {"Idle", "Ready", "Failed"};
-    const std::array<MatchArmCoverage, 3> complete = {{{{"Idle"}, false, false},
-        {{"Ready"}, false, false}, {{"Failed"}, false, false}}};
+    const std::array<MatchArmCoverage, 3> complete = {{{{"Idle"}, false, false, {}},
+        {{"Ready"}, false, false, {}}, {{"Failed"}, false, false, {}}}};
     const auto completeResult = analyzeClosedMatch(domain, complete);
     tests.expect(completeResult.exhaustive && completeResult.missingCases.empty(),
         "closed match reports exhaustive case coverage");
-    const std::array<MatchArmCoverage, 2> guarded = {{{{"Idle"}, false, false},
-        {{"Ready", "Failed"}, false, true}}};
+    const std::array<MatchArmCoverage, 2> guarded = {{{{"Idle"}, false, false, {}},
+        {{"Ready", "Failed"}, false, true, {}}}};
     const auto guardedResult = analyzeClosedMatch(domain, guarded);
     tests.expect(!guardedResult.exhaustive && guardedResult.missingCases.size() == 2,
         "a dynamic guard never contributes to static exhaustiveness");
-    const std::array<MatchArmCoverage, 2> unreachable = {{{{}, true, false},
-        {{"Ready"}, false, false}}};
+    const std::array<MatchArmCoverage, 2> unreachable = {{{{}, true, false, {}},
+        {{"Ready"}, false, false, {}}}};
     tests.expect(analyzeClosedMatch(domain, unreachable).unreachableArms ==
             std::vector<std::size_t>({1}),
         "an arm after an unguarded wildcard is unreachable");
-    const std::array<MatchArmCoverage, 4> redundantWildcard = {{{{"Idle"}, false, false},
-        {{"Ready"}, false, false}, {{"Failed"}, false, false}, {{}, true, false}}};
+    const std::array<MatchArmCoverage, 4> redundantWildcard = {{{{"Idle"}, false, false, {}},
+        {{"Ready"}, false, false, {}}, {{"Failed"}, false, false, {}}, {{}, true, false, {}}}};
     tests.expect(analyzeClosedMatch(domain, redundantWildcard).unreachableArms ==
             std::vector<std::size_t>({3}),
         "a wildcard after complete closed-domain coverage is unreachable");

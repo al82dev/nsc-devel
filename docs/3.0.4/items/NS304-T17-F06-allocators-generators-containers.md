@@ -22,3 +22,20 @@
 - El hueco era probar la combinación. Las aristas ya tenían pruebas individuales (allocator
   `TL-LANG-477`, generator `TL-LANG-455`, noheap `TL-LANG-333`, container Core); aquí se cerró la
   combinación productiva end-to-end.
+
+## Nota de reemplazo — Congelamiento 3.0 (DEC-09, C-08)
+
+La firma de `IAllocator` que describe este documento fue reemplazada en 3.0, y la nueva es la única que se acepta:
+
+```
+byte* Allocate(long bytes, int alignment);
+byte* Resize(byte* ptr, long oldBytes, long newBytes, int alignment);
+void Deallocate(byte* ptr, long bytes, int alignment);
+```
+
+El `BlockAllocator` de `TL-LANG-517` implementa la firma nueva.
+
+Una implementación con la firma anterior (`Allocate(int)`, `Resize(byte*, int, int)`, `Deallocate(byte*)`) recibe
+en ese miembro un diagnóstico que nombra la firma nueva
+(`docs/3.0/decisiones-congelamiento/32-P6-IALLOCATOR-FIRMA-UNICA.md`).
+El texto de arriba se conserva como registro histórico de 3.0.4.

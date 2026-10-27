@@ -46,6 +46,7 @@ bool ProjectConstructionModel::build(
     statistics_ = {};
     initializerBindingByMember_.resize(memberModel.members().size());
     implicitDefaultBindingByType_.resize(nameLookup.namedTypes().size());
+    readSnapshotConstruction();
 
     // A source class with no explicit constructor still has a semantic constructor obligation.
     // Validate those chains first so explicit derived constructors and object constructions can
@@ -58,10 +59,15 @@ bool ProjectConstructionModel::build(
     for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel.members().size(); ++memberOrdinal)
     {
         const ClassMemberSymbol& constructor = memberModel.members()[memberOrdinal];
+        // EN: Freeze 3.0 (item 130a): a constructor of a closed generic type that nothing selected
+        //     was never analyzed; its initializer is not bound and cannot invalidate the type.
+        // ES: Congelamiento 3.0 (elemento 130a): un constructor de un tipo generico cerrado que nada
+        //     eligio nunca se analizo; su inicializador no se enlaza y no puede invalidar el tipo.
         if (constructor.kind == ClassMemberKind::Constructor &&
             !constructor.isStatic &&
             constructor.declaringTypeOrdinal < nameLookup.namedTypes().size() &&
-            !nameLookup.namedTypes()[constructor.declaringTypeOrdinal].isPrecompiled)
+            !nameLookup.namedTypes()[constructor.declaringTypeOrdinal].isPrecompiled &&
+            !methodBodyModel.constructorBodyDeferred(memberOrdinal))
         {
             bindConstructorInitializer(memberOrdinal, diagnostics);
         }
@@ -98,9 +104,42 @@ bool ProjectConstructionModel::build(
         statistics_.typedArgumentsConsumed += site->argumentTypes.size();
         bindConstruction(*site, diagnostics);
     }
+    reportUndemandedConstructors(diagnostics);
 
     built_ = true;
     return !diagnostics.hasErrors();
+}
+
+// EN: Freeze 3.0 (item 130a). Every constructor a binding selects must have been demanded while the
+//     bodies were analyzed; one that was not would reach HIR without bindings. This is an internal
+//     consistency check, not a language rule.
+// ES: Congelamiento 3.0 (elemento 130a). Todo constructor que elige un binding debio demandarse mientras
+//     se analizaban los cuerpos; uno que no llegaria a HIR sin bindings. Es un chequeo interno de
+//     consistencia, no una regla del lenguaje.
+void ProjectConstructionModel::reportUndemandedConstructors(diagnostics::DiagnosticEngine& diagnostics) const
+{
+    std::vector<std::pair<std::size_t, const ast::AstNode*>> selected;
+    for (const ObjectConstructionBinding& construction : constructions_)
+    {
+        if (construction.selectedConstructorMemberOrdinal.has_value())
+            selected.emplace_back(*construction.selectedConstructorMemberOrdinal, construction.syntax);
+    }
+    for (const ConstructorInitializerBinding& initializer : constructorInitializerBindings_)
+    {
+        if (initializer.selectedConstructorMemberOrdinal.has_value())
+            selected.emplace_back(
+                *initializer.selectedConstructorMemberOrdinal, initializer.initializerSyntax);
+    }
+    for (const auto& [constructorOrdinal, syntax] : selected)
+    {
+        if (!methodBodyModel_->constructorBodyDeferred(constructorOrdinal)) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax != nullptr ? syntax->range() : SourceRange(),
+            "internal: constructor '" + memberModel_->members()[constructorOrdinal].name +
+                "' of a closed generic type was selected but its body was never analyzed");
+    }
 }
 
 std::span<const ObjectConstructionBinding> ProjectConstructionModel::constructions() const noexcept

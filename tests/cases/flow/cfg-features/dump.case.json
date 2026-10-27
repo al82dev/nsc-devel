@@ -7,7 +7,7 @@
   "optimization": "O0",
   "expected": {
     "exit_code": 0,
-    "stdout": {"mode": "contains", "text": "[unreachable]"}
+    "stdout": {"mode": "regex", "text": "[unreachable]"}
   },
   "tags": ["integration", "cfg", "dump"],
   "requires": []

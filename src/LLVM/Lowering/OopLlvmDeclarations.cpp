@@ -506,7 +506,7 @@ void OopLlvmImplementation::defineClassRttiHelper()
         LLVMBasicBlockRef classNext = appendBlock("rtti.class.next");
         LLVMBasicBlockRef classMatch = appendBlock("rtti.class.match");
         LLVMBasicBlockRef classFail = appendBlock("rtti.class.fail");
-        LLVMPositionBuilderAtEnd(builder_, classEntry);
+        enterBlock(classEntry);
         LLVMValueRef classObject = LLVMGetParam(rttiClassTestFunction_, 0);
         LLVMValueRef classTargetId = LLVMGetParam(rttiClassTestFunction_, 1);
         LLVMSetValueName2(classObject, "object", 6);
@@ -516,18 +516,18 @@ void OopLlvmImplementation::defineClassRttiHelper()
             builder_, LLVMIntNE, classObject, LLVMConstNull(ptr), "object.nonnull");
         LLVMBuildCondBr(builder_, classHasObject, classStart, classFail);
 
-        LLVMPositionBuilderAtEnd(builder_, classStart);
+        enterBlock(classStart);
         LLVMValueRef firstDescriptor = LLVMBuildLoad2(builder_, ptr, classObject, "descriptor");
         LLVMBuildStore(builder_, firstDescriptor, descriptorSlot);
         LLVMBuildBr(builder_, classLoop);
 
-        LLVMPositionBuilderAtEnd(builder_, classLoop);
+        enterBlock(classLoop);
         LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, descriptorSlot, "descriptor.current");
         LLVMValueRef hasDescriptor = LLVMBuildICmp(
             builder_, LLVMIntNE, descriptor, LLVMConstNull(ptr), "descriptor.nonnull");
         LLVMBuildCondBr(builder_, hasDescriptor, classProbe, classFail);
 
-        LLVMPositionBuilderAtEnd(builder_, classProbe);
+        enterBlock(classProbe);
         LLVMValueRef typeIdAddress = LLVMBuildStructGEP2(
             builder_, descriptorType_, descriptor, 3, "descriptor.type_id.addr");
         LLVMValueRef typeId = LLVMBuildLoad2(builder_, i64, typeIdAddress, "descriptor.type_id");
@@ -535,16 +535,16 @@ void OopLlvmImplementation::defineClassRttiHelper()
             builder_, LLVMIntEQ, typeId, classTargetId, "descriptor.matches");
         LLVMBuildCondBr(builder_, classMatches, classMatch, classNext);
 
-        LLVMPositionBuilderAtEnd(builder_, classNext);
+        enterBlock(classNext);
         LLVMValueRef baseAddress = LLVMBuildStructGEP2(
             builder_, descriptorType_, descriptor, 0, "descriptor.base.addr");
         LLVMValueRef baseDescriptor = LLVMBuildLoad2(builder_, ptr, baseAddress, "descriptor.base");
         LLVMBuildStore(builder_, baseDescriptor, descriptorSlot);
         LLVMBuildBr(builder_, classLoop);
 
-        LLVMPositionBuilderAtEnd(builder_, classMatch);
+        enterBlock(classMatch);
         LLVMBuildRet(builder_, LLVMConstInt(i1, 1, 0));
-        LLVMPositionBuilderAtEnd(builder_, classFail);
+        enterBlock(classFail);
         LLVMBuildRet(builder_, LLVMConstInt(i1, 0, 0));
     }
 
@@ -563,7 +563,7 @@ void OopLlvmImplementation::defineInterfaceRttiHelper()
         LLVMBasicBlockRef ifaceNext = appendBlock("rtti.interface.next");
         LLVMBasicBlockRef ifaceMatch = appendBlock("rtti.interface.match");
         LLVMBasicBlockRef ifaceFail = appendBlock("rtti.interface.fail");
-        LLVMPositionBuilderAtEnd(builder_, ifaceEntry);
+        enterBlock(ifaceEntry);
         LLVMValueRef ifaceObject = LLVMGetParam(rttiInterfaceTestFunction_, 0);
         LLVMValueRef ifaceTargetId = LLVMGetParam(rttiInterfaceTestFunction_, 1);
         LLVMSetValueName2(ifaceObject, "object", 6);
@@ -578,7 +578,7 @@ void OopLlvmImplementation::defineInterfaceRttiHelper()
             ifaceObject, ifaceStart, ifaceMap, ifaceFail, count, entries);
         LLVMBuildBr(builder_, ifaceSearch);
 
-        LLVMPositionBuilderAtEnd(builder_, ifaceSearch);
+        enterBlock(ifaceSearch);
         LLVMValueRef index = LLVMBuildPhi(builder_, i64, "interface_map.index");
         LLVMValueRef zero = LLVMConstInt(i64, 0, 0);
         LLVMValueRef initialValues[] = {zero};
@@ -588,7 +588,7 @@ void OopLlvmImplementation::defineInterfaceRttiHelper()
             builder_, LLVMIntULT, index, count, "interface_map.inrange");
         LLVMBuildCondBr(builder_, inRange, ifaceProbe, ifaceFail);
 
-        LLVMPositionBuilderAtEnd(builder_, ifaceProbe);
+        enterBlock(ifaceProbe);
         LLVMValueRef entryIndices[] = {index};
         LLVMValueRef entry = LLVMBuildGEP2(
             builder_, interfaceMapEntryType_, entries, entryIndices, 1, "interface_entry");
@@ -599,7 +599,7 @@ void OopLlvmImplementation::defineInterfaceRttiHelper()
             builder_, LLVMIntEQ, id, ifaceTargetId, "interface_entry.matches");
         LLVMBuildCondBr(builder_, ifaceMatches, ifaceMatch, ifaceNext);
 
-        LLVMPositionBuilderAtEnd(builder_, ifaceNext);
+        enterBlock(ifaceNext);
         LLVMValueRef one = LLVMConstInt(i64, 1, 0);
         LLVMValueRef nextIndex = LLVMBuildAdd(builder_, index, one, "interface_map.next");
         LLVMBuildBr(builder_, ifaceSearch);
@@ -607,9 +607,9 @@ void OopLlvmImplementation::defineInterfaceRttiHelper()
         LLVMBasicBlockRef nextBlocks[] = {ifaceNext};
         LLVMAddIncoming(index, nextValues, nextBlocks, 1);
 
-        LLVMPositionBuilderAtEnd(builder_, ifaceMatch);
+        enterBlock(ifaceMatch);
         LLVMBuildRet(builder_, LLVMConstInt(i1, 1, 0));
-        LLVMPositionBuilderAtEnd(builder_, ifaceFail);
+        enterBlock(ifaceFail);
         LLVMBuildRet(builder_, LLVMConstInt(i1, 0, 0));
     }
 
@@ -623,7 +623,7 @@ void OopLlvmImplementation::beginInterfaceRttiSearch(
 {
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
         LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
-        LLVMPositionBuilderAtEnd(builder_, startBlock);
+        enterBlock(startBlock);
         LLVMValueRef descriptor = LLVMBuildLoad2(builder_, ptr, object, "descriptor");
         LLVMValueRef mapAddress = LLVMBuildStructGEP2(
             builder_, descriptorType_, descriptor, 4, "descriptor.interface_map.addr");
@@ -631,7 +631,7 @@ void OopLlvmImplementation::beginInterfaceRttiSearch(
         LLVMValueRef hasMap = LLVMBuildICmp(
             builder_, LLVMIntNE, map, LLVMConstNull(ptr), "interface_map.nonnull");
         LLVMBuildCondBr(builder_, hasMap, mapBlock, failBlock);
-        LLVMPositionBuilderAtEnd(builder_, mapBlock);
+        enterBlock(mapBlock);
         LLVMValueRef countAddress = LLVMBuildStructGEP2(
             builder_, interfaceMapType_, map, 0, "interface_map.count.addr");
         count = LLVMBuildLoad2(builder_, i64, countAddress, "interface_map.count");
@@ -749,7 +749,7 @@ bool OopLlvmImplementation::defineTypedCatchFilter(
         LLVMBasicBlockRef entry = appendBlock("eh.typed.filter.entry");
         LLVMBasicBlockRef typeCheck = appendBlock("eh.typed.filter.type");
         LLVMBasicBlockRef reject = appendBlock("eh.typed.filter.reject");
-        LLVMPositionBuilderAtEnd(builder_, entry);
+        enterBlock(entry);
         ScopedDebugLocation generatedLocation(
             builder_, debugSubprogramLocation(debugRange, currentDebugSubprogram_));
         LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
@@ -759,7 +759,7 @@ bool OopLlvmImplementation::defineTypedCatchFilter(
         LLVMValueRef domainMatches = LLVMBuildICmp(
             builder_, LLVMIntNE, domainResult, LLVMConstInt(i32, 0, 0), "eh.domain.matches");
         LLVMBuildCondBr(builder_, domainMatches, typeCheck, reject);
-        LLVMPositionBuilderAtEnd(builder_, typeCheck);
+        enterBlock(typeCheck);
         LLVMValueRef exception = LLVMBuildCall2(
             builder_, exceptionCurrentFunctionType_, exceptionCurrentFunction_,
             nullptr, 0, "eh.filter.exception");
@@ -772,7 +772,7 @@ bool OopLlvmImplementation::defineTypedCatchFilter(
         LLVMValueRef filterResult = LLVMBuildZExt(
             builder_, classMatches, i32, "eh.type.filter.result");
         LLVMBuildRet(builder_, filterResult);
-        LLVMPositionBuilderAtEnd(builder_, reject);
+        enterBlock(reject);
         LLVMBuildRet(builder_, LLVMConstInt(i32, 0, 0));
         return true;
     }

@@ -1,10 +1,13 @@
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Language/ModuleSemantics.h"
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <functional>
+#include <numeric>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -203,13 +206,20 @@ bool collectUniquePrecompiledDescriptors(
     std::string& error)
 {
     std::unordered_map<std::string, std::size_t> descriptorByPath;
+    // Folded project paths are computed once instead of once per descriptor and project.
+    const ProjectOrdinalByPath projectByPath = projectOrdinalsByPath(projects);
     for (const PrecompiledProjectDescriptor& descriptor : descriptors)
     {
-        const std::string ownerKey = foldedPath(descriptor.ownerProjectFile);
-        const auto owner = std::ranges::find_if(projects, [&](const Project& project) {
-            return foldedPath(project.projectFile()) == ownerKey;
-        });
-        if (owner == projects.end())
+        if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+        {
+            const std::string ownerKey = foldedPath(descriptor.ownerProjectFile);
+            const bool scanned = std::ranges::any_of(projects, [&](const Project& project) {
+                return foldedPath(project.projectFile()) == ownerKey;
+            });
+            if (scanned != projectByPath.contains(ownerKey))
+                frontend::internal::reportIndexShadowMismatch("collectUniquePrecompiledDescriptors", ownerKey);
+        }
+        if (!projectByPath.contains(foldedPath(descriptor.ownerProjectFile)))
         {
             error = "precompiled metadata '" + descriptor.metadataPath.generic_string() +
                 "' names an unknown owner project '" +
@@ -456,14 +466,29 @@ bool ProjectGraph::addPrecompiledProjects(
     if (!collectUniquePrecompiledDescriptors(
             projects_, descriptors, moduleOwners, uniqueDescriptors, error))
         return false;
-    std::ranges::sort(uniqueDescriptors, [](const auto& left, const auto& right) {
-        const std::string leftIdentity =
-            language::canonicalWindowsModuleIdentity({}, left.moduleName);
-        const std::string rightIdentity =
-            language::canonicalWindowsModuleIdentity({}, right.moduleName);
-        if (leftIdentity != rightIdentity) return leftIdentity < rightIdentity;
-        return foldedPath(left.metadataPath) < foldedPath(right.metadataPath);
+    // Module identity and folded metadata path are computed once per descriptor, not in every
+    // comparison. Identities are unique at this point (duplicates were rejected above), so the
+    // order is total and sorting indices gives the historical sequence.
+    std::vector<std::string> identities;
+    std::vector<std::string> foldedMetadataPaths;
+    identities.reserve(uniqueDescriptors.size());
+    foldedMetadataPaths.reserve(uniqueDescriptors.size());
+    for (const PrecompiledProjectDescriptor& descriptor : uniqueDescriptors)
+    {
+        identities.push_back(language::canonicalWindowsModuleIdentity({}, descriptor.moduleName));
+        foldedMetadataPaths.push_back(foldedPath(descriptor.metadataPath));
+    }
+    std::vector<std::size_t> order(uniqueDescriptors.size());
+    std::iota(order.begin(), order.end(), std::size_t{0});
+    std::ranges::sort(order, [&](std::size_t left, std::size_t right) {
+        if (identities[left] != identities[right]) return identities[left] < identities[right];
+        return foldedMetadataPaths[left] < foldedMetadataPaths[right];
     });
+    std::vector<PrecompiledProjectDescriptor> sortedDescriptors;
+    sortedDescriptors.reserve(uniqueDescriptors.size());
+    for (const std::size_t index : order)
+        sortedDescriptors.push_back(std::move(uniqueDescriptors[index]));
+    uniqueDescriptors = std::move(sortedDescriptors);
 
     const MetadataByOwner metadataByOwner = collectMetadataByOwner(descriptors);
     std::vector<Project> expanded;

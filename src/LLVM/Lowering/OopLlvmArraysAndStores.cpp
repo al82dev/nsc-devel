@@ -307,6 +307,12 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         LLVMValueRef value,
         std::string& error)
 {
+        // EN: Freeze 3.0 DEC-11: an element store of an array with live bits drops the old value
+        //     only when it was alive, and leaves the slot alive.
+        // ES: Congelamiento 3.0 DEC-11: guardar un elemento de un arreglo con bits de vida destruye
+        //     el valor anterior solo si estaba vivo, y deja el slot vivo.
+        const std::optional<OopLlvmArrayElementLiveness> liveness =
+            takeArrayElementLiveness(node->children[0].get());
         if (terminated()) return value;
         if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::BitFieldAddress)
         {
@@ -327,7 +333,11 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         else if (node->booleanValue && memberModel_ != nullptr &&
                  memberModel_->typeRequiresValueDrop(node->typeKey))
         {
-            if (!emitValueDropAddress(address, node->typeKey, "value.replace", error))
+            if (liveness.has_value())
+            {
+                if (!dropReplacedArrayElement(address, node->typeKey, *liveness, error)) return nullptr;
+            }
+            else if (!emitValueDropAddress(address, node->typeKey, "value.replace", error))
                 return nullptr;
         }
         else if (node->booleanValue && requiresOwnedDestruction(node->typeKey))
@@ -342,7 +352,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             LLVMBasicBlockRef readyBlock = appendBlock("owned.field.ready");
             LLVMBuildCondBr(builder_, previousIsNull, readyBlock, releaseBlock);
 
-            LLVMPositionBuilderAtEnd(builder_, releaseBlock);
+            enterBlock(releaseBlock);
             LLVMBuildStore(builder_, LLVMConstNull(ptrType), address);
             if (node->typeKey == "builtin:string")
             {
@@ -372,10 +382,11 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
                     destructionEntryFunctionType_, previousEntry, releaseArguments, 1, "");
             }
             LLVMBuildBr(builder_, readyBlock);
-            LLVMPositionBuilderAtEnd(builder_, readyBlock);
+            enterBlock(readyBlock);
         }
         LLVMValueRef store = LLVMBuildStore(builder_, value, address);
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+        if (liveness.has_value()) setArrayElementAlive(*liveness, true);
         if (node->localOrdinal.has_value())
         {
             const auto flag = localValueDropFlags_.find(*node->localOrdinal);
@@ -587,6 +598,13 @@ LLVMValueRef OopLlvmImplementation::lowerArrayAllocate(const frontend::ProjectOo
             builder_, count, LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0), "array.data.bytes");
         LLVMValueRef total = LLVMBuildAdd(
             builder_, bytes, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0), "array.total.bytes");
+        // EN: Freeze 3.0 DEC-11: an array of structs with a destructor carries one live bit per
+        //     element after its data. The block is zeroed below, so every slot starts dead.
+        // ES: Congelamiento 3.0 DEC-11: un arreglo de structs con destructor lleva un bit de vida por
+        //     elemento despues de sus datos. El bloque se pone en cero abajo: todo slot nace muerto.
+        const bool tracked = arrayElementLivenessTracked(arrayAllocationElementType(node));
+        LLVMValueRef livenessBytes = tracked ? arrayLivenessByteCount(count) : nullptr;
+        if (tracked) total = LLVMBuildAdd(builder_, total, livenessBytes, "array.total.live.bytes");
         LLVMValueRef args[] = {total};
         LLVMValueRef memory = buildNoUnwindCall(
             allocationFunctionType_, allocationFunction_, args, 1, "array.memory");
@@ -596,10 +614,10 @@ LLVMValueRef OopLlvmImplementation::lowerArrayAllocate(const frontend::ProjectOo
         LLVMBasicBlockRef initBlock = appendBlock("array.alloc.init");
         LLVMBasicBlockRef mergeBlock = appendBlock("array.alloc.merge");
         LLVMBuildCondBr(builder_, isNull, nullBlock, initBlock);
-        LLVMPositionBuilderAtEnd(builder_, nullBlock);
+        enterBlock(nullBlock);
         LLVMBuildBr(builder_, mergeBlock);
         LLVMBasicBlockRef nullIncoming = LLVMGetInsertBlock(builder_);
-        LLVMPositionBuilderAtEnd(builder_, initBlock);
+        enterBlock(initBlock);
         LLVMValueRef memsetArgs[] = {
             memory,
             LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
@@ -613,9 +631,25 @@ LLVMValueRef OopLlvmImplementation::lowerArrayAllocate(const frontend::ProjectOo
         // never dereferenced.
         if (!initializeArrayElements(
                 node, memory, dataOffset, segmentValues, segmentLengths, error)) return nullptr;
+        if (tracked && (node->booleanValue || hasCollectionSegments))
+        {
+            // EN: Freeze 3.0 DEC-11: an initializer writes every element, so all start alive.
+            // ES: Congelamiento 3.0 DEC-11: un inicializador escribe cada elemento: todos nacen vivos.
+            LLVMValueRef bitmapOffset = LLVMBuildAdd(
+                builder_, bytes, LLVMConstInt(LLVMInt64TypeInContext(context_), dataOffset, 0),
+                "array.live.offset");
+            LLVMValueRef bitmapIndices[] = {bitmapOffset};
+            LLVMValueRef aliveArguments[] = {
+                LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), memory, bitmapIndices, 1,
+                    "array.live.bitmap"),
+                LLVMConstInt(LLVMInt8TypeInContext(context_), 0xFF, 0),
+                livenessBytes,
+                LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+            buildNoUnwindCall(memsetFunctionType_, memsetFunction_, aliveArguments, 4, "");
+        }
         LLVMBuildBr(builder_, mergeBlock);
         LLVMBasicBlockRef initIncoming = LLVMGetInsertBlock(builder_);
-        LLVMPositionBuilderAtEnd(builder_, mergeBlock);
+        enterBlock(mergeBlock);
         LLVMValueRef phi = LLVMBuildPhi(builder_, LLVMPointerTypeInContext(context_, 0), "array.result");
         LLVMValueRef incomingValues[] = {LLVMConstNull(LLVMPointerTypeInContext(context_, 0)), memory};
         LLVMBasicBlockRef incomingBlocks[] = {nullIncoming, initIncoming};
@@ -725,6 +759,11 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayAllocate(
             builder_, totalCount, LLVMConstInt(i64, node->immediate, 0), "range.data.bytes");
         LLVMValueRef totalBytes = LLVMBuildAdd(
             builder_, bytes, LLVMConstInt(i64, dataOffset, 0), "range.total.bytes");
+        // EN: Freeze 3.0 DEC-11: live bits after the data, zeroed with the block (all dead).
+        // ES: Congelamiento 3.0 DEC-11: bits de vida tras los datos, en cero con el bloque (muertos).
+        if (arrayElementLivenessTracked(arrayAllocationElementType(node)))
+            totalBytes = LLVMBuildAdd(
+                builder_, totalBytes, arrayLivenessByteCount(totalCount), "range.total.live.bytes");
         LLVMValueRef arguments[] = {totalBytes};
         LLVMValueRef memory = buildNoUnwindCall(
             allocationFunctionType_, allocationFunction_, arguments, 1, "range.memory");
@@ -735,15 +774,15 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayAllocate(
         LLVMBasicBlockRef initBlock = appendBlock("range.alloc.init");
         LLVMBasicBlockRef mergeBlock = appendBlock("range.alloc.merge");
         LLVMBuildCondBr(builder_, isNull, nullBlock, initBlock);
-        LLVMPositionBuilderAtEnd(builder_, nullBlock);
+        enterBlock(nullBlock);
         LLVMBuildBr(builder_, mergeBlock);
         LLVMBasicBlockRef nullIncoming = LLVMGetInsertBlock(builder_);
 
-        LLVMPositionBuilderAtEnd(builder_, initBlock);
+        enterBlock(initBlock);
         initializeRangeArrayHeader(memory, totalBytes, totalCount, dimensions);
         LLVMBuildBr(builder_, mergeBlock);
         LLVMBasicBlockRef initIncoming = LLVMGetInsertBlock(builder_);
-        LLVMPositionBuilderAtEnd(builder_, mergeBlock);
+        enterBlock(mergeBlock);
         LLVMValueRef result = LLVMBuildPhi(
             builder_, LLVMPointerTypeInContext(context_, 0), "range.result");
         LLVMValueRef incomingValues[] = {
@@ -805,8 +844,275 @@ LLVMValueRef OopLlvmImplementation::lowerRangeArrayElementAddress(
                 "range.index.byte"),
             LLVMConstInt(i64, dataOffset, 0), "range.index.offset");
         LLVMValueRef indices[] = {bytePosition};
-        return LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), object, indices, 1,
+        LLVMValueRef address = LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), object, indices, 1,
             "range.element.addr");
+        if (!applyArrayElementAccess(node, object, address, dataOffset, node->immediate, error))
+            return nullptr;
+        return address;
     }
+
+// EN: Freeze 3.0 DEC-11: whether arrays of `elementType` carry live bits: exactly the element
+//     types that need a value drop (a struct with a destructor or owned fields).
+// ES: Congelamiento 3.0 DEC-11: si los arreglos de `elementType` llevan bits de vida: justo los
+//     tipos de elemento que requieren drop de valor (un struct con destructor o campos owned).
+bool OopLlvmImplementation::arrayElementLivenessTracked(std::string_view elementType) const
+{
+        return memberModel_ != nullptr && !elementType.empty() &&
+            memberModel_->typeRequiresValueDrop(elementType);
+}
+
+// EN: The element type of an ArrayAllocate/RangeArrayAllocate node: its element key, else the
+//     element of its array type key. Empty when neither names one.
+// ES: El tipo de elemento de un nodo ArrayAllocate/RangeArrayAllocate: su clave de elemento, o el
+//     elemento de su clave de arreglo. Vacio si ninguna lo nombra.
+std::string OopLlvmImplementation::arrayAllocationElementType(const frontend::ProjectOopMirNode* node) const
+{
+        if (!node->elementTypeKey.empty()) return node->elementTypeKey;
+        return frontend::ProjectTypeConversion::nativeArrayElementType(node->typeKey).value_or("");
+}
+
+// EN: The element type of an element access node: the element of its array operand's type, else
+//     its own element key.
+// ES: El tipo de elemento de un nodo de acceso: el elemento del tipo de su operando arreglo, o su
+//     propia clave de elemento.
+std::string OopLlvmImplementation::arrayAccessElementType(const frontend::ProjectOopMirNode* node) const
+{
+        if (!node->children.empty() && node->children.front() != nullptr)
+        {
+            const std::optional<std::string> element =
+                frontend::ProjectTypeConversion::nativeArrayElementType(node->children.front()->typeKey);
+            if (element.has_value()) return *element;
+        }
+        return node->elementTypeKey;
+}
+
+// EN: Records, for every element access of a tracked array in the tree under `root`, what its
+//     surrounding expression does with the element. Iterative (explicit stack); O(nodes). Entries
+//     accumulate across trees (nodes are unique), so a tree lowered in the middle of another
+//     never erases the outer one's entries.
+// ES: Registra, para cada acceso a elemento de un arreglo con bits de vida en el arbol bajo
+//     `root`, que hace con el elemento la expresion que lo rodea. Iterativo (pila explicita);
+//     O(nodos). Las entradas se acumulan entre arboles (los nodos son unicos), asi un arbol bajado
+//     a mitad de otro nunca borra las entradas del exterior.
+void OopLlvmImplementation::classifyArrayElementAccesses(const frontend::ProjectOopMirNode* root)
+{
+        if (root == nullptr || memberModel_ == nullptr) return;
+        std::unordered_map<const frontend::ProjectOopMirNode*, const frontend::ProjectOopMirNode*> parents;
+        std::vector<const frontend::ProjectOopMirNode*> elements;
+        std::vector<const frontend::ProjectOopMirNode*> work{root};
+        while (!work.empty())
+        {
+            const frontend::ProjectOopMirNode* node = work.back();
+            work.pop_back();
+            const bool access = node->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress ||
+                node->kind == frontend::ProjectOopMirNodeKind::ArrayElementLoad ||
+                node->kind == frontend::ProjectOopMirNodeKind::RangeArrayElementAddress ||
+                node->kind == frontend::ProjectOopMirNodeKind::RangeArrayElementLoad;
+            if (access && arrayElementLivenessTracked(arrayAccessElementType(node))) elements.push_back(node);
+            for (const auto& child : node->children)
+            {
+                if (child == nullptr) continue;
+                parents.emplace(child.get(), node);
+                work.push_back(child.get());
+            }
+        }
+        for (const frontend::ProjectOopMirNode* element : elements)
+            arrayElementAccess_[element] = arrayElementAccessFor(element, parents);
+}
+
+// EN: The access kind of one element node, from the nodes above it: a store target, the base of a
+//     chain of field addresses under a store target, a move operand, a delete operand, or a read.
+// ES: El tipo de acceso de un nodo de elemento segun los nodos de arriba: destino de un store, base
+//     de una cadena de direcciones de campo bajo un destino de store, operando de move, operando de
+//     delete, o una lectura.
+OopLlvmArrayElementAccess OopLlvmImplementation::arrayElementAccessFor(
+        const frontend::ProjectOopMirNode* element,
+        const std::unordered_map<const frontend::ProjectOopMirNode*, const frontend::ProjectOopMirNode*>&
+            parents) const
+{
+        if (element->kind == frontend::ProjectOopMirNodeKind::ArrayElementLoad ||
+            element->kind == frontend::ProjectOopMirNodeKind::RangeArrayElementLoad)
+            return OopLlvmArrayElementAccess::Read;
+        const frontend::ProjectOopMirNode* child = element;
+        bool throughField = false;
+        auto parent = parents.find(child);
+        while (parent != parents.end() && parent->second->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
+               !parent->second->children.empty() && parent->second->children.front().get() == child)
+        {
+            child = parent->second;
+            throughField = true;
+            parent = parents.find(child);
+        }
+        if (parent == parents.end()) return OopLlvmArrayElementAccess::Read;
+        const frontend::ProjectOopMirNode* user = parent->second;
+        const bool firstChild = !user->children.empty() && user->children.front().get() == child;
+        if (user->kind == frontend::ProjectOopMirNodeKind::Store && firstChild)
+            return throughField ? OopLlvmArrayElementAccess::FieldStore : OopLlvmArrayElementAccess::WholeStore;
+        if (throughField) return OopLlvmArrayElementAccess::Read;
+        if (user->kind == frontend::ProjectOopMirNodeKind::MoveArrayElement)
+            return OopLlvmArrayElementAccess::Move;
+        if (user->kind == frontend::ProjectOopMirNodeKind::Deallocate && user->valueTypeNoOpDeletion &&
+            user->booleanValue)
+            return OopLlvmArrayElementAccess::Delete;
+        return OopLlvmArrayElementAccess::Read;
+}
+
+// EN: Bytes of live bits for `count` elements: ceil(count / 8).
+// ES: Bytes de bits de vida para `count` elementos: techo(count / 8).
+LLVMValueRef OopLlvmImplementation::arrayLivenessByteCount(LLVMValueRef count)
+{
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMValueRef rounded = LLVMBuildAdd(builder_, count, LLVMConstInt(i64, 7, 0), "array.live.round");
+        return LLVMBuildLShr(builder_, rounded, LLVMConstInt(i64, 3, 0), "array.live.bytes");
+}
+
+// EN: The live bit of element `linearIndex`. The bitmap starts right after the data:
+//     dataOffset + length * elementSize, with the total element count at offset 0.
+// ES: El bit de vida del elemento `linearIndex`. El mapa empieza justo despues de los datos:
+//     dataOffset + length * elementSize, con el total de elementos en el offset 0.
+OopLlvmArrayElementLiveness OopLlvmImplementation::arrayElementLiveness(
+        LLVMValueRef array, LLVMValueRef linearIndex, std::uint64_t dataOffset, std::uint64_t elementSize)
+{
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+        LLVMValueRef length = LLVMBuildLoad2(builder_, i64, array, "array.live.length");
+        LLVMValueRef start = LLVMBuildAdd(
+            builder_, LLVMBuildMul(builder_, length, LLVMConstInt(i64, elementSize, 0), "array.live.data"),
+            LLVMConstInt(i64, dataOffset, 0), "array.live.start");
+        LLVMValueRef offset = LLVMBuildAdd(
+            builder_, start, LLVMBuildLShr(builder_, linearIndex, LLVMConstInt(i64, 3, 0), "array.live.word"),
+            "array.live.offset");
+        LLVMValueRef indices[] = {offset};
+        OopLlvmArrayElementLiveness liveness;
+        liveness.byte = LLVMBuildGEP2(builder_, i8, array, indices, 1, "array.live.byte");
+        LLVMValueRef bit = LLVMBuildTrunc(
+            builder_, LLVMBuildAnd(builder_, linearIndex, LLVMConstInt(i64, 7, 0), "array.live.bit"), i8,
+            "array.live.bit8");
+        liveness.mask = LLVMBuildShl(builder_, LLVMConstInt(i8, 1, 0), bit, "array.live.mask");
+        return liveness;
+}
+
+// EN: i1: whether the element of `liveness` is alive.
+// ES: i1: si el elemento de `liveness` esta vivo.
+LLVMValueRef OopLlvmImplementation::arrayElementIsAlive(const OopLlvmArrayElementLiveness& liveness)
+{
+        LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+        LLVMValueRef bits = LLVMBuildLoad2(builder_, i8, liveness.byte, "array.live.load");
+        LLVMValueRef selected = LLVMBuildAnd(builder_, bits, liveness.mask, "array.live.selected");
+        return LLVMBuildICmp(builder_, LLVMIntNE, selected, LLVMConstInt(i8, 0, 0), "array.live.is");
+}
+
+// EN: Sets or clears the live bit of the element of `liveness`.
+// ES: Enciende o apaga el bit de vida del elemento de `liveness`.
+void OopLlvmImplementation::setArrayElementAlive(const OopLlvmArrayElementLiveness& liveness, bool alive)
+{
+        LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+        LLVMValueRef bits = LLVMBuildLoad2(builder_, i8, liveness.byte, "array.live.old");
+        LLVMValueRef updated = alive
+            ? LLVMBuildOr(builder_, bits, liveness.mask, "array.live.set")
+            : LLVMBuildAnd(builder_, bits, LLVMBuildNot(builder_, liveness.mask, "array.live.notmask"),
+                "array.live.clear");
+        LLVMBuildStore(builder_, updated, liveness.byte);
+}
+
+// EN: Liveness work at the element address, by access kind. A read or a move of a dead element
+//     traps (DeadElementRead); a field store revives a dead element after zeroing it, so its
+//     other fields hold their defaults; a whole store, a move and a delete leave the bit to their
+//     consumer. `address` is the element; its linear index is recovered from it.
+// ES: Trabajo de vida en la direccion del elemento, segun el acceso. Leer o mover un elemento
+//     muerto atrapa (DeadElementRead); escribir un campo revive un elemento muerto tras ponerlo en
+//     cero, asi sus otros campos quedan por defecto; un store completo, un move y un delete dejan
+//     el bit a su consumidor. `address` es el elemento; su indice lineal se recupera de ella.
+bool OopLlvmImplementation::applyArrayElementAccess(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef array,
+        LLVMValueRef address,
+        std::uint64_t dataOffset,
+        std::uint64_t elementSize,
+        std::string& error)
+{
+        const auto access = arrayElementAccess_.find(node);
+        if (access == arrayElementAccess_.end() || elementSize == 0 || terminated()) return true;
+        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+        LLVMValueRef distance = LLVMBuildSub(
+            builder_, LLVMBuildPtrToInt(builder_, address, i64, "array.live.element"),
+            LLVMBuildPtrToInt(builder_, array, i64, "array.live.base"), "array.live.distance");
+        LLVMValueRef linear = LLVMBuildUDiv(
+            builder_, LLVMBuildSub(builder_, distance, LLVMConstInt(i64, dataOffset, 0), "array.live.data.distance"),
+            LLVMConstInt(i64, elementSize, 0), "array.live.index");
+        const OopLlvmArrayElementLiveness liveness = arrayElementLiveness(array, linear, dataOffset, elementSize);
+        switch (access->second)
+        {
+            case OopLlvmArrayElementAccess::Read:
+                return emitGuard(arrayElementIsAlive(liveness), LlvmTrapReason::DeadElementRead, "array.dead", error);
+            case OopLlvmArrayElementAccess::Move:
+                if (!emitGuard(arrayElementIsAlive(liveness), LlvmTrapReason::DeadElementRead, "array.dead", error))
+                    return false;
+                arrayElementLiveness_[node] = liveness;
+                return true;
+            case OopLlvmArrayElementAccess::FieldStore:
+                return reviveArrayElement(liveness, address, elementSize);
+            case OopLlvmArrayElementAccess::WholeStore:
+            case OopLlvmArrayElementAccess::Delete:
+                arrayElementLiveness_[node] = liveness;
+                return true;
+        }
+        return true;
+}
+
+// EN: A dead element written through one of its fields is first zeroed (its other fields take
+//     their defaults) and marked alive; a live one is left as it is.
+// ES: Un elemento muerto escrito por uno de sus campos primero se pone en cero (sus otros campos
+//     toman su valor por defecto) y se marca vivo; uno vivo se deja como esta.
+bool OopLlvmImplementation::reviveArrayElement(
+        const OopLlvmArrayElementLiveness& liveness, LLVMValueRef address, std::uint64_t elementSize)
+{
+        LLVMBasicBlockRef reviveBlock = appendBlock("array.revive");
+        LLVMBasicBlockRef readyBlock = appendBlock("array.revive.ready");
+        LLVMBuildCondBr(builder_, arrayElementIsAlive(liveness), readyBlock, reviveBlock);
+        enterBlock(reviveBlock);
+        LLVMValueRef arguments[] = {
+            address,
+            LLVMConstInt(LLVMInt8TypeInContext(context_), 0, 0),
+            LLVMConstInt(LLVMInt64TypeInContext(context_), elementSize, 0),
+            LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
+        buildNoUnwindCall(memsetFunctionType_, memsetFunction_, arguments, 4, "");
+        setArrayElementAlive(liveness, true);
+        LLVMBuildBr(builder_, readyBlock);
+        enterBlock(readyBlock);
+        return true;
+}
+
+// EN: The liveness bit the element address `node` left for its consumer, removed from the table so
+//     a later lowering of the same node never reuses it. Empty for an untracked element.
+// ES: El bit de vida que la direccion de elemento `node` dejo a su consumidor, quitado de la tabla
+//     para que otra bajada del mismo nodo nunca lo reuse. Vacio para un elemento sin bits.
+std::optional<OopLlvmArrayElementLiveness> OopLlvmImplementation::takeArrayElementLiveness(
+        const frontend::ProjectOopMirNode* node)
+{
+        const auto found = arrayElementLiveness_.find(node);
+        if (found == arrayElementLiveness_.end()) return std::nullopt;
+        const OopLlvmArrayElementLiveness liveness = found->second;
+        arrayElementLiveness_.erase(found);
+        return liveness;
+}
+
+// EN: `a[i] = v` over a tracked element: the old value is dropped only when it is alive.
+// ES: `a[i] = v` sobre un elemento con bits de vida: el valor anterior se destruye solo si vive.
+bool OopLlvmImplementation::dropReplacedArrayElement(
+        LLVMValueRef address,
+        std::string_view typeKey,
+        const OopLlvmArrayElementLiveness& liveness,
+        std::string& error)
+{
+        LLVMBasicBlockRef dropBlock = appendBlock("value.replace.alive");
+        LLVMBasicBlockRef readyBlock = appendBlock("value.replace.ready");
+        LLVMBuildCondBr(builder_, arrayElementIsAlive(liveness), dropBlock, readyBlock);
+        enterBlock(dropBlock);
+        if (!emitValueDropAddress(address, typeKey, "value.replace", error)) return false;
+        if (!terminated()) LLVMBuildBr(builder_, readyBlock);
+        enterBlock(readyBlock);
+        return true;
+}
 
 }

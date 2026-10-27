@@ -1,4 +1,3 @@
-extern C int puts(char* text);
 
 int IntegerOps(int left, int right)
 {
@@ -41,7 +40,7 @@ int MemoryOps(int count, int index)
 {
     int[4] fixedValues;
     fixedValues[index] = 7;
-    int* heap = new int[count];
+    owned int[] heap = new int[count];
     int* temporary = stackalloc int[count];
     temporary[0] = fixedValues[index];
     delete[] heap;
@@ -50,7 +49,8 @@ int MemoryOps(int count, int index)
 
 int StringWithNul()
 {
-    return puts("A\0B");
+    string text = "A\0B";
+    return text.Length;
 }
 
 int Main()

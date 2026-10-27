@@ -54,9 +54,23 @@ namespace NativeSharp.Core.Collections.Generic
         // ListEnumerator<T> already established for List<T> (see ListEnumerator.ns's class
         // comment): the enumerator duplicates none of this class's storage or bookkeeping, it
         // only tracks "which logical index is next".
+        //
+        // EN: Freeze 3.0 P3: the getter copies and requires `T : copy`; RefAt lends the same element
+        //     for any T (QueueEnumerator uses it).
+        // ES: Congelamiento 3.0 P3: el getter copia y exige `T : copy`; RefAt presta el mismo
+        //     elemento para todo T (QueueEnumerator lo usa).
         public T this[int index]
         {
-            get { return items[PhysicalIndex(index)]; }
+            get where T : copy { return items[PhysicalIndex(index)]; }
+        }
+
+        public ref T RefAt(int index)
+        {
+            if (index < 0 || index >= count)
+            {
+                panic("Queue index out of range");
+            }
+            return ref items[PhysicalIndex(index)];
         }
 
         // Public so callers can pre-size before a known-size batch of Enqueue()s. Returns the
@@ -130,13 +144,17 @@ namespace NativeSharp.Core.Collections.Generic
             return move(items[index]);
         }
 
-        public T Peek() throws InvalidOperationException
+        // EN: Freeze 3.0 P3: Peek lends the element by reference, for any T; TryPeek copies it and
+        //     requires `T : copy`.
+        // ES: Congelamiento 3.0 P3: Peek presta el elemento por referencia, para todo T; TryPeek lo
+        //     copia y exige `T : copy`.
+        public ref T Peek() throws InvalidOperationException
         {
             if (count == 0)
             {
                 throw new InvalidOperationException();
             }
-            return items[head];
+            return ref items[head];
         }
 
         // Mirrors `bool TryDequeue(out T result)` -- see Dictionary.ns's TryGetValue comment for
@@ -145,13 +163,18 @@ namespace NativeSharp.Core.Collections.Generic
         public bool TryDequeue(T[] result)
         {
             if (count == 0) { return false; }
-            result[0] = Dequeue();
+            // EN: Freeze 3.0 C-13: Dequeue() declares throws; the empty case is answered above, so the
+            //     catch only satisfies the checked contract.
+            // ES: Congelamiento 3.0 C-13: Dequeue() declara throws; el caso vacio ya se respondio arriba,
+            //     asi que el catch solo cumple el contrato verificado.
+            try { result[0] = Dequeue(); }
+            catch (InvalidOperationException problem) { return false; }
             return true;
         }
 
         // Mirrors `bool TryPeek(out T result)` -- see TryDequeue above. No ownership transfer:
         // `result[0]` aliases the still-queued element, same as Peek()'s own return.
-        public bool TryPeek(T[] result)
+        public bool TryPeek(T[] result) where T : copy
         {
             if (count == 0) { return false; }
             result[0] = items[head];
@@ -181,7 +204,7 @@ namespace NativeSharp.Core.Collections.Generic
             count = 0;
         }
 
-        public T[] ToArray()
+        public T[] ToArray() where T : copy
         {
             const T[] result = new T[count];
             int i = 0;
@@ -195,7 +218,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Mirrors Queue<T>.CopyTo: writes every element (oldest first) into `destination`
         // starting at `destinationIndex`, same snapshot-aliasing story as ToArray().
-        public void CopyTo(T[] destination, int destinationIndex)
+        public void CopyTo(T[] destination, int destinationIndex) where T : copy
         {
             int i = 0;
             while (i < count)

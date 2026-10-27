@@ -179,33 +179,33 @@ namespace ForeachCollections
             int total = 0;
 
             // Queue<T>: FIFO order (oldest-enqueued first) -- 1+2+3 == 6.
-            Queue<int> q = new Queue<int>();
+            raii Queue<int> q = new Queue<int>();
             q.Enqueue(1); q.Enqueue(2); q.Enqueue(3);
             foreach (var x in q) { total = total + x; }
 
             // Stack<T>: top-to-bottom order (most-recently-pushed first) -- checked digit by
             // digit (30,20,10 -> 302010), not just summed, so a wrong order would be caught.
-            Stack<int> s = new Stack<int>();
+            raii Stack<int> s = new Stack<int>();
             s.Push(10); s.Push(20); s.Push(30);
             int stackTotal = 0;
             foreach (var x in s) { stackTotal = stackTotal * 100 + x; }
             total = total + stackTotal;
 
             // LinkedList<T>: insertion order via AddLast -- 100+200+300 == 600.
-            LinkedList<int> ll = new LinkedList<int>();
+            raii LinkedList<int> ll = new LinkedList<int>();
             ll.AddLast(100); ll.AddLast(200); ll.AddLast(300);
             foreach (var x in ll) { total = total + x; }
 
             // HashSet<T>: order is unspecified by design (same as real C#) -- only the single
             // element's VALUE is checked, not an order-dependent accumulation.
             HashFunc<int> intHash = HashInt;
-            HashSet<int> hs = new HashSet<int>(intHash);
+            raii HashSet<int> hs = new HashSet<int>(intHash);
             hs.Add(1000);
             foreach (var x in hs) { total = total + x; }
 
             // SortedSet<T>: always sorted order regardless of insertion order -- inserted
             // 3,1,2, must iterate 1,2,3 (ssTotal == 123, not 312 or any other permutation).
-            SortedSet<int> ss = new SortedSet<int>();
+            raii SortedSet<int> ss = new SortedSet<int>();
             ss.Add(3); ss.Add(1); ss.Add(2);
             int ssTotal = 0;
             foreach (var x in ss) { ssTotal = ssTotal * 10 + x; }
@@ -213,7 +213,7 @@ namespace ForeachCollections
 
             // PriorityQueue<TElement,TPriority>: Current yields TElement only, in unspecified
             // heap-internal order (matching real C#) -- only the element COUNT is checked.
-            PriorityQueue<int, int> pq = new PriorityQueue<int, int>();
+            raii PriorityQueue<int, int> pq = new PriorityQueue<int, int>();
             pq.Enqueue(7, 7);
             pq.Enqueue(3, 3);
             pq.Enqueue(5, 5);
@@ -277,7 +277,7 @@ namespace ForeachDictionaryMissing
         public static int Run()
         {
             HashFunc<int> intHash = HashInt;
-            Dictionary<int, int> dict = new Dictionary<int, int>(intHash);
+            raii Dictionary<int, int> dict = new Dictionary<int, int>(intHash);
             dict.Add(1, 100);
             int total = 0;
             foreach (var kv in dict) { total = total + 1; }
@@ -322,7 +322,7 @@ namespace ForeachDictionaryKeysValues
         public static int Main()
         {
             HashFunc<int> intHash = HashInt;
-            Dictionary<int, int> dict = new Dictionary<int, int>(intHash);
+            raii Dictionary<int, int> dict = new Dictionary<int, int>(intHash);
             dict.Add(1, 100);
             int total = 0;
             foreach (var key in dict.Keys()) { total = total + key; }

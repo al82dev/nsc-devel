@@ -4,6 +4,9 @@
 #include "Internal/LoadedProject.h"
 #include "Internal/VisitState.h"
 
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
+
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Language/ModuleSemantics.h"
@@ -143,11 +146,17 @@ bool normalizeTransitiveSourceOwnership(
 {
     // A source file has one semantic module owner even when broad globs in several referenced
     // projects discover it. Dependency-first graph order preserves the historical owner.
+    // The key of each source is computed once here and reused by the second pass.
     std::unordered_map<std::string, std::size_t> sourceOwner;
+    std::vector<std::vector<std::string>> sourceKeys(projects.size());
     for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
     {
+        sourceKeys[ordinal].reserve(projects[ordinal].sourceSet().sources().size());
         for (const ProjectSource& source : projects[ordinal].sourceSet().sources())
-            sourceOwner.try_emplace(pathKey(canonicalPath(source.absolutePath)), ordinal);
+        {
+            sourceKeys[ordinal].push_back(pathKey(canonicalPath(source.absolutePath)));
+            sourceOwner.try_emplace(sourceKeys[ordinal].back(), ordinal);
+        }
     }
 
     std::vector<Project> normalized;
@@ -156,12 +165,16 @@ bool normalizeTransitiveSourceOwnership(
     {
         const Project& project = projects[ordinal];
         ProjectSourceSet ownSources(project.sourceSet().projectDirectory());
-        for (const ProjectSource& source : project.sourceSet().sources())
+        const std::span<const ProjectSource> sources = project.sourceSet().sources();
+        for (std::size_t index = 0; index < sources.size(); ++index)
         {
-            const std::string sourceKey = pathKey(canonicalPath(source.absolutePath));
-            const auto owner = sourceOwner.find(sourceKey);
+            const ProjectSource& source = sources[index];
+            const auto owner = sourceOwner.find(sourceKeys[ordinal][index]);
             if (owner == sourceOwner.end() || owner->second != ordinal) continue;
-            if (!ownSources.add(source.absolutePath, error)) return false;
+            // The source comes from a set of the same project directory: it is canonical and
+            // already validated.
+            if (!ownSources.addCanonical(source.absolutePath, source.projectRelativePath, error))
+                return false;
         }
         if (!ownSources.finalize(error, true)) return false;
         normalized.emplace_back(
@@ -185,6 +198,27 @@ bool normalizeTransitiveSourceOwnership(
     return true;
 }
 
+/// Sorts values by a string key computed once per value. The same std::ranges::sort runs over
+/// (key, value) pairs and compares only the keys, so the comparisons and therefore the resulting
+/// order (including the order of equal keys) are those of sorting the values with the key as
+/// projection, without recomputing the key in every comparison.
+template <typename Value, typename KeyFunction>
+void sortByPrecomputedKey(std::vector<Value>& values, KeyFunction key)
+{
+    std::vector<std::pair<std::string, Value>> keyed;
+    keyed.reserve(values.size());
+    for (Value& value : values)
+    {
+        std::string valueKey = key(value);
+        keyed.emplace_back(std::move(valueKey), std::move(value));
+    }
+    std::ranges::sort(keyed, {}, &std::pair<std::string, Value>::first);
+    for (std::size_t index = 0; index < keyed.size(); ++index)
+    {
+        values[index] = std::move(keyed[index].second);
+    }
+}
+
 void preferExactSourceModuleArtifacts(
     std::map<std::string, Project>& projects,
     const std::map<std::string, std::filesystem::path>& moduleOwners)
@@ -196,6 +230,10 @@ void preferExactSourceModuleArtifacts(
             project.projectReferences().begin(), project.projectReferences().end());
         std::vector<LibraryReference> libraryReferences;
         libraryReferences.reserve(project.libraryReferences().size());
+        const std::string projectKey = pathKey(canonicalPath(project.projectFile()));
+        std::unordered_set<std::string> referencedKeys;
+        for (const std::filesystem::path& path : projectReferences)
+            referencedKeys.insert(pathKey(canonicalPath(path)));
         for (const LibraryReference& reference : project.libraryReferences())
         {
             const std::string libraryStem = reference.libraryPath.stem().string();
@@ -204,25 +242,30 @@ void preferExactSourceModuleArtifacts(
                 ? moduleOwners.find(
                     language::canonicalWindowsModuleIdentity({}, libraryStem))
                 : moduleOwners.end();
-            if (source == moduleOwners.end() ||
-                pathKey(canonicalPath(source->second)) ==
-                    pathKey(canonicalPath(project.projectFile())))
+            const std::string sourceKey = source == moduleOwners.end()
+                ? std::string()
+                : pathKey(canonicalPath(source->second));
+            if (source == moduleOwners.end() || sourceKey == projectKey)
             {
                 libraryReferences.push_back(reference);
                 continue;
             }
 
-            const std::string sourceKey = pathKey(canonicalPath(source->second));
-            const bool alreadyReferenced = std::ranges::any_of(
-                projectReferences, [&](const std::filesystem::path& path) {
-                    return pathKey(canonicalPath(path)) == sourceKey;
-                });
-            if (!alreadyReferenced) projectReferences.push_back(source->second);
+            if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+            {
+                const bool scanned = std::ranges::any_of(
+                    projectReferences, [&](const std::filesystem::path& path) {
+                        return pathKey(canonicalPath(path)) == sourceKey;
+                    });
+                if (scanned != referencedKeys.contains(sourceKey))
+                    frontend::internal::reportIndexShadowMismatch("preferExactSourceModuleArtifacts", sourceKey);
+            }
+            if (referencedKeys.insert(sourceKey).second) projectReferences.push_back(source->second);
         }
-        std::ranges::sort(projectReferences, {}, [](const std::filesystem::path& path) {
+        sortByPrecomputedKey(projectReferences, [](const std::filesystem::path& path) {
             return pathKey(canonicalPath(path));
         });
-        std::ranges::sort(libraryReferences, {}, [](const LibraryReference& reference) {
+        sortByPrecomputedKey(libraryReferences, [](const LibraryReference& reference) {
             return pathKey(canonicalPath(reference.libraryPath));
         });
         rewired.emplace(

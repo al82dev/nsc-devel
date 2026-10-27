@@ -289,7 +289,7 @@ namespace NativeSharp.Core.Collections.Generic
             return false;
         }
 
-        public T[] ToArray()
+        public T[] ToArray() where T : copy
         {
             const T[] result = new T[count];
             LinkedListNode<T> current = headSlot[0];
@@ -317,7 +317,7 @@ namespace NativeSharp.Core.Collections.Generic
             {
                 nextHolder[0] = cursor[0].TakeNext();
                 delete cursor[0];
-                cursor[0] = nextHolder[0];
+                cursor[0] = move(nextHolder[0]);
             }
             delete[] cursor;
             delete[] nextHolder;

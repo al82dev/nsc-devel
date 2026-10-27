@@ -54,7 +54,7 @@ namespace NativeSharp.BookExamples.Deque
             count = count + 1;
         }
 
-        public void RemoveFront(T[] result)
+        public void RemoveFront(T[] result) throws InvalidOperationException
         {
             if (count == 0) { throw new InvalidOperationException(); }
             result[0] = items[head];
@@ -63,7 +63,7 @@ namespace NativeSharp.BookExamples.Deque
             if (count == 0) { head = 0; }
         }
 
-        public void RemoveBack(T[] result)
+        public void RemoveBack(T[] result) throws InvalidOperationException
         {
             if (count == 0) { throw new InvalidOperationException(); }
             int index = Index(count - 1);

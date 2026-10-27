@@ -38,10 +38,10 @@ namespace c62ns3traitsdispatch
 
         public static int Main()
         {
-            Number number = new Number(14);
-            dyn IScore dynamicView = number;
-            dyn IDoubled inheritedView = number;
-            dyn IMapper<int> genericView = number;
+            raii Number number = new Number(14);
+            borrowed dyn IScore dynamicView = number;
+            borrowed dyn IDoubled inheritedView = number;
+            borrowed dyn IMapper<int> genericView = number;
             return StaticScore(number) + dynamicView.Score() +
                 inheritedView.Doubled() + genericView.Map(14) - 29;
         }

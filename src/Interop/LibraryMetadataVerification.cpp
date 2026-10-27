@@ -21,6 +21,8 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include "Internal/TemplateSourceReplacement.h"
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
 #include "Internal/TemplateSourcePiece.h"
 #include "Internal/ByteReader.h"
 #include "Internal/ByteWriter.h"
@@ -592,23 +594,51 @@ bool verifyDispatchRecord(
     return true;
 }
 
+// Dispatch tables by type key (the first table of each key, as the former linear search) and,
+// for each table, its slots by signature in ascending slot order. Built once per metadata.
+struct MetadataDispatchIndex final
+{
+    std::unordered_map<std::string, const LibraryMetadataDispatch*> tablesByType;
+    std::unordered_map<
+        const LibraryMetadataDispatch*,
+        std::unordered_map<std::string, std::vector<std::size_t>>> slotsBySignature;
+};
+
+/// Builds both indexes of metadata's dispatch tables.
+MetadataDispatchIndex buildMetadataDispatchIndex(const LibraryMetadata& metadata)
+{
+    MetadataDispatchIndex index;
+    for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
+    {
+        index.tablesByType.emplace(dispatch.typeKey, &dispatch);
+        auto& slots = index.slotsBySignature[&dispatch];
+        for (std::size_t slot = 0; slot < dispatch.slotSignatures.size(); ++slot)
+            slots[dispatch.slotSignatures[slot]].push_back(slot);
+    }
+    return index;
+}
+
 const LibraryMetadataDispatch* findMetadataDispatch(
-    const LibraryMetadata& metadata,
+    const MetadataDispatchIndex& index,
     const std::string& typeKey)
 {
-    for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
-        if (dispatch.typeKey == typeKey) return &dispatch;
-    return nullptr;
+    const auto found = index.tablesByType.find(typeKey);
+    return found == index.tablesByType.end() ? nullptr : found->second;
 }
 
 std::optional<std::size_t> findMetadataDispatchSlot(
+    const MetadataDispatchIndex& index,
     const LibraryMetadataDispatch& dispatch,
     const LibraryMetadataMember& member,
     std::uint32_t newSlotFlag)
 {
-    for (std::size_t slot = 0; slot < dispatch.slotSignatures.size(); ++slot)
+    // Only the slots whose signature matches, in the order the former scan met them.
+    const auto table = index.slotsBySignature.find(&dispatch);
+    if (table == index.slotsBySignature.end()) return std::nullopt;
+    const auto matching = table->second.find(member.signatureKey);
+    if (matching == table->second.end()) return std::nullopt;
+    for (const std::size_t slot : matching->second)
     {
-        if (dispatch.slotSignatures[slot] != member.signatureKey) continue;
         if ((member.flags & newSlotFlag) == 0U) return slot;
         if (slot < dispatch.slotCalleeNames.size() &&
             dispatch.slotCalleeNames[slot] == member.mangledName)
@@ -620,7 +650,7 @@ std::optional<std::size_t> findMetadataDispatchSlot(
 }
 
 bool verifyVirtualMemberDispatch(
-    const LibraryMetadata& metadata,
+    const MetadataDispatchIndex& dispatchIndex,
     const LibraryMetadataMember& member,
     const std::unordered_map<std::string, const LibraryMetadataType*>& typesByKey,
     std::string& error)
@@ -642,7 +672,7 @@ bool verifyVirtualMemberDispatch(
         return true;
     }
     const LibraryMetadataDispatch* dispatch =
-        findMetadataDispatch(metadata, member.declaringTypeKey);
+        findMetadataDispatch(dispatchIndex, member.declaringTypeKey);
     if (dispatch == nullptr)
     {
         error = "metadata virtual member '" + member.declaringTypeKey + "." +
@@ -650,7 +680,7 @@ bool verifyVirtualMemberDispatch(
         return false;
     }
     const std::optional<std::size_t> slot =
-        findMetadataDispatchSlot(*dispatch, member, kNewSlot);
+        findMetadataDispatchSlot(dispatchIndex, *dispatch, member, kNewSlot);
     if (!slot.has_value())
     {
         error = "metadata virtual member '" + member.declaringTypeKey + "." +
@@ -700,8 +730,44 @@ bool verifyMetadataDispatchContracts(
             return false;
         }
     }
+    const MetadataDispatchIndex dispatchIndex = buildMetadataDispatchIndex(metadata);
+    if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+    {
+        // Every key the scans could find must map to the first table of that key, and every
+        // signature to the ascending list of matching slots of its table.
+        for (const LibraryMetadataDispatch& dispatch : metadata.dispatchTables)
+        {
+            const LibraryMetadataDispatch* first = nullptr;
+            for (const LibraryMetadataDispatch& candidate : metadata.dispatchTables)
+            {
+                if (candidate.typeKey != dispatch.typeKey) continue;
+                first = &candidate;
+                break;
+            }
+            if (findMetadataDispatch(dispatchIndex, dispatch.typeKey) != first)
+                frontend::internal::reportIndexShadowMismatch("findMetadataDispatch", dispatch.typeKey);
+            const auto table = dispatchIndex.slotsBySignature.find(&dispatch);
+            if (table == dispatchIndex.slotsBySignature.end())
+                frontend::internal::reportIndexShadowMismatch("findMetadataDispatchSlot", dispatch.typeKey);
+            for (std::size_t slot = 0; slot < dispatch.slotSignatures.size(); ++slot)
+            {
+                std::vector<std::size_t> scanned;
+                for (std::size_t other = 0; other < dispatch.slotSignatures.size(); ++other)
+                {
+                    if (dispatch.slotSignatures[other] == dispatch.slotSignatures[slot])
+                        scanned.push_back(other);
+                }
+                const auto indexed = table->second.find(dispatch.slotSignatures[slot]);
+                if (indexed == table->second.end() || indexed->second != scanned)
+                {
+                    frontend::internal::reportIndexShadowMismatch(
+                        "findMetadataDispatchSlot", dispatch.slotSignatures[slot]);
+                }
+            }
+        }
+    }
     for (const LibraryMetadataMember& member : metadata.members)
-        if (!verifyVirtualMemberDispatch(metadata, member, typesByKey, error)) return false;
+        if (!verifyVirtualMemberDispatch(dispatchIndex, member, typesByKey, error)) return false;
     return true;
 }
 
@@ -834,8 +900,13 @@ bool verifyGenericTemplateClosure(
     const std::unordered_map<std::string, const LibraryMetadataGenericTemplate*>& templateByKey,
     std::vector<std::string>& chain,
     std::unordered_set<std::string>& visiting,
+    std::unordered_set<std::string>& verifiedTemplates,
     std::string& error)
 {
+    // A template whose walk already completed has a closure without missing same-module
+    // dependencies (a missing one would have stopped the verification), so walking it again
+    // cannot report anything.
+    if (verifiedTemplates.contains(generic.canonicalKey)) return true;
     if (!visiting.insert(generic.canonicalKey).second) return true;
     chain.push_back(generic.canonicalKey);
     for (const std::string& dependencyKey : generic.dependencies)
@@ -859,6 +930,7 @@ bool verifyGenericTemplateClosure(
                 templateByKey,
                 chain,
                 visiting,
+                verifiedTemplates,
                 error))
         {
             return false;
@@ -866,6 +938,7 @@ bool verifyGenericTemplateClosure(
     }
     chain.pop_back();
     visiting.erase(generic.canonicalKey);
+    verifiedTemplates.insert(generic.canonicalKey);
     return true;
 }
 
@@ -887,6 +960,8 @@ bool verifyGenericTemplates(
     }
     if (metadata.formatMinor < 11) return true;
     const std::string sameModulePrefix = metadata.moduleName + "::";
+    // Shared by every public root: a closure verified from one root is not walked again.
+    std::unordered_set<std::string> verifiedTemplates;
     for (const LibraryMetadataGenericTemplate& publicRoot : metadata.genericTemplates)
     {
         if (publicRoot.accessibility != kPublicAccessibility) continue;
@@ -900,6 +975,7 @@ bool verifyGenericTemplates(
                 templateByKey,
                 chain,
                 visiting,
+                verifiedTemplates,
                 error))
         {
             return false;
@@ -1415,6 +1491,15 @@ bool verifyReferenceReturnMemberMetadata(
                 "' carries ref-return outside an ordinary method or indexer getter";
             return false;
         }
+        // EN: Freeze 3.0 P3: `ref readonly` qualifies a ref return and nothing else.
+        // ES: Congelamiento 3.0 P3: `ref readonly` califica un retorno ref y nada mas.
+        if ((member.flags & kMetadataMemberReadonlyReferenceReturn) != 0U &&
+            (member.flags & kMetadataMemberReferenceReturn) == 0U)
+        {
+            error = "metadata member '" + member.declaringTypeKey + "." + member.signatureKey +
+                "' carries ref readonly without ref-return";
+            return false;
+        }
     }
     return true;
 }
@@ -1459,10 +1544,11 @@ bool verifyNoHeapAndVariadicMemberMetadata(
     return true;
 }
 
-template<typename Callable>
+// describeOwner returns the owner text of the error message; it runs only when the check fails.
+template<typename Callable, typename DescribeOwner>
 bool verifyParameterPackMetadata(
     const Callable& callable,
-    std::string_view owner,
+    const DescribeOwner& describeOwner,
     std::string& error)
 {
     for (std::size_t index = 0; index < callable.parameters.size(); ++index)
@@ -1474,7 +1560,7 @@ bool verifyParameterPackMetadata(
             parameter.defaultValueKind != LibraryMetadataDefaultValueKind::None ||
             parameter.typeKey.find("ReadOnlySpan__g1__") == std::string::npos)
         {
-            error = "metadata " + std::string(owner) + " parameter '" +
+            error = "metadata " + describeOwner() + " parameter '" +
                 parameter.name + "' carries an invalid params ReadOnlySpan<T> contract";
             return false;
         }
@@ -1491,7 +1577,10 @@ bool verifyParameterPackContracts(
     {
         if (!verifyParameterPackMetadata(
                 member,
-                "member '" + member.declaringTypeKey + "." + member.signatureKey + "'",
+                [&member]
+                {
+                    return "member '" + member.declaringTypeKey + "." + member.signatureKey + "'";
+                },
                 error))
         {
             return false;
@@ -1501,8 +1590,11 @@ bool verifyParameterPackContracts(
     {
         if (!verifyParameterPackMetadata(
                 function,
-                "namespace function '" + function.namespaceName + "." +
-                    function.signatureKey + "'",
+                [&function]
+                {
+                    return "namespace function '" + function.namespaceName + "." +
+                        function.signatureKey + "'";
+                },
                 error))
         {
             return false;
@@ -1521,10 +1613,11 @@ bool verifyVersionedMemberContracts(
     return verifyParameterPackContracts(metadata, error);
 }
 
-template<typename Callable>
+// describeOwner returns the owner text of the error message; it runs only when the check fails.
+template<typename Callable, typename DescribeOwner>
 bool verifyLifetimeMetadata(
     const Callable& callable,
-    std::string_view owner,
+    const DescribeOwner& describeOwner,
     std::string& error)
 {
     std::unordered_set<std::string> declared;
@@ -1532,7 +1625,7 @@ bool verifyLifetimeMetadata(
     {
         if (lifetime.empty() || !declared.insert(lifetime).second)
         {
-            error = "metadata " + std::string(owner) +
+            error = "metadata " + describeOwner() +
                 " contains an empty or duplicate lifetime parameter";
             return false;
         }
@@ -1542,7 +1635,7 @@ bool verifyLifetimeMetadata(
         if (!declared.contains(longer) ||
             (shorter != "static" && !declared.contains(shorter)))
         {
-            error = "metadata " + std::string(owner) +
+            error = "metadata " + describeOwner() +
                 " contains an undeclared lifetime outlives edge";
             return false;
         }
@@ -1557,7 +1650,8 @@ bool verifyLifetimeMetadataContracts(
     if (metadata.formatMinor < 34) return true;
     for (const LibraryMetadataType& type : metadata.types)
     {
-        if (!verifyLifetimeMetadata(type, "type '" + type.identityKey + "'", error))
+        if (!verifyLifetimeMetadata(
+                type, [&type] { return "type '" + type.identityKey + "'"; }, error))
             return false;
         if (type.kind == LibraryMetadataTypeKind::Delegate &&
             (type.delegateParameterPassKinds.size() !=
@@ -1573,14 +1667,20 @@ bool verifyLifetimeMetadataContracts(
     for (const LibraryMetadataMember& member : metadata.members)
         if (!verifyLifetimeMetadata(
                 member,
-                "member '" + member.declaringTypeKey + "." + member.signatureKey + "'",
+                [&member]
+                {
+                    return "member '" + member.declaringTypeKey + "." + member.signatureKey + "'";
+                },
                 error))
             return false;
     for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
         if (!verifyLifetimeMetadata(
                 function,
-                "namespace function '" + function.namespaceName + "." +
-                    function.signatureKey + "'",
+                [&function]
+                {
+                    return "namespace function '" + function.namespaceName + "." +
+                        function.signatureKey + "'";
+                },
                 error))
             return false;
     return true;

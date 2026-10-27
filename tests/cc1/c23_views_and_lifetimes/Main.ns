@@ -336,7 +336,7 @@ namespace cc1viewsandlifetimes
             return Optionals.None<int>();
         }
 
-        private static bool OptionalBasics()
+        private static bool OptionalBasics() throws InvalidOperationException
         {
             int[] numbers = new int[4];
             numbers[0] = 5; numbers[1] = -1; numbers[2] = 7; numbers[3] = 9;
@@ -449,7 +449,7 @@ namespace cc1viewsandlifetimes
             return true;
         }
 
-        public static int Main()
+        public static int Main() throws InvalidOperationException
         {
             if (!ViewBasics()) { return 1; }
             if (!ViewDoesNotCopy()) { return 2; }

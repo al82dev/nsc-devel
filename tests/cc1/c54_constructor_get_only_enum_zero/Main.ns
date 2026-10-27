@@ -33,12 +33,12 @@ namespace cc1constructorpropertyenumzero
     {
         public static int Main()
         {
-            GamePadTriggers triggers = new GamePadTriggers(0.25f, 0.75f);
+            raii GamePadTriggers triggers = new GamePadTriggers(0.25f, 0.75f);
             if (triggers.Left != 0.25f) { return 1; }
             if (triggers.Right != 0.75f) { return 2; }
             if (!GamePadDPad.GetButtonState(Buttons.Left, Buttons.Left)) { return 3; }
             if (GamePadDPad.GetButtonState(Buttons.Left, Buttons.Right)) { return 4; }
-            delete triggers;
+
             return 42;
         }
     }

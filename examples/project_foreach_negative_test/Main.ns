@@ -15,7 +15,7 @@ class P
 {
     public static int Main()
     {
-        NotIterable x = new NotIterable();
+        raii NotIterable x = new NotIterable();
         int sum = 0;
         foreach (var item in x)
         {

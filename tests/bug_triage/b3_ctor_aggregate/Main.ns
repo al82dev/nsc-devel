@@ -49,11 +49,11 @@ namespace bugtriage
             // Controls: the two shapes that are known to lower correctly.
             if (Controls.StaticTakes(v) != 42.0f) { return 1; }
 
-            Controls ctrl = new Controls();
+            raii Controls ctrl = new Controls();
             if (ctrl.InstanceTakes(v) != 42.0f) { return 2; }
 
             // The bug.
-            TakesBigInConstructor sut = new TakesBigInConstructor(v);
+            raii TakesBigInConstructor sut = new TakesBigInConstructor(v);
             if (sut.seen != 42.0f) { return 3; }
 
             return 42;

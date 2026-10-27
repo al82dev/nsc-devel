@@ -32,9 +32,9 @@ streams deterministas; `NIGHTLY` añade shards/permutaciones y escenarios de gra
 |---|---|---|---|---|
 | TD-DIA-001 | CD-DIA-001 | cuatro severidades | nombres exactos note/warning/error/lint | PR |
 | TD-DIA-002 | CD-DIA-001 | valor fuera del enum | fallback `error` | PR |
-| TD-DIA-003 | CD-DIA-002 | los 74 IDs | cada nombre exacto y único según tabla | PR |
-| TD-DIA-004 | CD-DIA-002 | primeros 69 IDs | `isNativeSharp3Diagnostic=false` | PR |
-| TD-DIA-005 | CD-DIA-002 | cinco IDs NS | true y nombres cortos exactos | PR |
+| TD-DIA-003 | CD-DIA-002 | los 77 IDs | cada nombre exacto y único según tabla | PR |
+| TD-DIA-004 | CD-DIA-002 | los 72 IDs ordinarios (0..68 y 74..76) | `isNativeSharp3Diagnostic=false` y valor numérico congelado | PR |
+| TD-DIA-005 | CD-DIA-002 | cinco IDs NS (69..73) | true, nombres cortos exactos y valores históricos 69..73 | PR |
 | TD-DIA-006 | CD-DIA-002 | valor de ID desconocido | `UnknownDiagnostic` y false | PR |
 | TD-DIA-007 | CD-DIA-003 | diagnóstico sólo con ubicación | conserva ID severidad ubicación mensaje y rango ausente | PR |
 | TD-DIA-008 | CD-DIA-003 | diagnóstico con rango | rango exacto por valor | PR |

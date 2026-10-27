@@ -322,8 +322,8 @@ public class Program
 {
     public static int Main()
     {
-        Left left = new Left();
-        Right right = new Right();
+        raii Left left = new Left();
+        raii Right right = new Right();
         Left result = left + right;
         return 0;
     }

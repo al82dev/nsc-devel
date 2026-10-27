@@ -6,6 +6,7 @@
 #include "Internal/SourceIncludeRule.h"
 
 #include "nativesharp/Compilation/GlobPattern.h"
+#include "nativesharp/Compilation/ImplicitProjectRegistry.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 #include "nativesharp/Compilation/SimpleXmlParser.h"
 #include "nativesharp/Compilation/SdkManifest.h"
@@ -744,6 +745,27 @@ bool loadDescriptorFile(
     error.clear();
     std::error_code filesystemError;
     canonicalProject = std::filesystem::weakly_canonical(projectFile, filesystemError);
+    // EN: Freeze 3.0 C-05: the implicit project of a lone `.ns` has no file; its text was
+    //     registered by the driver. Its descriptor is parsed each time (it is tiny).
+    // ES: Congelamiento 3.0 C-05: el proyecto implicito de un `.ns` suelto no tiene archivo; el
+    //     driver registro su texto. Su descriptor se analiza cada vez (es diminuto).
+    if (!filesystemError)
+    {
+        const std::optional<std::string> implicitText = ImplicitProjectRegistry::find(canonicalProject);
+        if (implicitText.has_value())
+        {
+            SimpleXmlElement implicitRoot;
+            SimpleXmlParser implicitParser;
+            if (implicitParser.parse(*implicitText, implicitRoot, error) &&
+                parseDescriptor(implicitRoot, descriptor, error))
+            {
+                descriptor.implicitProject = true;
+                return true;
+            }
+            error = canonicalProject.string() + ": " + error;
+            return false;
+        }
+    }
     if (filesystemError || !std::filesystem::is_regular_file(canonicalProject))
     {
         error = "project file does not exist or is not a regular file: '" + projectFile.string() + "'";
@@ -866,6 +888,24 @@ bool collectSourceCandidates(
 {
     std::vector<std::string> candidateKeys;
     std::error_code filesystemError;
+    if (descriptor.implicitProject)
+    {
+        for (const SourceIncludeRule& rule : descriptor.includes)
+        {
+            const std::filesystem::path relative = std::filesystem::path(rule.include.pattern()).lexically_normal();
+            const std::filesystem::path source = projectDirectory / relative;
+            if (source.extension() != ".ns" || !std::filesystem::is_regular_file(source, filesystemError))
+            {
+                error = "implicit project source does not exist: '" + source.string() + "'";
+                return false;
+            }
+            const std::string key = pathKey(relative);
+            if (std::find(candidateKeys.begin(), candidateKeys.end(), key) != candidateKeys.end()) continue;
+            candidates.push_back(source);
+            candidateKeys.push_back(key);
+        }
+        return true;
+    }
     std::filesystem::recursive_directory_iterator iterator(
         projectDirectory,
         std::filesystem::directory_options::skip_permission_denied,

@@ -156,7 +156,7 @@ public class Program
             selected = selected + 1;
         }
         int narrowed = Narrow(ref second);
-        Holder holder = new Holder(narrowed);
+        raii Holder holder = new Holder(narrowed);
         ref int field = ref holder.Get();
         field = field + 20;
         return field;

@@ -45,9 +45,11 @@ namespace NativeSharp.BookExamples.HashTable
                 }
                 current = current.Next;
             }
-            BucketNode node = new BucketNode(symbol);
-            node.Next = buckets[index];
-            buckets[index] = node;
+            // Congelamiento 3.0 (C-01): el `new` va directo a la cubeta que lo guarda; la tabla es su
+            // dueno manual y lo libera con `delete`.
+            BucketNode rest = buckets[index];
+            buckets[index] = new BucketNode(symbol);
+            buckets[index].Next = rest;
             count = count + 1;
             return true;
         }

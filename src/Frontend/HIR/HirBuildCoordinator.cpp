@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "HirLoweringSupport.h"
+#include "../Internal/TypeIndexShadowCheck.h"
 #include "Internal/RegularFunctionResult.h"
 #include "Internal/StackClassLocalUseFrame.h"
 
@@ -788,8 +789,11 @@ bool ProjectOopHirModel::buildRegularFunctionsInParallel(
         }
         const bool declarationOnly = member.isImportedC ||
             (member.isPrecompiled && member.kind != ClassMemberKind::Destructor);
+        // A declaration-only member (imported C, precompiled) has no body: its function is built
+        // from the member alone, as a worker model filtered to it would, without constructing a
+        // whole ProjectOopHirModel per member.
         if (declarationOnly)
-            buildMember(memberOrdinal);
+            buildDeclarationOnlyFunction(memberOrdinal, member, results[memberOrdinal]);
         else
             workers.submit([&buildMember, memberOrdinal](std::size_t)
             {
@@ -816,7 +820,8 @@ bool ProjectOopHirModel::mergeParallelRegularFunctions(
             return false;
         }
         if (result.functions.empty()) continue;
-        functionByMember_[memberOrdinal] = functions_.size();
+        const std::size_t wrapperIndex = functions_.size();
+        functionByMember_[memberOrdinal] = wrapperIndex;
         for (ProjectOopHirFunction& function : result.functions)
         {
             std::size_t localCount = 0;
@@ -841,8 +846,22 @@ bool ProjectOopHirModel::mergeParallelRegularFunctions(
             nextHirRegionOrdinal_ += regionCount;
             functions_.push_back(std::move(function));
         }
+        recordCoroutineBody(wrapperIndex);
     }
     return true;
+}
+
+// EN: Freeze 3.0 C-05. A coroutine's body sits right after its wrapper: the poll (async, async
+//     generator) or the MoveNext (generator).
+// ES: Congelamiento 3.0 C-05. El cuerpo de una corrutina queda justo despues de su envoltorio: el
+//     poll (async, generador async) o el MoveNext (generador).
+void ProjectOopHirModel::recordCoroutineBody(std::size_t wrapperIndex)
+{
+    if (wrapperIndex + 1 >= functions_.size()) return;
+    const ProjectOopHirFunction& wrapper = functions_[wrapperIndex];
+    const ProjectOopHirFunction& next = functions_[wrapperIndex + 1];
+    if (next.isAsyncPoll || next.mangledName == wrapper.mangledName + "$moveNext")
+        coroutineBodyFunction_[wrapperIndex] = wrapperIndex + 1;
 }
 
 bool ProjectOopHirModel::regularFunctionShouldBeSkipped(
@@ -863,8 +882,13 @@ bool ProjectOopHirModel::regularFunctionShouldBeSkipped(
         member.declaringTypeOrdinal < nameLookup_->namedTypes().size()
             ? nameLookup_->namedTypes()[member.declaringTypeOrdinal].syntax
             : nullptr;
-    const bool deferredGenericMethod = member.kind == ClassMemberKind::Method &&
-        !member.isVirtual && !member.isOverride && !member.isAbstract &&
+    // EN: Freeze 3.0 (item 130a): an instance constructor of a closed generic type is deferred too.
+    // ES: Congelamiento 3.0 (elemento 130a): un constructor de instancia de un tipo generico cerrado
+    //     tambien se difiere.
+    const bool deferredKind = (member.kind == ClassMemberKind::Method &&
+        !member.isVirtual && !member.isOverride && !member.isAbstract) ||
+        (member.kind == ClassMemberKind::Constructor && !member.isStatic);
+    const bool deferredGenericMethod = deferredKind &&
         ((member.syntax != nullptr &&
           member.syntax->auxiliaryText().starts_with(kDeferredSpecializationPrefix)) ||
          (declaringSyntaxForDemand != nullptr &&
@@ -897,9 +921,10 @@ bool ProjectOopHirModel::regularFunctionShouldBeSkipped(
     return false;
 }
 
-bool ProjectOopHirModel::appendPrecompiledRegularFunction(
+bool ProjectOopHirModel::makePrecompiledRegularFunction(
     std::size_t memberOrdinal,
     const ClassMemberSymbol& member,
+    ProjectOopHirFunction& imported,
     std::string& error)
 {
     // The declaration came from .nsmeta and participates in the ordinary NativeSharp
@@ -908,7 +933,6 @@ bool ProjectOopHirModel::appendPrecompiledRegularFunction(
     // produced once by the library producer and transported through NSMETA.  Recomputing
     // it here is incorrect when a closed generic argument acquired a qualified spelling
     // during source reconstruction.
-    ProjectOopHirFunction imported;
     imported.memberOrdinal = memberOrdinal;
     imported.declaringTypeOrdinal = member.declaringTypeOrdinal;
     imported.constructor = member.kind == ClassMemberKind::Constructor;
@@ -940,12 +964,22 @@ bool ProjectOopHirModel::appendPrecompiledRegularFunction(
         imported.parameterPassKinds.push_back(parameter.passKind);
         imported.parameterOwnerships.push_back(parameter.ownership);
     }
+    return true;
+}
+
+bool ProjectOopHirModel::appendPrecompiledRegularFunction(
+    std::size_t memberOrdinal,
+    const ClassMemberSymbol& member,
+    std::string& error)
+{
+    ProjectOopHirFunction imported;
+    if (!makePrecompiledRegularFunction(memberOrdinal, member, imported, error)) return false;
     if (!functionByMember_.empty()) functionByMember_[memberOrdinal] = functions_.size();
     functions_.push_back(std::move(imported));
     return true;
 }
 
-void ProjectOopHirModel::appendImportedCRegularFunction(
+ProjectOopHirFunction ProjectOopHirModel::makeImportedCRegularFunction(
     std::size_t memberOrdinal,
     const ClassMemberSymbol& member)
 {
@@ -982,8 +1016,35 @@ void ProjectOopHirModel::appendImportedCRegularFunction(
         imported.parameterPassKinds.push_back(parameter.passKind);
         imported.parameterOwnerships.push_back(parameter.ownership);
     }
+    return imported;
+}
+
+void ProjectOopHirModel::appendImportedCRegularFunction(
+    std::size_t memberOrdinal,
+    const ClassMemberSymbol& member)
+{
+    ProjectOopHirFunction imported = makeImportedCRegularFunction(memberOrdinal, member);
     if (!functionByMember_.empty()) functionByMember_[memberOrdinal] = functions_.size();
     functions_.push_back(std::move(imported));
+}
+
+void ProjectOopHirModel::buildDeclarationOnlyFunction(
+    std::size_t memberOrdinal,
+    const ClassMemberSymbol& member,
+    internal::RegularFunctionResult& result)
+{
+    // The branches buildRegularFunction takes for a member that is not skipped and is either
+    // imported from C or a precompiled method or constructor. A worker model filtered to this
+    // member produced exactly this one function, or this error, and no error range.
+    if (member.isImportedC)
+    {
+        result.functions.push_back(makeImportedCRegularFunction(memberOrdinal, member));
+        result.success = true;
+        return;
+    }
+    ProjectOopHirFunction imported;
+    result.success = makePrecompiledRegularFunction(memberOrdinal, member, imported, result.error);
+    if (result.success) result.functions.push_back(std::move(imported));
 }
 
 void ProjectOopHirModel::initializeRegularFunction(
@@ -1168,6 +1229,11 @@ bool ProjectOopHirModel::appendConstructorInitializerArguments(
             argument = wrapFreshOwnedTemporaryBorrow(
                 std::move(argument), argumentSyntax, hasOwnedTemporary);
         }
+        argument = wrapOwnedArgumentTransfer(
+            std::move(argument), argumentSyntax,
+            parameterIndex < selectedConstructor.parameters.size() &&
+                ownedValueParameter(selectedConstructor.parameters[parameterIndex]),
+            hasOwnedTemporary);
         initializerCall.children.push_back(std::move(argument));
         initializerCall.argumentParameterOrdinals.push_back(parameterIndex);
     }
@@ -1500,6 +1566,7 @@ bool ProjectOopHirModel::appendRegularCoroutineFunctions(
     std::unique_ptr<ProjectOopHirFunction> poll;
     std::unique_ptr<ProjectOopHirFunction> moveNext;
     std::unique_ptr<ProjectOopHirFunction> drop;
+    if (function.body != nullptr) ownDroppableTemporaries(function.body.get());
     // NS304-T07-F02: an async generator is ONE machine (await + yield) — the async-generator
     // split produces MoveNext (future) + poll + drop. A precompiled declaration (no lowered
     // body) is NOT re-split: its facade symbols live in the referenced .lib, so the consumer
@@ -1523,6 +1590,7 @@ bool ProjectOopHirModel::appendRegularCoroutineFunctions(
         {
             poll = splitAsyncFunction(function, error);
             if (poll == nullptr) return false;
+            drop = createAsyncFunctionDrop(function, function.returnTypeKey, function.body->syntax);
         }
         if (hasBody && !function.constructor && !function.destructor &&
             function.effects.contains(sema::Effect::Generator))
@@ -1533,12 +1601,21 @@ bool ProjectOopHirModel::appendRegularCoroutineFunctions(
             drop = std::move(split.second);
         }
     }
+    std::unique_ptr<ProjectOopHirFunction> entry;
+    if (poll && isAsyncEntryMain(function))
+    {
+        entry = createAsyncEntryFunction(function, error);
+        if (entry == nullptr) return false;
+    }
     if (!functionByMember_.empty())
         functionByMember_[function.memberOrdinal] = functions_.size();
+    const std::size_t wrapperIndex = functions_.size();
     functions_.push_back(std::move(function));
     if (poll) functions_.push_back(std::move(*poll));
     if (moveNext) functions_.push_back(std::move(*moveNext));
     if (drop) functions_.push_back(std::move(*drop));
+    if (entry) functions_.push_back(std::move(*entry));
+    recordCoroutineBody(wrapperIndex);
     return true;
 }
 
@@ -1597,10 +1674,16 @@ bool ProjectOopHirModel::buildRegularFunctionsSequentially(
     std::optional<std::size_t> memberFilter,
     std::string& error)
 {
+    // With a filter only that member is built (when it exists), as the loop below would do after
+    // skipping every other ordinal.
+    if (memberFilter.has_value())
+    {
+        return *memberFilter >= memberModel_->members().size() ||
+            buildRegularFunction(*memberFilter, error);
+    }
     for (std::size_t memberOrdinal = 0; memberOrdinal < memberModel_->members().size();
          ++memberOrdinal)
     {
-        if (memberFilter.has_value() && *memberFilter != memberOrdinal) continue;
         if (!buildRegularFunction(memberOrdinal, error)) return false;
     }
     return true;
@@ -1757,6 +1840,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
     function.body = lowerBlock(symbol.definitionSyntax->first(), callableOrdinal, error);
     activeHirCleanupRegions_.clear();
     if (function.body == nullptr) return false;
+    ownDroppableTemporaries(function.body.get());
     if (!cleanupNodes.empty())
     {
         function.body->children.insert(
@@ -1765,14 +1849,19 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             std::make_move_iterator(cleanupNodes.end()));
     }
     std::unique_ptr<ProjectOopHirFunction> poll;
+    std::unique_ptr<ProjectOopHirFunction> drop;
     if (function.effects.contains(sema::Effect::Async))
     {
         poll = splitAsyncFunction(function, error);
         if (poll == nullptr) return false;
+        drop = createAsyncFunctionDrop(function, function.returnTypeKey, function.body->syntax);
     }
-    functionByNamespaceFunction_[functionOrdinal] = functions_.size();
+    const std::size_t wrapperIndex = functions_.size();
+    functionByNamespaceFunction_[functionOrdinal] = wrapperIndex;
     functions_.push_back(std::move(function));
     if (poll) functions_.push_back(std::move(*poll));
+    if (drop) functions_.push_back(std::move(*drop));
+    recordCoroutineBody(wrapperIndex);
     return true;
 }
 
@@ -1897,6 +1986,7 @@ bool ProjectOopHirModel::buildLambdaFunction(
         lowerExpressionLambdaBody(function, lambda, error);
     currentLambda_ = nullptr;
     if (function.body == nullptr || !error.empty()) return false;
+    ownDroppableTemporaries(function.body.get());
     if (lambda.lambdaOrdinal >= functionByLambda_.size())
         functionByLambda_.resize(lambda.lambdaOrdinal + 1U);
     if (!functionByLambda_[lambda.lambdaOrdinal].has_value())
@@ -1943,6 +2033,13 @@ bool ProjectOopHirModel::markLambdaClosureCells(std::string& error)
             error = "E11 lambda creator function is unavailable";
             return false;
         }
+        // EN: A coroutine's locals live in the function that now holds its body.
+        // ES: Los locales de una corrutina viven en la funcion que ahora tiene su cuerpo.
+        ProjectOopHirFunction* localOwner = creator;
+        const auto body = coroutineBodyFunction_.find(
+            static_cast<std::size_t>(creator - functions_.data()));
+        if (body != coroutineBodyFunction_.end() && body->second < functions_.size())
+            localOwner = &functions_[body->second];
         for (const MethodLambdaCapture& capture : lambda.captures)
         {
             switch (capture.sourceKind)
@@ -1951,7 +2048,7 @@ bool ProjectOopHirModel::markLambdaClosureCells(std::string& error)
                 case MethodLambdaCaptureSourceKind::ParentLocal:
                     if (capture.sourceOrdinal.has_value())
                         appendUniqueOrdinal(
-                            creator->capturedLocalOrdinals, *capture.sourceOrdinal);
+                            localOwner->capturedLocalOrdinals, *capture.sourceOrdinal);
                     break;
                 case MethodLambdaCaptureSourceKind::OriginalParameter:
                 case MethodLambdaCaptureSourceKind::ParentParameter:
@@ -2202,6 +2299,16 @@ bool ProjectOopHirModel::isStructValueType(std::string_view typeKey) const noexc
     if (ProjectTypeConversion::isTuple(typeKey)) return true;
     if (nameLookup_ == nullptr || !typeKey.starts_with("type:")) return false;
     const std::string_view key = typeKey.substr(5);
+    if constexpr (internal::kIndexShadowCheckEnabled)
+        internal::shadowCheckTypeIdentityIndex(*nameLookup_, key, "ProjectOopHirModel::isStructValueType");
+    // The shared type index keeps the first type of an identity, as the scan below; the scan
+    // only runs for hand-assembled models that have no type index.
+    if (const std::optional<std::size_t> ordinal = nameLookup_->typeOrdinalForIdentity(key))
+    {
+        const NamedTypeDeclaration* type = nameLookup_->typeForOrdinal(*ordinal);
+        return type != nullptr && type->kind == NamedTypeDeclarationKind::Struct;
+    }
+    if (nameLookup_->hasTypeIndex()) return false;
     for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
     {
         if (type.identity.key() == key) return type.kind == NamedTypeDeclarationKind::Struct;
@@ -2216,6 +2323,16 @@ bool ProjectOopHirModel::isClassReferenceType(std::string_view typeKey) const no
         return false;
     }
     const std::string_view identity = typeKey.substr(5);
+    if constexpr (internal::kIndexShadowCheckEnabled)
+        internal::shadowCheckTypeIdentityIndex(*nameLookup_, identity, "ProjectOopHirModel::isClassReferenceType");
+    // The shared type index keeps the first type of an identity, as the scan below; the scan
+    // only runs for hand-assembled models that have no type index.
+    if (const std::optional<std::size_t> ordinal = nameLookup_->typeOrdinalForIdentity(identity))
+    {
+        const NamedTypeDeclaration* type = nameLookup_->typeForOrdinal(*ordinal);
+        return type != nullptr && type->kind == NamedTypeDeclarationKind::Class;
+    }
+    if (nameLookup_->hasTypeIndex()) return false;
     for (const NamedTypeDeclaration& type : nameLookup_->namedTypes())
     {
         if (type.identity.key() == identity)
@@ -2245,6 +2362,19 @@ bool ProjectOopHirModel::isReferenceType(std::string_view typeKey) const noexcep
         return false;
     }
     const std::string_view identity = typeKey.substr(5);
+    if constexpr (internal::kIndexShadowCheckEnabled)
+        internal::shadowCheckTypeIdentityIndex(*nameLookup_, identity, "ProjectOopHirModel::isReferenceType");
+    // The shared type index keeps the first type of an identity, as the scan below; the scan
+    // only runs for hand-assembled models that have no type index.
+    if (const std::optional<std::size_t> indexed = nameLookup_->typeOrdinalForIdentity(identity))
+    {
+        const NamedTypeDeclaration* type = nameLookup_->typeForOrdinal(*indexed);
+        return type != nullptr &&
+            (type->kind == NamedTypeDeclarationKind::Class ||
+             type->kind == NamedTypeDeclarationKind::Interface ||
+             type->kind == NamedTypeDeclarationKind::Delegate);
+    }
+    if (nameLookup_->hasTypeIndex()) return false;
     for (std::size_t ordinal = 0; ordinal < nameLookup_->namedTypes().size(); ++ordinal)
     {
         const NamedTypeDeclaration& type = nameLookup_->namedTypes()[ordinal];

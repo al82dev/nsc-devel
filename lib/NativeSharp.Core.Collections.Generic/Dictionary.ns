@@ -77,13 +77,17 @@ namespace NativeSharp.Core.Collections.Generic
             Initialize(actual);
         }
 
-        public Dictionary(HashFunc<TKey> hashFunc)
+        // EN: Freeze 3.0 P2: a HashFunc<TKey> receives a copy of the key, so these constructors
+        //     require `TKey : copy`.
+        // ES: Congelamiento 3.0 P2: un HashFunc<TKey> recibe una copia de la clave, asi que estos
+        //     constructores exigen `TKey : copy`.
+        public Dictionary(HashFunc<TKey> hashFunc) where TKey : copy
         {
             hasher = hashFunc;
             Initialize(4);
         }
 
-        public Dictionary(HashFunc<TKey> hashFunc, int capacity)
+        public Dictionary(HashFunc<TKey> hashFunc, int capacity) where TKey : copy
         {
             hasher = hashFunc;
             int actual = capacity;
@@ -185,7 +189,12 @@ namespace NativeSharp.Core.Collections.Generic
         // `TValue[]` of length (at least) 1, and slot 0 is written with the found value.
         // `result[0] = entryValues[index]` is a plain (non-owned) array-element write -- exactly
         // Keys()/Values()/ToArray()'s own snapshot-aliasing story, not an ownership transfer.
-        public bool TryGetValue(TKey key, TValue[] result)
+        //
+        // EN: Freeze 3.0 P3: TryGetValue and the getter copy the value and require `TValue : copy`;
+        //     Keys, Values, ToArray and the snapshot enumerator copy too.
+        // ES: Congelamiento 3.0 P3: TryGetValue y el getter copian el valor y exigen `TValue : copy`;
+        //     Keys, Values, ToArray y el enumerador por instantanea tambien copian.
+        public bool TryGetValue(TKey key, TValue[] result) where TValue : copy
         {
             int index = FindEntry(key);
             if (index < 0) { return false; }
@@ -197,7 +206,7 @@ namespace NativeSharp.Core.Collections.Generic
         // Use TryGetValue when a stored default(TValue) must be distinguished from a missing key.
         public TValue this[TKey key]
         {
-            get
+            get where TValue : copy
             {
                 int index = FindEntry(key);
                 if (index < 0)
@@ -445,7 +454,7 @@ namespace NativeSharp.Core.Collections.Generic
             freeCount = 0;
         }
 
-        public TKey[] Keys()
+        public TKey[] Keys() where TKey : copy
         {
             const TKey[] result = new TKey[Count()];
             int outIndex = 0;
@@ -462,7 +471,7 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
-        public TValue[] Values()
+        public TValue[] Values() where TValue : copy
         {
             const TValue[] result = new TValue[Count()];
             int outIndex = 0;
@@ -480,7 +489,7 @@ namespace NativeSharp.Core.Collections.Generic
         }
 
         // The returned snapshot aliases the dictionary's keys/values; it owns no element.
-        public KeyValuePair<TKey, TValue>[] ToArray()
+        public KeyValuePair<TKey, TValue>[] ToArray() where TKey : copy where TValue : copy
         {
             const KeyValuePair<TKey, TValue>[] result = new KeyValuePair<TKey, TValue>[Count()];
             int outIndex = 0;
@@ -502,7 +511,7 @@ namespace NativeSharp.Core.Collections.Generic
         // Key/Value in it is a plain non-owning alias into this dictionary. Thus foreach never
         // copies the dictionary owner or transfers an element; the dictionary must outlive the
         // loop. Mutations after GetEnumerator() do not change the sequence being visited.
-        public owned DictionaryEnumerator<TKey, TValue> GetEnumerator()
+        public owned DictionaryEnumerator<TKey, TValue> GetEnumerator() where TKey : copy where TValue : copy
         {
             return new DictionaryEnumerator<TKey, TValue>(this);
         }
@@ -510,7 +519,10 @@ namespace NativeSharp.Core.Collections.Generic
         // Two plain (key, value) parameters rather than one `KeyValuePair<TKey,TValue>` parameter
         // -- see the class comment for why: this sidesteps Stage 40's struct-size ABI limitation
         // entirely (two plain values are never at risk of it, however large TKey/TValue are).
-        public void ForEach(KeyValueAction<TKey, TValue> action)
+        //
+        // EN: Freeze 3.0 P2: the action receives copies of the key and the value.
+        // ES: Congelamiento 3.0 P2: la accion recibe copias de la clave y del valor.
+        public void ForEach(KeyValueAction<TKey, TValue> action) where TKey : copy where TValue : copy
         {
             int i = 0;
             while (i < count)
@@ -521,6 +533,70 @@ namespace NativeSharp.Core.Collections.Generic
                 }
                 i = i + 1;
             }
+        }
+
+        // EN: Freeze 3.0 P2: lends every live key to `action`, in entry order. HashSet<T>.ForEach
+        //     (InAction<T>) uses it, because Keys() copies.
+        // ES: Congelamiento 3.0 P2: presta cada clave viva a `action`, en orden de entradas. Lo usa
+        //     HashSet<T>.ForEach(InAction<T>), porque Keys() copia.
+        public void ForEachKey(InAction<TKey> action)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                if (entryHashCodes[i] >= 0) { action(in entryKeys[i]); }
+                i = i + 1;
+            }
+        }
+
+        // EN: Freeze 3.0 P2: removes (and destroys) every entry whose key matches `predicate`, which
+        //     borrows the key; returns how many were removed. Used by HashSet<T>.RemoveWhere.
+        // ES: Congelamiento 3.0 P2: quita (y destruye) cada entrada cuya clave cumple `predicate`, que
+        //     recibe la clave prestada; devuelve cuantas quito. Lo usa HashSet<T>.RemoveWhere.
+        public int RemoveKeysWhere(InPredicate<TKey> predicate)
+        {
+            int removed = 0;
+            int i = 0;
+            while (i < count)
+            {
+                if (entryHashCodes[i] >= 0 && predicate(in entryKeys[i]))
+                {
+                    RemoveEntryAt(i);
+                    removed = removed + 1;
+                }
+                i = i + 1;
+            }
+            return removed;
+        }
+
+        // EN: Unlinks live entry `index` from its bucket chain, destroys its key and value and puts
+        //     the slot on the free list -- the same steps Remove(key) takes once it finds the entry.
+        // ES: Desengancha la entrada viva `index` de su cadena, destruye su clave y su valor y pone el
+        //     hueco en la lista libre -- los mismos pasos que Remove(key) da al encontrar la entrada.
+        private void RemoveEntryAt(int index)
+        {
+            int bucketIndex = entryHashCodes[index] % buckets.Length;
+            int previous = -1;
+            int i = buckets[bucketIndex];
+            while (i != index)
+            {
+                previous = i;
+                i = entryNext[i];
+            }
+            if (previous < 0)
+            {
+                buckets[bucketIndex] = entryNext[index];
+            }
+            else
+            {
+                entryNext[previous] = entryNext[index];
+            }
+            delete entryKeys[index];
+            delete entryValues[index];
+            entryHashCodes[index] = -1;
+            entryNext[index] = freeFirst;
+            freeFirst = index;
+            freeCount = freeCount + 1;
         }
 
         ~Dictionary()

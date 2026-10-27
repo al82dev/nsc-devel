@@ -67,6 +67,9 @@ public:
     void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
     void setRuntimeLibrary(std::filesystem::path runtimeLibrary);
     void setProgramObjectsVerified(bool verified) noexcept;
+    // EN: DLL links pass /opt:ref (ThinLTO objects of a final link, optimization part 2 item 50).
+    // ES: Los enlaces de DLL pasan /opt:ref (objetos ThinLTO de un enlace final, parte 2 punto 50).
+    void setRemoveUnreferencedSections(bool remove) noexcept;
 
 private:
     CoffArchiveInfo archiveInfo_;
@@ -75,6 +78,7 @@ private:
     std::vector<std::filesystem::path> extraLinkLibraries_;
     std::filesystem::path runtimeLibrary_;
     bool programObjectsVerified_ = false;
+    bool removeUnreferencedSections_ = false;
     bool staticArchiveCacheAttempted_ = false;
     bool reusedStaticArchive_ = false;
     bool runtimeObjectCacheAttempted_ = false;

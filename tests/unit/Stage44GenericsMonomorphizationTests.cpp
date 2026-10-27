@@ -90,7 +90,7 @@ namespace Demo
             Pair<int, int> pair;
             pair.Left = a.Get();
             pair.Right = repeated.Get();
-            Holder<int> holder = new Holder<int>(pair.Left);
+            raii Holder<int> holder = new Holder<int>(pair.Left);
             int[] values = new int[2];
             values[0] = holder.Get();
             values[1] = 4;
@@ -241,7 +241,7 @@ public class Box<T> : ITaggedValue<T>
     public Box(T value) { stored = value; }
     public T Get() { return stored; }
     public int Tag() { return 2; }
-    public static Box<T> Create(T value) { return new Box<T>(value); }
+    public static owned Box<T> Create(T value) { return new Box<T>(value); }
 }
 
 public class Reader<T> where T : IValue<int>
@@ -253,8 +253,8 @@ public class Program
 {
     public static int Main()
     {
-        Box<int> box = Box<int>.Create(40);
-        ITaggedValue<int> tagged = box;
+        raii Box<int> box = Box<int>.Create(40);
+        borrowed ITaggedValue<int> tagged = box;
         return Reader<Box<int>>.Read(box) + tagged.Tag();
     }
 }
@@ -298,7 +298,7 @@ class Program
     public static int Read(IValue value) { return value.Get(); }
     public static int Main()
     {
-        Box<int> box = new Box<int>(42);
+        raii Box<int> box = new Box<int>(42);
         return Read(box);
     }
 }
@@ -394,7 +394,7 @@ class H
 {
     public static int F()
     {
-        Box<int> box = new Box<int>(4);
+        raii Box<int> box = new Box<int>(4);
         return Util.Id<int>(box.Get());
     }
 }

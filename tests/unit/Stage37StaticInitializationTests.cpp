@@ -474,8 +474,8 @@ void testInitializerOrderingAndTypeInit(TestContext& tests, const std::filesyste
         "class Statics { public static int A = 2; public static int B = Init(); "
         "static Statics() { B = B + 1; } public static int Init() { return A * 3; } "
         "public Statics() { } public int Read() { return B; } } "
-        "class Harness { public static Leaf MakeLeaf() { return new Leaf(); } "
-        "public static Delegating MakeDelegating() { return new Delegating(); } }");
+        "class Harness { public static owned Leaf MakeLeaf() { return new Leaf(); } "
+        "public static owned Delegating MakeDelegating() { return new Delegating(); } }");
 
     ProjectCompilation compilation;
     std::string error;

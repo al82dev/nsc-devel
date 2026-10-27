@@ -39,9 +39,9 @@ namespace bugtriage
     {
         public static int Main()
         {
-            Node a = new Node(1);
-            Node b = new Node(1);
-            Node c = new Node(2);
+            raii Node a = new Node(1);
+            raii Node b = new Node(1);
+            raii Node c = new Node(2);
 
             if (!(a == b)) { return 1; }
             if (a == c) { return 2; }

@@ -3,6 +3,8 @@
 #include "../Internal/AnonymousMemberPromotionVisitState.h"
 #include "../Internal/EnumValue.h"
 #include "../Internal/EnumSuccessor.h"
+#include "../Internal/IndexShadowCheckSwitch.h"
+#include "../Internal/IndexShadowMismatch.h"
 
 #include "nativesharp/Language/AggregateSemantics.h"
 #include "nativesharp/Language/CallableSemantics.h"
@@ -132,6 +134,20 @@ void ProjectMemberModel::validateCopyType(
             continue;
         }
         if (field.kind != ClassMemberKind::Field || field.isStatic || field.isConst) continue;
+        // EN: Freeze 3.0 P3: a generic `copy` struct is Copy only when its type arguments allow it.
+        //     `KeyValuePair<Guard, int>` keeps a move-only field, so that closed type is simply
+        //     move-only (typeIsImplicitlyCopyable already derives this from the fields) instead of an
+        //     error; `KeyValuePair<int, int>` stays Copy. An `owned` field is never Copy and is still
+        //     rejected. Specializations are recognized by the `__g` arity marker in their name, as
+        //     elsewhere in the compiler.
+        // ES: Congelamiento 3.0 P3: un struct `copy` generico es Copy solo si sus argumentos de tipo
+        //     lo permiten. `KeyValuePair<Guard, int>` guarda un campo move-only, asi que ese tipo
+        //     cerrado es simplemente move-only (typeIsImplicitlyCopyable ya lo deriva de los campos)
+        //     en vez de un error; `KeyValuePair<int, int>` sigue siendo Copy. Un campo `owned` nunca
+        //     es Copy y se sigue rechazando. Las especializaciones se reconocen por la marca de aridad
+        //     `__g` en su nombre, como en el resto del compilador.
+        const bool specialization = type.identity.name().find("__g") != std::string::npos;
+        if (specialization && field.declaredOwnership != sema::OwnershipKind::Owned) continue;
         if (field.declaredOwnership == sema::OwnershipKind::Owned ||
             !typeIsImplicitlyCopyable(field.declaredTypeKey))
         {
@@ -335,10 +351,15 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
     std::ranges::sort(aliases, [](const auto& left, const auto& right) {
         return left.first.size() > right.first.size();
     });
+    // Only effective aliases (non-empty and different from the published key) change a key.
+    // They are filtered once, after the sort, so the effective ones keep their sorted order;
+    // without any effective alias canonicalize returns its input unchanged.
+    std::erase_if(aliases, [](const auto& alias) {
+        return alias.first.empty() || alias.first == alias.second;
+    });
     const auto canonicalize = [&](std::string value) {
         for (const auto& [localTypeKey, publishedTypeKey] : aliases)
         {
-            if (localTypeKey.empty() || localTypeKey == publishedTypeKey) continue;
             std::size_t cursor = 0;
             while ((cursor = value.find(localTypeKey, cursor)) != std::string::npos)
             {
@@ -350,6 +371,9 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
     };
 
     const PrecompiledMemberIdentityIndex identityIndex(identities);
+    // canonicalize is a pure function of its input, so the canonical key of each declaring type
+    // is computed once and reused by its other members.
+    std::unordered_map<std::size_t, std::string> declaringTypeKeys;
 
     for (ClassMemberSymbol& member : members_)
     {
@@ -364,8 +388,21 @@ bool ProjectMemberModel::bindPrecompiledPhysicalNames(
             return false;
         }
 
-        const std::string declaringTypeKey = canonicalize(
-            "type:" + nameLookup_->namedTypes()[member.declaringTypeOrdinal].identity.key());
+        auto declaringTypeEntry = declaringTypeKeys.find(member.declaringTypeOrdinal);
+        if (declaringTypeEntry == declaringTypeKeys.end())
+        {
+            declaringTypeEntry = declaringTypeKeys.emplace(
+                member.declaringTypeOrdinal,
+                canonicalize("type:" + nameLookup_->namedTypes()[member.declaringTypeOrdinal].identity.key()))
+                .first;
+        }
+        const std::string& declaringTypeKey = declaringTypeEntry->second;
+        if constexpr (internal::kIndexShadowCheckEnabled)
+        {
+            if (declaringTypeKey != canonicalize(
+                    "type:" + nameLookup_->namedTypes()[member.declaringTypeOrdinal].identity.key()))
+                internal::reportIndexShadowMismatch("bindPrecompiledPhysicalNames", declaringTypeKey);
+        }
         const std::string signatureKey = canonicalize(member.signatureKey);
         const PrecompiledMemberIdentityMatch match = identityIndex.find(
             member.kind, declaringTypeKey, member.name, signatureKey);

@@ -86,7 +86,7 @@ public class Program
         {
             return 2;
         }
-        Device device = new Device();
+        raii Device device = new Device();
         device.State = 9;
         if (device.State != 9) { return 3; }
         return 0;

@@ -3,7 +3,7 @@ namespace NativeSharp.BookExamples.CircularJosephus
 {
     class Program
     {
-        public static int Main()
+        public static int Main() throws Exception
         {
             Console.WriteLine("NativeSharp Book Example 10 - Circular List / Josephus");
             Console.WriteLine("---------------------------------------------------------");

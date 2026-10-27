@@ -25,7 +25,7 @@ namespace Tutorial.ForeachSobreColecciones
             return Hashing.Int32(value);
         }
 
-        public static int Main()
+        public static int Main() throws ArgumentException
         {
             int arraySum = 0;
             int[] numbers = new int[4];
@@ -49,7 +49,7 @@ namespace Tutorial.ForeachSobreColecciones
             // YA es un raii local existente. Por eso, igual que en el ejemplo original de
             // compilador para esta feature (examples/project_stage52x_foreach/Main.ns), la lista
             // se declara SIN raii aqui y se libera con delete explicito al final.
-            List<int> list = new List<int>();
+            raii List<int> list = new List<int>();
             list.Add(10);
             list.Add(20);
             list.Add(30);
@@ -58,11 +58,10 @@ namespace Tutorial.ForeachSobreColecciones
             {
                 listSum = listSum + n;
             }
-            delete list;
 
             // Queue<T>/Stack<T> -- foreach respeta el orden logico de cada uno: FIFO para Queue,
             // tope-a-fondo para Stack (P1.2 de la revision tecnica de foreach).
-            Queue<int> queue = new Queue<int>();
+            raii Queue<int> queue = new Queue<int>();
             queue.Enqueue(1);
             queue.Enqueue(2);
             queue.Enqueue(3);
@@ -73,10 +72,9 @@ namespace Tutorial.ForeachSobreColecciones
                 raii string next = String.Concat(queueOrder, digit);
                 queueOrder = move(next);
             }
-            delete queue;
             // queueOrder == "123" -- orden de insercion (FIFO)
 
-            Stack<int> stack = new Stack<int>();
+            raii Stack<int> stack = new Stack<int>();
             stack.Push(1);
             stack.Push(2);
             stack.Push(3);
@@ -87,12 +85,11 @@ namespace Tutorial.ForeachSobreColecciones
                 raii string next = String.Concat(stackOrder, digit);
                 stackOrder = move(next);
             }
-            delete stack;
             // stackOrder == "321" -- tope primero (LIFO)
 
             // Dictionary NO tiene GetEnumerator() -- se recorre Keys()/Values(), que ya son T[].
             HashFunc<int> intHash = HashInt;
-            Dictionary<int, int> squares = new Dictionary<int, int>(intHash);
+            raii Dictionary<int, int> squares = new Dictionary<int, int>(intHash);
             squares.Add(2, 4);
             squares.Add(3, 9);
             squares.Add(4, 16);
@@ -110,7 +107,6 @@ namespace Tutorial.ForeachSobreColecciones
                 valueSum = valueSum + value;
             }
             delete[] values;
-            delete squares;
 
             raii string label = String.Copy("arraySum/listSum/queueOrder/stackOrder = ");
             raii string sep = String.Copy(" / ");

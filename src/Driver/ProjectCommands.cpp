@@ -27,6 +27,7 @@
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
+#include "nativesharp/LLVM/ThinLtoLibrarySidecarCodec.h"
 
 #include <algorithm>
 #include <array>
@@ -154,6 +155,7 @@ bool loadSidecar(const fs::path& project, Sidecar& sidecar, std::string& error, 
         sidecar.build.optimization = stringMember(*build, "optimization", "O0");
         sidecar.build.debugInformation = stringMember(*build, "debug_information", "full");
         sidecar.build.linker = stringMember(*build, "linker", "NSLink");
+        sidecar.build.linkTimeOptimization = stringMember(*build, "link_time_optimization", "none");
         sidecar.build.target = stringMember(*build, "target", "x86_64-pc-windows-msvc");
         sidecar.build.restoreBeforeBuild = boolMember(*build, "restore_before_build", true);
     }
@@ -186,7 +188,12 @@ std::string renderSidecar(const Sidecar& sidecar)
     std::ostringstream stream;
     stream << "{\n  \"build\": {\n"
            << "    \"configuration\": \"" << jsonEscape(sidecar.build.configuration) << "\",\n"
-           << "    \"debug_information\": \"" << jsonEscape(sidecar.build.debugInformation) << "\",\n"
+           << "    \"debug_information\": \"" << jsonEscape(sidecar.build.debugInformation) << "\",\n";
+    // The key is written only when it is not the default, so existing sidecars render unchanged.
+    // La llave solo se escribe cuando no es el valor por omision; los sidecars existentes no cambian.
+    if (sidecar.build.linkTimeOptimization != "none")
+        stream << "    \"link_time_optimization\": \"" << jsonEscape(sidecar.build.linkTimeOptimization) << "\",\n";
+    stream
            << "    \"linker\": \"" << jsonEscape(sidecar.build.linker) << "\",\n"
            << "    \"optimization\": \"" << jsonEscape(sidecar.build.optimization) << "\",\n"
            << "    \"restore_before_build\": " << (sidecar.build.restoreBeforeBuild ? "true" : "false") << ",\n"
@@ -342,8 +349,17 @@ bool appendArtifact(RestoredPackage& package, std::string type, const fs::path& 
     }
     const fs::path source = (package.sourceRoot / relative).lexically_normal();
     std::error_code fileError;
-    const fs::path canonicalRoot = fs::weakly_canonical(package.sourceRoot, fileError);
-    if (fileError) { error = "cannot resolve package root: " + fileError.message(); return false; }
+    if (package.canonicalSourceRoot.empty())
+    {
+        package.canonicalSourceRoot = fs::weakly_canonical(package.sourceRoot, fileError);
+        if (fileError)
+        {
+            package.canonicalSourceRoot.clear();
+            error = "cannot resolve package root: " + fileError.message();
+            return false;
+        }
+    }
+    const fs::path& canonicalRoot = package.canonicalSourceRoot;
     const fs::path canonicalSource = fs::weakly_canonical(source, fileError);
     if (fileError || !fs::is_regular_file(canonicalSource))
     {
@@ -398,6 +414,38 @@ bool appendOptionalProductSidecar(
     }
     return appendArtifact(
         package, "precompiled-products", sidecar, destinationBase, error);
+}
+
+// EN: Restores the ThinLTO bitcode sidecar of a static library with the library, when the package
+//     has one (optimization part 2, item 52). A DLL's import library never gets one: the DLL
+//     boundary is a binary contract. A sidecar the package already lists in "files" is not added
+//     twice. Its hash enters the lock like every other artifact.
+// ES: Restaura el sidecar de bitcode ThinLTO de una biblioteca estatica junto con la biblioteca,
+//     cuando el paquete lo trae (parte 2, punto 52). La biblioteca de importacion de una DLL nunca
+//     lo lleva: el limite de la DLL es un contrato binario. Un sidecar que el paquete ya lista en
+//     "files" no se agrega dos veces. Su hash entra al lock como cualquier otro artefacto.
+bool appendOptionalThinLtoSidecar(
+    RestoredPackage& package,
+    const fs::path& library,
+    const fs::path& destinationBase,
+    std::string& error)
+{
+    const fs::path sidecar = llvm_backend::ThinLtoLibrarySidecarCodec::pathFor(library);
+    const fs::path source = package.sourceRoot / sidecar;
+    std::error_code fileError;
+    if (!fs::is_regular_file(source, fileError))
+    {
+        if (!fileError || fileError == std::errc::no_such_file_or_directory)
+            return true;
+        error = "cannot inspect package ThinLTO sidecar '" + source.string() + "': " + fileError.message();
+        return false;
+    }
+    const fs::path destination = destinationBase / sidecar.filename();
+    for (const Artifact& artifact : package.artifacts)
+    {
+        if (artifact.relativeDestination == destination) return true;
+    }
+    return appendArtifact(package, "thinlto-sidecar", sidecar, destinationBase, error);
 }
 
 std::optional<fs::path> packageManifest(const fs::path& root)
@@ -461,6 +509,7 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
         { error = "package manifest must contain at least one library"; return false; }
         std::vector<fs::path> metadataArtifacts;
         metadataArtifacts.reserve(libraries->array()->size());
+        std::vector<fs::path> staticLibraries;
         for (const Json& library : *libraries->array())
         {
             const fs::path metadataArtifact =
@@ -471,6 +520,7 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
             metadataArtifacts.push_back(metadataArtifact);
             const std::string runtime = stringMember(library, "runtime");
             if (!runtime.empty() && !appendArtifact(package, "runtime", runtime, destinationBase, error)) return false;
+            if (runtime.empty()) staticLibraries.push_back(stringMember(library, "library"));
         }
         if (const Json* files = member(root, "files"))
         {
@@ -487,6 +537,10 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
             if (!appendOptionalProductSidecar(
                     package, metadataArtifact, destinationBase, error))
                 return false;
+        }
+        for (const fs::path& staticLibrary : staticLibraries)
+        {
+            if (!appendOptionalThinLtoSidecar(package, staticLibrary, destinationBase, error)) return false;
         }
     }
     else
@@ -511,6 +565,8 @@ bool resolvePackage(const PackageRequest& request, const std::optional<fs::path>
         if (!appendOptionalProductSidecar(
                 package, metadata.front(), destinationBase, error)) return false;
         if (!runtimes.empty() && !appendArtifact(package, "runtime", runtimes.front(), destinationBase, error))
+            return false;
+        if (runtimes.empty() && !appendOptionalThinLtoSidecar(package, libraries.front(), destinationBase, error))
             return false;
     }
     return true;
@@ -691,9 +747,14 @@ ExitCode executeRestore(const RestoreOptions& options, bool json, std::ostream& 
         verified = 0;
         if (!verifyPlan(plan, verified, message)) return result.failure(error, message, ExitCode::InternalError);
     }
-    if (!options.locked && !atomicWrite(lockPath, plan.lock, message))
+    // An identical lock is not rewritten: same bytes, and no new timestamp for tools watching it.
+    std::string existingLock;
+    std::string ignoredReadError;
+    const bool rewriteLock = !options.locked &&
+        !(readText(lockPath, existingLock, ignoredReadError) && existingLock == plan.lock);
+    if (rewriteLock && !atomicWrite(lockPath, plan.lock, message))
         return result.failure(error, message, ExitCode::InternalError);
-    if (completedPlan != nullptr) *completedPlan = plan;
+    if (completedPlan != nullptr) *completedPlan = std::move(plan);
     return result.success(output,
         copied == 0 ? "Restore is current: " + std::to_string(verified) + " artifact(s)" :
                       "Restored " + std::to_string(copied) + " artifact(s)",
@@ -942,9 +1003,9 @@ bool parseBuildProgressOption(
     if (!enablesProgress && !argument.starts_with(formatPrefix)) return false;
     const std::string_view prefix = enablesProgress ? progressPrefix : formatPrefix;
     const std::string_view value = argument.substr(prefix.size());
-    if (value != "text" && value != "json")
+    if (value != "files" && value != "text" && value != "json")
     {
-        error = "progress format must be text or json";
+        error = "progress format must be files, text or json";
         return false;
     }
     if ((enablesProgress && options.progress) || options.progressFormat.has_value())
@@ -969,9 +1030,18 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
             options.configuration = std::string(arguments[++index]);
         else if (argument == "--linker" && index + 1 < arguments.size())
             options.linker = std::string(arguments[++index]);
+        else if (argument == "-flto" || argument.starts_with("-flto="))
+        {
+            if (options.linkTimeOptimization.has_value())
+            { error = "duplicate link-time optimization mode"; return false; }
+            options.linkTimeOptimization = argument == "-flto"
+                ? std::string("full")
+                : std::string(argument.substr(std::string_view("-flto=").size()));
+        }
         else if (argument == "--no-restore") options.noRestore = true;
         else if (argument == "--precompiled-only") options.precompiledOnly = true;
         else if (argument == "--dependency-report") options.dependencyReport = true;
+        else if (argument == "--validate-system-imports") options.validateSystemImports = true;
         else if (argument == "--progress" || argument.starts_with("--progress=") ||
                  argument.starts_with("--progress-format="))
         {
@@ -1160,6 +1230,13 @@ std::vector<DependencyProvenance> dependencyProvenance(
             if (!reference.runtimePath.empty()) artifacts.push_back(reference.runtimePath);
             if (!reference.productSidecarPath.empty())
                 artifacts.push_back(reference.productSidecarPath);
+            // The ThinLTO sidecar of a static library is part of what the build consumed (item 52).
+            // El sidecar ThinLTO de una biblioteca estatica es parte de lo que consumio el build.
+            const fs::path thinLtoSidecar =
+                llvm_backend::ThinLtoLibrarySidecarCodec::pathFor(reference.libraryPath);
+            std::error_code sidecarError;
+            if (reference.runtimePath.empty() && fs::is_regular_file(thinLtoSidecar, sidecarError))
+                artifacts.push_back(thinLtoSidecar);
             records.push_back(DependencyProvenance{
                 "library-reference", reference.metadataPath.stem().string(),
                 reference.libraryPath,
@@ -1210,6 +1287,7 @@ bool resolveBuildSettings(
     std::string& optimization,
     std::string& debug,
     std::string& linker,
+    std::string& linkTimeOptimization,
     std::optional<fs::path>& libraryReferenceRoot,
     std::optional<std::size_t>& compilerJobs,
     std::string& message)
@@ -1239,6 +1317,12 @@ bool resolveBuildSettings(
     if (linker != "NSLink")
     {
         message = "linker must be NSLink";
+        return false;
+    }
+    linkTimeOptimization = options.linkTimeOptimization.value_or(sidecar.build.linkTimeOptimization);
+    if (linkTimeOptimization != "none" && linkTimeOptimization != "full" && linkTimeOptimization != "thin")
+    {
+        message = "link-time optimization must be none, full, or thin";
         return false;
     }
     if (options.libraryReferenceRoot.has_value() &&
@@ -1404,6 +1488,7 @@ void appendNestedCompilerOptions(
         owned.push_back("-j");
         owned.push_back(std::to_string(*compilerJobs));
     }
+    if (options.validateSystemImports) owned.push_back("--validate-system-imports");
     if (options.progress)
     {
         owned.push_back(options.progressFormat.has_value()
@@ -1460,6 +1545,7 @@ ExitCode executeConfiguredBuild(
     const std::string& optimization,
     const std::string& debug,
     const std::string& linker,
+    const std::string& linkTimeOptimization,
     const std::optional<fs::path>& libraryReferenceRoot,
     const std::optional<std::size_t>& compilerJobs,
     const fs::path& generated,
@@ -1484,6 +1570,7 @@ ExitCode executeConfiguredBuild(
             ExitCode::InternalError);
 
     std::vector<std::string> owned{action, generated.string(), "-" + optimization, debug};
+    if (linkTimeOptimization != "none") owned.push_back("-flto=" + linkTimeOptimization);
     appendNestedCompilerOptions(options, libraryReferenceRoot, compilerJobs, owned);
     owned.push_back("-o");
     owned.push_back(artifact.string());
@@ -1517,6 +1604,7 @@ ExitCode executeConfiguredBuild(
         "\"artifact\":\"" + jsonEscape(pathText(artifact)) +
         "\",\"configuration\":\"" + jsonEscape(configuration) +
         "\",\"optimization\":\"" + jsonEscape(optimization) +
+        "\",\"linkTimeOptimization\":\"" + jsonEscape(linkTimeOptimization) +
         "\",\"linker\":\"" + jsonEscape(linker) +
         "\",\"contentFiles\":" + std::to_string(contentFiles) +
         (options.dependencyReport
@@ -1545,11 +1633,11 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
     if (!loadSidecar(project, sidecar, message, false))
         return result.failure(error, message);
 
-    std::string configuration, optimization, debug, linker;
+    std::string configuration, optimization, debug, linker, linkTimeOptimization;
     std::optional<fs::path> libraryReferenceRoot;
     std::optional<std::size_t> compilerJobs;
     if (!resolveBuildSettings(options, *projectSettings, sidecar,
-            configuration, optimization, debug, linker,
+            configuration, optimization, debug, linker, linkTimeOptimization,
             libraryReferenceRoot, compilerJobs, message))
         return result.failure(error, message);
 
@@ -1576,11 +1664,15 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
     compilation::LibraryMetadataRepository metadataRepository;
     if (!manifest.calculateIdentity(metadataRepository, message))
         return result.failure(error, message, ExitCode::CompilationError);
-    std::vector<DependencyProvenance> provenance =
-        dependencyProvenance(manifest.projectGraph(), plan, manifest);
-    updateRootDependencyProvenance(project, *loaded, manifest, provenance);
-    if (options.dependencyReport && !json)
-        printDependencyProvenance(output, provenance);
+    // The provenance hashes every project input again; only --dependency-report prints it or puts
+    // it in the JSON result, so it is computed only then.
+    std::vector<DependencyProvenance> provenance;
+    if (options.dependencyReport)
+    {
+        provenance = dependencyProvenance(manifest.projectGraph(), plan, manifest);
+        updateRootDependencyProvenance(project, *loaded, manifest, provenance);
+        if (!json) printDependencyProvenance(output, provenance);
+    }
     return executeConfiguredBuild(
         options,
         json,
@@ -1591,6 +1683,7 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
         optimization,
         debug,
         linker,
+        linkTimeOptimization,
         libraryReferenceRoot,
         compilerJobs,
         generated,

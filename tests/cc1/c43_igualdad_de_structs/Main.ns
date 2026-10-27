@@ -184,7 +184,7 @@ namespace c43igualdaddestructs
             e2.largo = 9000000001;
             if (e1 == e2) { return 27; }
 
-            Caja<Punto> caja = new Caja<Punto>();
+            raii Caja<Punto> caja = new Caja<Punto>();
             if (!caja.Iguales(a, b)) { return 22; }
             if (!caja.Distintos(a, c)) { return 23; }
 

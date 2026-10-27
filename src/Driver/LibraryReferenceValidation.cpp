@@ -1,4 +1,6 @@
 #include "Internal/DriverInternal.h"
+#include "../Frontend/Internal/IndexShadowCheckSwitch.h"
+#include "../Frontend/Internal/IndexShadowMismatch.h"
 
 #include <memory>
 
@@ -20,6 +22,49 @@ void appendExternalImport(std::vector<linker::ExternalImportModule> &modules, co
     }
     if (std::ranges::find(module->symbols, symbol) == module->symbols.end())
         module->symbols.push_back(symbol);
+}
+
+ExternalImportListBuilder::ExternalImportListBuilder(std::vector<linker::ExternalImportModule> &modules)
+    : modules_(modules)
+{
+    // emplace keeps the first module of a folded name, the one find_if would return.
+    symbolsByModule_.reserve(modules_.size());
+    for (std::size_t index = 0; index < modules_.size(); ++index)
+    {
+        moduleByFoldedName_.emplace(foldedName(modules_[index].dllName), index);
+        symbolsByModule_.emplace_back(modules_[index].symbols.begin(), modules_[index].symbols.end());
+    }
+}
+
+void ExternalImportListBuilder::append(const std::string &dllName, const std::string &symbol)
+{
+    if constexpr (frontend::internal::kIndexShadowCheckEnabled)
+    {
+        // The DLL index and the symbol sets must answer like appendExternalImport's scans.
+        const std::string foldedDll = foldedName(dllName);
+        const auto scannedModule = std::ranges::find_if(
+            modules_, [&](const auto &candidate) { return foldedName(candidate.dllName) == foldedDll; });
+        const auto indexedModule = moduleByFoldedName_.find(foldedDll);
+        const bool sameModule = indexedModule == moduleByFoldedName_.end()
+                                    ? scannedModule == modules_.end()
+                                    : scannedModule != modules_.end() &&
+                                          static_cast<std::size_t>(scannedModule - modules_.begin()) ==
+                                              indexedModule->second;
+        if (!sameModule)
+            frontend::internal::reportIndexShadowMismatch("ExternalImportListBuilder::append", dllName);
+        if (scannedModule != modules_.end() &&
+            (std::ranges::find(scannedModule->symbols, symbol) != scannedModule->symbols.end()) !=
+                symbolsByModule_[indexedModule->second].contains(symbol))
+            frontend::internal::reportIndexShadowMismatch("ExternalImportListBuilder::append", symbol);
+    }
+    const auto [module, inserted] = moduleByFoldedName_.emplace(foldedName(dllName), modules_.size());
+    if (inserted)
+    {
+        modules_.push_back(linker::ExternalImportModule{dllName, {}});
+        symbolsByModule_.emplace_back();
+    }
+    if (symbolsByModule_[module->second].insert(symbol).second)
+        modules_[module->second].symbols.push_back(symbol);
 }
 
 bool loadLibraryReferenceMetadata(const compilation::LibraryReference &reference,
@@ -174,7 +219,7 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
                               std::unordered_map<std::string, std::vector<PrecompiledExportContract>> &publishedExports,
                               std::unordered_map<std::string, std::string> &publishedNativeMethods,
                               std::vector<std::filesystem::path> &libraries,
-                              std::vector<linker::ExternalImportModule> *inheritedImports, std::string &error)
+                              ExternalImportListBuilder *inheritedImports, std::string &error)
 {
     const std::string libraryKey = foldedPathKey(reference.libraryPath);
     if (validatedReferences.contains(libraryKey))
@@ -186,7 +231,7 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
         return false;
     if (inheritedImports != nullptr)
         for (const interop::LibraryMetadataPlatformImport &importRecord : metadata->platformImports)
-            appendExternalImport(*inheritedImports, importRecord.dllName, importRecord.symbolName);
+            inheritedImports->append(importRecord.dllName, importRecord.symbolName);
     std::vector<std::string> nativeSymbols;
     if (!validateLibraryReferenceSymbols(reference, archiveVerifier, *metadata, publishedNativeMethods, nativeSymbols,
                                          error))
@@ -232,12 +277,18 @@ bool validateProjectLibraryReferences(
         moduleOwners.emplace(project.moduleName(), project.projectFile());
     std::unordered_set<std::string> validatedReferences;
     interop::LibraryMetadataCodec metadataCodec;
+    // One builder for the whole inherited list, so its indexes span every reference.
+    std::optional<ExternalImportListBuilder> inheritedImportList;
+    if (inheritedImports != nullptr)
+        inheritedImportList.emplace(*inheritedImports);
+    ExternalImportListBuilder *const inheritedImportBuilder =
+        inheritedImportList.has_value() ? &*inheritedImportList : nullptr;
     for (const compilation::Project &project : compilation.projectGraph()->projects())
         for (const compilation::LibraryReference &reference : project.libraryReferences())
             if (!validateLibraryReference(reference, compilation.libraryMetadataRepository(), metadataCodec,
                                            linkedLibraries, validatedReferences, runtimeNames,
                                           runtimeByModule, moduleOwners, publishedExports, publishedNativeMethods,
-                                          libraries, inheritedImports, error))
+                                          libraries, inheritedImportBuilder, error))
                 return false;
     return true;
 }

@@ -318,6 +318,10 @@ using namespace llvm_api;
 LLVMValueRef OopLlvmImplementation::lowerExpression(const frontend::ProjectOopMirNode* node, std::string& error)
 {
     if (node == nullptr) return nullptr;
+    // EN: Freeze 3.0 D-01: an operand with a replay slot is evaluated once per statement pass.
+    // ES: Congelamiento 3.0 D-01: un operando con slot de repeticion se evalua una vez por pasada.
+    if (OopLlvmReplaySpill spill; beginCoroutineReplaySpill(node, spill, error))
+        return finishCoroutineReplaySpill(spill, lowerExpression(node, error), error);
     FloatingPointModeScope sourceModeScope;
     if (node->syntax != nullptr && node->syntax->floatingPointMode() !=
             ast::FloatingPointModeSyntaxKind::Inherit)
@@ -490,6 +494,18 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup02(
                 if (node->booleanValue)
                 {
                     LLVMBuildStore(builder_, LLVMConstNull(valueType), storage);
+                    // EN: Freeze 3.0 DEC-10: `move(e)` of a caught exception transfers it, so the
+                    //     catch that owns it gives it up and does not release it at its end. Only
+                    //     the caught object itself matches an owner slot.
+                    // ES: Congelamiento 3.0 DEC-10: `move(e)` de una excepcion atrapada la
+                    //     transfiere, asi el catch que la posee la suelta y no la libera al final.
+                    //     Solo el mismo objeto atrapado coincide con un slot de dueno.
+                    if (valueType == LLVMPointerTypeInContext(context_, 0))
+                    {
+                        const std::vector<ActiveCatchBody> frames = activeCatchExceptions_;
+                        for (const ActiveCatchBody& frame : frames)
+                            if (frame.ownerSlot != nullptr) emitCatchOwnershipHandover(value, frame);
+                    }
                 }
                 if (node->localOrdinal.has_value())
                 {

@@ -2,12 +2,16 @@
 
 #include "DropCase.h"
 #include "OopLlvmActiveCatchBody.h"
+#include "OopLlvmArrayElementAccess.h"
+#include "OopLlvmArrayElementLiveness.h"
 #include "OopLlvmCachedCleanup.h"
+#include "OopLlvmCoroutineState.h"
 #include "OopLlvmExceptionHandlerContext.h"
 #include "OopLlvmFuncletContext.h"
 #include "OopLlvmFuncletKind.h"
 #include "OopLlvmFunctionInfo.h"
 #include "OopLlvmLoopTargets.h"
+#include "OopLlvmReplaySpill.h"
 #include "ScopedDebugLocation.h"
 #include "ScopedDebugScope.h"
 #include "StaticLocalGuard.h"
@@ -63,6 +67,13 @@ public:
         std::span<const std::uint8_t> staticFieldDeclarations = {},
         std::string_view moduleName = "NativeSharp.Stage34.OOP");
 
+    // Optional table of source checksums shared by every code unit (see
+    // ProjectOopLlvmLoweringRequest::setSourceChecksums). Call before lower.
+    void setSourceChecksums(std::span<const std::string> sourceChecksums) noexcept
+    {
+        sourceChecksums_ = sourceChecksums;
+    }
+
     bool lower(std::string& error);
 
     LLVMContextRef releaseContext() noexcept;
@@ -117,6 +128,12 @@ private:
 
     LLVMMetadataRef debugLocation(const frontend::ProjectOopMirNode* node);
 
+    // ES: Ubicación del final del nodo (la llave de cierre de un bloque).
+    // EN: Location of the node's end (the closing brace of a block).
+    LLVMMetadataRef debugEndLocation(const frontend::ProjectOopMirNode* node);
+
+    LLVMMetadataRef debugLocationAt(SourceLocation location);
+
     LLVMMetadataRef createDebugLexicalScope(
         const frontend::ProjectOopMirNode* node,
         LLVMMetadataRef parent);
@@ -124,6 +141,7 @@ private:
     const frontend::NamedTypeDeclaration* debugNamedType(std::string_view typeKey) const noexcept;
 
     std::string debugNamedDisplayName(const frontend::NamedTypeDeclaration& named) const;
+    std::string debugTypeKeyDisplayName(std::string_view typeKey) const;
 
     static LLVMDIFlags debugMemberFlags(frontend::ClassMemberAccessibility accessibility) noexcept;
 
@@ -212,7 +230,6 @@ private:
     bool emitDebugCatchParameter(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef storage,
-        std::size_t handlerIndex,
         std::string& error);
 
     bool emitDebugThis(
@@ -623,6 +640,19 @@ private:
 
     void collectLocalAllocas(const frontend::ProjectOopMirNode* node, std::string& error);
 
+    // EN: IR value name of a local: `<prefix><n><suffix>`, where n is the order in which the
+    //     function being lowered first names that local, not its project-wide MIR ordinal.
+    //     Why: the MIR numbers locals across the whole project, so declaring one local in any body
+    //     renamed the locals of every later function and changed the IR text, and with it the
+    //     pre-optimization cache key, of every code unit (optimization part 2, bodies).
+    // ES: Nombre de valor IR de un local: `<prefix><n><suffix>`, donde n es el orden en que la
+    //     funcion que se baja nombra por primera vez ese local, no su ordinal MIR de proyecto.
+    //     Motivo: el MIR numera los locales de todo el proyecto, asi que declarar un local en
+    //     cualquier cuerpo renombraba los locales de todas las funciones siguientes y cambiaba el
+    //     texto IR, y con el la llave del cache pre-optimizacion, de cada unidad (parte 2, cuerpos).
+    std::string localValueName(
+        std::size_t localOrdinal, std::string_view prefix, std::string_view suffix);
+
     bool collectLocalStorage(
         const frontend::ProjectOopMirNode* node,
         bool& stopAfterChildren,
@@ -743,6 +773,18 @@ private:
         bool destroyElements,
         std::string& error);
 
+    bool emitNativeArrayValueElementDrop(
+        LLVMValueRef array,
+        std::string_view arrayTypeKey,
+        std::string_view elementType,
+        const std::string& prefix,
+        std::string& error);
+    bool emitValueElementDelete(
+        LLVMValueRef address,
+        std::string_view elementType,
+        const std::optional<OopLlvmArrayElementLiveness>& liveness,
+        std::string& error);
+
     bool emitNativeArrayElementDestruction(
         LLVMValueRef array,
         std::string_view arrayTypeKey,
@@ -811,6 +853,12 @@ private:
 
     bool emitRaiiDestroy(const frontend::ProjectOopMirNode* node, std::string& error);
 
+    // EN: Freeze 3.0 (plan item 135): stores null into the owner slot of every owned temporary under a full
+    //     expression, so its cleanup skips a temporary that a `?:` or `??` never made.
+    // ES: Congelamiento 3.0 (elemento 135 del plan): guarda null en el slot del dueno de cada temporal owned bajo
+    //     una expresion completa, para que su limpieza omita el temporal que un `?:` o `??` nunca creo.
+    void clearTemporaryOwnerSlots(const frontend::ProjectOopMirNode& fullExpression);
+
     bool emitRaiiSpecialDestroy(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef value,
@@ -844,7 +892,17 @@ private:
     // The clear is emitted into a block of its own rather than inline, so that what the obligation
     // produced is NAMEABLE in the emitted IR and can be asserted by a test instead of reasoned
     // about. -O2 folds the block away; the call survives.
-    void emitCatchBodyExceptionClear();
+    // Freeze 3.0 C-01: the clear is followed by the release of every caught exception whose catch
+    // body this exit leaves (see ActiveCatchBody::ownerSlot).
+    bool emitCatchBodyExceptionClear(bool isReturn, std::size_t targetLoopIndex, std::string& error);
+    // Freeze 3.0 C-01: destroys and frees the exception held by a catch owner slot, if any.
+    bool emitCaughtExceptionRelease(LLVMValueRef ownerSlot, std::string& error);
+    // Freeze 3.0 C-01: before a throw, a catch whose exception is the thrown one hands it over,
+    // and a catch the throw leaves releases the exception it still owns.
+    bool emitCatchOwnershipOnThrow(LLVMValueRef exception, std::string& error);
+    // Freeze 3.0 DEC-10: a catch whose owner slot holds `value` gives it up (stores null), so
+    // `move(e)` and a rethrow of `e` transfer the caught exception instead of releasing it.
+    void emitCatchOwnershipHandover(LLVMValueRef value, const ActiveCatchBody& frame);
 
     bool lowerStructuredExit(
         const frontend::ProjectOopMirNode* node,
@@ -1134,6 +1192,8 @@ private:
 
     bool lowerWhile(const frontend::ProjectOopMirNode* node, std::string& error);
 
+    LLVMValueRef beginLoopResumeScope(const frontend::ProjectOopMirNode* node, LLVMBasicBlockRef bodyBlock);
+    void finishLoopResumeScope(LLVMValueRef reentry);
     LLVMValueRef lowerLoopExpression(
         const frontend::ProjectOopMirNode* node, std::string& error);
 
@@ -1225,16 +1285,24 @@ private:
         LLVMValueRef pollFunction,
         LLVMTypeRef pollFunctionType,
         LLVMTypeRef intType,
+        bool driveToCompletion,
         LLVMBasicBlockRef& loopDone,
         LLVMBasicBlockRef& loopError,
         std::string& error);
-    void releaseAwaitHeapFrame(LLVMValueRef heapFrame);
+    void releaseAwaitHeapFrame(
+        LLVMValueRef heapFrame, LLVMValueRef owned = nullptr, LLVMValueRef forgetSlot = nullptr);
+    LLVMValueRef futureOwnsFrame(LLVMValueRef futureSlot, std::string_view futureKey);
+    void consumeAwaitedFuture(const frontend::ProjectOopMirNode* operand, std::string& error);
+    static bool awaitOperandIsField(const frontend::ProjectOopMirNode* operand) noexcept;
+    LLVMValueRef lowerAwaitOperand(const frontend::ProjectOopMirNode* operand, std::string& error);
+    bool guardAwaitedFieldFuture(LLVMValueRef address, std::string_view futureKey, std::string& error);
     bool emitBlockingAwaitErrorPath(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef futureSlot,
         LLVMValueRef heapFrame,
         LLVMBasicBlockRef loopMerge,
         bool& transfersException,
+        LLVMBasicBlockRef& errorExit,
         std::string& error);
     LLVMValueRef finishBlockingAwait(
         const frontend::ProjectOopMirNode* node,
@@ -1269,15 +1337,17 @@ private:
         LLVMTypeRef intType,
         LLVMTypeRef carrier,
         LLVMBasicBlockRef suspendBlock);
-    void releaseAwaitChildFrame(LLVMValueRef childSlot);
-    void emitSuspendingAwaitErrorPath(
+    void releaseAwaitChildFrame(LLVMValueRef childSlot, std::string_view futureKey);
+    bool emitSuspendingAwaitErrorPath(
+        const frontend::ProjectOopMirNode* node,
         LLVMValueRef self,
         LLVMValueRef childSlot,
         LLVMTypeRef intType,
         LLVMTypeRef errorType,
         std::uint64_t errorOffset,
         bool childFrameOnHeap,
-        LLVMBasicBlockRef errorBlock);
+        LLVMBasicBlockRef errorBlock,
+        std::string& error);
     LLVMValueRef finishSuspendingAwait(
         const frontend::ProjectOopMirNode* node,
         LLVMValueRef self,
@@ -1290,6 +1360,70 @@ private:
         const frontend::ProjectOopMirNode* node,
         std::string& error,
         LLVMValueRef childOverride);
+    // EN: Freeze 3.0 C-02: attaches a frame to the awaited future only when its constructor left
+    //     none; the constructor's frame already holds the captured parameters.
+    // ES: Congelamiento 3.0 C-02: adjunta un frame al future esperado solo si su constructor no
+    //     dejo ninguno; el frame del constructor ya guarda los parametros capturados.
+    bool attachAwaitFrameIfMissing(
+        LLVMValueRef futureSlot,
+        std::uint64_t frameSize,
+        bool frameOnHeap,
+        std::string& error);
+    // EN: Freeze 3.0 C-02 resume machinery (OopLlvmCoroutines.cpp): frame-resident locals, the
+    //     entry dispatch, and the suspension points of a poll or MoveNext.
+    // ES: Maquinaria de reanudacion del Congelamiento 3.0 C-02 (OopLlvmCoroutines.cpp): locales
+    //     en el frame, el despacho de entrada y los puntos de suspension de un poll o MoveNext.
+    bool isFrameResidentCoroutine(const frontend::ProjectOopMirFunction& function) const;
+    bool beginCoroutineDispatch(const frontend::ProjectOopMirFunction& function, std::string& error);
+    void collectCoroutineSuspensions(const frontend::ProjectOopMirNode* root);
+    LLVMValueRef ensureCoroutineFrame(
+        const frontend::ProjectOopMirFunction& function, std::string& error);
+    bool aliasCoroutineFrameLocals(
+        const frontend::ProjectOopMirFunction& function, std::string& error);
+    LLVMValueRef ensureCoroutineCaptureCell(
+        LLVMValueRef cellSlot, std::string_view typeKey, std::size_t localOrdinal, std::string& error);
+    void zeroCoroutineDropFlags(LLVMValueRef frame, const frontend::ProjectOopMirFunction& function);
+    bool emitCoroutineDoneReturn(const frontend::ProjectOopMirFunction& function, std::string& error);
+    bool finishCoroutineDispatch(std::string& error);
+    void enterCoroutineResumeTarget(const frontend::ProjectOopMirNode* statement);
+    // EN: Freeze 3.0 D-01: the replay slot of an operand next to a suspending await.
+    // ES: Congelamiento 3.0 D-01: el slot de repeticion de un operando junto a un await que suspende.
+    void markCoroutineReplayOperands(
+        const frontend::ProjectOopMirNode* ancestor, const frontend::ProjectOopMirNode* onPath, std::int64_t id);
+    bool beginCoroutineReplaySpill(
+        const frontend::ProjectOopMirNode* node, OopLlvmReplaySpill& spill, std::string& error);
+    LLVMValueRef finishCoroutineReplaySpill(
+        const OopLlvmReplaySpill& spill, LLVMValueRef value, std::string& error);
+    bool coroutineReplaySpillable(const frontend::ProjectOopMirNode* node, LLVMValueRef value);
+    bool coroutineReplayAddressStable(const frontend::ProjectOopMirNode* node);
+    LLVMValueRef coroutineAwaitCreatesChild(
+        const frontend::ProjectOopMirNode* node, std::int64_t id, LLVMValueRef seen, LLVMTypeRef intType);
+    LLVMValueRef coroutineResumeMatches(
+        const frontend::ProjectOopMirNode* node, std::int64_t& id, std::string& error);
+    bool lowerCoroutineSuspendPoint(const frontend::ProjectOopMirNode* node, std::string& error);
+    bool lowerCoroutineYieldValue(const frontend::ProjectOopMirNode* node, std::string& error);
+    bool emitCoroutineYieldCancel(
+        const frontend::ProjectOopMirNode* node, LLVMBasicBlockRef cancel, std::string& error);
+    bool lowerSyncGeneratorDrop(LLVMValueRef self, std::string& error);
+    // EN: Freeze 3.0 C-17: the async-generator poll as a frame-resident coroutine.
+    // ES: Congelamiento 3.0 C-17: el poll del generador async como corrutina con frame residente.
+    bool lowerCoroutineAsyncYield(const frontend::ProjectOopMirNode* node, std::string& error);
+    bool publishAsyncGeneratorEnd(std::string& error);
+    bool lowerAsyncGeneratorDrop(LLVMValueRef self, std::string& error);
+    bool lowerFutureDrop(LLVMValueRef self, std::string& error);
+    LLVMValueRef capturedParameterSlot(std::size_t parameterOrdinal, std::string_view typeKey);
+    bool destroyCapturedOwnedParameter(
+        LLVMValueRef slot, std::string_view typeKey, std::string& error);
+    bool markCoroutineFinished(std::string& error);
+    bool storeYieldValueItem(
+        const frontend::ProjectOopMirNode* node, LLVMValueRef self, std::string& error);
+    LLVMValueRef lowerCoroutineAwait(
+        const frontend::ProjectOopMirNode* node, std::string& error, LLVMValueRef childOverride);
+    LLVMValueRef pollCoroutineAwaitChild(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef childSlot,
+        LLVMTypeRef intType,
+        std::string& error);
     // NSC305-L04. The iterative expression machine's trampoline (first family: unary/binary). The
     // unary/binary self-calls are replaced by frame pushes; the sub-expressions receive their
     // values from a ValueStack. The remaining families still use the recursive lowerExpression and
@@ -1640,6 +1774,9 @@ private:
         const frontend::ProjectOopMirNode* current, LLVMValueRef object,
         LLVMValueRef index, LLVMValueRef count, LLVMValueRef countIsZero,
         std::vector<LLVMValueRef>& values, std::string& error);
+    void storeArraySpanSource(
+        std::string_view spanTypeKey, LLVMValueRef slot, LLVMValueRef countIsZero,
+        LLVMValueRef object, LLVMValueRef index);
     bool lowerExpressionFrame099SpanFromFixedArray(
         const LlvmExpressionFrame& frame, std::vector<LlvmExpressionFrame>& frames,
         std::vector<LLVMValueRef>& values, std::string& error);
@@ -1735,7 +1872,24 @@ private:
 
     LLVMValueRef closureCaptureCell(const frontend::ProjectOopMirNode* node, std::string& error);
 
+    // ES: Celda compartida de la captura `capture`, leída del entorno de la lambda.
+    // EN: Shared cell of capture `capture`, read from the lambda's environment.
+    LLVMValueRef closureCaptureCellAt(std::size_t capture, std::string& error);
+
     LLVMValueRef closureCaptureAddress(const frontend::ProjectOopMirNode* node, std::string& error);
+
+    // ES: Dirección del valor de la captura `capture` dentro de su celda compartida.
+    // EN: Address of capture `capture`'s value inside its shared cell.
+    LLVMValueRef closureCaptureValueAddress(
+        std::size_t capture,
+        std::string_view typeKey,
+        std::string& error);
+
+    // ES: Declara, al entrar a una lambda, una variable de depuración por cada captura. Ver la
+    // definición en OopLlvmClosuresDelegatesEvents.cpp.
+    // EN: Declares, on entry to a lambda, one debug variable per capture. See the definition in
+    // OopLlvmClosuresDelegatesEvents.cpp.
+    void emitClosureCaptureDebugVariables(const frontend::ProjectOopMirFunction& function);
 
     LLVMValueRef lowerClosureCaptureLoad(const frontend::ProjectOopMirNode* node, std::string& error);
 
@@ -2100,6 +2254,40 @@ private:
 
     LLVMValueRef lowerRangeArrayElementAddress(
         const frontend::ProjectOopMirNode* node,
+        std::string& error);
+
+    // EN: Freeze 3.0 DEC-11: live/dead state per element of an array of structs with a destructor
+    //     (OopLlvmArraysAndStores.cpp).
+    // ES: Congelamiento 3.0 DEC-11: estado vivo/muerto por elemento de un arreglo de structs con
+    //     destructor (OopLlvmArraysAndStores.cpp).
+    bool arrayElementLivenessTracked(std::string_view elementType) const;
+    std::string arrayAllocationElementType(const frontend::ProjectOopMirNode* node) const;
+    std::string arrayAccessElementType(const frontend::ProjectOopMirNode* node) const;
+    void classifyArrayElementAccesses(const frontend::ProjectOopMirNode* root);
+    OopLlvmArrayElementAccess arrayElementAccessFor(
+        const frontend::ProjectOopMirNode* element,
+        const std::unordered_map<const frontend::ProjectOopMirNode*, const frontend::ProjectOopMirNode*>&
+            parents) const;
+    LLVMValueRef arrayLivenessByteCount(LLVMValueRef count);
+    OopLlvmArrayElementLiveness arrayElementLiveness(
+        LLVMValueRef array, LLVMValueRef linearIndex, std::uint64_t dataOffset, std::uint64_t elementSize);
+    LLVMValueRef arrayElementIsAlive(const OopLlvmArrayElementLiveness& liveness);
+    void setArrayElementAlive(const OopLlvmArrayElementLiveness& liveness, bool alive);
+    bool applyArrayElementAccess(
+        const frontend::ProjectOopMirNode* node,
+        LLVMValueRef array,
+        LLVMValueRef address,
+        std::uint64_t dataOffset,
+        std::uint64_t elementSize,
+        std::string& error);
+    bool reviveArrayElement(
+        const OopLlvmArrayElementLiveness& liveness, LLVMValueRef address, std::uint64_t elementSize);
+    std::optional<OopLlvmArrayElementLiveness> takeArrayElementLiveness(
+        const frontend::ProjectOopMirNode* node);
+    bool dropReplacedArrayElement(
+        LLVMValueRef address,
+        std::string_view typeKey,
+        const OopLlvmArrayElementLiveness& liveness,
         std::string& error);
 
     LLVMValueRef emitRuntimeTypeTest(
@@ -2491,6 +2679,7 @@ private:
 
     LLVMValueRef staticFieldAddress(const frontend::ProjectOopMirNode* node, std::string& error);
 
+    void releaseTransferredArguments(const frontend::ProjectOopMirNode* call);
     LLVMValueRef lowerDirectClosureCall(
         const frontend::ProjectOopMirNode* node,
         std::string& error);
@@ -2753,9 +2942,17 @@ private:
     // void(void* context, void* ptr) { <T>::Deallocate(context, ptr); }. Internal linkage, so each
     // module carries its own copy; the function pointer stored in the descriptor sidecar stays
     // valid in the final binary.
+    // EN: Freeze 3.0 C-08: one thunk per (allocator type, object size, object alignment); the
+    //     thunk keeps the frozen (context, object) sidecar ABI and passes the size and alignment
+    //     to IAllocator.Deallocate(byte*, long, int) as constants.
+    // ES: Congelamiento 3.0 C-08: un thunk por (tipo de allocator, tamano, alineacion del
+    //     objeto); conserva el ABI congelado (context, objeto) del sidecar y pasa tamano y
+    //     alineacion a IAllocator.Deallocate(byte*, long, int) como constantes.
     LLVMValueRef allocatorDeallocateThunk(
         std::size_t allocatorTypeOrdinal,
         std::string_view deallocateCalleeName,
+        std::uint64_t objectSize,
+        std::uint64_t objectAlignment,
         std::string& error);
 
     bool isStructValue(std::string_view typeKey) const noexcept;
@@ -2889,6 +3086,22 @@ private:
 
     LLVMBasicBlockRef appendBlock(const std::string& stem);
 
+    // ES: Posiciona el builder al final de `block`. Si el bloque todavía está vacío (se creó antes y
+    // recibe ahora su primera instrucción) se mueve detrás del último bloque de su función, como
+    // hace clang en EmitBlock: el orden de los bloques sigue al orden en que se emite el código, no
+    // al orden en que se crearon. Sin esto, la continuación de una sentencia (tras una comprobación
+    // de null, por ejemplo) quedaba detrás de bloques creados antes (else, fin de if, despacho y
+    // finally de un try) y la sentencia aparecía en dos tramos de la tabla de líneas: el depurador
+    // se detenía dos veces en ella. El bloque de entrada nunca se mueve.
+    // EN: Positions the builder at the end of `block`. When the block is still empty (it was created
+    // earlier and now receives its first instruction) it is moved after the last block of its
+    // function, as clang does in EmitBlock: block order follows the order in which code is emitted,
+    // not the order in which blocks were created. Without this, the continuation of a statement
+    // (after a null check, for example) landed after blocks created earlier (else, if end, the
+    // dispatch and finally of a try) and the statement appeared as two runs of the line table: the
+    // debugger stopped on it twice. The entry block is never moved.
+    void enterBlock(LLVMBasicBlockRef block);
+
     // NS304-T15-F04: 10^exponent as a runtime i64 loop (exponent 0..28).
     // NS304-T15-F04: the decimal scale must stay 0..28. `mul` adds scales and `div` can bump the
     // scale by one guard, so either can exceed 28; that is a decimal overflow, not silent wrap.
@@ -2961,6 +3174,7 @@ private:
     DebugInformationKind debugInformation_ = DebugInformationKind::None;
     LlvmOptimizationLevel optimizationLevel_ = LlvmOptimizationLevel::O0;
     std::vector<DebugPrefixMap> debugPrefixMaps_;
+    std::span<const std::string> sourceChecksums_;
     bool partitioned_ = false;
     bool ownsModuleGlobals_ = true;
     std::vector<std::uint8_t> ownedReachableDefinitions_;
@@ -2994,6 +3208,11 @@ private:
     std::unordered_map<std::string, LLVMMetadataRef> debugPointeeTypes_;
     std::unordered_set<std::size_t> debugDeclaredLocals_;
     std::unordered_map<std::size_t, LLVMMetadataRef> debugCaptureVariables_;
+    // ES: Dirección del valor de cada captura, calculada una vez al entrar a la lambda. Todas las
+    // lecturas y escrituras la reutilizan, y es la ubicación de la variable de depuración.
+    // EN: Address of each capture's value, computed once on entry to the lambda. Every read and
+    // write reuses it, and it is the debug variable's location.
+    std::unordered_map<std::size_t, LLVMValueRef> closureCaptureAddresses_;
     LLVMValueRef trapFunction_ = nullptr;
     LLVMTypeRef trapFunctionType_ = nullptr;
     LLVMValueRef rttiClassTestFunction_ = nullptr;
@@ -3231,7 +3450,7 @@ private:
     LLVMTypeRef destructionEntryFunctionType_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> descriptorGlobals_;
     // NS304-T13-F07: per-allocator-type deallocate thunks (void(void* context, void* ptr)).
-    std::unordered_map<std::size_t, LLVMValueRef> allocatorThunks_;
+    std::unordered_map<std::string, LLVMValueRef> allocatorThunks_;
     std::unordered_map<std::size_t, FunctionInfo> descriptorAccessorFunctions_;
     // Imported descriptors are only promised through their PE-safe accessor. Local descendants
     // of those descriptors also use their accessors so the complete base chain is initialized
@@ -3281,14 +3500,27 @@ private:
     std::unordered_map<std::string, FunctionInfo> callbackGuardThunks_;
     LLVMValueRef currentFunction_ = nullptr;
     const frontend::ProjectOopMirFunction* currentMirFunction_ = nullptr;
+    // EN: Freeze 3.0 C-02: resume state of the poll/MoveNext being defined (inactive otherwise).
+    // ES: Congelamiento 3.0 C-02: estado de reanudacion del poll/MoveNext en definicion.
+    OopLlvmCoroutineState coroutine_;
     LLVMMetadataRef currentDebugSubprogram_ = nullptr;
     LLVMMetadataRef currentDebugScope_ = nullptr;
+    // ES: Ámbito léxico de la declaración que se está bajando. La variable pertenece a él, pero las
+    // instrucciones del inicializador se quedan en el ámbito padre: así el local es visible a partir
+    // de la sentencia siguiente a su declaración y no en su propia línea.
+    // EN: Lexical scope of the declaration being lowered. The variable belongs to it, but the
+    // initializer's instructions stay in the parent scope, so the local becomes visible from the
+    // statement after its declaration, not on its own line.
+    LLVMMetadataRef pendingLocalDebugScope_ = nullptr;
     std::uint32_t currentDebugFileKey_ = 0;
     LLVMValueRef thisValue_ = nullptr;
     LLVMValueRef closureEnvironment_ = nullptr;
     LLVMValueRef constructionThisOverride_ = nullptr;
     std::unordered_map<std::size_t, LLVMValueRef> parameterStorage_;
     std::unordered_map<std::size_t, LLVMValueRef> localStorage_;
+    // Function-relative numbers used by localValueName; cleared for every function definition.
+    // Numeros relativos a la funcion que usa localValueName; se vacia en cada definicion.
+    std::unordered_map<std::size_t, std::size_t> localNameNumbers_;
     // Only custom-destructor aggregates need an explicit guard. Aggregates whose drop consists
     // solely of owned fields use the cleared field slots themselves as optimized drop flags.
     std::unordered_map<std::size_t, LLVMValueRef> parameterValueDropFlags_;
@@ -3297,6 +3529,11 @@ private:
     std::unordered_map<std::size_t, LLVMValueRef> stackObjectStorage_;
     std::unordered_map<std::size_t, LLVMValueRef> parameterCaptureCells_;
     std::unordered_map<std::size_t, LLVMValueRef> localCaptureCells_;
+    // EN: Freeze 3.0 C-05. Captured locals of a frame-resident coroutine: their cell is created on
+    //     the first entry and found in the frame on every resume (local ordinal -> value type).
+    // ES: Congelamiento 3.0 C-05. Locales capturados de una corrutina con frame: su celda se crea
+    //     en la primera entrada y se encuentra en el frame en cada reanudacion (ordinal -> tipo).
+    std::unordered_map<std::size_t, std::string> coroutineCapturedLocals_;
     LLVMValueRef thisCaptureCell_ = nullptr;
     std::vector<LLVMValueRef> ownedCaptureCells_;
     LLVMBasicBlockRef captureCellExceptionalCleanupBlock_ = nullptr;
@@ -3311,6 +3548,12 @@ private:
     // T03-F03. The value/address pair for each nested match governing expression. The value is
     // computed once; generated MatchValue nodes select the representation their HIR context needs.
     std::vector<std::pair<LLVMValueRef, LLVMValueRef>> matchValueStack_;
+    // EN: Freeze 3.0 DEC-11: the access kind of every classified array element node, and the
+    //     liveness bit a store, move or delete takes from the element it just lowered.
+    // ES: Congelamiento 3.0 DEC-11: el tipo de acceso de cada nodo de elemento clasificado, y el bit
+    //     de vida que un store, move o delete toma del elemento que acaba de bajar.
+    std::unordered_map<const frontend::ProjectOopMirNode*, OopLlvmArrayElementAccess> arrayElementAccess_;
+    std::unordered_map<const frontend::ProjectOopMirNode*, OopLlvmArrayElementLiveness> arrayElementLiveness_;
     // NS304-T15-F05. Active overflow policy for the wrapped expression ("checked"/"saturating",
     // empty outside). The decimal arithmetic ops consult this single-threaded flag.
     std::string currentOverflowPolicy_;

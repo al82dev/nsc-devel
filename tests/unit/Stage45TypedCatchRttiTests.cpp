@@ -164,7 +164,7 @@ class Runner
     {
         try
         {
-            throw problem;
+            throw new Exception();
         }
         catch (DerivedProblem derived)
         {
@@ -317,9 +317,9 @@ class BaseProblem : Exception { }
 class OtherProblem : Exception { }
 class Runner
 {
-    public static void Run(Exception problem)
+    public static void Run(Exception problem) throws NativeSharp.Core.Exception
     {
-        try { throw problem; }
+        try { throw new Exception(); }
         catch (BaseProblem caught) { int handled = 1; }
     }
 }
@@ -354,14 +354,14 @@ class RaisedProblem : Exception { }
 class OtherProblem : Exception { }
 class Runner
 {
-    public static int Run()
+    public static int Run() throws RaisedProblem
     {
         try
         {
             try
             {
-                RaisedProblem problem = new RaisedProblem();
-                throw problem;
+                raii RaisedProblem problem = new RaisedProblem();
+                throw move(problem);
             }
             catch (OtherProblem other)
             {
@@ -403,9 +403,9 @@ class BaseProblem : Exception { }
 class DerivedProblem : BaseProblem { }
 class Runner
 {
-    public static void Run(Exception problem)
+    public static void Run(Exception problem) throws NativeSharp.Core.Exception
     {
-        try { throw problem; }
+        try { throw new Exception(); }
         catch (BaseProblem first) { }
         catch (DerivedProblem unreachable) { }
     }

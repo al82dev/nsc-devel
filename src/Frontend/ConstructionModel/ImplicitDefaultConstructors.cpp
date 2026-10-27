@@ -159,6 +159,10 @@ void ProjectConstructionModel::bindImplicitDefaultConstructor(
     {
         return;
     }
+    // EN: A class of a restored API unit with a snapshot entry takes its binding from it (plan 3.11).
+    // ES: Una clase de una unidad de API restaurada con entrada en el snapshot toma de ella su binding
+    //     (plan 3.11).
+    if (installSnapshotImplicitDefault(typeOrdinal)) return;
 
     ImplicitDefaultConstructorBinding binding;
     binding.typeOrdinal = typeOrdinal;

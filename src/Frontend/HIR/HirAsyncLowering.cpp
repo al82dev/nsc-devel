@@ -288,7 +288,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::rewriteAsyncPollReturns(
         pending.pop_back();
         if (*slot == nullptr) return nullptr;
         ProjectOopHirNode* node = slot->get();
-        if (node->kind == ProjectOopHirNodeKind::Throw)
+        // EN: Freeze 3.0 C-13: a throw inside a try of this body stays a native throw, so its
+        //     catch runs; only a throw that leaves the body becomes the future's error.
+        // ES: Congelamiento 3.0 C-13: un throw dentro de un try de este cuerpo sigue siendo un
+        //     throw nativo, para que su catch corra; solo el que sale del cuerpo se vuelve el
+        //     error del future.
+        if (node->kind == ProjectOopHirNodeKind::Throw && !node->exceptionTargetRegionOrdinal.has_value())
         {
             *slot = rewriteAsyncThrow(
                 std::move(*slot), selfParameterOrdinal, futureKey);
@@ -375,6 +380,22 @@ void ProjectOopHirModel::buildAsyncConstructorBody(
     pollStore->children.push_back(std::move(pollAddress));
     constructorBody->children.push_back(std::move(pollStore));
 
+    // EN: Freeze 3.0 C-14: the future also carries its Drop function (member 5).
+    // ES: Congelamiento 3.0 C-14: el future tambien lleva su funcion Drop (miembro 5).
+    auto dropField = makeNode(ProjectOopHirNodeKind::FutureFieldAddress, syntax, "builtin:void*");
+    dropField->memberOrdinal = 5; // dropFn
+    dropField->elementTypeKey = futureKey;
+    auto dropSelfAddress = makeNode(ProjectOopHirNodeKind::LocalAddress, syntax, futureKey + "*");
+    dropSelfAddress->localOrdinal = selfOrdinal;
+    dropField->children.push_back(std::move(dropSelfAddress));
+    auto dropAddress = makeNode(ProjectOopHirNodeKind::PollAddress, syntax, "builtin:void*");
+    dropAddress->stringValue = function.mangledName + "$drop";
+    auto dropStore = makeNode(ProjectOopHirNodeKind::Assignment, syntax, "builtin:void*");
+    dropStore->operation = lexer::TokenKind::Equal;
+    dropStore->children.push_back(std::move(dropField));
+    dropStore->children.push_back(std::move(dropAddress));
+    constructorBody->children.push_back(std::move(dropStore));
+
     auto retSelf = makeNode(ProjectOopHirNodeKind::Return, syntax, futureKey);
     auto selfReturn = makeNode(ProjectOopHirNodeKind::LocalValue, syntax, futureKey);
     selfReturn->localOrdinal = selfOrdinal;
@@ -384,6 +405,39 @@ void ProjectOopHirModel::buildAsyncConstructorBody(
     // NS304-T07-F06: the original callable is now the async constructor — it allocates the frame
     // and stores the captured parameters (ref/in used after a yield), like the generator does.
     function.isGeneratorConstructor = true;
+}
+
+// EN: Freeze 3.0 C-14: `void F$drop(future<T>* self)` releases a future that did not complete: the
+//     owned parameters its constructor stored in the frame, and the frame itself.
+// ES: Congelamiento 3.0 C-14: `void F$drop(future<T>* self)` libera un future que no completo: los
+//     parametros owned que su constructor guardo en el frame, y el frame mismo.
+std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::createAsyncFunctionDrop(
+    const ProjectOopHirFunction& function,
+    const std::string& futureKey,
+    const ast::AstNode* syntax)
+{
+    auto drop = std::make_unique<ProjectOopHirFunction>();
+    drop->memberOrdinal = function.memberOrdinal;
+    drop->namespaceFunctionOrdinal = function.namespaceFunctionOrdinal;
+    drop->declaringTypeOrdinal = function.declaringTypeOrdinal;
+    drop->isStatic = true;
+    drop->inliningPolicy = function.inliningPolicy;
+    drop->mangledName = function.mangledName + "$drop";
+    drop->debugDisplayName = function.debugDisplayName + "$drop";
+    drop->returnTypeKey = "builtin:void";
+    drop->returnOwnership = sema::OwnershipKind::None;
+    drop->parameterNames.push_back("self");
+    drop->parameterTypeKeys.push_back(futureKey + "*");
+    drop->parameterPassKinds.push_back(ParameterPassKind::Value);
+    drop->parameterOwnerships.push_back(sema::OwnershipKind::None);
+    auto dropBody = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    auto dropFrame = makeNode(ProjectOopHirNodeKind::DropFrame, syntax, "builtin:void");
+    auto dropSelf = makeNode(ProjectOopHirNodeKind::ParameterValue, syntax, futureKey + "*");
+    dropSelf->parameterOrdinal = 0;
+    dropFrame->children.push_back(std::move(dropSelf));
+    dropBody->children.push_back(std::move(dropFrame));
+    drop->body = std::move(dropBody);
+    return drop;
 }
 
 std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitAsyncFunction(
@@ -408,6 +462,50 @@ std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::splitAsyncFunction(
     if (poll == nullptr) return nullptr;
     buildAsyncConstructorBody(function, futureKey, syntax);
     return poll;
+}
+
+bool ProjectOopHirModel::isAsyncEntryMain(const ProjectOopHirFunction& function) const
+{
+    if (function.namespaceFunctionOrdinal.has_value() || function.isLambda ||
+        function.constructor || function.destructor || memberModel_ == nullptr ||
+        function.memberOrdinal >= memberModel_->members().size()) return false;
+    const ClassMemberSymbol& member = memberModel_->members()[function.memberOrdinal];
+    const auto inner = language::futureInnerTypeKey(function.returnTypeKey);
+    return member.kind == ClassMemberKind::Method && member.name == "Main" && member.isStatic &&
+        member.parameters.empty() && !member.isPrecompiled && inner.has_value() &&
+        *inner == "builtin:int" && !function.effects.contains(sema::Effect::Generator);
+}
+
+std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::createAsyncEntryFunction(
+    const ProjectOopHirFunction& asyncFunction,
+    std::string& error)
+{
+    // `int Main$entry() { return await Main(); }`, whose await (integerValue 2) polls until the
+    // future is ready instead of polling once.
+    const ast::AstNode* syntax = memberModel_->members()[asyncFunction.memberOrdinal].syntax;
+    auto entry = std::make_unique<ProjectOopHirFunction>();
+    entry->memberOrdinal = asyncFunction.memberOrdinal;
+    entry->declaringTypeOrdinal = asyncFunction.declaringTypeOrdinal;
+    entry->isStatic = true;
+    entry->mangledName = asyncFunction.mangledName + "$entry";
+    entry->debugDisplayName = asyncFunction.debugDisplayName + "$entry";
+    entry->returnTypeKey = "builtin:int";
+    entry->returnOwnership = sema::OwnershipKind::None;
+    auto call = makeNode(ProjectOopHirNodeKind::StaticCall, syntax, asyncFunction.returnTypeKey);
+    call->memberOrdinal = asyncFunction.memberOrdinal;
+    const bool savedAsyncBody = loweringAsyncBody_;
+    loweringAsyncBody_ = false;
+    auto await = lowerAwaitExpression(
+        syntax, std::move(call), asyncFunction.memberOrdinal, {}, std::nullopt, error);
+    loweringAsyncBody_ = savedAsyncBody;
+    if (await == nullptr) return nullptr;
+    await->integerValue = 2;
+    auto ret = makeNode(ProjectOopHirNodeKind::Return, syntax, "builtin:int");
+    ret->children.push_back(std::move(await));
+    auto body = makeNode(ProjectOopHirNodeKind::Block, syntax, "builtin:void");
+    body->children.push_back(std::move(ret));
+    entry->body = std::move(body);
+    return entry;
 }
 
 std::unique_ptr<ProjectOopHirFunction> ProjectOopHirModel::createGeneratorMoveNext(
@@ -867,6 +965,9 @@ bool ProjectOopHirModel::awaitProducerCanSuspend(std::size_t rootMemberOrdinal) 
             if (*awaited < memberModel_->members().size()) pendingMembers.push_back(*awaited);
     }
     // Preserve the effective Stage 34 policy: the scan is cycle-safe but currently never rejects.
+    // Freeze 3.0 C-02: the semantic check ProjectMethodBodyModel::verifySynchronousAwaits now
+    // rejects a synchronous await of a producer that can suspend, with its own diagnostic, before
+    // HIR runs; this guard stays as the lowering-side invariant.
     return false;
 }
 
@@ -895,10 +996,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAwaitExpression(
         const ClassMemberSymbol& callee = memberModel_->members()[*selectedMemberOrdinal];
         await->stringValue = mangleCallable(
             nameLookup_->namedTypes()[callee.declaringTypeOrdinal], callee) + "$poll";
-        await->cleanupRegionOrdinals = std::move(cleanupRegionOrdinals);
-        await->exceptionTargetRegionOrdinal = exceptionTargetRegionOrdinal;
     }
     else await->stringValue.clear();
+    // EN: Freeze 3.0 C-17: every awaited future hands its error to the enclosing handler.
+    // ES: Congelamiento 3.0 C-17: todo future esperado entrega su error al handler envolvente.
+    await->cleanupRegionOrdinals = std::move(cleanupRegionOrdinals);
+    await->exceptionTargetRegionOrdinal = exceptionTargetRegionOrdinal;
     await->children.push_back(std::move(operand));
     return await;
 }
@@ -948,6 +1051,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCoroutineStatement(
             // regions (defer/drop) exactly once before returning false.
             auto node = makeNode(ProjectOopHirNodeKind::YieldBreak, statement, "builtin:void");
             attachStructuredExit(*node);
+            // EN: Freeze 3.0 C-02: `yield break` leaves the whole generator, so every region active
+            //     here runs, finally blocks included (the exit binding alone skipped them), in the
+            //     same outer-to-inner order a `yield return` records.
+            // ES: Congelamiento 3.0 C-02: `yield break` sale de todo el generador, asi que corre
+            //     toda region activa aqui, finally incluidos (el binding de salida los omitia), en
+            //     el mismo orden de afuera hacia adentro que registra un `yield return`.
+            node->cleanupRegionOrdinals.assign(
+                activeHirCleanupRegions_.begin(), activeHirCleanupRegions_.end());
             node->cleanupContinuationKind = MethodCleanupContinuationKind::Return;
             return node;
         }

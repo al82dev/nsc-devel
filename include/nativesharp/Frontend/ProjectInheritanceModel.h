@@ -2,12 +2,15 @@
 
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ClassInheritanceInfo.h"
+#include "nativesharp/Frontend/PrecompiledSnapshotUnit.h"
 
 #include <cstddef>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace nativesharp::diagnostics
@@ -43,6 +46,22 @@ public:
     std::optional<std::size_t> typeOrdinalForTypeKey(std::string_view typeKey) const noexcept;
     std::string typeKeyForOrdinal(std::size_t typeOrdinal) const;
     bool isBuilt() const noexcept;
+
+    // EN: Plan item 3.6. Accepted snapshots, set before build(). A class whose parts are all in a
+    //     snapshot unit takes its base class from the `inheritance` section instead of resolving
+    //     its base specifications; depth, derived lists and checks are still computed.
+    // ES: Punto 3.6 del plan. Snapshots aceptados, asignados antes de build(). Una clase con todas
+    //     sus partes en una unidad con snapshot toma su clase base de la sección `inheritance` en
+    //     lugar de resolver sus especificaciones de base; profundidad, derivadas y comprobaciones
+    //     se siguen calculando.
+    void setPrecompiledSnapshots(std::span<const PrecompiledSnapshotUnit> snapshots);
+    std::size_t installedSnapshotClassCount() const noexcept;
+    // EN: Producer side: the base of every class whose parts are all in `fileId` is kept and
+    //     written by writePrecompiledSnapshotInheritance.
+    // ES: Lado productor: la base de cada clase con todas sus partes en `fileId` se conserva y la
+    //     escribe writePrecompiledSnapshotInheritance.
+    void setPrecompiledSnapshotCaptureFile(FileId fileId) noexcept;
+    bool writePrecompiledSnapshotInheritance(std::string& payload, std::string& error) const;
 
 private:
     friend struct ProjectOopHirModelTestAccess;
@@ -89,10 +108,17 @@ private:
         std::size_t typeOrdinal,
         std::vector<VisitState>& states,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool installSnapshotBase(ClassInheritanceInfo& info);
+    void captureSnapshotBase(const ClassInheritanceInfo& info);
 
     const ProjectNameLookup* nameLookup_ = nullptr;
     std::vector<ClassInheritanceInfo> classes_;
     std::vector<std::optional<std::size_t>> classInfoByType_;
+    std::span<const PrecompiledSnapshotUnit> precompiledSnapshots_;
+    std::unordered_map<std::string, std::string> snapshotBases_;
+    std::size_t installedSnapshotClasses_ = 0;
+    std::optional<FileId> snapshotCaptureFile_;
+    std::vector<std::pair<std::string, std::string>> capturedBases_;
     bool built_ = false;
 };
 }

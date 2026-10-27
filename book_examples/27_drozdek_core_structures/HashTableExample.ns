@@ -153,7 +153,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
             return FindSlot(key) != -1;
         }
 
-        public int Get(int key)
+        public int Get(int key) throws InvalidOperationException
         {
             int slot = FindSlot(key);
             if (slot == -1)
@@ -200,7 +200,7 @@ namespace NativeSharp.BookExamples.DrozdekCore
 
     public class HashTableExample
     {
-        public static int Run()
+        public static int Run() throws InvalidOperationException
         {
             raii IntHashTable table = new IntHashTable(5);
             table.Put(5, 50);

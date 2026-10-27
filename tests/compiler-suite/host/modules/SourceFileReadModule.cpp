@@ -2,6 +2,7 @@
 
 #include "nativesharp/Basic/FileId.h"
 #include "nativesharp/Source/SourceManager.h"
+#include "nativesharp/Source/SourceAccessRecording.h"
 #include "../support/SourceReadMutation.h"
 #include "../support/WriterCaseTree.h"
 #include "../support/WriterWin32Handle.h"

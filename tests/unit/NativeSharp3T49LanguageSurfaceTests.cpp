@@ -55,6 +55,20 @@ bool hasDeferredDiagnostic(std::string_view source, std::string_view feature)
     }
     return false;
 }
+
+/// EN: Freeze 3.0 C-06: true when compiling `source` reports an error containing `fragment`.
+/// ES: Congelamiento 3.0 C-06: verdadero si compilar `source` reporta un error con `fragment`.
+bool hasDiagnosticText(std::string_view source, std::string_view fragment)
+{
+    nativesharp::frontend::FrontendCompilation compilation;
+    if (compilation.compileBuffer("t49-negative.ns", std::string(source), false)) return false;
+    for (const nativesharp::diagnostics::Diagnostic& diagnostic :
+         compilation.diagnostics().diagnostics())
+    {
+        if (diagnostic.message().find(fragment) != std::string::npos) return true;
+    }
+    return false;
+}
 }
 
 int main()
@@ -79,18 +93,24 @@ int main()
             manifest.find("trait-operators=implemented") != std::string::npos &&
             manifest.find("move-only-defaults=implemented") != std::string::npos,
         "the frozen 3.0 manifest publishes the productive language surface");
-    constexpr std::array unavailable = {
-        "async-await=planned-3.0.4", "async-streams=planned-3.0.4",
-        "yield-generators=planned-3.0.4", "default-interface-implementations=planned-3.0.4",
-        "list-patterns=planned-3.0.4", "static-constructors=planned-3.0.4",
-        "decimal=planned-3.0.4",
-        "condition-declarations=planned-3.0.4", "static-locals=planned-3.0.4",
-        "long-double=rejected-3.0"};
-    for (const std::string_view entry : unavailable)
+    // EN: Freeze 3.0 C-06: every productive feature is published as implemented; nothing in the
+    //     3.0 manifest is "planned" any more, and long double stays the one terminal rejection.
+    // ES: Congelamiento 3.0 C-06: toda capacidad productiva se publica como implemented; ya nada
+    //     del manifiesto 3.0 esta "planned" y long double sigue siendo el unico rechazo terminal.
+    constexpr std::array implemented = {
+        "async-await=implemented", "async-streams=implemented",
+        "yield-generators=implemented", "default-interface-implementations=implemented",
+        "list-patterns=implemented", "static-constructors=implemented",
+        "decimal=implemented", "condition-declarations=implemented", "static-locals=implemented"};
+    for (const std::string_view entry : implemented)
     {
         tests.expect(manifest.find(entry) != std::string::npos,
-            "the manifest makes a non-3.0 feature terminal: " + std::string(entry));
+            "the manifest publishes the implemented feature: " + std::string(entry));
     }
+    tests.expect(manifest.find("long-double=rejected-3.0") != std::string::npos,
+        "the manifest keeps long double as a terminal 3.0 rejection");
+    tests.expect(manifest.find("planned-3.0.4") == std::string::npos,
+        "the frozen manifest publishes no planned feature");
 
     const std::array<std::string_view, 1> manifestArguments = {"--print-language-3-surface"};
     std::string output;
@@ -99,45 +119,49 @@ int main()
             output == manifest && error.empty(),
         "the compiler prints the exact versioned language-surface manifest");
 
-    tests.expect(hasDeferredDiagnostic(
+    tests.expect(!hasDeferredDiagnostic(
         "class C { public async int Work() { return 1; } }", "async-await"),
-        "async declarations fail with NS3049 and a state-machine rationale");
-    tests.expect(hasDeferredDiagnostic(
+        "async declarations are part of the productive NativeSharp 3 surface");
+    tests.expect(!hasDeferredDiagnostic(
         "int Work() { return await Ready(); }", "async-await"),
-        "await expressions fail with NS3049 and a state-machine rationale");
-    tests.expect(hasDeferredDiagnostic(
+        "await expressions are part of the productive NativeSharp 3 surface");
+    tests.expect(!hasDeferredDiagnostic(
         "int Work() { yield return 1; }", "yield-generators"),
-        "yield statements fail with NS3049 and a generator-frame rationale");
-    tests.expect(hasDeferredDiagnostic(
+        "yield statements are part of the productive NativeSharp 3 surface");
+    tests.expect(!hasDeferredDiagnostic(
         "interface I { int Work() { return 1; } }", "default-interface-implementations"),
-        "default interface methods fail with NS3049 and a dispatch rationale");
-    tests.expect(hasDeferredDiagnostic(
+        "default interface methods are part of the productive NativeSharp 3 surface");
+    tests.expect(!hasDeferredDiagnostic(
         "int Work(int[] value) { switch (0) { case [1]: return 1; default: return 0; } }",
         "list-patterns"),
-        "list patterns fail with NS3049 and an exhaustiveness rationale");
+        "a list pattern in a case label is not reported as a planned feature");
+    tests.expect(hasDiagnosticText(
+        "int Work(int[] value) { switch (0) { case [1]: return 1; default: return 0; } }",
+        nativesharp::language::kListPatternCaseLabelMessage),
+        "a list pattern in a case label is rejected deliberately in favour of match");
     tests.expect(!hasDeferredDiagnostic(
         "class C { static C() {} }", "static-constructors"),
         "static constructor grammar is productive even while its once/runtime protocol remains planned");
-    tests.expect(hasDeferredDiagnostic(
+    tests.expect(!hasDeferredDiagnostic(
         "decimal Work() { return 0; }", "decimal"),
-        "decimal fails with NS3049 and an ABI rationale");
+        "decimal is part of the productive NativeSharp 3 surface");
     tests.expect(!hasDeferredDiagnostic(
         "extension Text { int Size() { return 0; } }", "extension-methods"),
         "extension blocks are part of the productive NativeSharp 3 language surface");
     tests.expect(hasDeferredDiagnostic(
         "long double Work() { return 0.0; }", "long-double"),
         "long double fails with NS3049 and the Windows x64 ABI rationale");
-    tests.expect(hasDeferredDiagnostic(
+    tests.expect(!hasDeferredDiagnostic(
         "int Work() { if (int value = 1) return value; return 0; }",
         "condition-declarations"),
-        "condition declarations fail with NS3049 and a flow rationale");
+        "condition declarations are part of the productive NativeSharp 3 surface");
     tests.expect(!hasDeferredDiagnostic(
         "bool Work(double magnitude, double factor) { return magnitude * factor >= 1.0; }",
         "condition-declarations"),
         "multiplication in a condition is not mistaken for a condition declaration");
-    tests.expect(hasDeferredDiagnostic(
+    tests.expect(!hasDeferredDiagnostic(
         "int Work() { static int value = 1; return value; }", "static-locals"),
-        "static locals fail with NS3049 and a lifetime rationale");
+        "static locals are part of the productive NativeSharp 3 surface");
 
     nativesharp::source::SourceManager rawSources;
     const nativesharp::FileId rawFile = rawSources.addBuffer(

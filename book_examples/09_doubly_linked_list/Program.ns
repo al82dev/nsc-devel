@@ -3,7 +3,7 @@ namespace NativeSharp.BookExamples.DoublyLinkedList
 {
     class Program
     {
-        public static int Main()
+        public static int Main() throws ArgumentOutOfRangeException
         {
             Console.WriteLine("NativeSharp Book Example 09 - Doubly Linked List");
             Console.WriteLine("------------------------------------------------");

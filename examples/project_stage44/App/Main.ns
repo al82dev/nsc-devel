@@ -58,7 +58,7 @@ namespace Stage44.Sample
             pair.Left = first.Get();
             pair.Right = first.Get();
 
-            Holder<int> holder = new Holder<int>(pair.Left);
+            raii Holder<int> holder = new Holder<int>(pair.Left);
 
             int[] values = new int[2];
             values[0] = holder.Get();

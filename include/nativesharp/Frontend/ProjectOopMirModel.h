@@ -308,6 +308,13 @@ private:
         const ProjectOopHirModel& hirModel,
         const std::unordered_set<std::string>& destroyableClassTypeKeys,
         std::string& error);
+    bool appendValueFieldDropStep(
+        ProjectOopMirDispatchTable& table,
+        const ProjectMemberModel& memberModel,
+        const ProjectObjectLayoutModel& objectLayoutModel,
+        const ClassMemberSymbol& member,
+        std::size_t memberOrdinal,
+        std::string& error);
     bool buildOwnedFieldDestructionPlans(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,

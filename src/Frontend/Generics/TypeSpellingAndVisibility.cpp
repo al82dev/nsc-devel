@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "../Internal/CloneDepthGuard.h"
+#include "../Internal/IndexShadowCheckSwitch.h"
+#include "../Internal/IndexShadowMismatch.h"
 #include "../Cache/CachePayloadReader.h"
 #include "../Internal/EnumConstResolver.h"
 #include "../Internal/SpecializationWaveTimer.h"
@@ -229,11 +231,18 @@ ProjectGenericModel::resolveModuleQualifiedDeclaredTypeIdentity(
         writtenName.size() - moduleSeparator - 2U);
     if (requestedModule.empty() || requestedType.empty()) return nullptr;
 
+    // Only the declarations whose source name is the requested type, in vector order; the
+    // module prefix is built once instead of once per declaration.
+    if constexpr (internal::kIndexShadowCheckEnabled)
+        shadowCheckDeclaredTypeNameIndex(requestedType, "resolveModuleQualifiedDeclaredTypeIdentity");
+    const auto candidates = declaredTypeIdentitiesBySourceName_.find(requestedType);
+    if (candidates == declaredTypeIdentitiesBySourceName_.end()) return nullptr;
+    const std::string modulePrefix = std::string(requestedModule) + "::";
     const DeclaredTypeIdentity* exact = nullptr;
-    for (const DeclaredTypeIdentity& declaration : declaredTypeIdentities_)
+    for (const std::size_t position : candidates->second)
     {
-        if (declaration.sourceName != requestedType ||
-            !declaration.identityKey.starts_with(std::string(requestedModule) + "::") ||
+        const DeclaredTypeIdentity& declaration = declaredTypeIdentities_[position];
+        if (!declaration.identityKey.starts_with(modulePrefix) ||
             (declaration.projectOrdinal != projectOrdinal && !declaration.isPublic))
             continue;
         if (exact != nullptr) return nullptr;
@@ -292,9 +301,14 @@ const ProjectGenericModel::DeclaredTypeIdentity* ProjectGenericModel::resolveDec
         std::vector<const DeclaredTypeIdentity*> identities;
         for (const std::string& spelling : rung.spellings)
         {
-            for (const DeclaredTypeIdentity& declaration : declaredTypeIdentities_)
+            // Only the declarations with this source name, in vector order.
+            if constexpr (internal::kIndexShadowCheckEnabled)
+                shadowCheckDeclaredTypeNameIndex(spelling, "resolveDeclaredTypeIdentity");
+            const auto candidates = declaredTypeIdentitiesBySourceName_.find(spelling);
+            if (candidates == declaredTypeIdentitiesBySourceName_.end()) continue;
+            for (const std::size_t position : candidates->second)
             {
-                if (declaration.sourceName != spelling) continue;
+                const DeclaredTypeIdentity& declaration = declaredTypeIdentities_[position];
 
                 const bool sameProject = declaration.projectOrdinal == projectOrdinal;
                 bool visible = false;
@@ -329,6 +343,25 @@ const ProjectGenericModel::DeclaredTypeIdentity* ProjectGenericModel::resolveDec
         if (identities.size() > 1) return nullptr;
     }
     return nullptr;
+}
+
+void ProjectGenericModel::shadowCheckDeclaredTypeNameIndex(
+    std::string_view sourceName,
+    std::string_view function) const
+{
+    if constexpr (internal::kIndexShadowCheckEnabled)
+    {
+        std::vector<std::size_t> scanned;
+        for (std::size_t position = 0; position < declaredTypeIdentities_.size(); ++position)
+        {
+            if (declaredTypeIdentities_[position].sourceName == sourceName) scanned.push_back(position);
+        }
+        const auto indexed = declaredTypeIdentitiesBySourceName_.find(sourceName);
+        const bool same = indexed == declaredTypeIdentitiesBySourceName_.end()
+            ? scanned.empty()
+            : indexed->second == scanned;
+        if (!same) internal::reportIndexShadowMismatch(function, sourceName);
+    }
 }
 
 void ProjectGenericModel::appendTypeModifiers(
@@ -408,21 +441,39 @@ void ProjectGenericModel::buildVisibility(const compilation::ProjectGraph& graph
     };
     for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
         projectByPath.emplace(pathKey(projects[ordinal].projectFile()), ordinal);
+    // Every reference is resolved to its project ordinal once, in reference order; references
+    // outside the graph are dropped, as the walk skipped them. The walks of every start reuse it.
+    std::vector<std::vector<std::size_t>> referencedOrdinals(projects.size());
+    for (std::size_t ordinal = 0; ordinal < projects.size(); ++ordinal)
+    {
+        for (const std::filesystem::path& reference : projects[ordinal].projectReferences())
+        {
+            const auto found = projectByPath.find(pathKey(reference));
+            if (found != projectByPath.end()) referencedOrdinals[ordinal].push_back(found->second);
+        }
+    }
 
     for (std::size_t start = 0; start < projects.size(); ++start)
     {
         std::vector<bool> reachable(projects.size(), false);
-        std::function<void(std::size_t)> visit = [&](std::size_t ordinal)
+        // Depth-first walk with an explicit stack of (project, next reference) frames: the same
+        // visit order as the former recursion, without std::function or native recursion.
+        std::vector<std::pair<std::size_t, std::size_t>> pending{{start, 0}};
+        while (!pending.empty())
         {
-            for (const std::filesystem::path& reference : projects[ordinal].projectReferences())
+            const std::size_t ordinal = pending.back().first;
+            const std::size_t next = pending.back().second;
+            if (next == referencedOrdinals[ordinal].size())
             {
-                const auto found = projectByPath.find(pathKey(reference));
-                if (found == projectByPath.end() || reachable[found->second]) continue;
-                reachable[found->second] = true;
-                visit(found->second);
+                pending.pop_back();
+                continue;
             }
-        };
-        visit(start);
+            ++pending.back().second;
+            const std::size_t target = referencedOrdinals[ordinal][next];
+            if (reachable[target]) continue;
+            reachable[target] = true;
+            pending.emplace_back(target, 0);
+        }
         for (std::size_t ordinal = 0; ordinal < reachable.size(); ++ordinal)
             if (reachable[ordinal]) visibleProjects_[start].push_back(ordinal);
     }

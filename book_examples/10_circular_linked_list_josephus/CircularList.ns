@@ -17,16 +17,19 @@ namespace NativeSharp.BookExamples.CircularJosephus
 
         public void AddLast(int value)
         {
-            CircleNode node = new CircleNode(value);
+            // Congelamiento 3.0 (C-01): el `new` va directo al campo que lo guarda; la lista es su
+            // dueno manual y lo libera con `delete` en Remove.
             if (head == null)
             {
-                head = node;
-                node.Next = node;
-                node.Previous = node;
+                head = new CircleNode(value);
+                head.Next = head;
+                head.Previous = head;
             }
             else
             {
                 CircleNode tail = head.Previous;
+                tail.Next = new CircleNode(value);
+                CircleNode node = tail.Next;
                 node.Next = head;
                 node.Previous = tail;
                 tail.Next = node;
@@ -35,7 +38,7 @@ namespace NativeSharp.BookExamples.CircularJosephus
             count = count + 1;
         }
 
-        public int Remove(CircleNode node)
+        public int Remove(CircleNode node) throws InvalidOperationException
         {
             if (node == null || count == 0)
             {
@@ -91,7 +94,7 @@ namespace NativeSharp.BookExamples.CircularJosephus
             Console.WriteLine(line);
         }
 
-        public void Clear()
+        public void Clear() throws InvalidOperationException
         {
             while (count > 0)
             {
@@ -101,7 +104,9 @@ namespace NativeSharp.BookExamples.CircularJosephus
 
         ~CircularList()
         {
-            Clear();
+            // A destructor cannot declare throws: the error is handled here.
+            try { Clear(); }
+            catch (InvalidOperationException error) { }
         }
     }
 }

@@ -26,7 +26,11 @@ namespace NativeSharp.Core.Collections.Generic
         private owned TElement[] elements;
         private owned TPriority[] priorities;
         private int count;
-        private Comparison<TPriority> comparer;
+        // EN: Freeze 3.0 P2: stored as InComparison<TPriority>, so comparing priorities never copies
+        //     one (see the Comparison constructor).
+        // ES: Congelamiento 3.0 P2: se guarda como InComparison<TPriority>, asi que comparar
+        //     prioridades nunca copia una (ver el constructor con Comparison).
+        private InComparison<TPriority> comparer;
 
         public PriorityQueue()
         {
@@ -47,7 +51,22 @@ namespace NativeSharp.Core.Collections.Generic
         }
 
         // Mirrors real C#'s PriorityQueue<TElement,TPriority>(IComparer<TPriority>).
-        public PriorityQueue(Comparison<TPriority> comparerFunc)
+        //
+        // EN: Freeze 3.0 P2: a Comparison<TPriority> receives copies, so this constructor requires
+        //     `TPriority : copy` and wraps it in a borrowing InComparison; the InComparison
+        //     constructor serves any TPriority.
+        // ES: Congelamiento 3.0 P2: un Comparison<TPriority> recibe copias, asi que este constructor
+        //     exige `TPriority : copy` y lo envuelve en un InComparison que presta; el constructor con
+        //     InComparison sirve para todo TPriority.
+        public PriorityQueue(Comparison<TPriority> comparerFunc) where TPriority : copy
+        {
+            elements = new TElement[4];
+            priorities = new TPriority[4];
+            count = 0;
+            comparer = (in TPriority a, in TPriority b) => comparerFunc(a, b);
+        }
+
+        public PriorityQueue(InComparison<TPriority> comparerFunc)
         {
             elements = new TElement[4];
             priorities = new TPriority[4];
@@ -69,7 +88,7 @@ namespace NativeSharp.Core.Collections.Generic
         {
             if (comparer != null)
             {
-                return comparer(priorities[i], priorities[j]) < 0;
+                return comparer(in priorities[i], in priorities[j]) < 0;
             }
             return priorities[i] < priorities[j];
         }
@@ -175,13 +194,17 @@ namespace NativeSharp.Core.Collections.Generic
             SiftUp(count - 1);
         }
 
-        public TElement Peek() throws InvalidOperationException
+        // EN: Freeze 3.0 P3: Peek lends the element by reference, for any TElement. TryPeek and
+        //     TryDequeue copy what they report and require the matching `copy` constraints.
+        // ES: Congelamiento 3.0 P3: Peek presta el elemento por referencia, para todo TElement.
+        //     TryPeek y TryDequeue copian lo que informan y exigen los `copy` correspondientes.
+        public ref TElement Peek() throws InvalidOperationException
         {
             if (count == 0)
             {
                 throw new InvalidOperationException();
             }
-            return elements[0];
+            return ref elements[0];
         }
 
         // See the class comment for why the root is swapped to the (about to become out-of-range)
@@ -207,15 +230,21 @@ namespace NativeSharp.Core.Collections.Generic
         // caller-supplied single-element array. `priorityResult[0]` is a plain (non-owned) read
         // of the priority that is about to be discarded (see Dequeue() -- the priority itself is
         // never returned to the caller by real C#'s TryDequeue either, only reported).
-        public bool TryDequeue(TElement[] elementResult, TPriority[] priorityResult)
+        public bool TryDequeue(TElement[] elementResult, TPriority[] priorityResult) where TPriority : copy
         {
             if (count == 0) { return false; }
             priorityResult[0] = priorities[0];
-            elementResult[0] = Dequeue();
+            // EN: Freeze 3.0 C-13: Dequeue() declares throws; the empty case is answered above, so the
+            //     catch only satisfies the checked contract.
+            // ES: Congelamiento 3.0 C-13: Dequeue() declara throws; el caso vacio ya se respondio arriba,
+            //     asi que el catch solo cumple el contrato verificado.
+            try { elementResult[0] = Dequeue(); }
+            catch (InvalidOperationException problem) { return false; }
             return true;
         }
 
         public bool TryPeek(TElement[] elementResult, TPriority[] priorityResult)
+            where TElement : copy where TPriority : copy
         {
             if (count == 0) { return false; }
             elementResult[0] = elements[0];
@@ -243,9 +272,23 @@ namespace NativeSharp.Core.Collections.Generic
         // Added so PriorityQueueEnumerator<TElement,TPriority> can borrow a live reference to this
         // queue, same design as List<T>/Queue<T>/Stack<T>'s enumerators (P1.2 of
         // STAGE52X_FOREACH_REVISION_TECNICA_Y_FALTANTES.md).
+        //
+        // EN: Freeze 3.0 P3: the getter copies and requires `TElement : copy`; RefAt lends the same
+        //     element for any TElement (PriorityQueueEnumerator uses it).
+        // ES: Congelamiento 3.0 P3: el getter copia y exige `TElement : copy`; RefAt presta el mismo
+        //     elemento para todo TElement (PriorityQueueEnumerator lo usa).
         public TElement this[int index]
         {
-            get { return elements[index]; }
+            get where TElement : copy { return elements[index]; }
+        }
+
+        public ref TElement RefAt(int index)
+        {
+            if (index < 0 || index >= count)
+            {
+                panic("PriorityQueue index out of range");
+            }
+            return ref elements[index];
         }
 
         // P1.2: `Current` yields TElement ONLY, not a (TElement, TPriority) pair -- mirroring

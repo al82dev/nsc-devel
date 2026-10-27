@@ -3,7 +3,7 @@ namespace NativeSharp.BookExamples.BinaryHeap
 {
     class Program
     {
-        public static int Main()
+        public static int Main() throws InvalidOperationException
         {
             Console.WriteLine("NativeSharp Book Example 13 - Binary Heap / Priority Queue");
             Console.WriteLine("----------------------------------------------------------");

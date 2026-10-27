@@ -7,7 +7,7 @@ public partial class Counter
         return Add(delta) + Add(delta);
     }
 
-    public Counter Make(int start)
+    public owned Counter Make(int start)
     {
         return new Counter(start);
     }
@@ -24,7 +24,7 @@ public class Empty
 
 public class Factory
 {
-    public Empty MakeEmpty()
+    public owned Empty MakeEmpty()
     {
         return new Empty();
     }

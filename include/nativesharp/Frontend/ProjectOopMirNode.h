@@ -79,6 +79,14 @@ struct ProjectOopMirNode final
     // `lock_` field's byte offset. See ProjectOopLlvmLowerer.cpp's CoreMonitorWait case for where
     // both offsets get consumed (two GEPs off one already-lowered receiver pointer).
     std::uint64_t secondaryImmediate = 0;
+    // EN: Freeze 3.0 D-01. In a poll, an operand evaluated next to a suspending await inside the
+    //     same statement keeps its value in this frame slot. Resuming re-enters the statement from
+    //     its start; the operand then reads the slot instead of running its side effects again.
+    // ES: Congelamiento 3.0 D-01. En un poll, un operando evaluado junto a un await que suspende
+    //     dentro de la misma sentencia guarda su valor en este slot del frame. Al reanudar se
+    //     vuelve a entrar a la sentencia desde su inicio; el operando lee el slot en vez de repetir
+    //     sus efectos.
+    std::optional<std::uint64_t> replaySpillOffset;
     // NS304-T13-F06: a RawElementAddress over a flexible array bounds-checks against its `Length`
     // member (byte offset in secondaryImmediate); this flag separates presence from value.
     bool hasTrailingLengthBounds = false;

@@ -11,7 +11,11 @@
   ],
   "optimization": "O0",
   "expected": {
-    "exit_code": 1
+    "exit_code": 1,
+    "stderr": {
+      "mode": "contains",
+      "text": "collides with a reserved NativeSharp/runtime/toolchain symbol"
+    }
   },
   "tags": [
     "negative",

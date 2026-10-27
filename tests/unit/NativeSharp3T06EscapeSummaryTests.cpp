@@ -280,6 +280,84 @@ public class Program
         "a direct global escape rejects current-frame storage without an edition gate (" +
             directGlobalDiagnostics + ")");
 
+    // ES: Un local puntero se valida por a dónde apunta, no por su propio slot: una dirección del
+    // marco que llega por un alias se rechaza, y un puntero a almacenamiento global copiado en
+    // locales se acepta (antes se rechazaba: KrLinearAllocator de nsc-debugger no compilaba).
+    // EN: A pointer local is validated by where it points, not by its own slot: a frame address that
+    // arrives through an alias is rejected, and a pointer to global storage copied into locals is
+    // accepted (it used to be rejected: nsc-debugger's KrLinearAllocator did not compile).
+    const std::filesystem::path aliasFrameProject = writeProject(
+        root / "pointer-alias-frame", "EscapeNegative", R"NS(
+namespace EscapeNegative
+{
+    int* Kept = null;
+
+    void Retain(int* pointer)
+    {
+        Kept = pointer;
+    }
+
+    int Main()
+    {
+        int local = 5;
+        int* alias = null;
+        alias = &local;
+        Retain(alias);
+        return 0;
+    }
+}
+)NS");
+    const std::string aliasFrameProjectText = aliasFrameProject.string();
+    const std::array<std::string_view, 3> aliasFrameArguments = {
+        "--dump-project-method-bodies", aliasFrameProjectText, "-O0"};
+    std::string aliasFrameOutput;
+    std::string aliasFrameError;
+    const nativesharp::ExitCode aliasFrameResult =
+        runDriver(aliasFrameArguments, aliasFrameOutput, aliasFrameError);
+    const std::string aliasFrameDiagnostics = aliasFrameError + aliasFrameOutput;
+    tests.expect(aliasFrameResult != nativesharp::ExitCode::Success &&
+            aliasFrameDiagnostics.find("retained by the callee's published escape contract") !=
+                std::string::npos,
+        "a frame address passed through a pointer alias is rejected (" +
+            aliasFrameDiagnostics + ")");
+
+    const std::filesystem::path aliasGlobalProject = writeProject(
+        root / "pointer-alias-global", "EscapePositive", R"NS(
+namespace EscapePositive
+{
+    byte[16] Storage;
+    byte* Kept = null;
+
+    void Retain(byte* pointer)
+    {
+        Kept = pointer;
+    }
+
+    byte* Take()
+    {
+        return &Storage[0];
+    }
+
+    int Main()
+    {
+        byte* block = Take();
+        byte* copy = block;
+        Retain(copy);
+        Retain(&Storage[1]);
+        return Kept == &Storage[1] ? 0 : 1;
+    }
+}
+)NS");
+    const std::string aliasGlobalProjectText = aliasGlobalProject.string();
+    const std::array<std::string_view, 3> aliasGlobalArguments = {
+        "--dump-project-method-bodies", aliasGlobalProjectText, "-O0"};
+    std::string aliasGlobalOutput;
+    std::string aliasGlobalError;
+    tests.expect(runDriver(aliasGlobalArguments, aliasGlobalOutput, aliasGlobalError) ==
+            nativesharp::ExitCode::Success,
+        "a pointer local that holds a global address may reach a retained parameter (" +
+            aliasGlobalError + aliasGlobalOutput + ")");
+
     return tests.resultKeeping(root);
 }
 #include <span>

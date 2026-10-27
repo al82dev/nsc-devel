@@ -23,7 +23,7 @@ namespace cc1loopcatchswitch
 {
     class Program
     {
-        private static void Fail(int step)
+        private static void Fail(int step) throws Exception
         {
             if (step == 4)
             {
@@ -32,7 +32,7 @@ namespace cc1loopcatchswitch
             throw new InvalidOperationException();
         }
 
-        public static int Main()
+        public static int Main() throws Exception
         {
             int localBreaks = 0;   // secciones que salieron por `break`
             int skips = 0;         // secciones que salieron por `continue`

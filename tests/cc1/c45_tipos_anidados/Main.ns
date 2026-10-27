@@ -71,7 +71,7 @@ namespace c45
         // de busqueda que los contenedores lexicos anaden delante del namespace.
         public int Interno()
         {
-            Pieza p = new Pieza();
+            raii Pieza p = new Pieza();
             return p.Peso();
         }
 
@@ -92,7 +92,7 @@ namespace c45
         // El contenedor ve lo suyo.
         public int DesdeElContenedor()
         {
-            Reservada r = new Reservada();
+            raii Reservada r = new Reservada();
             return r.Codigo();
         }
     }
@@ -110,7 +110,7 @@ namespace c45
     {
         public int DesdeLaDerivada()
         {
-            Base.Reservada r = new Base.Reservada();
+            raii Base.Reservada r = new Base.Reservada();
             return r.Codigo();
         }
     }
@@ -138,10 +138,10 @@ namespace c45
     {
         public static int Main()
         {
-            Caja caja = new Caja();
+            raii Caja caja = new Caja();
             if (caja.Interno() != 21) { return 10; }
 
-            c45.Caja.Pieza delNamespace = new c45.Caja.Pieza();
+            raii c45.Caja.Pieza delNamespace = new c45.Caja.Pieza();
             if (delNamespace.Peso() != 20) { return 11; }
 
             // Los dos en la misma expresion. Si sus simbolos colapsaran, esta suma no daria 41.
@@ -150,10 +150,10 @@ namespace c45
             c45.Caja.Medida medidaNamespace;
             if (caja.InternoMedida() + medidaNamespace.Valor() != 61) { return 13; }
 
-            Derivada derivada = new Derivada();
+            raii Derivada derivada = new Derivada();
             if (derivada.DesdeLaDerivada() != 40) { return 14; }
 
-            Base b = new Base();
+            raii Base b = new Base();
             if (b.DesdeElContenedor() != 40) { return 15; }
 
             if (PrimeraCaja.Interna.Valor<int>(0) != 16) { return 16; }

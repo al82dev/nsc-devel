@@ -15,12 +15,18 @@ struct BuildOptions final
     std::optional<std::string> optimization;
     std::optional<std::string> debug;
     std::optional<std::string> linker;
+    // `-flto`, `-flto=full`, `-flto=thin` or `-flto=none` on the command line, as none/full/thin.
+    // `-flto`, `-flto=full`, `-flto=thin` o `-flto=none` en la linea de comandos, como none/full/thin.
+    std::optional<std::string> linkTimeOptimization;
     std::optional<std::filesystem::path> libraryReferenceRoot;
     std::optional<std::size_t> compilerJobs;
     bool noRestore = false;
     bool precompiledOnly = false;
     bool dependencyReport = false;
     bool progress = false;
+    // EN: Freeze 3.0 DEC-13: forwarded as --validate-system-imports to the nested compilation.
+    // ES: Congelamiento 3.0 DEC-13: se reenvia como --validate-system-imports a la compilacion anidada.
+    bool validateSystemImports = false;
     std::optional<std::string> progressFormat;
     std::vector<std::string> programArguments;
 };

@@ -374,6 +374,7 @@ private:
     bool genericLookaheadTokenIsAllowed(
         std::size_t cursor,
         int parenthesisDepth) const noexcept;
+    bool canStartTypeArgumentAt(std::size_t tokenIndex) const noexcept;
     bool looksLikeGenericCallTypeArguments() const noexcept;
     bool scanClosedGenericTypePrefix(std::size_t& cursor) const noexcept;
     bool looksLikeClosedGenericTypeReference() const noexcept;
@@ -810,6 +811,12 @@ private:
         std::string_view className,
         bool structContext,
         MemberParseState& state);
+    // EN: Freeze 3.0 P3: `ref readonly` before a member return type, and the marker it leaves on a
+    //     method, property or indexer (and on its getter).
+    // ES: Congelamiento 3.0 P3: `ref readonly` antes del tipo de retorno de un miembro, y el
+    //     marcador que deja en un metodo, propiedad o indexador (y en su accesor get).
+    bool atReadonlyReferenceReturn() const noexcept;
+    void applyReadonlyReferenceReturn(ast::AstNode* member, SourceRange range);
     ast::AstNode* parseUnnamedBitFieldMember(
         ast::TypeSyntax* type,
         bool isReferenceReturn,
@@ -1690,6 +1697,11 @@ private:
     std::size_t nextComprehensionTemporary_ = 0;
     bool parsingExtensionBody_ = false;
     KnownTypeNameSet knownTypeNames_;
+    // EN: Freeze 3.0 P1: the generic parameters of the class and struct bodies being parsed, outer
+    //     first; a method `where` clause may restrict one of them.
+    // ES: Congelamiento 3.0 P1: los parametros genericos de los cuerpos de clase y struct en curso,
+    //     el exterior primero; una clausula `where` de un metodo puede restringir uno de ellos.
+    std::vector<std::string> enclosingGenericParameters_;
     const KnownTypeNameSet* sharedKnownTypeNames_ = nullptr;
     const Parser* knownTypeNameParent_ = nullptr;
 };

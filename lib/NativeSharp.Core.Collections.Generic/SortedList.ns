@@ -44,7 +44,10 @@ namespace NativeSharp.Core.Collections.Generic
         // this exists (P1 gap flagged in the Stage 52 closure notes: earlier this class only ever
         // used TKey's own `<`, with no way to order by a different key or a TKey with no natural
         // order at all).
-        private Comparison<TKey> comparer;
+        //
+        // EN: Freeze 3.0 P2: stored as InComparison<TKey> (see the constructors).
+        // ES: Congelamiento 3.0 P2: se guarda como InComparison<TKey> (ver los constructores).
+        private InComparison<TKey> comparer;
 
         public SortedList()
         {
@@ -67,7 +70,34 @@ namespace NativeSharp.Core.Collections.Generic
         // Mirrors real C#'s SortedList<TKey,TValue>(IComparer<TKey>) -- NativeSharp has no
         // IComparer<T> yet (see Delegates.ns), so a `Comparison<TKey>` delegate is the ownership-
         // and-generics-safe equivalent already used by List<T>.Sort(Comparison<T>).
-        public SortedList(Comparison<TKey> comparerFunc)
+        //
+        // EN: Freeze 3.0 P2: a Comparison<TKey> receives copies, so these constructors require
+        //     `TKey : copy` and wrap it in a borrowing InComparison<TKey>; the InComparison
+        //     constructors serve any TKey. The comparer is always stored as InComparison, so key
+        //     comparisons never copy a key.
+        // ES: Congelamiento 3.0 P2: un Comparison<TKey> recibe copias, asi que estos constructores
+        //     exigen `TKey : copy` y lo envuelven en un InComparison<TKey> que presta; los
+        //     constructores con InComparison sirven para todo TKey. El comparador se guarda siempre
+        //     como InComparison, asi que comparar claves nunca copia una clave.
+        public SortedList(Comparison<TKey> comparerFunc) where TKey : copy
+        {
+            keys = new TKey[4];
+            values = new TValue[4];
+            count = 0;
+            comparer = (in TKey a, in TKey b) => comparerFunc(a, b);
+        }
+
+        public SortedList(Comparison<TKey> comparerFunc, int capacity) where TKey : copy
+        {
+            int actual = capacity;
+            if (actual < 1) { actual = 1; }
+            keys = new TKey[actual];
+            values = new TValue[actual];
+            count = 0;
+            comparer = (in TKey a, in TKey b) => comparerFunc(a, b);
+        }
+
+        public SortedList(InComparison<TKey> comparerFunc)
         {
             keys = new TKey[4];
             values = new TValue[4];
@@ -75,7 +105,7 @@ namespace NativeSharp.Core.Collections.Generic
             comparer = comparerFunc;
         }
 
-        public SortedList(Comparison<TKey> comparerFunc, int capacity)
+        public SortedList(InComparison<TKey> comparerFunc, int capacity)
         {
             int actual = capacity;
             if (actual < 1) { actual = 1; }
@@ -95,11 +125,14 @@ namespace NativeSharp.Core.Collections.Generic
             return keys.Length;
         }
 
-        private bool KeyEquals(TKey a, TKey b)
+        // EN: Freeze 3.0 P2: KeyEquals and LowerBound borrow their keys (`in`), so neither copies one.
+        // ES: Congelamiento 3.0 P2: KeyEquals y LowerBound reciben sus claves prestadas (`in`), asi que
+        //     ninguna copia una.
+        private bool KeyEquals(in TKey a, in TKey b)
         {
             if (comparer != null)
             {
-                return comparer(a, b) == 0;
+                return comparer(in a, in b) == 0;
             }
             if (a < b) { return false; }
             if (b < a) { return false; }
@@ -110,7 +143,7 @@ namespace NativeSharp.Core.Collections.Generic
         // for `key`, and (if that slot's key actually equals `key`) the lookup index too. Needs
         // only `<` (or the explicit comparer, when one was supplied at construction), exactly
         // like List<T>.BinarySearch/Sort(Comparison<T>).
-        private int LowerBound(TKey key)
+        private int LowerBound(in TKey key)
         {
             int low = 0;
             int high = count;
@@ -120,7 +153,7 @@ namespace NativeSharp.Core.Collections.Generic
                 bool less;
                 if (comparer != null)
                 {
-                    less = comparer(keys[mid], key) < 0;
+                    less = comparer(in keys[mid], in key) < 0;
                 }
                 else
                 {
@@ -138,21 +171,26 @@ namespace NativeSharp.Core.Collections.Generic
             return low;
         }
 
-        private int FindIndex(TKey key)
+        // EN: Freeze 3.0 P3: the key is borrowed (`in`), so a lookup never copies a key and serves a
+        //     move-only TKey. Callers lend their own by-value parameter.
+        // ES: Congelamiento 3.0 P3: la clave se recibe prestada (`in`), asi que una busqueda nunca
+        //     copia una clave y sirve para un TKey move-only. Los llamadores prestan su propio
+        //     parametro por valor.
+        private int FindIndex(in TKey key)
         {
-            int index = LowerBound(key);
-            if (index < count && KeyEquals(keys[index], key)) { return index; }
+            int index = LowerBound(in key);
+            if (index < count && KeyEquals(in keys[index], in key)) { return index; }
             return -1;
         }
 
         public int IndexOfKey(TKey key)
         {
-            return FindIndex(key);
+            return FindIndex(in key);
         }
 
         public bool ContainsKey(TKey key)
         {
-            return FindIndex(key) >= 0;
+            return FindIndex(in key) >= 0;
         }
 
         public bool ContainsValue(TValue value)
@@ -182,9 +220,9 @@ namespace NativeSharp.Core.Collections.Generic
         // See Dictionary.ns's class comment for why this is a caller-supplied single-element
         // array rather than a real `out TValue` parameter (NativeSharp has no `ref`/`out`
         // parameters) or a returned `{bool, TValue}` struct (Stage 40's struct-value ABI limit).
-        public bool TryGetValue(TKey key, TValue[] result)
+        public bool TryGetValue(TKey key, TValue[] result) where TValue : copy
         {
-            int index = FindIndex(key);
+            int index = FindIndex(in key);
             if (index < 0) { return false; }
             result[0] = values[index];
             return true;
@@ -192,11 +230,16 @@ namespace NativeSharp.Core.Collections.Generic
 
         // Language 3 collection accessors are total for compatibility with the official NSC.
         // Use TryGetValue when a stored default(TValue) must be distinguished from a missing key.
+        //
+        // EN: Freeze 3.0 P3: the getter returns a copy of the value and requires `TValue : copy`;
+        //     ValueAt lends it by reference. TryGetValue copies it too.
+        // ES: Congelamiento 3.0 P3: el getter devuelve una copia del valor y exige `TValue : copy`;
+        //     ValueAt lo presta por referencia. TryGetValue tambien lo copia.
         public TValue this[TKey key]
         {
-            get
+            get where TValue : copy
             {
-                int index = FindIndex(key);
+                int index = FindIndex(in key);
                 if (index < 0)
                 {
                     return default(TValue);
@@ -205,14 +248,19 @@ namespace NativeSharp.Core.Collections.Generic
             }
         }
 
-        public TKey KeyAt(int index)
+        // EN: Freeze 3.0 P3: KeyAt lends the key readonly (changing it in place would break the
+        //     order); ValueAt lends the value, which may change. Both serve any type.
+        // ES: Congelamiento 3.0 P3: KeyAt presta la clave de solo lectura (cambiarla en su lugar
+        //     romperia el orden); ValueAt presta el valor, que si puede cambiar. Ambos sirven para todo
+        //     tipo.
+        public ref readonly TKey KeyAt(int index)
         {
-            return keys[index];
+            return ref keys[index];
         }
 
-        public TValue ValueAt(int index)
+        public ref TValue ValueAt(int index)
         {
-            return values[index];
+            return ref values[index];
         }
 
         // Public so callers can pre-size before a known-size batch of Add()s. Returns the
@@ -283,12 +331,31 @@ namespace NativeSharp.Core.Collections.Generic
         // key, exactly like the CLR's SortedList<TKey,TValue>.
         public void Add(owned TKey key, owned TValue value) throws ArgumentException
         {
-            int insertAt = LowerBound(key);
-            if (insertAt < count && KeyEquals(keys[insertAt], key))
+            int insertAt = LowerBound(in key);
+            if (insertAt < count && KeyEquals(in keys[insertAt], in key))
             {
                 throw new ArgumentException();
             }
             InsertAt(insertAt, move(key), move(value));
+        }
+
+        // EN: Freeze 3.0 P3: like Dictionary.TryAdd. Inserts only a new key and reports whether it did;
+        //     a duplicate key and its value are destroyed. It never copies a key (SortedSet.Add uses
+        //     it for a move-only T).
+        // ES: Congelamiento 3.0 P3: como Dictionary.TryAdd. Inserta solo una clave nueva e informa si
+        //     lo hizo; una clave repetida y su valor se destruyen. Nunca copia una clave (SortedSet.Add
+        //     lo usa para un T move-only).
+        public bool TryAdd(owned TKey key, owned TValue value)
+        {
+            int insertAt = LowerBound(in key);
+            if (insertAt < count && KeyEquals(in keys[insertAt], in key))
+            {
+                delete key;
+                delete value;
+                return false;
+            }
+            InsertAt(insertAt, move(key), move(value));
+            return true;
         }
 
         // The `owned`-argument-friendly stand-in for real C#'s indexer setter (`sl[key] =
@@ -296,8 +363,8 @@ namespace NativeSharp.Core.Collections.Generic
         // cannot take an owned parameter.
         public void AddOrUpdate(owned TKey key, owned TValue value)
         {
-            int insertAt = LowerBound(key);
-            if (insertAt < count && KeyEquals(keys[insertAt], key))
+            int insertAt = LowerBound(in key);
+            if (insertAt < count && KeyEquals(in keys[insertAt], in key))
             {
                 delete values[insertAt];
                 // move(value): see List.ns's Add() for the full explanation.
@@ -312,7 +379,7 @@ namespace NativeSharp.Core.Collections.Generic
         // needs no ownership of the key at all, since the container already owns the one stored.
         public void SetValue(TKey key, owned TValue value) throws KeyNotFoundException
         {
-            int index = FindIndex(key);
+            int index = FindIndex(in key);
             if (index < 0)
             {
                 throw new KeyNotFoundException();
@@ -338,7 +405,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         public bool Remove(TKey key)
         {
-            int index = FindIndex(key);
+            int index = FindIndex(in key);
             if (index < 0) { return false; }
             RemoveAt(index);
             return true;
@@ -356,7 +423,7 @@ namespace NativeSharp.Core.Collections.Generic
             count = 0;
         }
 
-        public TKey[] Keys()
+        public TKey[] Keys() where TKey : copy
         {
             const TKey[] result = new TKey[count];
             int i = 0;
@@ -368,7 +435,7 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
-        public TValue[] Values()
+        public TValue[] Values() where TValue : copy
         {
             const TValue[] result = new TValue[count];
             int i = 0;
@@ -382,7 +449,7 @@ namespace NativeSharp.Core.Collections.Generic
 
         // See the class comment: consumed via `result[i].Key`/`result[i].Value` field access,
         // never by copying an element into a standalone `KeyValuePair<TKey, TValue>` local.
-        public KeyValuePair<TKey, TValue>[] ToArray()
+        public KeyValuePair<TKey, TValue>[] ToArray() where TKey : copy where TValue : copy
         {
             const KeyValuePair<TKey, TValue>[] result = new KeyValuePair<TKey, TValue>[count];
             int i = 0;
@@ -395,7 +462,9 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
-        public void ForEach(KeyValueAction<TKey, TValue> action)
+        // EN: Freeze 3.0 P2: the action receives copies of the key and the value.
+        // ES: Congelamiento 3.0 P2: la accion recibe copias de la clave y del valor.
+        public void ForEach(KeyValueAction<TKey, TValue> action) where TKey : copy where TValue : copy
         {
             int i = 0;
             while (i < count)
@@ -403,6 +472,43 @@ namespace NativeSharp.Core.Collections.Generic
                 action(keys[i], values[i]);
                 i = i + 1;
             }
+        }
+
+        // EN: Freeze 3.0 P2: lends every key in order to `action`. SortedSet<T>.ForEach(InAction<T>)
+        //     uses it, because Keys() copies.
+        // ES: Congelamiento 3.0 P2: presta cada clave en orden a `action`. Lo usa
+        //     SortedSet<T>.ForEach(InAction<T>), porque Keys() copia.
+        public void ForEachKey(InAction<TKey> action)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                action(in keys[i]);
+                i = i + 1;
+            }
+        }
+
+        // EN: Freeze 3.0 P2: removes (and destroys) every entry whose key matches `predicate`, which
+        //     borrows the key; returns how many were removed. Used by SortedSet<T>.RemoveWhere.
+        // ES: Congelamiento 3.0 P2: quita (y destruye) cada entrada cuya clave cumple `predicate`, que
+        //     recibe la clave prestada; devuelve cuantas quito. Lo usa SortedSet<T>.RemoveWhere.
+        public int RemoveKeysWhere(InPredicate<TKey> predicate)
+        {
+            int removed = 0;
+            int i = 0;
+            while (i < count)
+            {
+                if (predicate(in keys[i]))
+                {
+                    RemoveAt(i);
+                    removed = removed + 1;
+                }
+                else
+                {
+                    i = i + 1;
+                }
+            }
+            return removed;
         }
 
         ~SortedList()

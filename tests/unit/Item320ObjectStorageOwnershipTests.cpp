@@ -72,8 +72,7 @@ public class Program
         Widget* storage = (Widget*)bytes;
         Widget placed = new (storage) Widget(41);
         destroy placed;
-        Widget heap = new Widget(42);
-        delete heap;
+        raii Widget heap = new Widget(42);
         return 0;
     }
 }

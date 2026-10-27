@@ -78,7 +78,16 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
         private void SplitChild(SmallBTreeNode parent, int childIndex)
         {
             SmallBTreeNode full = parent.Children[childIndex];
-            SmallBTreeNode right = new SmallBTreeNode(full.Leaf);
+            int index = parent.Count;
+            while (index > childIndex)
+            {
+                parent.Children[index + 1] = parent.Children[index];
+                index = index - 1;
+            }
+            // Congelamiento 3.0 (C-01): el nodo nuevo se guarda primero en el hijo del padre que
+            // lo posee; el arbol es su dueno manual.
+            parent.Children[childIndex + 1] = new SmallBTreeNode(full.Leaf);
+            SmallBTreeNode right = parent.Children[childIndex + 1];
             right.Count = 1;
             right.Keys[0] = full.Keys[2];
             if (!full.Leaf)
@@ -89,14 +98,6 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
                 full.Children[3] = null;
             }
             full.Count = 1;
-
-            int index = parent.Count;
-            while (index > childIndex)
-            {
-                parent.Children[index + 1] = parent.Children[index];
-                index = index - 1;
-            }
-            parent.Children[childIndex + 1] = right;
 
             index = parent.Count - 1;
             while (index >= childIndex)
@@ -143,10 +144,10 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
         {
             if (root.Count == 3)
             {
-                SmallBTreeNode replacement = new SmallBTreeNode(false);
-                replacement.Children[0] = root;
-                SplitChild(replacement, 0);
-                root = replacement;
+                SmallBTreeNode oldRoot = root;
+                root = new SmallBTreeNode(false);
+                root.Children[0] = oldRoot;
+                SplitChild(root, 0);
             }
             InsertNonFull(root, key);
         }
@@ -209,10 +210,11 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
                 {
                     if (current.Left == null)
                     {
-                        ThreadedTreeNode node = new ThreadedTreeNode(key);
+                        // Congelamiento 3.0 (C-01): el `new` va directo al enlace que lo guarda.
+                        current.Left = new ThreadedTreeNode(key);
+                        ThreadedTreeNode node = current.Left;
                         node.Right = current;
                         node.RightIsThread = true;
-                        current.Left = node;
                         return root;
                     }
                     current = current.Left;
@@ -221,11 +223,12 @@ namespace NativeSharp.BookExamples.DrozdekAdvanced
                 {
                     if (current.Right == null || current.RightIsThread)
                     {
-                        ThreadedTreeNode node = new ThreadedTreeNode(key);
-                        node.Right = current.Right;
-                        node.RightIsThread = true;
-                        current.Right = node;
+                        ThreadedTreeNode following = current.Right;
+                        current.Right = new ThreadedTreeNode(key);
                         current.RightIsThread = false;
+                        ThreadedTreeNode node = current.Right;
+                        node.Right = following;
+                        node.RightIsThread = true;
                         return root;
                     }
                     current = current.Right;

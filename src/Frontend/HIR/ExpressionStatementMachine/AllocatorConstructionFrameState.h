@@ -12,6 +12,9 @@ struct AllocatorConstructionFrameState final
         AllocatorConstructionFrameStage::Receiver;
     std::size_t constructionOrdinal = 0U;
     std::size_t computedSize = 0U;
+    // EN: alignof(T) passed to IAllocator.Allocate (freeze 3.0, C-08).
+    // ES: alignof(T) que recibe IAllocator.Allocate (congelamiento 3.0, C-08).
+    std::size_t computedAlignment = 1U;
     std::size_t temporaryOrdinal = 0U;
     std::size_t contextOrdinal = 0U;
     std::optional<std::size_t> allocatorTypeOrdinal;

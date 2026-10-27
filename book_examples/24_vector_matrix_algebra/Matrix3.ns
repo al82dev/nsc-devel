@@ -8,20 +8,20 @@ namespace NativeSharp.BookExamples.LinearAlgebra
         private int Cell(int r,int c){return r*3+c;}
         public double Get(int r,int c){return m[Cell(r,c)];}
         public void Set(int r,int c,double value){m[Cell(r,c)]=value;}
-        public static Matrix3 Identity()
+        public static owned Matrix3 Identity()
         {
-            Matrix3 r=new Matrix3();r.Set(0,0,1.0);r.Set(1,1,1.0);r.Set(2,2,1.0);return r;
+            raii Matrix3 r=new Matrix3();r.Set(0,0,1.0);r.Set(1,1,1.0);r.Set(2,2,1.0);return move(r);
         }
-        public static Matrix3 operator +(Matrix3 a,Matrix3 b)
+        public static owned Matrix3 operator +(Matrix3 a,Matrix3 b)
         {
-            Matrix3 r=new Matrix3();int row=0;while(row<3){int col=0;while(col<3){r.Set(row,col,a.Get(row,col)+b.Get(row,col));col=col+1;}row=row+1;}return r;
+            raii Matrix3 r=new Matrix3();int row=0;while(row<3){int col=0;while(col<3){r.Set(row,col,a.Get(row,col)+b.Get(row,col));col=col+1;}row=row+1;}return move(r);
         }
-        public static Matrix3 operator *(Matrix3 a,Matrix3 b)
+        public static owned Matrix3 operator *(Matrix3 a,Matrix3 b)
         {
-            Matrix3 r=new Matrix3();int row=0;
-            while(row<3){int col=0;while(col<3){double sum=0.0;int k=0;while(k<3){sum=sum+a.Get(row,k)*b.Get(k,col);k=k+1;}r.Set(row,col,sum);col=col+1;}row=row+1;}return r;
+            raii Matrix3 r=new Matrix3();int row=0;
+            while(row<3){int col=0;while(col<3){double sum=0.0;int k=0;while(k<3){sum=sum+a.Get(row,k)*b.Get(k,col);k=k+1;}r.Set(row,col,sum);col=col+1;}row=row+1;}return move(r);
         }
-        public Vector3 Transform(Vector3 v)
+        public owned Vector3 Transform(Vector3 v)
         {
             return new Vector3(
                 Get(0,0)*v.X+Get(0,1)*v.Y+Get(0,2)*v.Z,

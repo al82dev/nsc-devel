@@ -69,10 +69,25 @@ namespace NativeSharp.Core.Collections.Generic
             return items.Length;
         }
 
+        // EN: Freeze 3.0 P3: the getter returns a copy of the element and requires `T : copy`; the
+        //     setter moves its owned value into the slot and serves any T. RefAt lends the element
+        //     itself, also for a move-only T.
+        // ES: Congelamiento 3.0 P3: el getter devuelve una copia del elemento y exige `T : copy`; el
+        //     setter mueve su valor owned al slot y sirve para todo T. RefAt presta el elemento mismo,
+        //     tambien para un T move-only.
         public owned T this[int index]
         {
-            get { return items[index]; }
+            get where T : copy { return items[index]; }
             set { items[index] = move(value); }
+        }
+
+        public ref T RefAt(int index)
+        {
+            if (index < 0 || index >= count)
+            {
+                panic("List index out of range");
+            }
+            return ref items[index];
         }
 
         // Mirrors List<T>.EnsureCapacity: grows the backing array (using the same doubling
@@ -244,7 +259,7 @@ namespace NativeSharp.Core.Collections.Generic
         // destructors over the same object (a double-free), which NativeSharp's ownership model
         // (no GC, no shared ownership) cannot express safely without a real IEnumerable/shared
         // wrapper. A snapshot array is the ownership-safe equivalent.
-        public T[] GetRange(int index, int rangeCount)
+        public T[] GetRange(int index, int rangeCount) where T : copy
         {
             const T[] result = new T[rangeCount];
             int i = 0;
@@ -256,7 +271,18 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
+        // EN: Freeze 3.0 P3: a search compares borrowed elements and never copies one, so it serves
+        //     any T whose `==` takes `in` operands. Contains and Remove lend their own parameter to
+        //     IndexOfIn instead of passing (copying) it by value.
+        // ES: Congelamiento 3.0 P3: una busqueda compara elementos prestados y nunca copia uno, asi que
+        //     sirve para todo T cuyo `==` reciba operandos `in`. Contains y Remove prestan su propio
+        //     parametro a IndexOfIn en vez de pasarlo (copiarlo) por valor.
         public int IndexOf(T value)
+        {
+            return IndexOfIn(in value);
+        }
+
+        private int IndexOfIn(in T value)
         {
             int i = 0;
             while (i < count)
@@ -280,14 +306,14 @@ namespace NativeSharp.Core.Collections.Generic
 
         public bool Contains(T value)
         {
-            return IndexOf(value) >= 0;
+            return IndexOfIn(in value) >= 0;
         }
 
         // Removes the first occurrence of `value` (compared with the receiver's own T's `==`,
         // see Delegates.ns). Returns whether an element was actually removed.
         public bool Remove(T value)
         {
-            int index = IndexOf(value);
+            int index = IndexOfIn(in value);
             if (index < 0) { return false; }
             RemoveAt(index);
             return true;
@@ -304,7 +330,7 @@ namespace NativeSharp.Core.Collections.Generic
             count = 0;
         }
 
-        public T[] ToArray()
+        public T[] ToArray() where T : copy
         {
             const T[] result = new T[count];
             int i = 0;
@@ -316,7 +342,7 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
-        public void CopyTo(T[] destination, int destinationIndex)
+        public void CopyTo(T[] destination, int destinationIndex) where T : copy
         {
             int i = 0;
             while (i < count)
@@ -378,7 +404,19 @@ namespace NativeSharp.Core.Collections.Generic
         // 2026-09-03 y ahora es una sobrecarga de Sort de verdad.
         // Aqui siempre pudo llamarse Sort: es un miembro NO generico de una clase generica, que
         // es otra cosa y nunca choco.
-        public void Sort(Comparison<T> comparer)
+        //
+        // EN: Freeze 3.0 P2: Comparison<T> receives copies, so this overload requires `T : copy`; the
+        //     InComparison<T> overload compares borrowed elements and sorts a move-only T. Both, and
+        //     Sort(), move elements only by swapping (see Algorithm.Sort).
+        // ES: Congelamiento 3.0 P2: Comparison<T> recibe copias, asi que esta sobrecarga exige
+        //     `T : copy`; la de InComparison<T> compara elementos prestados y ordena un T move-only.
+        //     Ambas, y Sort(), mueven elementos solo intercambiandolos (ver Algorithm.Sort).
+        public void Sort(Comparison<T> comparer) where T : copy
+        {
+            Algorithm.Sort<T>(Spans.OfRange<T>(items, 0, count), comparer);
+        }
+
+        public void Sort(InComparison<T> comparer)
         {
             Algorithm.Sort<T>(Spans.OfRange<T>(items, 0, count), comparer);
         }
@@ -411,7 +449,15 @@ namespace NativeSharp.Core.Collections.Generic
             return -1;
         }
 
-        public int FindIndex(Predicate<T> predicate)
+        // EN: Freeze 3.0 P2: every member that takes a Predicate<T> or an Action<T> hands it copies
+        //     and requires `T : copy`. Each has an InPredicate<T>/InAction<T> overload that lends
+        //     the element instead. Find, FindLast and FindAll return copies of elements, so their
+        //     In overloads still require `T : copy`; the others serve a move-only T.
+        // ES: Congelamiento 3.0 P2: todo miembro que recibe un Predicate<T> o un Action<T> le pasa
+        //     copias y exige `T : copy`. Cada uno tiene una sobrecarga con InPredicate<T>/InAction<T>
+        //     que presta el elemento. Find, FindLast y FindAll devuelven copias de elementos, asi que
+        //     sus sobrecargas In siguen exigiendo `T : copy`; las demas sirven para un T move-only.
+        public int FindIndex(Predicate<T> predicate) where T : copy
         {
             int i = 0;
             while (i < count)
@@ -422,9 +468,27 @@ namespace NativeSharp.Core.Collections.Generic
             return -1;
         }
 
+        public int FindIndex(InPredicate<T> predicate)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                if (predicate(in items[i])) { return i; }
+                i = i + 1;
+            }
+            return -1;
+        }
+
         // Mirrors real C#'s List<T>.Find: returns default(T) (0/false/null, depending on T) when
         // no element matches, rather than trapping on an out-of-range read.
-        public T Find(Predicate<T> predicate)
+        public T Find(Predicate<T> predicate) where T : copy
+        {
+            int index = FindIndex(predicate);
+            if (index < 0) { return default(T); }
+            return items[index];
+        }
+
+        public T Find(InPredicate<T> predicate) where T : copy
         {
             int index = FindIndex(predicate);
             if (index < 0) { return default(T); }
@@ -432,7 +496,7 @@ namespace NativeSharp.Core.Collections.Generic
         }
 
         // Mirrors List<T>.FindLastIndex: the same scan as FindIndex, from the end.
-        public int FindLastIndex(Predicate<T> predicate)
+        public int FindLastIndex(Predicate<T> predicate) where T : copy
         {
             int i = count - 1;
             while (i >= 0)
@@ -443,8 +507,26 @@ namespace NativeSharp.Core.Collections.Generic
             return -1;
         }
 
+        public int FindLastIndex(InPredicate<T> predicate)
+        {
+            int i = count - 1;
+            while (i >= 0)
+            {
+                if (predicate(in items[i])) { return i; }
+                i = i - 1;
+            }
+            return -1;
+        }
+
         // Mirrors List<T>.FindLast: returns default(T) when no element matches, same as Find.
-        public T FindLast(Predicate<T> predicate)
+        public T FindLast(Predicate<T> predicate) where T : copy
+        {
+            int index = FindLastIndex(predicate);
+            if (index < 0) { return default(T); }
+            return items[index];
+        }
+
+        public T FindLast(InPredicate<T> predicate) where T : copy
         {
             int index = FindLastIndex(predicate);
             if (index < 0) { return default(T); }
@@ -454,7 +536,7 @@ namespace NativeSharp.Core.Collections.Generic
         // Mirrors List<T>.FindAll: a snapshot array of every matching element, in order. Plain
         // (non-owned) `T[]`, for the same ownership reason ToArray()/GetRange() are -- see the
         // class comment.
-        public T[] FindAll(Predicate<T> predicate)
+        public T[] FindAll(Predicate<T> predicate) where T : copy
         {
             int matchCount = 0;
             int i = 0;
@@ -478,12 +560,41 @@ namespace NativeSharp.Core.Collections.Generic
             return result;
         }
 
-        public bool Exists(Predicate<T> predicate)
+        public T[] FindAll(InPredicate<T> predicate) where T : copy
+        {
+            int matchCount = 0;
+            int i = 0;
+            while (i < count)
+            {
+                if (predicate(in items[i])) { matchCount = matchCount + 1; }
+                i = i + 1;
+            }
+            const T[] result = new T[matchCount];
+            int writeIndex = 0;
+            i = 0;
+            while (i < count)
+            {
+                if (predicate(in items[i]))
+                {
+                    result[writeIndex] = items[i];
+                    writeIndex = writeIndex + 1;
+                }
+                i = i + 1;
+            }
+            return result;
+        }
+
+        public bool Exists(Predicate<T> predicate) where T : copy
         {
             return FindIndex(predicate) >= 0;
         }
 
-        public bool TrueForAll(Predicate<T> predicate)
+        public bool Exists(InPredicate<T> predicate)
+        {
+            return FindIndex(predicate) >= 0;
+        }
+
+        public bool TrueForAll(Predicate<T> predicate) where T : copy
         {
             int i = 0;
             while (i < count)
@@ -494,7 +605,18 @@ namespace NativeSharp.Core.Collections.Generic
             return true;
         }
 
-        public int RemoveAll(Predicate<T> predicate)
+        public bool TrueForAll(InPredicate<T> predicate)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                if (!predicate(in items[i])) { return false; }
+                i = i + 1;
+            }
+            return true;
+        }
+
+        public int RemoveAll(Predicate<T> predicate) where T : copy
         {
             int removed = 0;
             int i = 0;
@@ -513,12 +635,41 @@ namespace NativeSharp.Core.Collections.Generic
             return removed;
         }
 
-        public void ForEach(Action<T> action)
+        public int RemoveAll(InPredicate<T> predicate)
+        {
+            int removed = 0;
+            int i = 0;
+            while (i < count)
+            {
+                if (predicate(in items[i]))
+                {
+                    RemoveAt(i);
+                    removed = removed + 1;
+                }
+                else
+                {
+                    i = i + 1;
+                }
+            }
+            return removed;
+        }
+
+        public void ForEach(Action<T> action) where T : copy
         {
             int i = 0;
             while (i < count)
             {
                 action(items[i]);
+                i = i + 1;
+            }
+        }
+
+        public void ForEach(InAction<T> action)
+        {
+            int i = 0;
+            while (i < count)
+            {
+                action(in items[i]);
                 i = i + 1;
             }
         }

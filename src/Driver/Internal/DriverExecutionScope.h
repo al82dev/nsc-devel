@@ -55,7 +55,13 @@ struct DriverExecutionScope final
     frontend::ProjectCompilationLifetime compilationLifetime;
     bool reportTiming = false;
     bool reportProgress = false;
+    // EN: Freeze 3.0 DEC-13: --validate-system-imports; off by default so the build never depends on
+    //     the DLLs installed on the host.
+    // ES: Congelamiento 3.0 DEC-13: --validate-system-imports; desactivado por defecto para que la
+    //     compilacion nunca dependa de las DLL instaladas en el host.
+    bool validateSystemImports = false;
     ProgressFormat progressFormat = ProgressFormat::Text;
+    std::size_t reportedSourceCount = 0;
 };
 
 extern thread_local DriverExecutionScope *activeExecutionScope;

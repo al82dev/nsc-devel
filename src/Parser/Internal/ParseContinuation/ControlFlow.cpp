@@ -824,12 +824,14 @@ void Parser::ParseContinuationCoordinator::continueSwitchLabels(const Work& work
     finish.beginIndex = parser_.index_;
     finish.flag = parser_.at(TokenKind::KwDefault);
     parser_.consume();
+    // EN: Freeze 3.0 C-06: same deliberate rejection as StructuredControlParser::appendSwitchLabel.
+    // ES: Congelamiento 3.0 C-06: el mismo rechazo deliberado que appendSwitchLabel.
     if (!finish.flag && parser_.at(TokenKind::LeftBracket))
         parser_.diagnostics_.report(
-            diagnostics::DiagnosticId::NS3049DeferredLanguageSurface,
+            diagnostics::DiagnosticId::UnexpectedToken,
             diagnostics::DiagnosticSeverity::Error,
             parser_.current().range(),
-            language::language3SurfaceDiagnostic(language::Language3Feature::ListPatterns));
+            std::string(language::kListPatternCaseLabelMessage));
     if (!finish.flag)
     {
         finish.childSlot = makeResultSlot();

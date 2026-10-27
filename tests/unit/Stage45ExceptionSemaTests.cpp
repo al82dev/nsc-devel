@@ -58,11 +58,11 @@ void testPositiveSema(TestContext& tests, const std::filesystem::path& root)
     writeProject(directory, "Stage45SemaPositive", std::string(kCore) + R"NS(
 class Handler
 {
-    public static void Run(FileException file)
+    public static void Run(FileException file) throws NativeSharp.Core.FileException
     {
         try
         {
-            throw file;
+            throw new FileException();
         }
         catch (FileException specific)
         {

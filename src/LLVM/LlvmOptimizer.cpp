@@ -51,6 +51,32 @@ AutomaticInliningConfiguration llvmAutomaticInliningConfiguration(
 
 namespace
 {
+// LEGALIZACION SEH DE B-001 RETIRADA (2026-10-24). / B-001 SEH LEGALIZATION RETIRED (2026-10-24).
+// ES: Hasta esta fecha, a -O0 cada funcion con un `catch` real pasaba por `mem2reg` antes de
+// generar codigo (legalizeSehFuncletFunctionsForO0, cuyos comentarios se conservan abajo como
+// historia). Esa promocion le quitaba a cada local su ranura de pila: el PDB describia los locales
+// de esas funciones como `S_CONSTANT` (un valor fijo que no cambia al asignarlos) o sin ubicacion,
+// y el depurador mostraba `<optimized out>` en un build Debug. El disparador de B-001 se midio
+// cuando el cuerpo de un `catch` era un funclet; hoy el cuerpo del `catch` es codigo ordinario de
+// la funcion padre (OopLlvmControlFlow.cpp), y los fallos de limpieza que acompanaban a B-001
+// (B-006, B-007) se corrigieron en la emision de cleanups. Sin la promocion, los 13 escenarios de
+// tests/unit/Stage45_10EhRaiiReuseAfterCatchTests.cpp, compilados y ejecutados en Windows a -O0,
+// -O0 -g y -O2, devuelven su codigo esperado. Esa prueba sigue siendo la guarda de B-001.
+// EN: Until this date, at -O0 every function with a real `catch` went through `mem2reg` before code
+// generation (legalizeSehFuncletFunctionsForO0, whose comments are kept below as history). That
+// promotion took the stack slot away from every local: the PDB described those functions' locals
+// as `S_CONSTANT` (a fixed value that does not change when assigned) or without a location, and the
+// debugger showed `<optimized out>` in a Debug build. The B-001 trigger was measured when a
+// `catch` body was a funclet; today the `catch` body is ordinary code of the parent function
+// (OopLlvmControlFlow.cpp), and the cleanup failures that came with B-001 (B-006, B-007) were
+// fixed in cleanup emission. Without the promotion, the 13 scenarios of
+// tests/unit/Stage45_10EhRaiiReuseAfterCatchTests.cpp, built and run on Windows at -O0, -O0 -g and
+// -O2, return their expected exit code. That test remains the B-001 guard.
+//
+// Historia / History:
+// Indica si la funcion contiene un `catchswitch`, es decir, un `catch` real que puede regresar a
+// su cuerpo por `catchret`. / Tells whether the function contains a `catchswitch`, i.e. a real
+// `catch` that can return into its body through `catchret`.
 // Bug B-001 fix (EH+RAII reuse-after-catch SIGSEGV/access-violation crash) -- see
 // BUGS_ENCONTRADOS/bug_try_catch_reuso_objeto_tras_catch.md for the original report and the
 // project's "30_..." docs for the full root-cause writeup. Summary of what was actually found,
@@ -88,47 +114,33 @@ namespace
 // SEH-funclet-bearing functions. Scoping the promotion to exactly those functions (via
 // LLVMRunPassesOnFunction, LLVM's per-function C API pipeline entry point) keeps -O0 unchanged
 // for every function that never touches try/catch/finally.
-bool legalizeSehFuncletFunctionsForO0(
-    llvm_api::LLVMModuleRef module,
-    llvm_api::LLVMTargetMachineRef targetMachine,
-    llvm_api::LLVMPassBuilderOptionsRef options,
-    std::string& error)
-{
-    for (llvm_api::LLVMValueRef function = llvm_api::LLVMGetFirstFunction(module);
-         function != nullptr;
-         function = llvm_api::LLVMGetNextFunction(function))
-    {
-        // A declaration (an imported runtime/Win32 function with no body of its own, e.g.
-        // RaiseException) can carry no funclets and has nothing for mem2reg to legalize.
-        if (llvm_api::LLVMIsDeclaration(function)) continue;
-        if (!llvm_api::LLVMHasPersonalityFn(function)) continue;
-
-        llvm_api::LLVMErrorRef functionError = llvm_api::LLVMRunPassesOnFunction(
-            function, "mem2reg", targetMachine, options);
-        if (functionError != nullptr)
-        {
-            char* message = llvm_api::LLVMGetErrorMessage(functionError);
-            error = (message != nullptr)
-                ? ("Bug B-001 O0 SEH legalization (mem2reg) failed: " + std::string(message))
-                : "Bug B-001 O0 SEH legalization (mem2reg) failed without a diagnostic";
-            if (message != nullptr) llvm_api::LLVMDisposeErrorMessage(message);
-            return false;
-        }
-    }
-    return true;
-}
-
-bool hasSehFuncletFunctions(llvm_api::LLVMModuleRef module)
-{
-    for (llvm_api::LLVMValueRef function = llvm_api::LLVMGetFirstFunction(module);
-         function != nullptr;
-         function = llvm_api::LLVMGetNextFunction(function))
-    {
-        if (!llvm_api::LLVMIsDeclaration(function) &&
-            llvm_api::LLVMHasPersonalityFn(function)) return true;
-    }
-    return false;
-}
+//
+// ALCANCE ACOTADO A `catch` REAL (2026-10-24). / SCOPE NARROWED TO A REAL `catch` (2026-10-24).
+// El disparador verificado de B-001 exige que un `catch` termine y regrese a la funcion por
+// `catchret`. Solo un `catchpad` puede ejecutar `catchret`, y todo `catchpad` cuelga de un
+// `catchswitch`. Una funcion con personalidad pero solo con `cleanuppad` (un `raii`, un `using`
+// o un `try/finally` sin `catch`) nunca vuelve a su propio cuerpo despues de una excepcion, asi
+// que no puede alcanzar el disparador. Promover sus locales a registros solo le quitaba la ranura
+// de pila a cada variable: el PDB las describia como `S_CONSTANT` o sin ubicacion y el depurador
+// mostraba `<optimized out>` en un build Debug.
+// The verified B-001 trigger needs a `catch` that completes and returns into the function through
+// `catchret`. Only a `catchpad` can execute `catchret`, and every `catchpad` hangs from a
+// `catchswitch`. A function with a personality but only `cleanuppad`s (a `raii`, a `using` or a
+// `try/finally` without `catch`) never resumes its own body after an exception, so it cannot reach
+// the trigger. Promoting its locals to registers only took the stack slot away from every variable:
+// the PDB described them as `S_CONSTANT` or without a location and the debugger showed
+// `<optimized out>` in a Debug build.
+// A declaration (an imported runtime/Win32 function with no body of its own, e.g.
+// RaiseException) can carry no funclets and has nothing for mem2reg to legalize.
+// Sin `catchswitch` no hay `catchret`; los locales conservan su `alloca`.
+// Without a `catchswitch` there is no `catchret`; locals keep their `alloca`.
+//
+// Llamada original / Original call site:
+// Bug B-001 fix -- see legalizeSehFuncletFunctionsForO0's header comment above for the full
+// story. Only -O0 needs this: -O1 and above already run mem2reg as part of their own default
+// pipeline, and running it twice would just be redundant (mem2reg is idempotent, so it is
+// harmless either way, but there is no reason to pay the extra per-function pass-manager
+// construction cost at every optimization level).
 
 #if !defined(_WIN32)
 // EL IDENTIFICADOR DEL PROCESO, para que el nombre del fichero de captura sea unico ENTRE
@@ -188,20 +200,17 @@ llvm_api::LLVMErrorRef runOptimizationPassPipeline(
     llvm_api::LLVMTargetMachineRef targetMachine,
     llvm_api::LLVMPassBuilderOptionsRef options,
     std::string_view pipeline,
-    bool preparedO0FastPath,
     bool emitProcessTrace,
     LlvmOptimizationObservation* observation)
 {
 #if defined(_WIN32)
     (void)observation;
-    if (preparedO0FastPath) return nullptr;
     llvm_api::LLVMErrorRef error = llvm_api::LLVMRunPasses(
         module, std::string(pipeline).c_str(), targetMachine, options);
     finishLlvmProcessTrace(module, emitProcessTrace);
     return error;
 #else
     (void)emitProcessTrace;
-    if (preparedO0FastPath) return nullptr;
     if (observation == nullptr)
         return llvm_api::LLVMRunPasses(
             module, std::string(pipeline).c_str(), targetMachine, options);
@@ -255,7 +264,6 @@ llvm_api::LLVMErrorRef runOptimizationPassPipeline(
 llvm_api::LLVMPassBuilderOptionsRef createOptimizationPassOptions(
     LlvmOptimizationLevel level,
     bool detailedPassDiagnostics,
-    bool preparedO0FastPath,
     LlvmOptimizationObservation* observation,
     llvm_api::LLVMModuleRef module,
     std::string_view pipeline,
@@ -280,14 +288,14 @@ llvm_api::LLVMPassBuilderOptionsRef createOptimizationPassOptions(
     // en el proceso padre produciria un registro que nadie puede capturar: LLVM-C.dll lleva su
     // propio CRT. En POSIX se conserva la captura temporal dentro del proceso.
 #if defined(_WIN32)
-    emitProcessTrace = observation != nullptr && detailedPassDiagnostics && !preparedO0FastPath;
+    emitProcessTrace = observation != nullptr && detailedPassDiagnostics;
     const bool enableDebugLogging = emitProcessTrace;
 #else
     emitProcessTrace = false;
     const bool enableDebugLogging = observation != nullptr && detailedPassDiagnostics;
 #endif
     if (enableDebugLogging) llvm_api::LLVMPassBuilderOptionsSetDebugLogging(options, 1);
-    pipelineText = preparedO0FastPath ? "nsc-o0-seh-mem2reg" : std::string(pipeline);
+    pipelineText = std::string(pipeline);
     if (observation != nullptr)
     {
         observation->pipeline = pipelineText;
@@ -407,9 +415,7 @@ bool LlvmOptimizer::optimizeImpl(
         static_cast<llvm_api::LLVMTargetMachineRef>(targetMachine.targetMachine_);
     const bool preparedO0FastPath = !prepareModule &&
         level == LlvmOptimizationLevel::O0 && !mandatoryInliningRequired;
-    const bool requiresSehLegalization =
-        preparedO0FastPath && hasSehFuncletFunctions(moduleRef);
-    if (preparedO0FastPath && !requiresSehLegalization)
+    if (preparedO0FastPath)
     {
         // The lowerer already verified this module and target configuration only attaches the
         // triple/data layout. With no required inlining and no Win64 funclet workaround there is
@@ -428,7 +434,7 @@ bool LlvmOptimizer::optimizeImpl(
     bool emitProcessTrace = false;
     std::string pipelineText;
     llvm_api::LLVMPassBuilderOptionsRef options = createOptimizationPassOptions(
-        level, detailedPassDiagnostics, preparedO0FastPath, observation, moduleRef,
+        level, detailedPassDiagnostics, observation, moduleRef,
         pipeline, emitProcessTrace, pipelineText, error);
     if (options == nullptr) return false;
 
@@ -438,25 +444,9 @@ bool LlvmOptimizer::optimizeImpl(
 
     const auto started = std::chrono::steady_clock::now();
 
-    // Bug B-001 fix -- see legalizeSehFuncletFunctionsForO0's header comment above for the full
-    // story. Only -O0 needs this: -O1 and above already run mem2reg as part of their own default
-    // pipeline, and running it twice would just be redundant (mem2reg is idempotent, so it is
-    // harmless either way, but there is no reason to pay the extra per-function pass-manager
-    // construction cost at every optimization level).
-    if (level == LlvmOptimizationLevel::O0)
-    {
-        if (!legalizeSehFuncletFunctionsForO0(moduleRef, targetMachineRef, options, error))
-        {
-#if defined(_WIN32)
-            finishLlvmProcessTrace(moduleRef, emitProcessTrace);
-#endif
-            llvm_api::LLVMDisposePassBuilderOptions(options);
-            return false;
-        }
-    }
     llvm_api::LLVMErrorRef llvmError = runOptimizationPassPipeline(
         moduleRef, targetMachineRef, options, pipelineText,
-        preparedO0FastPath, emitProcessTrace, observation);
+        emitProcessTrace, observation);
     finishOptimizationTiming(started, level, observation);
     llvm_api::LLVMDisposePassBuilderOptions(options);
     if (!consumeOptimizationError(llvmError, observation, error)) return false;

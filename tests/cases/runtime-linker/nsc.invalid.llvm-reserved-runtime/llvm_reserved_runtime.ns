@@ -1,4 +1,7 @@
-extern C void __nativesharp_trap(int code);
+class Native
+{
+    extern C from "kernel32.dll" { public void __nativesharp_trap(int code); }
+}
 
 int Main()
 {

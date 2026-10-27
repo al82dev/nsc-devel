@@ -167,8 +167,16 @@ file(GLOB_RECURSE NSC_CODEGEN_IDENTITY_INPUTS CONFIGURE_DEPENDS LIST_DIRECTORIES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Target/*"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/Target/*"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/LLVM/*"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/LLVM/*")
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/LLVM/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Runtime/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/Runtime/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Linker/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/nativesharp/Linker/*")
 list(SORT NSC_CODEGEN_IDENTITY_INPUTS)
+# CONFIGURE_DEPENDS above only notices added or removed files. Editing one of these inputs must
+# also re-run configure; otherwise the identity keeps the old digest and the artifact cache accepts
+# objects produced by the previous code.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${NSC_CODEGEN_IDENTITY_INPUTS})
 set(NSC_CODEGEN_IDENTITY_MATERIAL "NSC-CODEGEN-CACHE-IDENTITY 1\n")
 foreach(NSC_CODEGEN_IDENTITY_INPUT IN LISTS NSC_CODEGEN_IDENTITY_INPUTS)
     file(SHA256 "${NSC_CODEGEN_IDENTITY_INPUT}" NSC_CODEGEN_IDENTITY_INPUT_SHA256)
@@ -275,6 +283,7 @@ add_library(nsc_compilation STATIC
     src/Compilation/GlobPattern.cpp
     src/Compilation/Project.cpp
     src/Compilation/ProjectSourceSet.cpp
+    src/Compilation/ImplicitProjectRegistry.cpp
     src/Compilation/ProjectLoader.cpp
     src/Compilation/PrecompiledProductSidecarPath.cpp
     src/Compilation/ProjectDumper.cpp
@@ -283,6 +292,7 @@ add_library(nsc_compilation STATIC
     src/Compilation/LibraryMetadataRepository.cpp
     src/Compilation/CompilationBundleCache.cpp
     src/Compilation/CompilationInputManifest.cpp
+    src/Compilation/FileDigestCache.cpp
     src/Compilation/ProjectGraph.cpp
     src/Compilation/ProjectGraphLoader.cpp
     src/Compilation/ProjectGraphDumper.cpp
@@ -314,6 +324,7 @@ nsc_enable_warnings(nsc_target)
 add_library(nsc_frontend STATIC
     src/Basic/Sha256.cpp
     src/Source/SourceFile.cpp
+    src/Source/SourceAccessRecording.cpp
     src/Source/SourceManager.cpp
     src/Diagnostics/Diagnostic.cpp
     src/Diagnostics/DiagnosticEngine.cpp
@@ -438,6 +449,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/EnumUnderlyingType.cpp
     src/Frontend/Internal/IntegerExpression.cpp
     src/Frontend/Internal/ProjectPhaseTimer.cpp
+    src/Frontend/Internal/IndexShadowMismatch.cpp
     src/Frontend/Internal/SpecializationWaveTimer.cpp
     src/Frontend/Internal/EnumConstResolver.cpp
     src/Frontend/Cache/CacheEntryStore.cpp
@@ -447,6 +459,19 @@ add_library(nsc_frontend STATIC
     src/Frontend/Internal/EnumInitializerResolver.cpp
     src/Frontend/ComptimeEngine.cpp
     src/Frontend/MacroExpansionEngine.cpp
+    src/Frontend/PrecompiledSyntaxNodeIndex.cpp
+    src/Frontend/Snapshot/ClassMemberSnapshotCodec.cpp
+    src/Frontend/Snapshot/MemberSnapshotCapture.cpp
+    src/Frontend/Snapshot/ModelReferenceSnapshotCodec.cpp
+    src/Frontend/Snapshot/NameSnapshotCapture.cpp
+    src/Frontend/Snapshot/NamespaceMemberSnapshotCapture.cpp
+    src/Frontend/Snapshot/NamespaceMemberSnapshotCodec.cpp
+    src/Frontend/Snapshot/PrecompiledSnapshotReader.cpp
+    src/Frontend/Snapshot/PrecompiledSnapshotValidation.cpp
+    src/Frontend/Snapshot/PrecompiledSnapshotWriter.cpp
+    src/Frontend/Snapshot/SnapshotCodecSupport.cpp
+    src/Frontend/Snapshot/SnapshotTypeEligibility.cpp
+    src/Frontend/Snapshot/TypeModelSnapshotCapture.cpp
     src/Frontend/ProjectSyntaxUnit.cpp
     src/Frontend/NamespaceSymbol.cpp
     src/Frontend/QualifiedNameLadder.cpp
@@ -480,6 +505,8 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectOpaqueResultModel.cpp
     src/Frontend/ProjectNameLookup.cpp
     src/Frontend/NameLookup/ProjectSetup.cpp
+    src/Frontend/NameLookup/SnapshotInstallation.cpp
+    src/Frontend/NameLookup/SnapshotDeclarations.cpp
     src/Frontend/NameLookup/QualifiedNamespaces.cpp
     src/Frontend/NameLookup/QualifiedTypeNames.cpp
     src/Frontend/NameLookup/ExpressionNames.cpp
@@ -504,17 +531,23 @@ add_library(nsc_frontend STATIC
     src/Frontend/MemberModel/MemberCollection.cpp
     src/Frontend/MemberModel/MemberInitialization.cpp
     src/Frontend/MemberModel/OwnershipQueries.cpp
+    src/Frontend/MemberModel/SnapshotMembers.cpp
     src/Frontend/MemberModel/TypeIdentity.cpp
     src/Frontend/ProjectNamespaceFunctionModel.cpp
+    src/Frontend/ProjectNamespaceFunctionSnapshots.cpp
     src/Frontend/ProjectMemberModelDumper.cpp
     src/Frontend/ProjectInheritanceModel.cpp
+    src/Frontend/ProjectInheritanceSnapshots.cpp
     src/Frontend/ProjectInheritanceModelDumper.cpp
     src/Frontend/ProjectInterfaceModel.cpp
+    src/Frontend/ProjectInterfaceSnapshots.cpp
     src/Frontend/ProjectInterfaceModelDumper.cpp
     src/Frontend/ProjectMemberAccessibility.cpp
     src/Frontend/ProjectVirtualDispatchModel.cpp
+    src/Frontend/ProjectVirtualDispatchSnapshots.cpp
     src/Frontend/ProjectVirtualDispatchModelDumper.cpp
     src/Frontend/ProjectDestructionModel.cpp
+    src/Frontend/ProjectDestructionSnapshots.cpp
     src/Frontend/ProjectDestructionModelDumper.cpp
     src/Frontend/ProjectTypeConversion.cpp
     src/Frontend/ProjectIntegerEvaluator.cpp
@@ -546,6 +579,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/Bodies/LoopExpressionAnalyzer.cpp
     src/Frontend/Bodies/MethodBodyBindingRecorder.cpp
     src/Frontend/Bodies/MethodBodyCallableLifecycle.cpp
+    src/Frontend/Bodies/DeclaredErrorAnalysis.cpp
     src/Frontend/Bodies/MethodBodyInternals.cpp
     src/Frontend/Bodies/MethodBodyKindNames.cpp
     src/Frontend/Bodies/MethodBodyTypeQueries.cpp
@@ -570,6 +604,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectReferenceEscapeEvaluator.cpp
     src/Frontend/ProjectMethodBodyModelDumper.cpp
     src/Frontend/ProjectConstructionModel.cpp
+    src/Frontend/ProjectConstructionSnapshots.cpp
     src/Frontend/ConstructionModel/ImplicitDefaultConstructors.cpp
     src/Frontend/ConstructionModel/ConstructorInitializers.cpp
     src/Frontend/ConstructionModel/ConstructionBinding.cpp
@@ -577,6 +612,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ConstructionModel/ConstructionAccessibility.cpp
     src/Frontend/ProjectConstructionModelDumper.cpp
     src/Frontend/ProjectObjectLayoutModel.cpp
+    src/Frontend/ProjectObjectLayoutSnapshots.cpp
     src/Frontend/ProjectObjectLayoutModelDumper.cpp
     src/Frontend/ProjectMetaprogrammingModel.cpp
     src/Frontend/HIR/HirBuildCoordinator.cpp
@@ -639,6 +675,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/ProjectCostExplorer.cpp
     src/Frontend/ProjectOopMirModelDumper.cpp
     src/Frontend/ProjectCompilation.cpp
+    src/Frontend/ProjectCompilationSnapshots.cpp
     src/Frontend/ProjectCompilationIndexes.cpp
     src/Frontend/ProjectCompilationLifetime.cpp
     src/Frontend/ProjectCompilationDumper.cpp)
@@ -651,7 +688,10 @@ nsc_enable_warnings(nsc_frontend)
 add_library(nsc_precompiled STATIC
     src/Compilation/PrecompiledProductCache.cpp
     src/Compilation/PrecompiledProductSidecarCodec.cpp
+    src/Compilation/PrecompiledSemanticSnapshotCodec.cpp
     src/Compilation/PrecompiledProjectPreparation.cpp
+    src/Compilation/PrecompiledSurfaceDemandCollection.cpp
+    src/Compilation/PrecompiledSurfaceReachability.cpp
     src/Driver/PrecompiledSurface/ContractMaterialization.cpp
     src/Driver/PrecompiledSurface/MetadataSourceMapping.cpp
     src/Driver/PrecompiledSurface/PrecompiledSourceGeneration.cpp
@@ -771,6 +811,15 @@ if(WIN32)
     set(CMAKE_DISABLE_FIND_PACKAGE_zstd TRUE)
     set(CMAKE_DISABLE_FIND_PACKAGE_LibXml2 TRUE)
 endif()
+# ES: La familia de LLVM contra la que se compila nsc. Se acepta cualquier version menor o de parche
+# de esta version mayor (23.0, 23.1, ...). Pasar a otra familia de LLVM es cambiar este valor.
+# EN: The LLVM release family nsc is built against. Any minor or patch release of this major version is
+# accepted (23.0, 23.1, ...). Moving to another LLVM family is a deliberate change of this value.
+set(NSC_LLVM_MAJOR_VERSION "23" CACHE STRING
+    "LLVM major version (release family) that nsc is built against")
+if(NOT NSC_LLVM_MAJOR_VERSION MATCHES "^[0-9]+$")
+    message(FATAL_ERROR "NSC_LLVM_MAJOR_VERSION must be an LLVM major version number, such as 23")
+endif()
 find_package(LLVM CONFIG QUIET)
 set(NSC_LLVM_LINK_LIBRARIES)
 if(LLVM_FOUND)
@@ -782,11 +831,19 @@ if(LLVM_FOUND)
     # appears in LLVM 20. With the old declaration, configuring against a genuine LLVM 19 passed
     # here and then failed later at compile time with an unresolved symbol, which is exactly the
     # kind of contract break a version gate exists to prevent.
-    if(LLVM_PACKAGE_VERSION VERSION_LESS 23 OR LLVM_PACKAGE_VERSION VERSION_GREATER_EQUAL 24)
+    #
+    # ES: La legalizacion SEH de -O0 se retiro y LlvmOptimizer.cpp ya no llama a
+    # LLVMRunPassesOnFunction, asi que esa funcion ya no es la razon de este control. Ahora se revisa
+    # la familia de LLVM que indica NSC_LLVM_MAJOR_VERSION: se acepta cualquier version de esa
+    # version mayor y se rechaza cualquier otra.
+    # EN: The -O0 SEH legalization was retired, and LlvmOptimizer.cpp no longer calls
+    # LLVMRunPassesOnFunction, so that entry point is no longer the reason for this gate. The gate now
+    # checks the LLVM release family named by NSC_LLVM_MAJOR_VERSION: every release of that major
+    # version is accepted, and any other major version is rejected.
+    if(NOT LLVM_VERSION_MAJOR STREQUAL NSC_LLVM_MAJOR_VERSION)
         message(FATAL_ERROR
-            "NativeSharp 3.0 supports LLVM 23.x; the API floor is LLVM 20 because "
-            "LLVMRunPassesOnFunction is required for -O0 SEH legalization, but only the LLVM 23 "
-            "line is qualified for the 3.0 release contract; "
+            "NativeSharp 3.0 requires the LLVM ${NSC_LLVM_MAJOR_VERSION}.x release family "
+            "(NSC_LLVM_MAJOR_VERSION=${NSC_LLVM_MAJOR_VERSION}); "
             "found LLVM ${LLVM_PACKAGE_VERSION}")
     endif()
     if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
@@ -812,14 +869,18 @@ if(LLVM_FOUND)
             target
             nativecodegen
             passes
+            lto
             X86
+            X86Disassembler
+            MCDisassembler
             AArch64)
         list(APPEND NSC_LLVM_LINK_LIBRARIES ${NSC_LLVM_COMPONENT_LIBS})
     endif()
 else()
     if(WIN32)
         message(FATAL_ERROR
-            "NativeSharp requires the LLVM 23 CMake package and its static component libraries; "
+            "NativeSharp requires the LLVM ${NSC_LLVM_MAJOR_VERSION} CMake package and its static "
+            "component libraries; "
             "the monolithic LLVM-C.dll/import-library fallback is forbidden on Windows")
     endif()
     find_library(
@@ -839,7 +900,11 @@ add_library(nsc_llvm STATIC
     src/LLVM/FloatingPointMode.cpp
     src/LLVM/Internal/ArtifactCacheFilesystemPath.cpp
     src/LLVM/Internal/CacheEntryLock.cpp
+    src/LLVM/Internal/CodeViewProcedureRanges.cpp
+    src/LLVM/Internal/CoffObjectFile.cpp
+    src/LLVM/Internal/CachePruneIndex.cpp
     src/LLVM/Internal/CachePruneMeasurement.cpp
+    src/LLVM/Internal/CachePruneRecordTable.cpp
     src/LLVM/Internal/CodeUnitProgress.cpp
     src/LLVM/Internal/ColdLlvmTrace.cpp
     src/LLVM/Internal/ColdLlvmTraceScope.cpp
@@ -853,8 +918,10 @@ add_library(nsc_llvm STATIC
     src/LLVM/Internal/ScopedDebugLocation.cpp
     src/LLVM/Internal/ScopedDebugScope.cpp
     src/LLVM/Internal/StandardErrorCapture.cpp
+    src/LLVM/Internal/X64InstructionWalker.cpp
     src/LLVM/LlvmDebugPrefixMap.cpp
     src/LLVM/LlvmModule.cpp
+    src/LLVM/LlvmModuleInspection.cpp
     src/LLVM/LlvmTypeClassification.cpp
     src/LLVM/LlvmTypeLayout.cpp
     src/LLVM/LinkTimeOptimizationMode.cpp
@@ -873,6 +940,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/Lowering/OopLlvmConditionalsAndNullAware.cpp
     src/LLVM/Lowering/OopLlvmConstruction.cpp
     src/LLVM/Lowering/OopLlvmControlFlow.cpp
+    src/LLVM/Lowering/OopLlvmCoroutines.cpp
     src/LLVM/Lowering/OopLlvmDebugInfo.cpp
     src/LLVM/Lowering/OopLlvmDeclarations.cpp
     src/LLVM/Lowering/OopLlvmExpressionDispatch.cpp
@@ -903,7 +971,22 @@ add_library(nsc_llvm STATIC
     src/LLVM/ProjectOopLlvmLowerer.cpp
     src/LLVM/SignedDivisionCorrection.cpp
     src/LLVM/LlvmTargetMachine.cpp
+    src/LLVM/Internal/SourceDependencyIndex.cpp
+    src/LLVM/Internal/ThinLtoBackend.cpp
+    src/LLVM/ThinLtoLibrarySidecarCodec.cpp
     src/LLVM/CoffObjectVerifier.cpp)
+# ThinLtoBackend.cpp is the only file that uses LLVM's C++ API (llvm::lto); it is compiled without RTTI
+# like the LLVM libraries it links. ThinLtoBackend.cpp es el unico archivo con la API C++ de LLVM; se
+# compila sin RTTI, igual que las bibliotecas de LLVM que enlaza.
+if(MSVC)
+    set_source_files_properties(src/LLVM/Internal/ThinLtoBackend.cpp PROPERTIES COMPILE_OPTIONS "/GR-")
+else()
+    set_source_files_properties(src/LLVM/Internal/ThinLtoBackend.cpp PROPERTIES COMPILE_OPTIONS "-fno-rtti")
+endif()
+if(NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
+    set_source_files_properties(src/LLVM/Internal/ThinLtoBackend.cpp PROPERTIES
+        COMPILE_DEFINITIONS NSC_THINLTO_UNAVAILABLE=1)
+endif()
 
 target_include_directories(nsc_llvm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(LLVM_FOUND)
@@ -926,9 +1009,11 @@ nsc_enable_warnings(nsc_runtime)
 add_library(nsc_linker STATIC
     src/Linker/LldLinker.cpp
     src/Linker/CoffArchiveVerifier.cpp
+    src/Linker/Internal/LinkToolIdentity.cpp
     src/Linker/Internal/ScopedTemporaryDirectory.cpp
     src/Linker/Internal/TemporaryFiles.cpp
     src/Linker/PeExecutableVerifier.cpp
+    src/Linker/ExternalImportValidation.cpp
     src/Linker/PdbVerifier.cpp
     src/Linker/WindowsExecutableBuilder.cpp
     src/Linker/WindowsLibraryBuilder.cpp
@@ -994,7 +1079,7 @@ add_library(nsc_driver STATIC
     src/Driver/DriverArtifactGeneration.cpp
     src/Driver/DriverExecution.cpp
     src/Driver/DriverHelp.cpp
-    src/Driver/DriverLegacyFrontend.cpp
+    src/Driver/DriverImplicitProject.cpp
     src/Driver/DriverLibraryCommands.cpp
     src/Driver/DriverProjectActions.cpp
     src/Driver/InstallationManifest.cpp
@@ -1016,10 +1101,12 @@ add_library(nsc_driver STATIC
     src/Driver/NumericContract.cpp
     src/Driver/PackageLifecycle.cpp
     src/Driver/PrecompiledModuleConfiguration.cpp
+    src/Driver/PrecompiledSnapshotPublication.cpp
     src/Driver/ProjectCommands.cpp
     src/Driver/PromotionAct.cpp
     src/Driver/ReleaseCandidateFreeze.cpp
     src/Driver/RuntimeClosurePackaging.cpp
+    src/Driver/ThinLtoLibraryLinking.cpp
     src/Driver/ToolchainContract.cpp
     src/Interop/CHeaderGenerator.cpp
     src/Interop/LibraryCapabilityAudit.cpp
@@ -1151,12 +1238,18 @@ add_custom_command(TARGET nsc POST_BUILD
 # Core.IO y Core.Diagnostics siguen disponibles dentro del arbol del compilador para sus pruebas
 # internas y el self-host historico, pero ya no forman parte de la stdlib modular distribuida de
 # Language 3. Mantener el inventario explicito impide volver a publicarlos accidentalmente.
+#
+# ES: NativeSharp.Win32.Compiler tampoco se distribuye: usa NativeSharp.Core.IO y NativeSharp.Core.Diagnostics,
+# asi que en la distribucion no compilaba ("referenced project does not exist"). Como ellos, sigue en el arbol
+# del compilador para el self-host y sus pruebas.
+# EN: NativeSharp.Win32.Compiler is not distributed either: it uses NativeSharp.Core.IO and
+# NativeSharp.Core.Diagnostics, so it did not compile in the distribution ("referenced project does not
+# exist"). Like them, it stays in the compiler tree for the self-host and its tests.
 set(NSC_DISTRIBUTION_LIBRARY_DIRECTORIES
     NativeSharp.Core
     NativeSharp.Core.Collections.Generic
     NativeSharp.Core.Threading
-    NativeSharp.LLVM.C
-    NativeSharp.Win32.Compiler)
+    NativeSharp.LLVM.C)
 set(NSC_INSTALLATION_LIBRARY_FILES)
 foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
     file(GLOB_RECURSE _nsc_library_files
@@ -1166,6 +1259,15 @@ foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.ns"
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.nsproj"
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}/*.nsproducts")
+    # EN: obj/ holds the build's artifact cache (the builder bootstrap compiles
+    #     NativeSharp.Core in place); its .nsproducts are build products, not
+    #     distribution files. Listing them made the installed manifest require a cache
+    #     entry (2026-10-24).
+    # ES: obj/ guarda el cache de artefactos del build (el bootstrap del builder compila
+    #     NativeSharp.Core en su lugar); sus .nsproducts son productos de build, no
+    #     archivos de la distribucion. Listarlos hacia que el manifiesto instalado exigiera
+    #     una entrada del cache (2026-10-24).
+    list(FILTER _nsc_library_files EXCLUDE REGEX "(^|/)obj/")
     list(APPEND NSC_INSTALLATION_LIBRARY_FILES ${_nsc_library_files})
 endforeach()
 set(NSC_INSTALLATION_EXPECTED_PATHS
@@ -1244,6 +1346,8 @@ install(TARGETS nsc RUNTIME DESTINATION bin)
 if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
     install(FILES "${NSC_LLVM_C_RUNTIME}" DESTINATION bin)
 endif()
+# EN: The same exclusion as the manifest above: obj/ is the build's artifact cache.
+# ES: La misma exclusion que el manifiesto de arriba: obj/ es el cache de artefactos del build.
 foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
     install(DIRECTORY
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/${_nsc_library_directory}"
@@ -1251,7 +1355,8 @@ foreach(_nsc_library_directory IN LISTS NSC_DISTRIBUTION_LIBRARY_DIRECTORIES)
         FILES_MATCHING
         PATTERN "*.ns"
         PATTERN "*.nsproj"
-        PATTERN "*.nsproducts")
+        PATTERN "*.nsproducts"
+        PATTERN "obj" EXCLUDE)
 endforeach()
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/sdk/win64/nativesharp-runtime.nsimports"
     DESTINATION sdk/win64)
@@ -3070,15 +3175,6 @@ if(NSC_BUILD_TESTS)
             --work-root "${CMAKE_CURRENT_BINARY_DIR}/ns3-conformance-t00"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/t00/edition3-project.json"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/t00/edition3-mir.json")
-
-    add_test(
-        NAME nsc.selfhost.bootstrap-infrastructure
-        COMMAND "${Python3_EXECUTABLE}" -B
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/selfhost/test_bootstrap_infrastructure.py")
-    set_tests_properties(
-        nsc.selfhost.bootstrap-infrastructure
-        PROPERTIES ENVIRONMENT
-            "PYTHONDONTWRITEBYTECODE=1;PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}")
 
     add_test(
         NAME nsc.selfhost.bootstrap-profile-contract
@@ -5829,6 +5925,14 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item392_incremental_link_tests)
     add_test(NAME nsc.item392-incremental-link COMMAND nsc_item392_incremental_link_tests)
 
+    add_executable(nsc_freeze30_contract_tests tests/unit/Freeze30ContractTests.cpp)
+    target_link_libraries(nsc_freeze30_contract_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_freeze30_contract_tests PRIVATE cxx_std_20)
+    target_compile_definitions(nsc_freeze30_contract_tests PRIVATE
+        NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}" NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    nsc_enable_warnings(nsc_freeze30_contract_tests)
+    add_test(NAME nsc.freeze30-contracts COMMAND nsc_freeze30_contract_tests)
+
     add_executable(nsc_item393_compatibility_matrix_tests tests/unit/Item393CompatibilityMatrixTests.cpp)
     target_link_libraries(nsc_item393_compatibility_matrix_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_item393_compatibility_matrix_tests PRIVATE cxx_std_20)
@@ -5969,6 +6073,116 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.precompiled-member-identity-index
         COMMAND nsc_precompiled_member_identity_index_tests)
+
+    add_executable(
+        nsc_syntax_tree_serialization_equivalence_tests
+        tests/unit/SyntaxTreeSerializationEquivalenceTests.cpp)
+    target_link_libraries(
+        nsc_syntax_tree_serialization_equivalence_tests
+        PRIVATE nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_syntax_tree_serialization_equivalence_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_syntax_tree_serialization_equivalence_tests
+        PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_syntax_tree_serialization_equivalence_tests)
+    add_test(
+        NAME nsc.syntax-tree-serialization-equivalence
+        COMMAND nsc_syntax_tree_serialization_equivalence_tests)
+
+    add_executable(
+        nsc_precompiled_product_sidecar_snapshot_tests
+        tests/unit/PrecompiledProductSidecarSnapshotTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_product_sidecar_snapshot_tests
+        PRIVATE nsc_precompiled nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_precompiled_product_sidecar_snapshot_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_precompiled_product_sidecar_snapshot_tests)
+    add_test(
+        NAME nsc.precompiled-product-sidecar-snapshot
+        COMMAND nsc_precompiled_product_sidecar_snapshot_tests)
+
+    add_executable(
+        nsc_precompiled_semantic_snapshot_codec_tests
+        tests/unit/PrecompiledSemanticSnapshotCodecTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_semantic_snapshot_codec_tests
+        PRIVATE nsc_precompiled nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_precompiled_semantic_snapshot_codec_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_precompiled_semantic_snapshot_codec_tests)
+    add_test(
+        NAME nsc.precompiled-semantic-snapshot-codec
+        COMMAND nsc_precompiled_semantic_snapshot_codec_tests)
+
+    add_executable(
+        nsc_precompiled_syntax_node_index_tests
+        tests/unit/PrecompiledSyntaxNodeIndexTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_syntax_node_index_tests
+        PRIVATE nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_precompiled_syntax_node_index_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_precompiled_syntax_node_index_tests
+        PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    nsc_enable_warnings(nsc_precompiled_syntax_node_index_tests)
+    add_test(
+        NAME nsc.precompiled-syntax-node-index
+        COMMAND nsc_precompiled_syntax_node_index_tests)
+
+    add_executable(
+        nsc_precompiled_snapshot_reference_tests
+        tests/unit/PrecompiledSnapshotReferenceTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_snapshot_reference_tests
+        PRIVATE nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_precompiled_snapshot_reference_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_precompiled_snapshot_reference_tests)
+    add_test(
+        NAME nsc.precompiled-snapshot-reference
+        COMMAND nsc_precompiled_snapshot_reference_tests)
+
+    add_executable(
+        nsc_precompiled_snapshot_validation_tests
+        tests/unit/PrecompiledSnapshotValidationTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_snapshot_validation_tests
+        PRIVATE nsc_frontend nsc_compilation nsc_target)
+    target_compile_features(nsc_precompiled_snapshot_validation_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_precompiled_snapshot_validation_tests)
+    add_test(
+        NAME nsc.precompiled-snapshot-validation
+        COMMAND nsc_precompiled_snapshot_validation_tests)
+
+    add_executable(
+        nsc_precompiled_snapshot_equivalence_tests
+        tests/unit/PrecompiledSnapshotEquivalenceTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_snapshot_equivalence_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_precompiled nsc_frontend nsc_target)
+    target_compile_features(nsc_precompiled_snapshot_equivalence_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_precompiled_snapshot_equivalence_tests
+        PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    add_dependencies(nsc_precompiled_snapshot_equivalence_tests nsc)
+    nsc_enable_warnings(nsc_precompiled_snapshot_equivalence_tests)
+    add_test(
+        NAME nsc.precompiled-snapshot-equivalence
+        COMMAND nsc_precompiled_snapshot_equivalence_tests)
+
+    add_executable(
+        nsc_precompiled_snapshot_fallback_tests
+        tests/unit/PrecompiledSnapshotFallbackTests.cpp)
+    target_link_libraries(
+        nsc_precompiled_snapshot_fallback_tests
+        PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_precompiled nsc_frontend nsc_target)
+    target_compile_features(nsc_precompiled_snapshot_fallback_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        nsc_precompiled_snapshot_fallback_tests
+        PRIVATE NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+    add_dependencies(nsc_precompiled_snapshot_fallback_tests nsc)
+    nsc_enable_warnings(nsc_precompiled_snapshot_fallback_tests)
+    add_test(
+        NAME nsc.precompiled-snapshot-fallback
+        COMMAND nsc_precompiled_snapshot_fallback_tests)
 
     add_executable(
         nsc_compiler_identity_command_tests
@@ -6687,35 +6901,37 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.dump-ast PROPERTIES PASS_REGULAR_EXPRESSION "CompilationUnit")
 
     add_test(NAME nsc.dump-symbols COMMAND "${NSC_TEST_COMPILER}" --dump-symbols ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
-    set_tests_properties(nsc.dump-symbols PROPERTIES PASS_REGULAR_EXPRESSION "Function Main.*defined")
+    set_tests_properties(nsc.dump-symbols PROPERTIES PASS_REGULAR_EXPRESSION "module\\[1\\] full_frontend")
 
     add_test(NAME nsc.dump-sema COMMAND "${NSC_TEST_COMPILER}" --dump-sema ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
     set_tests_properties(
         nsc.dump-sema
-        PROPERTIES PASS_REGULAR_EXPRESSION "conversion implicit-string-literal-to-char-pointer")
+        PROPERTIES PASS_REGULAR_EXPRESSION "full_frontend::Native.GetCurrentProcessId")
 
     add_test(NAME nsc.dump-hir COMMAND "${NSC_TEST_COMPILER}" --dump-hir ${NSC_INTEGRATION_DIR}/valid/full_frontend.ns)
-    set_tests_properties(nsc.dump-hir PROPERTIES PASS_REGULAR_EXPRESSION "FunctionDeclaration symbol=Function:Main")
+    set_tests_properties(nsc.dump-hir PROPERTIES PASS_REGULAR_EXPRESSION "__nsc_function_full_frontend.3A.3A__Main")
 
     add_test(NAME nsc.dump-hir-features COMMAND "${NSC_TEST_COMPILER}" --dump-hir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
     set_tests_properties(
         nsc.dump-hir-features
-        PROPERTIES PASS_REGULAR_EXPRESSION "CompoundAssignment.*read-conversion=integral-promotion")
+        PROPERTIES PASS_REGULAR_EXPRESSION "compound-store type=builtin:byte op=Plus")
 
     add_test(NAME nsc.verify-hir COMMAND "${NSC_TEST_COMPILER}" --verify-hir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
-    set_tests_properties(nsc.verify-hir PROPERTIES PASS_REGULAR_EXPRESSION "HIR verification: ok")
+    set_tests_properties(nsc.verify-hir PROPERTIES PASS_REGULAR_EXPRESSION "project OOP HIR check: ok")
 
     add_test(NAME nsc.dump-mir COMMAND "${NSC_TEST_COMPILER}" --dump-mir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
-    set_tests_properties(nsc.dump-mir PROPERTIES PASS_REGULAR_EXPRESSION "mir.module")
+    set_tests_properties(nsc.dump-mir PROPERTIES PASS_REGULAR_EXPRESSION "project.oop.mir")
 
     add_test(NAME nsc.verify-mir COMMAND "${NSC_TEST_COMPILER}" --verify-mir ${NSC_INTEGRATION_DIR}/valid/hir_features.ns)
-    set_tests_properties(nsc.verify-mir PROPERTIES PASS_REGULAR_EXPRESSION "MIR verification: ok")
+    set_tests_properties(nsc.verify-mir PROPERTIES PASS_REGULAR_EXPRESSION "project OOP MIR check: ok")
 
     add_test(NAME nsc.dump-mir-features COMMAND "${NSC_TEST_COMPILER}" --dump-mir ${NSC_INTEGRATION_DIR}/valid/mir_features.ns)
-    set_tests_properties(nsc.dump-mir-features PROPERTIES PASS_REGULAR_EXPRESSION "bounds.check")
+    set_tests_properties(
+        nsc.dump-mir-features
+        PROPERTIES PASS_REGULAR_EXPRESSION "raw-element-address type=builtin:int")
 
     add_test(NAME nsc.verify-mir-features COMMAND "${NSC_TEST_COMPILER}" --verify-mir ${NSC_INTEGRATION_DIR}/valid/mir_features.ns)
-    set_tests_properties(nsc.verify-mir-features PROPERTIES PASS_REGULAR_EXPRESSION "MIR verification: ok")
+    set_tests_properties(nsc.verify-mir-features PROPERTIES PASS_REGULAR_EXPRESSION "project OOP MIR check: ok")
 
     add_test(NAME nsc.dump-cfg COMMAND "${NSC_TEST_COMPILER}" --dump-cfg ${NSC_INTEGRATION_DIR}/valid/control_flow.ns)
     set_tests_properties(nsc.dump-cfg PROPERTIES PASS_REGULAR_EXPRESSION "cfg.module")
@@ -6724,7 +6940,9 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.verify-cfg PROPERTIES PASS_REGULAR_EXPRESSION "CFG verification: ok")
 
     add_test(NAME nsc.dump-cfg-features COMMAND "${NSC_TEST_COMPILER}" --dump-cfg ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
-    set_tests_properties(nsc.dump-cfg-features PROPERTIES PASS_REGULAR_EXPRESSION "\[unreachable\]")
+    set_tests_properties(
+        nsc.dump-cfg-features
+        PROPERTIES PASS_REGULAR_EXPRESSION "cfg_features[$]3A[$]3A__Select[^@]*while[.]cond[.][0-9]+. preds=[[]bb0, bb[0-9]+")
 
     add_test(NAME nsc.verify-cfg-features COMMAND "${NSC_TEST_COMPILER}" --verify-cfg ${NSC_INTEGRATION_DIR}/valid/cfg_features.ns)
     set_tests_properties(nsc.verify-cfg-features PROPERTIES PASS_REGULAR_EXPRESSION "CFG verification: ok")
@@ -6744,7 +6962,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.dump-ssa
         COMMAND "${NSC_TEST_COMPILER}" --dump-ssa ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
-    set_tests_properties(nsc.dump-ssa PROPERTIES PASS_REGULAR_EXPRESSION "phi @value")
+    set_tests_properties(nsc.dump-ssa PROPERTIES PASS_REGULAR_EXPRESSION "ssa_features[$]3A[$]3A__Main phis=[1-9]")
 
     add_test(
         NAME nsc.verify-ssa
@@ -6786,7 +7004,7 @@ if(NSC_BUILD_TESTS)
         COMMAND "${NSC_TEST_COMPILER}" --dump-llvm ${NSC_INTEGRATION_DIR}/valid/llvm_optimization_features.ns -O2)
     set_tests_properties(
         nsc.dump-llvm-raw-with-o2
-        PROPERTIES PASS_REGULAR_EXPRESSION "call i32 @Square")
+        PROPERTIES PASS_REGULAR_EXPRESSION "call i32 @.__nsc_function_llvm_optimization_features.3A.3A__Square")
 
     add_test(
         NAME nsc.verify-llvm-opt-o3
@@ -6798,7 +7016,7 @@ if(NSC_BUILD_TESTS)
     add_test(
         NAME nsc.dump-llvm-phi
         COMMAND "${NSC_TEST_COMPILER}" --dump-llvm ${NSC_INTEGRATION_DIR}/valid/ssa_features.ns)
-    set_tests_properties(nsc.dump-llvm-phi PROPERTIES PASS_REGULAR_EXPRESSION "phi i32")
+    set_tests_properties(nsc.dump-llvm-phi PROPERTIES PASS_REGULAR_EXPRESSION "phi i1")
 
     add_test(
         NAME nsc.verify-llvm-features

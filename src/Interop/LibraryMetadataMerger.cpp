@@ -5,6 +5,7 @@
 #include <ranges>
 #include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 namespace nativesharp::interop
@@ -230,6 +231,51 @@ bool sameHeader(const LibraryMetadata& left, const LibraryMetadata& right)
             right.managedDelegateCellSize);
 }
 
+/// Sorts records by a key built by value (a concatenation) and drops equal duplicates; reports a
+/// conflict when two records share a key but differ. Each key is built once per record instead
+/// of twice per comparison: std::sort runs over (key, record) pairs and compares only the keys,
+/// so its comparisons, and with them the order of records with equal keys, are those of sorting
+/// the records with key(). The neighbour test and the error text use the same key.
+template <typename Record, typename Key, typename Equal>
+bool canonicalizeByBuiltKey(
+    std::vector<Record>& records,
+    Key key,
+    Equal equal,
+    std::string_view category,
+    std::string& error)
+{
+    std::vector<std::pair<std::string, Record>> keyed;
+    keyed.reserve(records.size());
+    for (Record& record : records)
+    {
+        std::string recordKey = key(record);
+        keyed.emplace_back(std::move(recordKey), std::move(record));
+    }
+    std::sort(keyed.begin(), keyed.end(), [](const auto& left, const auto& right) {
+        return left.first < right.first;
+    });
+    std::vector<Record> canonical;
+    canonical.reserve(keyed.size());
+    const std::string* canonicalKey = nullptr;
+    for (auto& [recordKey, record] : keyed)
+    {
+        if (canonicalKey == nullptr || *canonicalKey != recordKey)
+        {
+            canonical.push_back(std::move(record));
+            canonicalKey = &recordKey;
+            continue;
+        }
+        if (!equal(canonical.back(), record))
+        {
+            error = "NSMETA merge conflict for " + std::string(category) + " '" +
+                recordKey + "'";
+            return false;
+        }
+    }
+    records = std::move(canonical);
+    return true;
+}
+
 template <typename Record, typename Key, typename Equal>
 bool canonicalize(
     std::vector<Record>& records,
@@ -238,6 +284,10 @@ bool canonicalize(
     std::string_view category,
     std::string& error)
 {
+    // Keys built by value are precomputed; keys that are references to a field cost nothing
+    // per comparison and keep the original path.
+    if constexpr (!std::is_reference_v<std::invoke_result_t<Key&, const Record&>>)
+        return canonicalizeByBuiltKey(records, key, equal, category, error);
     std::sort(records.begin(), records.end(), [&](const Record& left, const Record& right) {
         return key(left) < key(right);
     });

@@ -196,6 +196,12 @@ void ProjectOopHirModel::rejectNoHeapIndirectInvocation(
     [[maybe_unused]] std::string& error)
 {
     const ProjectOopHirNode* loweredChild = child.get();
+    // EN: Plan item 118: a delegate invocation with an owned argument comes wrapped in its full expression.
+    // ES: Elemento 118 del plan: una invocación de delegate con un argumento owned viene envuelta en su
+    //     expresión completa.
+    if (loweredChild != nullptr && loweredChild->kind == ProjectOopHirNodeKind::FullExpressionCleanup &&
+        loweredChild->children.size() == 1U)
+        loweredChild = loweredChild->children.front().get();
     if (loweredChild == nullptr ||
         (loweredChild->kind != ProjectOopHirNodeKind::DelegateInvoke &&
          loweredChild->kind != ProjectOopHirNodeKind::EventInvoke))
@@ -498,6 +504,13 @@ bool ProjectOopHirModel::initializeUsingStatementFrame(
     state.node->disposeImplementationMemberOrdinal =
         binding->disposeImplementationMemberOrdinal;
     state.node->interfaceCleanupDispatch = binding->interfaceDispatch;
+    // EN: Freeze 3.0 C-01: a using local initialized by `new` owns its resource, so the using
+    //     cleanup destroys it after Dispose.
+    // ES: Congelamiento 3.0 C-01: un local de using inicializado con `new` posee su recurso, asi
+    //     que el cleanup del using lo destruye despues de Dispose.
+    state.node->automaticDestruction = methodBodyModel_ != nullptr &&
+        binding->resourceLocalOrdinal < methodBodyModel_->locals().size() &&
+        methodBodyModel_->locals()[binding->resourceLocalOrdinal].isRaii;
     return true;
 }
 

@@ -1,4 +1,5 @@
 #include "MirNodeMachine.h"
+#include "../../Internal/TypeIndexShadowCheck.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 
 #include <algorithm>
@@ -1609,14 +1610,22 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup16(
             }
             const ProjectOopMirStructLayout* layout =
                 structLayoutForTypeKey(node->elementTypeKey);
-            if (layout == nullptr || *node->memberOrdinal >= layout->fields.size())
+            // EN: Freeze 3.0 C-14: fields are found by member ordinal; a future without an error
+            //     slot has no member 4, so its Drop pointer (member 5) is not at index 5.
+            // ES: Congelamiento 3.0 C-14: los campos se buscan por ordinal de miembro; un future sin
+            //     slot de error no tiene miembro 4, asi su puntero Drop (miembro 5) no esta en 5.
+            const ObjectFieldLayout* field = nullptr;
+            if (layout != nullptr)
+                for (const ObjectFieldLayout& candidate : layout->fields)
+                    if (candidate.memberOrdinal == *node->memberOrdinal) field = &candidate;
+            if (field == nullptr)
             {
                 error = "future field address has no field layout for '" + node->elementTypeKey +
                     "' index " + std::to_string(*node->memberOrdinal);
                 return -1;
             }
             result->kind = ProjectOopMirNodeKind::FutureFieldAddress;
-            result->immediate = layout->fields[*node->memberOrdinal].offset;
+            result->immediate = field->offset;
             result->typeKey = node->typeKey;
             break;
         }
@@ -1976,7 +1985,18 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup21(
             if (node->typeKey.starts_with("type:"))
             {
                 const std::string_view identity(node->typeKey.data() + 5U, node->typeKey.size() - 5U);
-                for (std::size_t ordinal = 0; ordinal < model_.nameLookup_->namedTypes().size(); ++ordinal)
+                if constexpr (internal::kIndexShadowCheckEnabled)
+                {
+                    internal::shadowCheckTypeIdentityIndex(
+                        *model_.nameLookup_, identity, "MirNodeMachine::lowerGroup21");
+                }
+                // The shared type index keeps the first type of an identity, as the scan; the
+                // scan only runs for hand-assembled models that have no type index.
+                spanTypeOrdinal = model_.nameLookup_->typeOrdinalForIdentity(identity);
+                for (std::size_t ordinal = 0;
+                     !spanTypeOrdinal.has_value() && !model_.nameLookup_->hasTypeIndex() &&
+                     ordinal < model_.nameLookup_->namedTypes().size();
+                     ++ordinal)
                 {
                     if (model_.nameLookup_->namedTypes()[ordinal].identity.key() == identity)
                     {

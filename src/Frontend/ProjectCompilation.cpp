@@ -3,6 +3,8 @@
 #include "Cache/CachePayloadWriter.h"
 #include "Cache/SyntaxProductCacheCodec.h"
 #include "Internal/ProjectPhaseTimer.h"
+#include "Internal/IndexShadowCheckSwitch.h"
+#include "Internal/IndexShadowMismatch.h"
 #include "nativesharp/Frontend/ComptimeEngine.h"
 #include "nativesharp/Frontend/TemplateParseCache.h"
 
@@ -14,6 +16,7 @@
 #include "nativesharp/Source/SourceFile.h"
 #include "nativesharp/Source/SourcePosition.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -107,6 +110,23 @@ using lexer::TokenKind;
 using internal::ProjectPhaseTimer;
 
 constexpr std::string_view templateParseProductSchema = "nsc-template-parse-product-v1";
+
+// EN: The whole-corpus parse cache stays disconnected. Its key hashes every source buffer of the
+//     corpus, the precompiled surfaces included, and a miss publishes the complete parsed corpus
+//     (tens of MB for a library over NativeSharpCore) with a SHA-256 of it, on every build whose
+//     sources changed. It can only hit when every source is identical, and then the compilation
+//     bundle cache already answers the whole compilation. The per-module precompiled syntax cache
+//     (`precompiledProductCacheRoot_`) is independent and stays on. With the key left empty,
+//     restoreTemplateParseProduct, publishTemplateParseProduct and the corpus snapshots are skipped.
+// ES: La caché de parseo del corpus completo queda desconectada. Su clave hashea cada buffer fuente
+//     del corpus, incluidas las superficies precompiladas, y un fallo publica el corpus analizado
+//     completo (decenas de MB para una biblioteca sobre NativeSharpCore) con su SHA-256, en cada build
+//     cuyas fuentes cambiaron. Solo puede acertar cuando todas las fuentes son idénticas, y entonces la
+//     caché de bundles de compilación ya responde la compilación completa. La caché de sintaxis
+//     precompilada por módulo (`precompiledProductCacheRoot_`) es independiente y sigue activa. Con la
+//     clave vacía se omiten restoreTemplateParseProduct, publishTemplateParseProduct y las fotografías
+//     del corpus.
+constexpr bool kTemplateParseCorpusCacheEnabled = false;
 
 // Appends one length-delimited field to the cache identity. Length framing prevents different
 // sequences of module names, ordinals or digests from producing the same unhashed material.
@@ -601,20 +621,22 @@ std::vector<std::string> collectParserKnownTypeNames(
         collectUsingAliases(unit->tokens(), aliases);
     }
 
+    // baseNames comes from the std::set, so it is sorted and unique: the target itself is a binary
+    // search and the names that start with "target." are one contiguous run beginning at the
+    // lower bound of that prefix. The same names are inserted as by comparing every alias with
+    // every name, and the result is the same sorted set.
     const std::vector<std::string> baseNames(names.begin(), names.end());
     for (const auto& [alias, target] : aliases)
     {
-        for (const std::string& known : baseNames)
+        if (std::binary_search(baseNames.begin(), baseNames.end(), target))
         {
-            if (known == target)
-            {
-                names.insert(alias);
-            }
-            const std::string prefix = target + ".";
-            if (known.starts_with(prefix))
-            {
-                names.insert(alias + known.substr(target.size()));
-            }
+            names.insert(alias);
+        }
+        const std::string prefix = target + ".";
+        for (auto known = std::lower_bound(baseNames.begin(), baseNames.end(), prefix);
+             known != baseNames.end() && known->starts_with(prefix); ++known)
+        {
+            names.insert(alias + known->substr(target.size()));
         }
     }
     return std::vector<std::string>(names.begin(), names.end());
@@ -674,11 +696,20 @@ bool ProjectCompilation::compileProjectNames(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "names");
     nameLookup_ = std::make_unique<ProjectNameLookup>(lifetime_->indexes());
+    nameLookup_->setPrecompiledSnapshots(precompiledSnapshots_);
+    if (precompiledSnapshotCapture_.has_value())
+        nameLookup_->setPrecompiledSnapshotCaptureUnit(precompiledSnapshotCapture_->unitOrdinal);
     if (!nameLookup_->build(
             *projectGraph_, units_, diagnostics_, compilationJobs_,
             &lifetime_->workerPool()))
     {
         return false;
+    }
+    if (reportSink_ && !precompiledSnapshots_.empty())
+    {
+        reportSink_("precompiled-snapshot-install: names=" +
+            std::to_string(nameLookup_->installedSnapshotUnitCount()) + " name-declarations=" +
+            std::to_string(nameLookup_->installedDeclarationUnitCount()));
     }
     return enterStage(CompilationStage::Binding, loadError);
 }
@@ -758,8 +789,7 @@ bool ProjectCompilation::compileProjectMembers(
     if (cancellationRequested(loadError, "members")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "members");
-    memberModel_ = std::make_unique<ProjectMemberModel>(lifetime_->indexes());
-    if (!memberModel_->build(*nameLookup_, units_, diagnostics_, genericModel_.get())) return false;
+    if (!buildMemberModel()) return false;
     if (!memberModel_->buildModuleInitializationPlan(*projectGraph_, loadError)) return false;
 
     std::vector<PrecompiledMemberIdentity> precompiledMembers;
@@ -804,12 +834,7 @@ bool ProjectCompilation::compileProjectMembers(
         return false;
     }
 
-    namespaceFunctionModel_ = std::make_unique<ProjectNamespaceFunctionModel>();
-    if (!namespaceFunctionModel_->build(
-            *nameLookup_, *memberModel_, units_, diagnostics_, genericModel_.get()))
-    {
-        return false;
-    }
+    if (!buildNamespaceFunctionModel()) return false;
     std::vector<PrecompiledNamespaceFunctionIdentity> precompiledNamespaceFunctions;
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
@@ -833,8 +858,7 @@ bool ProjectCompilation::compileProjectInheritance(
     if (cancellationRequested(loadError, "inheritance")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "inheritance");
-    inheritanceModel_ = std::make_unique<ProjectInheritanceModel>();
-    return inheritanceModel_->build(*nameLookup_, diagnostics_);
+    return buildInheritanceModel();
 }
 
 // NSC-LIMIT-007. LOS CONSTRAINTS SE VALIDAN AQUI, y este es el unico punto posible de toda la
@@ -901,6 +925,14 @@ bool ProjectCompilation::compileProjectMethodBodies(
     methodBodyOptions.cancellationCheck = cancellationCheck_;
     methodBodyOptions.phaseTimingSink = phaseTimingSink_;
     methodBodyOptions.executionError = &loadError;
+    // EN: Freeze 3.0 (item 130a): previews constructor selection while the bodies are analyzed.
+    // ES: Congelamiento 3.0 (elemento 130a): anticipa la eleccion de constructores mientras se analizan
+    //     los cuerpos.
+    ProjectConstructionModel constructorDemandResolver;
+    constructorDemandResolver.attachDemandResolver(
+        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
+        *namespaceFunctionModel_);
+    methodBodyOptions.constructorDemandResolver = &constructorDemandResolver;
     if (!methodBodyModel_->build(
         *nameLookup_, *memberModel_, *namespaceFunctionModel_, *inheritanceModel_, *interfaceModel_,
         genericModel_.get(), diagnostics_,
@@ -921,8 +953,7 @@ bool ProjectCompilation::compileProjectInterfaces(
     if (cancellationRequested(loadError, "interfaces")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "interfaces");
-    interfaceModel_ = std::make_unique<ProjectInterfaceModel>();
-    return interfaceModel_->build(*nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
+    return buildInterfaceModel();
 }
 
 bool ProjectCompilation::compileProjectVirtualDispatch(
@@ -936,10 +967,7 @@ bool ProjectCompilation::compileProjectVirtualDispatch(
     if (cancellationRequested(loadError, "virtual-dispatch")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "virtual-dispatch");
-    virtualDispatchModel_ =
-        std::make_unique<ProjectVirtualDispatchModel>(lifetime_->indexes());
-    return virtualDispatchModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
+    return buildVirtualDispatchModel();
 }
 
 bool ProjectCompilation::compileProjectDestruction(
@@ -953,9 +981,7 @@ bool ProjectCompilation::compileProjectDestruction(
     if (cancellationRequested(loadError, "destruction")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "destruction");
-    destructionModel_ = std::make_unique<ProjectDestructionModel>();
-    return destructionModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, diagnostics_);
+    return buildDestructionModel();
 }
 
 bool ProjectCompilation::compileProjectConstructions(
@@ -969,10 +995,7 @@ bool ProjectCompilation::compileProjectConstructions(
     if (cancellationRequested(loadError, "construction")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "construction");
-    constructionModel_ = std::make_unique<ProjectConstructionModel>();
-    return constructionModel_->build(
-        *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
-        *namespaceFunctionModel_, units_, diagnostics_);
+    return buildConstructionModel();
 }
 
 bool ProjectCompilation::compileProjectObjectLayouts(
@@ -986,11 +1009,7 @@ bool ProjectCompilation::compileProjectObjectLayouts(
     if (cancellationRequested(loadError, "layout")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "layout");
-    objectLayoutModel_ =
-        std::make_unique<ProjectObjectLayoutModel>(lifetime_->indexes());
-    if (!objectLayoutModel_->build(
-            *nameLookup_, *memberModel_, *inheritanceModel_, *constructionModel_, diagnostics_))
-        return false;
+    if (!buildObjectLayoutModel()) return false;
     metaprogrammingModel_ = std::make_unique<ProjectMetaprogrammingModel>();
     if (!metaprogrammingModel_->build(
             *nameLookup_, *memberModel_, *methodBodyModel_,
@@ -1339,22 +1358,30 @@ bool ProjectCompilation::executeSyntaxComptime(
 }
 
 std::optional<std::size_t> ProjectCompilation::precompiledProjectOrdinal(
-    const PrecompiledSyntaxModule& module) const
+    const std::filesystem::path& canonicalMetadataPath) const
 {
-    for (std::size_t ordinal = 0; ordinal < projectGraph_->projects().size(); ++ordinal)
+    const auto found = precompiledProjectOrdinals_.find(canonicalMetadataPath);
+    if constexpr (internal::kIndexShadowCheckEnabled)
     {
-        std::error_code leftError;
-        std::error_code rightError;
-        const std::filesystem::path left = std::filesystem::weakly_canonical(
-            projectGraph_->projects()[ordinal].projectFile(), leftError);
-        const std::filesystem::path right = std::filesystem::weakly_canonical(
-            module.metadataPath, rightError);
-        if (!leftError && !rightError && left == right)
+        std::optional<std::size_t> scanned;
+        for (std::size_t ordinal = 0; !scanned && ordinal < projectGraph_->projects().size(); ++ordinal)
         {
-            return ordinal;
+            std::error_code projectError;
+            const std::filesystem::path canonicalProject = std::filesystem::weakly_canonical(
+                projectGraph_->projects()[ordinal].projectFile(), projectError);
+            if (!projectError && canonicalProject == canonicalMetadataPath) scanned = ordinal;
+        }
+        const std::optional<std::size_t> indexed = found == precompiledProjectOrdinals_.end()
+            ? std::optional<std::size_t>()
+            : std::optional<std::size_t>(found->second);
+        if (scanned != indexed)
+        {
+            internal::reportIndexShadowMismatch(
+                "ProjectCompilation::precompiledProjectOrdinal", canonicalMetadataPath.generic_string());
         }
     }
-    return std::nullopt;
+    if (found == precompiledProjectOrdinals_.end()) return std::nullopt;
+    return found->second;
 }
 
 bool ProjectCompilation::materializePrecompiledTemplateUnit(
@@ -1473,8 +1500,9 @@ bool ProjectCompilation::materializePrecompiledModule(
     std::string& loadError)
 {
     std::error_code metadataKeyError;
-    std::string metadataKey = std::filesystem::weakly_canonical(
-        module.metadataPath, metadataKeyError).generic_string();
+    const std::filesystem::path canonicalMetadata =
+        std::filesystem::weakly_canonical(module.metadataPath, metadataKeyError);
+    std::string metadataKey = canonicalMetadata.generic_string();
     if (metadataKeyError)
     {
         metadataKey = std::filesystem::absolute(
@@ -1484,7 +1512,11 @@ bool ProjectCompilation::materializePrecompiledModule(
     {
         return true;
     }
-    const std::optional<std::size_t> projectOrdinal = precompiledProjectOrdinal(module);
+    // The canonical path of the key above is reused; a path that could not be canonicalized
+    // has no project-graph node, as before.
+    const std::optional<std::size_t> projectOrdinal = metadataKeyError
+        ? std::optional<std::size_t>()
+        : precompiledProjectOrdinal(canonicalMetadata);
     if (!projectOrdinal.has_value())
     {
         loadError = "internal error: precompiled module '" + module.moduleName +
@@ -1506,13 +1538,36 @@ bool ProjectCompilation::materializePrecompiledSyntax(std::string& loadError)
 {
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "precompiled-syntax");
     std::set<std::string> materializedMetadata;
-    for (const PrecompiledSyntaxModule& module : precompiledModules_)
+    // Each project file is canonicalized once here instead of once per precompiled module. The
+    // map compares paths like path::operator== and keeps the first ordinal of equal paths, which
+    // is the ordinal the former linear search returned; a failed canonicalization never matched.
+    precompiledProjectOrdinals_.clear();
+    if (!precompiledModules_.empty())
     {
-        if (!materializePrecompiledModule(module, materializedMetadata, loadError))
+        for (std::size_t ordinal = 0; ordinal < projectGraph_->projects().size(); ++ordinal)
+        {
+            std::error_code projectError;
+            const std::filesystem::path canonicalProject = std::filesystem::weakly_canonical(
+                projectGraph_->projects()[ordinal].projectFile(), projectError);
+            if (!projectError) precompiledProjectOrdinals_.try_emplace(canonicalProject, ordinal);
+        }
+    }
+    // EN: The public API unit is the first unit a module adds; a module whose metadata was already
+    //     materialized adds none.
+    // ES: La unidad de API pública es la primera unidad que agrega un módulo; un módulo cuya
+    //     metadata ya se materializó no agrega ninguna.
+    precompiledApiUnits_.assign(precompiledModules_.size(), std::nullopt);
+    for (std::size_t moduleIndex = 0; moduleIndex < precompiledModules_.size(); ++moduleIndex)
+    {
+        const std::size_t firstUnit = units_.size();
+        if (!materializePrecompiledModule(
+                precompiledModules_[moduleIndex], materializedMetadata, loadError))
         {
             return false;
         }
+        if (units_.size() > firstUnit) precompiledApiUnits_[moduleIndex] = firstUnit;
     }
+    loadPrecompiledSnapshots();
     return true;
 }
 
@@ -1523,7 +1578,7 @@ bool ProjectCompilation::materializePrecompiledSyntax(std::string& loadError)
 bool ProjectCompilation::calculateTemplateParseCacheKey(std::string& loadError)
 {
     templateParseCacheKey_.clear();
-    if (templateCacheRoot_.empty()) return true;
+    if (!kTemplateParseCorpusCacheEnabled || templateCacheRoot_.empty()) return true;
 
     std::string material;
     // EN: v2 retires every v1 corpus: v1 published trees already rewritten by the generic pass.
@@ -1727,7 +1782,15 @@ bool ProjectCompilation::precompiledSyntaxProductPending(std::size_t index) cons
 //     posterior a genéricos hace que un hit posterior omita el descubrimiento de especializaciones, lo
 //     que pierde los alias de tipos cerrados que enlazan callables precompilados con su identidad
 //     física en NSMETA.
-void ProjectCompilation::capturePristineSyntaxProducts()
+// EN: The units are serialized on the syntax workers. Each task reads one unit, which no other task
+//     touches, and writes only its own slot of pristineSyntaxProductsByUnit_, which was sized before
+//     the first submission; the slots are read only after wait(). The snapshots are byte-identical to
+//     the sequential ones. wait() rethrows a task failure, as the sequential loop let it propagate.
+// ES: Las unidades se serializan en los workers sintácticos. Cada tarea lee una unidad que ninguna otra
+//     toca y escribe solo su propia ranura de pristineSyntaxProductsByUnit_, dimensionada antes de la
+//     primera tarea; las ranuras se leen solo después de wait(). Las fotografías son idénticas byte a
+//     byte a las secuenciales. wait() relanza el fallo de una tarea, como lo propagaba el bucle.
+void ProjectCompilation::capturePristineSyntaxProducts(driver::CompilationWorkerPool& syntaxWorkers)
 {
     pristineSyntaxProductsByUnit_.clear();
     const bool publishesCorpus = !templateParseCacheHit_ && !templateCacheRoot_.empty() &&
@@ -1747,9 +1810,13 @@ void ProjectCompilation::capturePristineSyntaxProducts()
         }
         if (publishesCorpus || precompiledSyntaxProductPending(index))
         {
-            pristineSyntaxProductsByUnit_[index] = internal::serializeSyntaxProductUnit(*unit);
+            syntaxWorkers.submit([this, unit, index](std::size_t)
+            {
+                pristineSyntaxProductsByUnit_[index] = internal::serializeSyntaxProductUnit(*unit);
+            });
         }
     }
+    syntaxWorkers.wait();
 }
 
 // EN: Returns the pristine snapshot of the unit at `index`, or an empty view when none was taken.
@@ -1786,7 +1853,7 @@ bool ProjectCompilation::produceSyntaxCorpus(
         {
             return false;
         }
-        capturePristineSyntaxProducts();
+        capturePristineSyntaxProducts(syntaxWorkers);
         return true;
     }
 
@@ -1799,7 +1866,7 @@ bool ProjectCompilation::produceSyntaxCorpus(
     {
         return false;
     }
-    capturePristineSyntaxProducts();
+    capturePristineSyntaxProducts(syntaxWorkers);
     return true;
 }
 

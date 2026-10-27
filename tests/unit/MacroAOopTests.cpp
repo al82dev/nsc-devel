@@ -182,12 +182,12 @@ void testGeneralizedReceivers(TestContext& tests, const std::filesystem::path& r
         "public class Counter { public int Value; public Counter(int value) { Value = value; } "
         "public int Add(int delta) { Value = Value + delta; return Value; } } "
         "public class Harness { "
-        "public Counter Make(int value) { return new Counter(value); } "
+        "public owned Counter Make(int value) { return new Counter(value); } "
         "public int Read(Counter counter) { return counter.Value; } "
         "public int Write(Counter counter) { counter.Value = 11; return counter.Value; } "
         "public int Call(Counter counter) { return counter.Add(2); } "
         "public int Local() { Counter counter = new Counter(3); counter.Value = 9; return counter.Add(4); } "
-        "public int Temporary() { return (new Counter(5)).Add(6); } "
+        "public int Temporary() { raii Counter counter = new Counter(5); return counter.Add(6); } "
         "public int Returned() { return Make(7).Add(8); } "
         "public int WriteReturned() { Make(9).Value = 12; return 0; } }");
 

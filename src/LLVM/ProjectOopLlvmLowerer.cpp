@@ -116,6 +116,12 @@ ProjectOopLlvmLoweringRequest ProjectOopLlvmLoweringRequest::partition(
     return request;
 }
 
+void ProjectOopLlvmLoweringRequest::setSourceChecksums(
+    std::span<const std::string> sourceChecksums) noexcept
+{
+    sourceChecksums_ = sourceChecksums;
+}
+
 std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
     const ProjectOopLlvmLoweringRequest& request)
 {
@@ -151,6 +157,7 @@ std::unique_ptr<LlvmModule> ProjectOopLlvmLowerer::lower(
         request.declarationOrdinals_, request.reachableDefinitions_,
         request.staticFieldDeclarations_,
         request.moduleName_);
+    implementation.setSourceChecksums(request.sourceChecksums_);
     if (!implementation.lower(error_)) return nullptr;
     return std::unique_ptr<LlvmModule>(
         new LlvmModule(implementation.releaseContext(), implementation.releaseModule()));

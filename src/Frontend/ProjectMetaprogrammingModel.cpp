@@ -1,5 +1,7 @@
 #include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "Internal/IndexShadowCheckSwitch.h"
+#include "Internal/IndexShadowMismatch.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Language/MetaprogrammingSemantics.h"
 
@@ -183,53 +185,126 @@ bool ProjectMetaprogrammingModel::collectAttributeDefinitions(
     return true;
 }
 
-bool ProjectMetaprogrammingModel::findAttributeTarget(
+ProjectMetaprogrammingModel::AttributeTargetIndex
+ProjectMetaprogrammingModel::buildAttributeTargetIndex(
     const ProjectNameLookup& names,
+    const ProjectMemberModel& members)
+{
+    // Same filters as the former scans of findAttributeTarget. A start offset of UINT32_MAX
+    // could never win there (the search kept strictly smaller offsets than UINT32_MAX), so it
+    // is left out here.
+    AttributeTargetIndex index;
+    for (std::size_t typeOrdinal = 0; typeOrdinal < names.namedTypes().size(); ++typeOrdinal)
+    {
+        const NamedTypeDeclaration& type = names.namedTypes()[typeOrdinal];
+        if (!type.range.isValid() || type.range.begin().offset() >= UINT32_MAX) continue;
+        index[{type.projectOrdinal, type.sourceOrdinal}].types.emplace_back(
+            type.range.begin().offset(), typeOrdinal);
+    }
+    for (std::size_t memberOrdinal = 0; memberOrdinal < members.members().size(); ++memberOrdinal)
+    {
+        const ClassMemberSymbol& member = members.members()[memberOrdinal];
+        if (!member.range.isValid() || member.range.begin().offset() >= UINT32_MAX ||
+            member.declaringTypeOrdinal >= names.namedTypes().size())
+        {
+            continue;
+        }
+        const std::size_t projectOrdinal = names.namedTypes()[member.declaringTypeOrdinal].projectOrdinal;
+        index[{projectOrdinal, member.sourceOrdinal}].members.emplace_back(
+            member.range.begin().offset(), memberOrdinal);
+    }
+    for (auto& [source, candidates] : index)
+    {
+        std::ranges::sort(candidates.types);
+        std::ranges::sort(candidates.members);
+    }
+    return index;
+}
+
+void ProjectMetaprogrammingModel::shadowCheckAttributeTarget(
+    const AttributeTargetIndex& targets,
+    const ProjectNameLookup& names,
+    const ProjectMemberModel& members,
+    const ProjectComptimeRecord& record,
+    const ComptimeAttributeDirective& directive) const
+{
+    if constexpr (internal::kIndexShadowCheckEnabled)
+    {
+        std::optional<std::size_t> scannedType;
+        std::optional<std::size_t> scannedMember;
+        std::uint32_t nearest = UINT32_MAX;
+        for (std::size_t typeOrdinal = 0; typeOrdinal < names.namedTypes().size(); ++typeOrdinal)
+        {
+            const NamedTypeDeclaration& type = names.namedTypes()[typeOrdinal];
+            if (type.projectOrdinal != record.projectOrdinal ||
+                type.sourceOrdinal != record.sourceOrdinal || !type.range.isValid() ||
+                type.range.begin().offset() < directive.offset)
+                continue;
+            if (type.range.begin().offset() < nearest)
+            {
+                nearest = type.range.begin().offset();
+                scannedType = typeOrdinal;
+                scannedMember.reset();
+            }
+        }
+        for (std::size_t memberOrdinal = 0; memberOrdinal < members.members().size(); ++memberOrdinal)
+        {
+            const ClassMemberSymbol& member = members.members()[memberOrdinal];
+            if (member.sourceOrdinal != record.sourceOrdinal || !member.range.isValid() ||
+                member.range.begin().offset() < directive.offset ||
+                member.declaringTypeOrdinal >= names.namedTypes().size() ||
+                names.namedTypes()[member.declaringTypeOrdinal].projectOrdinal != record.projectOrdinal)
+                continue;
+            if (member.range.begin().offset() < nearest)
+            {
+                nearest = member.range.begin().offset();
+                scannedType = member.declaringTypeOrdinal;
+                scannedMember = memberOrdinal;
+            }
+        }
+        std::optional<std::size_t> indexedType;
+        std::optional<std::size_t> indexedMember;
+        findAttributeTarget(targets, members, record, directive, indexedType, indexedMember);
+        if (indexedType != scannedType || indexedMember != scannedMember)
+            internal::reportIndexShadowMismatch("findAttributeTarget", directive.identity);
+    }
+}
+
+bool ProjectMetaprogrammingModel::findAttributeTarget(
+    const AttributeTargetIndex& targets,
     const ProjectMemberModel& members,
     const ProjectComptimeRecord& record,
     const ComptimeAttributeDirective& directive,
     std::optional<std::size_t>& targetType,
     std::optional<std::size_t>& targetMember) const
 {
-    std::uint32_t nearest = UINT32_MAX;
-    for (std::size_t typeOrdinal = 0; typeOrdinal < names.namedTypes().size(); ++typeOrdinal)
+    // The former scans took the declaration with the smallest start offset at or after the
+    // directive, the lowest ordinal among equal offsets, and a type before a member at the same
+    // offset: the first (offset, ordinal) entry of each sorted list, then the member only when
+    // it starts strictly earlier.
+    const auto candidates = targets.find({record.projectOrdinal, record.sourceOrdinal});
+    if (candidates == targets.end()) return targetType.has_value();
+    std::size_t nearest = UINT32_MAX;
+    const auto type = std::ranges::lower_bound(
+        candidates->second.types, std::pair<std::size_t, std::size_t>(directive.offset, 0));
+    if (type != candidates->second.types.end())
     {
-        const NamedTypeDeclaration& type = names.namedTypes()[typeOrdinal];
-        if (type.projectOrdinal != record.projectOrdinal ||
-            type.sourceOrdinal != record.sourceOrdinal || !type.range.isValid() ||
-            type.range.begin().offset() < directive.offset)
-        {
-            continue;
-        }
-        if (type.range.begin().offset() < nearest)
-        {
-            nearest = type.range.begin().offset();
-            targetType = typeOrdinal;
-            targetMember.reset();
-        }
+        nearest = type->first;
+        targetType = type->second;
+        targetMember.reset();
     }
-    for (std::size_t memberOrdinal = 0; memberOrdinal < members.members().size(); ++memberOrdinal)
+    const auto member = std::ranges::lower_bound(
+        candidates->second.members, std::pair<std::size_t, std::size_t>(directive.offset, 0));
+    if (member != candidates->second.members.end() && member->first < nearest)
     {
-        const ClassMemberSymbol& member = members.members()[memberOrdinal];
-        if (member.sourceOrdinal != record.sourceOrdinal || !member.range.isValid() ||
-            member.range.begin().offset() < directive.offset ||
-            member.declaringTypeOrdinal >= names.namedTypes().size() ||
-            names.namedTypes()[member.declaringTypeOrdinal].projectOrdinal != record.projectOrdinal)
-        {
-            continue;
-        }
-        if (member.range.begin().offset() < nearest)
-        {
-            nearest = member.range.begin().offset();
-            targetType = member.declaringTypeOrdinal;
-            targetMember = memberOrdinal;
-        }
+        targetType = members.members()[member->second].declaringTypeOrdinal;
+        targetMember = member->second;
     }
     return targetType.has_value();
 }
 
 bool ProjectMetaprogrammingModel::appendAttributeUse(
-    const ProjectNameLookup& names,
+    const AttributeTargetIndex& targets,
     const ProjectMemberModel& members,
     const ProjectComptimeRecord& record,
     const ComptimeAttributeDirective& directive,
@@ -245,7 +320,7 @@ bool ProjectMetaprogrammingModel::appendAttributeUse(
     std::optional<std::size_t> targetType;
     std::optional<std::size_t> targetMember;
     if (!findAttributeTarget(
-        names, members, record, directive, targetType, targetMember))
+        targets, members, record, directive, targetType, targetMember))
     {
         error_ = "attribute '" + directive.identity + "' has no following declaration target";
         return false;
@@ -294,6 +369,8 @@ bool ProjectMetaprogrammingModel::collectAttributeUses(
     const std::unordered_map<std::string, internal::ComptimeAttributeDefinition>& definitions)
 {
     std::unordered_map<std::string, std::size_t> nonRepeatableUses;
+    // Built only when some record has attribute directives.
+    std::optional<AttributeTargetIndex> targets;
     for (const ProjectComptimeRecord& record : comptimeRecords)
     {
         for (const ComptimeAttributeDirective& directive : record.attributes)
@@ -302,8 +379,11 @@ bool ProjectMetaprogrammingModel::collectAttributeUses(
             {
                 continue;
             }
+            if (!targets.has_value()) targets = buildAttributeTargetIndex(names, members);
+            if constexpr (internal::kIndexShadowCheckEnabled)
+                shadowCheckAttributeTarget(*targets, names, members, record, directive);
             if (!appendAttributeUse(
-                names, members, record, directive, definitions, nonRepeatableUses))
+                *targets, members, record, directive, definitions, nonRepeatableUses))
             {
                 return false;
             }

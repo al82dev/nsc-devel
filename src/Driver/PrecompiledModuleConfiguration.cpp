@@ -3,6 +3,15 @@
 
 #include "nativesharp/Compilation/PrecompiledProjectPreparation.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
+#include "nativesharp/LLVM/ThinLtoLibrarySidecarCodec.h"
+#include "nativesharp/Linker/LldLinker.h"
+#include "nativesharp/Linker/WindowsRuntimeImports.h"
+#include "nativesharp/Linker/WindowsRuntimeLibrary.h"
+
+#include <memory>
+#include <string>
+#include <system_error>
+#include <vector>
 
 namespace nativesharp::driver
 {
@@ -115,6 +124,17 @@ void addCompilationCodegenIdentity(
             prefix + "-replacement",
             debugPrefixMaps[index].replacementPrefix.generic_string());
     }
+    // A static library with real ThinLTO publishes its sidecar, so restoring the bundle requires it
+    // (optimization part 2, item 48). Una biblioteca estatica con ThinLTO real publica su sidecar, asi
+    // que restaurar el bundle lo exige (parte 2, punto 48).
+    if (manifest.bundleProductKind() == "static-library" &&
+        llvm_backend::ProjectOopObjectGenerator::thinLtoRuns(linkTimeOptimization, optimizationLevel) &&
+        !linker::configuredWindowsRuntimeLibrary().empty() &&
+        !manifest.requiredBundleOutputNames().empty())
+    {
+        manifest.addRequiredBundleOutput(llvm_backend::ThinLtoLibrarySidecarCodec::pathFor(
+            manifest.requiredBundleOutputNames().front()));
+    }
     if (debugInformation != llvm_backend::DebugInformationKind::None)
     {
         manifest.addIdentityField(
@@ -128,6 +148,84 @@ void addCompilationCodegenIdentity(
             pdb.replace_extension(".pdb");
             manifest.addRequiredBundleOutput(std::move(pdb));
         }
+    }
+}
+
+namespace
+{
+/// EN: Adds one file read by the link step to the bundle identity: `role` names it as an
+///     identity field and the file itself becomes a manifest input, so the identity covers its
+///     size and SHA-256 (served by the input digest cache on repeated builds).
+///     Parameters: `manifest`, the identity being built; `role`, a stable field suffix such as
+///     "linker"; `path`, the file the link step would use, empty when it was not found.
+///     Effects: a missing file is recorded as "unavailable" instead of failing here; the link
+///     step itself still reports the real error when the bundle misses.
+///     Why: a restored bundle replaces the link step, so its key must change whenever the
+///     linker or a toolchain file it reads changes (2026-10-24: a new NSLink was never run
+///     for unchanged sources).
+/// ES: Agrega a la identidad del bundle un archivo que lee el paso de enlace: `role` lo nombra
+///     como campo de identidad y el archivo se vuelve entrada del manifiesto, de modo que la
+///     identidad cubre su tamano y su SHA-256 (con el cache de digests en builds repetidos).
+///     Parametros: `manifest`, la identidad en construccion; `role`, un sufijo estable como
+///     "linker"; `path`, el archivo que usaria el enlace, vacio si no se encontro.
+///     Efectos: un archivo ausente se registra como "unavailable" en vez de fallar aqui; el
+///     paso de enlace sigue reportando el error real cuando el bundle falla.
+///     Motivo: un bundle restaurado sustituye al enlace, asi que su llave debe cambiar cuando
+///     cambia el linker o un archivo del toolchain que lee (2026-10-24: un NSLink nuevo no se
+///     ejecutaba con fuentes sin cambios).
+void addLinkToolInput(
+    compilation::CompilationInputManifest& manifest,
+    const std::string& role,
+    const std::filesystem::path& path)
+{
+    std::error_code filesystemError;
+    if (path.empty() || !std::filesystem::is_regular_file(path, filesystemError) || filesystemError)
+    {
+        manifest.addIdentityField("link-tool-" + role, "unavailable");
+        return;
+    }
+    manifest.addIdentityField("link-tool-" + role, path.filename().generic_string());
+    manifest.addInputFile(path);
+}
+}
+
+/// EN: Adds the link tools of the manifest's product to its bundle identity, resolved exactly
+///     as the link step resolves them: NSLink (NSC_LINKER, beside nsc.exe, PATH), the
+///     librarian for static libraries and DLLs, the configured Windows runtime library, and
+///     the canonical Windows import libraries for executables and DLLs.
+///     Precondition: addCompilationProductIdentity already set the bundle product kind.
+/// ES: Agrega a la identidad del bundle las herramientas de enlace del producto, resueltas igual
+///     que las resuelve el enlace: NSLink (NSC_LINKER, junto a nsc.exe, PATH), el
+///     bibliotecario para bibliotecas estaticas y DLLs, la biblioteca de runtime de Windows
+///     configurada y las import libraries canonicas de Windows para ejecutables y DLLs.
+///     Precondicion: addCompilationProductIdentity ya fijo el tipo de producto del bundle.
+void addCompilationLinkToolIdentity(compilation::CompilationInputManifest& manifest)
+{
+    const std::string product(manifest.bundleProductKind());
+    std::string linkerError;
+    const std::unique_ptr<linker::LldLinker> linkTool = linker::LldLinker::discover(linkerError);
+    addLinkToolInput(
+        manifest, "linker",
+        linkTool != nullptr ? linkTool->executablePath() : std::filesystem::path());
+    if (product == "static-library" || product == "dynamic-library")
+    {
+        addLinkToolInput(
+            manifest, "librarian",
+            linkTool != nullptr ? linkTool->librarianExecutablePath() : std::filesystem::path());
+    }
+    addLinkToolInput(manifest, "runtime-library", linker::configuredWindowsRuntimeLibrary());
+    if (product == "static-library") return;
+    std::vector<std::filesystem::path> importLibraries;
+    std::string importError;
+    if (!linker::findCanonicalWindowsImportLibraries(importLibraries, importError))
+    {
+        manifest.addIdentityField("link-tool-import-libraries", "unavailable");
+        return;
+    }
+    for (std::size_t index = 0; index < importLibraries.size(); ++index)
+    {
+        addLinkToolInput(
+            manifest, "import-library-" + std::to_string(index), importLibraries[index]);
     }
 }
 
@@ -153,6 +251,14 @@ void addCompilationLinkIdentity(
             "extra-link-library-" + std::to_string(index),
             extraLinkLibraries[index].filename().generic_string());
     }
+    // EN: Freeze 3.0 DEC-13: a bundle built without the host-DLL check must not satisfy a build that
+    //     asks for it. The field exists only when requested, so default identities do not change.
+    // ES: Congelamiento 3.0 DEC-13: un bundle construido sin la comprobacion contra DLL del host no
+    //     debe satisfacer una compilacion que la pide. El campo solo existe cuando se pide, asi que
+    //     las identidades por defecto no cambian.
+    if (activeExecutionScope != nullptr && activeExecutionScope->validateSystemImports)
+        manifest.addIdentityField("validate-system-imports", "true");
+    addCompilationLinkToolIdentity(manifest);
 }
 
 namespace
@@ -190,18 +296,21 @@ bool lookupCompilationBundle(
     std::string& error)
 {
     manifest.addProjectGraphInputs(closedGraph);
-    if (!manifest.calculateIdentity(
-            compilation.libraryMetadataRepository(), error))
-    {
-        return false;
-    }
     compilation::CompilationBundleCache bundleCache;
     const llvm_backend::CompilationArtifactCache* const artifactCache =
         llvm_backend::activeCompilationArtifactCache();
+    // Only the bundle cache uses the identity. Without it the inputs are not hashed: the lookup
+    // below reports the cache as disabled and the sources are read again by the syntax phase.
     if (artifactCache != nullptr && artifactCache->enabled())
     {
         bundleCache.setRoot(
             artifactCache->root() / "compilation-bundles");
+        manifest.setInputDigestCacheRoot(artifactCache->root() / "input-digests");
+        if (!manifest.calculateIdentity(
+                compilation.libraryMetadataRepository(), error))
+        {
+            return false;
+        }
     }
     compilation::CompilationBundleLookup lookup;
     if (!bundleCache.lookup(manifest.identity(), lookup, error))
@@ -250,7 +359,8 @@ bool lookupCompilationBundle(
 bool configurePrecompiledModules(
     compilation::CompilationInputManifest& manifest,
     frontend::ProjectCompilation& compilation,
-    std::string& error)
+    std::string& error,
+    bool materializeDemandedSurface)
 {
     const bool deferrable = !manifest.requiredBundleOutputNames().empty();
     const compilation::PrecompiledMaterializationGate gate =
@@ -262,8 +372,16 @@ bool configurePrecompiledModules(
             return lookupCompilationBundle(
                 manifest, compilation, closedGraph, deferrable, skipMaterialization, gateError);
         };
+    // Sources the manifest hashed for the bundle identity are served from memory; the others are
+    // read from disk.
+    const compilation::PrecompiledSurfaceSourceProvider surfaceSources =
+        [&manifest](const std::filesystem::path& path)
+        {
+            return manifest.sourceBuffer(path);
+        };
     if (!compilation::preparePrecompiledProject(
-            manifest.releaseProjectGraph(), manifest.loadOptions(), compilation, error, gate))
+            manifest.releaseProjectGraph(), manifest.loadOptions(), compilation, error, gate,
+            materializeDemandedSurface ? &surfaceSources : nullptr))
     {
         return false;
     }

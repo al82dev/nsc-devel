@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <limits>
+#include <span>
 #include <sstream>
 #include <system_error>
 #include <vector>
@@ -537,6 +538,11 @@ const std::filesystem::path& LldLinker::executablePath() const noexcept
     return executablePath_;
 }
 
+void LldLinker::setRemoveUnreferencedSections(bool remove) noexcept
+{
+    removeUnreferencedSections_ = remove;
+}
+
 std::filesystem::path LldLinker::librarianExecutablePath() const
 {
     return findLibrarian(executablePath_);
@@ -805,6 +811,166 @@ void cleanupLinkerTemporaries(
     std::filesystem::remove(responsePath, cleanupError);
     std::filesystem::remove(logPath, cleanupError);
 }
+
+#ifdef _WIN32
+std::string foldedLinkInputName(const std::filesystem::path& name)
+{
+    std::string folded = utf8Path(name);
+    std::transform(folded.begin(), folded.end(), folded.begin(), [](unsigned char character)
+    {
+        return static_cast<char>(std::tolower(character));
+    });
+    return folded;
+}
+#endif
+
+/// EN: Gives every object handed to NSLink a stable spelling inside a private link directory.
+///     Parameters: `outputPath`, the PE product; `objectFiles`, the inputs in link order;
+///     `directory` receives `<outputPath>.nslink-inputs`; `objectNames` receives each input's name
+///     relative to that directory: its basename, or `<ordinal>-<basename>` when two inputs share
+///     one (compared without case, as Windows does). Returns: false with `error` when the
+///     directory or one input cannot be prepared. Side effects: replaces the directory and
+///     hard-links every object into it, copying when a hard link is impossible (another volume).
+///     Complexity: O(n^2) name comparisons for n objects; links have a handful of objects.
+///     Why: NSLink spells each input path into the PDB module table and hashes it into the PDB
+///     GUID that the RSDS record of the PE repeats. The objects live in temporary directories
+///     whose names carry a clock stamp, so two O0 -g builds of identical input produced different
+///     PDBs and PEs (HECHO, optimization part 2 item 6, 2026-10-25).
+/// ES: Da a cada objeto que recibe NSLink un nombre estable dentro de un directorio de enlace
+///     privado.
+///     Parametros: `outputPath`, el producto PE; `objectFiles`, las entradas en orden de enlace;
+///     `directory` recibe `<outputPath>.nslink-inputs`; `objectNames` recibe el nombre de cada
+///     entrada relativo a ese directorio: su nombre base, o `<ordinal>-<nombre base>` cuando dos
+///     entradas comparten uno (sin distinguir mayusculas, como Windows). Retorno: false con
+///     `error` cuando no se puede preparar el directorio o una entrada. Efectos laterales:
+///     reemplaza el directorio y crea un enlace duro de cada objeto dentro de el; copia cuando el
+///     enlace duro no es posible (otro volumen). Complejidad: O(n^2) comparaciones de nombre para
+///     n objetos; un enlace tiene pocos objetos.
+///     Motivo: NSLink escribe la ruta de cada entrada en la tabla de modulos del PDB y la mete en
+///     el hash del GUID del PDB, que el registro RSDS del PE repite. Los objetos viven en
+///     directorios temporales cuyo nombre lleva una marca de reloj, asi que dos builds O0 -g de la
+///     misma entrada producian PDB y PE distintos (HECHO, optimizacion parte 2 punto 6,
+///     2026-10-25).
+bool prepareStableLinkInputs(
+    const std::filesystem::path& outputPath,
+    std::span<const std::filesystem::path> objectFiles,
+    std::filesystem::path& directory,
+    std::vector<std::filesystem::path>& objectNames,
+    std::string& error)
+{
+#ifndef _WIN32
+    // The portable launcher has no working directory, so the inputs keep their own paths.
+    // El lanzador portable no tiene directorio de trabajo; las entradas conservan sus rutas.
+    (void)outputPath;
+    (void)error;
+    directory.clear();
+    objectNames.assign(objectFiles.begin(), objectFiles.end());
+    return true;
+#else
+    directory = outputPath;
+    directory += ".nslink-inputs";
+    objectNames.clear();
+    std::error_code filesystemError;
+    std::filesystem::remove_all(directory, filesystemError);
+    filesystemError.clear();
+    std::filesystem::create_directories(directory, filesystemError);
+    if (filesystemError)
+    {
+        error = "could not create the linker input directory '" + utf8Path(directory) + "': " +
+            filesystemError.message();
+        return false;
+    }
+    std::vector<std::string> usedNames;
+    for (std::size_t ordinal = 0; ordinal < objectFiles.size(); ++ordinal)
+    {
+        const std::filesystem::path baseName = objectFiles[ordinal].filename();
+        std::filesystem::path name = baseName;
+        for (std::size_t attempt = 0;
+            std::find(usedNames.begin(), usedNames.end(), foldedLinkInputName(name)) != usedNames.end();
+            ++attempt)
+        {
+            const std::string prefix = std::to_string(ordinal) + "-" +
+                (attempt == 0 ? std::string() : std::to_string(attempt) + "-");
+            name = std::filesystem::path(prefix);
+            name += baseName;
+        }
+        usedNames.push_back(foldedLinkInputName(name));
+        const std::filesystem::path target = directory / name;
+        filesystemError.clear();
+        std::filesystem::create_hard_link(objectFiles[ordinal], target, filesystemError);
+        if (filesystemError)
+        {
+            filesystemError.clear();
+            std::filesystem::copy_file(objectFiles[ordinal], target, filesystemError);
+        }
+        if (filesystemError)
+        {
+            error = "could not stage linker input '" + utf8Path(objectFiles[ordinal]) + "': " +
+                filesystemError.message();
+            return false;
+        }
+        objectNames.push_back(name);
+    }
+    return true;
+#endif
+}
+
+/// EN: Returns how `/pdb:` names the PDB: its file name inside the link directory on Windows,
+///     the full path where the portable launcher cannot choose a working directory.
+/// ES: Devuelve como nombra `/pdb:` al PDB: su nombre de archivo dentro del directorio de enlace en
+///     Windows, la ruta completa donde el lanzador portable no puede elegir directorio de trabajo.
+std::filesystem::path linkerPdbSpelling(const std::filesystem::path& pdbPath)
+{
+#ifdef _WIN32
+    return pdbPath.filename();
+#else
+    return pdbPath;
+#endif
+}
+
+/// EN: Publishes the PDB that NSLink wrote inside the link directory and removes the directory.
+///     Parameters: `directory`, from `prepareStableLinkInputs`; `pdbPath`, the requested PDB or
+///     empty; `linked`, whether NSLink succeeded. Returns: `linked`, or false with `error` when
+///     the PDB cannot be moved to `pdbPath`. Side effects: renames (or copies) the PDB and removes
+///     the directory unless NSC_KEEP_LINK_TEMPS is set.
+///     Why: NSLink records its `/pdb:` spelling inside the PDB, so it receives the bare file name
+///     relative to the link directory instead of the transactional staging path.
+/// ES: Publica el PDB que NSLink escribio dentro del directorio de enlace y borra el directorio.
+///     Parametros: `directory`, de `prepareStableLinkInputs`; `pdbPath`, el PDB pedido o vacio;
+///     `linked`, si NSLink tuvo exito. Retorno: `linked`, o false con `error` cuando el PDB no se
+///     puede mover a `pdbPath`. Efectos laterales: renombra (o copia) el PDB y borra el directorio
+///     salvo con NSC_KEEP_LINK_TEMPS.
+///     Motivo: NSLink guarda dentro del PDB lo que recibe en `/pdb:`, asi que recibe el nombre
+///     simple relativo al directorio de enlace en lugar de la ruta de staging transaccional.
+bool finishStableLinkInputs(
+    const std::filesystem::path& directory,
+    const std::filesystem::path& pdbPath,
+    bool linked,
+    std::string& error)
+{
+    if (directory.empty()) return linked;
+    std::error_code filesystemError;
+    if (linked && !pdbPath.empty())
+    {
+        const std::filesystem::path written = directory / pdbPath.filename();
+        std::filesystem::rename(written, pdbPath, filesystemError);
+        if (filesystemError)
+        {
+            filesystemError.clear();
+            std::filesystem::copy_file(written, pdbPath,
+                std::filesystem::copy_options::overwrite_existing, filesystemError);
+        }
+        if (filesystemError)
+        {
+            error = "could not publish the linked PDB '" + utf8Path(pdbPath) + "': " +
+                filesystemError.message();
+            linked = false;
+        }
+    }
+    std::error_code cleanupError;
+    if (!keepLinkTemporaries()) std::filesystem::remove_all(directory, cleanupError);
+    return linked;
+}
 }
 
 bool LldLinker::createStaticLibrary(
@@ -887,17 +1053,21 @@ std::vector<std::string> dynamicLibraryArguments(
     std::span<const std::string> exportSymbols,
     const std::filesystem::path& outputPath,
     const std::filesystem::path& importLibraryPath,
-    const std::filesystem::path& pdbPath)
+    const std::filesystem::path& pdbPath,
+    bool removeUnreferencedSections)
 {
     std::vector<std::string> arguments = {
         "/dll", "/noentry", "/nodefaultlib", "/machine:x64", "/dynamicbase", "/nxcompat",
         "/highentropyva", responsePathArgument("/out:", outputPath)};
+    if (removeUnreferencedSections) arguments.push_back("/opt:ref");
     // NSLink ya fija TimeDateStamp=0 y deliberadamente rechaza switches desconocidos. /Brepro
     // sólo pertenece a lld-link; allí elimina el reloj de pared sin reescribir el PE después.
     if (!pdbPath.empty())
     {
         arguments.push_back("/debug:full");
-        arguments.push_back(responsePathArgument("/pdb:", pdbPath));
+        // NSLink runs inside the private link directory and records this spelling in the PDB.
+        // NSLink corre dentro del directorio de enlace privado y guarda esta escritura en el PDB.
+        arguments.push_back(responsePathArgument("/pdb:", linkerPdbSpelling(pdbPath)));
         arguments.push_back("/pdbaltpath:%_PDB%");
     }
     if (!exportSymbols.empty())
@@ -984,12 +1154,19 @@ bool LldLinker::linkDynamicLibrary(
     std::filesystem::path logPath = outputPath;
     responsePath += ".dll.rsp";
     logPath += ".dll.log";
+    std::filesystem::path linkDirectory;
+    std::vector<std::filesystem::path> stableObjects;
+    if (!prepareStableLinkInputs(outputPath, objectFiles, linkDirectory, stableObjects, error))
+        return false;
     const std::vector<std::string> arguments = dynamicLibraryArguments(
-        objectFiles, importLibraries, exportSymbols, outputPath, importLibraryPath, pdbPath);
-    if (!writeResponseFile(responsePath, arguments, error)) return false;
+        stableObjects, importLibraries, exportSymbols, outputPath, importLibraryPath, pdbPath,
+        removeUnreferencedSections_);
     std::error_code cleanupError;
+    if (!writeResponseFile(responsePath, arguments, error))
+        return finishStableLinkInputs(linkDirectory, {}, false, error);
     removeDynamicLibraryOutputs(outputPath, importLibraryPath, pdbPath, cleanupError);
-    const bool success = runResponseFile(responsePath, logPath, error);
+    bool success = runResponseFile(responsePath, logPath, error, false, linkDirectory);
+    success = finishStableLinkInputs(linkDirectory, pdbPath, success, error);
     cleanupLinkerTemporaries(responsePath, logPath, cleanupError);
     if (!success)
     {
@@ -1026,7 +1203,8 @@ std::vector<std::string> executableArguments(
     std::span<const std::filesystem::path> importLibraries,
     const std::filesystem::path& outputPath,
     WindowsExecutableSubsystem subsystem,
-    const std::filesystem::path& pdbPath)
+    const std::filesystem::path& pdbPath,
+    bool removeUnreferencedSections)
 {
     std::vector<std::string> arguments = {
         "/nodefaultlib",
@@ -1039,10 +1217,13 @@ std::vector<std::string> executableArguments(
         "/nxcompat",
         "/highentropyva",
         responsePathArgument("/out:", outputPath)};
+    if (removeUnreferencedSections) arguments.push_back("/opt:ref");
     if (!pdbPath.empty())
     {
         arguments.push_back("/debug:full");
-        arguments.push_back(responsePathArgument("/pdb:", pdbPath));
+        // NSLink runs inside the private link directory and records this spelling in the PDB.
+        // NSLink corre dentro del directorio de enlace privado y guarda esta escritura en el PDB.
+        arguments.push_back(responsePathArgument("/pdb:", linkerPdbSpelling(pdbPath)));
         arguments.push_back("/pdbaltpath:%_PDB%");
     }
     for (const std::filesystem::path& path : objectFiles)
@@ -1107,12 +1288,18 @@ bool LldLinker::linkExecutable(
     std::filesystem::path logPath = outputPath;
     responsePath += ".link.rsp";
     logPath += ".link.log";
+    std::filesystem::path linkDirectory;
+    std::vector<std::filesystem::path> stableObjects;
+    if (!prepareStableLinkInputs(outputPath, objectFiles, linkDirectory, stableObjects, error))
+        return false;
     const std::vector<std::string> arguments = executableArguments(
-        objectFiles, importLibraries, outputPath, subsystem, pdbPath);
-    if (!writeResponseFile(responsePath, arguments, error)) return false;
+        stableObjects, importLibraries, outputPath, subsystem, pdbPath, removeUnreferencedSections_);
     std::error_code cleanupError;
+    if (!writeResponseFile(responsePath, arguments, error))
+        return finishStableLinkInputs(linkDirectory, {}, false, error);
     removeExecutableOutputs(outputPath, pdbPath, cleanupError);
-    const bool success = runResponseFile(responsePath, logPath, error);
+    bool success = runResponseFile(responsePath, logPath, error, false, linkDirectory);
+    success = finishStableLinkInputs(linkDirectory, pdbPath, success, error);
     cleanupLinkerTemporaries(responsePath, logPath, cleanupError);
     if (!success)
     {
