@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/AST/TypeSyntax.h"
 #include "../Support/OwnershipArgumentClassification.h"
 #include "../Support/OperatorClassification.h"
 #include "../Support/IntegralConstantArithmetic.h"
@@ -859,7 +860,21 @@ bool ProjectMethodBodyModel::analyzeNamedParameterMove(
          (memberModel_->typeIsMoveOnly(parameter.typeKey) ||
           isGenericValueTypeKey(parameter.typeKey))) ||
         compilerVariantResultTransfer;
-    if (!sourceRequiresMove && typeKeyIsOwnable(parameter.typeKey))
+    const bool genericCopyShapedMove = parameter.passKind == ParameterPassKind::Value &&
+        callableBelongsToGenericTypeSpecialization(methodMemberOrdinal) && !sourceRequiresMove;
+    // EN: Freeze 3.0 (item 130, F3): in a closed generic type, move(p) of a parameter declared with a
+    //     type argument (`T value`, T a class) copies the reference without transferring ownership,
+    //     as it already does for a copyable T. A move-only T still consumes; handing the copy to an
+    //     owned parameter is still rejected there. A parameter whose type the template names stays an
+    //     error, as outside generics.
+    // ES: Congelamiento 3.0 (elemento 130, F3): en un tipo generico cerrado, move(p) de un parametro
+    //     declarado con un argumento de tipo (`T value`, T una clase) copia la referencia sin
+    //     transferir ownership, como ya hace con un T copiable. Un T move-only sigue consumiendo;
+    //     entregar la copia a un parametro owned sigue rechazandose alli. Un parametro cuyo tipo
+    //     escribe la plantilla sigue siendo error, como fuera de los genericos.
+    const bool typeArgumentReferenceCopy = genericCopyShapedMove && parameter.typeSyntax != nullptr &&
+        parameter.typeSyntax->originProjectOrdinal().has_value();
+    if (!sourceRequiresMove && !typeArgumentReferenceCopy && typeKeyIsOwnable(parameter.typeKey))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -868,8 +883,6 @@ bool ProjectMethodBodyModel::analyzeNamedParameterMove(
             "move(...) source must be a RAII local or owned parameter");
         return false;
     }
-    const bool genericCopyShapedMove = parameter.passKind == ParameterPassKind::Value &&
-        callableBelongsToGenericTypeSpecialization(methodMemberOrdinal) && !sourceRequiresMove;
     copyShapedMove = !sourceRequiresMove || genericCopyShapedMove;
     if (!validateParameterMoveState(
             parameter, expression, source.semanticOrdinal,

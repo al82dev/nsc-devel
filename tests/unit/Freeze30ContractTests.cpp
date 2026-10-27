@@ -5928,6 +5928,68 @@ void testPlainArrayDelete(TestContext& tests, const std::filesystem::path& root)
         "            delete[] a;\n" + tail, 711);
 }
 
+constexpr std::string_view kGenericMovePrelude = R"ns(
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+class Box
+{
+    public static int Made;
+    public static int Freed;
+    public int V;
+    public Box(int v) { V = v; Made = Made + 1; }
+    ~Box() { Freed = Freed + 1; }
+}
+struct Guard
+{
+    public int Id;
+    ~Guard() { Box.Freed = Box.Freed + 1; }
+    public static bool operator <(in Guard a, in Guard b) { return a.Id < b.Id; }
+    public static bool operator >(in Guard a, in Guard b) { return a.Id > b.Id; }
+    public static bool operator ==(in Guard a, in Guard b) { return a.Id == b.Id; }
+    public static bool operator !=(in Guard a, in Guard b) { return a.Id != b.Id; }
+}
+class Make { public static Guard G(int id) { Box.Made = Box.Made + 1; Guard g; g.Id = id; return move(g); } }
+)ns";
+
+/// EN: Item 130 (F3). In a closed generic type, move(p) of a parameter declared with a class type argument
+///     copies the reference: SortedSet<Box>.Contains/Remove compile and find the element without transferring
+///     it, while SortedSet<Guard> (move-only) still consumes the probe. Handing that copy to an owned
+///     parameter, or moving a parameter whose class type the template names, stays rejected. Each program
+///     returns flags * 100 + Made * 10 + Freed.
+/// ES: Elemento 130 (F3). En un tipo generico cerrado, move(p) de un parametro declarado con un argumento de
+///     tipo clase copia la referencia: SortedSet<Box>.Contains/Remove compilan y encuentran el elemento sin
+///     transferirlo, mientras SortedSet<Guard> (move-only) sigue consumiendo la sonda. Entregar esa copia a un
+///     parametro owned, o mover un parametro cuyo tipo clase escribe la plantilla, sigue rechazado. Cada
+///     programa devuelve banderas * 100 + Made * 10 + Freed.
+void testGenericMoveReferenceCopy(TestContext& tests, const std::filesystem::path& root)
+{
+    const std::string prelude(kGenericMovePrelude);
+    const std::string tail = "        }\n        return r * 100 + Box.Made * 10 + Box.Freed;\n    }\n}\n";
+    const std::string opening =
+        "class Program\n{\n    public static int Main()\n    {\n        int r = 0;\n        {\n";
+    expectRun(tests, root, "F130SortedSetClass", prelude + opening +
+        "            InComparison<Box> byValue = (in Box a, in Box b) => a.V - b.V;\n"
+        "            raii SortedSet<Box> s = new SortedSet<Box>(byValue);\n"
+        "            s.Add(new Box(1));\n            s.Add(new Box(2));\n            raii Box probe = new Box(2);\n"
+        "            if (s.Contains(probe)) r = r + 10;\n            if (s.Remove(probe)) r = r + 1;\n"
+        "            r = r * 10 + s.Count();\n" + tail, 11133, true);
+    expectRun(tests, root, "F130SortedSetStruct", prelude + opening +
+        "            raii SortedSet<Guard> s = new SortedSet<Guard>();\n"
+        "            s.Add(Make.G(1));\n            s.Add(Make.G(2));\n"
+        "            if (s.Contains(Make.G(2))) r = r + 10;\n            if (s.Remove(Make.G(2))) r = r + 1;\n"
+        "            r = r * 10 + s.Count();\n" + tail, 11144, true);
+    expectReject(tests, root, "F130GenericMoveToOwned", prelude +
+        "class Shelf<T>\n{\n    public void Keep(T value) { Take(move(value)); }\n"
+        "    private void Take(owned T item) { }\n}\n" + opening +
+        "            raii Shelf<Box> shelf = new Shelf<Box>();\n            raii Box b = new Box(1);\n"
+        "            shelf.Keep(b);\n" + tail, "owned parameter", true);
+    expectReject(tests, root, "F130TemplateClassMove", prelude +
+        "class Wrap<T>\n{\n    public int Use(Box b) { return Peek(move(b)); }\n"
+        "    private int Peek(Box x) { return x.V; }\n}\n" + opening +
+        "            raii Wrap<int> w = new Wrap<int>();\n            raii Box b = new Box(1);\n"
+        "            r = w.Use(b);\n" + tail, "move(...) source must be a RAII local or owned parameter", true);
+}
+
 constexpr std::string_view kPrintPrelude = R"ns(
 using NativeSharp.Core;
 class Box
@@ -7063,6 +7125,7 @@ int main()
     testOwnedArgumentTransfer(tests, root);
     testDeleteOwnedParameter(tests, root);
     testPlainArrayDelete(tests, root);
+    testGenericMoveReferenceCopy(tests, root);
     testGeneratorCleanup(tests, root);
     testAsyncGeneratorErrors(tests, root);
     testAsyncGeneratorResume(tests, root);
