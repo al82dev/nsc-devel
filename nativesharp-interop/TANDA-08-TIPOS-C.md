@@ -248,6 +248,11 @@ funciones, incluyendo sobrecargas no proyectadas y conflictos diferidos, con
 una prueba de deduplicación. El siguiente paso es obtener las demandas durante
 la observación previa y conectarlas al selector definitivo; sigue sin validarse.
 
+El inventario de firmas prepara además el recorrido de resultados y parámetros
+de callbacks para identificar enums anidados. Hay una prueba preparada con
+dos profundidades de indirección; la proyección y ejecución de callbacks con
+enums siguen sin validar.
+
 La observación previa construye ahora modelos locales para capturar llamadas
 cuando existen firmas con enums y selecciona sus dependencias antes del índice
 definitivo. Hay una prueba preparada para un resultado enum no nombrado por
