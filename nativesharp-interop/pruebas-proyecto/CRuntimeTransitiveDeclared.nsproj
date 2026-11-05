@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CppRuntimeTransitiveDeclared</Name></PropertyGroup>
+  <ItemGroup>
+    <CppLibraryReference Header="CDllApi.h" Language="C" Standard="c11" Library="a.lib" Runtime="a.dll" />
+    <CppLibraryReference Header="Unused.h" Language="C" Standard="c11" Library="nested/b.lib" Runtime="nested/b.dll" />
+  </ItemGroup>
+</Project>
