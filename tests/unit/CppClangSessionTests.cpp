@@ -1618,6 +1618,61 @@ int main(int argc, char** argv)
                              "project session sets cannot be replaced after compilation begins");
             }
         }
+        ProjectGraphLoader graphLoader;
+        auto graph = graphLoader.load(projectPath, error);
+        if (!graph) std::cerr << "Graph load failed: " << error << '\n';
+        ok &= expect(graph && graph->rootProject() && graph->rootProject()->cppLibraryReferences().size() == 2,
+                     "project graph retains C/C++ references");
+        if (graph && graph->rootProject() && graph->rootProject()->cppLibraryReferences().size() == 2)
+        {
+            const auto owner = graph->rootProject()->projectFile();
+            const std::vector<LibraryReference> additional{{fixture / "record-symbols.lib", {}, {}, {}}};
+            ok &= expect(graph->addLibraryReferences(owner, additional, error) && graph->rootProject() &&
+                         graph->rootProject()->cppLibraryReferences().size() == 2,
+                         "reconstructing a graph project preserves C/C++ references");
+            const auto header = graph->rootProject()->cppLibraryReferences()[0].headerPath;
+            const auto library = graph->rootProject()->cppLibraryReferences()[0].libraryPath;
+            CompilationInputManifest manifest(std::move(*graph), {});
+            const auto inputs = manifest.inputFiles();
+            ok &= expect(std::find(inputs.begin(), inputs.end(), header) != inputs.end() &&
+                         std::find(inputs.begin(), inputs.end(), library) != inputs.end(),
+                         "manifest includes the header and binary library");
+            LibraryMetadataRepository metadata;
+            error.clear();
+            ok &= expect(!manifest.calculateIdentity(metadata, error) &&
+                         error.find("not yet connected") != std::string::npos,
+                         "unconnected references cannot reuse a compilation cache");
+        }
+        for (const auto& [name, expected] : std::vector<std::pair<const char*, const char*>>{
+                 {"BadLanguage.nsproj", "Language must be"},
+                 {"MissingHeader.nsproj", "header does not exist"},
+                 {"MissingLibrary.nsproj", "library"},
+                 {"RuntimeWithoutLibrary.nsproj", "Runtime requires"}})
+        {
+            error.clear();
+            const auto invalidProject = loader.load(fixture / "invalid" / name, error);
+            if (invalidProject || error.find(expected) == std::string::npos)
+                std::cerr << "Unexpected result for " << name << ": " << error << '\n';
+            ok &= expect(!invalidProject && error.find(expected) != std::string::npos,
+                         "invalid C/C++ reference is rejected for the expected reason");
+        }
+        nativesharp::frontend::ProjectCompilation compilation;
+        error.clear();
+        ok &= expect(!compilation.compileProjectSyntax(projectPath, error) &&
+                     error.find("not yet connected") != std::string::npos,
+                     "project compilation rejects references until integration is complete");
+        if (project && project->cppLibraryReferences().size() == 2)
+        {
+            std::vector<std::filesystem::path> libraries;
+            std::vector<std::filesystem::path> runtimes;
+            const bool collected = nativesharp::driver::appendValidatedLibraryReferences(
+                compilation, libraries, runtimes, error, nullptr);
+            const bool collectedAgain = nativesharp::driver::appendValidatedLibraryReferences(
+                compilation, libraries, runtimes, error, nullptr);
+            ok &= expect(collected && collectedAgain && libraries.size() == 1 &&
+                         libraries[0] == project->cppLibraryReferences()[0].libraryPath && runtimes.empty(),
+                         "link inputs include each C/C++ archive once and omit header-only references");
+        }
     }
     return ok ? 0 : 1;
 }
