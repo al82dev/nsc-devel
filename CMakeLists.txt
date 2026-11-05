@@ -324,6 +324,7 @@ target_compile_features(nsc_target PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_target)
 
 add_library(nsc_frontend STATIC
+    src/Frontend/CppDiagnosticAdapter.cpp
     src/Basic/Sha256.cpp
     src/Source/SourceFile.cpp
     src/Source/SourceAccessRecording.cpp
