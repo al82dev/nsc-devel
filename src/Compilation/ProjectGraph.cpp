@@ -140,7 +140,9 @@ std::vector<Project> rewireSourcePreferredProjects(
             project.panicProfile(),
             std::string(project.panicHandler()), std::string(project.packageName()),
             std::vector<std::string>(
-                project.friendModules().begin(), project.friendModules().end()));
+                project.friendModules().begin(), project.friendModules().end()),
+            std::vector<CppLibraryReference>(
+                project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()));
     }
     return rewired;
 }
@@ -349,7 +351,9 @@ void appendProjectsWithPrecompiledReferences(
             project.panicProfile(),
             std::string(project.panicHandler()), std::string(project.packageName()),
             std::vector<std::string>(
-                project.friendModules().begin(), project.friendModules().end()));
+                project.friendModules().begin(), project.friendModules().end()),
+            std::vector<CppLibraryReference>(
+                project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()));
     }
 }
 
@@ -419,7 +423,9 @@ bool ProjectGraph::addLibraryReferences(
             project.panicProfile(),
             std::string(project.panicHandler()), std::string(project.packageName()),
             std::vector<std::string>(
-                project.friendModules().begin(), project.friendModules().end()));
+                project.friendModules().begin(), project.friendModules().end()),
+            std::vector<CppLibraryReference>(
+                project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()));
     }
     if (!foundOwner)
     {
