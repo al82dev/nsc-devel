@@ -6,6 +6,9 @@
 #include "nativesharp/Compilation/PrecompiledSemanticSnapshotCodec.h"
 
 #include <string>
+#include <algorithm>
+#include <iterator>
+#include <system_error>
 #include <utility>
 #include <vector>
 
