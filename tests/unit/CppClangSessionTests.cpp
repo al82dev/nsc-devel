@@ -2788,6 +2788,39 @@ int main(int argc, char** argv)
                     ok &= expect(bound && enumBound && basePreserved,
                                  "enum typedef binds to imported enum and preserves its underlying type");
                 }
+                {
+                    nativesharp::frontend::ProjectCompilation callbackCompilation;
+                    callbackCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() == "Main.ns")
+                            return "int Use(Callback value) { return 0; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    const auto aliasesSnapshot = cAliases;
+                    const bool configured = callbackCompilation.setCppTypeAliasProvider(
+                        [aliasesSnapshot](const auto& graph, auto, auto& output, auto& why) {
+                            if (!aliasesSnapshot || graph.projects().empty()) { why = "alias fixture unavailable"; return false; }
+                            for (const auto& alias : *aliasesSnapshot)
+                                if (alias.name == "Callback")
+                                    output.push_back({0, graph.projects()[0].projectFile(), 0,
+                                                      "x86_64-pc-windows-msvc", alias});
+                            return true;
+                        }, error);
+                    const bool bound = configured && callbackCompilation.compileProjectNames(semanticPath, error);
+                    bool callbackBound = false;
+                    if (bound && callbackCompilation.nameLookup())
+                        for (const auto& binding : callbackCompilation.nameLookup()->bindings())
+                            if (binding.writtenName == "Callback" && binding.syntax)
+                            {
+                                const auto* type = binding.syntax;
+                                callbackBound |= type->isFunction() && type->functionIsVariadic() &&
+                                    type->functionCallingConvention() == nativesharp::ast::FunctionCallingConventionSyntaxKind::C &&
+                                    type->functionReturnType() && type->functionReturnType()->baseName() == "int" &&
+                                    type->typeArguments().size() == 1 && type->typeArguments()[0]->isPointeeConst();
+                            }
+                    if (!bound) std::cerr << "C callback typedef semantic setup failed: " << error << '\n';
+                    ok &= expect(bound && callbackBound, "function pointer typedef binds to a structural C function type");
+                }
                 auto incompleteProjection = imported;
                 incompleteProjection.mangledName.clear();
                 ok &= expect(!compilation.setCppImportedFunctions({incompleteProjection}, error) &&
