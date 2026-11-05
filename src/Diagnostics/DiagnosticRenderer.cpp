@@ -16,6 +16,12 @@ DiagnosticRenderer::DiagnosticRenderer(const source::SourceManager& sourceManage
 
 void DiagnosticRenderer::render(const Diagnostic& diagnostic, std::ostream& output) const
 {
+    if (diagnostic.id() == DiagnosticId::CppInteropDiagnostic && !diagnostic.location().isValid())
+    {
+        output << diagnosticSeverityName(diagnostic.severity()) << ": " << diagnostic.message() << '\n';
+        for (const std::string& note : diagnostic.notes()) output << "note: " << note << '\n';
+        return;
+    }
     const source::SourcePosition position = sourceManager_.getPosition(diagnostic.location());
     const std::string_view path = sourceManager_.getPath(diagnostic.location());
 
