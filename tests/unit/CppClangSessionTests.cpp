@@ -2896,7 +2896,7 @@ int main(int argc, char** argv)
                                                       "x86_64-pc-windows-msvc", alias});
                             return true;
                         }, error);
-                    const bool bound = configured && enumAliasCompilation.compileProjectNames(semanticPath, error);
+                    const bool bound = configured && enumAliasCompilation.compileProjectObjectLayouts(semanticPath, error);
                     bool enumBound = false, basePreserved = false, callbackAliasBound = false, nestedAliasBound = false, matrixAliasBound = false;
                     if (bound && enumAliasCompilation.nameLookup())
                     {
@@ -2988,7 +2988,7 @@ int main(int argc, char** argv)
                                  colors->type.nativeSharpTypeKey == "type:" + enumIdentity.key() + "[3][2]" &&
                                  colors->byteOffset == 16,
                                  "C enum fields preserve identity, readonly pointee and array dimensions");
-                    const bool layoutsBuilt = bound && enumAliasCompilation.compileProjectObjectLayouts(semanticPath, error);
+                    const bool layoutsBuilt = bound;
                     const auto holderKey = nativesharp::compilation::TypeIdentity("Semantic", {}, {}, "Holder").key();
                     const auto holderOrdinal = layoutsBuilt && enumAliasCompilation.nameLookup()
                         ? enumAliasCompilation.nameLookup()->typeOrdinalForIdentity(holderKey) : std::nullopt;
