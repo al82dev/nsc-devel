@@ -385,6 +385,8 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutTypeSyntax(
     }
 
     const auto& modifiers = syntax->modifiers();
+    if (!modifiers.empty() && modifiers.back().kind == ast::TypeModifierSyntaxKind::Pointer)
+        return targetLayout_.layoutOf(BuiltinLayoutKind::Pointer);
     TypeLayout current{0, 1};
     std::size_t modifierIndex = 0;
 
@@ -414,6 +416,13 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutTypeSyntax(
             continue;
         }
 
+        if (modifier.kind == ast::TypeModifierSyntaxKind::IncompleteArray)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::IncompleteType,
+                diagnostics::DiagnosticSeverity::Error, modifier.range,
+                "C array with an unknown bound has no object layout");
+            return std::nullopt;
+        }
         if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray)
         {
             if (modifierIndex + 1 != modifiers.size())

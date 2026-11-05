@@ -8,6 +8,8 @@ enum class TypeModifierSyntaxKind
     Array,
     DynamicArray,
     RangeArray,
-    FlexibleArray
+    FlexibleArray,
+    // C T[]: unknown bound, not a flexible struct member and not a zero-sized object.
+    IncompleteArray
 };
 }

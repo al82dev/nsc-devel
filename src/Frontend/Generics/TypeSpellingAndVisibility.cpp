@@ -170,6 +170,7 @@ std::string ProjectGenericModel::typeSpelling(const ast::TypeSyntax* syntax) con
             result += '[' + std::string(
                 modifier.arrayRank > 0 ? modifier.arrayRank - 1 : 0, ',') + ']';
         else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray) result += "[*]";
+        else if (modifier.kind == ast::TypeModifierSyntaxKind::IncompleteArray) result += "[?]";
         else result += "[fixed]";
     }
     if (syntax->isPackExpansion()) result += "...";
@@ -377,6 +378,7 @@ void ProjectGenericModel::appendTypeModifiers(
             identity += '[' + std::string(
                 modifier.arrayRank > 0 ? modifier.arrayRank - 1 : 0, ',') + ']';
         else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray) identity += "[*]";
+        else if (modifier.kind == ast::TypeModifierSyntaxKind::IncompleteArray) identity += "[?]";
         else identity += "[fixed]";
     }
 }

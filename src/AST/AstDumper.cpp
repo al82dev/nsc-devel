@@ -302,6 +302,10 @@ void AstDumper::dumpTypeModifiers(const TypeSyntax* typeSyntax, std::ostream& ou
         {
             output << "[*]";
         }
+        else if (modifier.kind == TypeModifierSyntaxKind::IncompleteArray)
+        {
+            output << "[?]";
+        }
         else
         {
             output << "[expr]";

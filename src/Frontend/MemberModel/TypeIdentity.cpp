@@ -201,6 +201,8 @@ void ProjectMemberModel::appendCanonicalTypeModifier(
     }
     else if (modifier.kind == ast::TypeModifierSyntaxKind::FlexibleArray)
         result += "[*]";
+    else if (modifier.kind == ast::TypeModifierSyntaxKind::IncompleteArray)
+        result += "[?]";
     else
     {
         // C2.1 "fixed arrays": the canonical key carries the COUNT ITSELF -- "builtin:float[4]"

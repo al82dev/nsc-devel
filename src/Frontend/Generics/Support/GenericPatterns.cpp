@@ -126,6 +126,7 @@ static std::string genericTypePattern(
                 result.push_back(']');
                 break;
             case ast::TypeModifierSyntaxKind::FlexibleArray: result += "[*]"; break;
+            case ast::TypeModifierSyntaxKind::IncompleteArray: result += "[?]"; break;
             case ast::TypeModifierSyntaxKind::Array:
                 result += "[" + genericExpressionPattern(modifier.arrayCount) + "]";
                 break;

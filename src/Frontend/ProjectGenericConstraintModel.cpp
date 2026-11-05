@@ -51,6 +51,7 @@ std::string writtenSpelling(const ast::TypeSyntax* syntax)
                     modifier.arrayRank > 0 ? modifier.arrayRank - 1 : 0, ',') + ']';
                 break;
             case ast::TypeModifierSyntaxKind::FlexibleArray: text += "[*]"; break;
+            case ast::TypeModifierSyntaxKind::IncompleteArray: text += "[?]"; break;
         }
     }
     return text;
