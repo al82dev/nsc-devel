@@ -11,6 +11,7 @@ class CoffArchiveVerifier final
 {
 public:
     bool verify(const std::filesystem::path& path);
+    bool readImportDllNames(const std::filesystem::path& path, std::vector<std::string>& names);
     const CoffArchiveInfo& info() const noexcept;
     const std::string& error() const noexcept;
 
