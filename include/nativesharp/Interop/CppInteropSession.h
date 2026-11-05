@@ -6,6 +6,7 @@
 #include "nativesharp/Interop/CppGlobalDeclaration.h"
 #include "nativesharp/Interop/CppNamespaceDeclaration.h"
 #include "nativesharp/Interop/CppRecordDeclaration.h"
+#include "nativesharp/Interop/CppTypeAliasDeclaration.h"
 #include "nativesharp/Basic/Sha256.h"
 
 #include <string>
@@ -67,6 +68,8 @@ public:
     virtual std::optional<std::vector<CppFunctionDeclaration>> freeFunctionsSnapshot() const = 0;
     // Initial projection of named, non-dependent records; nullopt means closed.
     virtual std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const = 0;
+    // A missing value means this session cannot provide an alias snapshot.
+    virtual std::optional<std::vector<CppTypeAliasDeclaration>> typeAliasesSnapshot() const { return std::nullopt; }
     // Requests declaration from Clang Sema; no body or linkable symbol is implied.
     // nullopt also covers unavailable Sema, ambiguous names and unsupported records.
     virtual std::optional<std::vector<CppImplicitLifetimeDeclaration>> implicitLifetimeDeclarations(
