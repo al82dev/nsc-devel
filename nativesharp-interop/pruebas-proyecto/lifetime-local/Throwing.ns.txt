@@ -1,0 +1,1 @@
+int Main() { Demo.Risk value = new Demo.Risk(1); return 0; }
