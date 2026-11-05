@@ -177,6 +177,12 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
         value.qualifiedName = enumeration->getQualifiedNameAsString();
         value.complete = enumeration->isCompleteDefinition();
         value.scoped = enumeration->isScoped();
+        const auto enumType = astContext.getEnumType(enumeration);
+        if (!enumType->isIncompleteType() && !enumType->isDependentType())
+        {
+            value.sizeBits = astContext.getTypeSize(enumType);
+            value.alignmentBits = astContext.getTypeAlign(enumType);
+        }
         if (!enumeration->getIntegerType().isNull())
             value.underlyingType = describeType(enumeration->getIntegerType(), astContext);
         const auto location = astContext.getSourceManager().getPresumedLoc(enumeration->getLocation());

@@ -33,5 +33,7 @@ struct CppEnumDeclaration
     std::optional<CppSourcePoint> location;
     std::vector<CppEnumeratorDeclaration> enumerators;
     bool isCxx = true;
+    std::optional<std::uint64_t> sizeBits;
+    std::optional<std::uint64_t> alignmentBits;
 };
 }
