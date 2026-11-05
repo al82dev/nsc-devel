@@ -2256,7 +2256,7 @@ int main(int argc, char** argv)
                                   "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef struct Pair PairMatrix[2][3]; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
-                                  "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)(); typedef int *restrict RestrictedPtr;\n"
+                                  "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)(); typedef int *restrict RestrictedPtr; typedef int *restrict *PtrToRestricted;\n"
                                   "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; typedef enum Color ColorMatrix[2][3]; typedef enum Color (*ColorCallback)(enum Color); typedef enum Color (*NestedCallback)(enum Color (*)(enum Color)); enum Color color_echo(enum Color value); int apply_color(enum Color (*cb)(enum Color)); struct Paint { enum Color shade; const enum Color* view; enum Color colors[2][3]; }; enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
@@ -2755,7 +2755,7 @@ int main(int argc, char** argv)
                     aliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
                         -> std::optional<std::string> {
                         if (path.filename() == "Main.ns")
-                            return "Count Echo(Count value) { return value; } int Main() { Matrix value; return 0; }\n";
+                            return "Count Echo(Count value) { return value; } int Use(RestrictedPtr value, PtrToRestricted nested) { return 0; } int Main() { Matrix value; return 0; }\n";
                         return std::nullopt;
                     });
                     bool supplied = false;
@@ -2764,7 +2764,7 @@ int main(int argc, char** argv)
                         [snapshot, &supplied](const auto& graph, auto, auto& output, auto& why) {
                             if (!snapshot || graph.projects().empty()) { why = "alias fixture unavailable"; return false; }
                             for (const auto& alias : *snapshot)
-                                if (alias.name == "Count" || alias.name == "Matrix")
+                                if (alias.name == "Count" || alias.name == "Matrix" || alias.name == "RestrictedPtr" || alias.name == "PtrToRestricted")
                                 {
                                     output.push_back({0, graph.projects()[0].projectFile(), 0,
                                                       "x86_64-pc-windows-msvc", alias});
@@ -2773,12 +2773,19 @@ int main(int argc, char** argv)
                             return supplied;
                         }, error);
                     const bool bound = configured && aliasCompilation.compileProjectNames(semanticPath, error);
-                    bool expanded = false, matrixExpanded = false;
+                    bool expanded = false, matrixExpanded = false, restrictExpanded = false, nestedRestrictExpanded = false;
                     if (bound && aliasCompilation.nameLookup())
                         for (const auto& binding : aliasCompilation.nameLookup()->bindings())
                         {
                             expanded |= binding.writtenName == "Count" && binding.syntax &&
                                 binding.syntax->baseTokenKind() == nativesharp::lexer::TokenKind::KwUInt;
+                            if (binding.syntax && binding.writtenName == "RestrictedPtr")
+                                restrictExpanded |= binding.syntax->modifiers().size() == 1 &&
+                                    binding.syntax->modifiers()[0].importedCRestrict;
+                            if (binding.syntax && binding.writtenName == "PtrToRestricted")
+                                nestedRestrictExpanded |= binding.syntax->modifiers().size() == 2 &&
+                                    binding.syntax->modifiers()[0].importedCRestrict &&
+                                    !binding.syntax->modifiers()[1].importedCRestrict;
                             if (binding.writtenName == "Matrix" && binding.syntax)
                             {
                                 const auto& modifiers = binding.syntax->modifiers();
@@ -2789,6 +2796,8 @@ int main(int argc, char** argv)
                     if (!bound) std::cerr << "C typedef semantic setup failed: " << error << '\n';
                     ok &= expect(bound && supplied && expanded && matrixExpanded,
                                  "scalar and multidimensional typedefs bind to underlying NativeSharp types");
+                    ok &= expect(bound && restrictExpanded && nestedRestrictExpanded,
+                                 "typedef expansion retains restrict on the correct pointer level");
                 }
                 {
                     nativesharp::frontend::ProjectCompilation recordAliasCompilation;
