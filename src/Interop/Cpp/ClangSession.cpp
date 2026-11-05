@@ -69,8 +69,12 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
         result.kind = CppTypeKind::Enumeration;
         const auto* declaration = enumType->getDecl();
         if (const auto* definition = declaration->getDefinition()) declaration = definition;
-        result.enumIdentity = CppEnumTypeIdentity{declaration->getNameAsString(),
-            declaration->getQualifiedNameAsString(), declaration->getName().empty() || declaration->isInAnonymousNamespace()};
+        const auto* anonymousAlias = !context.getLangOpts().CPlusPlus && declaration->getName().empty()
+            ? declaration->getTypedefNameForAnonDecl() : nullptr;
+        result.enumIdentity = CppEnumTypeIdentity{
+            anonymousAlias ? anonymousAlias->getNameAsString() : declaration->getNameAsString(),
+            anonymousAlias ? anonymousAlias->getQualifiedNameAsString() : declaration->getQualifiedNameAsString(),
+            (declaration->getName().empty() && !anonymousAlias) || declaration->isInAnonymousNamespace()};
         if (depth < 64 && !declaration->getIntegerType().isNull())
             result.enumUnderlying = std::make_shared<CppType>(describeType(declaration->getIntegerType(), context, depth + 1));
     }
@@ -177,8 +181,11 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
         if (const auto* definition = enumeration->getDefinition()) enumeration = definition;
         CppEnumDeclaration value;
         value.isCxx = astContext.getLangOpts().CPlusPlus;
-        value.name = enumeration->getNameAsString();
-        value.qualifiedName = enumeration->getQualifiedNameAsString();
+        const auto* anonymousAlias = !value.isCxx && enumeration->getName().empty()
+            ? enumeration->getTypedefNameForAnonDecl() : nullptr;
+        value.name = anonymousAlias ? anonymousAlias->getNameAsString() : enumeration->getNameAsString();
+        value.qualifiedName = anonymousAlias ? anonymousAlias->getQualifiedNameAsString()
+                                             : enumeration->getQualifiedNameAsString();
         value.complete = enumeration->isCompleteDefinition();
         value.scoped = enumeration->isScoped();
         const clang::QualType enumType = astContext.getCanonicalTagType(enumeration);
