@@ -20,5 +20,6 @@ int Main()
     array_states[0] = array_states[1];
     matrix_states[1][0] = matrix_states[1][1];
     if ((int)array_states[0] != 8 || (int)matrix_states[1][0] != 12 || read_state_arrays() != 20) return 12;
+    if ((int)readonly_states[1] != 8) return 13;
     return 0;
 }

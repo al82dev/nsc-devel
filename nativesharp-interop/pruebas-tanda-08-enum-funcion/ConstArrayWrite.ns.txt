@@ -1,0 +1,5 @@
+int Main()
+{
+    readonly_states[0] = array_states[1];
+    return 0;
+}

@@ -22,6 +22,7 @@ extern enum DoublePointerState** double_pointer_global_only;
 int read_pointer_globals(void);
 enum ArrayState { ArrayLow = 3, ArrayHigh = 8 };
 extern enum ArrayState array_states[2];
+extern const enum ArrayState readonly_states[2];
 enum MatrixState { MatrixLow = 4, MatrixHigh = 12 };
 extern enum MatrixState matrix_states[2][2];
 int read_state_arrays(void);
