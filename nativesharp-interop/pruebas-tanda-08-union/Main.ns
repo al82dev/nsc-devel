@@ -1,6 +1,6 @@
 int Main()
 {
     Value* item = get_value();
-    item.integer = 42;
+    item->integer = 42;
     return first_byte(item) - 42;
 }

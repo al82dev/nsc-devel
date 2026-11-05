@@ -1,19 +1,19 @@
 int Main()
 {
     Pair* item = make_pair();
-    item.value = 23;
+    item->value = 23;
     if (read_pair(item) != 23) return 1;
     Parent* parent = make_parent();
-    parent.child.value = 19;
-    parent.children[1].value = 23;
+    parent->child.value = 19;
+    parent->children[1].value = 23;
     if (read_parent(parent) != 42) return 2;
     int destination = 19;
     int source = 23;
     add_distinct(&destination, &source);
     if (destination != 42) return 3;
     Device* device = get_device();
-    device.counter = 42;
-    if (device.counter != 42 || read_device(device) != 42) return 4;
+    device->counter = 42;
+    if (device->counter != 42 || read_device(device) != 42) return 4;
     shared_value = 42;
     if (shared_value != 42 || read_shared_value() != 42) return 5;
     return 0;
