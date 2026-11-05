@@ -275,8 +275,13 @@ Se preparó la expansión de callbacks anidados y una prueba de su firma, así
 como una prueba de selección de enum y record usados solo dentro de un typedef
 de callback. También se preparó la expansión de typedefs de arreglos fijos de
 enums o records y una prueba de matriz de enum. Ninguno se ha construido ni
-ejecutado; faltan el caso equivalente de record y las pruebas agrupadas de
-selección, acceso, layout y ejecución.
+ejecutado. Se prepararon además el caso de matriz de record y una prueba de
+selección de enum y record referidos únicamente por typedefs de arreglos.
+Faltan las pruebas agrupadas de selección, acceso, layout y ejecución.
+
+La captura actual distingue `const` y `volatile`, pero `CppType` no conserva
+`restrict`. Hay que determinar su representación y transporte sin perder el
+contrato, incluyendo typedefs y comparaciones, antes de cerrar T08-015.
 
 El proyecto `pruebas-tanda-08-enum-funcion` y su script preparan una prueba
 de extremo a extremo: un valor enum negativo se devuelve desde C y se vuelve
