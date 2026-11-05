@@ -25,7 +25,7 @@ namespace nativesharp::interop
 namespace
 {
 std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size_t projectOrdinal,
-    std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
+    std::string_view moduleName, const frontend::ProjectNameLookup* lookup, bool cLanguage)
 {
     if (type.kind == CppTypeKind::Array)
     {
@@ -45,12 +45,13 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
         if (base && base->kind != CppTypeKind::Pointer &&
             (readonly || isVolatile || base->isConst || base->isVolatile))
         {
+            if (base->kind == CppTypeKind::Record) return std::nullopt;
             readonly |= base->isConst;
             isVolatile |= base->isVolatile;
             CppType unqualified = *base;
             unqualified.isConst = false;
             unqualified.isVolatile = false;
-            auto mapped = mapGlobalType(unqualified, projectOrdinal, moduleName, lookup);
+            auto mapped = mapGlobalType(unqualified, projectOrdinal, moduleName, lookup, cLanguage);
             if (!mapped || mapped->isVolatile) return std::nullopt;
             for (auto dimension = fixedDimensions.rbegin(); dimension != fixedDimensions.rend(); ++dimension)
                 mapped->nativeSharpTypeKey += "[" + std::to_string(*dimension) + "]";
@@ -72,9 +73,10 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
                 dimensions.push_back(*element->arrayCount);
                 element = element->element.get();
             }
-            if (!element || element->kind != CppTypeKind::Enumeration || element->isConst || element->isVolatile)
+            if (!element || (element->kind != CppTypeKind::Enumeration && element->kind != CppTypeKind::Record) ||
+                element->isConst || element->isVolatile)
                 return std::nullopt;
-            auto mapped = projectCppSemanticEnumType(*element, projectOrdinal, moduleName, lookup);
+            auto mapped = mapGlobalType(*element, projectOrdinal, moduleName, lookup, cLanguage);
             if (!mapped) return std::nullopt;
             for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
                 mapped->nativeSharpTypeKey += "[" + std::to_string(*dimension) + "]";
@@ -85,7 +87,7 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
         const CppType* element = &type;
         while (element && element->kind == CppTypeKind::Array) element = element->element.get();
         if (!element) return std::nullopt;
-        auto mapped = mapGlobalType(*element, projectOrdinal, moduleName, lookup);
+        auto mapped = mapGlobalType(*element, projectOrdinal, moduleName, lookup, cLanguage);
         if (!mapped || mapped->isConst || mapped->isVolatile) return std::nullopt;
         for (auto dimension = array->dimensions.rbegin(); dimension != array->dimensions.rend(); ++dimension)
             mapped->nativeSharpTypeKey += "[" + std::to_string(*dimension) + "]";
@@ -94,6 +96,20 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
     }
     if (type.kind != CppTypeKind::Pointer)
     {
+        if (type.kind == CppTypeKind::Record)
+        {
+            if (!cLanguage || !lookup || type.isConst || type.isVolatile) return std::nullopt;
+            const auto identity = projectCppRecordTypeIdentity(type, moduleName);
+            const auto ordinal = identity ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
+            const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+            if (!identity || !imported || imported->projectOrdinal != projectOrdinal ||
+                !imported->deferredImportError.empty() || imported->isIncomplete || !imported->objectLayout ||
+                !type.sizeBits || *type.sizeBits % 8 != 0 ||
+                *type.sizeBits / 8 != imported->objectLayout->sizeBytes || !type.alignmentBits ||
+                *type.alignmentBits % 8 != 0 ||
+                *type.alignmentBits / 8 != imported->objectLayout->alignmentBytes) return std::nullopt;
+            return CppScalarTypeMapping{"type:" + identity->key(), type.canonicalSpelling, false, false};
+        }
         if (type.kind == CppTypeKind::Enumeration)
         {
             // Top-level volatile applies to the global access; enum identity/layout are unqualified.
@@ -116,9 +132,7 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
             (depth != 0 || current->kind == CppTypeKind::Pointer))) return std::nullopt;
         ++depth;
     }
-    const auto element = current->kind == CppTypeKind::Enumeration
-        ? projectCppSemanticEnumType(*current, projectOrdinal, moduleName, lookup)
-        : mapCppScalarType(*current);
+    const auto element = mapGlobalType(*current, projectOrdinal, moduleName, lookup, cLanguage);
     if (!element) return std::nullopt;
     return CppScalarTypeMapping{element->nativeSharpTypeKey + std::string(depth, '*'),
                                 type.canonicalSpelling, type.isConst, type.isVolatile};
@@ -127,7 +141,7 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
 
 static CppSemanticGlobalResult projectGlobalWithLookup(
     const CppGlobalDeclaration& global, std::size_t projectOrdinal, std::string_view moduleName,
-    const frontend::ProjectNameLookup* lookup)
+    const frontend::ProjectNameLookup* lookup, bool cLanguage = false)
 {
     auto failure = [](std::string reason) -> CppSemanticGlobalResult {
         return CppSemanticGlobalFailure{std::move(reason)};
@@ -136,7 +150,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         !global.externalLinkage || !global.externalSymbol || global.externalSymbol->empty())
         return failure("global requires an external symbol and a project owner");
     if (global.threadLocal) return failure("thread-local C/C++ global is not yet projected");
-    const auto type = mapGlobalType(global.type, projectOrdinal, moduleName, lookup);
+    const auto type = mapGlobalType(global.type, projectOrdinal, moduleName, lookup, cLanguage);
     if (!type || global.type.kind == CppTypeKind::Void)
         return failure("C/C++ global type is not yet mapped");
     std::string cppNamespace;
@@ -269,7 +283,7 @@ static bool provideGlobalsWithLookup(
     if (lookup)
         for (auto& entry : entries)
             entry.projection = projectGlobalWithLookup(entry.declaration, entry.projectOrdinal,
-                graph.projects()[entry.projectOrdinal].moduleName(), lookup);
+                graph.projects()[entry.projectOrdinal].moduleName(), lookup, entry.cLanguage);
     std::set<std::pair<std::size_t, std::string_view>> availableNames;
     for (const auto& entry : entries)
         if (entry.declaration.externalLinkage)
