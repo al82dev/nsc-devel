@@ -1573,3 +1573,9 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Objetivo: comprobar acceso de NativeSharp a un campo enum C y a un elemento de arreglo de enum C dentro de un struct, verificado por una función C.
 - Presupuesto: `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. Se usa un puntero a struct; no se habilita paso de agregados por valor.
 - Verificación: ejecutar el proyecto dentro de la batería agrupada y conservar cualquier fallo. El caso no cubre todas las representaciones de enum o arreglos.
+
+## Tanda 08: enteros C con signo y sin signo
+
+- Objetivo: comprobar llamadas C con aliases de enteros de 8, 16 y 32 bits, incluyendo un argumento negativo y valores positivos de tipos sin signo.
+- Presupuesto: `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-callback`, y registro Markdown. No cambiar el compilador antes de obtener evidencia del fixture.
+- Verificación: proyecto mixto con Clang 23.1.0 y NativeSharp en la batería agrupada. Esta muestra no cierra T08-006 ni cubre todos los valores o tipos de C.

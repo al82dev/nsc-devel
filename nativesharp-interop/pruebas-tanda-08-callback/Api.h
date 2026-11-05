@@ -5,3 +5,7 @@ typedef float FloatValue;
 typedef double DoubleValue;
 FloatValue add_float(FloatValue a, FloatValue b);
 DoubleValue add_double(DoubleValue a, DoubleValue b);
+typedef signed char SignedByte;
+typedef unsigned short UnsignedShort;
+typedef unsigned int UnsignedInt;
+int mix_integers(SignedByte a, UnsignedShort b, UnsignedInt c);
