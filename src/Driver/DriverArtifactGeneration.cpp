@@ -1127,6 +1127,7 @@ bool buildDynamicLibraryProduct(const std::filesystem::path &destination,
 }
 
 bool commitDynamicLibraryProduct(const std::filesystem::path &destination,
+                                 const frontend::ProjectCompilation &compilation,
                                  std::span<const std::filesystem::path> runtimeLibraries, bool publishPdb,
                                  ArtifactPublisher &artifactPublisher, DynamicLibraryPublication &publication,
                                  std::string &buildError, std::vector<std::filesystem::path> &packagedRuntimes,
