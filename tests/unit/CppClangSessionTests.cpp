@@ -478,5 +478,33 @@ int main(int argc, char** argv)
         ok &= expect(relativeOrder && globalOrder && !missing,
                      "namespace target lookup prefers nearest visible scope, then global, and reports absence");
     }
+    {
+        using nativesharp::FileId;
+        using nativesharp::SourceLocation;
+        using nativesharp::parser::ScopedKnownTypeNames;
+        const FileId file{1};
+        const ScopedKnownTypeNames names({
+            {file, 0, 100, {"Global"}},
+            {file, 10, 30, {"Left"}},
+            {file, 15, 20, {"Nested"}},
+            {file, 30, 50, {"Right"}}});
+        ok &= expect(names.contains(SourceLocation(file, 15), "Global") &&
+                     names.contains(SourceLocation(file, 15), "Left") &&
+                     names.contains(SourceLocation(file, 15), "Nested") &&
+                     !names.contains(SourceLocation(file, 20), "Nested") &&
+                     !names.contains(SourceLocation(file, 30), "Left") &&
+                     names.contains(SourceLocation(file, 30), "Right") &&
+                     !names.contains(SourceLocation(file, 100), "Global") &&
+                     !names.contains(SourceLocation(FileId{2}, 15), "Left") &&
+                     !names.contains(SourceLocation{}, "Global") &&
+                     !names.contains(SourceLocation(file, 15), ""),
+                     "scoped C++ parser names respect files, nested scopes, siblings and half-open boundaries");
+        const ScopedKnownTypeNames effective({{file, 0, 100, {"Parent"}}, {file, 10, 20, {"Child"}}}, true);
+        ok &= expect(effective.contains(SourceLocation(file, 5), "Parent") &&
+                     !effective.contains(SourceLocation(file, 15), "Parent") &&
+                     effective.contains(SourceLocation(file, 15), "Child") &&
+                     effective.contains(SourceLocation(file, 20), "Parent"),
+                     "effective scoped name sets use the innermost complete environment");
+    }
     return ok ? 0 : 1;
 }
