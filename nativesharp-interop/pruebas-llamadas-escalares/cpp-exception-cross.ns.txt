@@ -1,0 +1,5 @@
+int Main() {
+    try { cpp_cross_throw(); }
+    finally { cpp_cross_record(); }
+    return 0;
+}
