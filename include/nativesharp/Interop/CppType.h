@@ -44,6 +44,8 @@ struct CppType
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
     std::optional<std::uint64_t> arrayCount;
+    // True for T[], distinct from variable or dependent bounds and T[0].
+    bool isIncompleteArray = false;
     std::optional<CppRecordTypeIdentity> recordIdentity;
     std::optional<CppEnumTypeIdentity> enumIdentity;
     std::shared_ptr<const CppType> enumUnderlying;

@@ -88,6 +88,7 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     else if (raw->isArrayType())
     {
         result.kind = CppTypeKind::Array;
+        result.isIncompleteArray = context.getAsIncompleteArrayType(canonical) != nullptr;
         if (const auto* array = context.getAsArrayType(canonical))
             element = array->getElementType();
         if (const auto* array = context.getAsConstantArrayType(canonical))

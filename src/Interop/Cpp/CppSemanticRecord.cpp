@@ -412,6 +412,7 @@ bool sameMemberType(const CppType& a, const CppType& b, unsigned depth = 0)
         a.unqualifiedCanonicalSpelling != b.unqualifiedCanonicalSpelling ||
         a.isConst != b.isConst || a.isVolatile != b.isVolatile || a.isRestrict != b.isRestrict || a.sizeBits != b.sizeBits ||
         a.alignmentBits != b.alignmentBits || a.arrayCount != b.arrayCount ||
+        a.isIncompleteArray != b.isIncompleteArray ||
         static_cast<bool>(a.element) != static_cast<bool>(b.element) ||
         static_cast<bool>(a.enumUnderlying) != static_cast<bool>(b.enumUnderlying) ||
         a.enumIdentity.has_value() != b.enumIdentity.has_value() ||
