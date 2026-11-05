@@ -2247,7 +2247,7 @@ int main(int argc, char** argv)
     auto c = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
                                   "#include <stddef.h>\nint bridge_probe(size_t n, ...);\n"
                                   "int c_add(int left, int right); int c_invoke(int (*cb)(int), int value);\n"
-                                  "int ptr_read(int* p);\n"
+                                  "int ptr_read(int* p); void restrict_use(int *restrict p);\n"
                                   "int ptr_const(const int* p); int ptr_volatile(volatile int* p); int** ptr_nested(int** p);\n"
                                   "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
                                   "int bridge_probe(size_t n, ...);\n"
@@ -2924,6 +2924,18 @@ int main(int argc, char** argv)
                     ok &= expect(bound && matrixAliasBound, "enum array typedef retains imported identity and dimensions");
                     const auto* echo = cFunctions ? functionByName(*cFunctions, "color_echo") : nullptr;
                     const CppRecordGroups noRecords;
+                    const auto* restrictUse = cFunctions ? functionByName(*cFunctions, "restrict_use") : nullptr;
+                    const auto restrictedProjection = restrictUse
+                        ? projectCppSemanticFunction(*restrictUse, 0, "Semantic")
+                        : CppSemanticFunctionResult{CppSemanticFunctionFailure{"fixture unavailable"}};
+                    const auto* restrictedSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&restrictedProjection);
+                    ok &= expect(restrictedSymbol && restrictedSymbol->cppReturnType &&
+                                 restrictedSymbol->cppParameterTypes.size() == 1 && restrictedSymbol->parameters.size() == 1 &&
+                                 restrictedSymbol->cppParameterTypes[0].isRestrict &&
+                                 restrictedSymbol->cppParameterTypes[0].element &&
+                                 !restrictedSymbol->cppParameterTypes[0].element->isRestrict &&
+                                 restrictedSymbol->parameters[0].typeKey == "builtin:int*",
+                                 "function projection retains restrict metadata without changing pointer representation");
                     const auto projected = echo && enumAliasCompilation.nameLookup()
                         ? projectCppSemanticFunctionWithRecords(*echo, 0, "Semantic", noRecords,
                                                                enumAliasCompilation.nameLookup())
