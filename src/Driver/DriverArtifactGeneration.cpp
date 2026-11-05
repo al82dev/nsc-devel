@@ -680,6 +680,11 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
         }
         publication.thinLtoSidecarStaged = true;
     }
+    if (!stageCppStaticDependencies(compilation, publication, artifactPublisher, buildError))
+    {
+        error << "nsc: error: C/C++ static dependency staging failed: " << buildError << '\n';
+        return false;
+    }
     if (!artifactPublisher.commit(buildError))
     {
         error << "nsc: error: static-library publication failed: " << buildError << '\n';
