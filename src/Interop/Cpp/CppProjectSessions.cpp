@@ -1,0 +1,73 @@
+#include "nativesharp/Interop/CppProjectSessions.h"
+#include "nativesharp/Compilation/Project.h"
+#include "nativesharp/Compilation/ProjectGraph.h"
+
+#include <utility>
+
+namespace nativesharp::interop
+{
+CppProjectSessionsResult openCppProjectSessions(
+    std::span<const compilation::CppLibraryReference> references,
+    const CppProjectSessionEnvironment& environment,
+    CppInteropSessionFactory& factory,
+    CppCancellationToken cancellation)
+{
+    CppProjectSessions result;
+    result.sessions.reserve(references.size());
+    for (std::size_t index = 0; index < references.size(); ++index)
+    {
+        const auto& reference = references[index];
+        CppSessionOptions options;
+        options.language = reference.language;
+        options.languageStandard = reference.languageStandard;
+        options.targetTriple = environment.targetTriple;
+        options.driverReferencePath = environment.driverReferencePath;
+        options.resourceDirectory = environment.resourceDirectory;
+        options.workingDirectory = environment.workingDirectory;
+        options.includePaths = reference.includePaths;
+        for (const auto& path : environment.systemIncludePaths)
+            options.includePaths.push_back({path, CppIncludeKind::System});
+        options.macros = reference.macros;
+        options.input = CppFileInput{reference.headerPath};
+
+        auto opened = factory.open(std::move(options), cancellation);
+        if (auto* failure = std::get_if<CppSessionOpenFailure>(&opened))
+            return CppProjectSessionFailure{index, std::move(*failure)};
+        auto session = std::move(std::get<std::unique_ptr<CppInteropSession>>(opened));
+        if (!session || session->state() != CppSessionState::Ready)
+            return CppProjectSessionFailure{index, {"factory", "factory returned a session that is not ready", {}}};
+        result.sessions.push_back(std::move(session));
+    }
+    return result;
+}
+
+CppProjectSessionsResult openCppProjectSessions(
+    const compilation::Project& project,
+    const CppProjectSessionEnvironment& environment,
+    CppInteropSessionFactory& factory,
+    CppCancellationToken cancellation)
+{
+    auto result = openCppProjectSessions(project.cppLibraryReferences(), environment, factory, cancellation);
+    if (auto* sessions = std::get_if<CppProjectSessions>(&result))
+        sessions->projectFile = project.projectFile();
+    return result;
+}
+
+CppGraphSessionsResult openCppGraphSessions(
+    const compilation::ProjectGraph& graph,
+    const CppProjectSessionEnvironment& environment,
+    CppInteropSessionFactory& factory,
+    CppCancellationToken cancellation)
+{
+    CppGraphSessions result;
+    for (const auto& project : graph.projects())
+    {
+        if (project.cppLibraryReferences().empty()) continue;
+        auto opened = openCppProjectSessions(project, environment, factory, cancellation);
+        if (auto* failure = std::get_if<CppProjectSessionFailure>(&opened))
+            return CppGraphSessionFailure{project.projectFile(), std::move(*failure)};
+        result.projects.push_back(std::move(std::get<CppProjectSessions>(opened)));
+    }
+    return result;
+}
+}
