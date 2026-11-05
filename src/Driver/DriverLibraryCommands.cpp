@@ -24,6 +24,8 @@ ExitCode Driver::runProjectHostHeaderGeneration(std::string_view inputPath, std:
             [&] { return configurePrecompiledModules(*manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
+        if (!compilation.diagnostics().diagnostics().empty())
+            diagnostics::DiagnosticRenderer(compilation.sourceManager()).renderAll(compilation.diagnostics(), error);
         return ExitCode::CompilationError;
     }
     bool restored = false;
@@ -103,6 +105,8 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(std::string_view inputPath,
             [&] { return configurePrecompiledModules(*manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
+        if (!compilation.diagnostics().diagnostics().empty())
+            diagnostics::DiagnosticRenderer(compilation.sourceManager()).renderAll(compilation.diagnostics(), error);
         return ExitCode::CompilationError;
     }
     bool restored = false;
