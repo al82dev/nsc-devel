@@ -506,5 +506,36 @@ int main(int argc, char** argv)
                      effective.contains(SourceLocation(file, 20), "Parent"),
                      "effective scoped name sets use the innermost complete environment");
     }
+    {
+        using nativesharp::FileId;
+        using nativesharp::parser::ScopedKnownTypeNames;
+        const FileId file{77};
+        const std::string source = "namespace Left { int F() { Item* p = null; return 0; } } "
+            "namespace Right { int G() { int Item = 2; int p = 3; Item * p; return Item; } }";
+        const auto right = static_cast<std::uint32_t>(source.find("namespace Right"));
+        const ScopedKnownTypeNames scopes({{file, 0, right, {"Item"}}});
+        nativesharp::source::SourceFile input(file, "scoped-test.ns", source);
+        nativesharp::frontend::ProjectSyntaxUnit unit(0, 0, "ScopeTest", file);
+        nativesharp::diagnostics::DiagnosticEngine diagnostics;
+        const auto known = nativesharp::parser::buildKnownTypeNameSet();
+        const bool parsed = unit.lex(input, diagnostics) && unit.parse(diagnostics, known, &scopes);
+        bool pointer = false;
+        bool multiply = false;
+        std::vector<const nativesharp::ast::AstNode*> pending{unit.syntaxTree()};
+        std::unordered_set<const nativesharp::ast::AstNode*> seen;
+        while (!pending.empty())
+        {
+            const auto* node = pending.back(); pending.pop_back();
+            if (!node || !seen.insert(node).second) continue;
+            pointer |= node->kind() == nativesharp::ast::AstNodeKind::VariableDeclarationStatement &&
+                node->typeSyntax() && node->typeSyntax()->baseName() == "Item";
+            multiply |= node->kind() == nativesharp::ast::AstNodeKind::BinaryExpression &&
+                node->tokenKind() == nativesharp::lexer::TokenKind::Star;
+            pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
+            for (const auto* child : node->children()) pending.push_back(child);
+        }
+        ok &= expect(parsed && pointer && multiply && !diagnostics.hasErrors(),
+                     "parser consumes scoped names only at the source location of each statement");
+    }
     return ok ? 0 : 1;
 }
