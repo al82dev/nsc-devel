@@ -260,6 +260,77 @@ CppSemanticEnumConstantResult projectCppEnumConstant(
     return CppSemanticEnumConstant{entry.projectOrdinal, value.name, mapped->nativeSharpTypeKey, bits};
 }
 
+bool provideCppSemanticEnumConstants(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error)
+{
+    auto inventory = collectCppSemanticEnums(graph, projects);
+    if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&inventory))
+    {
+        error = "C enum collection failed for project '" + failure->projectFile.generic_string() +
+            "', reference " + std::to_string(failure->referenceIndex) + ": " + failure->message;
+        return false;
+    }
+    const auto& entries = std::get<std::vector<CppSemanticEnumEntry>>(inventory);
+    std::set<std::pair<std::size_t, std::string>> seen;
+    std::vector<frontend::NamespaceStateSymbol> result;
+    for (const auto& demand : demands)
+        for (const auto owner : demand.visibleProjects)
+        {
+            if (owner >= graph.projects().size() || demand.lookupName.empty() ||
+                std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), std::string{}) ==
+                    demand.lookupNamespaces.end() ||
+                !seen.emplace(owner, demand.lookupName).second) continue;
+            std::optional<CppSemanticEnumConstant> selected;
+            std::string failure;
+            bool found = false;
+            for (const auto& entry : entries)
+            {
+                if (entry.projectOrdinal != owner || entry.declaration.isCxx) continue;
+                for (std::size_t i = 0; i < entry.declaration.enumerators.size(); ++i)
+                {
+                    if (entry.declaration.enumerators[i].name != demand.lookupName) continue;
+                    found = true;
+                    auto projected = projectCppEnumConstant(entry, i);
+                    if (const auto* reason = std::get_if<CppSemanticEnumConstantFailure>(&projected))
+                    { failure = reason->message; continue; }
+                    auto value = std::get<CppSemanticEnumConstant>(std::move(projected));
+                    if (selected && (selected->typeKey != value.typeKey || selected->bits != value.bits))
+                        failure = "conflicting C enumerator declarations";
+                    else selected = std::move(value);
+                }
+            }
+            if (!found) continue;
+            frontend::NamespaceStateSymbol state;
+            state.projectOrdinal = owner;
+            state.moduleName = graph.projects()[owner].moduleName();
+            state.name = demand.lookupName;
+            state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
+            if (!failure.empty() || !selected)
+            {
+                state.isCppExternal = true;
+                state.declaredTypeKey = "builtin:int";
+                state.cppImportError = failure.empty() ? "C enumerator cannot be represented" : failure;
+            }
+            else
+            {
+                state.isConst = true;
+                state.isCppEnumConstant = true;
+                state.declaredTypeKey = selected->typeKey;
+                state.initializerKind = frontend::NamespaceStateInitializerKind::Integer;
+                state.integerValue = selected->bits;
+                state.identityKey = "state:" + state.moduleName + "::." + state.name;
+                state.storageName = "__nsc_cenum_" + std::to_string(state.moduleName.size()) + "_" +
+                    state.moduleName + "_" + std::to_string(state.name.size()) + "_" + state.name;
+            }
+            result.push_back(std::move(state));
+        }
+    states = std::move(result);
+    error.clear();
+    return true;
+}
+
 CppSemanticEnumInventoryResult collectCppSemanticEnums(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects)
 {

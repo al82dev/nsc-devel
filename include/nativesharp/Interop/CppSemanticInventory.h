@@ -95,6 +95,10 @@ using CppSemanticEnumConstantResult =
 // It does not insert the name or establish constant-expression semantics.
 CppSemanticEnumConstantResult projectCppEnumConstant(
     const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex);
+bool provideCppSemanticEnumConstants(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error);
 
 struct CppSemanticGlobal
 {
