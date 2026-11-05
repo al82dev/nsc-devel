@@ -106,6 +106,25 @@ bool indexIsClosed(const frontend::PrecompiledSyntaxNodeIndex& index)
 int main()
 {
     tests::TestContext tests;
+    {
+        ast::AstArena arena;
+        auto* node = arena.make<ast::AstNode>(ast::AstNodeKind::VariableDeclarationStatement, SourceRange{});
+        auto* type = arena.make<ast::TypeSyntax>(SourceRange{}, lexer::TokenKind::KwInt, "int");
+        ast::TypeModifierSyntax inner;
+        inner.importedCRestrict = true;
+        type->addModifier(inner);
+        type->addModifier(ast::TypeModifierSyntax{});
+        node->setTypeSyntax(type);
+        const std::string payload = frontend::internal::serializeAstNodeTree(node);
+        frontend::internal::CachePayloadReader reader(payload);
+        ast::AstArena restoredArena;
+        const auto* restored = frontend::internal::deserializeAstNodeTree(restoredArena, reader);
+        const auto* restoredType = restored ? restored->typeSyntax() : nullptr;
+        tests.expect(restoredType && restoredType->modifiers().size() == 2 &&
+                     restoredType->modifiers()[0].importedCRestrict &&
+                     !restoredType->modifiers()[1].importedCRestrict,
+                     "syntax serialization preserves restrict on the correct pointer level");
+    }
     const std::filesystem::path sourceRoot(NSC_SOURCE_DIR);
     std::size_t compared = 0;
     std::vector<std::string> mismatches;
