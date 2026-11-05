@@ -198,6 +198,10 @@ si el propietario, tamaño y alineación coinciden; hay una prueba preparada de
 identidad y offset. No habilita paso general por valor y el acceso y la copia
 todavía no se han comprobado en ejecución.
 
+También se preparó la proyección de arreglos fijos de records C completos, con
+una prueba de identidad, dimensiones y offset. Quedan sin verificar la
+indexación, copia de elementos y compatibilidad ABI.
+
 `pruebas-tanda-08-incompleto` prepara ambos casos de proyecto: declaración de
 puntero al tipo adelantado y rechazo de `sizeof` con diagnóstico. El script no
 se ha ejecutado; la comprobación real sigue pendiente.
