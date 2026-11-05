@@ -104,7 +104,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T04-006. Incorporar cada directorio de inclusión a la invocación.
 - [x] T04-007. Incorporar cada definición de macro a la invocación.
 - [x] T04-008. Incorporar el directorio de recursos explícito a la invocación.
-- [ ] T04-009. Incorporar las rutas configuradas de headers del sistema a la invocación.
+- [x] T04-009. Incorporar las rutas configuradas de headers del sistema a la invocación.
 - [ ] T04-010. Rechazar una configuración que no identifique los recursos necesarios.
 - [ ] T04-011. Crear el consumidor de diagnósticos privado `ClangDiagnosticConsumer.cpp`.
 - [ ] T04-012. Copiar la severidad de cada diagnóstico Clang al formato de sesión.
