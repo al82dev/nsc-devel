@@ -994,7 +994,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.typeKey = state.declaredTypeKey;
     result.valid = true;
     result.assignable = !state.isConst && !state.isCppReadonly;
-    result.addressable = !(state.isCppExternal &&
+    result.addressable = !state.isCppEnumConstant && !(state.isCppExternal &&
         (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly));
     result.readonlyReceiver = state.isConst || state.isCppReadonly;
     result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;

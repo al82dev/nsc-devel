@@ -50,6 +50,8 @@ struct NamespaceStateSymbol final
     bool isConst = false;
     bool isPrecompiled = false;
     bool isCppExternal = false;
+    // A C enumerator is a value, not an externally linked variable.
+    bool isCppEnumConstant = false;
     bool cppDllImport = false;
     bool isVolatile = false;
     bool isCppReadonly = false;

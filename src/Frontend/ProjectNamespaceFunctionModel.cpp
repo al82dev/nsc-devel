@@ -379,9 +379,13 @@ bool ProjectNamespaceFunctionModel::setCppImportedStates(
     std::unordered_set<std::string> identities;
     for (const auto& state : states)
     {
-        if (!state.isCppExternal || state.isConst || state.isPrecompiled || state.name.empty() ||
+        const bool enumConstant = state.isCppEnumConstant && state.isConst && !state.isCppExternal &&
+            state.initializerKind == NamespaceStateInitializerKind::Integer && !state.storageName.empty();
+        const bool externalGlobal = !state.isCppEnumConstant && state.isCppExternal && !state.isConst &&
+            (!state.storageName.empty() || !state.cppImportError.empty());
+        if ((!enumConstant && !externalGlobal) || state.isPrecompiled || state.name.empty() ||
             state.moduleName.empty() || state.declaredTypeKey.empty() ||
-            (state.storageName.empty() && state.cppImportError.empty()))
+            (enumConstant && !state.cppImportError.empty()))
         {
             error = "incomplete imported C/C++ global";
             return false;
