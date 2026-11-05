@@ -889,6 +889,22 @@ if(LLVM_FOUND)
             target_link_libraries(nsc_cpp_session_tests PRIVATE nsc_cpp_interop nsc_frontend nsc_precompiled)
             target_compile_features(nsc_cpp_session_tests PRIVATE cxx_std_20)
             nsc_enable_warnings(nsc_cpp_session_tests)
+            # The interop gate needs these two syntax-cache checks even when the
+            # full NSC test suite is disabled. Avoid defining them twice when it is enabled.
+            if(NOT NSC_BUILD_TESTS)
+                foreach(_nsc_syntax_test IN ITEMS precompiled_syntax_node_index syntax_tree_serialization_equivalence)
+                    if(_nsc_syntax_test STREQUAL "precompiled_syntax_node_index")
+                        set(_nsc_syntax_source tests/unit/PrecompiledSyntaxNodeIndexTests.cpp)
+                    else()
+                        set(_nsc_syntax_source tests/unit/SyntaxTreeSerializationEquivalenceTests.cpp)
+                    endif()
+                    add_executable(nsc_${_nsc_syntax_test}_tests ${_nsc_syntax_source})
+                    target_link_libraries(nsc_${_nsc_syntax_test}_tests PRIVATE nsc_frontend nsc_compilation nsc_target)
+                    target_compile_features(nsc_${_nsc_syntax_test}_tests PRIVATE cxx_std_20)
+                    target_compile_definitions(nsc_${_nsc_syntax_test}_tests PRIVATE NSC_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+                    nsc_enable_warnings(nsc_${_nsc_syntax_test}_tests)
+                endforeach()
+            endif()
             enable_testing()
             add_test(NAME nsc.cpp-interop.session COMMAND nsc_cpp_session_tests
                 "${CLANG_INSTALL_PREFIX}/lib/clang/23" "${NSC_CPP_INTEROP_TEST_ROOT}"
