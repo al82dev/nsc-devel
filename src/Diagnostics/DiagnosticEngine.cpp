@@ -182,6 +182,11 @@ void DiagnosticEngine::mergeDeterministically(std::span<const DiagnosticEngine> 
         }
         return 3;
     };
+    const auto externalKey = [](const Diagnostic& diagnostic) {
+        const auto& location = diagnostic.externalLocation();
+        return std::tuple(location.has_value(), location ? location->file : std::filesystem::path{},
+                          location ? location->line : 0U, location ? location->column : 0U);
+    };
     std::sort(entries.begin(), entries.end(), [&](const Entry& left, const Entry& right) {
         const Diagnostic& a = *left.diagnostic;
         const Diagnostic& b = *right.diagnostic;
@@ -200,7 +205,8 @@ void DiagnosticEngine::mergeDeterministically(std::span<const DiagnosticEngine> 
                    aEnd,
                    severityOrder(a.severity()),
                    static_cast<int>(a.id()),
-                   std::string_view(a.message())) <
+                   std::string_view(a.message()),
+                   externalKey(a)) <
             std::tuple(
                    b.location().isValid() ? 0 : 1,
                    bFile,
@@ -208,7 +214,8 @@ void DiagnosticEngine::mergeDeterministically(std::span<const DiagnosticEngine> 
                    bEnd,
                    severityOrder(b.severity()),
                    static_cast<int>(b.id()),
-                   std::string_view(b.message()));
+                   std::string_view(b.message()),
+                   externalKey(b));
     });
     for (const Entry& entry : entries) append(*entry.diagnostic);
     suppressedDiagnosticCount_ += suppressedByShards;
