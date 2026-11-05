@@ -2838,7 +2838,7 @@ int main(int argc, char** argv)
                     enumAliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
                         -> std::optional<std::string> {
                         if (path.filename() == "Main.ns")
-                            return "ColorAlias Echo(ColorAlias value) { return value; } int Main() { return 0; }\n";
+                            return "struct Holder { ColorAlias shade; int count; } ColorAlias Echo(ColorAlias value) { return value; } int Main() { return 0; }\n";
                         return std::nullopt;
                     });
                     nativesharp::compilation::TypeIdentity enumIdentity("Semantic", {}, {}, "Color");
@@ -2900,6 +2900,14 @@ int main(int argc, char** argv)
                                  colors->type.nativeSharpTypeKey == "type:" + enumIdentity.key() + "[3][2]" &&
                                  colors->byteOffset == 16,
                                  "C enum fields preserve identity, readonly pointee and array dimensions");
+                    const bool layoutsBuilt = bound && enumAliasCompilation.compileProjectObjectLayouts(semanticPath, error);
+                    const auto holderKey = nativesharp::compilation::TypeIdentity("Semantic", {}, {}, "Holder").key();
+                    const auto holderOrdinal = layoutsBuilt && enumAliasCompilation.nameLookup()
+                        ? enumAliasCompilation.nameLookup()->typeOrdinalForIdentity(holderKey) : std::nullopt;
+                    const auto* holder = holderOrdinal && enumAliasCompilation.objectLayoutModel()
+                        ? enumAliasCompilation.objectLayoutModel()->structLayoutForType(*holderOrdinal) : nullptr;
+                    ok &= expect(holder && holder->size == 8 && holder->alignment == 4,
+                                 "NativeSharp struct layout uses imported enum dimensions");
                 }
                 {
                     nativesharp::frontend::ProjectCompilation callbackCompilation;
