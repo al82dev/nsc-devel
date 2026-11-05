@@ -1,7 +1,6 @@
 # Tanda 05: integración de la sesión y diagnósticos
 
-Estado: tanda abierta; los cambios posteriores a la primera validación requieren
-repetirla de forma agrupada antes de cerrar los ítems restantes.
+Estado: validación agrupada repetida y aprobada; registro final en curso.
 
 - En `src/Driver`, las compilaciones locales aparecen en
   `DriverArtifactGeneration.cpp` (ejecutable y bibliotecas estática/dinámica),
@@ -60,14 +59,15 @@ validación incremental agrupada. Corregir y repetir al aparecer errores.
 - La prueba de propiedad compartida usa una sesión real y una compilación
   compartida equivalente a la propiedad del snapshot. No demuestra importación
   C++ mediante el servicio de lenguaje, que aún no configura esas sesiones.
-- T05-008 y T05-011 siguen pendientes: `LanguageService/ProtocolTypes.cpp`
-  descarta diagnósticos sin un archivo del `SourceManager`. Las ubicaciones
-  externas se muestran en consola y se conservan como texto, pero no se han
-  demostrado como ubicaciones estructuradas para el servicio de lenguaje.
-  Tampoco hay todavía una prueba que inyecte una sesión a un snapshot real del
-  servicio de lenguaje. No se cierra la tanda basándose solo en el caso simulado.
-- Tras esa comprobación, se agregó `ExternalSourceLocation` al diagnóstico de
-  NSC y el adaptador ahora conserva archivo, línea y columna como datos. Se
-  añadieron pruebas de conversión y copia. Estos cambios aún no se han compilado
-  ni probado; el servicio de lenguaje todavía necesita una conversión fiable de
-  columnas al formato UTF-16 y no debe inventarse sin el contenido correcto.
+- Se agregó `ExternalSourceLocation` al diagnóstico de NSC; el adaptador conserva
+  archivo, línea y columna como campos estructurados. La suite verificó conversión,
+  copia y orden determinista. `LanguageService/ProtocolTypes.cpp` todavía descarta
+  diagnósticos sin un archivo del `SourceManager`: exponerlos ahí requiere una
+  conversión fiable de columnas a UTF-16 y no se considera implementado aquí.
+- Tras estos cambios se repitieron las construcciones ON y OFF, ambas con código 0
+  y comprobación satisfactoria del runtime estático. Se repitieron los controles
+  de proyecto ordinario y rechazo OFF, y el error real de header con su ubicación.
+- `pruebas-snapshot/ejecutar.cmd` terminó con código 0: publicó y cargó un
+  snapshot semántico y ejecutó la suite, incluida la comprobación de sesión real
+  todavía utilizable con ese snapshot instalado. No implica que el servicio de
+  lenguaje ya abra sesiones C++.
