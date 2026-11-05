@@ -2320,11 +2320,13 @@ int main(int argc, char** argv)
                      nestedRecord->canonicalName == "N.Outer+Inner",
                      "record typedef projection preserves identity, pointer and pointee const");
         ok &= expect(incompleteArrayAlias && incompleteArrayAlias->underlyingType.kind == CppTypeKind::Array &&
+                     incompleteArrayAlias->underlyingType.isIncompleteArray &&
                      incompleteArrayAlias->underlyingType.element &&
                      incompleteArrayAlias->underlyingType.element->kind == CppTypeKind::SignedInteger &&
                      !incompleteArrayAlias->underlyingType.arrayCount &&
                      !incompleteArrayAlias->underlyingType.sizeBits &&
                      fixedArrayAlias && fixedArrayAlias->underlyingType.element &&
+                     !fixedArrayAlias->underlyingType.isIncompleteArray &&
                      fixedArrayAlias->underlyingType.arrayCount == 7 &&
                      fixedArrayAlias->underlyingType.sizeBits == 224,
                      "C array typedef snapshot preserves element and distinguishes incomplete bounds");
