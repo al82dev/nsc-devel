@@ -1610,3 +1610,9 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
 - Presupuesto: `Api.h`, `Api.c`, `Main.ns`, `ConstWrite.ns.txt` y `validar.cmd` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. No modificar producción sin observar el resultado.
 - La lectura y el rechazo deben ejecutarse con la batería agrupada. Un rechazo de compilación no basta para cerrar el soporte completo de calificadores.
+
+### Global puntero a enum C
+
+- Objetivo: comprobar lectura y desreferencia de un global C de tipo puntero a enum con el enum ya seleccionado por una función.
+- Presupuesto: `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. La selección de un enum referido únicamente a través de un puntero global es un caso diferente y sigue pendiente.
+- Validar junto con la tanda, sin tratar un único caso como cierre general de punteros o globales.
