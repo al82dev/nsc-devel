@@ -2,6 +2,24 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Validación agrupada de arreglos globales volatile: 2026-11-05
+
+Con `017e6c5d1`, `e274bd1f2`, `f23fb09bc`, `262d0d217` y `ba1acfc2f`,
+`call nativesharp-interop\validar-tanda-08.cmd` terminó con código 0. Pasaron
+las construcciones incrementales ON/OFF, la suite Clang, las pruebas de
+restauración y serialización y los siete proyectos preparados.
+
+En Windows x64 O0 se escribieron y leyeron arreglos y matrices globales C de
+escalares y un arreglo de enum `volatile`; los scripts comprobaron las cargas
+y escrituras `volatile` de los símbolos correspondientes en LLVM IR. Los
+casos negativos rechazaron con diagnóstico específico la dirección de elementos
+de arreglo y matriz `volatile`; la dirección de un elemento mutable sí funcionó.
+
+La primera prueba negativa había demostrado que se aceptaba un `int*` que perdía
+el calificador. El rechazo es una protección provisional, no soporte de punteros
+calificados. Las muestras no cubren todos los tipos, niveles de calificación,
+TLS o configuraciones; T08-015 y T08-016 siguen abiertos.
+
 ## Validación agrupada de arreglos globales const: 2026-11-05
 
 Con `9d01ae4dc`, `5620f689d`, `851b324ae` y `d1e08c811`, la ejecución de
