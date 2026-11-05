@@ -1,6 +1,7 @@
 # Tanda 05: integración de la sesión y diagnósticos
 
-Estado: validación agrupada completada; registro de ítems en curso.
+Estado: tanda abierta; los cambios posteriores a la primera validación requieren
+repetirla de forma agrupada antes de cerrar los ítems restantes.
 
 - En `src/Driver`, las compilaciones locales aparecen en
   `DriverArtifactGeneration.cpp` (ejecutable y bibliotecas estática/dinámica),
@@ -65,3 +66,8 @@ validación incremental agrupada. Corregir y repetir al aparecer errores.
   demostrado como ubicaciones estructuradas para el servicio de lenguaje.
   Tampoco hay todavía una prueba que inyecte una sesión a un snapshot real del
   servicio de lenguaje. No se cierra la tanda basándose solo en el caso simulado.
+- Tras esa comprobación, se agregó `ExternalSourceLocation` al diagnóstico de
+  NSC y el adaptador ahora conserva archivo, línea y columna como datos. Se
+  añadieron pruebas de conversión y copia. Estos cambios aún no se han compilado
+  ni probado; el servicio de lenguaje todavía necesita una conversión fiable de
+  columnas al formato UTF-16 y no debe inventarse sin el contenido correcto.
