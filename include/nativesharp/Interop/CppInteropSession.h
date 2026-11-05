@@ -7,6 +7,7 @@
 #include "nativesharp/Interop/CppNamespaceDeclaration.h"
 #include "nativesharp/Interop/CppRecordDeclaration.h"
 #include "nativesharp/Interop/CppTypeAliasDeclaration.h"
+#include "nativesharp/Interop/CppEnumDeclaration.h"
 #include "nativesharp/Basic/Sha256.h"
 
 #include <string>
@@ -70,6 +71,8 @@ public:
     virtual std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const = 0;
     // A missing value means this session cannot provide an alias snapshot.
     virtual std::optional<std::vector<CppTypeAliasDeclaration>> typeAliasesSnapshot() const { return std::nullopt; }
+    // Includes anonymous enums; this snapshot does not imply semantic import.
+    virtual std::optional<std::vector<CppEnumDeclaration>> enumsSnapshot() const { return std::nullopt; }
     // Requests declaration from Clang Sema; no body or linkable symbol is implied.
     // nullopt also covers unavailable Sema, ambiguous names and unsupported records.
     virtual std::optional<std::vector<CppImplicitLifetimeDeclaration>> implicitLifetimeDeclarations(
