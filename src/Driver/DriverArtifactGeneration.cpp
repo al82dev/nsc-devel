@@ -2,9 +2,44 @@
 #include "ThinLtoLibraryLinking.h"
 
 #include "nativesharp/Linker/ExternalImportValidation.h"
+#include "nativesharp/Interop/CppBinaryDependencies.h"
+#include "nativesharp/Basic/ArtifactTransaction.h"
+#include "nativesharp/Basic/Sha256.h"
+#ifdef NSC_ENABLE_CPP_INTEROP
+#include "nativesharp/Frontend/ProjectConstructionModel.h"
+#include "nativesharp/Interop/CppSemanticFunction.h"
+#include "nativesharp/LLVM/CppLifetimeObjectEmitter.h"
+#endif
 
 namespace nativesharp::driver
 {
+bool appendCppImplicitLifetimeObjects(frontend::ProjectCompilation &compilation,
+                                      const frontend::ProjectOopMirModel &mir,
+                                      llvm_backend::ProjectOopObjectBundle &bundle,
+                                      llvm_backend::LlvmOptimizationLevel level, std::string &error)
+{
+#ifdef NSC_ENABLE_CPP_INTEROP
+    if (compilation.cppProjectSessions().empty()) { error.clear(); return true; }
+    if (!compilation.projectGraph() || !compilation.nameLookup() || !compilation.memberModel() ||
+        !compilation.constructionModel())
+    { error = "C++ lifetime emission requires completed project models"; return false; }
+    std::vector<interop::CppImplicitLifetimeEmissionRequest> plan;
+    if (!interop::planCppImplicitLifetimeFromValues(*compilation.projectGraph(),
+            compilation.cppProjectSessions(), *compilation.nameLookup(), *compilation.memberModel(),
+            compilation.constructionModel()->constructions(), mir, plan, error)) return false;
+    if (plan.empty()) { error.clear(); return true; }
+    return bundle.appendGeneratedObjects(plan.size(),
+        [&](std::span<const std::filesystem::path> paths, std::string &emitError)
+        {
+            std::vector<std::filesystem::path> generated;
+            return llvm_backend::emitCppImplicitLifetimeObjects(plan, paths, level, generated, emitError);
+        }, error);
+#else
+    (void)compilation; (void)mir; (void)bundle; (void)level;
+    error.clear();
+    return true;
+#endif
+}
 using target::BuiltinLayoutKind;
 
 // Interop Foundation: gather the project's `extern C from "<dll>"` declarations
