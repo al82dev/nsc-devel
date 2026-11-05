@@ -115,7 +115,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T04-017. Inicializar los diagnósticos de `CompilerInstance` con propiedad explícita.
 - [ ] T04-018. Crear la acción de frontend propuesta `ClangSessionAction.cpp`.
 - [x] T04-019. Llamar a `BeginSourceFile` una sola vez por apertura de unidad.
-- [ ] T04-020. Omitir `EndSourceFile` si `BeginSourceFile` falla.
+- [x] T04-020. Omitir `EndSourceFile` si `BeginSourceFile` falla.
 - [ ] T04-021. Ejecutar la acción de frontend sin repetir la inicialización de la unidad.
 - [ ] T04-022. Consultar los diagnósticos de error además del resultado de ejecución de Clang.
 - [ ] T04-023. Mantener vivos el AST y el estado semántico durante la vida útil necesaria de la sesión.
