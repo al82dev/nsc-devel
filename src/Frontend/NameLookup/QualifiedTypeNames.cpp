@@ -328,6 +328,56 @@ bool ProjectNameLookup::expandCppTypeAlias(
             mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || array->element.pointeeConst);
             return true;
         }
+        const auto& arrayUnderlying = selected->declaration.underlyingType;
+        if (arrayUnderlying.kind == interop::CppTypeKind::Array &&
+            selected->targetTriple == "x86_64-pc-windows-msvc")
+        {
+            const interop::CppType* element = &arrayUnderlying;
+            std::vector<std::uint64_t> dimensions;
+            while (element && element->kind == interop::CppTypeKind::Array)
+            {
+                if (element->isConst || element->isVolatile || !element->arrayCount ||
+                    *element->arrayCount == 0 || !element->element)
+                    return report(diagnostics::DiagnosticId::InvalidUsingTarget, "C array alias has an unsupported bound or qualifier");
+                dimensions.push_back(*element->arrayCount);
+                element = element->element.get();
+            }
+            const auto enumElement = element ? cppAliasEnumType(*element) : std::nullopt;
+            const auto recordElement = element ? cppAliasRecordType(*element) : std::nullopt;
+            const std::string name = enumElement ? enumElement->name : recordElement ? recordElement->name : std::string{};
+            const std::string identity = enumElement ? enumElement->name : recordElement ? recordElement->canonicalName : std::string{};
+            if (name.empty() || (enumElement ? enumElement->pointeeConst : recordElement->pointeeConst) ||
+                syntax->isPointeeConst())
+                return report(diagnostics::DiagnosticId::InvalidUsingTarget, "C array alias element cannot be represented safely");
+            const auto imported = std::find_if(cppImportedTypes_.begin(), cppImportedTypes_.end(), [&](const auto& item) {
+                return item.projectOrdinal == selected->projectOrdinal && item.identity.fullyQualifiedName() == identity &&
+                    item.deferredImportError.empty() && (enumElement ? item.enumBase && item.enumBase->token == enumElement->base.token
+                                                                         : item.kind == NamedTypeDeclarationKind::Struct);
+            });
+            if (imported == cppImportedTypes_.end())
+                return report(diagnostics::DiagnosticId::InvalidUsingTarget, "C array alias element type is unavailable");
+            auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
+            std::vector<ast::TypeModifierSyntax> modifiers(enumElement ? enumElement->pointerDepth : recordElement->pointerDepth);
+            for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
+            {
+                auto* count = arena.make<ast::AstNode>(ast::AstNodeKind::IntegerLiteralExpression, syntax->range());
+                count->setTokenKind(lexer::TokenKind::IntegerLiteral);
+                count->setText(std::to_string(*dimension));
+                count->setIntegerValue(*dimension);
+                ast::TypeModifierSyntax modifier;
+                modifier.kind = ast::TypeModifierSyntaxKind::Array;
+                modifier.arrayCount = count;
+                modifier.range = syntax->range();
+                modifiers.push_back(modifier);
+            }
+            auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
+            mutableSyntax->setBaseTokenKind(lexer::TokenKind::Identifier);
+            mutableSyntax->setBaseName(name);
+            mutableSyntax->setOriginProjectOrdinal(selected->projectOrdinal);
+            mutableSyntax->setOriginNamespace("");
+            mutableSyntax->prependModifiers(modifiers);
+            return true;
+        }
         const auto function = cppAliasFunctionType(selected->declaration.underlyingType);
         if (function && selected->targetTriple == "x86_64-pc-windows-msvc")
         {
