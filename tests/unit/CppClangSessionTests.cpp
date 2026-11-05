@@ -2200,7 +2200,7 @@ int main(int argc, char** argv)
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
-                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
+                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; enum Color color_echo(enum Color value); enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
                                   "union CValue { int integer; float real; }; struct Flags { unsigned a:3; unsigned b:5; }; "
@@ -2773,6 +2773,7 @@ int main(int argc, char** argv)
                         nativesharp::frontend::NamedTypeAccessibility::Public, 0, "probe.c"};
                     enumType.enumBase = nativesharp::frontend::CppImportedEnumBase{
                         nativesharp::lexer::TokenKind::KwInt, "int"};
+                    enumType.objectLayout = nativesharp::frontend::CppImportedObjectLayout{4, 4};
                     const auto aliasesSnapshot = cAliases;
                     const bool configured = enumAliasCompilation.setExperimentalCppImportedTypes({enumType}, error) &&
                         enumAliasCompilation.setCppTypeAliasProvider(
@@ -2798,6 +2799,17 @@ int main(int argc, char** argv)
                     if (!bound) std::cerr << "C enum typedef semantic setup failed: " << error << '\n';
                     ok &= expect(bound && enumBound && basePreserved,
                                  "enum typedef binds to imported enum and preserves its underlying type");
+                    const auto* echo = cFunctions ? functionByName(*cFunctions, "color_echo") : nullptr;
+                    const CppRecordGroups noRecords;
+                    const auto projected = echo && enumAliasCompilation.nameLookup()
+                        ? projectCppSemanticFunctionWithRecords(*echo, 0, "Semantic", noRecords,
+                                                               enumAliasCompilation.nameLookup())
+                        : CppSemanticFunctionResult{CppSemanticFunctionFailure{"fixture unavailable"}};
+                    const auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projected);
+                    ok &= expect(symbol && symbol->declaredTypeKey == "type:" + enumIdentity.key() &&
+                                 symbol->parameters.size() == 1 &&
+                                 symbol->parameters[0].typeKey == symbol->declaredTypeKey,
+                                 "C enum function preserves its imported type in parameter and result");
                 }
                 {
                     nativesharp::frontend::ProjectCompilation callbackCompilation;
