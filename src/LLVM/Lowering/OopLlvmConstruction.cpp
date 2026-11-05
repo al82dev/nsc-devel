@@ -11,7 +11,9 @@ using namespace llvm_api;
 LLVMValueRef OopLlvmImplementation::lowerValueConstruction(
         const frontend::ProjectOopMirNode* node,
         std::string& error,
-        const std::vector<LLVMValueRef>* argumentOverrides )
+        const std::vector<LLVMValueRef>* argumentOverrides,
+        bool discardCppTemporary,
+        LLVMValueRef cppDestination )
 {
         if (node->immediate == 0 || node->alignment == 0)
         {
@@ -53,9 +55,17 @@ LLVMValueRef OopLlvmImplementation::lowerValueConstruction(
         for (const std::size_t source : parameterToSource)
             orderedArguments.push_back(evaluatedArguments[source]);
 
-        LLVMTypeRef carrier = llvmType(node->typeKey, error);
+        // A C++ record's physical storage comes from Clang, not a NativeSharp struct layout.
+        // This carrier describes bytes only; it does not implement C++ copy or destruction.
+        const bool cppRecord = node->targetTypeOrdinal.has_value() &&
+            nameLookup_.cppImportedType(*node->targetTypeOrdinal) != nullptr;
+        if (cppDestination != nullptr && (!cppRecord || discardCppTemporary))
+            return failValue(error, "C++ construction destination is invalid");
+        LLVMTypeRef carrier = cppRecord
+            ? LLVMArrayType2(LLVMInt8TypeInContext(context_), node->immediate)
+            : llvmType(node->typeKey, error);
         if (carrier == nullptr) return nullptr;
-        LLVMValueRef slot = entryBlockAlloca(
+        LLVMValueRef slot = cppDestination != nullptr ? cppDestination : entryBlockAlloca(
             carrier, static_cast<unsigned>(node->alignment), "struct.new");
         if (slot == nullptr) return failValue(error, "C6 struct construction could not reserve storage");
 
@@ -100,6 +110,31 @@ LLVMValueRef OopLlvmImplementation::lowerValueConstruction(
             }
         }
         constructionThisOverride_ = previousOverride;
+
+        if (cppDestination != nullptr) return slot;
+        if (discardCppTemporary)
+        {
+            if (!cppRecord)
+                return failValue(error, "C++ temporary cleanup requires an imported record");
+            const frontend::ProjectOopMirFunction* destructor = nullptr;
+            for (const auto& function : mirModel_.functions())
+            {
+                if (!function.isCppExternal || !function.destructor ||
+                    function.declaringTypeOrdinal != *node->targetTypeOrdinal) continue;
+                if (destructor != nullptr)
+                    return failValue(error, "C++ temporary has ambiguous destructor");
+                destructor = &function;
+            }
+            if (destructor == nullptr)
+                return failValue(error, "C++ temporary has no imported destructor");
+            const auto target = functions_.find(destructor->mangledName);
+            if (target == functions_.end())
+                return failValue(error, "C++ temporary destructor target is missing");
+            LLVMValueRef arguments[] = {slot};
+            if (buildPotentiallyThrowingCall(target->second.functionType, target->second.function,
+                    arguments, 1, "", error) == nullptr && !error.empty()) return nullptr;
+            return slot;
+        }
 
         // BUG FOUND BY C7, FIXED HERE. This used to short-circuit -- `if
         // (isIndirectStructTypeKey(...)) return slot;` -- handing back the ADDRESS of the freshly

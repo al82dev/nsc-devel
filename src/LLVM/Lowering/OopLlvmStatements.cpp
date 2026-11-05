@@ -82,6 +82,14 @@ bool OopLlvmImplementation::lowerStatement(
 bool OopLlvmImplementation::lowerExpressionStatement(
         const frontend::ProjectOopMirNode* node, std::string& error)
 {
+        if (node->children.size() == 1U)
+        {
+            const auto* expression = node->children.front().get();
+            if (expression != nullptr && expression->kind == frontend::ProjectOopMirNodeKind::ValueConstruct &&
+                expression->targetTypeOrdinal.has_value() &&
+                nameLookup_.cppImportedType(*expression->targetTypeOrdinal) != nullptr)
+                return lowerValueConstruction(expression, error, nullptr, true) != nullptr && error.empty();
+        }
         if (!node->children.empty() &&
             lowerExpression(node->children.front().get(), error) == nullptr &&
             error.empty())
@@ -234,7 +242,18 @@ bool OopLlvmImplementation::lowerLocalDeclarationStatement(
                     LLVMValueRef address = localAddress;
                     if (address == nullptr)
                         return fail(error, "Stage 34 local initialization has no storage");
-                    if (node->children.front()->kind ==
+                    const auto* initializer = node->children.front().get();
+                    const auto cppOrdinal = node->typeKey.starts_with("type:")
+                        ? nameLookup_.typeOrdinalForIdentity(std::string_view(node->typeKey).substr(5))
+                        : std::nullopt;
+                    if (!node->referenceLocal && cppOrdinal && nameLookup_.cppImportedType(*cppOrdinal))
+                    {
+                        if (initializer->kind != frontend::ProjectOopMirNodeKind::ValueConstruct ||
+                            initializer->targetTypeOrdinal != cppOrdinal ||
+                            lowerValueConstruction(initializer, error, nullptr, false, address) == nullptr)
+                            return fail(error, "C++ local requires in-place construction: " + error);
+                    }
+                    else if (node->children.front()->kind ==
                         frontend::ProjectOopMirNodeKind::AggregateInitialize)
                     {
                         if (!initializeAggregateLocalDeclaration(
