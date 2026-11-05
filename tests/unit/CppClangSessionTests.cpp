@@ -637,6 +637,20 @@ int main(int argc, char** argv)
             ok &= expect(!session->sourceFilesSnapshot() && !session->sourceFileContentsSnapshot() &&
                              contains(nestedHeader) && contents && nested != contents->end() && nested->digest == expectedNested,
                          "copied source-file snapshot survives session closure");
+            { std::ofstream file(nestedHeader, std::ios::trunc); file << "struct SestedDependency {};\n"; }
+            auto changedConfig = options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp, "");
+            changedConfig.input = CppFileInput{mainHeader};
+            auto changedSession = open(factory, std::move(changedConfig));
+            auto changedContents = changedSession ? changedSession->sourceFileContentsSnapshot() : std::nullopt;
+            const auto changedNested = changedContents ? std::find_if(changedContents->begin(), changedContents->end(),
+                [&](const auto& item) { return item.path == nestedHeader.lexically_normal(); }) :
+                std::vector<CppSourceFileContent>::const_iterator{};
+            const auto changedRecords = changedSession ? changedSession->recordsSnapshot() : std::nullopt;
+            ok &= expect(changedContents && changedNested != changedContents->end() &&
+                         changedNested->size == 28 && changedNested->digest != expectedNested &&
+                         changedRecords && recordByName(*changedRecords, "SestedDependency") &&
+                         !recordByName(*changedRecords, "NestedDependency"),
+                         "reopening observes a same-size transitive header change and updated declarations");
         }
     }
     {
