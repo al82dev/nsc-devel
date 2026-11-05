@@ -2086,8 +2086,9 @@ bool ProjectCompilation::materializePrecompiledUnit(
     precompiledSyntaxCacheKeysByUnit_.resize(units_.size());
     precompiledSyntaxCacheHitsByUnit_.resize(units_.size());
     std::string& syntaxCacheKey = precompiledSyntaxCacheKeysByUnit_.back();
-    syntaxCacheKey = precompiledSyntaxCacheKey(module.productCacheKey, sourceOrdinal);
-    const bool hasPublishedSyntax = !module.productSidecarPath.empty();
+    if (!experimentalCppLifetimeMethodProvider_ && !experimentalCppInstanceMethodProvider_ && !experimentalCppInstanceFieldProvider_ && !experimentalCppStaticMethodProvider_ && !experimentalCppStaticFieldProvider_)
+        syntaxCacheKey = precompiledSyntaxCacheKey(module.productCacheKey, sourceOrdinal, experimentalCppImportedTypes_);
+    const bool hasPublishedSyntax = !experimentalCppLifetimeMethodProvider_ && !experimentalCppInstanceMethodProvider_ && !experimentalCppInstanceFieldProvider_ && !experimentalCppStaticMethodProvider_ && !experimentalCppStaticFieldProvider_ && experimentalCppImportedTypes_.empty() && !module.productSidecarPath.empty();
     if (hasPublishedSyntax && !restorePublishedPrecompiledSyntaxUnit(
             *units_.back(), publishedSyntaxProduct, productName, loadError))
     {
