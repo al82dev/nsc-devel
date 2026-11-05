@@ -2258,5 +2258,51 @@ int main(int argc, char** argv)
         ok &= expect(!namespaceSession->namespacesSnapshot() && namespaces && count("reopened::second") == 1,
                      "copied namespace declarations survive session closure");
     }
+    {
+        auto identitySession = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+            "namespace alpha { struct Node; using Alias = Node; int direct(Node*); int alias(Alias*); "
+            "struct Outer { struct Inner; }; int nested(Outer::Inner*); } "
+            "namespace { struct Hidden; int hidden(Hidden*); } "
+            "template<class T> struct Box {}; int specialized(Box<int>*);\n"));
+        const auto functions = identitySession ? identitySession->freeFunctionsSnapshot() : std::nullopt;
+        const auto recordIdentity = [&](std::string_view name) -> const CppRecordTypeIdentity* {
+            if (!functions) return nullptr;
+            for (const auto& function : *functions)
+                if (function.name == name && function.parameters.size() == 1 &&
+                    function.parameters[0].type.element && function.parameters[0].type.element->recordIdentity)
+                    return &*function.parameters[0].type.element->recordIdentity;
+            return nullptr;
+        };
+        const auto* direct = recordIdentity("direct");
+        const auto* alias = recordIdentity("alias");
+        const auto* nestedIdentity = recordIdentity("nested");
+        const auto* hidden = recordIdentity("hidden");
+        const auto* specialized = recordIdentity("specialized");
+        ok &= expect(direct && alias && direct->name == "Node" && alias->name == "Node" &&
+                     direct->namespaceSegments == std::vector<std::string>{"alpha"} &&
+                     direct->namespaceSegments == alias->namespaceSegments && !direct->anonymousContext &&
+                     nestedIdentity && nestedIdentity->name == "Inner" &&
+                     nestedIdentity->namespaceSegments == std::vector<std::string>{"alpha"} &&
+                     nestedIdentity->containingRecords == std::vector<std::string>{"Outer"} &&
+                     hidden && hidden->anonymousContext && specialized && specialized->specializationContext,
+                     "record pointer signatures retain canonical identity, nesting, aliases and restricted contexts");
+        const auto records = identitySession ? identitySession->recordsSnapshot() : std::nullopt;
+        bool matchedNode = false, matchedNested = false, restrictedRejected = false;
+        if (functions && records)
+            for (const auto& function : *functions)
+            {
+                if (function.parameters.size() != 1 || !function.parameters[0].type.element) continue;
+                const auto& type = *function.parameters[0].type.element;
+                const auto projected = projectCppRecordTypeIdentity(type, "Semantic");
+                const auto* declaration = function.name == "direct" ? recordByName(*records, "alpha::Node") :
+                    function.name == "nested" ? recordByName(*records, "alpha::Outer::Inner") : nullptr;
+                const auto expected = declaration ? projectCppRecordIdentity(*declaration, "Semantic") : std::nullopt;
+                if (function.name == "direct") matchedNode = projected && expected && projected->key() == expected->key();
+                if (function.name == "nested") matchedNested = projected && expected && projected->key() == expected->key();
+                if (function.name == "specialized") restrictedRejected = !projected;
+            }
+        ok &= expect(matchedNode && matchedNested && restrictedRejected,
+                     "record identities from function types match inventory identities without string parsing");
+    }
     return ok ? 0 : 1;
 }
