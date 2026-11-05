@@ -1140,12 +1140,20 @@ bool commitDynamicLibraryProduct(const std::filesystem::path &destination,
         error << "nsc: error: runtime packaging failed: " << referenceError << '\n';
         return false;
     }
+    bool protectExistingRuntimes = false;
+    if (!validatePackagedCppRuntimeDestinations(compilation, runtimeLibraries, packagedRuntimes,
+                                                destination.parent_path(), protectExistingRuntimes, referenceError))
+    {
+        removePackagedFiles(packagedRuntimes);
+        error << "nsc: error: C/C++ runtime output preflight failed: " << referenceError << '\n';
+        return false;
+    }
     if (publishPdb && !artifactPublisher.addDynamicLibraryPdb(publication, buildError))
     {
         error << "nsc: error: DLL PDB output preflight failed: " << buildError << '\n';
         return false;
     }
-    if (!artifactPublisher.addRuntimeArtifacts(destination.parent_path(), packagedRuntimes, buildError))
+    if (!artifactPublisher.addRuntimeArtifacts(destination.parent_path(), packagedRuntimes, buildError, protectExistingRuntimes))
     {
         error << "nsc: error: DLL runtime output preflight failed: " << buildError << '\n';
         return false;
