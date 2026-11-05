@@ -1635,6 +1635,12 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, el proyecto `pruebas-tanda-08-record-c` y registros Markdown. Mantener rechazo de límites desconocidos y calificadores no representados; no modificar NSLink ni el árbol LLVM.
 - Verificar escritura y lectura de un arreglo de una dimensión y una matriz mediante NativeSharp y una función C; compilar y validar agrupadamente. No cerrar T08-004 ni T08-016 por estos casos.
 
+### No reasignación de arreglo C
+
+- Objetivo: comprobar que un arreglo global C no se pueda reasignar como una variable escalar, aunque sus elementos sí sean modificables.
+- Presupuesto: `ArrayAssign.ns.txt` y `validar.cmd` del proyecto `pruebas-tanda-08-record-c`, más registro Markdown. Si el caso compila o produce un diagnóstico ajeno, investigar la causa antes de modificar producción.
+- Validar junto al acceso indexado y a la batería agrupada. No usar un fallo arbitrario como prueba del contrato.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.

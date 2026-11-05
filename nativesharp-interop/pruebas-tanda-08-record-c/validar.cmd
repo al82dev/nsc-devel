@@ -35,5 +35,11 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if errorlevel 1 exit /b 1
 "%DEST%\program.exe"
 if errorlevel 1 exit /b 1
+copy /y "%~dp0ArrayAssign.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\array-assign.exe" > "%DEST%\array-assign.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /i /c:"not assignable" /c:"not reassignable" "%DEST%\array-assign.log" >nul
+if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

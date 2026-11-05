@@ -1,0 +1,5 @@
+int Main()
+{
+    shared_array = shared_array;
+    return 0;
+}
