@@ -584,6 +584,84 @@ bool parseLibraryReferenceItem(
     return true;
 }
 
+bool parseCppLibraryReferenceItem(
+    const SimpleXmlElement& item, ProjectDescriptor& descriptor, std::string& error)
+{
+    if (!hasOnlyAttributes(item, {"Header", "Language", "Standard", "Library", "Runtime"}, error))
+        return false;
+    if (!trim(item.text).empty())
+    {
+        error = "CppLibraryReference does not accept text";
+        return false;
+    }
+    const auto* header = attribute(item, "Header");
+    const auto* language = attribute(item, "Language");
+    const auto* standard = attribute(item, "Standard");
+    if (!header || trim(*header).empty() || !language || !standard || trim(*standard).empty())
+    {
+        error = "CppLibraryReference requires non-empty Header, Language and Standard attributes";
+        return false;
+    }
+    CppLibraryReferenceDescriptor reference;
+    reference.header = trim(*header);
+    reference.languageStandard = trim(*standard);
+    if (trim(*language) == "C") reference.language = interop::CppLanguageMode::C;
+    else if (trim(*language) == "C++") reference.language = interop::CppLanguageMode::Cpp;
+    else
+    {
+        error = "CppLibraryReference Language must be C or C++";
+        return false;
+    }
+    if (const auto* library = attribute(item, "Library"))
+    {
+        if (trim(*library).empty()) { error = "CppLibraryReference Library cannot be empty"; return false; }
+        reference.library = trim(*library);
+    }
+    if (const auto* runtime = attribute(item, "Runtime"))
+    {
+        if (trim(*runtime).empty() || !reference.library)
+        {
+            error = "CppLibraryReference Runtime requires a non-empty Library and Runtime";
+            return false;
+        }
+        reference.runtime = trim(*runtime);
+    }
+    for (const auto& child : item.children)
+    {
+        if (!validateEmptyBody(child, error)) return false;
+        if (child.name == "IncludeDirectory")
+        {
+            if (!hasOnlyAttributes(child, {"Path", "Kind"}, error)) return false;
+            const auto* path = attribute(child, "Path");
+            const auto* kind = attribute(child, "Kind");
+            if (!path || trim(*path).empty()) { error = "IncludeDirectory requires Path"; return false; }
+            interop::CppIncludeKind includeKind = interop::CppIncludeKind::User;
+            if (kind && trim(*kind) == "System") includeKind = interop::CppIncludeKind::System;
+            else if (kind && trim(*kind) != "User")
+            {
+                error = "IncludeDirectory Kind must be User or System";
+                return false;
+            }
+            reference.includePaths.push_back({std::filesystem::path(trim(*path)), includeKind});
+        }
+        else if (child.name == "Define" || child.name == "Undefine")
+        {
+            if (!hasOnlyAttributes(child, {"Value"}, error)) return false;
+            const auto* value = attribute(child, "Value");
+            if (!value || trim(*value).empty()) { error = child.name + " requires Value"; return false; }
+            reference.macros.push_back({child.name == "Define" ? interop::CppMacroAction::Define :
+                interop::CppMacroAction::Undefine, trim(*value)});
+        }
+        else
+        {
+            error = "unsupported CppLibraryReference child '" + child.name + "'";
+            return false;
+        }
+    }
+    descriptor.cppLibraryReferences.push_back(std::move(reference));
+    return true;
+}
+
 bool parseSdkReferenceItem(
     const SimpleXmlElement& item,
     ProjectDescriptor& descriptor,
@@ -662,6 +740,10 @@ bool parseItemGroup(
         else if (item.name == "LibraryReference")
         {
             if (!parseLibraryReferenceItem(item, descriptor, error)) return false;
+        }
+        else if (item.name == "CppLibraryReference")
+        {
+            if (!parseCppLibraryReferenceItem(item, descriptor, error)) return false;
         }
         else if (item.name == "SdkReference")
         {
@@ -1145,6 +1227,57 @@ std::optional<std::vector<LibraryReference>> loadLibraryReferences(
     return libraryReferences;
 }
 
+std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
+    const std::filesystem::path& projectDirectory, const ProjectDescriptor& descriptor,
+    const ProjectLoadOptions& options, std::string& error)
+{
+    std::vector<CppLibraryReference> result;
+    for (const auto& input : descriptor.cppLibraryReferences)
+    {
+        CppLibraryReference reference;
+        std::error_code ec;
+        reference.headerPath = std::filesystem::weakly_canonical(projectDirectory / input.header, ec);
+        if (ec || !std::filesystem::is_regular_file(reference.headerPath, ec) || ec)
+        {
+            error = "CppLibraryReference header does not exist: '" + input.header + "'";
+            return std::nullopt;
+        }
+        if (input.library)
+        {
+            const auto library = resolveLibraryReferencePath(projectDirectory, descriptor, options, *input.library);
+            if (!loadLibraryArtifact(library, reference.libraryPath, error)) return std::nullopt;
+        }
+        if (input.runtime)
+        {
+            const auto runtime = resolveLibraryReferencePath(projectDirectory, descriptor, options, *input.runtime);
+            ec.clear();
+            reference.runtimePath = std::filesystem::weakly_canonical(runtime, ec);
+            if (ec || !std::filesystem::is_regular_file(reference.runtimePath, ec) || ec ||
+                !equalsFolded(reference.runtimePath.extension().string(), ".dll"))
+            {
+                error = "CppLibraryReference Runtime must refer to an existing .dll file: '" + *input.runtime + "'";
+                return std::nullopt;
+            }
+        }
+        reference.language = input.language;
+        reference.languageStandard = input.languageStandard;
+        reference.macros = input.macros;
+        for (const auto& include : input.includePaths)
+        {
+            ec.clear();
+            const auto path = std::filesystem::weakly_canonical(projectDirectory / include.path, ec);
+            if (ec || !std::filesystem::is_directory(path, ec) || ec)
+            {
+                error = "CppLibraryReference include directory does not exist: '" + include.path.string() + "'";
+                return std::nullopt;
+            }
+            reference.includePaths.push_back({path, include.kind});
+        }
+        result.push_back(std::move(reference));
+    }
+    return result;
+}
+
 std::optional<std::vector<SdkManifest>> loadSdkReferences(
     const std::filesystem::path& projectDirectory,
     const ProjectDescriptor& descriptor,
@@ -1266,6 +1399,10 @@ std::optional<Project> ProjectLoader::load(
         loadLibraryReferences(projectDirectory, descriptor, effectiveOptions, error);
     if (!libraryReferences.has_value()) return std::nullopt;
 
+    std::optional<std::vector<CppLibraryReference>> cppLibraryReferences =
+        loadCppLibraryReferences(projectDirectory, descriptor, effectiveOptions, error);
+    if (!cppLibraryReferences.has_value()) return std::nullopt;
+
     std::optional<std::vector<SdkManifest>> sdkReferences =
         loadSdkReferences(projectDirectory, descriptor, error);
     if (!sdkReferences.has_value()) return std::nullopt;
@@ -1281,7 +1418,8 @@ std::optional<Project> ProjectLoader::load(
         descriptor.panicProfile.value_or(language::PanicProfile::Abort),
         descriptor.panicHandler.value_or(std::string{}),
         descriptor.packageName.value_or(moduleName),
-        std::move(descriptor.friendModules));
+        std::move(descriptor.friendModules),
+        std::move(*cppLibraryReferences));
 }
 
 ProjectLoaderStatistics ProjectLoader::statistics() const
