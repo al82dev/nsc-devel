@@ -2193,6 +2193,7 @@ int main(int argc, char** argv)
                                   "struct Pair { char a; int b; }; struct Incomplete;\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
                                   "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
+                                  "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
                                   "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; enum { CAnonymous = 9 };\n"
@@ -2379,6 +2380,24 @@ int main(int argc, char** argv)
                 return value.qualifiedName == "bridge_probe";
             }) == 1, "repeated declarations share one canonical function");
         cRecords = c->recordsSnapshot();
+        const auto* anonymousStructAlias = aliasByName("AnonStruct");
+        const auto* anonymousUnionAlias = aliasByName("AnonUnion");
+        const auto anonymousStructType = anonymousStructAlias
+            ? nativesharp::frontend::cppAliasRecordType(anonymousStructAlias->underlyingType) : std::nullopt;
+        const auto anonymousUnionType = anonymousUnionAlias
+            ? nativesharp::frontend::cppAliasRecordType(anonymousUnionAlias->underlyingType) : std::nullopt;
+        bool capturedAnonymousStruct = false, capturedAnonymousUnion = false;
+        if (cRecords)
+            for (const auto& record : *cRecords)
+            {
+                capturedAnonymousStruct |= record.name == "AnonStruct" && record.kind == CppRecordKind::Struct &&
+                    record.complete && record.fields.size() == 1 && record.fields[0].name == "value";
+                capturedAnonymousUnion |= record.name == "AnonUnion" && record.kind == CppRecordKind::Union &&
+                    record.complete && record.fields.size() == 2;
+            }
+        ok &= expect(capturedAnonymousStruct && capturedAnonymousUnion && anonymousStructType && anonymousUnionType &&
+                     anonymousStructType->name == "AnonStruct" && anonymousUnionType->name == "AnonUnion",
+                     "C anonymous typedef records retain matching declaration and type identities");
         cGlobals = c->globalsSnapshot();
         const auto* global = cGlobals ? globalByName(*cGlobals, "c_global") : nullptr;
         const auto* local = cGlobals ? globalByName(*cGlobals, "c_local") : nullptr;
