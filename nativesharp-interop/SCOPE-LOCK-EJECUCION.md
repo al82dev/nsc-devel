@@ -1561,3 +1561,9 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Objetivo: verificar que parámetros y resultados C `float` y `double`, también por typedef, se importan y usan desde NativeSharp con valores exactamente representables.
 - Presupuesto: `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-callback`, más registro Markdown. No presupone soporte de `long double` ni otras plataformas.
 - Verificación: la biblioteca C compilada por Clang y el ejecutable NativeSharp del proyecto deben producir los resultados esperados en la batería agrupada. No cerrar T08-007 con esta muestra.
+
+## Tanda 08: callback C con parámetro y resultado enum
+
+- Objetivo: comprobar la ejecución de un callback NativeSharp cuya firma recibe y devuelve un enum C y que es invocado por una función C.
+- Presupuesto: `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. No modificar el compilador antes de observar el resultado ni cambiar contratos ajenos.
+- Verificación: construcción incremental y batería agrupada de la tanda; un resultado correcto cubre este fixture de Windows x64 O0 y no cierra T08-009 ni T08-017.
