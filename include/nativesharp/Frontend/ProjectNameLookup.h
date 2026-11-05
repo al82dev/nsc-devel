@@ -79,6 +79,12 @@ struct CppImportedObjectLayout final
     std::uint64_t alignmentBytes;
 };
 
+struct CppImportedEnumBase final
+{
+    lexer::TokenKind token;
+    std::string name;
+};
+
 struct CppImportedTypeDeclaration final
 {
     compilation::TypeIdentity identity;
@@ -90,6 +96,8 @@ struct CppImportedTypeDeclaration final
     std::optional<CppImportedObjectLayout> objectLayout = std::nullopt;
     // Bounds for accessing verified fields by pointer; never authorizes value storage or lifetime.
     std::optional<CppImportedObjectLayout> memberAccessLayout = std::nullopt;
+    // Present only for a complete imported enum with a verified integer representation.
+    std::optional<CppImportedEnumBase> enumBase = std::nullopt;
 };
 
 class ProjectNameLookup final
@@ -598,6 +606,8 @@ private:
     std::vector<std::unique_ptr<ModuleDeclarationSpace>> modules_;
     std::vector<std::pair<std::size_t, std::string>> importedNamespaces_;
     std::vector<CppImportedTypeDeclaration> cppImportedTypes_;
+    std::unique_ptr<ast::AstArena> cppImportedSyntax_;
+    std::vector<const ast::AstNode*> cppImportedSyntheticSyntax_;
     std::vector<CppImportedTypeAlias> cppImportedTypeAliases_;
     std::unordered_map<std::size_t, std::size_t> cppImportedTypeIndices_;
     std::vector<PendingTypeDeclaration> pendingTypes_;
