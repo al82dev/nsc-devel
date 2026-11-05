@@ -174,6 +174,7 @@ struct CppRecordObservation
     CppRecordGroups groups;
     CppRecordBindingSelection selection;
     std::vector<frontend::CppImportedTypeDeclaration> referencedEnumTypes;
+    std::vector<std::string> collidingEnumIdentities;
     std::vector<std::size_t> deferredGroups;
     std::vector<std::size_t> collidingGroups;
     std::vector<std::size_t> referencedCollidingGroups;

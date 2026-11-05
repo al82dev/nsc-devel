@@ -818,6 +818,7 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
         if (native || collidesWithRecord) collidingEnumIdentities.insert(enumeration.identity.key());
         else filteredTypes.push_back(std::move(enumeration));
     }
+    result.collidingEnumIdentities.assign(collidingEnumIdentities.begin(), collidingEnumIdentities.end());
     if (!lookup.setImportedNamespaces(std::move(std::get<std::vector<std::pair<std::size_t, std::string>>>(visible))) ||
         !lookup.setCppImportedTypes(std::move(filteredTypes)) ||
         !lookup.setCppImportedTypeAliases(std::move(aliases)))
@@ -928,6 +929,9 @@ bool selectExperimentalCppRecordTypesForCompilation(
             });
             if (candidate == enumCandidates.end()) continue;
             if (!candidate->deferredImportError.empty()) { error = candidate->deferredImportError; return false; }
+            if (std::find(observation.collidingEnumIdentities.begin(), observation.collidingEnumIdentities.end(),
+                          candidate->identity.key()) != observation.collidingEnumIdentities.end())
+            { error = "C enum field conflicts with another type: " + candidate->identity.name(); return false; }
             if (selectedRecordIdentities.contains(candidate->identity.key()))
             { error = "C enum field conflicts with a selected record: " + candidate->identity.name(); return false; }
             addEnum(*candidate);
