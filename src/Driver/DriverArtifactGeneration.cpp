@@ -313,15 +313,34 @@ bool publishExecutableArtifact(std::string_view outputPath, const frontend::Proj
         error << "nsc: error: OOP Windows executable generation failed: " << buildError << '\n';
         return false;
     }
+    if (!appendReferencedCppRuntimes(compilation, builder.info(), runtimeLibraries, referenceError))
+    {
+        error << "nsc: error: C/C++ runtime selection failed: " << referenceError << '\n';
+        return false;
+    }
     if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.info(), referenceError))
     {
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
+        return false;
+    }
+    if (!validateCppRuntimeDestinations(compilation, runtimeLibraries,
+                                        destination.parent_path(), referenceError))
+    {
+        error << "nsc: error: C/C++ runtime output preflight failed: " << referenceError << '\n';
         return false;
     }
     if (!packageRuntimeClosure(runtimeLibraries, publication.stage, packagedRuntimes, referenceError))
     {
         removePackagedFiles(packagedRuntimes);
         error << "nsc: error: runtime packaging failed: " << referenceError << '\n';
+        return false;
+    }
+    bool protectExistingRuntimes = false;
+    if (!validatePackagedCppRuntimeDestinations(compilation, runtimeLibraries, packagedRuntimes,
+                                                destination.parent_path(), protectExistingRuntimes, referenceError))
+    {
+        removePackagedFiles(packagedRuntimes);
+        error << "nsc: error: C/C++ runtime output preflight failed: " << referenceError << '\n';
         return false;
     }
     if (publishPdb && !artifactPublisher.addExecutablePdb(publication, buildError))
