@@ -1,0 +1,12 @@
+int project_sum(int left, int right);
+extern int project_shared;
+extern volatile int project_flag;
+extern const int project_limit;
+extern const volatile int project_status;
+extern int* project_pointer;
+extern int* const project_fixed_pointer;
+extern int* volatile project_volatile_pointer;
+extern const int* project_readonly_pointer;
+int project_read_pointer_value(void);
+int project_read_shared(void);
+int project_read_flag(void);
