@@ -1315,11 +1315,14 @@ int main(int argc, char** argv)
                                 std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1), states, enumError);
                             const bool conflictingEnums = conflicted && states.size() == 1 &&
                                 !states[0].cppImportError.empty();
+                            enumTypes.clear();
+                            const bool deferredType = provideCppEnumTypes(finalGraph, enumGroups, enumTypes, enumError) &&
+                                enumTypes.size() == 1 && !enumTypes[0].deferredImportError.empty();
                             enumGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
                                 CppLanguageMode::C, "extern int Choice;\n")));
                             const bool combined = provideCppSemanticValues(finalGraph, enumGroups,
                                 std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1), states, enumError);
-                            ok &= expect(correct && correctType && conflictingEnums && combined && states.size() == 1 &&
+                            ok &= expect(correct && correctType && conflictingEnums && deferredType && combined && states.size() == 1 &&
                                          states[0].cppImportError.find("conflicts") != std::string::npos,
                                          "C enum provider preserves value and reports conflicting observations");
                         }
