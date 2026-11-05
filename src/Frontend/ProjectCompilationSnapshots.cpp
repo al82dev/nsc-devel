@@ -189,9 +189,102 @@ bool ProjectCompilation::buildMemberModel(std::string& error)
 //     reference compilation of a producer, with the FileId of the captured API unit.
 // ES: Construye el modelo de funciones de namespace con los snapshots aceptados (plan 3.4) y, en la
 //     compilación de referencia de un productor, con el FileId de la unidad de API capturada.
-bool ProjectCompilation::buildNamespaceFunctionModel()
+bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
 {
     namespaceFunctionModel_ = std::make_unique<ProjectNamespaceFunctionModel>();
+    std::vector<NamespaceStateSymbol> importedStates = experimentalCppImportedStates_;
+    if (cppFunctionProvider_ || cppGlobalProvider_)
+    {
+        ProjectNamespaceFunctionModel observer;
+        observer.setCaptureCppFunctionDemands(true);
+        observer.setPrecompiledSnapshots(precompiledSnapshots_);
+        if (precompiledSnapshotCapture_.has_value())
+            observer.setPrecompiledSnapshotCaptureFile(
+                units_[precompiledSnapshotCapture_->unitOrdinal]->fileId());
+        diagnostics::DiagnosticEngine observerDiagnostics;
+        if (!observer.build(*nameLookup_, *memberModel_, units_, observerDiagnostics, genericModel_.get()))
+        {
+            namespaceFunctionModel_->setPrecompiledSnapshots(precompiledSnapshots_);
+            if (precompiledSnapshotCapture_.has_value())
+                namespaceFunctionModel_->setPrecompiledSnapshotCaptureFile(
+                    units_[precompiledSnapshotCapture_->unitOrdinal]->fileId());
+            namespaceFunctionModel_->build(*nameLookup_, *memberModel_, units_, diagnostics_, genericModel_.get());
+            return false;
+        }
+        if (cppFunctionProvider_)
+        {
+        std::vector<NamespaceFunctionSymbol> functions;
+        std::vector<interop::CppDeferredFunctionCandidate> deferred;
+        if (!cppFunctionProvider_(*projectGraph_, cppProjectSessions_, units_,
+                                  observer.cppFunctionDemands(), functions, deferred, error))
+            return false;
+        for (const auto& candidate : deferred)
+        {
+            const auto demands = observer.cppFunctionDemands();
+            const auto demand = std::find_if(demands.begin(), demands.end(), [&](const auto& item) {
+                if (item.syntax != candidate.syntax || item.projectOrdinal != candidate.consumerProject ||
+                    item.directCall != candidate.directCall ||
+                    std::find(item.visibleProjects.begin(), item.visibleProjects.end(), candidate.declarationProject) ==
+                        item.visibleProjects.end()) return false;
+                for (const auto& ns : item.lookupNamespaces)
+                {
+                    std::string qualified;
+                    for (const char c : ns) qualified += c == '.' ? "::" : std::string(1, c);
+                    if (!qualified.empty()) qualified += "::";
+                    qualified += item.lookupName;
+                    if (qualified == candidate.declaration.qualifiedName) return true;
+                }
+                return false;
+            });
+            const auto validReference = [&](std::size_t project, const std::filesystem::path& file,
+                                            std::size_t reference) {
+                if (project >= projectGraph_->projects().size()) return false;
+                std::error_code ownerError;
+                const auto& owner = projectGraph_->projects()[project].projectFile();
+                if (!std::filesystem::equivalent(file, owner, ownerError) || ownerError) return false;
+                for (const auto& group : cppProjectSessions_)
+                {
+                    std::error_code groupError;
+                    if (std::filesystem::equivalent(group.projectFile, owner, groupError) && !groupError &&
+                        reference < group.sessions.size()) return true;
+                }
+                return false;
+            };
+            bool validOrigins = validReference(candidate.declarationProject, candidate.declarationProjectFile,
+                                                candidate.referenceIndex);
+            for (const auto& origin : candidate.conflictingOrigins)
+            {
+                if (origin.declarationProject != candidate.declarationProject ||
+                    origin.declaration.qualifiedName.empty() || origin.declaration.canonicalFunctionType.empty() ||
+                    !validReference(origin.declarationProject, origin.declarationProjectFile, origin.referenceIndex))
+                    validOrigins = false;
+            }
+            if (demand == demands.end() || !validOrigins)
+            {
+                error = "deferred C/C++ function does not belong to a visible demand";
+                return false;
+            }
+        }
+        if (!namespaceFunctionModel_->setCppImportedFunctions(std::move(functions), error)) return false;
+        if (!namespaceFunctionModel_->setCppDeferredFunctions(std::move(deferred), error)) return false;
+        }
+        else if (!cppImportedFunctions_.empty() &&
+                 !namespaceFunctionModel_->setCppImportedFunctions(cppImportedFunctions_, error)) return false;
+        if (cppGlobalProvider_)
+        {
+            std::vector<NamespaceStateSymbol> globals;
+            if (!cppGlobalProvider_(*projectGraph_, cppProjectSessions_, observer.cppFunctionDemands(),
+                                    globals, error)) return false;
+            importedStates.insert(importedStates.end(),
+                                  std::make_move_iterator(globals.begin()), std::make_move_iterator(globals.end()));
+        }
+    }
+    else if (!cppImportedFunctions_.empty())
+    {
+        if (!namespaceFunctionModel_->setCppImportedFunctions(cppImportedFunctions_, error))
+            return false;
+    }
+    if (!namespaceFunctionModel_->setCppImportedStates(std::move(importedStates), error)) return false;
     namespaceFunctionModel_->setPrecompiledSnapshots(precompiledSnapshots_);
     if (precompiledSnapshotCapture_.has_value())
     {
