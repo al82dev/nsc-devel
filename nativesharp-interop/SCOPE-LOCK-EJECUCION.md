@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Tanda 07: referencias y dependencias C/C++
+
+Se trabaja en `A:/nsc-devel`: carga y modelo de proyectos, sesiones y procedencia
+de declaraciones, controlador, pruebas y documentación `nativesharp-interop`.
+Los productos y temporales se mantienen en A:. LLVM/Clang permanece de solo
+lectura, NSLink no se modifica y no hay despliegue en C:. Primero se audita el
+contrato existente y se implementa la tanda en conjunto; cada cambio e ítem se
+registra por separado y la validación incremental se agrupa al final. Las
+limitaciones de caché y de formatos de importación se mantienen explícitas hasta
+contar con evidencia que permita retirarlas.
+
 ## Tanda 06: validación de sesiones
 
 La escritura se limita a NSC: configuración CMake, pruebas de sesión y sus
