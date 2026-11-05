@@ -549,6 +549,19 @@ std::vector<std::uint8_t> encodePayload(
     encodeErrorContracts(writer, metadata);
     encodeGenericContracts(writer, metadata);
     if (metadata.formatMinor >= 39) writer.u32(metadata.languageFeatureFlags);
+    if (metadata.formatMinor >= 41)
+    {
+        writer.u32(static_cast<std::uint32_t>(metadata.cppBinaryDependencies.size()));
+        for (const auto& dependency : metadata.cppBinaryDependencies)
+        {
+            writer.text(dependency.libraryFileName);
+            writer.u64(dependency.librarySize);
+            writer.raw(dependency.libraryDigest);
+            writer.text(dependency.runtimeFileName);
+            writer.u64(dependency.runtimeSize);
+            writer.raw(dependency.runtimeDigest);
+        }
+    }
     return writer.bytes();
 }
 
@@ -1948,6 +1961,22 @@ bool decodePayload(
         {
             error = "truncated or invalid metadata language-feature catalogue";
             return false;
+        }
+    }
+    if (metadata.formatMinor >= 41)
+    {
+        std::uint32_t count = 0;
+        if (!readCount(reader, count)) { error = "invalid C/C++ binary-dependency count"; return false; }
+        metadata.cppBinaryDependencies.clear();
+        metadata.cppBinaryDependencies.reserve(count);
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            LibraryMetadataCppBinaryDependency dependency;
+            if (!reader.text(dependency.libraryFileName) || !reader.u64(dependency.librarySize) ||
+                !reader.raw(dependency.libraryDigest) || !reader.text(dependency.runtimeFileName) ||
+                !reader.u64(dependency.runtimeSize) || !reader.raw(dependency.runtimeDigest))
+            { error = "truncated C/C++ binary-dependency metadata"; return false; }
+            metadata.cppBinaryDependencies.push_back(std::move(dependency));
         }
     }
     if (!reader.atEnd())
