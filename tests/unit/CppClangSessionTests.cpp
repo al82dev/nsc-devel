@@ -6820,5 +6820,69 @@ int main(int argc, char** argv)
                      compilation.cppInteropSession()->topLevelDeclarationCount().has_value(),
                      "injected Clang AST remains accessible");
     }
+    if (argc == 5 && std::string_view(argv[4]) != "bundle-link" && std::string_view(argv[4]) != "lifetime")
+    {
+        const std::filesystem::path project = std::filesystem::absolute(argv[4]);
+        nativesharp::compilation::ProjectLoadOptions loadOptions;
+        std::string error;
+        nativesharp::compilation::ProjectGraphLoader loader(1, {}, loadOptions);
+        auto graph = loader.load(project, error);
+        nativesharp::frontend::ProjectCompilation compilation;
+        std::optional<CppRecordObservationRunResult> observedInFrontend;
+        int observerCalls = 0;
+        const bool observerConfigured = compilation.setCppRecordObserver([&](const auto& current) {
+            ++observerCalls;
+            observedInFrontend = observeCppRecords(current);
+        }, error);
+        std::vector<std::string> snapshotReports;
+        compilation.setReportSink([&snapshotReports](std::string_view line) { snapshotReports.emplace_back(line); });
+        CppProjectSessions group;
+        group.projectFile = project;
+        group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+            CppLanguageMode::Cpp, "namespace NativeProbe { struct Unused {}; }\n")));
+        std::vector<CppProjectSessions> groups;
+        groups.push_back(std::move(group));
+        const bool ready = observerConfigured && graph && compilation.setCppProjectSessions(std::move(groups), error) &&
+            nativesharp::compilation::preparePrecompiledProject(std::move(*graph), loadOptions, compilation, error) &&
+            compilation.compileProjectNames(project, error);
+        const auto observed = ready && observedInFrontend ? std::move(*observedInFrontend) :
+            CppRecordObservationRunResult{CppRecordObservationFailure{error}};
+        const auto* result = std::get_if<CppRecordObservation>(&observed);
+        bool installed = ready && !compilation.precompiledSnapshots().empty() && compilation.nameLookup() &&
+            compilation.nameLookup()->installedSnapshotUnitCount() > 0;
+        bool resolved = false;
+        if (installed)
+            for (const auto& binding : compilation.nameLookup()->bindings())
+                resolved |= binding.writtenName == "Published.Value" && binding.targetTypeOrdinal.has_value();
+        if (!result)
+            if (const auto* failure = std::get_if<CppRecordObservationFailure>(&observed))
+                std::cerr << "published snapshot observation: " << failure->message << '\n';
+        if (!(installed && resolved && result))
+        {
+            std::cerr << "published snapshot ready=" << ready << " installed=" << installed
+                      << " resolved=" << resolved << " snapshot-count=" << compilation.precompiledSnapshots().size()
+                      << " error=" << error << '\n';
+            for (const auto& report : snapshotReports) std::cerr << report << '\n';
+            for (const auto& item : compilation.precompiledModules())
+                std::cerr << "module " << item.moduleName << " sidecar=" << item.productSidecarPath.string()
+                          << " snapshot-bytes=" << item.publicApiSnapshot.size() << '\n';
+            if (compilation.projectGraph() && compilation.projectGraph()->rootProject())
+                for (const auto& ref : compilation.projectGraph()->rootProject()->libraryReferences())
+                {
+                    std::cerr << "reference sidecar=" << ref.productSidecarPath.string() << '\n';
+                    const auto* meta = compilation.libraryMetadataRepository().load(ref.metadataPath, error);
+                    nativesharp::compilation::PrecompiledProductSidecar sidecar;
+                    if (meta && !ref.productSidecarPath.empty())
+                    {
+                        const bool read = nativesharp::compilation::PrecompiledProductSidecarCodec::read(
+                            ref.productSidecarPath, meta->bytes(), sidecar, error);
+                        std::cerr << "sidecar read=" << read << " snapshot-bytes=" << sidecar.publicApiSnapshot.size()
+                                  << " error=" << error << '\n';
+                    }
+                }
+        }
+        ok &= expect(installed && resolved && result && observerCalls == 1 && !compilation.diagnostics().hasErrors(),
+                     "published semantic snapshot installs and remains usable in isolated C++ observation");
+    }
     return ok ? 0 : 1;
 }
