@@ -3,10 +3,12 @@
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
+#include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 
 #include <algorithm>
 #include <charconv>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -218,6 +220,20 @@ bool provideCppSemanticGlobals(
                 result.push_back(std::move(state));
             }
     states = std::move(result);
+    error.clear();
+    return true;
+}
+
+bool provideCppInteropTypes(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects,
+    std::vector<frontend::CppImportedTypeDeclaration>& types, std::string& error)
+{
+    std::vector<frontend::CppImportedTypeDeclaration> records;
+    std::vector<frontend::CppImportedTypeDeclaration> enums;
+    if (!provideExperimentalCppRecordCandidates(graph, projects, records, error) ||
+        !provideCppEnumTypes(graph, projects, enums, error)) return false;
+    records.insert(records.end(), std::make_move_iterator(enums.begin()), std::make_move_iterator(enums.end()));
+    types = std::move(records);
     error.clear();
     return true;
 }

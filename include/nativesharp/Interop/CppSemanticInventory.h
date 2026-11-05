@@ -84,6 +84,9 @@ CppSemanticEnumInventoryResult collectCppSemanticEnums(
 bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     std::span<const CppProjectSessions> projects,
     std::vector<frontend::CppImportedTypeDeclaration>& types, std::string& error);
+bool provideCppInteropTypes(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects,
+    std::vector<frontend::CppImportedTypeDeclaration>& types, std::string& error);
 
 struct CppSemanticEnumConstant
 {

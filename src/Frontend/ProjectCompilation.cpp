@@ -1181,6 +1181,9 @@ bool ProjectCompilation::compileProjectNames(
     std::vector<CppImportedTypeDeclaration> selectedCppTypes = experimentalCppImportedTypes_;
     if (experimentalCppTypeSelector_ && !experimentalCppTypeSelector_(*this, selectedCppTypes, loadError))
         return false;
+    if (experimentalCppTypeSelector_)
+        for (const auto& type : experimentalCppImportedTypes_)
+            if (type.kind == NamedTypeDeclarationKind::Enum) selectedCppTypes.push_back(type);
     if (!nameLookup_->setCppImportedTypes(std::move(selectedCppTypes)))
     {
         loadError = "cannot configure experimental C/C++ types";
