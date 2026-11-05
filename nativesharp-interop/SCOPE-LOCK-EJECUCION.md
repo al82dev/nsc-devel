@@ -1661,6 +1661,12 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Conservar `const` aunque Clang lo sitúe en el arreglo o en su elemento, y propagarlo como `isCppReadonly`; verificar escritura rechazada y lectura compartida con C. No cambiar otras rutas de identidad o NSLink.
 - Construir incrementalmente y validar de manera agrupada todos los casos de la tanda; no cerrar T08-015 con estas muestras.
 
+### Dirección de elemento de arreglo C const
+
+- Objetivo: comprobar que no se obtiene un puntero mutable a un elemento `const` importado, aun cuando la escritura directa se rechace.
+- Presupuesto: `ConstArrayAddress.ns.txt` y `validar.cmd` del proyecto `pruebas-tanda-08-record-c`, más registro Markdown. No cambiar producción antes de observar el caso.
+- La compilación debe rechazar la conversión o dirección por motivos de inmutabilidad; validar junto con las demás pruebas.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
