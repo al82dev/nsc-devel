@@ -370,7 +370,40 @@ bool ProjectNameLookup::expandCppTypeAlias(
             else if (signature.callingConvention == "ms_abi") convention = ast::FunctionCallingConventionSyntaxKind::Win64;
             else return report(diagnostics::DiagnosticId::InvalidUsingTarget, "unsupported C callback calling convention");
             auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
-            const auto makeType = [&](const interop::CppType& type) -> ast::TypeSyntax* {
+            const auto makeType = [&](const auto& self, const interop::CppType& type,
+                                      std::size_t depth) -> ast::TypeSyntax* {
+                if (depth >= 64) return nullptr;
+                if (type.kind == interop::CppTypeKind::Pointer && type.sizeBits == 64 &&
+                    !type.isConst && !type.isVolatile && type.element &&
+                    type.element->kind == interop::CppTypeKind::Function && type.element->function &&
+                    type.element->function->hasPrototype)
+                {
+                    const auto& nested = *type.element->function;
+                    auto nestedConvention = ast::FunctionCallingConventionSyntaxKind::NativeSharp;
+                    if (nested.callingConvention == "cdecl") nestedConvention = ast::FunctionCallingConventionSyntaxKind::C;
+                    else if (nested.callingConvention == "stdcall") nestedConvention = ast::FunctionCallingConventionSyntaxKind::StdCall;
+                    else if (nested.callingConvention == "fastcall") nestedConvention = ast::FunctionCallingConventionSyntaxKind::FastCall;
+                    else if (nested.callingConvention == "vectorcall") nestedConvention = ast::FunctionCallingConventionSyntaxKind::VectorCall;
+                    else if (nested.callingConvention == "ms_abi") nestedConvention = ast::FunctionCallingConventionSyntaxKind::Win64;
+                    else return nullptr;
+                    auto* returnType = self(self, nested.returnType, depth + 1);
+                    if (!returnType) return nullptr;
+                    std::vector<ast::TypeSyntax*> arguments;
+                    for (const auto& parameter : nested.parameterTypes)
+                    {
+                        auto* argument = self(self, parameter, depth + 1);
+                        if (!argument) return nullptr;
+                        arguments.push_back(argument);
+                    }
+                    auto* value = arena.make<ast::TypeSyntax>(syntax->range(), lexer::TokenKind::Invalid, "$function");
+                    value->setFunction();
+                    value->setFunctionCarrier(ast::FunctionTypeCarrierSyntaxKind::Pointer);
+                    value->setFunctionCallingConvention(nestedConvention);
+                    value->setFunctionReturnType(returnType);
+                    value->setFunctionVariadic(nested.variadic);
+                    for (auto* argument : arguments) value->addTypeArgument(argument);
+                    return value;
+                }
                 if (const auto builtin = cppAliasBuiltinType(type))
                 {
                     auto* value = arena.make<ast::TypeSyntax>(syntax->range(), builtin->token, std::string(builtin->name));
@@ -396,9 +429,9 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 value->setPointeeConst(enumType ? enumType->pointeeConst : recordType->pointeeConst);
                 return value;
             };
-            auto* result = makeType(signature.returnType);
+            auto* result = makeType(makeType, signature.returnType, 0);
             std::vector<ast::TypeSyntax*> parameters;
-            for (const auto& parameter : signature.parameterTypes) parameters.push_back(makeType(parameter));
+            for (const auto& parameter : signature.parameterTypes) parameters.push_back(makeType(makeType, parameter, 0));
             if (!result || std::find(parameters.begin(), parameters.end(), nullptr) != parameters.end())
                 return report(diagnostics::DiagnosticId::InvalidUsingTarget, "C callback signature contains an unavailable type");
             auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
