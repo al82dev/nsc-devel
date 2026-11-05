@@ -1549,3 +1549,9 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Objetivo: comprobar que un typedef C de matriz `[][3]` conserva su límite exterior incompleto al consultar `sizeof` del puntero y del propio tipo.
 - Presupuesto: `Api.h`, `Pointer.ns.txt`, `SizeofMatrix.ns.txt` y `validar.cmd` de `nativesharp-interop/pruebas-tanda-08-incompleto`, más registro Markdown. No modificar producción por anticipado; si la validación detecta un defecto se investigará y delimitará su corrección.
 - Verificación prevista: construcción incremental y batería agrupada de la tanda. El caso no cierra T08-013 ni acredita todas las dimensiones y usos.
+
+## Tanda 08: puntero a callback con firma enum
+
+- Objetivo: comprobar la segunda ruta de expansión del alias `ColorCallback*`, cuya firma incluye un enum importado; conservar firma, convención C y modificador de puntero adicional.
+- Presupuesto: `tests/unit/CppClangSessionTests.cpp` y registro Markdown. Esta prueba semántica complementa la ejecución C/NativeSharp del caso escalar; no sustituye una llamada ejecutable con enum ni cierra T08-017.
+- Verificación: junto a las demás pruebas de la tanda, sin construir la suite por cada cambio.

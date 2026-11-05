@@ -2882,7 +2882,7 @@ int main(int argc, char** argv)
                     enumAliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
                         -> std::optional<std::string> {
                         if (path.filename() == "Main.ns")
-                            return "struct Holder { ColorAlias shade; int count; ColorMatrix matrix; } ColorAlias Echo(ColorAlias value) { return value; } int Use(ColorCallback cb) { return 0; } int UseNested(NestedCallback cb) { return 0; } int Main() { return 0; }\n";
+                            return "struct Holder { ColorAlias shade; int count; ColorMatrix matrix; } ColorAlias Echo(ColorAlias value) { return value; } int Use(ColorCallback cb) { return 0; } int UsePtr(ColorCallback* cb) { return 0; } int UseNested(NestedCallback cb) { return 0; } int Main() { return 0; }\n";
                         return std::nullopt;
                     });
                     nativesharp::compilation::TypeIdentity enumIdentity("Semantic", {}, {}, "Color");
@@ -2904,7 +2904,7 @@ int main(int argc, char** argv)
                             return true;
                         }, error);
                     const bool bound = configured && enumAliasCompilation.compileProjectObjectLayouts(semanticPath, error);
-                    bool enumBound = false, basePreserved = false, callbackAliasBound = false, nestedAliasBound = false, matrixAliasBound = false;
+                    bool enumBound = false, basePreserved = false, callbackAliasBound = false, callbackPointerBound = false, nestedAliasBound = false, matrixAliasBound = false;
                     if (bound && enumAliasCompilation.nameLookup())
                     {
                         for (const auto& binding : enumAliasCompilation.nameLookup()->bindings())
@@ -2921,6 +2921,12 @@ int main(int argc, char** argv)
                                     type->functionReturnType()->baseName() == "Color" &&
                                     type->typeArguments().size() == 1 && type->typeArguments()[0]->baseName() == "Color" &&
                                     type->functionCallingConvention() == nativesharp::ast::FunctionCallingConventionSyntaxKind::C;
+                                callbackPointerBound |= type->isFunction() && type->functionReturnType() &&
+                                    type->functionReturnType()->baseName() == "Color" &&
+                                    type->typeArguments().size() == 1 && type->typeArguments()[0]->baseName() == "Color" &&
+                                    type->functionCallingConvention() == nativesharp::ast::FunctionCallingConventionSyntaxKind::C &&
+                                    type->modifiers().size() == 1 &&
+                                    type->modifiers()[0].kind == nativesharp::ast::TypeModifierSyntaxKind::Pointer;
                             }
                             if (binding.writtenName == "NestedCallback" && binding.syntax &&
                                 binding.syntax->isFunction() && binding.syntax->typeArguments().size() == 1)
@@ -2941,6 +2947,8 @@ int main(int argc, char** argv)
                                  "enum typedef binds to imported enum and preserves its underlying type");
                     ok &= expect(bound && callbackAliasBound,
                                  "callback typedef preserves imported enum in result and parameter");
+                    ok &= expect(bound && callbackPointerBound,
+                                 "pointer to callback typedef preserves imported enum signature and indirection");
                     ok &= expect(bound && nestedAliasBound,
                                  "nested callback typedef preserves inner signature and calling convention");
                     ok &= expect(bound && matrixAliasBound, "enum array typedef retains imported identity and dimensions");
