@@ -238,7 +238,7 @@ void collectTypeAliases(const clang::DeclContext& context, clang::ASTContext& as
             continue;
         }
         const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(declaration);
-        if (!alias || alias->isImplicit() || alias->getName().empty() || alias->isDependentContext() ||
+        if (!alias || alias->isImplicit() || alias->getName().empty() || context.isDependentContext() ||
             !seen.insert(alias->getCanonicalDecl()).second)
             continue;
         CppTypeAliasDeclaration value;
