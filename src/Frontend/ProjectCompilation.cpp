@@ -493,9 +493,13 @@ std::string templateParseSourceDigest(std::string_view source)
 
 std::string precompiledSyntaxCacheKey(
     std::string_view productCacheKey,
-    std::size_t sourceOrdinal)
+    std::size_t sourceOrdinal,
+    std::span<const CppImportedTypeDeclaration> importedTypes)
 {
     if (productCacheKey.empty()) return {};
+    // The experimental scoped parser depends on project visibility and unit-specific imports.
+    // Its complete cache identity is not defined yet; do not restore or publish stale products.
+    if (!importedTypes.empty()) return {};
     std::string material;
     // EN: v2 retires every v1 entry: v1 published trees already rewritten by the generic pass.
     // ES: v2 retira toda entrada v1: v1 publicaba árboles ya reescritos por el pase genérico.
