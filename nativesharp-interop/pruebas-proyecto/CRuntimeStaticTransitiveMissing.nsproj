@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CppRuntimeStaticTransitive</Name><OutputType>StaticLibrary</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Producer.ns" />
+    <CppLibraryReference Header="CDllApi.h" Language="C" Standard="c11" Library="a.lib" Runtime="a.dll" />
+  </ItemGroup>
+</Project>
