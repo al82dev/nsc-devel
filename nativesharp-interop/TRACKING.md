@@ -170,7 +170,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T07-002. Auditar cómo `Project.h` conserva las opciones del proyecto. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-003. Auditar cómo el grafo del proyecto propaga dependencias entre módulos. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-004. Auditar qué datos de entrada conserva el manifiesto de compilación actual. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
-- [ ] T07-005. Diseñar cómo declarar que una dependencia expone headers C o C++.
+- [x] T07-005. Diseñar cómo declarar que una dependencia expone headers C o C++. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [ ] T07-006. Diseñar cómo indicar el header principal de una dependencia.
 - [ ] T07-007. Diseñar cómo especificar sus directorios de inclusión.
 - [ ] T07-008. Diseñar cómo especificar sus macros y opciones de lenguaje.
