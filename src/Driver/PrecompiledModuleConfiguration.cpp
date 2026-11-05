@@ -394,6 +394,23 @@ bool configurePrecompiledModules(
     std::string& error,
     bool materializeDemandedSurface)
 {
+    bool hasCppReferences = false;
+    for (const auto& project : manifest.projectGraph().projects())
+        hasCppReferences = hasCppReferences || !project.cppLibraryReferences().empty();
+#if defined(NSC_ENABLE_CPP_INTEROP)
+    if (hasCppReferences && (activeExecutionScope == nullptr ||
+        !activeExecutionScope->cppSessionEnvironment.has_value()))
+    {
+        error = "C/C++ project references require --cpp-clang-root";
+        return false;
+    }
+#else
+    if (hasCppReferences)
+    {
+        error = "C/C++ project references require a compiler built with C/C++ interoperability";
+        return false;
+    }
+#endif
     const auto* artifactCache = llvm_backend::activeCompilationArtifactCache();
     if (artifactCache != nullptr && artifactCache->enabled())
         for (const auto& project : manifest.projectGraph().projects())
