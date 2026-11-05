@@ -32,25 +32,31 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
         const CppType* base = &type;
         std::vector<std::uint64_t> fixedDimensions;
         bool readonly = false;
+        bool isVolatile = false;
         while (base && base->kind == CppTypeKind::Array)
         {
-            if (base->isVolatile || !base->arrayCount || *base->arrayCount == 0 ||
+            if (!base->arrayCount || *base->arrayCount == 0 ||
                 !base->element || fixedDimensions.size() >= 64) return std::nullopt;
             readonly |= base->isConst;
+            isVolatile |= base->isVolatile;
             fixedDimensions.push_back(*base->arrayCount);
             base = base->element.get();
         }
-        if (base && base->kind != CppTypeKind::Pointer && !base->isVolatile &&
-            (readonly || base->isConst))
+        if (base && base->kind != CppTypeKind::Pointer &&
+            (readonly || isVolatile || base->isConst || base->isVolatile))
         {
+            readonly |= base->isConst;
+            isVolatile |= base->isVolatile;
             CppType unqualified = *base;
             unqualified.isConst = false;
+            unqualified.isVolatile = false;
             auto mapped = mapGlobalType(unqualified, projectOrdinal, moduleName, lookup);
             if (!mapped || mapped->isVolatile) return std::nullopt;
             for (auto dimension = fixedDimensions.rbegin(); dimension != fixedDimensions.rend(); ++dimension)
                 mapped->nativeSharpTypeKey += "[" + std::to_string(*dimension) + "]";
             mapped->canonicalCppType = type.canonicalSpelling;
-            mapped->isConst = true;
+            mapped->isConst = readonly;
+            mapped->isVolatile = isVolatile;
             return mapped;
         }
         const auto array = frontend::cppAliasArrayType(type);
@@ -148,7 +154,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         else nsNamespace.push_back(cppNamespace[i]);
     return CppSemanticGlobal{projectOrdinal, std::string(moduleName), std::move(nsNamespace),
                              global.name, type->nativeSharpTypeKey, type->canonicalCppType,
-                             *global.externalSymbol, global.type.isVolatile, type->isConst,
+                             *global.externalSymbol, type->isVolatile, type->isConst,
                              global.type.kind == CppTypeKind::Pointer && global.type.element &&
                                  global.type.element->isConst, global.dllImport};
 }

@@ -1667,6 +1667,13 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `ConstArrayAddress.ns.txt` y `validar.cmd` del proyecto `pruebas-tanda-08-record-c`, más registro Markdown. No cambiar producción antes de observar el caso.
 - La compilación debe rechazar la conversión o dirección por motivos de inmutabilidad; validar junto con las demás pruebas.
 
+### Arreglos globales C volatile de escalares y enum
+
+- Objetivo: conservar `volatile` de arreglos globales C fijos hasta cada acceso indexado y emitir cargas y escrituras LLVM volatile, incluyendo matrices.
+- Evidencia: el estado externo conserva `isVolatile`, pero `finishArrayRawIndex` crea direcciones sin propagarlo y `PointerLoad` genera una carga ordinaria. `storeFromParts` ya utiliza `volatileAccess` de la dirección; MIR copia ese indicador.
+- Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionAccessFrames.cpp`, `src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`, proyectos de prueba de record y enum y registros Markdown. Solo propagar el indicador en indexación de arreglo fijo, no desde un puntero volatile hacia su apuntado.
+- Verificar acceso compartido y operaciones LLVM `load volatile` y `store volatile` para arreglo y matriz, además de regresiones con arreglos mutables y const. No declarar T08-015 completo; TLS y calificadores de apuntado quedan pendientes.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.

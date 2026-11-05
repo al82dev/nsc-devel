@@ -1475,7 +1475,9 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
     if (pointer == nullptr) { values.push_back(nullptr); return true; }
     LLVMTypeRef pointee = llvmType(current->typeKey, error);
     if (pointee == nullptr) { values.push_back(nullptr); return true; }
-    values.push_back(LLVMBuildLoad2(builder_, pointee, pointer, "pointer.load"));
+    LLVMValueRef load = LLVMBuildLoad2(builder_, pointee, pointer, "pointer.load");
+    if (current->volatileAccess) LLVMSetVolatile(load, 1);
+    values.push_back(load);
     return true;
 }
 

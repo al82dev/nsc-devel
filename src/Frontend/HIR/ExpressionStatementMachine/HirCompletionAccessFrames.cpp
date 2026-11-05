@@ -392,6 +392,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::loadRawIndexAddress(
         ProjectOopHirNodeKind::PointerLoad,
         frame.syntax,
         frame.core->resultTypeKey);
+    value->volatileAccess = address->volatileAccess;
     value->children.push_back(std::move(address));
     return value;
 }
@@ -423,6 +424,7 @@ void ProjectOopHirModel::finishArrayRawIndex(
             frame.syntax,
             elementType);
         address->elementTypeKey = elementType;
+        address->volatileAccess = frame.baseIsFixedArray && base && base->volatileAccess;
         applyRawIndexTrailingBounds(*address, frame);
         address->children.push_back(std::move(base));
         address->children.push_back(std::move(frame.operands[dimension]));
