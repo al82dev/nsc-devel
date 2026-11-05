@@ -48,6 +48,13 @@ bool ProjectNameLookup::setImportedNamespaces(
     return true;
 }
 
+bool ProjectNameLookup::setCppImportedTypeAliases(std::vector<CppImportedTypeAlias> aliases)
+{
+    if (built_ || !modules_.empty()) return false;
+    cppImportedTypeAliases_ = std::move(aliases);
+    return true;
+}
+
 bool ProjectNameLookup::setCppImportedTypes(std::vector<CppImportedTypeDeclaration> types)
 {
     if (built_ || !modules_.empty()) return false;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/CppImportedTypeAlias.h"
+
 #include "nativesharp/Frontend/NamedTypeDeclarationKind.h"
 #include "nativesharp/Frontend/NamedTypeAccessibility.h"
 #include "nativesharp/Frontend/NamedTypeDeclarationPart.h"
@@ -97,6 +99,7 @@ public:
     explicit ProjectNameLookup(ProjectCompilationIndexes& indexes) noexcept;
     bool setImportedNamespaces(std::vector<std::pair<std::size_t, std::string>> namespaces);
     bool setCppImportedTypes(std::vector<CppImportedTypeDeclaration> types);
+    bool setCppImportedTypeAliases(std::vector<CppImportedTypeAlias> aliases);
 
     bool build(
         const compilation::ProjectGraph& graph,
@@ -592,6 +595,7 @@ private:
     std::vector<std::unique_ptr<ModuleDeclarationSpace>> modules_;
     std::vector<std::pair<std::size_t, std::string>> importedNamespaces_;
     std::vector<CppImportedTypeDeclaration> cppImportedTypes_;
+    std::vector<CppImportedTypeAlias> cppImportedTypeAliases_;
     std::unordered_map<std::size_t, std::size_t> cppImportedTypeIndices_;
     std::vector<PendingTypeDeclaration> pendingTypes_;
     std::vector<NamedTypeDeclaration> namedTypes_;

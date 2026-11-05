@@ -1186,6 +1186,11 @@ bool ProjectCompilation::compileProjectNames(
         loadError = "cannot configure experimental C/C++ types";
         return false;
     }
+    if (!nameLookup_->setCppImportedTypeAliases(cppImportedTypeAliases_))
+    {
+        loadError = "cannot configure imported C/C++ type aliases";
+        return false;
+    }
     nameLookup_->setPrecompiledSnapshots(precompiledSnapshots_);
     if (!experimentalCppLifetimeMethodProvider_ && !experimentalCppInstanceMethodProvider_ && !experimentalCppInstanceFieldProvider_ &&
         !experimentalCppStaticMethodProvider_ && !experimentalCppStaticFieldProvider_ && precompiledSnapshotCapture_.has_value())
