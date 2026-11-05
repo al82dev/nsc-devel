@@ -1,0 +1,1 @@
+int Main() { return tools.readonly_pointee[0]; }
