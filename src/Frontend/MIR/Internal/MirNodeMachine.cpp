@@ -2051,14 +2051,55 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup22(
             }
             const StructValueLayout* layout =
                 model_.objectLayoutModel_->structLayoutForType(*node->targetTypeOrdinal);
-            if (layout == nullptr)
+            const bool importedCpp = model_.nameLookup_ != nullptr &&
+                model_.nameLookup_->cppImportedType(*node->targetTypeOrdinal) != nullptr;
+            if (importedCpp)
+            {
+                if (model_.memberModel_ == nullptr || !node->memberOrdinal.has_value() ||
+                    *node->memberOrdinal >= model_.memberModel_->members().size())
+                {
+                    error = "C++ value construction requires a selected constructor";
+                    return -1;
+                }
+                const auto& constructor = model_.memberModel_->members()[*node->memberOrdinal];
+                const bool scalarArguments = constructor.parameters.size() == node->argumentCount &&
+                    std::all_of(constructor.parameters.begin(), constructor.parameters.end(), [](const auto& parameter) {
+                        std::string_view type = parameter.typeKey;
+                        const bool pointer = type.ends_with('*');
+                        while (type.ends_with('*')) type.remove_suffix(1);
+                        return parameter.passKind == ParameterPassKind::Value &&
+                            ((pointer && type == "builtin:void") || type == "builtin:bool" || type == "builtin:sbyte" || type == "builtin:byte" ||
+                             type == "builtin:short" || type == "builtin:ushort" || type == "builtin:int" ||
+                             type == "builtin:uint" || type == "builtin:long" || type == "builtin:ulong" ||
+                             type == "builtin:float" || type == "builtin:double");
+                    });
+                if (!constructor.isCppExternal || constructor.kind != ClassMemberKind::Constructor ||
+                    !scalarArguments)
+                {
+                    error = "C++ value construction requires a supported constructor";
+                    return -1;
+                }
+                const auto cppLayout = model_.objectLayoutModel_->valueLayoutForTypeKey(
+                    *model_.nameLookup_, node->typeKey);
+                if (!cppLayout.has_value() || cppLayout->first == 0 || cppLayout->second == 0)
+                {
+                    error = "C++ value construction has no imported object layout";
+                    return -1;
+                }
+                result->immediate = cppLayout->first;
+                result->alignment = cppLayout->second;
+            }
+            else if (layout == nullptr)
             {
                 error = "C6 struct construction has no value layout";
                 return -1;
             }
+            else
+            {
+                result->immediate = layout->size;
+                result->alignment = layout->alignment;
+            }
             result->kind = ProjectOopMirNodeKind::ValueConstruct;
-            result->immediate = layout->size;
-            result->alignment = layout->alignment;
             result->zeroInitialize = true;
             if (node->memberOrdinal.has_value())
             {
