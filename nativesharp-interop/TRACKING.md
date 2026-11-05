@@ -154,7 +154,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T06-006. Comprobar que dos configuraciones diferentes producen identidades distintas. Evidencia: [tanda 06](TANDA-06-VALIDACION.md).
 - [x] T06-007. Comprobar el fallo por recursos de Clang ausentes. Evidencia: [sesión real](LINEA-BASE-TANDAS.md).
 - [x] T06-008. Comprobar que una unidad inválida entrega ubicación y mensaje de error. Evidencia: [sesión real](LINEA-BASE-TANDAS.md).
-- [ ] T06-009. Comprobar que un fallo de `BeginSourceFile` no intenta finalizar una unidad no abierta.
+- [x] T06-009. Comprobar que un fallo de `BeginSourceFile` no intenta finalizar una unidad no abierta. Evidencia: [tanda 06](TANDA-06-VALIDACION.md).
 - [x] T06-010. Comprobar que cerrar dos veces no libera recursos dos veces. Evidencia: [sesión real](LINEA-BASE-TANDAS.md).
 - [ ] T06-011. Comprobar la cancelación y la liberación posterior de recursos.
 - [ ] T06-012. Comprobar que dos sesiones con opciones distintas no se contaminan.
