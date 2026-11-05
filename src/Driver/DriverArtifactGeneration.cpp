@@ -130,6 +130,8 @@ bool prepareExecutableProject(std::string_view inputPath,
             [&] { return configurePrecompiledModules(manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
+        if (!compilation.diagnostics().diagnostics().empty())
+            diagnostics::DiagnosticRenderer(compilation.sourceManager()).renderAll(compilation.diagnostics(), error);
         return false;
     }
     if (!restoreCompilationBundle(manifest, restored, loadError))
@@ -469,6 +471,8 @@ bool prepareStaticLibraryProject(std::string_view inputPath,
             [&] { return configurePrecompiledModules(manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
+        if (!compilation.diagnostics().diagnostics().empty())
+            diagnostics::DiagnosticRenderer(compilation.sourceManager()).renderAll(compilation.diagnostics(), error);
         return false;
     }
     if (!restoreCompilationBundle(manifest, restored, loadError))
@@ -821,6 +825,8 @@ bool prepareDynamicLibraryProject(std::string_view inputPath,
             [&] { return configurePrecompiledModules(manifest, compilation, loadError, true); }))
     {
         error << "nsc: error: " << loadError << '\n';
+        if (!compilation.diagnostics().diagnostics().empty())
+            diagnostics::DiagnosticRenderer(compilation.sourceManager()).renderAll(compilation.diagnostics(), error);
         return false;
     }
     if (!restoreCompilationBundle(manifest, restored, loadError))

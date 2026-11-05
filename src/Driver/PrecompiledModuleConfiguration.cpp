@@ -9,6 +9,7 @@
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 #include "nativesharp/Interop/CppBinaryDependencies.h"
 #if defined(NSC_ENABLE_CPP_INTEROP)
+#include "nativesharp/Frontend/CppDiagnosticAdapter.h"
 #include "nativesharp/Interop/CppNamespaceInventory.h"
 #include "nativesharp/Interop/CppSemanticFunctionGroups.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
@@ -419,8 +420,8 @@ bool configurePrecompiledModules(
             error = "C/C++ session failed for project '" + failure->projectFile.generic_string() +
                     "', reference " + std::to_string(failure->projectFailure.referenceIndex) +
                     ": " + failure->projectFailure.failure.message;
-            if (!failure->projectFailure.failure.diagnostics.empty())
-                error += ": " + failure->projectFailure.failure.diagnostics.front().message;
+            frontend::appendCppDiagnostics(
+                failure->projectFailure.failure.diagnostics, compilation.diagnostics());
             return false;
         }
         const bool hasSessions = !std::get<interop::CppGraphSessions>(opened).projects.empty();
