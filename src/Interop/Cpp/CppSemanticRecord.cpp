@@ -895,8 +895,44 @@ bool selectExperimentalCppRecordTypesForCompilation(
         return false;
     }
     output = std::move(std::get<CppRecordObservationInputs>(selected).types);
-    const auto& enums = std::get<CppRecordObservation>(observed).referencedEnumTypes;
-    output.insert(output.end(), enums.begin(), enums.end());
+    const auto& observation = std::get<CppRecordObservation>(observed);
+    std::vector<frontend::CppImportedTypeDeclaration> enumCandidates;
+    const auto* graph = compilation.projectGraph();
+    if (!graph) { error = "project graph is unavailable for C enum dependencies"; return false; }
+    if (!provideCppEnumTypes(*graph, compilation.cppProjectSessions(), enumCandidates, error)) return false;
+    std::set<std::string> selectedIdentities;
+    for (const auto& type : output) selectedIdentities.insert(type.identity.key());
+    const auto selectedRecordIdentities = selectedIdentities;
+    const auto addEnum = [&](const frontend::CppImportedTypeDeclaration& type) {
+        if (selectedIdentities.insert(type.identity.key()).second) output.push_back(type);
+    };
+    for (const auto& enumeration : observation.referencedEnumTypes) addEnum(enumeration);
+    for (const auto& group : observation.groups.groups)
+    {
+        if (!selectedIdentities.contains(group.identity.key())) continue;
+        const auto definition = selectCppRecordMemberDefinition(observation.inventory, group);
+        if (!definition || *definition >= observation.inventory.size()) continue;
+        const auto& record = observation.inventory[*definition].declaration;
+        if (record.isCxx) continue;
+        for (const auto& field : record.fields)
+        {
+            const CppType* type = &field.type;
+            for (std::size_t depth = 0; type && depth < 64 &&
+                 (type->kind == CppTypeKind::Pointer || type->kind == CppTypeKind::Array); ++depth)
+                type = type->element.get();
+            if (!type || type->kind != CppTypeKind::Enumeration || !type->enumIdentity ||
+                type->enumIdentity->anonymousContext) continue;
+            const compilation::TypeIdentity identity(group.identity.moduleName(), {}, {}, type->enumIdentity->name);
+            const auto candidate = std::find_if(enumCandidates.begin(), enumCandidates.end(), [&](const auto& item) {
+                return item.projectOrdinal == group.projectOrdinal && item.identity.key() == identity.key();
+            });
+            if (candidate == enumCandidates.end()) continue;
+            if (!candidate->deferredImportError.empty()) { error = candidate->deferredImportError; return false; }
+            if (selectedRecordIdentities.contains(candidate->identity.key()))
+            { error = "C enum field conflicts with a selected record: " + candidate->identity.name(); return false; }
+            addEnum(*candidate);
+        }
+    }
     error.clear();
     return true;
 }
