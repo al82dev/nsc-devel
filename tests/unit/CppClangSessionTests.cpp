@@ -5452,6 +5452,154 @@ int main(int argc, char** argv)
             }
             else ok &= expect(false, "C++ global projects to NativeSharp scalar");
         }
+        ok &= expect(cppInternal && !cppInternal->externalLinkage && !cppInternal->externalSymbol,
+                     "internal C++ global does not promise an external symbol");
+        ok &= expect(tlsValue && tlsValue->threadLocal && tlsValue->externalSymbol == "?tls_value@tools@@3HA",
+                     "thread-local global retains its storage property and symbol");
+        const auto* record = records ? recordByName(*records, "MyClass") : nullptr;
+        const auto* dllRecord = records ? recordByName(*records, "ImportedClass") : nullptr;
+        const auto* dllFunction = functions ? functionByName(*functions, "dll_function") : nullptr;
+        const auto* dllGlobal = globals ? globalByName(*globals, "dll_value") : nullptr;
+        bool dllStaticField = false, dllMethod = false;
+        bool dllStaticProjected = false, dllMethodProjected = false;
+        if (dllRecord)
+        {
+            for (std::size_t i = 0; i < dllRecord->staticFields.size(); ++i)
+            {
+                const auto& field = dllRecord->staticFields[i];
+                if (field.name == "data")
+                {
+                    dllStaticField = field.dllImport;
+                    const auto projected = projectCppSemanticStaticField(*dllRecord, i, 0, "Semantic", "x86_64-pc-windows-msvc");
+                    dllStaticProjected = projected && projected->dllImport && toCppImportedStaticField(*projected).dllImport;
+                }
+            }
+            for (std::size_t i = 0; i < dllRecord->methods.size(); ++i)
+            {
+                const auto& method = dllRecord->methods[i];
+                if (method.name == "method")
+                { dllMethod = method.dllImport; const auto projected = projectCppSemanticInstanceMethod(*dllRecord, i, 0, "Semantic", "x86_64-pc-windows-msvc");
+                  const auto* value = std::get_if<CppSemanticInstanceMethod>(&projected);
+                  dllMethodProjected = value && value->dllImport && toCppImportedInstanceMethod(*value).dllImport; }
+            }
+        }
+        ok &= expect(dllFunction && dllFunction->dllImport && dllGlobal && dllGlobal->dllImport &&
+                     dllStaticField && dllMethod && dllStaticProjected && dllMethodProjected &&
+                     std::holds_alternative<nativesharp::frontend::NamespaceFunctionSymbol>(projectCppSemanticFunction(*dllFunction, 0, "Semantic")) &&
+                     std::get<nativesharp::frontend::NamespaceFunctionSymbol>(projectCppSemanticFunction(*dllFunction, 0, "Semantic")).cppDllImport &&
+                     std::holds_alternative<CppSemanticGlobal>(projectCppSemanticGlobal(*dllGlobal, 0, "Semantic")) &&
+                     std::get<CppSemanticGlobal>(projectCppSemanticGlobal(*dllGlobal, 0, "Semantic")).dllImport,
+                     "Clang snapshots retain dllimport and data projections preserve it");
+        const auto* derived = records ? recordByName(*records, "Derived") : nullptr;
+        const auto* multi = records ? recordByName(*records, "Multi") : nullptr;
+        const auto* plainLifetime = records ? recordByName(*records, "PlainLifetime") : nullptr;
+        const auto* implicitLifetime = records ? recordByName(*records, "BaseA") : nullptr;
+        const auto* usedLifetime = records ? recordByName(*records, "UsedLifetime") : nullptr;
+        const auto* lockedLifetime = records ? recordByName(*records, "LockedLifetime") : nullptr;
+        const auto* basedLifetime = records ? recordByName(*records, "BasedLifetime") : nullptr;
+        bool lifetimeCtor = false, lifetimeDtor = false, privateLifetimeDeferred = false, basedLifetimeDeferred = false;
+        ok &= expect(implicitLifetime && implicitLifetime->implicitLifetimeMembers &&
+                     implicitLifetime->implicitLifetimeMembers->defaultConstructor &&
+                     implicitLifetime->implicitLifetimeMembers->copyConstructor &&
+                     implicitLifetime->implicitLifetimeMembers->moveConstructor &&
+                     implicitLifetime->implicitLifetimeMembers->destructor &&
+                     usedLifetime && usedLifetime->implicitLifetimeMembers &&
+                     usedLifetime->implicitLifetimeMembers->defaultConstructor &&
+                     usedLifetime->implicitLifetimeMembers->copyConstructor &&
+                     usedLifetime->implicitLifetimeMembers->moveConstructor &&
+                     usedLifetime->implicitLifetimeMembers->destructor &&
+                     plainLifetime && plainLifetime->implicitLifetimeMembers &&
+                     !plainLifetime->implicitLifetimeMembers->defaultConstructor &&
+                     plainLifetime->implicitLifetimeMembers->copyConstructor &&
+                     !plainLifetime->implicitLifetimeMembers->moveConstructor &&
+                     !plainLifetime->implicitLifetimeMembers->destructor,
+                     "Clang record snapshots retain lazily declared and materialized implicit lifetime members");
+        const auto implicitDeclarations = cpp->implicitLifetimeDeclarations("BaseA");
+        const auto repeatedDeclarations = cpp->implicitLifetimeDeclarations("BaseA");
+        const auto deletedDeclarations = cpp->implicitLifetimeDeclarations("DeletedLifetime");
+        const auto throwingDeclarations = cpp->implicitLifetimeDeclarations("ImplicitThrowing");
+        bool defaultCtor = false, copyCtor = false, moveCtor = false, destructor = false, deletedDefault = false;
+        if (implicitDeclarations) for (const auto& method : *implicitDeclarations)
+        {
+            defaultCtor |= method.kind == CppImplicitLifetimeKind::DefaultConstructor && method.parameters.empty() &&
+                method.access == CppAccess::Public && method.isTrivial && !method.isDeleted && !method.canonicalFunctionType.empty() &&
+                method.exceptionSpecification == CppExceptionSpecification::NonThrowing &&
+                method.abiSymbol == "??0BaseA@@QEAA@XZ";
+            copyCtor |= method.kind == CppImplicitLifetimeKind::CopyConstructor && method.parameters.size() == 1;
+            moveCtor |= method.kind == CppImplicitLifetimeKind::MoveConstructor && method.parameters.size() == 1;
+            destructor |= method.kind == CppImplicitLifetimeKind::Destructor && method.parameters.empty() &&
+                method.exceptionSpecification == CppExceptionSpecification::NonThrowing &&
+                method.abiSymbol == "??1BaseA@@QEAA@XZ";
+        }
+        if (deletedDeclarations) for (const auto& method : *deletedDeclarations)
+            deletedDefault |= method.kind == CppImplicitLifetimeKind::DefaultConstructor && method.isDeleted && !method.abiSymbol;
+        bool throwingCtor = false, throwingDtor = false;
+        if (throwingDeclarations) for (const auto& method : *throwingDeclarations)
+        {
+            throwingCtor |= method.kind == CppImplicitLifetimeKind::DefaultConstructor &&
+                method.exceptionSpecification == CppExceptionSpecification::PotentiallyThrowing;
+            throwingDtor |= method.kind == CppImplicitLifetimeKind::Destructor &&
+                method.exceptionSpecification == CppExceptionSpecification::PotentiallyThrowing;
+        }
+        bool repeatedSymbols = implicitDeclarations && repeatedDeclarations &&
+            implicitDeclarations->size() == repeatedDeclarations->size();
+        if (repeatedSymbols) for (std::size_t i = 0; i < implicitDeclarations->size(); ++i)
+            repeatedSymbols &= (*implicitDeclarations)[i].kind == (*repeatedDeclarations)[i].kind &&
+                               (*implicitDeclarations)[i].exceptionSpecification == (*repeatedDeclarations)[i].exceptionSpecification &&
+                               (*implicitDeclarations)[i].abiSymbol == (*repeatedDeclarations)[i].abiSymbol;
+        const auto recordsAfterImplicit = cpp->recordsSnapshot();
+        const auto* baseAfterImplicit = recordsAfterImplicit ? recordByName(*recordsAfterImplicit, "BaseA") : nullptr;
+        ok &= expect(defaultCtor && copyCtor && moveCtor && destructor && deletedDefault && throwingCtor && throwingDtor && repeatedSymbols &&
+                     implicitDeclarations->size() == repeatedDeclarations->size() &&
+                     implicitLifetime && baseAfterImplicit && implicitLifetime->odrHash == baseAfterImplicit->odrHash &&
+                     implicitLifetime->methods.size() == baseAfterImplicit->methods.size() &&
+                     implicitLifetime->implicitLifetimeMembers == baseAfterImplicit->implicitLifetimeMembers &&
+                     !cpp->implicitLifetimeDeclarations("MissingRecord"),
+                     "Clang Sema materializes implicit lifetime declarations, including deleted defaults, repeatably");
+        const auto defaultIr = cpp->emitImplicitLifetimeIR("BaseA", CppImplicitLifetimeKind::DefaultConstructor);
+        const auto destructorIr = cpp->emitImplicitLifetimeIR("BaseA", CppImplicitLifetimeKind::Destructor);
+        const auto nontrivialCtorIr = cpp->emitImplicitLifetimeIR("ImplicitThrowing", CppImplicitLifetimeKind::DefaultConstructor);
+        const auto nontrivialDtorIr = cpp->emitImplicitLifetimeIR("ImplicitThrowing", CppImplicitLifetimeKind::Destructor);
+        const auto repeatedDefaultIr = cpp->emitImplicitLifetimeIR("BaseA", CppImplicitLifetimeKind::DefaultConstructor);
+        bool persistedLifetimeIr = false;
+        if (nontrivialCtorIr && nontrivialDtorIr)
+        {
+            const auto directory = std::filesystem::path(argv[2]) / "cpp-fixtures" / "lifetime-emission";
+            std::error_code ec;
+            std::filesystem::create_directories(directory, ec);
+            std::ofstream ctorFile(directory / "implicit-ctor.ll", std::ios::binary);
+            std::ofstream dtorFile(directory / "implicit-dtor.ll", std::ios::binary);
+            ctorFile << *nontrivialCtorIr;
+            dtorFile << *nontrivialDtorIr;
+            persistedLifetimeIr = !ec && ctorFile.good() && dtorFile.good();
+        }
+        bool nativeObjectEmission = persistedLifetimeIr;
+        if (nativeObjectEmission)
+        {
+            const auto directory = std::filesystem::path(argv[2]) / "cpp-fixtures" / "lifetime-emission";
+            for (const auto level : {nativesharp::llvm_backend::LlvmOptimizationLevel::O0,
+                                     nativesharp::llvm_backend::LlvmOptimizationLevel::O2})
+            {
+                std::string emitError;
+                const auto suffix = level == nativesharp::llvm_backend::LlvmOptimizationLevel::O0 ? "O0" : "O2";
+                for (const auto& entry : {std::pair{"ctor", CppImplicitLifetimeKind::DefaultConstructor},
+                                          std::pair{"dtor", CppImplicitLifetimeKind::Destructor}})
+                {
+                    nativeObjectEmission &= nativesharp::llvm_backend::emitCppImplicitLifetimeObject(
+                        *cpp, "ImplicitThrowing", entry.second, level,
+                        directory / (std::string("nsc-") + entry.first + "-" + suffix + ".obj"),
+                        emitError);
+                }
+                if (!nativeObjectEmission) std::cerr << "Lifetime object emission: " << emitError << '\n';
+            }
+            std::string invalidError;
+            nativeObjectEmission &= !nativesharp::llvm_backend::LlvmModule::parseText("invalid LLVM IR", invalidError) &&
+                                    !invalidError.empty();
+            nativeObjectEmission &= !nativesharp::llvm_backend::emitCppImplicitLifetimeObject(
+                *cpp, "MissingRecord", CppImplicitLifetimeKind::Destructor,
+                nativesharp::llvm_backend::LlvmOptimizationLevel::O0, directory / "missing.obj", invalidError) &&
+                !invalidError.empty();
+        }
     }
     return ok ? 0 : 1;
 }
