@@ -59,3 +59,9 @@ validación incremental agrupada. Corregir y repetir al aparecer errores.
 - La prueba de propiedad compartida usa una sesión real y una compilación
   compartida equivalente a la propiedad del snapshot. No demuestra importación
   C++ mediante el servicio de lenguaje, que aún no configura esas sesiones.
+- T05-008 y T05-011 siguen pendientes: `LanguageService/ProtocolTypes.cpp`
+  descarta diagnósticos sin un archivo del `SourceManager`. Las ubicaciones
+  externas se muestran en consola y se conservan como texto, pero no se han
+  demostrado como ubicaciones estructuradas para el servicio de lenguaje.
+  Tampoco hay todavía una prueba que inyecte una sesión a un snapshot real del
+  servicio de lenguaje. No se cierra la tanda basándose solo en el caso simulado.
