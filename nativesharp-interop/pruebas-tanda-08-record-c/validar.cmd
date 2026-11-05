@@ -21,7 +21,7 @@ clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
-nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" --no-artifact-cache > "%DEST%\project.ll"
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\project.ll"
 if errorlevel 1 exit /b 1
 findstr /c:"load volatile" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile. & exit /b 1)
