@@ -183,6 +183,7 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
                 item.decimalValue = std::string(digits.str());
                 item.valueBits = integer.getBitWidth();
                 item.valueIsUnsigned = integer.isUnsigned();
+                item.valueType = describeType(enumerator->getType(), astContext);
                 const auto point = astContext.getSourceManager().getPresumedLoc(enumerator->getLocation());
                 if (point.isValid())
                     item.location = CppSourcePoint{pathFromUtf8(point.getFilename()), point.getLine(), point.getColumn()};

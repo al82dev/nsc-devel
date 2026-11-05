@@ -18,6 +18,8 @@ struct CppEnumeratorDeclaration
     std::uint32_t valueBits = 0;
     bool valueIsUnsigned = false;
     std::optional<CppSourcePoint> location;
+    // Type of the enumerator expression, which need not be the enum's storage type.
+    CppType valueType;
 };
 
 struct CppEnumDeclaration
