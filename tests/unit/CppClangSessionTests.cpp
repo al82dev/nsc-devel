@@ -1,6 +1,8 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "../../src/Interop/Cpp/ClangSessionSupport.h"
 #include <clang/Frontend/ASTUnit.h>
+#include <atomic>
+#include <thread>
 #include <llvm/Support/MemoryBuffer.h>
 #include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Parser/ScopedKnownTypeNames.h"
@@ -249,6 +251,35 @@ int main(int argc, char** argv)
         ok &= expect(observed->observed && token.cancelled() &&
                      (!ast || ast->getDiagnostics().hasErrorOccurred()),
                      "cancellation during real Clang header lookup interrupts the analysis");
+    }
+    {
+        auto left = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                                         "struct Concurrent { int value; }; int probe(int);\n"));
+        auto right = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                                          "struct Concurrent { int value; }; int probe(int);\n"));
+        std::atomic_bool correct{left && right};
+        if (left && right)
+        {
+            std::vector<std::thread> workers;
+            for (int worker = 0; worker < 4; ++worker)
+                workers.emplace_back([&, worker] {
+                    for (int iteration = 0; iteration < 50; ++iteration)
+                    {
+                        const auto count = left->topLevelDeclarationCount();
+                        const auto functions = left->freeFunctionsSnapshot();
+                        const auto equivalent = worker % 2 == 0
+                            ? left->structurallyEquivalentRecord(*right, "Concurrent")
+                            : right->structurallyEquivalentRecord(*left, "Concurrent");
+                        if (!count || !functions || !equivalent || !*equivalent)
+                            correct.store(false, std::memory_order_relaxed);
+                    }
+                });
+            for (auto& worker : workers) worker.join();
+            left->close();
+            right->close();
+        }
+        ok &= expect(correct.load(std::memory_order_relaxed),
+                     "concurrent queries and opposite-order comparisons coordinate session access");
     }
     {
         CppSessionOptions base;
