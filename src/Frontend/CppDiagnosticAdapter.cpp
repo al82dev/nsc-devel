@@ -58,9 +58,13 @@ void appendCppDiagnostics(
         message += diagnostic.message;
         std::vector<std::string> notes;
         collectNotes(diagnostic, notes);
+        std::optional<diagnostics::ExternalSourceLocation> externalLocation;
+        if (diagnostic.location)
+            externalLocation = diagnostics::ExternalSourceLocation{
+                diagnostic.location->file, diagnostic.location->line, diagnostic.location->column};
         destination.reportStructured(diagnostics::DiagnosticId::CppInteropDiagnostic,
             severity(diagnostic.severity), range.value_or(SourceRange{}), std::move(message), {},
-            std::move(notes));
+            std::move(notes), std::move(externalLocation));
     }
 }
 }
