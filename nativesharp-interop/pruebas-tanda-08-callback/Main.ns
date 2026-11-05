@@ -1,0 +1,5 @@
+int Main()
+{
+    Callback callback = (int value) => value + 2;
+    return apply_callback(callback, 40) - 42;
+}
