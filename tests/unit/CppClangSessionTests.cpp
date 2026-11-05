@@ -457,5 +457,26 @@ int main(int argc, char** argv)
                      "private C++ binary closure does not change the public ABI fingerprint");
         }
     }
+    {
+        const std::vector<std::string> current{"A", "B"};
+        std::vector<std::string> visited;
+        const auto relative = nativesharp::frontend::resolveQualifiedNamespaceTarget(
+            current, "C", [&](const std::string& candidate) {
+                visited.push_back(candidate);
+                return candidate == "A.C" || candidate == "C";
+            });
+        const bool relativeOrder = relative == "A.C" && visited == std::vector<std::string>({"A.B.C", "A.C"});
+        visited.clear();
+        const auto global = nativesharp::frontend::resolveQualifiedNamespaceTarget(
+            current, "C", [&](const std::string& candidate) {
+                visited.push_back(candidate);
+                return candidate == "C";
+            });
+        const bool globalOrder = global == "C" && visited == std::vector<std::string>({"A.B.C", "A.C", "C"});
+        const auto missing = nativesharp::frontend::resolveQualifiedNamespaceTarget(
+            current, "Missing", [](const std::string&) { return false; });
+        ok &= expect(relativeOrder && globalOrder && !missing,
+                     "namespace target lookup prefers nearest visible scope, then global, and reports absence");
+    }
     return ok ? 0 : 1;
 }
