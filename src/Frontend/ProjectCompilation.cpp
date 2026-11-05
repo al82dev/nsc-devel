@@ -954,9 +954,15 @@ void collectUsingAliases(
 }
 
 std::vector<std::string> collectParserKnownTypeNames(
-    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units)
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+    std::span<const CppImportedTypeDeclaration> importedTypes = {})
 {
     std::set<std::string> names;
+    for (const auto& imported : importedTypes)
+    {
+        names.insert(imported.identity.name());
+        names.insert(imported.identity.fullyQualifiedName());
+    }
     std::vector<std::pair<std::string, std::string>> aliases;
     for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
     {
