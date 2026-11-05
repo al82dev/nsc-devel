@@ -4466,6 +4466,295 @@ int main(int argc, char** argv)
                 ok &= expect(qualifiedPointer,
                              "qualified C++ pointer remains a declaration without a using directive");
             }
+            {
+                const auto metadata = std::filesystem::path(argv[2]) / "cpp-fixtures/observation-module.nsmeta";
+                { std::ofstream file(metadata); file << "observation fixture"; }
+                std::string moduleError;
+                nativesharp::frontend::PrecompiledSyntaxModule module;
+                module.ownerProjectFile = path;
+                module.metadataPath = metadata;
+                module.moduleName = "ObservedModule";
+                module.sourceText = "namespace Published { public struct Value {} }\n";
+                nativesharp::frontend::ProjectCompilation moduleCompilation;
+                moduleCompilation.setSourceBufferProvider([](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Use(Published.Value* value, A.B.C* item) { return 0; } int Main() { return 0; }\n";
+                    return std::nullopt;
+                });
+                CppProjectSessions moduleSessions;
+                moduleSessions.projectFile = std::filesystem::absolute(path);
+                moduleSessions.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                    CppLanguageMode::Cpp, "namespace A { namespace B { struct C {}; } }\n")));
+                std::vector<CppProjectSessions> moduleSessionGroups;
+                moduleSessionGroups.push_back(std::move(moduleSessions));
+                const bool moduleReady = moduleCompilation.setPrecompiledModules({module}, moduleError) &&
+                    moduleCompilation.setCppProjectSessions(std::move(moduleSessionGroups), moduleError) &&
+                    moduleCompilation.compileProjectSyntax(path, moduleError);
+                std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> moduleCopies;
+                nativesharp::diagnostics::DiagnosticEngine moduleDiagnostics;
+                const bool moduleCloned = moduleReady && moduleCompilation.cloneSyntaxForObservation(
+                    moduleCopies, moduleDiagnostics, moduleError);
+                bool independentModule = false;
+                for (std::size_t i = 0; moduleCloned && i < moduleCopies.size(); ++i)
+                    if (moduleCompilation.units()[i]->isPrecompiled())
+                        independentModule |= moduleCopies[i]->isPrecompiled() &&
+                            moduleCopies[i]->fileId() == moduleCompilation.units()[i]->fileId() &&
+                            moduleCopies[i]->syntaxTree() != moduleCompilation.units()[i]->syntaxTree();
+                const auto moduleObserved = moduleCloned ? observeCppRecords(moduleCompilation) :
+                    CppRecordObservationRunResult{CppRecordObservationFailure{moduleError}};
+                const auto* moduleResult = std::get_if<CppRecordObservation>(&moduleObserved);
+                if (!moduleResult) std::cerr << "precompiled observation: " << moduleError << '\n';
+                ok &= expect(moduleReady && independentModule && moduleResult &&
+                             moduleResult->selection.referencedGroups.size() == 1 &&
+                             !moduleDiagnostics.hasErrors() && !moduleCompilation.diagnostics().hasErrors(),
+                             "observation preserves independent precompiled units and resolves C++ records");
+
+                // Scoped C++ names depend on project and unit visibility, so precompiled syntax
+                // caching is disabled for this experimental configuration until keyed completely.
+                const auto cacheRoot = std::filesystem::path(argv[2]) / "cpp-fixtures" /
+                    ("record-seed-cache-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+                module.productCacheKey = "record-seed-cache-fixture";
+                auto runCache = [&](bool withType) {
+                    nativesharp::frontend::ProjectCompilation cached;
+                    cached.setTemplateCacheRoot(cacheRoot);
+                    cached.setSourceBufferProvider([](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns") return "int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    std::string cacheError;
+                    const bool configured = cached.setPrecompiledModules({module}, cacheError) &&
+                        (!withType || cached.setExperimentalCppImportedTypes({{*namespaceIdentity,
+                            nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                            nativesharp::frontend::NamedTypeAccessibility::Public, 0,
+                            namespaceC->location ? namespaceC->location->file.generic_string() : ""}}, cacheError));
+                    const bool ready = configured && cached.compileProjectGenerics(path, cacheError);
+                    if (!ready) std::cerr << "record seed cache fixture: " << cacheError << '\n';
+                    return ready;
+                };
+                auto countEntries = [&]() {
+                    const auto directory = cacheRoot / "precompiled-products" / "syntax" / "templates";
+                    std::size_t count = 0;
+                    std::error_code ec;
+                    if (std::filesystem::is_directory(directory, ec))
+                        for (const auto& entry : std::filesystem::recursive_directory_iterator(directory))
+                            if (entry.is_regular_file() && entry.path().extension() == ".tpl") ++count;
+                    return count;
+                };
+                const bool coldWithout = runCache(false);
+                const auto withoutCount = countEntries();
+                const bool coldWith = runCache(true);
+                const auto withCount = countEntries();
+                std::vector<std::pair<std::filesystem::path, std::filesystem::file_time_type>> cachedTimes;
+                const auto syntaxDirectory = cacheRoot / "precompiled-products" / "syntax" / "templates";
+                if (std::filesystem::is_directory(syntaxDirectory))
+                    for (const auto& entry : std::filesystem::recursive_directory_iterator(syntaxDirectory))
+                        if (entry.is_regular_file() && entry.path().extension() == ".tpl")
+                        {
+                            const auto timestamp = std::filesystem::file_time_type::clock::now() - std::chrono::hours(24);
+                            std::filesystem::last_write_time(entry.path(), timestamp);
+                            cachedTimes.emplace_back(entry.path(), std::filesystem::last_write_time(entry.path()));
+                        }
+                const bool repeatWith = runCache(true);
+                const auto repeatCount = countEntries();
+                bool preserved = cachedTimes.size() == 1;
+                for (const auto& [file, timestamp] : cachedTimes)
+                    preserved &= std::filesystem::last_write_time(file) == timestamp;
+                ok &= expect(coldWithout && coldWith && repeatWith && withoutCount == 1 && withCount == 1 && repeatCount == 1 && preserved,
+                             "experimental scoped C++ names bypass precompiled syntax cache and preserve the native entry");
+
+                nativesharp::frontend::ProjectCompilation providerCompilation;
+                providerCompilation.setSourceBufferProvider([](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns")
+                        return "int Main() { A.B.C* item = null; return 0; }\n";
+                    return std::nullopt;
+                });
+                CppProjectSessions providerSessions;
+                providerSessions.projectFile = std::filesystem::absolute(path);
+                providerSessions.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                    CppLanguageMode::Cpp, "namespace A { namespace B { struct C { int value; }; } }\n")));
+                std::vector<CppProjectSessions> providerGroups;
+                providerGroups.push_back(std::move(providerSessions));
+                std::string providerError;
+                bool ownerMatches = false;
+                const bool providerConfigured = providerCompilation.setPrecompiledModules({module}, providerError) &&
+                    providerCompilation.setCppProjectSessions(std::move(providerGroups), providerError) &&
+                    providerCompilation.setExperimentalCppTypeProvider(
+                        [&](const auto& finalGraph, auto sessions, auto& output, auto& error) {
+                            if (!provideExperimentalCppRecordTypes(finalGraph, sessions, output, error)) return false;
+                            if (output.size() != 1 || output[0].projectOrdinal >= finalGraph.projects().size()) return false;
+                            std::error_code ec;
+                            ownerMatches = std::filesystem::equivalent(
+                                finalGraph.projects()[output[0].projectOrdinal].projectFile(), path, ec) && !ec;
+                            return ownerMatches;
+                        }, providerError);
+                const bool providerParsed = providerConfigured && providerCompilation.compileProjectSyntax(path, providerError);
+                if (!providerParsed) std::cerr << "record provider precompiled fixture: " << providerError << '\n';
+                ok &= expect(providerParsed && ownerMatches && !providerCompilation.diagnostics().hasErrors(),
+                             "record provider receives final graph after precompiled projects and retains the real owner");
+            }
+            {
+                std::vector<CppSemanticRecordEntry> realRecords{
+                    {path, 0, 0, "x86_64-pc-windows-msvc", *namespaceC, namespaceIdentity},
+                    {path, 1, 0, "different-target", *namespaceC, namespaceIdentity}};
+                const auto realGroups = groupCppSemanticRecords(realRecords);
+                auto prepared = prepareCppRecordObservation(realRecords, realGroups);
+                auto* automaticInputs = std::get_if<CppRecordObservationInputs>(&prepared);
+                std::vector<CppSemanticRecordEntry> singleRecord{
+                    {path, 0, 0, "x86_64-pc-windows-msvc", *namespaceC, namespaceIdentity}};
+                const auto singleGroups = groupCppSemanticRecords(singleRecord);
+                CppRecordObservation selectionFixture;
+                selectionFixture.inventory = singleRecord;
+                selectionFixture.groups = singleGroups;
+                auto selected = selectExperimentalCppRecordTypes(selectionFixture);
+                auto* selectedInputs = std::get_if<CppRecordObservationInputs>(&selected);
+                ok &= expect(selectedInputs && selectedInputs->types.size() == 1 &&
+                             selectedInputs->groupByImportedType == std::vector<std::size_t>{0},
+                             "experimental record selection preserves a unique valid candidate");
+                selectionFixture.collidingGroups = {0};
+                selectionFixture.referencedCollidingGroups = {0};
+                selected = selectExperimentalCppRecordTypes(selectionFixture);
+                selectedInputs = std::get_if<CppRecordObservationInputs>(&selected);
+                ok &= expect(selectedInputs && selectedInputs->types.empty(),
+                             "native record collision excludes C++ candidate while preserving native uses");
+                selectionFixture.collidingGroups.clear();
+                selectionFixture.referencedCollidingGroups.clear();
+                selectionFixture.inventory = realRecords;
+                selectionFixture.groups = realGroups;
+                selected = selectExperimentalCppRecordTypes(selectionFixture);
+                selectedInputs = std::get_if<CppRecordObservationInputs>(&selected);
+                ok &= expect(selectedInputs && selectedInputs->types.empty() &&
+                             selectedInputs->deferredGroups == std::vector<std::size_t>{0},
+                             "unreferenced conflicting record is deferred instead of rejecting selection");
+                selectionFixture.selection.referencedGroups = {0};
+                ok &= expect(std::holds_alternative<CppRecordObservationFailure>(
+                                 selectExperimentalCppRecordTypes(selectionFixture)),
+                             "referenced conflicting record is rejected");
+                selectionFixture.selection.referencedGroups.clear();
+                selectionFixture.selection.expressionCandidateGroups = {0};
+                ok &= expect(std::holds_alternative<CppRecordObservationFailure>(
+                                 selectExperimentalCppRecordTypes(selectionFixture)),
+                             "potential expression use of conflicting record is rejected conservatively");
+                selectionFixture.selection.expressionCandidateGroups = {1};
+                ok &= expect(std::holds_alternative<CppRecordObservationFailure>(
+                                 selectExperimentalCppRecordTypes(selectionFixture)),
+                             "record selection rejects invalid observation indices");
+                selectionFixture.selection.expressionCandidateGroups.clear();
+                selectionFixture.referencedCollidingGroups = {0};
+                ok &= expect(std::holds_alternative<CppRecordObservationFailure>(
+                                 selectExperimentalCppRecordTypes(selectionFixture)),
+                             "record selection rejects a native collision without a collision group");
+                const auto singlePrepared = prepareCppRecordObservation(singleRecord, singleGroups);
+                const auto* singleInputs = std::get_if<CppRecordObservationInputs>(&singlePrepared);
+                if (singleInputs && !singleInputs->types.empty())
+                {
+                    auto invalid = singleInputs->types;
+                    invalid[0].objectLayout = nativesharp::frontend::CppImportedObjectLayout{16, 3};
+                    nativesharp::frontend::ProjectNameLookup malformedLookup;
+                    ok &= expect(!malformedLookup.setCppImportedTypes(invalid) &&
+                                 malformedLookup.setCppImportedTypes(singleInputs->types),
+                                 "invalid imported dimensions are rejected without poisoning lookup configuration");
+                }
+                const bool clangDimensions = singleInputs && singleInputs->types.size() == 1 &&
+                    singleInputs->types[0].objectLayout && namespaceC->sizeBits && namespaceC->alignmentBits &&
+                    singleInputs->types[0].objectLayout->sizeBytes * 8 == *namespaceC->sizeBits &&
+                    singleInputs->types[0].objectLayout->alignmentBytes * 8 == *namespaceC->alignmentBits;
+                ok &= expect(clangDimensions && automaticInputs && automaticInputs->types.size() == 1 &&
+                             !automaticInputs->types[0].objectLayout,
+                             "unique Clang definition retains object dimensions while a conflicting group has none");
+                nativesharp::frontend::ProjectCompilation automaticCompilation;
+                automaticCompilation.setSourceBufferProvider([](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Use(A.B.C* item) { return 0; } int Main() { return 0; }\n";
+                    return std::nullopt;
+                });
+                std::string automaticError;
+                const bool automaticParsed = automaticCompilation.compileProjectSyntax(path, automaticError);
+                nativesharp::diagnostics::DiagnosticEngine automaticDiagnostics;
+                std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> automaticCopies;
+                const bool automaticCopied = automaticParsed && automaticCompilation.cloneSyntaxForObservation(
+                    automaticCopies, automaticDiagnostics, automaticError);
+                nativesharp::frontend::ProjectNameLookup automaticLookup;
+                const bool automaticReady = automaticInputs && automaticCopied &&
+                    automaticLookup.setImportedNamespaces({{0, "A.B"}}) &&
+                    automaticLookup.setCppImportedTypes(automaticInputs->types) &&
+                    automaticLookup.build(*automaticCompilation.projectGraph(), automaticCopies, automaticDiagnostics);
+                nativesharp::frontend::ProjectNameLookup dimensionsLookup;
+                const bool dimensionsReady = singleInputs && automaticCopied &&
+                    dimensionsLookup.setImportedNamespaces({{0, "A.B"}}) &&
+                    dimensionsLookup.setCppImportedTypes(singleInputs->types) &&
+                    dimensionsLookup.build(*automaticCompilation.projectGraph(), automaticCopies, automaticDiagnostics);
+                const auto dimensionsOrdinal = dimensionsReady ? dimensionsLookup.typeOrdinalForIdentity(namespaceIdentity->key()) : std::nullopt;
+                const auto* installedDimensions = dimensionsOrdinal ? dimensionsLookup.cppImportedType(*dimensionsOrdinal) : nullptr;
+                ok &= expect(installedDimensions && installedDimensions->objectLayout && namespaceC->sizeBits &&
+                             namespaceC->alignmentBits && installedDimensions->objectLayout->sizeBytes * 8 == *namespaceC->sizeBits &&
+                             installedDimensions->objectLayout->alignmentBytes * 8 == *namespaceC->alignmentBits &&
+                             !dimensionsLookup.cppImportedType(dimensionsLookup.namedTypes().size()),
+                             "registered C++ type retains Clang dimensions and rejects unknown ordinals");
+                const auto automaticSelected = automaticReady
+                    ? selectCppRecordBindings(automaticLookup, realGroups, automaticInputs->groupByImportedType)
+                    : CppRecordBindingResult{CppRecordBindingFailure{"observation failed"}};
+                const auto* automaticSelection = std::get_if<CppRecordBindingSelection>(&automaticSelected);
+                ok &= expect(automaticSelection && automaticSelection->referencedGroups.size() == 1 &&
+                             realGroups.groups[automaticSelection->referencedGroups[0]].status == CppRecordGroupStatus::Conflict &&
+                             !automaticCompilation.diagnostics().hasErrors(),
+                             "real Clang inventory flows through automatic preparation and isolated type selection");
+                if (nestedIdentity && nestedC)
+                {
+                    std::vector<CppSemanticRecordEntry> nestedEntries{
+                        {path, 0, 0, "x86_64-pc-windows-msvc", *nestedC, nestedIdentity}};
+                    const auto nestedGroups = groupCppSemanticRecords(nestedEntries);
+                    const auto nestedPrepared = prepareCppRecordObservation(nestedEntries, nestedGroups);
+                    const auto* nestedInputs = std::get_if<CppRecordObservationInputs>(&nestedPrepared);
+                    ok &= expect(nestedInputs && nestedInputs->types.empty() && nestedInputs->deferredGroups.size() == 1,
+                                 "nested record remains explicitly deferred in observation preparation");
+                }
+                auto missingLocation = realRecords;
+                for (auto& entry : missingLocation) entry.declaration.location.reset();
+                const auto missingPrepared = prepareCppRecordObservation(missingLocation, realGroups);
+                const auto* missingInputs = std::get_if<CppRecordObservationInputs>(&missingPrepared);
+                ok &= expect(missingInputs && missingInputs->types.empty() && missingInputs->deferredGroups.size() == 1,
+                             "record with no source location remains explicitly deferred");
+            }
+            for (const auto& [source, expected] : std::vector<std::pair<std::string, std::string>>{
+                     {"using A.B; int Use(C* item) { return 0; } int Main() { return 0; }\n", "C"},
+                     {"using X = A.B; int Use(X.C* item) { return 0; } int Main() { return 0; }\n", "X.C"}})
+            {
+                nativesharp::frontend::ProjectCompilation scopedCompilation;
+                scopedCompilation.setSourceBufferProvider([source](const std::filesystem::path& file)
+                    -> std::optional<std::string> {
+                    if (file.filename() == "Main.ns") return source;
+                    return std::nullopt;
+                });
+                std::string scopeError;
+                const bool scopeParsed = scopedCompilation.compileProjectSyntax(path, scopeError);
+                nativesharp::diagnostics::DiagnosticEngine scopeObservationDiagnostics;
+                nativesharp::frontend::ProjectNameLookup scopeObserver;
+                const bool scopeObserverConfigured = scopeParsed && scopeObserver.setImportedNamespaces({{0, "A.B"}});
+                const bool scopeObserverReady = scopeObserverConfigured && scopeObserver.build(
+                    *scopedCompilation.projectGraph(), scopedCompilation.units(), scopeObservationDiagnostics);
+                bool scopeDemand = false;
+                for (const auto& binding : scopeObserver.bindings())
+                    scopeDemand |= binding.kind == nativesharp::frontend::TypeNameBindingKind::Unresolved &&
+                        binding.writtenName == expected && binding.syntax && binding.projectOrdinal == 0;
+                ok &= expect(scopeObserverConfigured && !scopeObserverReady && scopeDemand &&
+                             !scopedCompilation.diagnostics().hasErrors(),
+                             "isolated observation retains using or alias type demand");
+                nativesharp::frontend::ProjectNameLookup scopedLookup;
+                const bool scopeReady = scopeParsed && scopedLookup.setImportedNamespaces({{0, "A.B"}}) &&
+                    scopedLookup.setCppImportedTypes({{*namespaceIdentity,
+                        nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                        nativesharp::frontend::NamedTypeAccessibility::Public, 0,
+                        namespaceC->location ? namespaceC->location->file.generic_string() : ""}}) &&
+                    scopedLookup.build(*scopedCompilation.projectGraph(), scopedCompilation.units(), scopedCompilation.diagnostics());
+                const auto scopeOrdinal = scopeReady ? scopedLookup.typeOrdinalForIdentity(namespaceIdentity->key()) : std::nullopt;
+                bool scopeBound = false;
+                if (scopeOrdinal)
+                    for (const auto& binding : scopedLookup.bindings())
+                        scopeBound |= binding.writtenName == expected && binding.targetTypeOrdinal == scopeOrdinal;
+                ok &= expect(scopeReady && scopeBound, "imported record resolves through using or namespace alias");
+            }
         }
     }
     return ok ? 0 : 1;
