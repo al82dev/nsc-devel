@@ -584,5 +584,78 @@ int main(int argc, char** argv)
                      fileScopes[1].directives.size() == 1 && fileScopes[1].end == fileScopes[0].end,
                      "file-scoped namespace retains its using until the end of the file");
     }
+    {
+        const nativesharp::FileId file{79};
+        const std::string source = "namespace Left { using Shared; int F() { Item* p = null; return 0; } } "
+            "namespace Right { int G() { Shared.Item* q = null; int Item = 2; int p = 3; "
+            "Item * p; return Item; } }";
+        nativesharp::source::SourceFile input(file, "cpp-scope-seeds.ns", source);
+        nativesharp::frontend::ProjectSyntaxUnit unit(0, 0, "ScopeTest", file);
+        nativesharp::diagnostics::DiagnosticEngine diagnostics;
+        const bool lexed = unit.lex(input, diagnostics);
+        const auto lexical = nativesharp::parser::lexicalNamespaceScopes(unit.tokens());
+        const std::vector<std::string> namespaces{"Shared"};
+        const std::vector<std::string> types{"Shared.Item"};
+        const auto scoped = nativesharp::frontend::cppScopedTypeNames(lexical, namespaces, types);
+        const auto leftPos = static_cast<std::uint32_t>(source.find("Item* p"));
+        const auto rightPos = static_cast<std::uint32_t>(source.find("Item * p"));
+        const bool visibility = scoped && scoped->contains(nativesharp::SourceLocation(file, leftPos), "Item") &&
+            !scoped->contains(nativesharp::SourceLocation(file, rightPos), "Item") &&
+            scoped->contains(nativesharp::SourceLocation(file, rightPos), "Shared.Item");
+        const auto known = nativesharp::parser::buildKnownTypeNameSet();
+        const bool parsed = lexed && scoped && unit.parse(diagnostics, known, &*scoped);
+        bool pointer = false;
+        bool multiply = false;
+        std::vector<const nativesharp::ast::AstNode*> pending{unit.syntaxTree()};
+        std::unordered_set<const nativesharp::ast::AstNode*> seen;
+        while (!pending.empty())
+        {
+            const auto* node = pending.back(); pending.pop_back();
+            if (!node || !seen.insert(node).second) continue;
+            pointer |= node->kind() == nativesharp::ast::AstNodeKind::VariableDeclarationStatement &&
+                node->typeSyntax() && node->typeSyntax()->baseName() == "Item";
+            multiply |= node->kind() == nativesharp::ast::AstNodeKind::BinaryExpression &&
+                node->tokenKind() == nativesharp::lexer::TokenKind::Star;
+            pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
+            for (const auto* child : node->children()) pending.push_back(child);
+        }
+        ok &= expect(visibility && parsed && pointer && multiply && !diagnostics.hasErrors(),
+                     "C++ scoped seeds follow namespace imports without affecting sibling expressions");
+        auto unsupported = lexical;
+        unsupported[0].directives.push_back({"Alias", {"Shared", "Item"}});
+        const auto simpleAlias = nativesharp::frontend::cppScopedTypeNames(unsupported, namespaces, types);
+        ok &= expect(simpleAlias && simpleAlias->contains(nativesharp::SourceLocation(file, leftPos), "Alias"),
+                     "scoped seed preparation recognizes a simple alias to a C++ type");
+        const std::string aliasSource = "using P = Shared.Item*; using Count = int; "
+            "int F() { P p = null; Count n = 1; return n; }";
+        nativesharp::source::SourceFile aliasInput(file, "cpp-complex-alias.ns", aliasSource);
+        nativesharp::frontend::ProjectSyntaxUnit aliasUnit(0, 0, "ScopeTest", file);
+        nativesharp::diagnostics::DiagnosticEngine aliasDiagnostics;
+        const bool aliasLexed = aliasUnit.lex(aliasInput, aliasDiagnostics);
+        const auto aliasScopes = nativesharp::parser::lexicalNamespaceScopes(aliasUnit.tokens());
+        const auto aliasEnvironment = nativesharp::frontend::lexicalNamespaceEnvironments(aliasScopes, namespaces);
+        const auto aliasNames = nativesharp::frontend::cppScopedTypeNames(aliasScopes, namespaces, types);
+        const auto aliasKnown = nativesharp::parser::buildKnownTypeNameSet();
+        const bool aliasParsed = aliasLexed && aliasNames && aliasUnit.parse(aliasDiagnostics, aliasKnown, &*aliasNames);
+        ok &= expect(aliasLexed && aliasEnvironment &&
+                     (*aliasEnvironment)[0].unsupportedDirectives.empty() &&
+                     (*aliasEnvironment)[0].aliases.size() == 2 &&
+                     (*aliasEnvironment)[0].aliases[0].directive.explicitTypeSyntax &&
+                     (*aliasEnvironment)[0].aliases[1].directive.explicitTypeSyntax &&
+                     aliasParsed && !aliasDiagnostics.hasErrors(),
+                     "record pointer and builtin aliases remain type names and parse with their full syntax");
+        const std::string invalidSource = "using Bad = Shared.Item + 1; int F() { return 0; }";
+        nativesharp::source::SourceFile invalidInput(file, "cpp-invalid-alias.ns", invalidSource);
+        nativesharp::frontend::ProjectSyntaxUnit invalidUnit(0, 0, "ScopeTest", file);
+        nativesharp::diagnostics::DiagnosticEngine invalidDiagnostics;
+        const bool invalidLexed = invalidUnit.lex(invalidInput, invalidDiagnostics);
+        const auto invalidScopes = nativesharp::parser::lexicalNamespaceScopes(invalidUnit.tokens());
+        const auto invalidEnvironment = nativesharp::frontend::lexicalNamespaceEnvironments(invalidScopes, namespaces);
+        ok &= expect(invalidLexed && invalidEnvironment &&
+                     (*invalidEnvironment)[0].unsupportedDirectives.size() == 1 &&
+                     !nativesharp::frontend::cppScopedTypeNames(invalidScopes, namespaces, types) &&
+                     !invalidUnit.parse(invalidDiagnostics, aliasKnown) && invalidDiagnostics.hasErrors(),
+                     "invalid alias remains unsupported and the ordinary parser reports its syntax error");
+    }
     return ok ? 0 : 1;
 }
