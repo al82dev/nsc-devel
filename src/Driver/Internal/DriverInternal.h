@@ -172,6 +172,20 @@ bool lowerSourceFileModule(std::string_view sourcePath, bool executable,
 bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibraries,
                            const std::filesystem::path &destination, std::vector<std::filesystem::path> &copiedFiles,
                            std::string &error);
+bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation,
+                                 const linker::PeExecutableInfo &image,
+                                 std::vector<std::filesystem::path> &runtimeLibraries,
+                                 std::string &error);
+bool validateCppRuntimeDestinations(const frontend::ProjectCompilation &compilation,
+                                    std::span<const std::filesystem::path> runtimeLibraries,
+                                    const std::filesystem::path &destinationDirectory,
+                                    std::string &error);
+bool validatePackagedCppRuntimeDestinations(const frontend::ProjectCompilation &compilation,
+                                            std::span<const std::filesystem::path> runtimeLibraries,
+                                            std::span<const std::filesystem::path> stagedRuntimes,
+                                            const std::filesystem::path &destinationDirectory,
+                                            bool &protectExisting,
+                                            std::string &error);
 void removePackagedFiles(std::span<const std::filesystem::path> copiedFiles);
 
 ExitCode runCompilerSession(const Driver &driver, std::span<const std::string_view> arguments, std::ostream &output,
