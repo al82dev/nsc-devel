@@ -183,3 +183,11 @@ tamaño, alineación y conflictos. Se preparó una prueba de parámetro y result
 con `Color`. La selección transitiva del enum desde una firma, el caso const,
 los campos y la ejecución de llamadas siguen pendientes. No se ha compilado ni
 ejecutado esta implementación.
+
+### Campos enum C, sin validar
+
+Un helper común comprueba propietario, representación y conflictos del enum.
+La proyección de campos de records C lo utiliza para enum y puntero a enum;
+una prueba preparada comprueba también el const del apuntado. Sigue pendiente
+seleccionar transitivamente enums referidos solo por campos o firmas, probar
+acceso y llamadas ejecutables y ejecutar la validación agrupada.
