@@ -1,0 +1,1 @@
+int Main() { tools.pointer[0] = 19; return tools.pointer[0]; }
