@@ -1,0 +1,44 @@
+#pragma once
+
+#include "nativesharp/Interop/CppSessionDiagnostic.h"
+#include "nativesharp/Interop/CppType.h"
+
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace nativesharp::interop
+{
+enum class CppLanguageLinkage { None, C, Cpp };
+
+// Textual spellings support identification and diagnostics; they are not an ABI classification.
+struct CppFunctionParameter
+{
+    std::string name;
+    std::string typeSpelling;
+    std::string canonicalTypeSpelling;
+    CppType type;
+    bool hasDefaultArgument = false;
+};
+
+struct CppFunctionDeclaration
+{
+    std::string name;
+    std::string qualifiedName;
+    std::string canonicalFunctionType;
+    std::string callingConvention;
+    CppLanguageLinkage languageLinkage = CppLanguageLinkage::None;
+    std::string returnTypeSpelling;
+    std::string canonicalReturnTypeSpelling;
+    CppType returnType;
+    std::vector<CppFunctionParameter> parameters;
+    bool variadic = false;
+    bool externalLinkage = false;
+    // True only if Clang resolved a non-throwing exception specification.
+    bool isNonThrowing = false;
+    bool dllImport = false;
+    // An external spelling does not guarantee that a particular binary defines the symbol.
+    std::optional<std::string> externalSymbol;
+    std::optional<CppSourcePoint> location;
+};
+}
