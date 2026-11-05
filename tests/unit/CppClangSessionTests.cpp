@@ -5325,6 +5325,133 @@ int main(int argc, char** argv)
             }
         }
         else ok &= expect(false, "Clang exposes const global fixtures");
+        if (cppGlobal)
+        {
+            auto projected = projectCppSemanticGlobal(*cppGlobal, 0, "Semantic");
+            const auto* symbol = std::get_if<CppSemanticGlobal>(&projected);
+            if (symbol)
+            {
+                nativesharp::frontend::NamespaceStateSymbol state;
+                state.projectOrdinal = symbol->projectOrdinal;
+                state.moduleName = symbol->moduleName;
+                state.namespaceName = symbol->namespaceName;
+                state.name = symbol->name;
+                state.declaredTypeKey = symbol->typeKey;
+                state.storageName = symbol->externalSymbol;
+                state.isCppExternal = true;
+                state.accessibility = nativesharp::frontend::NamespaceFunctionAccessibility::Public;
+                for (int scenario = 0; scenario < 4; ++scenario)
+                {
+                    auto deferred = state;
+                    deferred.namespaceName.clear();
+                    deferred.storageName.clear();
+                    deferred.cppImportError = "volatile C/C++ global is not yet projected";
+                    nativesharp::frontend::ProjectCompilation check;
+                    check.setSourceBufferProvider([scenario](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() != "Main.ns") return std::nullopt;
+                        switch (scenario)
+                        {
+                            case 0: return "int Main() { int cpp_global = 7; return cpp_global; }\n";
+                            case 1: return "int Value(int cpp_global) { return cpp_global; } int Main() { return Value(7); }\n";
+                            case 2: return "int Main() { return cpp_global; }\n";
+                            default: return "int Main() { return 7; }\n";
+                        }
+                    });
+                    std::string checkError;
+                    const auto projectPath = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                    const bool configured = check.setExperimentalCppImportedStates({deferred}, checkError);
+                    const bool ready = configured && check.compileProjectOopMir(projectPath, checkError);
+                    bool deferredDiagnostic = false;
+                    for (const auto& diagnostic : check.diagnostics().diagnostics())
+                        deferredDiagnostic |= diagnostic.message().find(deferred.cppImportError) != std::string::npos;
+                    if (!configured || (scenario == 2 ? ready || !deferredDiagnostic : !ready))
+                    {
+                        std::cerr << "deferred global scenario " << scenario << ": " << checkError << '\n';
+                        for (const auto& diagnostic : check.diagnostics().diagnostics())
+                            std::cerr << diagnostic.message() << '\n';
+                    }
+                    ok &= expect(configured && (scenario == 2 ? !ready && deferredDiagnostic : ready),
+                                 "unsupported C++ global is diagnosed only when selected");
+                }
+                for (int scenario = 0; scenario < 3; ++scenario)
+                {
+                    auto imported = state;
+                    imported.namespaceName = "Clash";
+                    nativesharp::frontend::ProjectCompilation check;
+                    check.setSourceBufferProvider([scenario](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() != "Main.ns") return std::nullopt;
+                        if (scenario == 0)
+                            return "namespace Clash { public int cpp_global = 3; } int Main() { return 7; }\n";
+                        if (scenario == 1)
+                            return "namespace Clash { public int cpp_global = 3; int Run() { int cpp_global = 7; return cpp_global; } } int Main() { return Clash.Run(); }\n";
+                        return "namespace Clash { public int cpp_global = 3; } int Main() { return Clash.cpp_global; }\n";
+                    });
+                    std::string checkError;
+                    const auto projectPath = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                    const bool configured = check.setExperimentalCppImportedStates({imported}, checkError);
+                    const bool ready = configured && check.compileProjectOopMir(projectPath, checkError);
+                    bool ambiguity = false;
+                    for (const auto& diagnostic : check.diagnostics().diagnostics())
+                        ambiguity |= diagnostic.message().find("ambiguous namespace state reference") != std::string::npos;
+                    if (!configured || (scenario == 2 ? ready || !ambiguity : !ready))
+                    {
+                        std::cerr << "global collision scenario " << scenario << ": " << checkError << '\n';
+                        for (const auto& diagnostic : check.diagnostics().diagnostics())
+                            std::cerr << diagnostic.message() << '\n';
+                    }
+                    ok &= expect(configured && (scenario == 2 ? !ready && ambiguity : ready),
+                                 "C++ and NativeSharp global collision is diagnosed only when selected");
+                }
+                {
+                    nativesharp::frontend::ProjectCompilation invalid;
+                    std::string validationError;
+                    auto malformed = state;
+                    malformed.storageName.clear();
+                    ok &= expect(!invalid.setExperimentalCppImportedStates({malformed}, validationError) &&
+                                 !invalid.setExperimentalCppImportedStates({state, state}, validationError),
+                                 "C++ globals reject incomplete and duplicate declarations");
+                }
+                nativesharp::frontend::ProjectCompilation compilation;
+                compilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns")
+                        return "int Main() { tools.cpp_global = 41; return tools.cpp_global; }\n";
+                    return std::nullopt;
+                });
+                std::string error;
+                const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                const bool ready = compilation.setExperimentalCppImportedStates({state}, error) &&
+                    compilation.compileProjectOopMir(path, error);
+                if (!ready)
+                {
+                    std::cerr << "C++ global MIR: " << error << '\n';
+                    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                        std::cerr << diagnostic.message() << '\n';
+                }
+                ok &= expect(ready, "C++ global reads and writes reach MIR");
+                ok &= expect(!compilation.setExperimentalCppImportedStates({}, error),
+                             "C++ globals cannot change after compilation starts");
+                if (ready && compilation.oopMirModel() && compilation.nameLookup())
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+                    const bool valid = module && module->verify(error);
+                    const auto ir = module ? module->text() : std::string{};
+                    ok &= expect(valid && ir.find("@\"?cpp_global@tools@@3HA\" = external global i32") != std::string::npos &&
+                                 ir.find("__nsc_get_?cpp_global") == std::string::npos,
+                                 "C++ global is addressed directly by its Clang symbol");
+                    auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(error);
+                    const bool emitted = valid && target && target->emit(*module,
+                        std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/cpp-global-call.obj",
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object, error);
+                    if (!emitted) std::cerr << "C++ global object: " << lowerer.error() << ' ' << error << '\n';
+                    ok &= expect(emitted, "C++ global emits a Windows x64 object");
+                }
+            }
+            else ok &= expect(false, "C++ global projects to NativeSharp scalar");
+        }
     }
     return ok ? 0 : 1;
 }
