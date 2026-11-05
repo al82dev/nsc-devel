@@ -20,9 +20,9 @@ ni debe extrapolarse a otras versiones de Clang.
 
 El sistema de archivos consulta el token de cancelación en operaciones que
 pueden interceptarse. Esto no garantiza interrupción inmediata durante trabajo
-de CPU ni en una operación de E/S ya iniciada. Las pruebas añadidas verifican
-los argumentos y la cancelación antes y después de consultas al sistema de
-archivos; queda por comprobar su funcionamiento junto con la sesión real.
+de CPU ni en una operación de E/S ya iniciada. Las pruebas verifican los
+argumentos y la cancelación antes y después de consultas al sistema de archivos,
+además de provocar cancelación durante una acción real de Clang.
 
 Validación del 5 de noviembre de 2026:
 
