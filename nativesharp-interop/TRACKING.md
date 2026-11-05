@@ -97,7 +97,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 ## 04. Implementación interna de la sesión
 
 - [x] T04-001. Crear la implementación privada propuesta `ClangSession.cpp`.
-- [ ] T04-002. Crear el constructor de invocación propuesto `ClangInvocationBuilder.cpp`.
+- [x] T04-002. Crear el constructor de invocación propuesto `ClangInvocationBuilder.cpp`.
 - [ ] T04-003. Traducir el modo C o C++ a los argumentos correspondientes de Clang.
 - [ ] T04-004. Traducir la versión de lenguaje a la invocación de Clang.
 - [ ] T04-005. Traducir el triple objetivo a la invocación de Clang.
