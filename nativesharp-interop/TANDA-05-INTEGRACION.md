@@ -42,6 +42,13 @@ validación incremental agrupada. Corregir y repetir al aparecer errores.
 - ON: `A:/nsc-interop-build/tanda1-ON/bin/nsc_cpp_session_tests.exe` con recursos
   `A:/al82dev-clang/lib/clang/23`, temporales `A:/nsc-interop-build` y el
   `clang.exe` de `A:/al82dev-clang/bin` terminó con código 0.
+- ON: `--check-project-syntax` del proyecto ordinario `cpp-fixtures/plain/Plain.nsproj`
+  terminó con código 0. El proyecto `cpp-fixtures/project/CppProbe.nsproj` sin
+  raíz de Clang terminó con código 1 y pidió `--cpp-clang-root`.
+- ON: un proyecto temporal cuyo header contenía `struct Bad { int x };`,
+  analizado con `--cpp-clang-root=A:/al82dev-clang --check-project-syntax`,
+  terminó con código 1 y presentó `Bad.h:1:19` y el mensaje de Clang sobre el
+  punto y coma faltante. Es una comprobación real del recorrido de errores.
 - OFF: construcción incremental de `nsc` en curso. Después se deben verificar
   su comportamiento con y sin solicitud de interoperabilidad. Esta tanda sigue
   abierta hasta que terminen esos controles y se registren sus resultados.
