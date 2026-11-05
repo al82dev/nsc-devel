@@ -1,0 +1,1 @@
+int Main() { int const* value = Demo.Source.readSource(); { Demo.Choice object = new Demo.Choice(value); } return Demo.checkChoice(2); }

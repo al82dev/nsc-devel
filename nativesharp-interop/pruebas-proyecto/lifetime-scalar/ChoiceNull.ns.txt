@@ -1,0 +1,1 @@
+int Main() { { Demo.Choice object = new Demo.Choice(null); } return 0; }
