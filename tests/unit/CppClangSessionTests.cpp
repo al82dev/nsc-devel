@@ -1,6 +1,7 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Frontend/CppDiagnosticAdapter.h"
 #include "nativesharp/Frontend/CppAliasRecordType.h"
+#include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticRenderer.h"
 #include "nativesharp/Source/SourceManager.h"
@@ -2155,7 +2156,7 @@ int main(int argc, char** argv)
                                   "struct Pair { char a; int b; }; struct Incomplete;\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
                                   "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
-                                  "typedef int IncompleteArray[]; typedef int FixedArray[7];\n"
+                                  "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
                                   "enum Color { CMinus = -3, CPlus = 5 }; enum { CAnonymous = 9 };\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
@@ -2186,6 +2187,7 @@ int main(int argc, char** argv)
         const auto* readonlyAlias = aliasByName("ReadOnlyPtr");
         const auto* incompleteArrayAlias = aliasByName("IncompleteArray");
         const auto* fixedArrayAlias = aliasByName("FixedArray");
+        const auto* matrixAlias = aliasByName("Matrix");
         const auto* callbackAlias = aliasByName("Callback");
         const auto* oldCallbackAlias = aliasByName("OldCallback");
         ok &= expect(countAlias && countAlias->underlyingType.kind == CppTypeKind::UnsignedInteger &&
@@ -2214,6 +2216,13 @@ int main(int argc, char** argv)
                      fixedArrayAlias->underlyingType.arrayCount == 7 &&
                      fixedArrayAlias->underlyingType.sizeBits == 224,
                      "C array typedef snapshot preserves element and distinguishes incomplete bounds");
+        const auto matrixType = matrixAlias ? nativesharp::frontend::cppAliasArrayType(matrixAlias->underlyingType)
+                                            : std::nullopt;
+        ok &= expect(matrixType && matrixType->dimensions.size() == 2 &&
+                     matrixType->dimensions[0] == 2 && matrixType->dimensions[1] == 3 &&
+                     matrixType->element.token == nativesharp::lexer::TokenKind::KwInt &&
+                     incompleteArrayAlias && !nativesharp::frontend::cppAliasArrayType(incompleteArrayAlias->underlyingType),
+                     "array typedef preserves C dimensions and rejects an unknown bound");
         const auto* callbackType = callbackAlias && callbackAlias->underlyingType.element
             ? callbackAlias->underlyingType.element->function.get() : nullptr;
         const auto* oldCallbackType = oldCallbackAlias && oldCallbackAlias->underlyingType.element
@@ -2540,7 +2549,7 @@ int main(int argc, char** argv)
                     aliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
                         -> std::optional<std::string> {
                         if (path.filename() == "Main.ns")
-                            return "Count Echo(Count value) { return value; } int Main() { return 0; }\n";
+                            return "Count Echo(Count value) { return value; } int Main() { Matrix value; return 0; }\n";
                         return std::nullopt;
                     });
                     bool supplied = false;
@@ -2549,7 +2558,7 @@ int main(int argc, char** argv)
                         [snapshot, &supplied](const auto& graph, auto, auto& output, auto& why) {
                             if (!snapshot || graph.projects().empty()) { why = "alias fixture unavailable"; return false; }
                             for (const auto& alias : *snapshot)
-                                if (alias.name == "Count")
+                                if (alias.name == "Count" || alias.name == "Matrix")
                                 {
                                     output.push_back({0, graph.projects()[0].projectFile(), 0,
                                                       "x86_64-pc-windows-msvc", alias});
@@ -2558,14 +2567,22 @@ int main(int argc, char** argv)
                             return supplied;
                         }, error);
                     const bool bound = configured && aliasCompilation.compileProjectNames(semanticPath, error);
-                    bool expanded = false;
+                    bool expanded = false, matrixExpanded = false;
                     if (bound && aliasCompilation.nameLookup())
                         for (const auto& binding : aliasCompilation.nameLookup()->bindings())
+                        {
                             expanded |= binding.writtenName == "Count" && binding.syntax &&
                                 binding.syntax->baseTokenKind() == nativesharp::lexer::TokenKind::KwUInt;
+                            if (binding.writtenName == "Matrix" && binding.syntax)
+                            {
+                                const auto& modifiers = binding.syntax->modifiers();
+                                matrixExpanded |= modifiers.size() == 2 && modifiers[0].arrayCount && modifiers[1].arrayCount &&
+                                    modifiers[0].arrayCount->integerValue() == 3 && modifiers[1].arrayCount->integerValue() == 2;
+                            }
+                        }
                     if (!bound) std::cerr << "C typedef semantic setup failed: " << error << '\n';
-                    ok &= expect(bound && supplied && expanded,
-                                 "scalar typedef enters parser and resolves to its underlying NativeSharp type");
+                    ok &= expect(bound && supplied && expanded && matrixExpanded,
+                                 "scalar and multidimensional typedefs bind to underlying NativeSharp types");
                 }
                 {
                     nativesharp::frontend::ProjectCompilation recordAliasCompilation;
