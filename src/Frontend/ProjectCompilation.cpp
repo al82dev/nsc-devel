@@ -2584,9 +2584,13 @@ bool ProjectCompilation::parseSyntaxUnits(
     std::string& loadError)
 {
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "syntax-parse");
-    const std::vector<std::string> knownTypeNames = collectParserKnownTypeNames(units_);
-    const parser::KnownTypeNameSet knownTypeNameIndex =
-        parser::buildKnownTypeNameSet(knownTypeNames);
+    const auto knownTypesByProject = parserTypeIndexesByProject(*projectGraph_, units_, {});
+    std::vector<std::pair<std::size_t, std::string>> cppNamespaces;
+    if (!experimentalCppImportedTypes_.empty() && cppNamespaceProvider_ &&
+        !cppNamespaceProvider_(*projectGraph_, cppProjectSessions_, cppNamespaces, loadError)) return false;
+    std::vector<std::optional<parser::ScopedKnownTypeNames>> scopedNames;
+    if (!prepareCppScopedParserNames(*projectGraph_, units_, experimentalCppImportedTypes_,
+                                     cppNamespaces, scopedNames, loadError)) return false;
     const std::size_t progressTotal = visibleSourceCount(units_, sourceManager_);
     std::atomic_size_t completed = 0;
     bool syntaxOk = lexicalOk;
