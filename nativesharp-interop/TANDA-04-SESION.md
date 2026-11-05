@@ -11,10 +11,13 @@ apertura y cierre de la unidad. Debe contrastarse el alcance literal de
 T04-018 con esa decisión, además de verificar los caminos de éxito y error.
 
 La revisión de `clang/lib/Frontend/ASTUnit.cpp`, función `ASTUnit::Parse`, halló
-que si `BeginSourceFile` falla se retorna sin `EndSourceFile`, pero también que
-si `Execute` devuelve error se retorna antes de `EndSourceFile`. Por tanto,
-T04-024 no está demostrado para todos los casos tras un inicio exitoso: hay que
-resolver esa ruta sin modificar Clang y verificarla antes de cerrar la tanda.
+que si `BeginSourceFile` falla se retorna sin `EndSourceFile`, y que existe una
+rama que retorna antes del cierre si `Execute` devuelve error. En la versión
+23.1.0 fijada, `FrontendAction::Execute` no es virtual y su implementación
+normal devuelve siempre éxito; `TopLevelDeclTrackerAction` utiliza esa función.
+Por inspección, esa rama de error no se alcanza por un retorno ordinario de la
+acción empleada aquí. Esto no demuestra comportamiento ante fallos catastróficos
+ni debe extrapolarse a otras versiones de Clang.
 
 El sistema de archivos consulta el token de cancelación en operaciones que
 pueden interceptarse. Esto no garantiza interrupción inmediata durante trabajo
