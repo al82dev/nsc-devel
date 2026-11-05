@@ -59,6 +59,22 @@ bool ProjectNameLookup::setCppImportedTypes(std::vector<CppImportedTypeDeclarati
 {
     if (built_ || !modules_.empty()) return false;
     for (const auto& type : types)
+    {
+        if (type.enumBase)
+        {
+            using T = lexer::TokenKind;
+            const auto& base = *type.enumBase;
+            const std::array allowed{
+                std::pair{T::KwSByte, "sbyte"}, std::pair{T::KwByte, "byte"},
+                std::pair{T::KwShort, "short"}, std::pair{T::KwUShort, "ushort"},
+                std::pair{T::KwInt, "int"}, std::pair{T::KwUInt, "uint"},
+                std::pair{T::KwLong, "long"}, std::pair{T::KwULong, "ulong"}};
+            if (type.kind != NamedTypeDeclarationKind::Enum ||
+                std::none_of(allowed.begin(), allowed.end(), [&](const auto& item) {
+                    return item.first == base.token && item.second == base.name;
+                })) return false;
+        }
+        else if (type.kind == NamedTypeDeclarationKind::Enum) return false;
         for (const auto& layout : {type.objectLayout, type.memberAccessLayout})
         if (layout)
         {
@@ -67,6 +83,7 @@ bool ProjectNameLookup::setCppImportedTypes(std::vector<CppImportedTypeDeclarati
             if (size == 0 || alignment == 0 || (alignment & (alignment - 1)) != 0 || size % alignment != 0)
                 return false;
         }
+    }
     cppImportedTypes_ = std::move(types);
     return true;
 }
@@ -145,8 +162,10 @@ bool ProjectNameLookup::build(
     buildVisibility(graph);
     driver::CompilationWorkerPool& workers = *workerPool;
     collectDeclarationIndexes(graph, units, workers);
-    for (const auto& imported : cppImportedTypes_)
+    cppImportedSyntheticSyntax_.assign(cppImportedTypes_.size(), nullptr);
+    for (std::size_t importedIndex = 0; importedIndex < cppImportedTypes_.size(); ++importedIndex)
     {
+        const auto& imported = cppImportedTypes_[importedIndex];
         if (imported.projectOrdinal >= graph.projects().size() || !imported.identity.isValid() ||
             imported.identity.moduleName() != graph.projects()[imported.projectOrdinal].moduleName() ||
             imported.sourcePath.empty())
@@ -158,6 +177,17 @@ bool ProjectNameLookup::build(
         part.isNested = !imported.identity.containingTypes().empty();
         part.projectOrdinal = imported.projectOrdinal;
         part.sourcePath = imported.sourcePath;
+        if (imported.enumBase)
+        {
+            if (!cppImportedSyntax_) cppImportedSyntax_ = std::make_unique<ast::AstArena>();
+            auto* node = cppImportedSyntax_->make<ast::AstNode>(ast::AstNodeKind::EnumDeclaration, SourceRange{});
+            node->setText(imported.identity.name());
+            auto* base = cppImportedSyntax_->make<ast::TypeSyntax>(SourceRange{},
+                imported.enumBase->token, imported.enumBase->name);
+            node->setTypeSyntax(base);
+            part.syntax = node;
+            cppImportedSyntheticSyntax_[importedIndex] = node;
+        }
         pendingTypes_.push_back({imported.identity, std::move(part)});
     }
     reportUnsupportedGlobalDeclarations(units, diagnostics);
@@ -175,7 +205,7 @@ bool ProjectNameLookup::build(
         const auto ordinal = indexes_->typeOrdinalForIdentity(imported.identity.key());
         const auto* declaration = ordinal ? indexes_->typeForOrdinal(*ordinal) : nullptr;
         if (!declaration || declaration->projectOrdinal != imported.projectOrdinal ||
-            declaration->parts.size() != 1 || declaration->parts.front().syntax != nullptr ||
+            declaration->parts.size() != 1 || declaration->parts.front().syntax != cppImportedSyntheticSyntax_[index] ||
             declaration->parts.front().sourcePath != imported.sourcePath ||
             !importedIndices.emplace(*ordinal, index).second)
             return false;
