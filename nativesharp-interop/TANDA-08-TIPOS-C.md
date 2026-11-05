@@ -195,6 +195,12 @@ funciones, incluyendo sobrecargas no proyectadas y conflictos diferidos, con
 una prueba de deduplicación. El siguiente paso es obtener las demandas durante
 la observación previa y conectarlas al selector definitivo; sigue sin validarse.
 
+La observación previa construye ahora modelos locales para capturar llamadas
+cuando existen firmas con enums y selecciona sus dependencias antes del índice
+definitivo. Hay una prueba preparada para un resultado enum no nombrado por
+NativeSharp. Faltan comprobar regresiones de genéricos, snapshots, colisiones y
+la ejecución ABI; los cambios no se han compilado ni ejecutado.
+
 ### Campos enum C, sin validar
 
 Un helper común comprueba propietario, representación y conflictos del enum.
