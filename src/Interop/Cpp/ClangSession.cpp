@@ -308,5 +308,16 @@ void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astCon
     }
 }
 
+CppAccess describeAccess(clang::AccessSpecifier access)
+{
+    switch (access)
+    {
+    case clang::AS_public: return CppAccess::Public;
+    case clang::AS_protected: return CppAccess::Protected;
+    case clang::AS_private: return CppAccess::Private;
+    default: return CppAccess::None;
+    }
+}
+
 }
 }
