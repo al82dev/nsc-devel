@@ -114,7 +114,8 @@ bool ProjectObjectLayoutModel::build(
 
     for (std::size_t typeOrdinal = 0; typeOrdinal < nameLookup.namedTypes().size(); ++typeOrdinal)
     {
-        if (nameLookup.namedTypes()[typeOrdinal].kind == NamedTypeDeclarationKind::Struct)
+        if (nameLookup.namedTypes()[typeOrdinal].kind == NamedTypeDeclarationKind::Struct &&
+            !nameLookup.cppImportedTypeIndex(typeOrdinal))
         {
             buildStructLayout(typeOrdinal, diagnostics, nameLookup.namedTypes()[typeOrdinal].range);
         }
@@ -128,6 +129,30 @@ bool ProjectObjectLayoutModel::build(
         }
     }
 
+    if (!diagnostics.hasErrors())
+    {
+        for (std::size_t ordinal = 0; ordinal < memberModel.members().size(); ++ordinal)
+        {
+            const auto& member = memberModel.members()[ordinal];
+            if (!member.isCppExternal || member.isStatic || member.kind != ClassMemberKind::Field) continue;
+            const auto* owner = nameLookup.cppImportedType(member.declaringTypeOrdinal);
+            const auto* ownerLayout = owner && owner->memberAccessLayout ? &*owner->memberAccessLayout :
+                owner && owner->objectLayout ? &*owner->objectLayout : nullptr;
+            const auto physical = valueLayoutForTypeKey(nameLookup, member.declaredTypeKey);
+            if (!ownerLayout || !member.explicitFieldOffset || !physical ||
+                physical->second == 0 || *member.explicitFieldOffset > ownerLayout->sizeBytes ||
+                physical->first > ownerLayout->sizeBytes - *member.explicitFieldOffset ||
+                *member.explicitFieldOffset % physical->second != 0 ||
+                ownerLayout->alignmentBytes % physical->second != 0)
+            {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
+                    SourceRange{}, "invalid C++ instance field layout");
+                break;
+            }
+            experimentalCppFieldLayouts_.push_back(ObjectFieldLayout{ordinal, *member.explicitFieldOffset,
+                physical->first, physical->second, member.declaredTypeKey, std::nullopt, std::nullopt});
+        }
+    }
     if (!diagnostics.hasErrors())
     {
         buildPromotedFieldLayouts(diagnostics);
@@ -193,6 +218,8 @@ const StructValueLayout* ProjectObjectLayoutModel::structLayoutForType(std::size
 
 const ObjectFieldLayout* ProjectObjectLayoutModel::fieldLayoutForMember(std::size_t memberOrdinal) const noexcept
 {
+    for (const ObjectFieldLayout& field : experimentalCppFieldLayouts_)
+        if (field.memberOrdinal == memberOrdinal) return &field;
     if (indexes_->hasLayoutIndexes())
     {
         return indexes_->fieldLayoutForMember(memberOrdinal);
@@ -262,6 +289,11 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
         namedTypeOrdinalForTypeKey(nameLookup, typeKey);
     if (!ordinal.has_value() || *ordinal >= nameLookup.namedTypes().size())
         return std::nullopt;
+    if (const auto* imported = nameLookup.cppImportedType(*ordinal))
+    {
+        if (!imported->objectLayout) return std::nullopt;
+        return {{imported->objectLayout->sizeBytes, imported->objectLayout->alignmentBytes}};
+    }
     const NamedTypeDeclaration& declaration = nameLookup.namedTypes()[*ordinal];
     if (declaration.kind == NamedTypeDeclarationKind::Struct)
     {
@@ -583,6 +615,16 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutNamedType(
     }
 
     const NamedTypeDeclaration& type = nameLookup_->namedTypes()[typeOrdinal];
+    if (nameLookup_->cppImportedTypeIndex(typeOrdinal))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::IncompleteType,
+            diagnostics::DiagnosticSeverity::Error,
+            useRange,
+            "C/C++ type '" + type.identity.fullyQualifiedName() +
+                "' has no imported object layout yet");
+        return std::nullopt;
+    }
     if (type.kind == NamedTypeDeclarationKind::Class ||
         type.kind == NamedTypeDeclarationKind::Interface ||
         type.kind == NamedTypeDeclarationKind::Delegate)

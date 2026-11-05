@@ -251,6 +251,8 @@ private:
     std::vector<std::optional<std::size_t>> structLayoutIndexByType_;
     std::vector<ClassObjectLayout> classLayouts_;
     std::vector<ObjectFieldLayout> promotedFieldLayouts_;
+    // C++ fields retain Clang offsets independently of NativeSharp aggregate layouts.
+    std::vector<ObjectFieldLayout> experimentalCppFieldLayouts_;
     std::vector<std::optional<std::size_t>> classLayoutIndexByType_;
     std::vector<target::TypeLayout> namedTypeLayouts_;
     std::vector<NamedLayoutState> namedLayoutStates_;
