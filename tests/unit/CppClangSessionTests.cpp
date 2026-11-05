@@ -2259,6 +2259,23 @@ int main(int argc, char** argv)
                      color->enumerators[1].decimalValue == "5" && anonymous &&
                      anonymous->enumerators[0].decimalValue == "9",
                      "C enum snapshot preserves named and anonymous enumerators and signed values");
+        if (color)
+        {
+            CppSemanticEnumEntry enumEntry{{}, 0, 0, "x86_64-pc-windows-msvc", *color};
+            const auto negative = projectCppEnumConstant(enumEntry, 0);
+            const auto positive = projectCppEnumConstant(enumEntry, 1);
+            const auto* negativeValue = std::get_if<CppSemanticEnumConstant>(&negative);
+            const auto* positiveValue = std::get_if<CppSemanticEnumConstant>(&positive);
+            auto overflow = enumEntry;
+            overflow.declaration.enumerators[0].decimalValue = "2147483648";
+            auto cppEnum = enumEntry;
+            cppEnum.declaration.isCxx = true;
+            ok &= expect(negativeValue && negativeValue->typeKey == "builtin:int" &&
+                         negativeValue->bits == 0xfffffffdULL && positiveValue && positiveValue->bits == 5 &&
+                         std::holds_alternative<CppSemanticEnumConstantFailure>(projectCppEnumConstant(overflow, 0)) &&
+                         std::holds_alternative<CppSemanticEnumConstantFailure>(projectCppEnumConstant(cppEnum, 0)),
+                         "C enum projection preserves exact signed bits and rejects overflow or C++ enum assumptions");
+        }
         auto count = c->topLevelDeclarationCount();
         ok &= expect(count && *count > 0, "C AST is available after parsing");
         cFunctions = c->freeFunctionsSnapshot();
