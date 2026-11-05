@@ -1641,6 +1641,13 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `ArrayAssign.ns.txt` y `validar.cmd` del proyecto `pruebas-tanda-08-record-c`, más registro Markdown. Si el caso compila o produce un diagnóstico ajeno, investigar la causa antes de modificar producción.
 - Validar junto al acceso indexado y a la batería agrupada. No usar un fallo arbitrario como prueba del contrato.
 
+### Corrección de reasignación de global C array
+
+- Fallo observado: en la pasada agrupada del 2026-11-05 `shared_array = shared_array` produjo un ejecutable; el caso debía rechazarse. El proyecto de acceso indexado se compiló y ejecutó antes de esa comprobación.
+- Causa localizada: `IdentifierAnalyzer.cpp` marca asignable todo estado C externo mutable sin excluir arreglos fijos, aunque el indexador ya distingue la asignabilidad de los elementos de la del arreglo completo.
+- Presupuesto: `src/Frontend/Bodies/IdentifierAnalyzer.cpp` y registro Markdown. Solo cambiar la asignabilidad del estado C/C++ externo con identidad de arreglo fijo; preservar dirección, lectura, mutabilidad de elementos y estados NativeSharp.
+- Verificar el rechazo específico y repetir la ejecución del acceso indexado y la batería agrupada.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.

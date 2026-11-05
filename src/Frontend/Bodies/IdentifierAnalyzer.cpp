@@ -11,6 +11,7 @@
 
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
+#include "nativesharp/Frontend/ProjectMemberModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 
@@ -993,7 +994,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     }
     result.typeKey = state.declaredTypeKey;
     result.valid = true;
-    result.assignable = !state.isConst && !state.isCppReadonly;
+    result.assignable = !state.isConst && !state.isCppReadonly &&
+        !(state.isCppExternal && ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value());
     result.addressable = !state.isCppEnumConstant && !(state.isCppExternal &&
         (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly));
     result.readonlyReceiver = state.isConst || state.isCppReadonly;
