@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/CppAliasBuiltinType.h"
 #include "nativesharp/Frontend/QualifiedNamespaceTarget.h"
 #include "../Internal/LookupEnvironment.h"
 #include "../Internal/ProjectNameLookupFrame.h"
@@ -156,6 +157,78 @@ void ProjectNameLookup::bindTypeSyntax(
     const std::size_t ordinal = index.bindings.size();
     index.bindings.push_back(std::move(binding));
     index.bindingBySyntax.emplace(syntax, ordinal);
+}
+
+bool ProjectNameLookup::expandCppTypeAlias(
+    const ProjectSyntaxUnit& unit, const ast::TypeSyntax* syntax,
+    const std::vector<std::string>& namespaceSegments, const LookupEnvironment& environment,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (cppImportedTypeAliases_.empty() || syntax->isFunction() ||
+        lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()) || !syntax->typeArguments().empty()) return true;
+    const auto owner = syntax->originProjectOrdinal().value_or(unit.projectOrdinal());
+    if (owner >= modules_.size()) return true;
+    const auto effectiveNamespace = effectiveTypeNamespace(syntax, namespaceSegments);
+    const auto enclosing = enclosingTypeSpellings(environment);
+    QualifiedNameSite site;
+    site.namespaceSegments = effectiveNamespace;
+    site.enclosingTypeNames = enclosing;
+    site.importedNamespaces = environment.importedNamespaces;
+    site.aliases = &environment.aliases;
+    const auto visible = modules_[owner]->visibleProjectOrdinals();
+    const auto report = [&](diagnostics::DiagnosticId id, const std::string& message) {
+        diagnostics.report(id, diagnostics::DiagnosticSeverity::Error, syntax->range(), message);
+        return false;
+    };
+    for (const auto& rung : qualifiedNameLadder(site, syntax->baseName()))
+    {
+        const CppImportedTypeAlias* selected = nullptr;
+        std::string selectedName;
+        bool nativeFound = false;
+        for (const auto& spelling : rung.spellings)
+        {
+            nativeFound |= !findExactTypeCandidates(owner, spelling, false).empty();
+            for (const auto& alias : cppImportedTypeAliases_)
+            {
+                if (alias.declaration.insideAnonymousNamespace ||
+                    (alias.projectOrdinal != owner &&
+                     std::find(visible.begin(), visible.end(), alias.projectOrdinal) == visible.end())) continue;
+                auto qualified = alias.declaration.qualifiedName;
+                std::size_t pos = 0;
+                while ((pos = qualified.find("::", pos)) != std::string::npos) qualified.replace(pos, 2, ".");
+                if (qualified != spelling) continue;
+                if (selected && (selectedName != qualified || selected->projectOrdinal != alias.projectOrdinal ||
+                    selected->targetTriple != alias.targetTriple ||
+                    selected->declaration.underlyingType.canonicalSpelling != alias.declaration.underlyingType.canonicalSpelling))
+                    return report(diagnostics::DiagnosticId::AmbiguousTypeName,
+                                  "conflicting C/C++ type alias '" + syntax->baseName() + "'");
+                selected = &alias;
+                selectedName = qualified;
+            }
+        }
+        if (!selected)
+        {
+            if (nativeFound) return true;
+            continue;
+        }
+        if (nativeFound)
+            return report(diagnostics::DiagnosticId::AmbiguousTypeName,
+                          "C/C++ type alias conflicts with a native type '" + syntax->baseName() + "'");
+        const auto mapped = cppAliasBuiltinType(selected->declaration.underlyingType);
+        if (selected->targetTriple != "x86_64-pc-windows-msvc" || !mapped ||
+            (mapped->pointeeConst && !syntax->modifiers().empty()) ||
+            (syntax->isPointeeConst() && mapped->pointerDepth != 0))
+            return report(diagnostics::DiagnosticId::InvalidUsingTarget,
+                          "C/C++ type alias cannot yet be represented without losing type information: '" +
+                          syntax->baseName() + "'");
+        auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
+        mutableSyntax->setBaseTokenKind(mapped->token);
+        mutableSyntax->setBaseName(std::string(mapped->name));
+        mutableSyntax->prependModifiers(std::vector<ast::TypeModifierSyntax>(mapped->pointerDepth));
+        mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || mapped->pointeeConst);
+        return true;
+    }
+    return true;
 }
 
 std::optional<std::size_t> ProjectNameLookup::findInaccessibleNestedType(
