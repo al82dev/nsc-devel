@@ -2,6 +2,23 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Validación agrupada de callbacks y tipos C: 2026-11-05
+
+Después de los commits `635124b69`, `945b14d26`, `fd48eef76` y
+`8e48b2db3`, `call nativesharp-interop\validar-tanda-08.cmd` terminó con
+código 0. Pasaron la construcción incremental ON y frontend OFF, la suite de
+sesión Clang, las pruebas de restauración y equivalencia de serialización y
+los siete proyectos preparados. La construcción notificó advertencias ya
+observadas sobre inicializadores de `deferredImportError`.
+
+El proyecto de callback ejecutó una llamada C con `Callback*` y llamadas de
+`float` y `double` usando typedefs; la suite verificó semánticamente un
+`ColorCallback*` con enum en su firma. El proyecto de tipo incompleto validó
+el puntero a una matriz `[][3]` y el rechazo de `sizeof` de esa matriz. Estos
+resultados corresponden a Windows x64, O0 y los casos preparados: no prueban
+todas las firmas, calificadores, operaciones o configuraciones, y no cierran
+T08-007, T08-013 ni T08-017.
+
 ## Validación agrupada posterior: 2026-11-05
 
 `call nativesharp-interop\validar-tanda-08.cmd` terminó con código 0 tras
