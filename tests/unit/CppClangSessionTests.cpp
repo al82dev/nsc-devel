@@ -1061,6 +1061,14 @@ int main(int argc, char** argv)
             }
             std::vector<CppLibraryReference> broken(project->cppLibraryReferences().begin(),
                                                      project->cppLibraryReferences().end());
+            auto invalidOptions = broken;
+            invalidOptions[1].languageStandard.clear();
+            RejectUnexpectedOpen preflightFactory;
+            const auto invalidOptionsResult = openCppProjectSessions(invalidOptions, environment, preflightFactory, {});
+            const auto* invalidOptionsFailure = std::get_if<CppProjectSessionFailure>(&invalidOptionsResult);
+            ok &= expect(invalidOptionsFailure && invalidOptionsFailure->referenceIndex == 1 &&
+                         invalidOptionsFailure->failure.phase == "options" && preflightFactory.calls == 0,
+                         "invalid later reference is rejected before opening any project session");
             broken[1].headerPath = fixture / "missing-session-header.h";
             auto failed = openCppProjectSessions(broken, environment, factory, {});
             const auto* failure = std::get_if<CppProjectSessionFailure>(&failed);
