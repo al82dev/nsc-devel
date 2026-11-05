@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <optional>
@@ -17,6 +18,7 @@
 #include <system_error>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 namespace nativesharp::interop
 {
@@ -28,7 +30,28 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
     if (type.kind == CppTypeKind::Array)
     {
         const auto array = frontend::cppAliasArrayType(type);
-        if (!array || array->element.pointeeConst) return std::nullopt;
+        if (!array)
+        {
+            const CppType* element = &type;
+            std::vector<std::uint64_t> dimensions;
+            while (element && element->kind == CppTypeKind::Array)
+            {
+                if (element->isConst || element->isVolatile || !element->arrayCount ||
+                    *element->arrayCount == 0 || !element->element || dimensions.size() >= 64)
+                    return std::nullopt;
+                dimensions.push_back(*element->arrayCount);
+                element = element->element.get();
+            }
+            if (!element || element->kind != CppTypeKind::Enumeration || element->isConst || element->isVolatile)
+                return std::nullopt;
+            auto mapped = projectCppSemanticEnumType(*element, projectOrdinal, moduleName, lookup);
+            if (!mapped) return std::nullopt;
+            for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
+                mapped->nativeSharpTypeKey += "[" + std::to_string(*dimension) + "]";
+            mapped->canonicalCppType = type.canonicalSpelling;
+            return mapped;
+        }
+        if (array->element.pointeeConst) return std::nullopt;
         const CppType* element = &type;
         while (element && element->kind == CppTypeKind::Array) element = element->element.get();
         if (!element) return std::nullopt;

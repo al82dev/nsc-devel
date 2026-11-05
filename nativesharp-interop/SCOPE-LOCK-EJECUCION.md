@@ -1648,6 +1648,12 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `src/Frontend/Bodies/IdentifierAnalyzer.cpp` y registro Markdown. Solo cambiar la asignabilidad del estado C/C++ externo con identidad de arreglo fijo; preservar dirección, lectura, mutabilidad de elementos y estados NativeSharp.
 - Verificar el rechazo específico y repetir la ejecución del acceso indexado y la batería agrupada.
 
+### Arreglos globales C de enum
+
+- Objetivo: importar arreglos globales C de enum sin calificar y límites fijos, seleccionando por demanda su enum nominal aunque no se use en firmas ni en el código fuente NativeSharp.
+- Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Interop/Cpp/CppSemanticRecord.cpp`, `Api.h`, `Api.c`, `Main.ns` de `pruebas-tanda-08-enum-funcion` y registros Markdown. Preservar límites de arreglos incompletos y rechazo de calificadores no representados; no alterar NSLink ni LLVM.
+- Validación agrupada: escritura y lectura de elemento de enum mediante NativeSharp, comprobación por C y regresiones de arreglos escalares, punteros, conflictos y `const`. No cierra T08-004, T08-009 ni T08-016.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
