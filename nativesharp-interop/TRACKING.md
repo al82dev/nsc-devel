@@ -124,7 +124,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T04-026. Evitar una finalización global de LLVM al cerrar una sesión individual.
 - [x] T04-027. Comprobar la cancelación antes de iniciar el análisis de una unidad.
 - [x] T04-028. Propagar la cancelación durante los puntos de trabajo que Clang permita interrumpir.
-- [ ] T04-029. Evitar que dos ejecutores accedan simultáneamente al mismo contexto sin coordinación.
+- [x] T04-029. Evitar que dos ejecutores accedan simultáneamente al mismo contexto sin coordinación.
 - [ ] T04-030. Mantener independientes las opciones y los recursos de sesiones distintas.
 
 ## 05. Incorporación al flujo de NSC
