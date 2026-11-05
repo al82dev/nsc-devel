@@ -253,6 +253,11 @@ de callbacks para identificar enums anidados. Hay una prueba preparada con
 dos profundidades de indirección; la proyección y ejecución de callbacks con
 enums siguen sin validar.
 
+La proyección de firmas exteriores prepara callbacks con enums y punteros a
+records importados mediante resolución recursiva. Hay una prueba de identidad
+de enum en el parámetro y resultado del callback. Falta conectar typedefs de
+callbacks compuestos y comprobar llamadas reales; nada de esto se ha ejecutado.
+
 La observación previa construye ahora modelos locales para capturar llamadas
 cuando existen firmas con enums y selecciona sus dependencias antes del índice
 definitivo. Hay una prueba preparada para un resultado enum no nombrado por
