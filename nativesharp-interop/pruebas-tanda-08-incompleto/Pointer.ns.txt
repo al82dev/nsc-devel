@@ -1,2 +1,2 @@
 int Accept(Opaque* value) { return 0; }
-int Main() { if (sizeof(Opaque*) != 8) return 1; return 0; }
+int Main() { if (sizeof(Opaque*) != 8 || sizeof(IncompleteArray*) != 8) return 1; return 0; }

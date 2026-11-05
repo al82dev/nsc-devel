@@ -2757,7 +2757,7 @@ int main(int argc, char** argv)
                     aliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
                         -> std::optional<std::string> {
                         if (path.filename() == "Main.ns")
-                            return "Count Echo(Count value) { return value; } int Use(RestrictedPtr value, PtrToRestricted nested) { return 0; } int Main() { Matrix value; return 0; }\n";
+                            return "Count Echo(Count value) { return value; } int Use(RestrictedPtr value, PtrToRestricted nested, IncompleteArray* unknown) { return 0; } int Main() { Matrix value; return 0; }\n";
                         return std::nullopt;
                     });
                     bool supplied = false;
@@ -2766,7 +2766,7 @@ int main(int argc, char** argv)
                         [snapshot, &supplied](const auto& graph, auto, auto& output, auto& why) {
                             if (!snapshot || graph.projects().empty()) { why = "alias fixture unavailable"; return false; }
                             for (const auto& alias : *snapshot)
-                                if (alias.name == "Count" || alias.name == "Matrix" || alias.name == "RestrictedPtr" || alias.name == "PtrToRestricted")
+                                if (alias.name == "Count" || alias.name == "Matrix" || alias.name == "RestrictedPtr" || alias.name == "PtrToRestricted" || alias.name == "IncompleteArray")
                                 {
                                     output.push_back({0, graph.projects()[0].projectFile(), 0,
                                                       "x86_64-pc-windows-msvc", alias});
@@ -2775,7 +2775,7 @@ int main(int argc, char** argv)
                             return supplied;
                         }, error);
                     const bool bound = configured && aliasCompilation.compileProjectNames(semanticPath, error);
-                    bool expanded = false, matrixExpanded = false, restrictExpanded = false, nestedRestrictExpanded = false;
+                    bool expanded = false, matrixExpanded = false, restrictExpanded = false, nestedRestrictExpanded = false, incompleteExpanded = false;
                     if (bound && aliasCompilation.nameLookup())
                         for (const auto& binding : aliasCompilation.nameLookup()->bindings())
                         {
@@ -2788,6 +2788,10 @@ int main(int argc, char** argv)
                                 nestedRestrictExpanded |= binding.syntax->modifiers().size() == 2 &&
                                     binding.syntax->modifiers()[0].importedCRestrict &&
                                     !binding.syntax->modifiers()[1].importedCRestrict;
+                            if (binding.syntax && binding.writtenName == "IncompleteArray")
+                                incompleteExpanded |= binding.syntax->modifiers().size() == 2 &&
+                                    binding.syntax->modifiers()[0].kind == nativesharp::ast::TypeModifierSyntaxKind::IncompleteArray &&
+                                    binding.syntax->modifiers()[1].kind == nativesharp::ast::TypeModifierSyntaxKind::Pointer;
                             if (binding.writtenName == "Matrix" && binding.syntax)
                             {
                                 const auto& modifiers = binding.syntax->modifiers();
@@ -2800,6 +2804,7 @@ int main(int argc, char** argv)
                                  "scalar and multidimensional typedefs bind to underlying NativeSharp types");
                     ok &= expect(bound && restrictExpanded && nestedRestrictExpanded,
                                  "typedef expansion retains restrict on the correct pointer level");
+                    ok &= expect(bound && incompleteExpanded, "pointer to incomplete C array retains the unknown bound");
                 }
                 {
                     nativesharp::frontend::ProjectCompilation recordAliasCompilation;
