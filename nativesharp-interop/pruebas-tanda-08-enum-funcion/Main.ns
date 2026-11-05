@@ -1,0 +1,4 @@
+int Main()
+{
+    return read_mood(current_mood()) + 3;
+}
