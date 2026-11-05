@@ -1292,7 +1292,7 @@ int main(int argc, char** argv)
                             std::vector<CppProjectSessions> enumGroups(1);
                             enumGroups[0].projectFile = otherProject->projectFile();
                             enumGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                                CppLanguageMode::C, "enum ChoiceType { Choice = -3 };\n")));
+                                CppLanguageMode::C, "enum ChoiceType { Choice = -3 }; enum ChoiceType echo_choice(enum ChoiceType* x);\n")));
                             nativesharp::frontend::CppFunctionDemand demand;
                             demand.lookupName = "Choice";
                             demand.lookupNamespaces = {""};
@@ -1309,6 +1309,20 @@ int main(int argc, char** argv)
                                 enumTypes[0].identity.name() == "ChoiceType" && enumTypes[0].enumBase &&
                                 enumTypes[0].enumBase->token == nativesharp::lexer::TokenKind::KwInt &&
                                 enumTypes[0].objectLayout && enumTypes[0].objectLayout->sizeBytes == 4;
+                            const auto signatureInventory = collectCppSemanticFunctions(finalGraph, enumGroups);
+                            const auto* functions = std::get_if<std::vector<CppSemanticInventoryEntry>>(&signatureInventory);
+                            const auto dependencies = functions ? collectCppSignatureEnumDependencies(finalGraph, *functions, enumTypes)
+                                : CppSignatureEnumResult{CppSignatureEnumFailure{"function fixture unavailable"}};
+                            const auto* enumDependencies = std::get_if<std::vector<CppSignatureEnumDependency>>(&dependencies);
+                            bool resultDependency = false, parameterDependency = false;
+                            if (enumDependencies)
+                                for (const auto& dependency : *enumDependencies)
+                                {
+                                    resultDependency |= !dependency.parameterIndex && dependency.indirectionDepth == 0 &&
+                                        dependency.status == CppSignatureEnumStatus::Matched && dependency.candidateIndex == 0;
+                                    parameterDependency |= dependency.parameterIndex == 0 && dependency.indirectionDepth == 1 &&
+                                        dependency.status == CppSignatureEnumStatus::Matched && dependency.candidateIndex == 0;
+                                }
                             enumGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
                                 CppLanguageMode::C, "enum ChoiceType { Choice = 5 };\n")));
                             const bool conflicted = provideCppSemanticEnumConstants(finalGraph, enumGroups,
@@ -1322,7 +1336,8 @@ int main(int argc, char** argv)
                                 CppLanguageMode::C, "extern int Choice;\n")));
                             const bool combined = provideCppSemanticValues(finalGraph, enumGroups,
                                 std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1), states, enumError);
-                            ok &= expect(correct && correctType && conflictingEnums && deferredType && combined && states.size() == 1 &&
+                            ok &= expect(correct && correctType && resultDependency && parameterDependency &&
+                                         conflictingEnums && deferredType && combined && states.size() == 1 &&
                                          states[0].cppImportError.find("conflicts") != std::string::npos,
                                          "C enum provider preserves value and reports conflicting observations");
                         }
