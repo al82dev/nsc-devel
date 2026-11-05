@@ -915,6 +915,10 @@ if(LLVM_FOUND)
         list(APPEND NSC_LLVM_LINK_LIBRARIES ${NSC_LLVM_COMPONENT_LIBS})
     endif()
 else()
+    if(NSC_ENABLE_CPP_INTEROP)
+        message(FATAL_ERROR
+            "C/C++ interoperability requires the LLVM 23.1.0 CMake package")
+    endif()
     if(WIN32)
         message(FATAL_ERROR
             "NativeSharp requires the LLVM ${NSC_LLVM_MAJOR_VERSION} CMake package and its static "
