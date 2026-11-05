@@ -175,6 +175,10 @@ aserción de inventario. También se amplió la comparación de miembros repetid
 para conservar firmas de función e identidad y base de enum. Falta probar el
 diagnóstico desde un proyecto y ejecutar la batería agrupada.
 
+`pruebas-tanda-08-incompleto` prepara ambos casos de proyecto: declaración de
+puntero al tipo adelantado y rechazo de `sizeof` con diagnóstico. El script no
+se ha ejecutado; la comprobación real sigue pendiente.
+
 ### Enum C anónimo con typedef, sin validar
 
 La captura usa el nombre de typedef asociado por Clang como identidad del enum
