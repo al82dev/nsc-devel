@@ -504,7 +504,7 @@ bool configurePrecompiledModules(
             return false;
         if (hasSessions && !compilation.setCppGlobalProvider(
                 [](const auto& graph, auto projects, auto demands, auto& states, auto& providerError) {
-                    return interop::provideCppSemanticGlobals(graph, projects, demands, states, providerError);
+                    return interop::provideCppSemanticValues(graph, projects, demands, states, providerError);
                 }, error))
             return false;
     }
