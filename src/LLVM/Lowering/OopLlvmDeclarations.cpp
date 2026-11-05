@@ -19,7 +19,10 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
             // instance methods the sret slot sits AFTER `this` (RCX = this, RDX = sret) --
             // confirmed against clang's own C++ output, where member functions carry
             // (ptr this, ptr sret) in that order.
-            LLVMTypeRef returnType = function.referenceReturn
+            // Clang's Windows C++ ABI returns `this` from constructors. NSC keeps the
+            // source-level constructor result void; only the external physical signature differs.
+            const bool cppConstructorReturnsThis = function.isCppExternal && function.constructor;
+            LLVMTypeRef returnType = cppConstructorReturnsThis || function.referenceReturn
                 ? LLVMPointerTypeInContext(context_, 0)
                 : sretReturn
                     ? LLVMVoidTypeInContext(context_)
@@ -97,6 +100,7 @@ bool OopLlvmImplementation::declareFunction(
                 error = "Stage 34 failed to declare LLVM function " + function.mangledName;
                 return false;
             }
+            if (function.cppDllImport) LLVMSetDLLStorageClass(llvmFunction, LLVMDLLImportStorageClass);
             const bool ownsDefinition = !function.isImportedC && !function.isImportedNative &&
                 (!partitioned_ || (!ownsModuleGlobals_ && functionDefinitions_[functionOrdinal]));
             if (!function.isImportedC && !function.isImportedNative)
