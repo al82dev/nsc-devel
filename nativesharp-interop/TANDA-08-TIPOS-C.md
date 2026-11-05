@@ -2,6 +2,21 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Validación agrupada de punteros y volatile enum: 2026-11-05
+
+Con `87aa55ced`, `1f3c9c6cb`, `2deedabf2` y `84a75735f`, la ejecución de
+`call nativesharp-interop\validar-tanda-08.cmd` terminó con código 0. Pasaron
+la construcción incremental ON/OFF, la suite Clang, restauración y equivalencia
+de serialización y los siete proyectos preparados.
+
+El proyecto mixto leyó punteros globales de uno y dos niveles a enums que no
+aparecen en firmas ni nombres escritos en NativeSharp. También escribió y leyó
+un global `volatile enum`; el script verificó operaciones `load volatile` y
+`store volatile` referidas a `@volatile_mood` en el LLVM IR, además de la
+ejecución. El resultado se limita a Windows x64 O0 y a los fixtures descritos;
+no cubre punteros a volatile, TLS, todas las colisiones ni las demás variantes
+de globales. Los ítems T08-004, T08-009, T08-014 y T08-015 siguen abiertos.
+
 ## Validación agrupada de sombra y calificadores enum: 2026-11-05
 
 La primera pasada tras `b0c8b304d`, `c53af4477` y `1a941c082` falló porque
