@@ -393,6 +393,102 @@ bool configurePrecompiledModules(
     std::string& error,
     bool materializeDemandedSurface)
 {
+    const auto* artifactCache = llvm_backend::activeCompilationArtifactCache();
+    if (artifactCache != nullptr && artifactCache->enabled())
+        for (const auto& project : manifest.projectGraph().projects())
+            if (!project.cppLibraryReferences().empty())
+            {
+                error = "C/C++ project references require --no-artifact-cache until transitive headers are tracked";
+                return false;
+            }
+#if defined(NSC_ENABLE_CPP_INTEROP)
+    if (activeExecutionScope != nullptr && activeExecutionScope->cppSessionEnvironment.has_value())
+    {
+        if (activeExecutionScope->cppSessionFactory == nullptr)
+        {
+            error = "C/C++ session environment requires a session factory";
+            return false;
+        }
+        interop::CppCancellationToken cancellation;
+        if (activeExecutionScope->expired()) cancellation.cancel();
+        auto opened = interop::openCppGraphSessions(
+            manifest.projectGraph(), *activeExecutionScope->cppSessionEnvironment,
+            *activeExecutionScope->cppSessionFactory, cancellation);
+        if (auto* failure = std::get_if<interop::CppGraphSessionFailure>(&opened))
+        {
+            error = "C/C++ session failed for project '" + failure->projectFile.generic_string() +
+                    "', reference " + std::to_string(failure->projectFailure.referenceIndex) +
+                    ": " + failure->projectFailure.failure.message;
+            if (!failure->projectFailure.failure.diagnostics.empty())
+                error += ": " + failure->projectFailure.failure.diagnostics.front().message;
+            return false;
+        }
+        const bool hasSessions = !std::get<interop::CppGraphSessions>(opened).projects.empty();
+        bool hasCppSessions = false;
+        for (const auto& group : std::get<interop::CppGraphSessions>(opened).projects)
+            for (const auto& session : group.sessions)
+                if (session && session->optionsSnapshot().language == interop::CppLanguageMode::Cpp)
+                    hasCppSessions = true;
+        if (!compilation.setCppProjectSessions(
+                std::move(std::get<interop::CppGraphSessions>(opened).projects), error))
+            return false;
+        if (hasSessions && !compilation.setCppNamespaceProvider(
+                [](const auto& graph, auto projects, auto& output, auto& providerError) {
+                    auto inventory = interop::collectCppNamespaces(graph, projects);
+                    if (const auto* failure = std::get_if<interop::CppNamespaceInventoryFailure>(&inventory))
+                    {
+                        providerError = "C/C++ namespace collection failed for project '" +
+                            failure->projectFile.generic_string() + "', reference " +
+                            std::to_string(failure->referenceIndex) + ": " + failure->message;
+                        return false;
+                    }
+                    auto names = interop::visibleCppNamespaces(
+                        std::get<std::vector<interop::CppNamespaceInventoryEntry>>(inventory));
+                    if (const auto* failure = std::get_if<interop::CppNamespaceInventoryFailure>(&names))
+                    {
+                        providerError = "C/C++ namespace conversion failed for project '" +
+                            failure->projectFile.generic_string() + "', reference " +
+                            std::to_string(failure->referenceIndex) + ": " + failure->message;
+                        return false;
+                    }
+                    auto& visible = std::get<std::vector<std::pair<std::size_t, std::string>>>(names);
+                    output.insert(output.end(), visible.begin(), visible.end());
+                    return true;
+                }, error))
+            return false;
+        if (hasCppSessions &&
+            (!compilation.setExperimentalCppTypeProvider(interop::provideExperimentalCppRecordCandidates, error) ||
+             !compilation.setExperimentalCppTypeSelector(interop::selectExperimentalCppRecordTypesForCompilation, error) ||
+             !compilation.setExperimentalCppInstanceMethodProvider(interop::provideExperimentalCppInstanceMethods, error) ||
+             !compilation.setExperimentalCppStaticMethodProvider(interop::provideExperimentalCppStaticMethods, error) ||
+             !compilation.setExperimentalCppInstanceFieldProvider(interop::provideExperimentalCppInstanceFields, error) ||
+             !compilation.setExperimentalCppStaticFieldProvider(interop::provideExperimentalCppStaticFields, error) ||
+             !compilation.setExperimentalCppLifetimeMethodProvider(interop::provideExperimentalCppLifetimeMethods, error) ||
+             !compilation.enableCppImportedMethodLowering(error) ||
+             !compilation.enableCppImportedFieldLowering(error) ||
+             !compilation.enableCppImportedNoexceptLocalLifetime(error) ||
+             !compilation.enableExperimentalCppDiscardedLifetimeLoweringForTests(error))) return false;
+        if (hasSessions && !compilation.setCppFunctionProvider(
+                [&compilation, hasCppSessions](const auto& graph, auto projects, auto, auto demands, auto& projected,
+                   auto& deferred, auto& providerError) {
+                    if (hasCppSessions)
+                    {
+                        const auto* lookup = compilation.nameLookup();
+                        if (!lookup) { providerError = "C++ name lookup is unavailable"; return false; }
+                        return interop::provideExperimentalCppFunctionsWithRecords(
+                            graph, projects, *lookup, demands, projected, deferred, providerError);
+                    }
+                    return interop::provideCppSemanticFunctions(
+                        graph, projects, demands, projected, deferred, providerError);
+                }, error))
+            return false;
+        if (hasSessions && !compilation.setCppGlobalProvider(
+                [](const auto& graph, auto projects, auto demands, auto& states, auto& providerError) {
+                    return interop::provideCppSemanticGlobals(graph, projects, demands, states, providerError);
+                }, error))
+            return false;
+    }
+#endif
     const bool deferrable = !manifest.requiredBundleOutputNames().empty();
     const compilation::PrecompiledMaterializationGate gate =
         [&manifest, &compilation, deferrable](
