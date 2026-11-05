@@ -1,0 +1,17 @@
+Ejecutables reconstruidos en A:\clang-tests
+C: OK
+repro-20261102-01\hello-c.exe: codigo 0
+C++: OK
+repro-20261102-01\hello-cpp.exe: codigo 0
+ns-estatico-02\consumer-c.exe: codigo 0
+ns-estatico-02\consumer-cpp.exe: codigo 0
+dll-ns-01\consumer-c.exe: codigo 0
+dll-ns-01\consumer-cpp.exe: codigo 0
+reverso-01\reverse.exe: codigo 0
+nativos-01\static\consumer.exe: codigo 0
+nativos-01\native-function\consumer.exe: codigo 0
+nativos-01\class\consumer.exe: codigo 0
+nativos-01\class-static\consumer.exe: codigo 0
+nativos-01\class-dll\consumer.exe: codigo 0
+clase-estado-01\consumer-o0.exe: codigo 0
+clase-estado-01\consumer-o2.exe: codigo 0

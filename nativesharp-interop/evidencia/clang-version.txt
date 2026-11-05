@@ -1,0 +1,4 @@
+clang version 23.1.0 (https://github.com/al82dev/llvm-project-al82dev.git ea7d852a70e8bdfaf601d6626a760f9771b2c4b4)
+Target: x86_64-pc-windows-msvc
+Thread model: posix
+InstalledDir: A:\al82dev-clang\bin

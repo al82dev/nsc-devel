@@ -1,0 +1,1827 @@
+{
+  "scope": "headers and libraries observed for one C++ example, not all possible toolchain inputs",
+  "headers_log": "A:\\clang-tests\\archivos-01\\compilacion-inventario.txt",
+  "link_log": "A:\\clang-tests\\enlace-01\\enlace.txt",
+  "files": [
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__float_float.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 6066,
+      "sha256": "79ed3248742ce32bad1051acd38db5ce9edef70cb8b76e8231e802d09773e6c3"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__float_header_macro.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 461,
+      "sha256": "05902d174e83391194969d4adc4edb36678fae092e305f7024f5c095bc74b6e8"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__float_infinity_nan.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 633,
+      "sha256": "cf339767911b5b5f2e3c3b3637d3eef0993601fb95cf886a66248560b2db010b"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__stddef_header_macro.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 429,
+      "sha256": "382ca526b3c02543ef14bc7d5e66dff4d7d5ed6c7a8bdfe41c074b7b2c679054"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__stddef_max_align_t.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 884,
+      "sha256": "56e3736aac61bd5d23eabf09792623866f8b350039cd65932b8f66a901709f2c"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__stddef_null.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 904,
+      "sha256": "d26f5a5c37e9de305374094d696351e49e36b0373ded4bebffd1ab17efdabb7c"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__stddef_nullptr_t.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 987,
+      "sha256": "0657cb2c456fa586f2b7a01970e27134f33dec02b64cbb38a700f8b49e84c8ba"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__stddef_offsetof.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 725,
+      "sha256": "48c1114831de8119d6cf28319cf5f7c16178fa841f1a929a181b50ace0282a98"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__stddef_ptrdiff_t.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 737,
+      "sha256": "081e8da51380e3b0052c665fa384add46326249669b535f0b1b638f925f6ff66"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__stddef_size_t.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 728,
+      "sha256": "48229bf33855a1972ca1b344d9900ceff2384c8811c4a294b85afb2fa7c20067"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__stddef_wchar_t.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 881,
+      "sha256": "a4c5be18087bf273f60e40189c3386b0c63ead39c1bb56080e20ada5cc9a8aa6"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__wmmintrin_aes.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5409,
+      "sha256": "677616ef23eda0219964f6653f2866c72e19d37b2a5e1fba05283aa0f9f1b816"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\__wmmintrin_pclmul.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2084,
+      "sha256": "9d4a966d3540a23f931ca778efde4da5132ea98c7b672b9ffae1f00ee239ed0a"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\adcintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5730,
+      "sha256": "a4d4ca6d9fa8fabaf068e0097f701a08871338204135b57f0cecf6e451727b13"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\adxintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3554,
+      "sha256": "31755943d0d7787a1331dc0745b2ff195dc3d9ecb38ffb6ddae6c8f32eed7de0"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\ammintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 7922,
+      "sha256": "00d1b8ff9d5a8128fd7320530137f59dfe1e1648e585deea8dc90ddfefbfc0b1"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\amxavx512intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 20340,
+      "sha256": "3bec8000e4ecf8c80ca37d42415cec768cc66157cbdc69684b40fe0076436652"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\amxcomplexintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 7100,
+      "sha256": "b3d4b34b240ce3c6e538dbbab3a62ea30bab72a8172d9599b6e7115e0e358d28"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\amxfp16intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3420,
+      "sha256": "e2f53a268bff6cfc23618283e65f9420d431328fb0eb7552fa437f598c1e858a"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\amxfp8intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 9069,
+      "sha256": "927c67f5477346beaa767fb5dd9a6c666b1600449a2b6c96c0f646c915a79a0b"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\amxintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 20704,
+      "sha256": "1e392538cae9695903f480aaf83a5615692145dfb66ba8f1c2e521d76ae9eaf8"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\amxmovrsintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2338,
+      "sha256": "9ba9d4a0f2072ccbecb5b22629931dd4de7c7bf2dfdd70102d7fa95afecb4ace"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2_512bf16intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 24194,
+      "sha256": "62bfbbfb0bdf3073c2474d6c44fd9ce1ae3b98aa235cefd92a3faf4a0d57977f"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2_512convertintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 13514,
+      "sha256": "c33bce7d2b9f0b47316310b47cfff6617e0ea11b80313d01c95f2796db3b38fe"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2_512minmaxintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 7653,
+      "sha256": "087f3ee69762e07acfb1b12ac04ea3a52834045c44c05cea3f404b6a2cb030eb"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2_512niintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 14353,
+      "sha256": "8c4bda467e5e0d03e7137b26b38b8b92eb3282e9c334e8da54834b099e60e979"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2_512satcvtdsintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 14106,
+      "sha256": "f46edf3379001721796452ec59df70d6b070a411a7a9f5d11c2af6022b4f6428"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2_512satcvtintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 17300,
+      "sha256": "6ed8d104202d2c2987fa50b89d779bcb0a5d924c6c8a8403e39e1bce526087c9"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2bf16intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 46188,
+      "sha256": "a5e790e087a3811475d596bff5b52f663ba1b56c69152bc1eac36dd973a3ebd2"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2convertintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 112078,
+      "sha256": "e2b8a360dcef13733a04e231eb262c53613658bbc97e26ed2ebb3c58aa17da95"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2copyintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2476,
+      "sha256": "f38c7c68815e987255e5f4127988e0588841592a6597cbdfb134ee30ad6b2a76"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2minmaxintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 13912,
+      "sha256": "a8d291ba8c85136142314022c6e205b068f0ab2be42e9488152e4c22e8010247"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2niintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 17412,
+      "sha256": "92e6b2c5e151cfcb72c2f345a2c57b7186e5772559609be17b7b02a278e00437"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2satcvtdsintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 15629,
+      "sha256": "3f3dabd060ce77a4704d56b3a3bd007f826ec9c8101d25aaaff250436ba5977b"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx10_2satcvtintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 18452,
+      "sha256": "bf25de4c4efa5f24cb198be09a9cc2b102982fb6819447eff30e75f9219519f3"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx2intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 199413,
+      "sha256": "9a46a1d374d89bbf87e7c14c3fee3dc3c25c7b0c684d8174e849cb7e32b5166c"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512bf16intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 11503,
+      "sha256": "2a51bfbfbc286ab7fef96197866357978dff56f67c6310b5c259f96fcf197210"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512bitalgintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2793,
+      "sha256": "d793f797a8d1be3866e7e44f36f89607b8e0f576f5535bc7d1635655e237e9e8"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512bmmintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 6799,
+      "sha256": "1bd23ee3e7a9760109c933f8851ba5e4e9d2876447edda699136509c0c699c7a"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512bmmvlintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 10141,
+      "sha256": "f8601f8654e0077314295332eeab756980e782a2d15f52eff9b50f8582f90ad6"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512bwintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 81588,
+      "sha256": "3873dfce50fbe79fbba8d7bc063b922e38fb9cdd1fd6d7ce1a121aaf9a6255ba"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512cdintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 4377,
+      "sha256": "6a3f235da222614eb7b492b55e3b0fa9ef963b147bd018bd368e08adb7c8ede0"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512dqintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 62549,
+      "sha256": "d73b6973ff1af84ef85823bcb9e2d037f0a1c7527e8740d200784f0ee543d1c1"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512fintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 400408,
+      "sha256": "5a2d555a5d5a6ecd8041ddb2fb8fded11772d8ccbf9ea9f7b94246406138eabb"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512fp16intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 162471,
+      "sha256": "ad6da97d79e4aacc605baf6a5bfdc06c01c7d66f3416b1272a8fc83d3aab16f2"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512ifmaintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2745,
+      "sha256": "ade185c057a4ff43b68b17f977613e4776bfad14aefeb61c4bbb748e1179bb3c"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512ifmavlintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 6264,
+      "sha256": "9dcc0a12cd3e1aa36c760cb3f982281ffa9bef66d38d26d7faae9d54ed6255c6"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vbmi2intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 14513,
+      "sha256": "be1a70cb4308502505be85d2f905d28ea8ab530258348e0ecb9a88924b188815"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vbmiintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 4169,
+      "sha256": "55eded6ae69d2f43390d3e8ba17f9f1bdfdd46792b6d0aaaf77f5410250044de"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vbmivlintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 8069,
+      "sha256": "3efbb7b04b73aad3c5d08e937ab25fa14ce5742a35f4517f58c47606341144b5"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vlbf16intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 20842,
+      "sha256": "4dc1e0a4b766ea89fe6ffb6b243c3c2c0de5a53c387b5e7e9bfc139926af54c0"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vlbitalgintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5209,
+      "sha256": "8cfe9507305a1fb3d5719bbc0de0382bbb034e722ef9bafcbbd3a3654f01b13b"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vlbwintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 130161,
+      "sha256": "e1c8b50f15d28aef37fab60251050801e0c6664f82fcd541b3831ad17d7ddc8a"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vlcdintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 8267,
+      "sha256": "e9da87a8bc99cee128977995e4d1a897efcc2da5e732a4adf2497e3e8522f0c9"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vldqintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 49624,
+      "sha256": "a86162b21513aafb36951c7387aa42eb7508d8db3ac081ab50526611ef7a2186"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vlfp16intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 89766,
+      "sha256": "337ce46c3a0805f84fbf6986e47d2801151106080c0e23ea9933be6ddeb585fd"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vlintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 335897,
+      "sha256": "94520f771a0364066c5cf6e9adf8d22f79122a9126fd7ce7270dc6c8c01ee0b3"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vlvbmi2intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 28471,
+      "sha256": "fa9886c2f86fed81d99d54cea056b6c15d7c22d49ad23017add7c0919dfa6373"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vlvnniintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 15234,
+      "sha256": "eba60690fcb76f63a4e61530c0bedac65b380b2f463ee1ff6d0cfce0dd40881e"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vlvp2intersectintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 4905,
+      "sha256": "8c8000967467cbef826dfb314e037bb6ff7483bd1aac3881e540e898a90034a1"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vnniintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5343,
+      "sha256": "2fa2ff09ae4f799c75b2953143417ef22ec30443d1b81163150e0740dfbb6005"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vp2intersectintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3138,
+      "sha256": "bcb0e35d00240fd5a60939c6f1ff1c3b1663b1fb126142d768e21e935261c9ad"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vpopcntdqintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2524,
+      "sha256": "698c1a6a5a1529bf7ba2dd2ba9bdb3fa9c4f0dfcd64e38bc88aa5de883fe6d45"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avx512vpopcntdqvlintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 4350,
+      "sha256": "6196958f4379b4b78584855e3906845470851ed3a4e6743e5727f18ea1c567e4"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avxifmaintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 6924,
+      "sha256": "532c121cfaf78ef8995ee0676903414b87509726a9a60ab494cc69f4c7127ff5"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avxintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 208515,
+      "sha256": "adca93538789c9b78f678c54cc73220f131b9ccf053fc4d36f4dd5cefbe86f76"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avxneconvertintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 14916,
+      "sha256": "9cbba75a4bb76c2c907f11c613693e08af9fb4bc26648e3ab9b13ff3a26c62ed"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avxvnniint16intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 16814,
+      "sha256": "b4d892fe47c989845a655c292935e84117b10da6d0219fcc5ded8d703fa0cd47"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avxvnniint8intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 18369,
+      "sha256": "ae9f88641f40add23a96a10397bd31ad75c329b30b3fc9400e55c4a2eb59033d"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\avxvnniintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 11962,
+      "sha256": "fddef2c37a79eb2579dc6e99ab2c96b3891ed1629565dff11ae52d49a6f5ec22"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\bmi2intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 7799,
+      "sha256": "454a7537dd2b01bd9e92035c897c5954d294d90257c30e7dd9b07f8d55fb189f"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\bmiintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 20954,
+      "sha256": "d3d92d2eb0ffe2903d0c1c93642d73299f20cabb32435027c2c3458aa3665f2f"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\cetintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3466,
+      "sha256": "96597de92fd6efa2ba953f262b8467a41a7f9d2de29245d1ad099b5644f21d85"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\cldemoteintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1243,
+      "sha256": "0b5b597bad37c267477eea481c6e00f1bbd8571266475782857b7ccc031b8dd8"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\clflushoptintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1229,
+      "sha256": "bf64230ab85d41740967580cccd5af1c4da15ed1437c3e441b6d73c921e6a663"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\clwbintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1267,
+      "sha256": "3f08738f21eb50d3de041b3e8042ae4cfbf1306e1f411af2a0123519322aff9b"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\clzerointrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1258,
+      "sha256": "06a122215ebcc8c6d31ab137c608a4f1a79ca87f086a0368c3e5e504b958fe28"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\cmpccxaddintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2453,
+      "sha256": "d02ae6d1fa7092dabe2e8379d5d6c866e69080ea466e9b6ec4c98d5a8f76860e"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\crc32intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3747,
+      "sha256": "0f1900fdad0d53ad4f704c9d066de2d76e95e19bb0cf6cf8d249c94a47cb2b5c"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\emmintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 203126,
+      "sha256": "ceb2612537de22b7d73781939188bd7cbc11de53c915c98e76c6ee5f81b3bb0e"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\enqcmdintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2230,
+      "sha256": "cbf690d4a7d27458792938f1d43d2bc67eda2efe7c7392b1d46e484c935a5a4b"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\f16cintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 6533,
+      "sha256": "57fbd610602557a40944c898a5910dfde2a6166aaf15e6da5de0abb30e2e3577"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\float.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1464,
+      "sha256": "cf41e012eebe6c12ade76a0a888207675cfd38796c47a69821d44bbb90a530ca"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\fma4intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 8487,
+      "sha256": "312add55bcd636887c5194cc194194da61df81a50c34b42ff2071c229c74310e"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\fmaintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 31634,
+      "sha256": "1eefe2f5b9872e6c53259f852863350126d1c069d7f226eac94fcd06c4e3baf7"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\fxsrintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2981,
+      "sha256": "eeed5cc4cc009b18cef093f6a8314f5b5fbce27a56a53c1d7272c819773dee43"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\gfniintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 10301,
+      "sha256": "4fcddffb86af5bf727471dfd4b774ce575188c8ee24fb53233780c717dd84273"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\hresetintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1444,
+      "sha256": "6b78f8e0f8bebda26b09c89a2eeaf2caf1b9561e8707c0684d45f49d6f34f4df"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\ia32intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 26849,
+      "sha256": "7d4099931effe489ea3f0502e5bf3696d17da2e74f931487c2ab39f4b083f768"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\immintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 17041,
+      "sha256": "1c1f1bedbc77cfb358507e8ac7bf3645e1aab1df7c383fe9d075009daa56e07e"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 20778,
+      "sha256": "8adafdb6847df0e3d251e2790ece08b9178b057b152f0f298da1a69a5bfc4471"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\intrin0.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 14349,
+      "sha256": "f667163a0722807454f9dd1c8a8925bb10ca814f9d18823a3eef4c69f84a7c7e"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\invpcidintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 787,
+      "sha256": "b98f41ede6af6a3a9f98b5ee607500ccf489190e69d59f109e33dac230288f75"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\keylockerintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 18491,
+      "sha256": "4029fc6a364c753b0f816eaa99356c0180a94cb243fcdbee2472634b34815e33"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\limits.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3927,
+      "sha256": "f9c57a48c61548d83c5cee38d9d9f1e5a20aedb384529368d169aed01f43bffb"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\lwpintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5251,
+      "sha256": "49f32360fdf26d28dbde48707ce0394fd39e015558d0eaf09b6dc7e03c03ba8a"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\lzcntintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3768,
+      "sha256": "705ed0f80668088f789bd31e954aa3f0de02d85867835fdef201d7711543a617"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\mm_malloc.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1996,
+      "sha256": "c5dd495b9d0bb5fb7df22ea01057191c0fd92366828d2d7a74aa2fcdc813004a"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\mmintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 63765,
+      "sha256": "7cd91a7a3c3f27660e63770fd323ff2378b3da70a30dd34743f7f13e34f5c162"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\movdirintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1661,
+      "sha256": "e93cda9e5ce45dc690ebbdaff2420edbe4461af10f9ced25c0db52c03da9d378"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\movrs_avx10_2_512intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 4037,
+      "sha256": "478d2d88d7e99ad4dd6929846cc0eba6d21fc28138910332333282711869cc83"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\movrs_avx10_2intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 7144,
+      "sha256": "765167845d681df665d9bf561c4192b095edb4f3aafb7bf1d88cbb497bbb8fbf"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\movrsintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2084,
+      "sha256": "e8045ead7cf5ee5d20d088e4ce4243e6611b73a0d0942a6a5ba763244157c9be"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\mwaitxintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2306,
+      "sha256": "fa313e14a33048a6360b6e1fbb8eae07c495d66dd4fded17df7bbe034f2d8641"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\pconfigintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1256,
+      "sha256": "cf5597ba09ede38ef2ad584157bdd5ec11e152653ecc0b7e8bd518704e357276"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\pkuintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 968,
+      "sha256": "eb55f4dd6e7aa83f1d5df659c2cef981a10c3121d01c5e9397ee23946fce4e60"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\pmmintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 11579,
+      "sha256": "a31889a64911546daa3782950eaf8b4c78e46caaec05063564c7de6ad0b18281"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\popcntintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2007,
+      "sha256": "98fddb9977dce656431e70e6a6e100a2d1780fb4d6812188615ea63585a06ea5"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\prfchiintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2134,
+      "sha256": "65388b2d64fc4061227cfaf2f88fe6e61d26bff094ec6c32713019b24ba0ae21"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\prfchwintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1899,
+      "sha256": "e6c58e5336525f1df52c13ed339496fc9e198606994d15fe6c928fb50ec7e803"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\ptwriteintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1113,
+      "sha256": "061aabca96ffa7f96425697905a8c1e43668c7cb4c12d05973965de45489d12c"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\raointintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 6951,
+      "sha256": "2790fdf383c3855d6fba829e05e884a5e726b4041e6b84eb3db5675aa31b1b93"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\rdpruintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1681,
+      "sha256": "2bd92887c143a831a9353a60cf5a73a47cbafbd088a27805b3a8ec4e95c70e89"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\rdseedintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3024,
+      "sha256": "0b9d95c3b24fa77bc2206ff40b34a9362502c1503be0cc2179a55859b110831d"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\rtmintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1325,
+      "sha256": "282215a863ffa8a1f72f55e0480db44b40bd947f589a7d581ce39eba8337d440"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\serializeintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 911,
+      "sha256": "fd2e0cf1926703c34c66d25fe3a1a006189467612ebdcc3eb49c3a08c04e18bc"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\sgxintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1876,
+      "sha256": "7bd4ed92c5a0d77887c449d7030838a44413f1ff30e97512527f9ee7071e3b83"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\sha512intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 6288,
+      "sha256": "26b828635ffe95e3eef54672bfc29032eec6bdca825e36aefcb61cdb51c49f81"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\shaintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 7850,
+      "sha256": "966300ce8b43f135a34bdfb5242c0df8c5152b9f22e963db39d293cdc05819ce"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\sm3intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 7708,
+      "sha256": "9ee7db6ba59c9842e410677553bd076cd734a657c4360ec66902fdbae6ca8521"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\sm4evexintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1196,
+      "sha256": "88ef5ed9d828d3f5dd09bcf9890b48f641c2e696614c9f9767085651efc2bba1"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\sm4intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 8670,
+      "sha256": "a337ebc4953329bd82cd6389b9a4c8219c4108d9fcd1fb3906ace68ae87de53e"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\smmintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 103232,
+      "sha256": "ac1db66e003ee5d3fc2048b4fac0aa2f7adb83c8402d5c560f9387aaaedb1534"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\stddef.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5192,
+      "sha256": "9245af60f3017ee5b637ea78471020bd312d5cbe33ebdb75ab2d1aee3c8645aa"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\stdint.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 28010,
+      "sha256": "191a5fbf09808a9a127dda5a7cbef702d62eded30fdb54f6c16239db4b25e9ca"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\tbmintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3635,
+      "sha256": "0f62bf3b87e94a6285a4125c61f47350f3de8c9fd42ce95badc589e113dcc699"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\tmmintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 33504,
+      "sha256": "62f1964d3deffe7d98a2c223ba2f607c97662321475d56ea8f871a9b670ae5c3"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\tsxldtrkintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2071,
+      "sha256": "83402babc67da0f9f5b8da339347fe9b786a0fdb33e7a2a3b1267eed8a0583ac"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\uintrintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5236,
+      "sha256": "54b0250d9347eb013701dcdf73f90d2d648971e46508b8d4e88593eeaaa07877"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\usermsrintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1623,
+      "sha256": "3977e6483ee260faadddc5896d9da1a14a48b6b7925f0fa4452ef87f41e02e7c"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\vadefs.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1471,
+      "sha256": "abc59403dc5b1b4c660e1147e6fc2b95c4841dc8a8745c065790cbac204b32e4"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\vaesintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2676,
+      "sha256": "b863be01916e77a350af5a2ed5d52ca45a040c5807c52b5eed715b25d02d0ab9"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\vpclmulqdqintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1116,
+      "sha256": "27a46544786a3913d17ae02edc62287a8ef3cd69100d9015f200147db26f2d72"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\waitpkgintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1399,
+      "sha256": "6ecf790756c737ced2f2134722c5f32849970f545ae07c3a098276bc332f8549"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\wbnoinvdintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 773,
+      "sha256": "7aab3076df7ddcc44849bfaa80606be0d8ff7a26a51b39d5219db2c2f93ddeb0"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\wmmintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 682,
+      "sha256": "6c72180206ae46041229bdce3edd88771c93d3c1003370d0a09559d923c22606"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\x86gprintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1776,
+      "sha256": "4a1a9b0074e9b8e42c564a9967b5131755a57424a9cda084608d6d7865edab7d"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\x86intrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 756,
+      "sha256": "5942eead8193c6291c1a66dde99e50e37ee8194fc5c9b4d321297a8a8166596c"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\xmmintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 123530,
+      "sha256": "f8fa200c1a6956814881e0385c51261916e9cff4dfaf4c0d8f73b43a9fb4ca5c"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\xopintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 21745,
+      "sha256": "01dda49eea639d62a9d48af61ce96e2a2bfccba7d52ad4351c305ed637ddb48a"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\xsavecintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2658,
+      "sha256": "a7ca942d34d0370126272a33faf813bf5edd64900b4615ff9916bac1e247ea45"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\xsaveintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1741,
+      "sha256": "93f2dd29f1faaa8fc1709f5255bfcc862217ce620842f66c626d0651824ef18c"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\xsaveoptintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1060,
+      "sha256": "5de7de10af261e358bd1dd1023a7060b26589344742baff99c87f2e958717b4b"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\xsavesintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1312,
+      "sha256": "ba291f7dab02489b2d620877d274d4ebed94b3f16ba634c92d9b14fac9c3b01d"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\xtestintrin.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 900,
+      "sha256": "db0c409e4b4789b8ba8d0b861e1d9cd0f3ad12dde72d9f8dcb97a65063314e93"
+    },
+    {
+      "path": "A:\\al82dev-clang\\lib\\clang\\23\\include\\yvals_core.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 712,
+      "sha256": "91cbef475f1a8771fb5421325c59cea889df7fe158bf0a922a618770d76a407e"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\__msvc_bit_utils.hpp",
+      "kind": "header",
+      "status": "present",
+      "bytes": 15250,
+      "sha256": "d5cbd7e728d1acdd9119ced3f6ecad31e600734a46c43c9dcc8563ba860367e9"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\__msvc_doom_core.hpp",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2634,
+      "sha256": "d144205011572ab8ea9ed17bc764a3c813efe114baf4abf1a9c73bb16d5453ec"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\__msvc_iter_core.hpp",
+      "kind": "header",
+      "status": "present",
+      "bytes": 19917,
+      "sha256": "c66d45b8a0889103c3f6b4d623641f9322a5840c1d0554cfc47d7a086de5bd1e"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\__msvc_ostream.hpp",
+      "kind": "header",
+      "status": "present",
+      "bytes": 37506,
+      "sha256": "8994a33650247fceb4eb5b531c82c00c7577d583edcb2ce0815007408b19165e"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\__msvc_sanitizer_annotate_container.hpp",
+      "kind": "header",
+      "status": "present",
+      "bytes": 11024,
+      "sha256": "061c14cd379f9b8fc6e764c0c32b83d019c06136794a9f7e7e53a38a599b18e6"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\__msvc_string_view.hpp",
+      "kind": "header",
+      "status": "present",
+      "bytes": 90494,
+      "sha256": "0f17b9360bd7f327e1a3910b2131c59a7c31b19b5e795780588e550d73e28851"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\__msvc_system_error_abi.hpp",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1224,
+      "sha256": "c5c46618a13ba9a8087f0db8d2d2ecdeadad7694c8bef71a2e39b72b683d14d3"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\__msvc_threads_core.hpp",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3281,
+      "sha256": "50430177a6bee373d83d0ef84658395909276403d6c29b5196619e5f2d5de5af"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\__msvc_xlocinfo_types.hpp",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1207,
+      "sha256": "1ee04bf81213a765a6b6c894275303d46d372c0555c8f4b17a1c97124dbdf860"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\atomic",
+      "kind": "header",
+      "status": "present",
+      "bytes": 124084,
+      "sha256": "8fc179d89c755cda886c932fce948b2db81ebe543b68cf0c098106a54d36b765"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\cctype",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1113,
+      "sha256": "d764f74333f84776e778d936af9c78d9a9a21a0668dc1833fdd4a98e26a00f18"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\cerrno",
+      "kind": "header",
+      "status": "present",
+      "bytes": 314,
+      "sha256": "4c8b39febc5b11b08e7a1253dc363bd8c8acdbe0159855b1c15d21b604f71e74"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\cfloat",
+      "kind": "header",
+      "status": "present",
+      "bytes": 242,
+      "sha256": "615e244a422277b8362e591881df1bd701d7e0ad0467d1787cb04a89565b333c"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\climits",
+      "kind": "header",
+      "status": "present",
+      "bytes": 319,
+      "sha256": "dd0a6215a16748afdb3c6ad3f877e32ffab31326645b14dda13fdc76c2683da4"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\clocale",
+      "kind": "header",
+      "status": "present",
+      "bytes": 744,
+      "sha256": "95cb0b228d1448969c55add911b4abe6d0108422c05ba27a71dd3ec7d4f61e38"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\cmath",
+      "kind": "header",
+      "status": "present",
+      "bytes": 75430,
+      "sha256": "e54fd44e7d50fbf1bf250284ad9de8552b46af74058b42f22216cf343856e47b"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\concurrencysal.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 17273,
+      "sha256": "1ea9a2e32a6ff298ad7904610cc71028caa9b172399a579ca90a120d1b1aec12"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\crtdefs.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2581,
+      "sha256": "82bdcc78bdab153e2a41a72a3860201b33aab6e46d207194caf09326f47b298f"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\cstddef",
+      "kind": "header",
+      "status": "present",
+      "bytes": 4015,
+      "sha256": "8388948efa6dc3b3b20866fa1c3057ea53b8dfd028f22abe1d7dce23ef1d9ecc"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\cstdint",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1697,
+      "sha256": "ce03526f2948c653a2ca8f68b9a8a8f0e13648243ab24068cdd473a52d4774c5"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\cstdio",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2511,
+      "sha256": "d13434f976c70f1ea3f930ad63121bfd8cfb5c736cfc48a91f06a7608b1fbaa0"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\cstdlib",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2568,
+      "sha256": "a06a21a7ee4818110c0839168a8805613c340e89b4efeb7e60ea0b41e5066298"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\cstring",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1532,
+      "sha256": "6f16cc44e5505c1d46e0869b8a7cbabf0be1646203261ab6e885165faceb98a6"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\ctime",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3296,
+      "sha256": "702d79a569a3c18256e7a1318691942c38fed334dd6339c9b91a2f92f4bb1f16"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\cwchar",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3044,
+      "sha256": "6395a6c56a62c4b02e58f4f5bf6904f7baabd7b90d0de281148ee3c115e7291a"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\eh.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2206,
+      "sha256": "f9809ac3f6929a584a971f14823be5a737e763a8d8f93bd50af2c3575c286c52"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\exception",
+      "kind": "header",
+      "status": "present",
+      "bytes": 13765,
+      "sha256": "25b9ca8823ff53a2bc7d19bb09a4b76989da52e80759ff1baa189e7b7b1704ff"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\initializer_list",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2113,
+      "sha256": "7d15e533e1453ef99e71156c470f7d3b7ece6b7c55527b8b15fe24dabedeb196"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\ios",
+      "kind": "header",
+      "status": "present",
+      "bytes": 10486,
+      "sha256": "3d0a96d6228a23c017afd63633359edbaddfce430ace5bd0b94031ade44c0186"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\iosfwd",
+      "kind": "header",
+      "status": "present",
+      "bytes": 11546,
+      "sha256": "5bb1f37c08ab118972567c468f8f9e024046b7bd1f884571828a19006b3b4076"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\iostream",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3102,
+      "sha256": "c305808f31581b9404f56773dbeaa882256b6af366b63071cdcc061e7e556c1f"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\istream",
+      "kind": "header",
+      "status": "present",
+      "bytes": 35008,
+      "sha256": "5cd13c4359146d0e1183cff78b5a7b03eea1d38073b6eb533c5238fe726f79a2"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\iterator",
+      "kind": "header",
+      "status": "present",
+      "bytes": 56587,
+      "sha256": "cab4f393f89858e2f8ee63482b0f9a7fadd5978928aca30b01151b29c72934d3"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\limits",
+      "kind": "header",
+      "status": "present",
+      "bytes": 27812,
+      "sha256": "dde4a73958faee94656e0fdc37d73a686aee75f8a5dc6dbc478bed56178f2f2a"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\limits.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1919,
+      "sha256": "2ed583abdb8a052b919d4652b10839e28a6fadbe63674108dcc65f719c9ff51c"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\memory",
+      "kind": "header",
+      "status": "present",
+      "bytes": 182001,
+      "sha256": "79b67bbeaef88bd1dc760a3a6c706d0e4a76889a06aaa0ef9206e4f91acbb5b7"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\new",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1991,
+      "sha256": "a88db84beaf4d5d201a7a8393d0a41d647072da207a0c7e2ffe0e9997aef0e2a"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\ostream",
+      "kind": "header",
+      "status": "present",
+      "bytes": 12858,
+      "sha256": "b0bbc44d49fd863057ca07d7c8bcbea61bf22dd25e7536d13a0e70337bf30027"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\sal.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 213957,
+      "sha256": "cda06459ca38681800ce5e98703c66534c74a803aa652bd4bc2b3407dd45ed46"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\setjmp.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3810,
+      "sha256": "7e4243ef92eee5f552fe66256e4b7d6f20b9050fbc034fcc9458cae39dcecf5e"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\stdexcept",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5213,
+      "sha256": "e677daf8465dd4b870f420df9010ee3a17cd80fb6f6f5655f2ad3dc6d8009ae1"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\stdint.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 4114,
+      "sha256": "29fb6d4ba5e311e06877609c20a1bc49c6cdfb730f56dd0f9c53a6241c40ab5c"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\streambuf",
+      "kind": "header",
+      "status": "present",
+      "bytes": 15129,
+      "sha256": "b8bec573d0d281db12a779a161e0485d9b801fc8d7f040752909aa15cebb8478"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\string",
+      "kind": "header",
+      "status": "present",
+      "bytes": 16481,
+      "sha256": "e7d4b2afbe2b9fd0be0d038e8c0a727fd6ce9015fbb95b60879a14074302af2d"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\system_error",
+      "kind": "header",
+      "status": "present",
+      "bytes": 29567,
+      "sha256": "d6d9b5c66e9aeae9e1297ef6cc682033b5d9eaf0f199ce6a103308afd38c5f85"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\type_traits",
+      "kind": "header",
+      "status": "present",
+      "bytes": 115501,
+      "sha256": "231347611693200d917c2b6ca6df57c896cd1b5dddec932f3a905d8862779685"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\typeinfo",
+      "kind": "header",
+      "status": "present",
+      "bytes": 2112,
+      "sha256": "9fe7fd18aaf6ea9714837a862d40d3bbaebdf57321a60f0951a0fafd157e25d2"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\use_ansi.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1330,
+      "sha256": "f3133ce73105aa38ea2fa0ee1495c8620b2d7dc0ab00dd980d9325ac38c7d443"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\utility",
+      "kind": "header",
+      "status": "present",
+      "bytes": 46508,
+      "sha256": "2b74d59520a2d6714f6b4c2660454fb10013f75f412a245c4c280cb1e8dd390a"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\vadefs.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 7668,
+      "sha256": "282dcb4af7cdbbf34095235b069474621fdd82e28eec698b467f553df4759f01"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\vcruntime.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 11625,
+      "sha256": "8023e67ff61a073832dcce1c477b5b14837e52714e62c758f690c7e7a3be98de"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\vcruntime_exception.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3143,
+      "sha256": "0dd3dcc67b655fbfc96708f131c9e7f86416d2db95fd33b1e7acc8489f2c32d4"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\vcruntime_new.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5547,
+      "sha256": "5ee35f7b2db5dffa801c5fd2f6053ff03d9b09f06d5452b15e4b3d7d22e0b87d"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\vcruntime_new_debug.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1578,
+      "sha256": "c3f552f0f27600ad991ad4b8b39d2204b65b4afcf0123504f03e781546f0f010"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\vcruntime_string.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3027,
+      "sha256": "a9493e4429a1e80c90d32d0565dd4208e2b7ca9cb7db1e90309c295fc4f79947"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\vcruntime_typeinfo.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5313,
+      "sha256": "d6a1a675ad9592ba87ec95dc130e0ad690040c6dbb4faa974945c778190cccf8"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\vector",
+      "kind": "header",
+      "status": "present",
+      "bytes": 168967,
+      "sha256": "429fc180f95877f1fbfeffd4f0d1142544e0bd47a110e6828697205ba773606e"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xatomic.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 4862,
+      "sha256": "7e1abd2855dbb3a253581696f8e3f096309d84ef1f576908a8959ea473de7e12"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xcall_once.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3896,
+      "sha256": "1d209e2f8b71c3cf36253fee4d7e6edd8450c831f5bd7f33d7e2964ca4a13544"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xerrc.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 6445,
+      "sha256": "41bf5400ac3bc3e6f1d738089a77b3112d988bff89b31ef15bf532922d52b04d"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xfacet",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1473,
+      "sha256": "71d7bd76e31f7aee31c2d22386e00bf508936cea4e510ed3a7cde20dc3ab8312"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xiosbase",
+      "kind": "header",
+      "status": "present",
+      "bytes": 16541,
+      "sha256": "c065a4de2c93df21a3df510158cd0cd08a45bea61188867026491c35198476e0"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xkeycheck.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 20754,
+      "sha256": "fdb1dc9ca22f9309bfb7e87b3f9e2b340ced7945344af2450be4beac589a3df9"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xlocale",
+      "kind": "header",
+      "status": "present",
+      "bytes": 127795,
+      "sha256": "d9a25c7471ef2c304dee80b1567e385c58f6395901fcc8dddf31e7cf927c1676"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xlocinfo",
+      "kind": "header",
+      "status": "present",
+      "bytes": 14513,
+      "sha256": "dbe56d1af1337f6c501e1fae84c6e0b5e7ed5758fd9480e538dbb992df04d82b"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xlocnum",
+      "kind": "header",
+      "status": "present",
+      "bytes": 73151,
+      "sha256": "bc5d777f8743572e650852c78c8a46dab766462684e27953e3c982b05426659c"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xmemory",
+      "kind": "header",
+      "status": "present",
+      "bytes": 115040,
+      "sha256": "e35ef7c550113f2c529a9df7fca9cb6e1d90d9f9c1cb9c2967d15aa54fc509c7"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xstring",
+      "kind": "header",
+      "status": "present",
+      "bytes": 171574,
+      "sha256": "c32b1d3ccdeebfa0bba6f71fad167655d15ef3500f6f29b7fe1a44df29a2debb"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xthreads.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 4138,
+      "sha256": "76a4a9ce19140621d2d3c32738bf396177ebe72b893c5f50dea331c9cff15e3b"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xtimec.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1755,
+      "sha256": "d6a25d6dfaf39141a7bfb86b296eb54c0b76aa29fc54a7c2a52c7bc17014d958"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xtr1common",
+      "kind": "header",
+      "status": "present",
+      "bytes": 8613,
+      "sha256": "cdffecba4f44c22fe4f809c6e4f6eeee628a7331a1b2e4ffd5dba32afcda2dcd"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\xutility",
+      "kind": "header",
+      "status": "present",
+      "bytes": 352998,
+      "sha256": "430b1e45d37f7ac6f097f95dfe1e1106a981d0380450c96d8ef98711b1029445"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\yvals.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 16953,
+      "sha256": "9a5c69cc397b3eb33601b0c165276e92d28def742876b8124622830dc3c3e1c6"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\include\\yvals_core.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 102282,
+      "sha256": "7e04c2830146f852ef68d47ab0fb394951011e18a6832a3aca46cc87ab38237a"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\lib\\x64\\libcmt.lib",
+      "kind": "library",
+      "status": "present",
+      "bytes": 6515478,
+      "sha256": "1f4a6ab28f3207e1a3225d6d616f964cf8047e243cd05416adbd3ecb89fa9559"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\lib\\x64\\libcpmt.lib",
+      "kind": "library",
+      "status": "present",
+      "bytes": 24303650,
+      "sha256": "4a9c133ac65973d2b64f77d674eaa77610aa6ddb167234b3851c19c22542ca8a"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\lib\\x64\\libvcruntime.lib",
+      "kind": "library",
+      "status": "present",
+      "bytes": 2343368,
+      "sha256": "2a5d991e40959d6b075db02b638dbeaeb55143acd4379277ba1e73da4b06a209"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\toolsets\\14.52.36815\\lib\\x64\\oldnames.lib",
+      "kind": "library",
+      "status": "present",
+      "bytes": 150126,
+      "sha256": "53bd7bff394e8827b614febbace2a8c3f1154e8947ae86bc5e5f294d7f00968b"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 127273,
+      "sha256": "822e503b81dd7b3d7df93ca22fced3672a5154484fd42054d5941e619bcf6cbc"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_malloc.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 7720,
+      "sha256": "8095d3c9bc3957f09ddcf066f405655a102a0ff9e9bad88a4d2a8017cbd59ad3"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_math.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 39299,
+      "sha256": "ca2f0f25b2e07b3613984efd1135dd9f1d0786fabaa56da2ba3c83b1a23eb918"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_memcpy_s.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3692,
+      "sha256": "359f3ce9e84bc00c983f01d9c3375d0ca9e0ef6a42e797d16e119c62b2ef333b"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_memory.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3527,
+      "sha256": "18ca520416579183bc369c0a8e555914db5c7577075b9359173fc6bc45595560"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_search.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 10959,
+      "sha256": "fe06c4dd27c3df5ca6bed52a433b8848f32e14ed0f3712d00f7e602416471c1b"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_share.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1005,
+      "sha256": "08e7a7eb0b0c7ebdd7e5fa9f9a65f626f5a725b688502ac178ca67334328b898"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_stdio_config.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5009,
+      "sha256": "a7e100624320a8e0123890c5008bcb2281c1273ca7ce5bb1d297f987fdbe79a0"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_terminate.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1223,
+      "sha256": "c8dc9a2497bcae0a9084eb1120f25660a575c7957997301c4f017fc44c908f54"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_wconio.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 13310,
+      "sha256": "6cfdcfd9e1ec60014c4e7e87913275ce3cacda008dbc397a17306976266aa5b6"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_wctype.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 10605,
+      "sha256": "b622b24cbda842a1736987f38c9deb5076e51af018630842a127bebd9104076e"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_wdirect.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1495,
+      "sha256": "b8477593983d23ed4ef93c3efcabb8239375b518ba589a65338db29bb0dc2237"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_wio.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 7427,
+      "sha256": "e6a08ad4c75ef96fd5fafcff334048c4cc610f990f39c15e07c03af14d607197"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_wprocess.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3980,
+      "sha256": "e75c5cdf244070ddcebac8920dd4cc96c33d0e21fdfbc82446c0374950e98487"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_wstdio.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 75265,
+      "sha256": "a10bbf4667b3aada380a6b80df853f9fbddc3cc691ca57389b3b6759f119e515"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_wstdlib.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 16790,
+      "sha256": "98b62ac5fb4291961c19ecf5c1b2e641b437f9042054f1a56ebdfd0deb71eca1"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_wstring.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 20015,
+      "sha256": "c485f918d43f0f846d77a36eaee9e111f57bf2eec32db7d9719ff924771744c6"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\corecrt_wtime.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 7205,
+      "sha256": "4e487fddafbc724cf4e6df45feb920bc46dae80f54ffe5d983bf742a1fd9a12f"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\crtdbg.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 32615,
+      "sha256": "d9ebd063f0243dd122ec33901661d1ae175359adbb019f0d815fb902e6f617e4"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\ctype.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 12981,
+      "sha256": "6a10e9f0505b896d356d986d671c939b7fb0602012e463314ff7bfd0182a861f"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\errno.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 3835,
+      "sha256": "c64e8df96f057fdebc0474bd765cee3ae17de34a2b1fc9d197597321f2d1e447"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\float.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 15397,
+      "sha256": "0fbf87532c053b666940a65360f2488f5b6bb2e601632e32a0f1a8a078d8fdcd"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\locale.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5109,
+      "sha256": "877aa49e1f22814dd5634e785d305210d3c7ac0a1274e8552ce4f687a91ac4cb"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\malloc.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 5079,
+      "sha256": "8acfe0c7a33a4d5ae2253f7167f92b0e728dea86f83289cee9d583c45b175b6e"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\math.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 505,
+      "sha256": "fb747990091c8c6e4ed8b4cfb40ed14eadd37547153607459e9ddef71c64edff"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\share.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 312,
+      "sha256": "f706b5df86d1bdf22cfe8d86dc798b255ce1bd2719d5d25f8f491595075a2bc2"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\stdio.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 81489,
+      "sha256": "06cbab3a501306fdd9176a00a83e5bb92ea4d7863cfd666355743527cf99edc6"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\stdlib.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 43968,
+      "sha256": "1576fdb40eb225dff53489db2fd52e41c7bb24f1e621e4a95c2c7f4a7216949c"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\string.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 17395,
+      "sha256": "39767b2e1963b8ef679b62d5e27cb2d0ca1de6a6173b75389b79c9d575da92fc"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\sys/stat.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 6856,
+      "sha256": "2b720dd0426cf0a74eefdb684ac559c8b4f84b1d7d345e3582ce0dfeb01b9aa7"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\sys/types.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 1280,
+      "sha256": "dfb9ebc7d527c30d71f1056ddd85e33fb931df573b41424bb1db9a48457bebd7"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\time.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 19166,
+      "sha256": "b775fe03a3288dfcd68a72caad43e8198283164eae94b665fdd3375a3baea44c"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\include\\ucrt\\wchar.h",
+      "kind": "header",
+      "status": "present",
+      "bytes": 18745,
+      "sha256": "4eb98d8c8ba844c86af7243bcf38a0256069177c63598f43ec0925315691c505"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\lib\\ucrt\\x64\\libucrt.lib",
+      "kind": "library",
+      "status": "present",
+      "bytes": 43298182,
+      "sha256": "9d9c74fc00d0d43b3ded5328d1f197e919236645dfaf80a84ece1f1b99465a1e"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\lib\\um\\x64\\kernel32.lib",
+      "kind": "library",
+      "status": "present",
+      "bytes": 311908,
+      "sha256": "8ba8dab9adec752047d4f136852e8136d01836bff39bbb56a20ac5f2d56415d8"
+    },
+    {
+      "path": "A:\\vc2026-runtime\\windows-sdk\\10.0.28000.0\\lib\\um\\x64\\uuid.lib",
+      "kind": "library",
+      "status": "present",
+      "bytes": 8997034,
+      "sha256": "f5742d0c9e9a808e29aaefe6bdfb7b033f85fd141c4eef67e806ab49b4b4e6c7"
+    }
+  ]
+}
