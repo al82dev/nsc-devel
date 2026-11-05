@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
+#include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Interop/CppSemanticFunctionGroups.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
@@ -15,6 +16,20 @@
 
 namespace nativesharp::interop
 {
+namespace
+{
+std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type)
+{
+    const auto array = frontend::cppAliasArrayType(type);
+    if (!array || array->element.token == lexer::TokenKind::KwVoid || array->element.pointeeConst)
+        return std::nullopt;
+    std::string key = "builtin:" + std::string(array->element.name) + std::string(array->element.pointerDepth, '*');
+    for (auto dimension = array->dimensions.rbegin(); dimension != array->dimensions.rend(); ++dimension)
+        key += "[" + std::to_string(*dimension) + "]";
+    return CppScalarTypeMapping{std::move(key), type.canonicalSpelling, false, false};
+}
+}
+
 std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const CppRecordDeclaration& record, std::size_t fieldIndex, std::size_t projectOrdinal,
     std::string_view moduleName, std::string_view targetTriple, const frontend::ProjectNameLookup* lookup)
@@ -30,6 +45,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         *field.type.sizeBits == 0 || *field.offsetBits > *record.sizeBits ||
         *field.type.sizeBits > *record.sizeBits - *field.offsetBits) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
+    if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Array)
+        mapped = projectCArrayField(field.type);
     if (!mapped && !record.isCxx)
         mapped = projectCppSemanticEnumType(field.type, projectOrdinal, moduleName, lookup);
     bool pointeeReadonly = false;
