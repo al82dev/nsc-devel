@@ -3972,6 +3972,156 @@ int main(int argc, char** argv)
                 }
                 else ok &= expect(false, "DLL static field reaches isolated MIR generation");
             }
+            for (int allocationCase : {0, 1, 2, 3})
+            {
+                nativesharp::frontend::ProjectCompilation allocation;
+                allocation.setSourceBufferProvider([allocationCase](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() != "Main.ns") return std::nullopt;
+                    switch (allocationCase)
+                    {
+                    case 0: return "int Main() { A.B.C* p = stackalloc A.B.C[1]; return 0; }\n";
+                    case 1: return "int Main() { A.B.C* p = new A.B.C; return 0; }\n";
+                    case 2: return "int Main() { A.B.C** p = stackalloc A.B.C*[1]; return 0; }\n";
+                    default: return "int Main() { int* p = stackalloc int[1]; return 0; }\n";
+                    }
+                });
+                CppProjectSessions group;
+                group.projectFile = std::filesystem::absolute(path);
+                group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                    "namespace A { namespace B { struct C { C(); ~C(); int value; }; } }\n")));
+                std::vector<CppProjectSessions> groups;
+                groups.push_back(std::move(group));
+                std::string allocationError;
+                const bool configured = allocation.setCppProjectSessions(std::move(groups), allocationError) &&
+                    allocation.setExperimentalCppTypeProvider(provideExperimentalCppRecordCandidates, allocationError) &&
+                    allocation.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, allocationError) &&
+                    allocation.setCppNamespaceProvider([](const auto& graph, auto sessions, auto& output, auto& error) {
+                        auto inventory = collectCppNamespaces(graph, sessions);
+                        if (const auto* failure = std::get_if<CppNamespaceInventoryFailure>(&inventory))
+                        { error = failure->message; return false; }
+                        auto visible = visibleCppNamespaces(std::get<std::vector<CppNamespaceInventoryEntry>>(inventory));
+                        if (const auto* failure = std::get_if<CppNamespaceInventoryFailure>(&visible))
+                        { error = failure->message; return false; }
+                        output = std::move(std::get<std::vector<std::pair<std::size_t, std::string>>>(visible));
+                        return true;
+                    }, allocationError);
+                const bool ready = configured && allocation.compileProjectOopMir(path, allocationError);
+                bool lifetimeDiagnostic = false;
+                for (const auto& diagnostic : allocation.diagnostics().diagnostics())
+                    lifetimeDiagnostic |= diagnostic.message().find("lifetime") != std::string::npos;
+                if (allocationCase < 2 ? ready || !lifetimeDiagnostic : !ready)
+                {
+                    std::cerr << "imported allocation case=" << allocationCase << " ready=" << ready << " error=" << allocationError << '\n';
+                    for (const auto& diagnostic : allocation.diagnostics().diagnostics())
+                        std::cerr << diagnostic.message() << '\n';
+                }
+                ok &= expect(configured && (allocationCase < 2 ? !ready && lifetimeDiagnostic : ready),
+                             "raw allocation rejects imported C++ objects while preserving pointer and native storage");
+            }
+            {
+                nativesharp::frontend::ProjectCompilation byValue;
+                byValue.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns")
+                        return "struct Wrapper { A.B.C value; } int Main() { return 0; }\n";
+                    return std::nullopt;
+                });
+                std::string valueError;
+                const bool configured = byValue.setExperimentalCppImportedTypes({{*namespaceIdentity,
+                    nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                    nativesharp::frontend::NamedTypeAccessibility::Public, 0,
+                    namespaceC->location ? namespaceC->location->file.generic_string() : ""}}, valueError);
+                const bool valueReady = configured && byValue.compileProjectObjectLayouts(path, valueError);
+                bool missingLayout = false;
+                for (const auto& diagnostic : byValue.diagnostics().diagnostics())
+                    missingLayout |= diagnostic.message().find("has no imported object layout yet") != std::string::npos;
+                ok &= expect(configured && !valueReady && missingLayout,
+                             "a C++ record field by value is rejected until its actual layout is imported");
+            }
+            ok &= expect(ordinal && lookup.cppImportedTypeIndex(*ordinal) == std::optional<std::size_t>(0) &&
+                         !lookup.cppImportedTypeIndex(lookup.namedTypes().size()),
+                         "successful lookup retains the imported type input index by ordinal");
+            CppRecordGroups selectionGroups;
+            selectionGroups.groups.push_back({0, *namespaceIdentity, {}, CppRecordGroupStatus::Conflict});
+            const std::vector<std::size_t> mapping{0};
+            const auto selected = selectCppRecordBindings(lookup, selectionGroups, mapping);
+            const auto* selection = std::get_if<CppRecordBindingSelection>(&selected);
+            ok &= expect(selection && selection->referencedGroups == mapping &&
+                         selection->expressionCandidateGroups.empty() &&
+                         selectionGroups.groups[selection->referencedGroups[0]].status == CppRecordGroupStatus::Conflict,
+                         "resolved type selects its explicit record group without hiding conflicts");
+            const std::vector<std::size_t> invalidMapping{1};
+            const std::vector<std::size_t> missingMapping;
+            ok &= expect(std::holds_alternative<CppRecordBindingFailure>(
+                             selectCppRecordBindings(lookup, selectionGroups, invalidMapping)) &&
+                         std::holds_alternative<CppRecordBindingFailure>(
+                             selectCppRecordBindings(lookup, selectionGroups, missingMapping)),
+                         "record selection rejects invalid and missing installed mappings");
+            auto wrongIdentityGroups = selectionGroups;
+            if (nestedIdentity) wrongIdentityGroups.groups[0].identity = *nestedIdentity;
+            auto wrongProjectGroups = selectionGroups;
+            wrongProjectGroups.groups[0].projectOrdinal = 1;
+            ok &= expect(nestedIdentity && std::holds_alternative<CppRecordBindingFailure>(
+                             selectCppRecordBindings(lookup, wrongIdentityGroups, mapping)) &&
+                         std::holds_alternative<CppRecordBindingFailure>(
+                             selectCppRecordBindings(lookup, wrongProjectGroups, mapping)),
+                         "record selection rejects mismatched identity and owning project");
+            nativesharp::frontend::ProjectNameLookup wrongOwner;
+            const bool ownerInstalled = wrongOwner.setCppImportedTypes({{*namespaceIdentity,
+                nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                nativesharp::frontend::NamedTypeAccessibility::Public, 99,
+                namespaceC->location ? namespaceC->location->file.generic_string() : ""}});
+            ok &= expect(ownerInstalled && !wrongOwner.build(
+                             *compilation.projectGraph(), compilation.units(), compilation.diagnostics()),
+                         "imported record cannot be assigned to a nonexistent project");
+            ok &= expect(!wrongOwner.cppImportedTypeIndex(0), "failed lookup does not publish imported provenance");
+            nativesharp::frontend::ProjectCompilation duplicateCompilation;
+            duplicateCompilation.setSourceBufferProvider([](const std::filesystem::path& source)
+                -> std::optional<std::string> {
+                if (source.filename() == "Main.ns") return "namespace A.B { struct C {} } int Main() { return 0; }\n";
+                return std::nullopt;
+            });
+            std::string duplicateError;
+            const bool duplicateParsed = duplicateCompilation.compileProjectSyntax(path, duplicateError);
+            nativesharp::frontend::ProjectNameLookup duplicateLookup;
+            const bool duplicateConfigured = duplicateParsed && duplicateLookup.setImportedNamespaces({{0, "A.B"}}) &&
+                duplicateLookup.setCppImportedTypes({{*namespaceIdentity,
+                    nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                    nativesharp::frontend::NamedTypeAccessibility::Public, 0,
+                    namespaceC->location ? namespaceC->location->file.generic_string() : ""}});
+            const bool duplicateReady = duplicateConfigured && duplicateLookup.build(
+                *duplicateCompilation.projectGraph(), duplicateCompilation.units(), duplicateCompilation.diagnostics());
+            ok &= expect(duplicateConfigured && !duplicateReady && duplicateCompilation.diagnostics().hasErrors(),
+                         "imported record colliding with a NativeSharp declaration is diagnosed");
+            const auto duplicateOrdinal = duplicateLookup.typeOrdinalForIdentity(namespaceIdentity->key());
+            ok &= expect(!duplicateOrdinal || !duplicateLookup.cppImportedTypeIndex(*duplicateOrdinal),
+                         "a conflicting lookup does not publish imported provenance");
+            {
+                nativesharp::frontend::ProjectCompilation hooked;
+                hooked.setSourceBufferProvider([](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { return 0; }\n";
+                    return std::nullopt;
+                });
+                CppProjectSessions sessionGroup;
+                sessionGroup.projectFile = std::filesystem::absolute(path);
+                sessionGroup.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                    CppLanguageMode::Cpp, "namespace A { namespace B { struct C {}; } }\n")));
+                std::vector<CppProjectSessions> sessions;
+                sessions.push_back(std::move(sessionGroup));
+                std::optional<CppRecordObservationRunResult> observed;
+                int calls = 0;
+                std::string hookError;
+                const bool hookReady = hooked.setCppProjectSessions(std::move(sessions), hookError) &&
+                    hooked.setCppRecordObserver([&](const auto& source) { ++calls; observed = observeCppRecords(source); }, hookError) &&
+                    hooked.compileProjectNames(path, hookError);
+                const auto* hookResult = observed ? std::get_if<CppRecordObservation>(&*observed) : nullptr;
+                std::string lateError;
+                ok &= expect(hookReady && calls == 1 && hookResult && !hookResult->inventory.empty() &&
+                             hooked.nameLookup() && hooked.nameLookup()->cppImportedTypeIndex(0) == std::nullopt &&
+                             !hooked.diagnostics().hasErrors() && !hooked.setCppRecordObserver({}, lateError) && !lateError.empty(),
+                             "optional record observer runs once and does not install placeholders into production lookup");
+            }
         }
     }
     return ok ? 0 : 1;
