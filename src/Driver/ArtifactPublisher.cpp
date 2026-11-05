@@ -7,6 +7,7 @@
 
 namespace nativesharp::driver
 {
+bool filesHaveEqualContents(const std::filesystem::path& left, const std::filesystem::path& right);
 namespace
 {
 std::filesystem::path companionPath(
@@ -175,13 +176,26 @@ bool ArtifactPublisher::addDynamicLibraryPdb(
 bool ArtifactPublisher::addRuntimeArtifacts(
     const std::filesystem::path& destinationDirectory,
     std::span<const std::filesystem::path> stagedRuntimes,
-    std::string& error)
+    std::string& error,
+    bool protectExisting)
 {
     for (const std::filesystem::path& stagedRuntime : stagedRuntimes)
     {
-        if (!transaction_.addStaged(
-                destinationDirectory / stagedRuntime.filename(), stagedRuntime, error))
-            return false;
+        const auto destination = destinationDirectory / stagedRuntime.filename();
+        if (protectExisting)
+        {
+            std::error_code ec;
+            const bool exists = std::filesystem::exists(destination, ec);
+            if (ec) { error = "cannot inspect runtime destination: " + ec.message(); return false; }
+            if (exists)
+            {
+                if (filesHaveEqualContents(stagedRuntime, destination)) continue;
+                error = "runtime package destination already contains a different '" + destination.filename().string() + "'";
+                return false;
+            }
+            if (!transaction_.addStagedNoReplace(destination, stagedRuntime, error)) return false;
+        }
+        else if (!transaction_.addStaged(destination, stagedRuntime, error)) return false;
     }
     return true;
 }

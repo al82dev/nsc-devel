@@ -61,7 +61,8 @@ public:
     bool addRuntimeArtifacts(
         const std::filesystem::path& destinationDirectory,
         std::span<const std::filesystem::path> stagedRuntimes,
-        std::string& error);
+        std::string& error,
+        bool protectExisting = false);
     bool commit(std::string& error);
 
 private:
