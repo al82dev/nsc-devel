@@ -7087,6 +7087,21 @@ int main(int argc, char** argv)
                      compilation.cppInteropSession()->topLevelDeclarationCount().has_value(),
                      "injected Clang AST remains accessible");
     }
+    {
+        auto session = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                                             "struct SnapshotLifetime {};\n"));
+        auto compilation = std::make_shared<nativesharp::frontend::ProjectCompilation>();
+        std::string error;
+        const bool injected = session && compilation->setCppInteropSession(std::move(session), error);
+        std::weak_ptr<nativesharp::frontend::ProjectCompilation> weak = compilation;
+        auto snapshotOwner = compilation;
+        compilation.reset();
+        ok &= expect(injected && !weak.expired() && snapshotOwner->cppInteropSession() &&
+                     snapshotOwner->cppInteropSession()->topLevelDeclarationCount().has_value(),
+                     "shared snapshot ownership preserves its compilation and real Clang session");
+        snapshotOwner.reset();
+        ok &= expect(weak.expired(), "compilation and owned session can be released after the last snapshot");
+    }
     if (argc == 5 && std::string_view(argv[4]) != "bundle-link" && std::string_view(argv[4]) != "lifetime")
     {
         const std::filesystem::path project = std::filesystem::absolute(argv[4]);
