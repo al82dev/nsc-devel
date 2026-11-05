@@ -5947,6 +5947,313 @@ int main(int argc, char** argv)
                                                methodCompilation.genericModel()) && badDiagnostics.hasErrors(),
                              "member indexing rejects an instance method owned by a different project");
             }
+        }
+        bool sawVirtualBaseDtor = false;
+        if (derived)
+            for (const auto& method : derived->methods)
+                sawVirtualBaseDtor |= method.kind == CppMethodKind::Destructor &&
+                    method.externalSymbol == "??_DDerived@@QEAAXXZ";
+        ok &= expect(sawVirtualBaseDtor, "complete destructor with virtual base matches Clang object");
+        const auto* cApi = functions ? functionByName(*functions, "c_api") : nullptr;
+        const auto* noThrow = functions ? functionByName(*functions, "cpp_noexcept") : nullptr;
+        const auto* vectorCall = functions ? functionByName(*functions, "vector_fn") : nullptr;
+        const auto* cNoThrow = functions ? functionByName(*functions, "c_api_noexcept") : nullptr;
+        const auto* canThrow = functions ? functionByName(*functions, "cpp_throwing") : nullptr;
+        ok &= expect(noThrow && noThrow->isNonThrowing && cApi && !cApi->isNonThrowing &&
+                     vectorCall && !vectorCall->isNonThrowing && cNoThrow && cNoThrow->isNonThrowing &&
+                     canThrow && !canThrow->isNonThrowing,
+                     "free function snapshots retain resolved exception specifications without inferring from C linkage");
+        const auto* nestedFunction = functions ? functionByName(*functions, "root::sub::foo") : nullptr;
+        const auto* local = functions ? functionByName(*functions, "tools::local") : nullptr;
+        const auto* pointer = functions ? functionByName(*functions, "tools::pointer") : nullptr;
+        const auto* handle = functions ? functionByName(*functions, "tools::handle") : nullptr;
+        const auto* widths = functions ? functionByName(*functions, "tools::widths") : nullptr;
+        if (handle)
+        {
+            nativesharp::frontend::ProjectCompilation compilation;
+            compilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                -> std::optional<std::string> {
+                if (path.filename() == "Main.ns") return "int Main() { tools.handle(1); return 0; }\n";
+                return std::nullopt;
+            });
+            std::string error;
+            const bool configured = compilation.setCppNamespaceProvider(
+                [](const auto&, auto, auto& out, auto&) { out.emplace_back(0, "tools"); return true; }, error);
+            const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+            const bool ready = configured && compilation.compileProjectMembers(path, error);
+            nativesharp::frontend::ProjectNamespaceFunctionModel observer;
+            const bool observed = ready && observer.setCaptureCppFunctionDemands(true) &&
+                observer.build(*compilation.nameLookup(), *compilation.memberModel(), compilation.units(),
+                               compilation.diagnostics(), compilation.genericModel());
+            std::vector<CppDeferredFunctionCandidate> retained;
+            bool rejectedBadIndex = false, rejectedNullSyntax = false, rejectedWrongOwner = false,
+                rejectedProjectedEntry = false, rejectedBadDemand = false;
+            if (observed)
+            {
+                std::vector<CppSemanticInventoryEntry> inventory{{path, 3, 0, "x86_64-pc-windows-msvc",
+                    *handle, projectCppSemanticFunction(*handle, 0, "Semantic")}};
+                auto selection = selectCppSemanticDemands(inventory, observer.cppFunctionDemands());
+                if (auto* matches = std::get_if<std::vector<CppSemanticDemandCandidates>>(&selection);
+                    matches && matches->size() == 1 && !matches->front().candidates.unprojectedIndices.empty())
+                {
+                    auto copied = materializeCppDeferredFunctions(inventory, observer.cppFunctionDemands(), *matches);
+                    if (auto* candidates = std::get_if<std::vector<CppDeferredFunctionCandidate>>(&copied))
+                        retained = std::move(*candidates);
+                    auto bad = *matches;
+                    bad[0].candidates.unprojectedIndices[0] = inventory.size();
+                    rejectedBadIndex = std::holds_alternative<CppDeferredFunctionFailure>(
+                        materializeCppDeferredFunctions(inventory, observer.cppFunctionDemands(), bad));
+                    std::vector<nativesharp::frontend::CppFunctionDemand> badDemands(
+                        observer.cppFunctionDemands().begin(), observer.cppFunctionDemands().end());
+                    badDemands[(*matches)[0].demandIndex].syntax = nullptr;
+                    rejectedNullSyntax = std::holds_alternative<CppDeferredFunctionFailure>(
+                        materializeCppDeferredFunctions(inventory, badDemands, *matches));
+                    bad = *matches;
+                    bad[0].projectOrdinal = 99;
+                    rejectedWrongOwner = std::holds_alternative<CppDeferredFunctionFailure>(
+                        materializeCppDeferredFunctions(inventory, observer.cppFunctionDemands(), bad));
+                    bad = *matches;
+                    bad[0].demandIndex = observer.cppFunctionDemands().size();
+                    rejectedBadDemand = std::holds_alternative<CppDeferredFunctionFailure>(
+                        materializeCppDeferredFunctions(inventory, observer.cppFunctionDemands(), bad));
+                    auto projectedInventory = inventory;
+                    projectedInventory[0].projection = nativesharp::frontend::NamespaceFunctionSymbol{};
+                    rejectedProjectedEntry = std::holds_alternative<CppDeferredFunctionFailure>(
+                        materializeCppDeferredFunctions(projectedInventory, observer.cppFunctionDemands(), *matches));
+                }
+            }
+            ok &= expect(retained.size() == 1 && retained[0].syntax && retained[0].directCall &&
+                         retained[0].consumerProject == 0 && retained[0].declarationProject == 0 &&
+                         retained[0].referenceIndex == 3 && retained[0].declaration.qualifiedName == "tools::handle" &&
+                         !retained[0].reason.empty() && rejectedBadIndex && rejectedNullSyntax &&
+                         rejectedWrongOwner && rejectedBadDemand && rejectedProjectedEntry,
+                         "unprojected Clang candidate survives inventory lifetime and rejects invalid provenance");
+        }
+        bool transactionalFailure = false;
+        for (const int invalid : {0, 1, 2, 3, 4, 5, 6, 7, 8})
+        {
+            nativesharp::frontend::ProjectCompilation compilation;
+            compilation.setSourceBufferProvider([invalid](const std::filesystem::path& path)
+                -> std::optional<std::string> {
+                if (path.filename() == "Main.ns" && (invalid == 4 || invalid == 8))
+                    return "class Program { static int shadow(int x) { return x; } static int Main() { return shadow(42); } }\n";
+                if (path.filename() == "Main.ns" && invalid == 7)
+                    return "int Main() { return shadow(42); }\n";
+                if (path.filename() == "Main.ns") return "int Main() { int shadow = 42; return shadow; }\n";
+                return std::nullopt;
+            });
+            const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+            CppProjectSessions projectSessions;
+            projectSessions.projectFile = std::filesystem::absolute(path);
+            if (invalid >= 5)
+            {
+                projectSessions.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                    CppLanguageMode::C, "int shadow(int);\n")));
+                projectSessions.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                    CppLanguageMode::C, "double shadow(int);\n")));
+            }
+            else projectSessions.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                CppLanguageMode::Cpp, "struct Opaque; int shadow(int); int shadow(Opaque*);\n")));
+            std::vector<CppProjectSessions> projects;
+            projects.push_back(std::move(projectSessions));
+            std::string error;
+            const bool configured = compilation.setCppProjectSessions(std::move(projects), error) &&
+                compilation.setCppFunctionProvider([invalid, &transactionalFailure](const auto& graph, auto sessions, auto, auto demands,
+                    auto& output, auto& deferred, auto& why) {
+                    if (invalid == 0)
+                    {
+                        std::vector<CppProjectSessions> bad(1);
+                        bad[0].projectFile = "nonexistent-project.nsproj";
+                        std::vector<nativesharp::frontend::NamespaceFunctionSymbol> saved(1);
+                        saved[0].name = "sentinel";
+                        std::vector<CppDeferredFunctionCandidate> savedDeferred(1);
+                        savedDeferred[0].reason = "sentinel";
+                        std::string ignored;
+                        transactionalFailure = !provideCppSemanticFunctions(graph, bad, demands, saved, savedDeferred, ignored) &&
+                            saved.size() == 1 && saved[0].name == "sentinel" && savedDeferred.size() == 1 &&
+                            savedDeferred[0].reason == "sentinel" && !ignored.empty();
+                    }
+                    if (!provideCppSemanticFunctions(graph, sessions, demands, output, deferred, why)) return false;
+                    if (!deferred.empty())
+                    {
+                        if (invalid == 1) deferred[0].syntax = nullptr;
+                        if (invalid == 2) deferred[0].referenceIndex = 999999;
+                        if (invalid == 3) deferred[0].declaration.qualifiedName = "unrelated";
+                        if (invalid == 6 && !deferred[0].conflictingOrigins.empty())
+                            deferred[0].conflictingOrigins[0].referenceIndex = 999999;
+                    }
+                    return true;
+                }, error);
+            const bool ready = configured && compilation.compileProjectMethodBodies(path, error);
+            if ((invalid >= 1 && invalid <= 3) || invalid == 6)
+                ok &= expect(!ready && error.find("does not belong to a visible demand") != std::string::npos,
+                             "frontend rejects deferred candidates with invalid syntax provenance");
+            else if (invalid == 7)
+            {
+                bool conflictDiagnostic = false;
+                for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                    conflictDiagnostic |= diagnostic.message().find("conflicting") != std::string::npos;
+                ok &= expect(configured && !ready && conflictDiagnostic,
+                             "actual call reports conflicting deferred C declarations");
+            }
+            else
+            {
+                const auto* model = compilation.namespaceFunctionModel();
+                const auto deferred = model ? model->cppDeferredFunctions() :
+                    std::span<const CppDeferredFunctionCandidate>{};
+                const bool conflictRetained = invalid != 5 || (!deferred.empty() &&
+                    deferred[0].conflictingOrigins.size() == 2 &&
+                    deferred[0].conflictingOrigins[0].referenceIndex == 0 &&
+                    deferred[0].conflictingOrigins[1].referenceIndex == 1 &&
+                    deferred[0].conflictingOrigins[0].declaration.canonicalFunctionType !=
+                        deferred[0].conflictingOrigins[1].declaration.canonicalFunctionType);
+                ok &= expect(ready && transactionalFailure && !compilation.diagnostics().hasErrors() && !deferred.empty() &&
+                             deferred[0].declaration.qualifiedName == "shadow" && !deferred[0].reason.empty() &&
+                             conflictRetained,
+                             (invalid == 4 || invalid == 8) ? "member method shadows C/C++ declarations without a false error"
+                             : invalid == 5 ? "local shadowing does not eagerly reject conflicting C declarations"
+                                            : "local shadowing remains valid while frontend retains unprojected candidates");
+            }
+        }
+        for (const bool localFirst : {false, true})
+        {
+            nativesharp::frontend::ProjectCompilation compilation;
+            compilation.setSourceBufferProvider([localFirst](const std::filesystem::path& path)
+                -> std::optional<std::string> {
+                if (path.filename() == "Main.ns") return localFirst
+                    ? "using tools; int mix(int x) { return x; } int Main() { return mix(1); }\n"
+                    : "int Main() { return tools.mix(1); }\n";
+                return std::nullopt;
+            });
+            const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+            CppProjectSessions projectSessions;
+            projectSessions.projectFile = std::filesystem::absolute(path);
+            projectSessions.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                CppLanguageMode::Cpp, "namespace tools { struct Opaque; int mix(int); int mix(Opaque*); }\n")));
+            std::vector<CppProjectSessions> projects;
+            projects.push_back(std::move(projectSessions));
+            std::string error;
+            const bool configured = compilation.setCppProjectSessions(std::move(projects), error) &&
+                compilation.setCppNamespaceProvider([](const auto&, auto, auto& names, auto&) {
+                    names.emplace_back(0, "tools"); return true;
+                }, error) && compilation.setCppFunctionProvider(
+                    [](const auto& graph, auto sessions, auto, auto demands, auto& projected, auto& deferred, auto& why) {
+                        return provideCppSemanticFunctions(graph, sessions, demands, projected, deferred, why);
+                    }, error);
+            const bool ready = configured && compilation.compileProjectMethodBodies(path, error);
+            bool incomplete = false;
+            for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                incomplete |= diagnostic.message().find("C/C++ overload set is incomplete") != std::string::npos;
+            ok &= expect(configured && (localFirst ? ready && !incomplete : !ready && incomplete),
+                         localFirst ? "namespace precedence avoids unrelated deferred overloads"
+                                    : "real call cannot silently ignore an unprojected C++ overload");
+        }
+        ok &= expect(cApi && cApi->externalSymbol == "c_api" &&
+                     cApi->languageLinkage == CppLanguageLinkage::C && cApi->callingConvention == "cdecl",
+                     "extern C retains the C symbol and language linkage");
+        ok &= expect(noThrow && noThrow->languageLinkage == CppLanguageLinkage::Cpp &&
+                     noThrow->canonicalFunctionType.find("noexcept") != std::string::npos &&
+                     vectorCall && vectorCall->languageLinkage == CppLanguageLinkage::Cpp &&
+                     vectorCall->callingConvention == "vectorcall" &&
+                     !vectorCall->canonicalFunctionType.empty(),
+                     "C++ function type and calling convention come from Clang");
+        if (vectorCall)
+        {
+            auto projectedVector = projectCppSemanticFunction(*vectorCall, 0, "Semantic");
+            const auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projectedVector);
+            nativesharp::frontend::ProjectCompilation hir;
+            hir.setSourceBufferProvider([](const std::filesystem::path& path)
+                -> std::optional<std::string> {
+                if (path.filename() == "Main.ns") return "int Main() { return vector_fn(1); }\n";
+                return std::nullopt;
+            });
+            std::string error;
+            const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+            const bool ready = symbol && symbol->cppCallingConvention == "vectorcall" &&
+                hir.setCppImportedFunctions({*symbol}, error) && hir.compileProjectOopHir(path, error);
+            ok &= expect(!ready && error.find("vectorcall") != std::string::npos,
+                         "unimplemented vectorcall is rejected before incorrect HIR emission");
+        }
+        else ok &= expect(false, "vectorcall declaration is available from Clang");
+        if (nestedFunction)
+        {
+            auto projectedNested = projectCppSemanticFunction(*nestedFunction, 0, "Semantic");
+            const auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projectedNested);
+            nativesharp::frontend::ProjectCompilation nestedCompilation;
+            std::string error;
+            nestedCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                -> std::optional<std::string> {
+                if (path.filename() == "Main.ns") return "int Main() { return root.sub.foo(1); }\n";
+                return std::nullopt;
+            });
+            const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+            const bool ready = symbol && nestedCompilation.setCppImportedFunctions({*symbol}, error) &&
+                nestedCompilation.compileProjectMembers(path, error);
+            bool found = false;
+            if (ready && nestedCompilation.namespaceFunctionModel())
+                for (const auto& binding : nestedCompilation.namespaceFunctionModel()->referenceBindings())
+                    found |= binding.writtenName == "root.sub.foo" && binding.candidateFunctionOrdinals.size() == 1;
+            ok &= expect(found, "nested C++ namespace resolves in a NativeSharp qualified call");
+        }
+        else ok &= expect(false, "nested C++ function is available from Clang");
+        ok &= expect(local && !local->externalLinkage && !local->externalSymbol,
+                     "internal functions do not promise a public symbol");
+        ok &= expect(pointer && pointer->returnType.kind == CppTypeKind::Pointer &&
+                     pointer->returnType.sizeBits == 64 && pointer->returnType.element &&
+                     pointer->returnType.element->isConst && pointer->returnType.element->sizeBits == 32,
+                     "pointer and const pointee retain Windows x64 layout");
+        ok &= expect(handle && handle->parameters.size() == 1 && handle->parameters[0].type.element &&
+                     handle->parameters[0].type.element->kind == CppTypeKind::Record &&
+                     !handle->parameters[0].type.element->sizeBits,
+                     "incomplete pointee does not invent a size");
+        ok &= expect(widths && widths->returnType.kind == CppTypeKind::SignedInteger &&
+                     widths->returnType.sizeBits == 32 && widths->parameters.size() == 1 &&
+                     widths->parameters[0].type.sizeBits == 64,
+                     "long and long long use Windows x64 sizes");
+        const auto* pointerIdentity = functions ? functionByName(*functions, "tools::pointer_identity") : nullptr;
+        if (pointerIdentity && pointerIdentity->externalSymbol)
+        {
+            const auto projected = projectCppSemanticFunction(*pointerIdentity, 0, "Semantic");
+            const auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projected);
+            ok &= expect(symbol && symbol->declaredTypeKey == "builtin:int*" && symbol->parameters.size() == 1 &&
+                         symbol->parameters[0].typeKey == "builtin:int*",
+                         "C++ pointer parameter and return are projected");
+            if (symbol)
+            {
+                nativesharp::frontend::ProjectCompilation compilation;
+                compilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns")
+                        return "int Main() { int value = 41; int* p = tools.pointer_identity(&value); return *p; }\n";
+                    return std::nullopt;
+                });
+                std::string error;
+                const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                const bool ready = compilation.setCppImportedFunctions({*symbol}, error) &&
+                    compilation.compileProjectOopMir(path, error);
+                if (!ready) std::cerr << "C++ pointer MIR failed: " << error << '\n';
+                ok &= expect(ready && compilation.oopMirModel(), "C++ pointer call reaches MIR");
+                if (ready && compilation.oopMirModel() && compilation.nameLookup())
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+                    std::string llvmError;
+                    const bool valid = module && module->verify(llvmError);
+                    const std::string ir = module ? module->text() : std::string{};
+                    const std::string name = "@\"" + *pointerIdentity->externalSymbol + "\"";
+                    ok &= expect(valid && ir.find("declare ptr " + name + "(ptr)") != std::string::npos &&
+                                 ir.find("call ptr " + name + "(ptr") != std::string::npos,
+                                 "C++ pointer call reaches verified LLVM with exact external symbol");
+                    auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(llvmError);
+                    const bool emitted = valid && target && target->emit(*module,
+                        std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/cpp-pointer-call.obj",
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object, llvmError);
+                    if (!emitted) std::cerr << "C++ pointer LLVM/object failed: " << lowerer.error() << ' ' << llvmError << '\n';
+                    ok &= expect(emitted, "C++ pointer call emits a Windows x64 object");
+                }
+            }
+        }
+        else ok &= expect(false, "Clang exposes the C++ pointer identity fixture");
     }
     return ok ? 0 : 1;
 }
