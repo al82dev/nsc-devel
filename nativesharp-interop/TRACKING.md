@@ -4,6 +4,18 @@
 pruebas y la evidencia se trasladaron desde el fork de LLVM; detalles en
 [TRASLADO-A-NSC.md](TRASLADO-A-NSC.md).
 
+**Regla de ejecución:** completar las 18 tandas en orden. Implementar cada tanda
+como un conjunto, registrando cada ítem o cambio en un commit propio con su
+explicación en Markdown. Al terminar de implementar la tanda, ejecutar su
+validación completa de forma agrupada y con construcción incremental. Si hay
+errores, agrupar diagnóstico y correcciones y repetir la validación necesaria
+hasta que pase antes de avanzar. No reconstruir todo ni ejecutar la batería
+completa por cada ítem. Marcar un ítem o cerrar una tanda solo con evidencia.
+
+El trabajo de interoperabilidad, sus pruebas y documentos pertenecen a NSC;
+LLVM/Clang es una referencia de solo lectura. Daikon, .NET y el consumo de
+NativeSharp desde C++ no forman parte de este trabajo.
+
 ## Objetivo y forma de usar este documento
 
 Poder escribir programas en NativeSharp que consuman bibliotecas C y C++ de manera directa y cómoda, con una cobertura amplia de sus características. Las tandas ordenan el trabajo y su comprobación; completar una tanda no significa haber terminado la interoperabilidad.
