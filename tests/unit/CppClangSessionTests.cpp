@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "../../src/Interop/Cpp/ClangSessionSupport.h"
+#include <clang/Frontend/ASTUnit.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Parser/ScopedKnownTypeNames.h"
@@ -124,6 +125,28 @@ bool expect(bool condition, const char* message)
     return condition;
 }
 
+class CancelDuringHeaderLookup final : public llvm::vfs::ProxyFileSystem
+{
+public:
+    CancelDuringHeaderLookup(llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> underlying,
+                             CppCancellationToken token)
+        : llvm::vfs::ProxyFileSystem(std::move(underlying)), token_(std::move(token)) {}
+
+    llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override
+    {
+        if (path.str().find("cancel_during_parse.h") != std::string::npos)
+        {
+            observed = true;
+            token_.cancel();
+        }
+        return ProxyFileSystem::status(path);
+    }
+
+    bool observed = false;
+private:
+    CppCancellationToken token_;
+};
+
 const CppFunctionDeclaration* functionByName(const std::vector<CppFunctionDeclaration>& values,
                                               const std::string& name)
 {
@@ -204,6 +227,28 @@ int main(int argc, char** argv)
         ok &= expect(!status && status.getError() == std::errc::operation_canceled &&
                      !file && file.getError() == std::errc::operation_canceled,
                      "file query and open observe cancellation");
+    }
+    {
+        const auto directory = std::filesystem::absolute(
+            std::filesystem::path(argv[2]) / "cpp-fixtures" / "cancel-during-parse");
+        std::filesystem::create_directories(directory);
+        { std::ofstream header(directory / "cancel_during_parse.h"); header << "int value;\n"; }
+        auto config = options(argv[1], argv[2], argv[3], CppLanguageMode::C, "");
+        config.includePaths.push_back({directory, CppIncludeKind::User});
+        const auto args = nativesharp::interop::detail::buildClangInvocationArguments(config);
+        auto physical = llvm::vfs::createPhysicalFileSystem();
+        CppCancellationToken token;
+        auto observed = llvm::makeIntrusiveRefCnt<CancelDuringHeaderLookup>(
+            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>(physical.release()), token);
+        std::vector<CppSessionDiagnostic> diagnostics;
+        nativesharp::interop::detail::DiagnosticCollector consumer(diagnostics);
+        const auto input = (directory / "main.c").generic_string();
+        auto ast = nativesharp::interop::detail::runClangSessionAction(
+            "#include \"cancel_during_parse.h\"\nint main(void) { return 0; }\n",
+            args, input, argv[3], &consumer, observed, token);
+        ok &= expect(observed->observed && token.cancelled() &&
+                     (!ast || ast->getDiagnostics().hasErrorOccurred()),
+                     "cancellation during real Clang header lookup interrupts the analysis");
     }
     {
         CppSessionOptions base;
