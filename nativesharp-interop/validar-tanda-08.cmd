@@ -1,0 +1,28 @@
+@echo off
+setlocal
+set "PATH=A:\al82dev-clang\bin;A:\nsc-interop-build\tanda1-ON\bin;%PATH%"
+set "TMP=A:\nsc-interop-build\temp"
+set "TEMP=%TMP%"
+call "%~dp0construir-frontend-tanda1.cmd" nsc ON
+if errorlevel 1 exit /b 1
+call "%~dp0construir-frontend-tanda1.cmd" nsc_cpp_session_tests ON
+if errorlevel 1 exit /b 1
+call "%~dp0construir-frontend-tanda1.cmd" nsc_frontend OFF
+if errorlevel 1 exit /b 1
+set "TASK_FAILED=0"
+echo === Pruebas de sesion Clang ===
+A:\nsc-interop-build\tanda1-ON\bin\nsc_cpp_session_tests.exe A:\al82dev-clang\lib\clang\23 A:\nsc-interop-build A:\al82dev-clang\bin\clang.exe
+if errorlevel 1 set "TASK_FAILED=1"
+for %%T in (valores incompleto record-c union layout callback enum-funcion) do call :run_case %%T
+if "%TASK_FAILED%"=="1" (
+  echo La validacion de la tanda 08 contiene fallos; revisar la salida anterior.
+  exit /b 1
+)
+echo Casos agrupados de la tanda 08 terminados. Revisar alcance y evidencia antes de cerrar items.
+exit /b 0
+
+:run_case
+echo === Caso %~1 ===
+call "%~dp0pruebas-tanda-08-%~1\validar.cmd"
+if errorlevel 1 set "TASK_FAILED=1"
+exit /b 0
