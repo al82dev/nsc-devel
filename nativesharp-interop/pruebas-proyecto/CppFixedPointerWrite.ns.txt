@@ -1,0 +1,1 @@
+int Main() { tools.fixed_pointer = null; return 0; }
