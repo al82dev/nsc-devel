@@ -63,3 +63,14 @@ representables, y una prueba integrada preparada con `Count`. El driver aún no
 instala el proveedor. Faltan tipos compuestos, reglas completas de colisión y
 calificadores, activación del flujo normal y la validación agrupada; ningún ítem
 se marca cerrado por este avance. Continuar desde esas conexiones pendientes.
+
+### Avance adicional, sin validar
+
+Se preparó la expansión de aliases a records importados y a arreglos fijos de
+escalares, con pruebas de identidad y dimensiones. En los snapshots de records
+se distingue C de C++; sus campos C se consideran accesibles y la proyección
+inicial admite campos escalares de `union` C, conservando la barrera para C++.
+También se captura el tipo de expresión de cada enumerador por separado del
+tipo de almacenamiento del enum. Ninguno de estos cambios ha pasado la batería
+de la tanda: faltan, entre otros, la integración completa de enums y constantes,
+casos compuestos, activación del proveedor y pruebas de ejecución de unions.
