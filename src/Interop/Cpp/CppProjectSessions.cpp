@@ -2,6 +2,8 @@
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 
+#include <clang/Basic/LangStandard.h>
+
 #include <utility>
 
 namespace nativesharp::interop
@@ -20,6 +22,11 @@ CppProjectSessionsResult openCppProjectSessions(
         if ((reference.language != CppLanguageMode::C && reference.language != CppLanguageMode::Cpp) ||
             reference.languageStandard.empty())
             return CppProjectSessionFailure{index, {"options", "invalid C/C++ language or empty standard", {}}};
+        const auto* standard = clang::LangStandard::getLangStandardForName(reference.languageStandard);
+        if (!standard ||
+            (reference.language == CppLanguageMode::C && standard->getLanguage() != clang::Language::C) ||
+            (reference.language == CppLanguageMode::Cpp && standard->getLanguage() != clang::Language::CXX))
+            return CppProjectSessionFailure{index, {"options", "C/C++ standard is unknown or does not match the language", {}}};
         if (reference.headerPath.empty())
             return CppProjectSessionFailure{index, {"input", "input file path is empty", {}}};
         for (const auto& include : reference.includePaths)
