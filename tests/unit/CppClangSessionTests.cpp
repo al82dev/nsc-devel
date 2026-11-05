@@ -7141,6 +7141,12 @@ int main(int argc, char** argv)
         const auto* result = std::get_if<CppRecordObservation>(&observed);
         bool installed = ready && !compilation.precompiledSnapshots().empty() && compilation.nameLookup() &&
             compilation.nameLookup()->installedSnapshotUnitCount() > 0;
+        const auto sessionsAfterSnapshot = compilation.cppProjectSessions();
+        const bool sessionAliveWithSnapshot = installed && sessionsAfterSnapshot.size() == 1 &&
+            sessionsAfterSnapshot[0].sessions.size() == 1 && sessionsAfterSnapshot[0].sessions[0] &&
+            sessionsAfterSnapshot[0].sessions[0]->topLevelDeclarationCount().has_value();
+        ok &= expect(sessionAliveWithSnapshot,
+                     "a real C++ session remains usable while a published semantic snapshot is installed");
         bool resolved = false;
         if (installed)
             for (const auto& binding : compilation.nameLookup()->bindings())
