@@ -1605,6 +1605,12 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `Shadow.ns.txt` y `validar.cmd` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. Si falla, identificar primero la resolución causante antes de modificar producción.
 - Verificación junto con la batería agrupada; este fixture no agota las formas de sombra o colisión.
 
+### Corrección de selección especulativa de enum
+
+- Fallo observado el 2026-11-05: el proyecto `Shadow.ns.txt` termina con `C enum global type conflicts with another type: HiddenState` aunque `hidden_global` sea un local o parámetro NativeSharp.
+- Causa: la observación captura demandas sintácticas antes de la resolución de variables locales; la selección nueva transforma un candidato conflictivo en error inmediato. Debe dejar esos candidatos sin seleccionar para que la resolución posterior aplique la precedencia y, si realmente se usa el global, rechace su proyección no disponible.
+- Presupuesto: únicamente `src/Interop/Cpp/CppSemanticRecord.cpp` y registro Markdown. Conservar la selección de candidatos sin conflicto y los demás diagnósticos existentes. Repetir la batería agrupada con los tres casos preparados.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.

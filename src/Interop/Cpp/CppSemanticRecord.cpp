@@ -1036,10 +1036,10 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
                             return type.projectOrdinal == owner && type.identity.key() == identity.key();
                         });
                         if (candidate == signatureEnums.end()) continue;
-                        if (!candidate->deferredImportError.empty())
-                            return CppRecordObservationFailure{candidate->deferredImportError};
-                        if (collidingEnumIdentities.contains(candidate->identity.key()))
-                            return CppRecordObservationFailure{"C enum global type conflicts with another type: " + candidate->identity.name()};
+                        // A captured name may resolve to a NativeSharp local or parameter. Do not
+                        // diagnose an unused imported global during this speculative observation.
+                        if (!candidate->deferredImportError.empty() ||
+                            collidingEnumIdentities.contains(candidate->identity.key())) continue;
                         if (enumIdentities.insert(candidate->identity.key()).second)
                             result.referencedEnumTypes.push_back(*candidate);
                     }
