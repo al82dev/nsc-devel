@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Tanda 08: declaraciones y tipos C
+
+Se trabaja exclusivamente en NSC: interfaces y extracción de Clang, inventario,
+representación de tipos y nombres, análisis semántico, pruebas y documentación
+`nativesharp-interop`. Los temporales y productos van en A:. LLVM/Clang se
+consulta como referencia de solo lectura; no se modifica NSLink ni se despliega
+en C:. Se revisan todos los ítems, se implementan en conjunto y se hacen commits
+por cambio e ítem; la construcción incremental y las pruebas se agrupan al final.
+No se confunde información extraída del AST con un tipo ya usable desde NSC.
+
 ## Tanda 07: referencias y dependencias C/C++
 
 Se trabaja en `A:/nsc-devel`: carga y modelo de proyectos, sesiones y procedencia
