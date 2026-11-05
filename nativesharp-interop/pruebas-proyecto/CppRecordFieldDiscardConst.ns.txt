@@ -1,0 +1,5 @@
+int Main() {
+    var payload = Demo.make()->getPayload();
+    payload->next = payload->viewNext;
+    return 0;
+}

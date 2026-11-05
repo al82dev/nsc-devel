@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CppProject</Name></PropertyGroup>
+  <ItemGroup><CppLibraryReference Header="api.h" Language="C" Standard="c11" /></ItemGroup>
+</Project>

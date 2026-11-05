@@ -1,0 +1,4 @@
+int Main() {
+    Demo.Widget.sharedRef = Demo.Widget.sharedView;
+    return 0;
+}

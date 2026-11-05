@@ -1,0 +1,1 @@
+int Main() { ref int alias = ref tools.flagged; return alias; }
