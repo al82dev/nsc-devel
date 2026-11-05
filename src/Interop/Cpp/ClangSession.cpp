@@ -319,5 +319,202 @@ CppAccess describeAccess(clang::AccessSpecifier access)
     }
 }
 
+void collectRecords(const clang::DeclContext& context, clang::ASTContext& astContext,
+                    clang::MangleContext& mangler, std::set<const clang::TagDecl*>& seen,
+                    std::vector<CppRecordDeclaration>& result)
+{
+    for (const clang::Decl* declaration : context.decls())
+    {
+        if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+        {
+            collectRecords(*nested, astContext, mangler, seen, result);
+            continue;
+        }
+        if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+        {
+            collectRecords(*linkage, astContext, mangler, seen, result);
+            continue;
+        }
+        const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration);
+        if (!record || record->isImplicit() || record->getName().empty() ||
+            record->isDependentContext() || !seen.insert(record->getCanonicalDecl()).second)
+            continue;
+        if (const auto* definition = record->getDefinition()) record = definition;
+
+        CppRecordDeclaration value;
+        value.name = record->getNameAsString();
+        value.qualifiedName = record->getQualifiedNameAsString();
+        for (const clang::DeclContext* parent = record->getDeclContext(); parent != nullptr;
+             parent = parent->getParent())
+        {
+            if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(parent))
+            {
+                if (ns->isAnonymousNamespace()) value.anonymousContext = true;
+                else value.namespaceSegments.push_back(ns->getNameAsString());
+            }
+            else if (const auto* enclosing = llvm::dyn_cast<clang::RecordDecl>(parent))
+            {
+                const auto name = enclosing->getNameAsString();
+                if (name.empty()) value.anonymousContext = true;
+                else value.containingRecords.push_back(name);
+            }
+        }
+        std::reverse(value.namespaceSegments.begin(), value.namespaceSegments.end());
+        std::reverse(value.containingRecords.begin(), value.containingRecords.end());
+        value.kind = record->isUnion() ? CppRecordKind::Union :
+                     record->isClass() ? CppRecordKind::Class : CppRecordKind::Struct;
+        value.access = describeAccess(record->getAccess());
+        value.complete = record->isCompleteDefinition();
+        for (const clang::DeclContext* current = record; current != nullptr; current = current->getParent())
+            value.specializationContext |= llvm::isa<clang::ClassTemplateSpecializationDecl>(current);
+        const auto location = astContext.getSourceManager().getPresumedLoc(record->getLocation());
+        if (location.isValid())
+            value.location = CppSourcePoint{
+                pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+        if (value.complete)
+        {
+            if (!value.specializationContext)
+            {
+                clang::ODRHash hash;
+                if (const auto* cppRecord = llvm::dyn_cast<clang::CXXRecordDecl>(record))
+                    hash.AddCXXRecordDecl(cppRecord);
+                else hash.AddRecordDecl(record);
+                value.odrHash = hash.CalculateHash();
+            }
+            const clang::ASTRecordLayout& layout = astContext.getASTRecordLayout(record);
+            value.sizeBits = static_cast<std::uint64_t>(layout.getSize().getQuantity()) * astContext.getCharWidth();
+            value.alignmentBits = static_cast<std::uint64_t>(layout.getAlignment().getQuantity()) * astContext.getCharWidth();
+            unsigned index = 0;
+            for (const clang::FieldDecl* field : record->fields())
+            {
+                CppRecordField projected;
+                projected.name = field->getNameAsString();
+                projected.type = describeType(field->getType(), astContext);
+                projected.access = describeAccess(field->getAccess());
+                projected.offsetBits = layout.getFieldOffset(index++);
+                if (field->isBitField()) projected.bitWidth = field->getBitWidthValue();
+                value.fields.push_back(std::move(projected));
+            }
+            if (const auto* cppRecord = llvm::dyn_cast<clang::CXXRecordDecl>(record))
+            {
+                CppImplicitLifetimeMembers implicit;
+                implicit.defaultConstructor = cppRecord->needsImplicitDefaultConstructor();
+                implicit.copyConstructor = cppRecord->needsImplicitCopyConstructor();
+                implicit.moveConstructor = cppRecord->needsImplicitMoveConstructor();
+                implicit.destructor = cppRecord->needsImplicitDestructor();
+                for (const auto* method : cppRecord->methods())
+                {
+                    if (!method->isImplicit()) continue;
+                    if (const auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method))
+                    {
+                        implicit.defaultConstructor |= ctor->isDefaultConstructor();
+                        implicit.copyConstructor |= ctor->isCopyConstructor();
+                        implicit.moveConstructor |= ctor->isMoveConstructor();
+                    }
+                    else if (llvm::isa<clang::CXXDestructorDecl>(method)) implicit.destructor = true;
+                }
+                value.implicitLifetimeMembers = implicit;
+                for (const clang::CXXBaseSpecifier& base : cppRecord->bases())
+                {
+                    CppBaseDeclaration projected;
+                    projected.type = describeType(base.getType(), astContext);
+                    projected.access = describeAccess(base.getAccessSpecifier());
+                    projected.isVirtual = base.isVirtual();
+                    if (const auto* baseRecord = base.getType()->getAsCXXRecordDecl())
+                    {
+                        const clang::CharUnits offset = base.isVirtual()
+                            ? layout.getVBaseClassOffset(baseRecord)
+                            : layout.getBaseClassOffset(baseRecord);
+                        projected.offsetBits = static_cast<std::uint64_t>(offset.getQuantity()) * astContext.getCharWidth();
+                    }
+                    value.bases.push_back(std::move(projected));
+                }
+                for (const clang::Decl* member : cppRecord->decls())
+                {
+                    const auto* field = llvm::dyn_cast<clang::VarDecl>(member);
+                    if (!field || !field->isStaticDataMember() || field->isImplicit()) continue;
+                    CppStaticField projected;
+                    projected.name = field->getNameAsString();
+                    projected.type = describeType(field->getType(), astContext);
+                    projected.access = describeAccess(field->getAccess());
+                    projected.threadLocal = field->getTLSKind() != clang::VarDecl::TLS_None;
+                    projected.dllImport = field->hasAttr<clang::DLLImportAttr>();
+                    if (field->isExternallyVisible())
+                    {
+                        if (mangler.shouldMangleDeclName(field))
+                        {
+                            llvm::SmallString<128> symbol;
+                            llvm::raw_svector_ostream stream(symbol);
+                            mangler.mangleName(clang::GlobalDecl(field), stream);
+                            projected.externalSymbol = std::string(symbol.str());
+                        }
+                        else projected.externalSymbol = projected.name;
+                    }
+                    value.staticFields.push_back(std::move(projected));
+                }
+                for (const clang::CXXMethodDecl* method : cppRecord->methods())
+                {
+                    if (method->isImplicit() || method->isDependentContext() ||
+                        method->getDescribedFunctionTemplate()) continue;
+                    CppMethodDeclaration projected;
+                    const auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method);
+                    const auto* dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(method);
+                    projected.kind = ctor ? CppMethodKind::Constructor :
+                                     dtor ? CppMethodKind::Destructor : CppMethodKind::Method;
+                    projected.name = method->getNameAsString();
+                    projected.qualifiedName = method->getQualifiedNameAsString();
+                    projected.canonicalFunctionType = method->getType().getCanonicalType().getAsString();
+                    if (const auto* type = method->getType()->getAs<clang::FunctionType>())
+                        projected.callingConvention = clang::FunctionType::getNameForCallConv(type->getCallConv()).str();
+                    switch (method->getRefQualifier())
+                    {
+                    case clang::RQ_LValue: projected.refQualifier = CppMethodRefQualifier::LValue; break;
+                    case clang::RQ_RValue: projected.refQualifier = CppMethodRefQualifier::RValue; break;
+                    case clang::RQ_None: break;
+                    }
+                    projected.returnType = describeType(method->getReturnType(), astContext);
+                    projected.access = describeAccess(method->getAccess());
+                    projected.isStatic = method->isStatic();
+                    projected.isConst = method->isConst();
+                    projected.isVolatile = method->isVolatile();
+                    projected.dllImport = method->hasAttr<clang::DLLImportAttr>();
+                    if (const auto* prototype = method->getType()->getAs<clang::FunctionProtoType>())
+                        if (!clang::isUnresolvedExceptionSpec(prototype->getExceptionSpecType()))
+                            projected.isNonThrowing = prototype->isNothrow();
+                    projected.isVirtual = method->isVirtual();
+                    projected.isPureVirtual = method->isPureVirtual();
+                    projected.isDeleted = method->isDeleted();
+                    projected.variadic = method->isVariadic();
+                    for (const clang::ParmVarDecl* parameter : method->parameters())
+                        projected.parameters.push_back(CppFunctionParameter{
+                            parameter->getNameAsString(), parameter->getType().getAsString(),
+                            parameter->getType().getCanonicalType().getAsString(),
+                            describeType(parameter->getType(), astContext), parameter->hasDefaultArg()});
+                    if (method->isExternallyVisible() && !method->isDeleted())
+                    {
+                        llvm::SmallString<128> symbol;
+                        llvm::raw_svector_ostream stream(symbol);
+                        if (ctor) mangler.mangleName(clang::GlobalDecl(ctor, clang::Ctor_Complete), stream);
+                        else if (dtor)
+                        {
+                            // Clang's MS ABI uses the base destructor for a complete object
+                            // when no virtual bases exist (MicrosoftCXXABI.cpp:1703).
+                            const auto variant = astContext.getTargetInfo().getCXXABI().isMicrosoft() &&
+                                dtor->getParent()->getNumVBases() == 0 ? clang::Dtor_Base : clang::Dtor_Complete;
+                            mangler.mangleName(clang::GlobalDecl(dtor, variant), stream);
+                        }
+                        else mangler.mangleName(clang::GlobalDecl(method), stream);
+                        projected.externalSymbol = std::string(symbol.str());
+                    }
+                    value.methods.push_back(std::move(projected));
+                }
+            }
+        }
+        result.push_back(std::move(value));
+        if (record->isCompleteDefinition())
+            collectRecords(*record, astContext, mangler, seen, result);
+    }
+}
+
 }
 }
