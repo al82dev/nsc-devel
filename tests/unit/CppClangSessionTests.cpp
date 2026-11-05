@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Frontend/CppAliasEnumType.h"
 #include "nativesharp/Frontend/CppAliasFunctionType.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticRenderer.h"
@@ -2236,7 +2237,7 @@ int main(int argc, char** argv)
     }
     auto c = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
                                   "#include <stddef.h>\nint bridge_probe(size_t n, ...);\n"
-                                  "int c_add(int left, int right);\n"
+                                  "int c_add(int left, int right); int c_invoke(int (*cb)(int), int value);\n"
                                   "int ptr_read(int* p);\n"
                                   "int ptr_const(const int* p); int ptr_volatile(volatile int* p); int** ptr_nested(int** p);\n"
                                   "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
@@ -2491,6 +2492,16 @@ int main(int argc, char** argv)
                      floatMapping->isVolatile && floatMapping->nativeSharpTypeKey == "builtin:float",
                      "scalar representation mapping retains const and volatile from Clang");
         const auto* pointerRead = cFunctions ? functionByName(*cFunctions, "ptr_read") : nullptr;
+        const auto* invoke = cFunctions ? functionByName(*cFunctions, "c_invoke") : nullptr;
+        const auto projectedInvoke = invoke ? projectCppSemanticFunction(*invoke, 0, "Semantic")
+                                             : CppSemanticFunctionResult{CppSemanticFunctionFailure{"fixture unavailable"}};
+        const auto* invokeSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projectedInvoke);
+        const auto callbackIdentity = invokeSymbol && !invokeSymbol->parameters.empty()
+            ? nativesharp::language::parseFunctionTypeIdentity(invokeSymbol->parameters[0].typeKey) : std::nullopt;
+        ok &= expect(callbackIdentity && callbackIdentity->callingConvention == nativesharp::language::CallingConvention::C &&
+                     callbackIdentity->result == "builtin:int" && callbackIdentity->parameters.size() == 1 &&
+                     callbackIdentity->parameters[0] == "builtin:int",
+                     "C callback parameter retains its structural function signature");
         const auto* pointerConst = cFunctions ? functionByName(*cFunctions, "ptr_const") : nullptr;
         const auto* pointerVolatile = cFunctions ? functionByName(*cFunctions, "ptr_volatile") : nullptr;
         const auto* pointerNested = cFunctions ? functionByName(*cFunctions, "ptr_nested") : nullptr;
