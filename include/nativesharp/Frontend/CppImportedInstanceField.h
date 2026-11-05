@@ -17,5 +17,7 @@ struct CppImportedInstanceField final
     bool isConst;
     bool isVolatile;
     bool pointeeReadonly = false;
+    std::uint64_t byteSize = 0;
+    std::uint64_t byteAlignment = 0;
 };
 }

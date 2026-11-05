@@ -119,13 +119,15 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     }
     if (!mapped || field.type.kind == CppTypeKind::Void) return std::nullopt;
     return CppSemanticInstanceField{projectOrdinal, identity->key(), field.name,
-                                    std::move(*mapped), *field.offsetBits / 8, pointeeReadonly};
+                                    std::move(*mapped), *field.offsetBits / 8, pointeeReadonly,
+                                    *field.type.sizeBits / 8, *field.type.alignmentBits / 8};
 }
 
 frontend::CppImportedInstanceField toCppImportedInstanceField(const CppSemanticInstanceField& field)
 {
     return {field.projectOrdinal, field.ownerIdentityKey, field.name, field.type.nativeSharpTypeKey,
-            field.byteOffset, field.type.isConst, field.type.isVolatile, field.pointeeReadonly};
+            field.byteOffset, field.type.isConst, field.type.isVolatile, field.pointeeReadonly,
+            field.byteSize, field.byteAlignment};
 }
 
 std::optional<CppSemanticStaticField> projectCppSemanticStaticField(

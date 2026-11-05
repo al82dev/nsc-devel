@@ -67,6 +67,12 @@ bool experimentalCppCallableType(std::string_view key, bool allowVoid)
 
 bool cppCallableRecordIsVisible(std::string_view key, std::size_t projectOrdinal, const ProjectNameLookup& lookup)
 {
+    while (key.ends_with(']'))
+    {
+        const auto open = key.rfind('[');
+        if (open == std::string_view::npos) return false;
+        key = key.substr(0, open);
+    }
     while (key.ends_with('*')) key.remove_suffix(1);
     if (!key.starts_with("type:")) return true;
     const auto ordinal = lookup.typeOrdinalForIdentity(key.substr(5));
@@ -204,7 +210,9 @@ bool ProjectMemberModel::setExperimentalCppInstanceFields(
     std::set<std::pair<std::string, std::string>> identities;
     for (const auto& field : fields)
     {
-        if (field.ownerIdentityKey.empty() || field.name.empty() || !experimentalCppFieldBytes(field.typeKey) ||
+        if (field.ownerIdentityKey.empty() || field.name.empty() ||
+            (!experimentalCppFieldBytes(field.typeKey) && (!field.byteSize || !field.byteAlignment)) ||
+            ((field.byteSize == 0) != (field.byteAlignment == 0)) ||
             (field.pointeeReadonly && !field.typeKey.ends_with('*')))
         { error = "invalid experimental C++ instance field"; return false; }
         if (!identities.emplace(field.ownerIdentityKey, field.name).second)
@@ -406,12 +414,13 @@ bool ProjectMemberModel::build(
         const auto* owner = ordinal ? nameLookup.cppImportedType(*ordinal) : nullptr;
         const auto* ownerLayout = owner && owner->memberAccessLayout ? &*owner->memberAccessLayout :
             owner && owner->objectLayout ? &*owner->objectLayout : nullptr;
-        const auto width = experimentalCppFieldBytes(imported.typeKey);
+        const auto width = imported.byteSize ? imported.byteSize : experimentalCppFieldBytes(imported.typeKey);
+        const auto alignment = imported.byteAlignment ? imported.byteAlignment : width;
         if (!owner || owner->projectOrdinal != imported.projectOrdinal || !ownerLayout ||
             !cppCallableRecordIsVisible(imported.typeKey, imported.projectOrdinal, nameLookup) ||
             imported.byteOffset > ownerLayout->sizeBytes ||
             width > ownerLayout->sizeBytes - imported.byteOffset ||
-            imported.byteOffset % width != 0 || ownerLayout->alignmentBytes % width != 0 ||
+            imported.byteOffset % alignment != 0 || ownerLayout->alignmentBytes % alignment != 0 ||
             membersByName_[*ordinal].contains(imported.name))
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,

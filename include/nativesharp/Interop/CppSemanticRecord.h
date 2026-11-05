@@ -33,6 +33,8 @@ struct CppSemanticInstanceField
     CppScalarTypeMapping type;
     std::uint64_t byteOffset;
     bool pointeeReadonly = false;
+    std::uint64_t byteSize = 0;
+    std::uint64_t byteAlignment = 0;
 };
 std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const CppRecordDeclaration& record, std::size_t fieldIndex, std::size_t projectOrdinal,
