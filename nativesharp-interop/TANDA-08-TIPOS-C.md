@@ -2,6 +2,21 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Validación agrupada de enums y enteros: 2026-11-05
+
+Tras los commits `93b2d50a6`, `a3ebbf772` y `e7a7dad05`, la ejecución de
+`call nativesharp-interop\validar-tanda-08.cmd` terminó con código 0. La
+construcción incremental ON y frontend OFF, la suite de sesión Clang, las
+pruebas de restauración y equivalencia y los siete proyectos preparados pasaron.
+
+Se ejecutaron desde NativeSharp una llamada a C con aliases de `signed char`,
+`unsigned short` y `unsigned int`; un callback invocado desde C con parámetro y
+resultado enum; y escrituras a un campo enum y un elemento de arreglo enum de
+un struct C, comprobadas por una función C. Son casos Windows x64 O0 con los
+valores elegidos. No demuestran todos los anchos, límites, operaciones,
+configuraciones ni combinaciones de tipos; T08-006, T08-009, T08-010,
+T08-016 y T08-017 siguen abiertos.
+
 ## Validación agrupada de callbacks y tipos C: 2026-11-05
 
 Después de los commits `635124b69`, `945b14d26`, `fd48eef76` y
