@@ -1068,13 +1068,14 @@ bool prepareCppScopedParserNames(
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
     std::span<const CppImportedTypeDeclaration> types,
     std::span<const std::pair<std::size_t, std::string>> cppNamespaces,
+    std::span<const CppImportedTypeAlias> aliases,
     std::vector<std::optional<parser::ScopedKnownTypeNames>>& output,
     std::string& error)
 {
     output.clear();
     output.resize(units.size());
-    if (types.empty()) return true;
-    const auto inventories = cppParserProjectInventories(graph, units, types, cppNamespaces);
+    if (types.empty() && aliases.empty()) return true;
+    const auto inventories = cppParserProjectInventories(graph, units, types, cppNamespaces, aliases);
     if (!inventories) { error = "cannot prepare C/C++ parser project visibility"; return false; }
     for (std::size_t i = 0; i < units.size(); ++i)
     {
@@ -2602,7 +2603,7 @@ bool ProjectCompilation::parseSyntaxUnits(
         !cppNamespaceProvider_(*projectGraph_, cppProjectSessions_, cppNamespaces, loadError)) return false;
     std::vector<std::optional<parser::ScopedKnownTypeNames>> scopedNames;
     if (!prepareCppScopedParserNames(*projectGraph_, units_, experimentalCppImportedTypes_,
-                                     cppNamespaces, scopedNames, loadError)) return false;
+                                     cppNamespaces, cppImportedTypeAliases_, scopedNames, loadError)) return false;
     const std::size_t progressTotal = visibleSourceCount(units_, sourceManager_);
     std::atomic_size_t completed = 0;
     bool syntaxOk = lexicalOk;
@@ -2876,7 +2877,7 @@ bool ProjectCompilation::cloneSyntaxForObservation(
         !cppNamespaceProvider_(*projectGraph_, cppProjectSessions_, cppNamespaces, error)) return false;
     std::vector<std::optional<parser::ScopedKnownTypeNames>> scopedNames;
     if (!prepareCppScopedParserNames(*projectGraph_, units_, experimentalCppImportedTypes_,
-                                     cppNamespaces, scopedNames, error)) return false;
+                                     cppNamespaces, cppImportedTypeAliases_, scopedNames, error)) return false;
     for (std::size_t unitIndex = 0; unitIndex < units_.size(); ++unitIndex)
     {
         const auto& unit = units_[unitIndex];

@@ -2,6 +2,7 @@
 
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/CppImportedTypeAlias.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 #include "nativesharp/Parser/LexicalNamespaceScopes.h"
 
@@ -32,7 +33,8 @@ inline std::optional<std::vector<CppParserProjectInventory>> cppParserProjectInv
     const compilation::ProjectGraph& graph,
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
     std::span<const CppImportedTypeDeclaration> types,
-    std::span<const std::pair<std::size_t, std::string>> cppNamespaces)
+    std::span<const std::pair<std::size_t, std::string>> cppNamespaces,
+    std::span<const CppImportedTypeAlias> aliases = {})
 {
     const auto projects = graph.projects();
     auto pathKey = [](const std::filesystem::path& path) {
@@ -95,6 +97,19 @@ inline std::optional<std::vector<CppParserProjectInventory>> cppParserProjectInv
             name += segment;
         }
         if (!name.empty() && !addNamespace(type.projectOrdinal, name)) return std::nullopt;
+    }
+    for (const auto& alias : aliases)
+    {
+        if (alias.projectOrdinal >= projects.size() || alias.declaration.name.empty()) return std::nullopt;
+        std::string name = alias.declaration.qualifiedName;
+        if (name.empty() || name.find("(anonymous namespace)") != std::string::npos) continue;
+        std::size_t separator = 0;
+        while ((separator = name.find("::", separator)) != std::string::npos)
+            name.replace(separator, 2, ".");
+        typesByProject[alias.projectOrdinal].insert(name);
+        const auto dot = name.rfind('.');
+        if (dot != std::string::npos && !addNamespace(alias.projectOrdinal, name.substr(0, dot)))
+            return std::nullopt;
     }
     std::vector<CppParserProjectInventory> result(projects.size());
     for (std::size_t owner = 0; owner < projects.size(); ++owner)
