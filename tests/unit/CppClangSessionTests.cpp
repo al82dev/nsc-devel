@@ -1240,12 +1240,12 @@ int main(int argc, char** argv)
                         std::vector<CppProjectSessions> recordGroups(2);
                         recordGroups[0].projectFile = otherProject->projectFile();
                         recordGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                            CppLanguageMode::Cpp, "typedef int InventoryAlias; struct Shared { int x; }; struct Same { int x; }; struct Equal { int x; }; struct Forward; struct OnlyForward; "
+                            CppLanguageMode::Cpp, "typedef int InventoryAlias; enum InventoryEnum { FirstEnumValue = -2 }; struct Shared { int x; }; struct Same { int x; }; struct Equal { int x; }; struct Forward; struct OnlyForward; "
                             "Shared* use(Shared*); OnlyForward* store(OnlyForward*); int nestedPtr(Shared**); "
                             "void observe(const OnlyForward*); Shared value(Shared); "
                             "template<class T> struct Box {}; int specialized(Box<int>*);\n")));
                         recordGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                            CppLanguageMode::Cpp, "typedef double InventoryAlias; struct Shared { double x; }; struct Same { float x; }; struct Equal { int x; }; struct Forward { int x; };\n")));
+                            CppLanguageMode::Cpp, "typedef double InventoryAlias; enum InventoryEnum { SecondEnumValue = 7 }; struct Shared { double x; }; struct Same { float x; }; struct Equal { int x; }; struct Forward { int x; };\n")));
                         recordGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
                             CppLanguageMode::Cpp, "struct Shared { int x; }; struct Same { int x; };\n")));
                         recordGroups[1].projectFile = project->projectFile();
@@ -1267,6 +1267,20 @@ int main(int argc, char** argv)
                             }
                         ok &= expect(aliasFirst && aliasSecond && aliasOtherProject,
                                      "typedef inventory retains conflicting observations and project origins");
+                        auto enumInventory = collectCppSemanticEnums(finalGraph, recordGroups);
+                        const auto* enums = std::get_if<std::vector<CppSemanticEnumEntry>>(&enumInventory);
+                        bool enumFirst = false, enumSecond = false;
+                        if (enums)
+                            for (const auto& entry : *enums)
+                            {
+                                if (entry.declaration.name != "InventoryEnum" || entry.declaration.enumerators.size() != 1) continue;
+                                enumFirst |= entry.projectOrdinal == 1 && entry.referenceIndex == 0 &&
+                                    entry.declaration.enumerators[0].decimalValue == "-2";
+                                enumSecond |= entry.projectOrdinal == 1 && entry.referenceIndex == 1 &&
+                                    entry.declaration.enumerators[0].decimalValue == "7";
+                            }
+                        ok &= expect(enumFirst && enumSecond,
+                                     "enum inventory retains values and distinct reference origins");
                         auto inventory = collectCppSemanticRecords(finalGraph, recordGroups);
                         const auto* entries = std::get_if<std::vector<CppSemanticRecordEntry>>(&inventory);
                         bool first = false, second = false, item = false, anonymous = false, forward = false;
