@@ -2,6 +2,7 @@
 
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/AST/TypeSyntax.h"
+#include "nativesharp/Frontend/ProjectIntegerValue.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -18,6 +19,13 @@ class ProjectConstantMemberResolver
 {
 public:
     virtual ~ProjectConstantMemberResolver() = default;
+
+    // Optional already-resolved integer constant that is not a class member.
+    // The default preserves existing resolvers and delegates to member lookup.
+    virtual std::optional<ProjectIntegerValue> resolveDirectInteger(const ast::AstNode*) const
+    {
+        return std::nullopt;
+    }
 
     // El ordinal del miembro al que se liga esta sintaxis, si se ligo a alguno.
     // `declaringTypeOrdinal` esta puesto solo mientras se expande el inicializador de un campo

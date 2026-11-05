@@ -393,6 +393,12 @@ std::optional<ProjectIntegerValue> ProjectIntegerEvaluator::evaluateMember(
     // Dos formas llegan aqui y las dos importan: `Color.Red`, y `WM_DESTROY` -- que es lo que es
     // todo identificador de mensaje de Win32.
     if (resolver_ == nullptr) return std::nullopt;
+    if (auto direct = resolver_->resolveDirectInteger(expression))
+    {
+        if (!isIntegerType(direct->typeKey)) return std::nullopt;
+        direct->bits = normalize(direct->bits, direct->typeKey);
+        return direct;
+    }
     const std::optional<std::size_t> ordinal =
         resolver_->resolveConstantMember(expression, declaringTypeOrdinal);
     if (!ordinal.has_value()) return std::nullopt;
