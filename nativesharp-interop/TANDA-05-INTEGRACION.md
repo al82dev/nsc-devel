@@ -1,6 +1,7 @@
 # Tanda 05: integración de la sesión y diagnósticos
 
-Estado: validación agrupada repetida y aprobada; registro final en curso.
+Estado: tanda 05 cerrada; validación agrupada repetida y aprobada. Cada ítem
+pendiente al comenzar quedó registrado individualmente en el historial de NSC.
 
 - En `src/Driver`, las compilaciones locales aparecen en
   `DriverArtifactGeneration.cpp` (ejecutable y bibliotecas estática/dinámica),
