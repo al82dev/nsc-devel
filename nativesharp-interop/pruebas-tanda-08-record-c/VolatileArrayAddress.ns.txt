@@ -1,0 +1,5 @@
+int Main()
+{
+    int* pointer = &volatile_array[1];
+    return 0;
+}

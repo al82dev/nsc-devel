@@ -1674,6 +1674,12 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionAccessFrames.cpp`, `src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`, proyectos de prueba de record y enum y registros Markdown. Solo propagar el indicador en indexación de arreglo fijo, no desde un puntero volatile hacia su apuntado.
 - Verificar acceso compartido y operaciones LLVM `load volatile` y `store volatile` para arreglo y matriz, además de regresiones con arreglos mutables y const. No declarar T08-015 completo; TLS y calificadores de apuntado quedan pendientes.
 
+### Dirección de elemento de arreglo C volatile
+
+- Objetivo: verificar que `&volatile_array[1]` no se convierta silenciosamente en `int*` perdiendo `volatile`.
+- Presupuesto: `VolatileArrayAddress.ns.txt` y `validar.cmd` del proyecto `pruebas-tanda-08-record-c`, más registro Markdown. Si se acepta, investigar y corregir la pérdida del calificador antes de considerar seguro el acceso.
+- La prueba debe diagnosticar el descarte de volatile o de la dirección calificada. La validación dirigida del fixture ya compilado puede utilizarse para localizar el defecto; la batería se repetirá agrupada tras las correcciones.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
