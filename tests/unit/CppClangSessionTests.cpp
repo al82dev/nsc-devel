@@ -2242,7 +2242,7 @@ int main(int argc, char** argv)
                                   "int ptr_const(const int* p); int ptr_volatile(volatile int* p); int** ptr_nested(int** p);\n"
                                   "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
                                   "int bridge_probe(size_t n, ...);\n"
-                                  "struct Pair { char a; int b; }; struct OuterPair { struct Pair nested; }; struct Incomplete;\n"
+                                  "struct Pair { char a; int b; }; struct OuterPair { struct Pair nested; struct Pair array[2][3]; }; struct Incomplete;\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
                                   "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
@@ -2823,10 +2823,15 @@ int main(int argc, char** argv)
                     const auto nested = outer && recordAliasCompilation.nameLookup()
                         ? projectCppSemanticInstanceField(*outer, 0, 0, "Semantic", "x86_64-pc-windows-msvc",
                                                           recordAliasCompilation.nameLookup()) : std::nullopt;
+                    const auto nestedArray = outer && recordAliasCompilation.nameLookup()
+                        ? projectCppSemanticInstanceField(*outer, 1, 0, "Semantic", "x86_64-pc-windows-msvc",
+                                                          recordAliasCompilation.nameLookup()) : std::nullopt;
                     const auto pairIdentity = recordSnapshot ? projectCppRecordIdentity(*recordSnapshot, "Semantic") : std::nullopt;
                     ok &= expect(nested && pairIdentity && nested->type.nativeSharpTypeKey == "type:" + pairIdentity->key() &&
-                                 nested->byteOffset == 0,
-                                 "nested C record field retains imported identity and offset");
+                                 nested->byteOffset == 0 && nestedArray &&
+                                 nestedArray->type.nativeSharpTypeKey == "type:" + pairIdentity->key() + "[3][2]" &&
+                                 nestedArray->byteOffset == 8,
+                                 "nested C record and array fields retain imported identities and offsets");
                 }
                 {
                     nativesharp::frontend::ProjectCompilation enumAliasCompilation;
