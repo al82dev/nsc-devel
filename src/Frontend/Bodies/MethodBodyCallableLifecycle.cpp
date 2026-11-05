@@ -258,6 +258,8 @@ std::unique_ptr<ProjectMethodBodyModel> ProjectMethodBodyModel::createCallableSh
     const ProjectCallableAnalysisContext& context) const
 {
     auto shard = std::make_unique<ProjectMethodBodyModel>();
+    shard->cppLifetimeAnalysisForTests_ = cppLifetimeAnalysisForTests_;
+    shard->cppLocalLifetimeAnalysisForTests_ = cppLocalLifetimeAnalysisForTests_;
     shard->nameLookup_ = &context.nameLookup();
     shard->memberModel_ = &context.memberModel();
     shard->namespaceFunctionModel_ = &context.namespaceFunctionModel();
