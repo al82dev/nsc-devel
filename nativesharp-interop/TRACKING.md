@@ -129,7 +129,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 ## 05. Incorporación al flujo de NSC
 
-- [ ] T05-001. Localizar la creación actual de `ProjectCompilation` en cada ruta de compilación.
+- [x] T05-001. Localizar la creación actual de `ProjectCompilation` en cada ruta de compilación. Evidencia: [tanda 05](TANDA-05-INTEGRACION.md).
 - [x] T05-002. Añadir el punto de inyección opcional de sesión en `ProjectCompilation.h`. Evidencia: [prueba de inyección](LINEA-BASE-TANDAS.md).
 - [x] T05-003. Implementar en `ProjectCompilation.cpp` el almacenamiento de la sesión inyectada. Evidencia: [prueba de inyección](LINEA-BASE-TANDAS.md).
 - [x] T05-004. Añadir un acceso controlado a la sesión desde las fases que la requieran. Evidencia: [prueba de inyección](LINEA-BASE-TANDAS.md).
