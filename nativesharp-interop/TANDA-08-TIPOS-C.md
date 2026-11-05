@@ -114,3 +114,12 @@ Hay una prueba preparada contra un callback variádico y otro sin prototipo.
 Faltan la prueba semántica integrada y la ejecución de llamadas, los tipos
 compuestos en la firma, los modificadores del sitio de uso y la activación del
 proveedor en el driver. El mapeo no demuestra interoperabilidad ejecutable.
+
+### Conexión inicial al controlador, sin validar
+
+El controlador instala el proveedor de typedef para grafos con sesiones C/C++
+y combina los enumeradores solicitados con las variables globales. Se preparó
+una prueba de enlace de callback en `ProjectCompilation`. Los proveedores de
+tipos enum y records C todavía requieren integración y selección segura; queda
+pendiente una prueba del flujo real del controlador. Estos cambios no se han
+compilado ni ejecutado y no cierran ningún ítem de la tanda.
