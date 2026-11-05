@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
+#include "nativesharp/Frontend/CppAliasEnumType.h"
 #include "nativesharp/Frontend/CppAliasRecordType.h"
 #include "nativesharp/Frontend/QualifiedNamespaceTarget.h"
 #include "../Internal/LookupEnvironment.h"
@@ -217,6 +218,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             continue;
         }
         const auto record = cppAliasRecordType(selected->declaration.underlyingType);
+        const auto enumeration = cppAliasEnumType(selected->declaration.underlyingType);
         if (!nativeCandidates.empty())
         {
             if (record && record->pointerDepth == 0 && !record->pointeeConst && nativeCandidates.size() == 1)
@@ -232,8 +234,45 @@ bool ProjectNameLookup::expandCppTypeAlias(
                             imported.identity.key() == declaration->identity.key() &&
                             imported.sourcePath == declaration->parts.front().sourcePath) return true;
             }
+            if (enumeration && enumeration->pointerDepth == 0 && !enumeration->pointeeConst &&
+                nativeCandidates.size() == 1)
+            {
+                const auto* declaration = typeForOrdinal(nativeCandidates.front());
+                if (declaration && declaration->projectOrdinal == selected->projectOrdinal &&
+                    declaration->identity.fullyQualifiedName() == enumeration->name && declaration->parts.size() == 1)
+                    for (const auto& imported : cppImportedTypes_)
+                        if (imported.projectOrdinal == selected->projectOrdinal && imported.enumBase &&
+                            imported.identity.key() == declaration->identity.key() &&
+                            imported.sourcePath == declaration->parts.front().sourcePath &&
+                            imported.enumBase->token == enumeration->base.token) return true;
+            }
             return report(diagnostics::DiagnosticId::AmbiguousTypeName,
                           "C/C++ type alias conflicts with a native type '" + syntax->baseName() + "'");
+        }
+        if (enumeration && selected->targetTriple == "x86_64-pc-windows-msvc")
+        {
+            const CppImportedTypeDeclaration* target = nullptr;
+            for (const auto& imported : cppImportedTypes_)
+                if (imported.projectOrdinal == selected->projectOrdinal && imported.enumBase &&
+                    imported.identity.fullyQualifiedName() == enumeration->name &&
+                    imported.enumBase->token == enumeration->base.token)
+                {
+                    if (target) return report(diagnostics::DiagnosticId::AmbiguousTypeName,
+                                              "ambiguous imported enum for alias '" + syntax->baseName() + "'");
+                    target = &imported;
+                }
+            if (!target || (enumeration->pointeeConst && !syntax->modifiers().empty()) ||
+                (syntax->isPointeeConst() && enumeration->pointerDepth != 0))
+                return report(diagnostics::DiagnosticId::InvalidUsingTarget,
+                              "C/C++ enum alias cannot yet be resolved safely: '" + syntax->baseName() + "'");
+            auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
+            mutableSyntax->setBaseTokenKind(lexer::TokenKind::Identifier);
+            mutableSyntax->setBaseName(enumeration->name);
+            mutableSyntax->setOriginProjectOrdinal(selected->projectOrdinal);
+            mutableSyntax->setOriginNamespace("");
+            mutableSyntax->prependModifiers(std::vector<ast::TypeModifierSyntax>(enumeration->pointerDepth));
+            mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || enumeration->pointeeConst);
+            return true;
         }
         if (record && selected->targetTriple == "x86_64-pc-windows-msvc")
         {
