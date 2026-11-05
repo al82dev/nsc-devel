@@ -3,5 +3,9 @@ int Main()
     if (read_mood(current_mood()) != -3) return 1;
     MoodCallback callback = (Mood value) => value;
     if (read_mood(apply_mood(callback, current_mood())) != -3) return 2;
+    MoodData* data = get_mood_data();
+    data->value = current_mood();
+    data->values[1] = current_mood();
+    if (read_mood_data(data) != -6) return 3;
     return 0;
 }

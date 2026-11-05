@@ -1567,3 +1567,9 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Objetivo: comprobar la ejecución de un callback NativeSharp cuya firma recibe y devuelve un enum C y que es invocado por una función C.
 - Presupuesto: `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. No modificar el compilador antes de observar el resultado ni cambiar contratos ajenos.
 - Verificación: construcción incremental y batería agrupada de la tanda; un resultado correcto cubre este fixture de Windows x64 O0 y no cierra T08-009 ni T08-017.
+
+## Tanda 08: campos C de enum en ejecución
+
+- Objetivo: comprobar acceso de NativeSharp a un campo enum C y a un elemento de arreglo de enum C dentro de un struct, verificado por una función C.
+- Presupuesto: `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. Se usa un puntero a struct; no se habilita paso de agregados por valor.
+- Verificación: ejecutar el proyecto dentro de la batería agrupada y conservar cualquier fallo. El caso no cubre todas las representaciones de enum o arreglos.
