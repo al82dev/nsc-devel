@@ -849,6 +849,41 @@ if(LLVM_FOUND)
             "(NSC_LLVM_MAJOR_VERSION=${NSC_LLVM_MAJOR_VERSION}); "
             "found LLVM ${LLVM_PACKAGE_VERSION}")
     endif()
+    if(NSC_ENABLE_CPP_INTEROP)
+        if(NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
+            message(FATAL_ERROR
+                "C/C++ interoperability requires NSC_HOST_LINKAGE=STATIC; "
+                "dynamic host linkage has not been validated with Clang")
+        endif()
+        if(NOT LLVM_PACKAGE_VERSION VERSION_EQUAL "23.1.0")
+            message(FATAL_ERROR
+                "C/C++ interoperability requires LLVM 23.1.0; found ${LLVM_PACKAGE_VERSION}")
+        endif()
+        file(REAL_PATH "${LLVM_INSTALL_PREFIX}" NSC_CPP_LLVM_PREFIX)
+        find_package(Clang 23.1.0 EXACT CONFIG REQUIRED)
+        file(REAL_PATH "${CLANG_INSTALL_PREFIX}" NSC_CPP_CLANG_PREFIX)
+        if(NOT NSC_CPP_LLVM_PREFIX STREQUAL NSC_CPP_CLANG_PREFIX)
+            message(FATAL_ERROR
+                "C/C++ interoperability requires Clang and LLVM from the same installation; "
+                "LLVM: ${NSC_CPP_LLVM_PREFIX}; Clang: ${NSC_CPP_CLANG_PREFIX}")
+        endif()
+        add_library(nsc_cpp_interop STATIC src/Interop/Cpp/ClangSession.cpp src/Interop/Cpp/CppProjectSessions.cpp
+            src/Interop/Cpp/CppSessionConfigurationIdentity.cpp
+            src/Interop/Cpp/CppScalarTypeMapping.cpp src/Interop/Cpp/CppSemanticFunction.cpp src/Interop/Cpp/CppSemanticRecord.cpp
+            src/Interop/Cpp/CppSemanticInventory.cpp src/Interop/Cpp/CppSemanticFunctionGroups.cpp
+            src/Interop/Cpp/CppNamespaceInventory.cpp)
+        target_include_directories(nsc_cpp_interop PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+        target_include_directories(nsc_cpp_interop SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
+        target_link_libraries(nsc_cpp_interop PRIVATE nsc_compilation clangTooling clangCodeGen)
+        target_compile_features(nsc_cpp_interop PUBLIC cxx_std_20)
+        nsc_enable_warnings(nsc_cpp_interop)
+        if(NSC_CPP_INTEROP_SESSION_TESTS)
+            add_executable(nsc_cpp_session_tests tests/unit/CppClangSessionTests.cpp)
+            target_link_libraries(nsc_cpp_session_tests PRIVATE nsc_cpp_interop nsc_frontend nsc_precompiled)
+            target_compile_features(nsc_cpp_session_tests PRIVATE cxx_std_20)
+            nsc_enable_warnings(nsc_cpp_session_tests)
+        endif()
+    endif()
     if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
         find_library(NSC_LLVM_C_IMPORT_LIBRARY
             NAMES LLVM-C
