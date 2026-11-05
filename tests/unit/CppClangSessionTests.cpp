@@ -4910,13 +4910,13 @@ int main(int argc, char** argv)
                 aliasObservation.setSourceBufferProvider([](const std::filesystem::path& source)
                     -> std::optional<std::string> {
                     if (source.filename() == "Main.ns")
-                        return "int Use(PairAlias* value) { return 0; } int Main() { return 0; }\n";
+                        return "int Use(PairAlias* value) { return 0; } Color Echo(Color value) { return value; } int Main() { return 0; }\n";
                     return std::nullopt;
                 });
                 CppProjectSessions aliasSession;
                 aliasSession.projectFile = std::filesystem::absolute(path);
                 aliasSession.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                    CppLanguageMode::C, "struct Pair { int value; }; typedef struct Pair PairAlias;\n")));
+                    CppLanguageMode::C, "struct Pair { int value; }; typedef struct Pair PairAlias; enum Color { Red = 1 }; typedef enum Color Color;\n")));
                 std::vector<CppProjectSessions> aliasSessions;
                 aliasSessions.push_back(std::move(aliasSession));
                 std::string aliasError;
@@ -4931,8 +4931,12 @@ int main(int argc, char** argv)
                     for (const auto index : aliasResult->selection.referencedGroups)
                         aliasReferenced |= index < aliasResult->groups.groups.size() &&
                             aliasResult->groups.groups[index].identity.name() == "Pair";
-                ok &= expect(aliasResult && aliasReferenced,
-                             "record observation selects a C record referenced through its typedef");
+                bool enumReferenced = false;
+                if (aliasResult)
+                    for (const auto& type : aliasResult->referencedEnumTypes)
+                        enumReferenced |= type.identity.name() == "Color" && type.enumBase.has_value();
+                ok &= expect(aliasResult && aliasReferenced && enumReferenced,
+                             "record observation selects C record and enum typedefs together");
                 nativesharp::frontend::ProjectCompilation unpreparedObservation;
                 ok &= expect(std::holds_alternative<CppRecordObservationFailure>(observeCppRecords(unpreparedObservation)),
                              "record observation rejects an unprepared compilation");
