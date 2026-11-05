@@ -537,5 +537,52 @@ int main(int argc, char** argv)
         ok &= expect(parsed && pointer && multiply && !diagnostics.hasErrors(),
                      "parser consumes scoped names only at the source location of each statement");
     }
+    {
+        const nativesharp::FileId file{78};
+        const std::string source = "using Root; using Root; namespace A.B { using Alias = Shared.Token; "
+            "namespace Inner { using Shared; int F() { using Fake; return 0; } } } "
+            "namespace Other { int G() { return 0; } }";
+        nativesharp::source::SourceFile input(file, "scope-scan.ns", source);
+        nativesharp::frontend::ProjectSyntaxUnit unit(0, 0, "ScopeTest", file);
+        nativesharp::diagnostics::DiagnosticEngine diagnostics;
+        const bool lexed = unit.lex(input, diagnostics);
+        const auto scopes = nativesharp::parser::lexicalNamespaceScopes(unit.tokens());
+        ok &= expect(lexed && scopes.size() == 4 && scopes[0].directives.size() == 2 &&
+                     scopes[0].directives[0].target == std::vector<std::string>{"Root"} &&
+                     scopes[1].namespaceSegments == std::vector<std::string>({"A", "B"}) &&
+                     scopes[1].parent == 0 && scopes[1].directives.size() == 1 &&
+                     scopes[1].directives[0].alias == "Alias" &&
+                     scopes[1].directives[0].target == std::vector<std::string>({"Shared", "Token"}) &&
+                     scopes[2].parent == 1 && scopes[2].directives.size() == 1 &&
+                     scopes[2].namespaceSegments == std::vector<std::string>({"A", "B", "Inner"}) &&
+                     scopes[3].parent == 0 && scopes[2].end <= scopes[3].begin,
+                     "lexical namespace scopes preserve parents, directives and skip function bodies");
+        const std::vector<std::string> visibleNamespaces{"Root", "Shared", "A.B.Inner.Shared"};
+        const auto environments = nativesharp::frontend::lexicalNamespaceEnvironments(scopes, visibleNamespaces);
+        ok &= expect(environments && environments->size() == 4 &&
+                     (*environments)[0].importedNamespaces == std::vector<std::string>{"Root"} &&
+                     (*environments)[1].aliases.size() == 1 &&
+                     (*environments)[2].importedNamespaces ==
+                         std::vector<std::string>({"Root", "A.B.Inner.Shared"}) &&
+                     (*environments)[2].aliases.size() == 1 &&
+                     (*environments)[3].importedNamespaces == std::vector<std::string>{"Root"} &&
+                     (*environments)[3].aliases.empty(),
+                     "namespace environments use relative priority and inherit only through parents");
+        const std::vector<std::string> missingNamespaces{"Root"};
+        const auto missingEnvironments = nativesharp::frontend::lexicalNamespaceEnvironments(scopes, missingNamespaces);
+        ok &= expect(missingEnvironments && (*missingEnvironments)[2].unresolvedNamespaces.size() == 1 &&
+                     (*missingEnvironments)[3].unresolvedNamespaces.empty(),
+                     "unresolved namespace directives stay visible in their own scope");
+        const std::string fileSource = "namespace A.B; using Shared; int F() { return 0; }";
+        nativesharp::source::SourceFile fileInput(file, "file-scope.ns", fileSource);
+        nativesharp::frontend::ProjectSyntaxUnit fileUnit(0, 0, "ScopeTest", file);
+        nativesharp::diagnostics::DiagnosticEngine fileDiagnostics;
+        const bool fileLexed = fileUnit.lex(fileInput, fileDiagnostics);
+        const auto fileScopes = nativesharp::parser::lexicalNamespaceScopes(fileUnit.tokens());
+        ok &= expect(fileLexed && fileScopes.size() == 2 && fileScopes[1].parent == 0 &&
+                     fileScopes[1].namespaceSegments == std::vector<std::string>({"A", "B"}) &&
+                     fileScopes[1].directives.size() == 1 && fileScopes[1].end == fileScopes[0].end,
+                     "file-scoped namespace retains its using until the end of the file");
+    }
     return ok ? 0 : 1;
 }
