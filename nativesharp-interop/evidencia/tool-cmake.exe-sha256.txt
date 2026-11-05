@@ -1,0 +1,3 @@
+SHA256 hash of A:\apps\cmake\bin\cmake.exe:
+4510f1883dfad3238602bae9a7a4b441fb4a931a643604aa44336710b6be5f6f
+CertUtil: -hashfile command completed successfully.

@@ -1,0 +1,3 @@
+SHA256 hash of A:\vc2026-runtime\manifest.sha256:
+6cb72fb4964de072a965a2f3fb53fd730dc6457b435673d14d4da8270a8dca43
+CertUtil: -hashfile command completed successfully.
