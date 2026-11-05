@@ -386,6 +386,23 @@ bool ProjectConstructionModel::betterCandidate(
             strictlyBetter = true;
         }
     }
+    if (!strictlyBetter && left.conversions.size() == 1 && memberModel_ &&
+        left.memberOrdinal && right.memberOrdinal &&
+        *left.memberOrdinal < memberModel_->members().size() &&
+        *right.memberOrdinal < memberModel_->members().size())
+    {
+        const auto& lhs = memberModel_->members()[*left.memberOrdinal];
+        const auto& rhs = memberModel_->members()[*right.memberOrdinal];
+        const auto& lc = left.conversions[0];
+        const auto& rc = right.conversions[0];
+        if (lhs.isCppExternal && rhs.isCppExternal && lhs.parameters.size() == 1 && rhs.parameters.size() == 1 &&
+            left.argumentParameterOrdinals.size() == 1 && right.argumentParameterOrdinals.size() == 1 &&
+            left.argumentParameterOrdinals[0] == 0 && right.argumentParameterOrdinals[0] == 0 &&
+            lc.rank == rc.rank && lc.sourceTypeKey == lc.targetTypeKey && lc.targetTypeKey == rc.targetTypeKey &&
+            ProjectTypeConversion::isPointer(lc.sourceTypeKey) &&
+            !lhs.parameters[0].pointerPointeeReadonly && rhs.parameters[0].pointerPointeeReadonly)
+            return true;
+    }
     if (!strictlyBetter && left.defaultedParameterCount != right.defaultedParameterCount)
     {
         return left.defaultedParameterCount < right.defaultedParameterCount;
