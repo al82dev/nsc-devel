@@ -7,6 +7,14 @@
 #include "nativesharp/Linker/LldLinker.h"
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
+#include "nativesharp/Interop/CppBinaryDependencies.h"
+#if defined(NSC_ENABLE_CPP_INTEROP)
+#include "nativesharp/Interop/CppNamespaceInventory.h"
+#include "nativesharp/Interop/CppSemanticFunctionGroups.h"
+#include "nativesharp/Interop/CppSemanticInventory.h"
+#include "nativesharp/Interop/CppSemanticFunction.h"
+#include "nativesharp/Interop/CppSemanticRecord.h"
+#endif
 
 #include <memory>
 #include <string>
