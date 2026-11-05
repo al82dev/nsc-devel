@@ -166,7 +166,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 ## 07. Entrada de bibliotecas y modelo de importación
 
-- [ ] T07-001. Auditar cómo `ProjectLoader.cpp` lee actualmente referencias de bibliotecas.
+- [x] T07-001. Auditar cómo `ProjectLoader.cpp` lee actualmente referencias de bibliotecas. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [ ] T07-002. Auditar cómo `Project.h` conserva las opciones del proyecto.
 - [ ] T07-003. Auditar cómo el grafo del proyecto propaga dependencias entre módulos.
 - [ ] T07-004. Auditar qué datos de entrada conserva el manifiesto de compilación actual.
