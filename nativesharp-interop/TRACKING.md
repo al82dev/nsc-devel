@@ -101,7 +101,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T04-003. Traducir el modo C o C++ a los argumentos correspondientes de Clang.
 - [x] T04-004. Traducir la versión de lenguaje a la invocación de Clang.
 - [x] T04-005. Traducir el triple objetivo a la invocación de Clang.
-- [ ] T04-006. Incorporar cada directorio de inclusión a la invocación.
+- [x] T04-006. Incorporar cada directorio de inclusión a la invocación.
 - [ ] T04-007. Incorporar cada definición de macro a la invocación.
 - [ ] T04-008. Incorporar el directorio de recursos explícito a la invocación.
 - [ ] T04-009. Incorporar las rutas configuradas de headers del sistema a la invocación.
