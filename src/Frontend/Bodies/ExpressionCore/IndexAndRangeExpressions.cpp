@@ -935,6 +935,20 @@ analyzeExpressionKindSizeofTypeExpressionOrSizeofExpressionOrAlignofTypeExpressi
                 break;
             }
 
+            if (nameLookup_ && measuredTypeKey.starts_with("type:"))
+            {
+                const auto ordinal = nameLookup_->typeOrdinalForIdentity(measuredTypeKey.substr(5));
+                const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                if (imported && imported->isIncomplete)
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::IncompleteType,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "C/C++ type '" + imported->identity.fullyQualifiedName() +
+                            "' is incomplete and has no object layout");
+                    break;
+                }
+            }
+
             MethodCoreBinding binding;
             binding.kind = alignmentQuery ? MethodCoreOperationKind::AlignofConstant
                                           : MethodCoreOperationKind::SizeofConstant;
