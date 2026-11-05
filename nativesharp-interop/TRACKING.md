@@ -181,7 +181,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Caché multidll: se observó un acierto y se rechazaron la DLL alterada o ausente y el `.lib` alterado. Tras actualizar la DLL, la biblioteca de importación y NSMETA, se observó una clave nueva y el comportamiento cambió de 42 a 47; quedan otras topologías por verificar. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-incremental-actualizar-dll-y-biblioteca-de-importación-multidll-2026-11-05).
 - [x] T07-011. Validar las opciones de importación antes de crear la sesión Clang. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-012. Conservar la procedencia de cada declaración importada. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
-- [ ] T07-013. Hacer disponibles los diagnósticos del header en la compilación NativeSharp.
+- [x] T07-013. Hacer disponibles los diagnósticos del header en la compilación NativeSharp. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [ ] T07-014. Registrar los archivos incluidos para detectar cambios en dependencias.
 - [ ] T07-015. Comprobar la carga de dos bibliotecas con configuraciones independientes.
 - [ ] T07-016. Comprobar que cambiar un header invalida el resultado que dependa de él.
