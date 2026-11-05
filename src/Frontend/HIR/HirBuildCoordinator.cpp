@@ -787,7 +787,7 @@ bool ProjectOopHirModel::buildRegularFunctionsInParallel(
             results[memberOrdinal].success = true;
             continue;
         }
-        const bool declarationOnly = member.isImportedC ||
+        const bool declarationOnly = member.isImportedC || member.isCppExternal ||
             (member.isPrecompiled && member.kind != ClassMemberKind::Destructor);
         // A declaration-only member (imported C, precompiled) has no body: its function is built
         // from the member alone, as a worker model filtered to it would, without constructing a
@@ -936,7 +936,7 @@ bool ProjectOopHirModel::makePrecompiledRegularFunction(
     imported.memberOrdinal = memberOrdinal;
     imported.declaringTypeOrdinal = member.declaringTypeOrdinal;
     imported.constructor = member.kind == ClassMemberKind::Constructor;
-    imported.destructor = false;
+    imported.destructor = member.isCppExternal && member.kind == ClassMemberKind::Destructor;
     imported.isStatic = member.isStatic;
     imported.referenceReturn = member.isReferenceReturn;
     imported.isNoHeap = member.isNoHeap;
@@ -946,6 +946,8 @@ bool ProjectOopHirModel::makePrecompiledRegularFunction(
     // emitted by this consumer.
     imported.inliningPolicy = member.inliningPolicy;
     imported.isImportedNative = true;
+    imported.isCppExternal = member.isCppExternal;
+    imported.cppDllImport = member.isCppExternal && member.cppDllImport;
     if (member.precompiledMangledName.empty())
     {
         error = "precompiled callable '" + member.signatureKey +
@@ -953,9 +955,9 @@ bool ProjectOopHirModel::makePrecompiledRegularFunction(
         return false;
     }
     imported.mangledName = member.precompiledMangledName;
-    imported.returnTypeKey = imported.constructor ? "builtin:void" : member.declaredTypeKey;
+    imported.returnTypeKey = (imported.constructor || imported.destructor) ? "builtin:void" : member.declaredTypeKey;
     imported.errorTypeKey = member.declaredErrorTypeKey;
-    imported.returnOwnership = imported.constructor
+    imported.returnOwnership = (imported.constructor || imported.destructor)
         ? sema::OwnershipKind::None
         : member.declaredOwnership;
     for (const MethodParameterSymbol& parameter : member.parameters)
@@ -1040,6 +1042,15 @@ void ProjectOopHirModel::buildDeclarationOnlyFunction(
     {
         result.functions.push_back(makeImportedCRegularFunction(memberOrdinal, member));
         result.success = true;
+        return;
+    }
+    if (member.isCppExternal)
+    {
+        ClassMemberSymbol external = member;
+        external.precompiledMangledName = member.cppExternalSymbol;
+        ProjectOopHirFunction imported;
+        result.success = makePrecompiledRegularFunction(memberOrdinal, external, imported, result.error);
+        if (result.success) result.functions.push_back(std::move(imported));
         return;
     }
     ProjectOopHirFunction imported;
@@ -1625,6 +1636,12 @@ bool ProjectOopHirModel::buildRegularFunction(
 {
     const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
     if (regularFunctionShouldBeSkipped(memberOrdinal, member)) return true;
+    if (member.isCppExternal)
+    {
+        ClassMemberSymbol external = member;
+        external.precompiledMangledName = member.cppExternalSymbol;
+        return appendPrecompiledRegularFunction(memberOrdinal, external, error);
+    }
     if ((member.kind == ClassMemberKind::Method ||
          member.kind == ClassMemberKind::Constructor) &&
         member.isPrecompiled && !member.isImportedC)
@@ -1782,6 +1799,24 @@ bool ProjectOopHirModel::buildNamespaceFunction(
 
     if (symbol.definitionSyntax == nullptr)
     {
+        if (!symbol.cppCanonicalIdentity.empty())
+        {
+            if (symbol.cppCallingConvention != "cdecl")
+            {
+                error = "C/C++ calling convention '" + symbol.cppCallingConvention +
+                    "' is not yet supported in HIR for " + symbol.mangledName;
+                return false;
+            }
+            // The existing external-declaration representation carries a raw linker symbol.
+            // It does not assert that all C++ types or calling conventions share the C ABI.
+            function.isImportedC = true;
+            function.cppDllImport = symbol.cppDllImport;
+            function.cAbiName = symbol.mangledName;
+            function.mangledName = symbol.mangledName;
+            functionByNamespaceFunction_[functionOrdinal] = functions_.size();
+            functions_.push_back(std::move(function));
+            return true;
+        }
         if (symbol.isPrecompiled && !symbol.isExternC)
         {
             function.isImportedNative = true;
