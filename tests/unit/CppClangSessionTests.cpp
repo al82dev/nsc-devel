@@ -2257,7 +2257,7 @@ int main(int argc, char** argv)
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
-                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; typedef enum Color (*ColorCallback)(enum Color); typedef enum Color (*NestedCallback)(enum Color (*)(enum Color)); enum Color color_echo(enum Color value); int apply_color(enum Color (*cb)(enum Color)); struct Paint { enum Color shade; const enum Color* view; enum Color colors[2][3]; }; enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
+                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; typedef enum Color ColorMatrix[2][3]; typedef enum Color (*ColorCallback)(enum Color); typedef enum Color (*NestedCallback)(enum Color (*)(enum Color)); enum Color color_echo(enum Color value); int apply_color(enum Color (*cb)(enum Color)); struct Paint { enum Color shade; const enum Color* view; enum Color colors[2][3]; }; enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
                                   "union CValue { int integer; float real; }; struct Flags { unsigned a:3; unsigned b:5; }; "
@@ -2847,7 +2847,7 @@ int main(int argc, char** argv)
                     enumAliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
                         -> std::optional<std::string> {
                         if (path.filename() == "Main.ns")
-                            return "struct Holder { ColorAlias shade; int count; } ColorAlias Echo(ColorAlias value) { return value; } int Use(ColorCallback cb) { return 0; } int UseNested(NestedCallback cb) { return 0; } int Main() { return 0; }\n";
+                            return "struct Holder { ColorAlias shade; int count; ColorMatrix matrix; } ColorAlias Echo(ColorAlias value) { return value; } int Use(ColorCallback cb) { return 0; } int UseNested(NestedCallback cb) { return 0; } int Main() { return 0; }\n";
                         return std::nullopt;
                     });
                     nativesharp::compilation::TypeIdentity enumIdentity("Semantic", {}, {}, "Color");
@@ -2863,19 +2863,22 @@ int main(int argc, char** argv)
                         [aliasesSnapshot](const auto& graph, auto, auto& output, auto& why) {
                             if (!aliasesSnapshot || graph.projects().empty()) { why = "alias fixture unavailable"; return false; }
                             for (const auto& alias : *aliasesSnapshot)
-                                if (alias.name == "ColorAlias" || alias.name == "ColorCallback" || alias.name == "NestedCallback")
+                                if (alias.name == "ColorAlias" || alias.name == "ColorMatrix" || alias.name == "ColorCallback" || alias.name == "NestedCallback")
                                     output.push_back({0, graph.projects()[0].projectFile(), 0,
                                                       "x86_64-pc-windows-msvc", alias});
                             return true;
                         }, error);
                     const bool bound = configured && enumAliasCompilation.compileProjectNames(semanticPath, error);
-                    bool enumBound = false, basePreserved = false, callbackAliasBound = false, nestedAliasBound = false;
+                    bool enumBound = false, basePreserved = false, callbackAliasBound = false, nestedAliasBound = false, matrixAliasBound = false;
                     if (bound && enumAliasCompilation.nameLookup())
                     {
                         for (const auto& binding : enumAliasCompilation.nameLookup()->bindings())
                         {
                             enumBound |= binding.writtenName == "ColorAlias" && binding.syntax &&
                                 binding.syntax->baseName() == "Color" && binding.targetTypeOrdinal.has_value();
+                            matrixAliasBound |= binding.writtenName == "ColorMatrix" && binding.syntax &&
+                                binding.syntax->baseName() == "Color" && binding.syntax->modifiers().size() == 2 &&
+                                binding.targetTypeOrdinal.has_value();
                             if (binding.writtenName == "ColorCallback" && binding.syntax)
                             {
                                 const auto* type = binding.syntax;
@@ -2905,6 +2908,7 @@ int main(int argc, char** argv)
                                  "callback typedef preserves imported enum in result and parameter");
                     ok &= expect(bound && nestedAliasBound,
                                  "nested callback typedef preserves inner signature and calling convention");
+                    ok &= expect(bound && matrixAliasBound, "enum array typedef retains imported identity and dimensions");
                     const auto* echo = cFunctions ? functionByName(*cFunctions, "color_echo") : nullptr;
                     const CppRecordGroups noRecords;
                     const auto projected = echo && enumAliasCompilation.nameLookup()
@@ -2950,7 +2954,7 @@ int main(int argc, char** argv)
                         ? enumAliasCompilation.nameLookup()->typeOrdinalForIdentity(holderKey) : std::nullopt;
                     const auto* holder = holderOrdinal && enumAliasCompilation.objectLayoutModel()
                         ? enumAliasCompilation.objectLayoutModel()->structLayoutForType(*holderOrdinal) : nullptr;
-                    ok &= expect(holder && holder->size == 8 && holder->alignment == 4,
+                    ok &= expect(holder && holder->size == 32 && holder->alignment == 4,
                                  "NativeSharp struct layout uses imported enum dimensions");
                 }
                 {
