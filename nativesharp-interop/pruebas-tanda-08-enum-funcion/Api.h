@@ -8,3 +8,6 @@ struct MoodData* get_mood_data(void);
 int read_mood_data(struct MoodData* data);
 extern enum Mood shared_mood;
 int read_shared_mood(void);
+enum HiddenState { HiddenReady = 7 };
+extern enum HiddenState hidden_global;
+int read_hidden_raw(void);

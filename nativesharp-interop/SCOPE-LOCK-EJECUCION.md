@@ -1592,3 +1592,9 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `include/nativesharp/Interop/CppSemanticInventory.h`, `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Driver/PrecompiledModuleConfiguration.cpp`, el registro Markdown y la prueba mixta ya preparada. El proveedor habitual consultará el `ProjectNameLookup` ya construido; se mantiene la API anterior para sus otros consumidores.
 - Proyectar globales enum solo cuando `projectCppSemanticEnumType` confirme identidad, propietario, tamaño, alineación y tipo base. Preservar selección de nombres, detección de conflictos, símbolo, const y los rechazos actuales de TLS y calificaciones no representadas. No inventar identidades cuando el tipo no esté seleccionado.
 - Este cambio es una parte del contrato: la selección del enum usado únicamente por un global requiere una modificación posterior en la observación previa y su propia prueba. La validación agrupada sigue pendiente; ninguna casilla se cierra por la proyección inicial.
+
+### Selección por demanda de enum de global
+
+- Presupuesto: `src/Interop/Cpp/CppSemanticRecord.cpp`, el proyecto `pruebas-tanda-08-enum-funcion` y registro Markdown. Reutilizar demandas, visibilidad por proyecto y namespaces, candidatos enum y controles existentes de conflicto; no agregar tipos para todos los globales sin demanda.
+- Prueba: una variable C de un enum diferente, cuyo nombre de tipo no aparece en NativeSharp ni en firmas importadas, se lee como entero. Una función C de resultado `int` confirma el valor. La proyección de punteros y las colisiones por sombra requieren pruebas adicionales.
+- La selección y la proyección inicial se validarán en la batería agrupada. Mantener pendientes T08-004 y T08-009 hasta cubrir los contratos restantes.
