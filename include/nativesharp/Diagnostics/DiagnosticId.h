@@ -99,7 +99,8 @@ enum class DiagnosticId
     SynchronousAwaitCanSuspend,
     // EN: Freeze 3.0 C-13: a `throws E` callable reached with no catch and no compatible `throws`.
     // ES: Congelamiento 3.0 C-13: un callable `throws E` sin catch ni `throws` compatible.
-    UnhandledDeclaredError
+    UnhandledDeclaredError,
+    CppInteropDiagnostic
 };
 
 constexpr bool isNativeSharp3Diagnostic(DiagnosticId id) noexcept
@@ -206,6 +207,7 @@ constexpr std::string_view diagnosticIdNamePart2(DiagnosticId id) noexcept
         NSC_DIAGNOSTIC_NAME(LostOwnership);
         NSC_DIAGNOSTIC_NAME(SynchronousAwaitCanSuspend);
         NSC_DIAGNOSTIC_NAME(UnhandledDeclaredError);
+        NSC_DIAGNOSTIC_NAME(CppInteropDiagnostic);
 #undef NSC_DIAGNOSTIC_NAME
         default: return {};
     }
