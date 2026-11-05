@@ -150,7 +150,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T06-002. Asegurar que los temporales de esas pruebas se crean dentro de A:. Evidencia: [tanda 06](TANDA-06-VALIDACION.md).
 - [x] T06-003. Comprobar que una sesión C abre una unidad con `bridge_probe` y usa los recursos de Clang. Evidencia: [sesión real](LINEA-BASE-TANDAS.md).
 - [x] T06-004. Comprobar que una sesión C++ abre una unidad con una clase de prueba. Evidencia: [sesión real](LINEA-BASE-TANDAS.md).
-- [ ] T06-005. Comprobar el diagnóstico de una versión de Clang incompatible.
+- [x] T06-005. Comprobar el diagnóstico de una versión de Clang incompatible. Evidencia: [tanda 06](TANDA-06-VALIDACION.md).
 - [ ] T06-006. Comprobar que dos configuraciones diferentes producen identidades distintas.
 - [x] T06-007. Comprobar el fallo por recursos de Clang ausentes. Evidencia: [sesión real](LINEA-BASE-TANDAS.md).
 - [x] T06-008. Comprobar que una unidad inválida entrega ubicación y mensaje de error. Evidencia: [sesión real](LINEA-BASE-TANDAS.md).
