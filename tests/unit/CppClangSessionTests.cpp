@@ -2254,6 +2254,8 @@ int main(int argc, char** argv)
         ok &= expect(color && color->complete && color->underlyingType && color->location &&
                      color->enumerators.size() == 2 && color->enumerators[0].name == "CMinus" &&
                      color->enumerators[0].decimalValue == "-3" && color->enumerators[0].location &&
+                     color->enumerators[0].valueType.kind == CppTypeKind::SignedInteger &&
+                     color->enumerators[0].valueType.sizeBits == 32 &&
                      color->enumerators[1].decimalValue == "5" && anonymous &&
                      anonymous->enumerators[0].decimalValue == "9",
                      "C enum snapshot preserves named and anonymous enumerators and signed values");
