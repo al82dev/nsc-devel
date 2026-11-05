@@ -99,6 +99,10 @@ un struct o union anónimos, en la declaración y en la identidad de tipo. Se
 preparó una prueba de ambas formas. No se ha compilado ni ejecutado esta
 implementación, ni se ha demostrado la importación de esos tipos por el driver.
 
+`pruebas-tanda-08-union` prepara un recorrido donde NativeSharp escribe un
+miembro de una union C y C lee el byte superpuesto. El script existe, pero no
+se ha ejecutado y no cubre paso de la union por valor.
+
 Siguiente trabajo: completar la activación coordinada de proveedores de tipos,
 aliases y valores para referencias C, resolver conflictos por demanda y las
 formas compuestas, incluyendo punteros a función. Después ejecutar la
