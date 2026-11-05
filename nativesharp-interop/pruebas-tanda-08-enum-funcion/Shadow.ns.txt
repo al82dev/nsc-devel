@@ -1,0 +1,7 @@
+struct HiddenState { int value; }
+int Identity(int hidden_global) { return hidden_global; }
+int Main()
+{
+    int hidden_global = 7;
+    return Identity(hidden_global) - 7;
+}

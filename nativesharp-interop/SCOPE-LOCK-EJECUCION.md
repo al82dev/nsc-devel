@@ -1598,3 +1598,9 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `src/Interop/Cpp/CppSemanticRecord.cpp`, el proyecto `pruebas-tanda-08-enum-funcion` y registro Markdown. Reutilizar demandas, visibilidad por proyecto y namespaces, candidatos enum y controles existentes de conflicto; no agregar tipos para todos los globales sin demanda.
 - Prueba: una variable C de un enum diferente, cuyo nombre de tipo no aparece en NativeSharp ni en firmas importadas, se lee como entero. Una función C de resultado `int` confirma el valor. La proyección de punteros y las colisiones por sombra requieren pruebas adicionales.
 - La selección y la proyección inicial se validarán en la batería agrupada. Mantener pendientes T08-004 y T08-009 hasta cubrir los contratos restantes.
+
+### Global enum frente a sombra local
+
+- Objetivo: verificar que una variable local o parámetro NativeSharp llamado igual que un global C no exige resolver el enum C de ese global cuando existe un tipo NativeSharp homónimo al enum.
+- Presupuesto: `Shadow.ns.txt` y `validar.cmd` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. Si falla, identificar primero la resolución causante antes de modificar producción.
+- Verificación junto con la batería agrupada; este fixture no agota las formas de sombra o colisión.

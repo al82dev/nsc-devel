@@ -21,5 +21,11 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if errorlevel 1 exit /b 1
 "%DEST%\program.exe"
 if errorlevel 1 exit /b 1
+copy /y "%~dp0Shadow.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\shadow.exe"
+if errorlevel 1 exit /b 1
+"%DEST%\shadow.exe"
+if errorlevel 1 exit /b 1
 echo Enum C en funciones: resultado esperado cero.
 exit /b 0
