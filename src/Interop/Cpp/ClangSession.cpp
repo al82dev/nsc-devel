@@ -124,6 +124,38 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     return result;
 }
 
+void collectTypeAliases(const clang::DeclContext& context, clang::ASTContext& astContext,
+                        std::set<const clang::TypedefNameDecl*>& seen,
+                        std::vector<CppTypeAliasDeclaration>& result)
+{
+    for (const clang::Decl* declaration : context.decls())
+    {
+        if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+        {
+            collectTypeAliases(*nested, astContext, seen, result);
+            continue;
+        }
+        if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+        {
+            collectTypeAliases(*linkage, astContext, seen, result);
+            continue;
+        }
+        const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(declaration);
+        if (!alias || alias->isImplicit() || alias->getName().empty() || alias->isDependentContext() ||
+            !seen.insert(alias->getCanonicalDecl()).second)
+            continue;
+        CppTypeAliasDeclaration value;
+        value.name = alias->getNameAsString();
+        value.qualifiedName = alias->getQualifiedNameAsString();
+        value.underlyingType = describeType(alias->getUnderlyingType(), astContext);
+        const auto location = astContext.getSourceManager().getPresumedLoc(alias->getLocation());
+        if (location.isValid())
+            value.location = CppSourcePoint{
+                pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+        result.push_back(std::move(value));
+    }
+}
+
 void collectNamespaces(const clang::DeclContext& context, clang::ASTContext& astContext,
                        bool insideAnonymous, std::set<const clang::NamespaceDecl*>& seen,
                        std::vector<CppNamespaceDeclaration>& result)
@@ -552,6 +584,16 @@ public:
         std::vector<CppRecordDeclaration> result;
         std::set<const clang::TagDecl*> seen;
         collectRecords(*context.getTranslationUnitDecl(), context, *mangler, seen, result);
+        return result;
+    }
+    std::optional<std::vector<CppTypeAliasDeclaration>> typeAliasesSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        std::vector<CppTypeAliasDeclaration> result;
+        std::set<const clang::TypedefNameDecl*> seen;
+        collectTypeAliases(*context.getTranslationUnitDecl(), context, seen, result);
         return result;
     }
     std::optional<std::vector<CppImplicitLifetimeDeclaration>> implicitLifetimeDeclarations(
