@@ -7,6 +7,10 @@
 #include "nativesharp/Frontend/ParameterPassKind.h"
 #include "nativesharp/Frontend/MethodParameterSymbol.h"
 #include "nativesharp/Frontend/ClassMemberSymbol.h"
+#include "nativesharp/Frontend/CppImportedInstanceMethod.h"
+#include "nativesharp/Frontend/CppImportedInstanceField.h"
+#include "nativesharp/Frontend/CppImportedStaticMethod.h"
+#include "nativesharp/Frontend/CppImportedStaticField.h"
 #include "nativesharp/Frontend/ModuleInitializationRecord.h"
 #include "nativesharp/Frontend/PrecompiledMemberIdentity.h"
 #include "nativesharp/Frontend/MemberBodyBindingKind.h"
@@ -57,6 +61,12 @@ class ProjectMemberModel final
 public:
     ProjectMemberModel() noexcept;
     explicit ProjectMemberModel(ProjectCompilationIndexes& indexes) noexcept;
+    bool setExperimentalCppInstanceMethods(std::vector<CppImportedInstanceMethod> methods, std::string& error);
+    // Isolated indexing only; callers must account for all C++ overloads before resolution.
+    bool setExperimentalCppLifetimeMethods(std::vector<CppImportedLifetimeMethod> methods, std::string& error);
+    bool setExperimentalCppInstanceFields(std::vector<CppImportedInstanceField> fields, std::string& error);
+    bool setExperimentalCppStaticMethods(std::vector<CppImportedStaticMethod> methods, std::string& error);
+    bool setExperimentalCppStaticFields(std::vector<CppImportedStaticField> fields, std::string& error);
 
     bool build(
         const ProjectNameLookup& nameLookup,
@@ -574,6 +584,11 @@ private:
     const ProjectNameLookup* nameLookup_ = nullptr;
     const ProjectGenericModel* genericModel_ = nullptr;
     std::vector<ClassMemberSymbol> members_;
+    std::vector<CppImportedInstanceMethod> experimentalCppInstanceMethods_;
+    std::vector<CppImportedLifetimeMethod> experimentalCppLifetimeMethods_;
+    std::vector<CppImportedInstanceField> experimentalCppInstanceFields_;
+    std::vector<CppImportedStaticMethod> experimentalCppStaticMethods_;
+    std::vector<CppImportedStaticField> experimentalCppStaticFields_;
     std::vector<ModuleInitializationRecord> moduleInitializers_;
     std::vector<MemberBodyBinding> bodyBindings_;
     std::vector<std::vector<std::size_t>> membersByType_;
