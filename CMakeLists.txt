@@ -886,6 +886,10 @@ if(LLVM_FOUND)
             target_link_libraries(nsc_cpp_session_tests PRIVATE nsc_cpp_interop nsc_frontend nsc_precompiled)
             target_compile_features(nsc_cpp_session_tests PRIVATE cxx_std_20)
             nsc_enable_warnings(nsc_cpp_session_tests)
+            enable_testing()
+            add_test(NAME nsc.cpp-interop.session COMMAND nsc_cpp_session_tests
+                "${CLANG_INSTALL_PREFIX}/lib/clang/23" "${CMAKE_BINARY_DIR}"
+                "${CLANG_INSTALL_PREFIX}/bin/clang${CMAKE_EXECUTABLE_SUFFIX}")
         endif()
     endif()
     if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
