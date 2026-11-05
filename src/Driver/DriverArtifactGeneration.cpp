@@ -109,6 +109,9 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
                            });
     if (objectBundle == nullptr)
         return nullptr;
+    if (!appendCppImplicitLifetimeObjects(compilation, *compilation.oopMirModel(),
+                                          *objectBundle, optimizationLevel, error))
+        return nullptr;
     if (!compilation.completeCodeGeneration(error))
         return nullptr;
     return objectBundle;
