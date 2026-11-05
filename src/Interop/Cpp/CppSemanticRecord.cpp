@@ -792,8 +792,12 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
         return CppRecordObservationFailure{"precompiled snapshot does not match observation syntax"};
     frontend::ProjectNameLookup lookup;
     lookup.setPrecompiledSnapshots(finalSnapshots);
+    std::vector<frontend::CppImportedTypeAlias> aliases;
+    if (!provideCppTypeAliases(*graph, compilation.cppProjectSessions(), aliases, error))
+        return CppRecordObservationFailure{std::move(error)};
     if (!lookup.setImportedNamespaces(std::move(std::get<std::vector<std::pair<std::size_t, std::string>>>(visible))) ||
-        !lookup.setCppImportedTypes(std::move(filteredTypes)))
+        !lookup.setCppImportedTypes(std::move(filteredTypes)) ||
+        !lookup.setCppImportedTypeAliases(std::move(aliases)))
         return CppRecordObservationFailure{"cannot configure observation lookup"};
     if (!lookup.build(*graph, units, finalDiagnostics))
     {
