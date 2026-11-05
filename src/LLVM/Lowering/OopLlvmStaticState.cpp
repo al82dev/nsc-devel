@@ -6,6 +6,9 @@
 
 #include "nativesharp/Language/StaticInitializationState.h"
 
+#include <cstdint>
+#include <limits>
+
 namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
@@ -34,7 +37,31 @@ bool OopLlvmImplementation::declareStaticFields(std::string& error, bool defineS
             if (fieldOrdinal >= staticFieldDeclarations_.size() ||
                 staticFieldDeclarations_[fieldOrdinal] == 0U) continue;
             const frontend::ProjectOopMirStaticField& field = fields[fieldOrdinal];
-            LLVMTypeRef type = llvmType(field.typeKey, error);
+            LLVMTypeRef type = nullptr;
+            if (field.isCppExternal)
+            {
+                std::string elementKey = field.typeKey;
+                std::uint64_t count = 1;
+                bool valid = true;
+                while (const auto element = frontend::ProjectMemberModel::fixedArrayElementTypeKey(elementKey))
+                {
+                    const auto extent = frontend::ProjectMemberModel::fixedArrayCount(elementKey);
+                    if (!extent || *extent == 0 || count > std::numeric_limits<std::uint64_t>::max() / *extent)
+                    { valid = false; break; }
+                    count *= *extent;
+                    elementKey = *element;
+                }
+                const auto ordinal = valid && elementKey.starts_with("type:")
+                    ? nameLookup_.typeOrdinalForIdentity(std::string_view(elementKey).substr(5)) : std::nullopt;
+                const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
+                if (imported && imported->kind == frontend::NamedTypeDeclarationKind::Struct &&
+                    imported->objectLayout && !imported->isIncomplete &&
+                    imported->objectLayout->sizeBytes != 0 &&
+                    count <= std::numeric_limits<std::uint64_t>::max() / imported->objectLayout->sizeBytes)
+                    type = LLVMArrayType2(LLVMInt8TypeInContext(context_),
+                                          count * imported->objectLayout->sizeBytes);
+            }
+            if (type == nullptr) type = llvmType(field.typeKey, error);
             if (type == nullptr || type == LLVMVoidTypeInContext(context_))
             {
                 if (error.empty()) error = "Stage 37 static field has invalid LLVM type";
