@@ -1,4 +1,6 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
+#include "../../src/Interop/Cpp/ClangSessionSupport.h"
+#include <llvm/Support/MemoryBuffer.h>
 #include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Parser/ScopedKnownTypeNames.h"
 #include "nativesharp/Parser/LexicalNamespaceScopes.h"
@@ -168,6 +170,39 @@ int main(int argc, char** argv)
     if (argc != 4 && argc != 5) return 2;
     CppClangSessionFactory factory;
     bool ok = true;
+    {
+        CppSessionOptions config;
+        config.language = CppLanguageMode::C;
+        config.languageStandard = "c11";
+        config.targetTriple = "x86_64-pc-windows-msvc";
+        config.resourceDirectory = "A:/resource";
+        config.includePaths = {{"A:/user", CppIncludeKind::User}, {"A:/system", CppIncludeKind::System}};
+        config.macros = {{CppMacroAction::Define, "ONE=1"}, {CppMacroAction::Undefine, "TWO"}};
+        const auto actual = nativesharp::interop::detail::buildClangInvocationArguments(config);
+        const std::vector<std::string> expected{
+            "-target", "x86_64-pc-windows-msvc", "-x", "c", "-std=c11",
+            "-resource-dir", "A:/resource", "-nostdinc", "-isystem", "A:/resource/include",
+            "-I", "A:/user", "-isystem", "A:/system", "-DONE=1", "-UTWO"};
+        ok &= expect(actual == expected, "Clang arguments preserve language, resources and option order");
+        config.language = CppLanguageMode::Cpp;
+        config.languageStandard = "c++20";
+        const auto cppArgs = nativesharp::interop::detail::buildClangInvocationArguments(config);
+        ok &= expect(cppArgs.size() == expected.size() && cppArgs[3] == "c++" && cppArgs[4] == "-std=c++20",
+                     "Clang arguments select C++ and its requested standard");
+    }
+    {
+        auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
+        memory->addFile("/probe.h", 0, llvm::MemoryBuffer::getMemBufferCopy("int probe;"));
+        CppCancellationToken token;
+        auto filesystem = nativesharp::interop::detail::makeCancellationFileSystem(memory, token);
+        ok &= expect(static_cast<bool>(filesystem->status("/probe.h")), "file query succeeds before cancellation");
+        token.cancel();
+        const auto status = filesystem->status("/probe.h");
+        const auto file = filesystem->openFileForRead("/probe.h");
+        ok &= expect(!status && status.getError() == std::errc::operation_canceled &&
+                     !file && file.getError() == std::errc::operation_canceled,
+                     "file query and open observe cancellation");
+    }
     {
         CppSessionOptions base;
         base.language = CppLanguageMode::Cpp;
