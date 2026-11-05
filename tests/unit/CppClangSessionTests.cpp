@@ -5005,5 +5005,195 @@ int main(int argc, char** argv)
         }
         else ok &= expect(false, "Clang provides the forward-declared record fixture");
     }
+    auto cpp = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                                    "class MyClass { int hidden; int hiddenMethod(); static int secret; static int HiddenStatic() noexcept; public: int count; static int shared; static const int limit; static volatile int io; static thread_local int tls; MyClass(int); "
+                                    "~MyClass(); int A(int) const noexcept; static int B(double) noexcept; virtual int C(); "
+                                    "int Q() &; int Q() &&; int Volatile() volatile; "
+                                    "int Safe() noexcept; int Throwing() noexcept(false); int Unknown(); "
+                                    "static int ThrowStatic() noexcept(false); static int VarStatic(int, ...) noexcept; "
+                                    "static int __vectorcall V(int) noexcept; };\n"
+                                    "struct VBase { virtual ~VBase(); }; "
+                                    "struct Derived : virtual VBase { ~Derived(); };\n"
+                                    "struct BaseA { int a; }; struct BaseB { int b; }; "
+                                    "struct DeletedLifetime { int& ref; }; "
+                                    "struct ThrowingMember { ThrowingMember() noexcept(false); ~ThrowingMember() noexcept(false); }; "
+                                    "struct ImplicitThrowing { ThrowingMember member; }; "
+                                    "struct UsedLifetime { int value; }; inline UsedLifetime useLifetime() { "
+                                    "UsedLifetime a; UsedLifetime b(a); UsedLifetime c(static_cast<UsedLifetime&&>(a)); return b; } "
+                                    "struct PlainLifetime { PlainLifetime(int) noexcept; ~PlainLifetime() noexcept; }; "
+                                    "class LockedLifetime { LockedLifetime() noexcept; ~LockedLifetime() noexcept; }; "
+                                    "struct BasedLifetime : BaseA { BasedLifetime() noexcept; ~BasedLifetime() noexcept; }; "
+                                    "__declspec(dllimport) int dll_value; __declspec(dllimport) int dll_function(int); "
+                                    "class __declspec(dllimport) ImportedClass { public: static int data; int method(int) noexcept; }; "
+                                    "struct QualifiedFields { const int c; volatile int v; unsigned bits:3; }; "
+                                    "struct Defaults { void invoke(int a, int b = 3); }; int defaults(int a, int b = 2); "
+                                    "\n#pragma pack(push, 1)\nstruct PackedField { char prefix; int data; };\n#pragma pack(pop)\n"
+                                    "class Multi : public BaseA, private BaseB {};\n"
+                                    "class Outer { public: struct Inner; struct Inner { int value; }; "
+                                    "private: class Secret { int value; }; };\n"
+                                    "extern \"C\" int c_api(int); extern \"C\" int c_api_noexcept(int) noexcept;\n"
+                                    "int cpp_noexcept(int) noexcept; int cpp_throwing(int) noexcept(false); int __vectorcall vector_fn(int); int cpp_var(int, ...);\n"
+                                    "namespace root { namespace sub { int foo(int); } }\n"
+                                    "namespace tools { extern int cpp_global; extern volatile int cpp_volatile; "
+                                    "extern const int cpp_constant; extern const volatile int cpp_const_volatile; static int cpp_internal; "
+                                    "extern int* cpp_pointer; extern int** cpp_double_pointer; extern void* cpp_void_pointer; extern int* const cpp_const_pointer; "
+                                    "extern int* volatile cpp_volatile_pointer; extern const int* cpp_readonly_pointee; "
+                                    "extern volatile int* cpp_volatile_pointee; extern int* const* cpp_nested_const; "
+                                    "extern thread_local int tls_value; }\n"
+                                    "namespace tools { int blend(int); double blend(double); int* pointer_identity(int* p); "
+                                    "int qualify(int*); int qualify(const int*); "
+                                    "static int local(int); const int* pointer(const int* p); "
+                                    "struct Opaque; void handle(Opaque* p); long widths(long long v); }\n"
+                                    "namespace scalars { void v(); bool b(); signed char i8(); unsigned char u8(); "
+                                    "short i16(); unsigned short u16(); unsigned int u32(); "
+                                    "unsigned long long u64(); float f32(); double f64(); }\n"));
+    ok &= expect(static_cast<bool>(cpp), "valid C++ translation unit opens");
+    if (cpp)
+    {
+        ok &= expect(cpp->topLevelDeclarationCount().value_or(0) > 0, "C++ AST remains available");
+        auto functions = cpp->freeFunctionsSnapshot();
+        const auto* cppVar = functions ? functionByName(*functions, "cpp_var") : nullptr;
+        ok &= expect(cppVar && std::holds_alternative<CppSemanticFunctionFailure>(
+                         projectCppSemanticFunction(*cppVar, 0, "Semantic")),
+                     "C++ variadic function remains deferred until its semantics are verified");
+        auto records = cpp->recordsSnapshot();
+        const auto* defaultFunction = functions ? functionByName(*functions, "defaults") : nullptr;
+        const auto* defaultRecord = records ? recordByName(*records, "Defaults") : nullptr;
+        bool defaultMethod = false;
+        if (defaultRecord)
+            for (const auto& method : defaultRecord->methods)
+                if (method.name == "invoke" && method.parameters.size() == 2)
+                    defaultMethod = !method.parameters[0].hasDefaultArgument && method.parameters[1].hasDefaultArgument;
+        ok &= expect(defaultFunction && defaultFunction->parameters.size() == 2 &&
+                     !defaultFunction->parameters[0].hasDefaultArgument && defaultFunction->parameters[1].hasDefaultArgument &&
+                     defaultMethod, "Clang snapshots retain which function and method arguments have defaults");
+        auto globals = cpp->globalsSnapshot();
+        const auto* cppGlobal = globals ? globalByName(*globals, "tools::cpp_global") : nullptr;
+        const auto* cppVolatile = globals ? globalByName(*globals, "tools::cpp_volatile") : nullptr;
+        const auto* cppConstant = globals ? globalByName(*globals, "tools::cpp_constant") : nullptr;
+        const auto* cppConstVolatile = globals ? globalByName(*globals, "tools::cpp_const_volatile") : nullptr;
+        if (globals)
+        {
+            const auto checkPointer = [&](const char* name, const char* key, bool readonly, bool volatilePointer) {
+                const auto* declaration = globalByName(*globals, name);
+                if (!declaration) return false;
+                auto projection = projectCppSemanticGlobal(*declaration, 0, "Semantic");
+                const auto* symbol = std::get_if<CppSemanticGlobal>(&projection);
+                return symbol && symbol->typeKey == key && symbol->isConst == readonly &&
+                    symbol->isVolatile == volatilePointer;
+            };
+            ok &= expect(checkPointer("tools::cpp_pointer", "builtin:int*", false, false) &&
+                         checkPointer("tools::cpp_double_pointer", "builtin:int**", false, false) &&
+                         checkPointer("tools::cpp_void_pointer", "builtin:void*", false, false) &&
+                         checkPointer("tools::cpp_const_pointer", "builtin:int*", true, false) &&
+                         checkPointer("tools::cpp_volatile_pointer", "builtin:int*", false, true),
+                         "external pointer globals preserve depth and top-level qualifiers");
+            for (const auto* name : {"tools::cpp_volatile_pointee", "tools::cpp_nested_const"})
+            {
+                const auto* declaration = globalByName(*globals, name);
+                ok &= expect(declaration && std::holds_alternative<CppSemanticGlobalFailure>(
+                                 projectCppSemanticGlobal(*declaration, 0, "Semantic")),
+                             "external pointer globals do not discard nested qualifiers");
+            }
+            const auto* readonlyDecl = globalByName(*globals, "tools::cpp_readonly_pointee");
+            if (readonlyDecl)
+            {
+                auto projection = projectCppSemanticGlobal(*readonlyDecl, 0, "Semantic");
+                const auto* symbol = std::get_if<CppSemanticGlobal>(&projection);
+                ok &= expect(symbol && symbol->typeKey == "builtin:int*" && symbol->pointerPointeeReadonly &&
+                             !symbol->isConst, "pointer global retains pointee const independently of pointer const");
+                if (symbol)
+                for (int scenario = 0; scenario < 5; ++scenario)
+                {
+                    nativesharp::frontend::NamespaceStateSymbol state;
+                    state.projectOrdinal = symbol->projectOrdinal;
+                    state.moduleName = symbol->moduleName;
+                    state.namespaceName = symbol->namespaceName;
+                    state.name = symbol->name;
+                    state.declaredTypeKey = symbol->typeKey;
+                    state.storageName = symbol->externalSymbol;
+                    state.isCppExternal = true;
+                    state.cppPointerPointeeReadonly = true;
+                    state.accessibility = nativesharp::frontend::NamespaceFunctionAccessibility::Public;
+                    nativesharp::frontend::ProjectCompilation check;
+                    check.setSourceBufferProvider([scenario](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() != "Main.ns") return std::nullopt;
+                        switch (scenario)
+                        {
+                            case 0: return "int Main() { int const* p = tools.cpp_readonly_pointee; return *p; }\n";
+                            case 1: return "int Main() { *tools.cpp_readonly_pointee = 1; return 0; }\n";
+                            case 2: return "int Main() { int* p = tools.cpp_readonly_pointee; return 0; }\n";
+                            case 3: return "int Main() { int** p = &tools.cpp_readonly_pointee; return 0; }\n";
+                            default: return "int Main() { tools.cpp_readonly_pointee = null; return 0; }\n";
+                        }
+                    });
+                    std::string error;
+                    const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                    const bool configured = check.setExperimentalCppImportedStates({state}, error);
+                    const bool ready = configured && check.compileProjectOopMir(path, error);
+                    const char* expected = scenario == 1 ? "left side of assignment is not assignable" :
+                        scenario == 2 ? "would discard pointee constness" :
+                        "cannot take the address of a qualified C/C++ global";
+                    bool expectedDiagnostic = false;
+                    for (const auto& diagnostic : check.diagnostics().diagnostics())
+                        expectedDiagnostic |= diagnostic.message().find(expected) != std::string::npos;
+                    if (!configured || ((scenario == 0 || scenario == 4) ? !ready : ready || !expectedDiagnostic))
+                    {
+                        std::cerr << "readonly pointee scenario " << scenario << ": " << error << '\n';
+                        for (const auto& diagnostic : check.diagnostics().diagnostics())
+                            std::cerr << diagnostic.message() << '\n';
+                    }
+                    ok &= expect(configured && ((scenario == 0 || scenario == 4) ? ready : !ready && expectedDiagnostic),
+                                 "readonly pointee preserves read, reassignment and qualifier safety");
+                }
+            }
+            else ok &= expect(false, "Clang exposes pointer to readonly scalar");
+            std::vector<nativesharp::frontend::NamespaceStateSymbol> pointerStates;
+            for (const auto* name : {"tools::cpp_const_pointer", "tools::cpp_volatile_pointer"})
+            {
+                const auto* declaration = globalByName(*globals, name);
+                if (!declaration) continue;
+                auto projection = projectCppSemanticGlobal(*declaration, 0, "Semantic");
+                const auto* symbol = std::get_if<CppSemanticGlobal>(&projection);
+                if (!symbol) continue;
+                nativesharp::frontend::NamespaceStateSymbol state;
+                state.projectOrdinal = symbol->projectOrdinal;
+                state.moduleName = symbol->moduleName;
+                state.namespaceName = symbol->namespaceName;
+                state.name = symbol->name;
+                state.declaredTypeKey = symbol->typeKey;
+                state.storageName = symbol->externalSymbol;
+                state.isCppExternal = true;
+                state.isCppReadonly = symbol->isConst;
+                state.isVolatile = symbol->isVolatile;
+                state.accessibility = nativesharp::frontend::NamespaceFunctionAccessibility::Public;
+                pointerStates.push_back(std::move(state));
+            }
+            nativesharp::frontend::ProjectCompilation pointerCompilation;
+            pointerCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                -> std::optional<std::string> {
+                if (path.filename() == "Main.ns")
+                    return "int Main() { tools.cpp_volatile_pointer = tools.cpp_const_pointer; return *tools.cpp_volatile_pointer; }\n";
+                return std::nullopt;
+            });
+            std::string pointerError;
+            const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+            const bool ready = pointerStates.size() == 2 &&
+                pointerCompilation.setExperimentalCppImportedStates(std::move(pointerStates), pointerError) &&
+                pointerCompilation.compileProjectOopMir(path, pointerError);
+            ok &= expect(ready, "qualified pointer globals reach MIR");
+            if (ready && pointerCompilation.oopMirModel() && pointerCompilation.nameLookup())
+            {
+                nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                auto module = lowerer.lower(*pointerCompilation.nameLookup(), *pointerCompilation.oopMirModel());
+                const bool valid = module && module->verify(pointerError);
+                const auto ir = module ? module->text() : std::string{};
+                ok &= expect(valid && ir.find("load volatile ptr") != std::string::npos &&
+                             ir.find("store volatile ptr") != std::string::npos,
+                             "volatile pointer global emits volatile pointer loads and stores");
+            }
+        }
+    }
     return ok ? 0 : 1;
 }
