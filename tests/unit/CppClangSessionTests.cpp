@@ -1445,6 +1445,20 @@ int main(int argc, char** argv)
                                         const bool rejected = !selectCppRecordMemberDefinition(candidateEntries, record);
                                         ok &= expect(selected && rejected,
                                                      "repeated members require equal captured contracts at one physical source location");
+                                        auto signatureEntries = *entries;
+                                        for (const auto i : record.inventoryIndices)
+                                        {
+                                            auto& declaration = signatureEntries[i].declaration;
+                                            declaration.location = CppSourcePoint{std::filesystem::path(argv[3]), 1, 1};
+                                            if (!declaration.fields.empty())
+                                            {
+                                                auto signature = std::make_shared<CppFunctionType>();
+                                                signature->callingConvention = i == record.inventoryIndices.front() ? "cdecl" : "stdcall";
+                                                declaration.fields[0].type.function = std::move(signature);
+                                            }
+                                        }
+                                        ok &= expect(!selectCppRecordMemberDefinition(signatureEntries, record),
+                                                     "repeated members reject differing captured function conventions");
                                     }
                                 }
                             const auto refinedPrepared = refined ? prepareCppRecordObservation(*entries, *refined) :
