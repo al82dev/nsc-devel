@@ -42,8 +42,20 @@ std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std:
         }
         if (dimensions.empty() || !element || element->isConst) return std::nullopt;
         const auto mapped = projectCppSemanticEnumType(*element, projectOrdinal, moduleName, lookup);
-        if (!mapped) return std::nullopt;
-        key = mapped->nativeSharpTypeKey;
+        if (mapped) key = mapped->nativeSharpTypeKey;
+        else if (lookup && element->kind == CppTypeKind::Record && !element->isVolatile)
+        {
+            const auto target = projectCppRecordTypeIdentity(*element, moduleName);
+            const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
+            const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+            if (!target || !imported || imported->projectOrdinal != projectOrdinal || !imported->objectLayout ||
+                imported->isIncomplete || !element->sizeBits || *element->sizeBits % 8 != 0 ||
+                *element->sizeBits / 8 != imported->objectLayout->sizeBytes || !element->alignmentBits ||
+                *element->alignmentBits % 8 != 0 ||
+                *element->alignmentBits / 8 != imported->objectLayout->alignmentBytes) return std::nullopt;
+            key = "type:" + target->key();
+        }
+        else return std::nullopt;
     }
     for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
         key += "[" + std::to_string(*dimension) + "]";
