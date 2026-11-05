@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Tanda 06: validación de sesiones
+
+La escritura se limita a NSC: configuración CMake, pruebas de sesión y sus
+auxiliares, y documentación `nativesharp-interop`. Los temporales y binarios de
+prueba permanecen en A:. LLVM/Clang es referencia de solo lectura; no modificar
+NSLink ni desplegar en C:. Se agrupan los ítems y la validación incremental al
+final; cada cambio y cada ítem se registran en commits separados. Las pruebas
+de versión y de inicio fallido deben comprobar el caso real, no uno parecido.
+
 ## Tanda 05: integración y diagnósticos
 
 La tanda se realiza exclusivamente en `A:/nsc-devel`: frontend, controlador,
