@@ -156,7 +156,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T06-008. Comprobar que una unidad inválida entrega ubicación y mensaje de error. Evidencia: [sesión real](LINEA-BASE-TANDAS.md).
 - [x] T06-009. Comprobar que un fallo de `BeginSourceFile` no intenta finalizar una unidad no abierta. Evidencia: [tanda 06](TANDA-06-VALIDACION.md).
 - [x] T06-010. Comprobar que cerrar dos veces no libera recursos dos veces. Evidencia: [sesión real](LINEA-BASE-TANDAS.md).
-- [ ] T06-011. Comprobar la cancelación y la liberación posterior de recursos.
+- [x] T06-011. Comprobar la cancelación y la liberación posterior de recursos. Evidencia: [tanda 06](TANDA-06-VALIDACION.md).
 - [ ] T06-012. Comprobar que dos sesiones con opciones distintas no se contaminan.
 - [x] T06-013. Comprobar la inyección de una sesión en `ProjectCompilation`. Evidencia: [pruebas con sesión simulada y sesión Clang real](LINEA-BASE-TANDAS.md).
 - [ ] T06-014. Comprobar una compilación NativeSharp normal con la integración desactivada.
