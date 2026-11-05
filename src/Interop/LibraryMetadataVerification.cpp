@@ -1392,7 +1392,28 @@ bool verifyBinaryClosureMetadata(
     const LibraryMetadata& metadata,
     std::string& error)
 {
+    if (metadata.formatMinor < 41 && !metadata.cppBinaryDependencies.empty())
+    {
+        error = "metadata format cannot represent C/C++ binary dependencies";
+        return false;
+    }
     if (metadata.formatMinor < 25) return true;
+    for (const auto& dependency : metadata.cppBinaryDependencies)
+    {
+        if (dependency.libraryFileName.find('\0') != std::string::npos ||
+            !isLeafMetadataFileName(dependency.libraryFileName) ||
+            isEmptyMetadataFingerprint(dependency.libraryDigest) ||
+            (dependency.runtimeFileName.empty() &&
+             (dependency.runtimeSize != 0 || !isEmptyMetadataFingerprint(dependency.runtimeDigest))) ||
+            (!dependency.runtimeFileName.empty() &&
+             (dependency.runtimeFileName.find('\0') != std::string::npos ||
+              !isLeafMetadataFileName(dependency.runtimeFileName) ||
+              isEmptyMetadataFingerprint(dependency.runtimeDigest))))
+        {
+            error = "metadata contains an incomplete or invalid C/C++ binary dependency";
+            return false;
+        }
+    }
     std::unordered_set<std::string> dependencyModules;
     for (const LibraryMetadataBinaryDependency& dependency : metadata.binaryDependencies)
     {
