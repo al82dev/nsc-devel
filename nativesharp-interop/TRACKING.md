@@ -173,7 +173,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T07-005. Diseñar cómo declarar que una dependencia expone headers C o C++. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-006. Diseñar cómo indicar el header principal de una dependencia. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-007. Diseñar cómo especificar sus directorios de inclusión. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
-- [ ] T07-008. Diseñar cómo especificar sus macros y opciones de lenguaje.
+- [x] T07-008. Diseñar cómo especificar sus macros y opciones de lenguaje. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [ ] T07-009. Diseñar cómo especificar bibliotecas estáticas de enlace.
 - [ ] T07-010. Diseñar cómo especificar bibliotecas de importación y DLL de ejecución.
   - Avance parcial: `CppLibraryReference` permite declarar ambas y una biblioteca NativeSharp estática puede registrar y empaquetar las dependencias declaradas. Se valida la correspondencia para entradas COFF cortas y se probó un archivo que importa dos DLL encadenadas, con consumidor ON y OFF. Pendientes los formatos de importación larga, otras topologías multidll y el cierre completo de dependencias transitivas. [Evidencia](SCOPE-LOCK-EJECUCION.md#investigación-incremental-archivo-de-importación-con-varias-dll-2026-11-05).
