@@ -2824,6 +2824,67 @@ const source::SourceManager& ProjectCompilation::sourceManager() const noexcept
     return sourceManager_;
 }
 
+bool ProjectCompilation::cloneSyntaxForObservation(
+    std::vector<std::unique_ptr<ProjectSyntaxUnit>>& output,
+    diagnostics::DiagnosticEngine& diagnostics,
+    std::string& error) const
+{
+    error.clear();
+    if (!projectGraph_ || units_.empty())
+    {
+        error = "syntax observation requires a parsed project";
+        return false;
+    }
+    std::vector<std::unique_ptr<ProjectSyntaxUnit>> copied;
+    copied.reserve(units_.size());
+    const auto knownTypesByProject = parserTypeIndexesByProject(*projectGraph_, units_, {});
+    std::vector<std::pair<std::size_t, std::string>> cppNamespaces;
+    if (!experimentalCppImportedTypes_.empty() && cppNamespaceProvider_ &&
+        !cppNamespaceProvider_(*projectGraph_, cppProjectSessions_, cppNamespaces, error)) return false;
+    std::vector<std::optional<parser::ScopedKnownTypeNames>> scopedNames;
+    if (!prepareCppScopedParserNames(*projectGraph_, units_, experimentalCppImportedTypes_,
+                                     cppNamespaces, scopedNames, error)) return false;
+    for (std::size_t unitIndex = 0; unitIndex < units_.size(); ++unitIndex)
+    {
+        const auto& unit = units_[unitIndex];
+        if (!unit || !unit->isSyntaxValid())
+        {
+            error = "syntax observation requires valid source units";
+            return false;
+        }
+        const auto* source = sourceManager_.getFile(unit->fileId());
+        if (!source)
+        {
+            error = "syntax observation cannot find a captured source buffer";
+            return false;
+        }
+        auto clone = std::make_unique<ProjectSyntaxUnit>(unit->projectOrdinal(), unit->sourceOrdinal(),
+            std::string(unit->moduleName()), unit->fileId(), unit->isPrecompiled());
+        if (unit->isPrecompiled())
+        {
+            const std::string payload = internal::serializeSyntaxProductUnit(*unit);
+            if (!internal::deserializeSyntaxProductUnit(
+                    *source, payload, clone->tokens_, clone->arena_, clone->syntaxTree_))
+            {
+                error = "syntax observation could not copy a precompiled syntax product";
+                return false;
+            }
+            clone->lexicallyValid_ = true;
+            clone->syntaxValid_ = true;
+        }
+        else if (!clone->lex(*source, diagnostics) ||
+                 !clone->parse(diagnostics, *knownTypesByProject.at(unit->projectOrdinal()),
+                               scopedNames[unitIndex] ? &*scopedNames[unitIndex] : nullptr))
+        {
+            error = "syntax observation could not reparse a captured source buffer";
+            return false;
+        }
+        copied.push_back(std::move(clone));
+    }
+    output = std::move(copied);
+    return true;
+}
+
 diagnostics::DiagnosticEngine& ProjectCompilation::diagnostics() noexcept
 {
     return diagnostics_;
