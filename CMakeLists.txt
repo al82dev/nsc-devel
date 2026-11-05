@@ -881,6 +881,9 @@ if(LLVM_FOUND)
         target_compile_features(nsc_cpp_interop PUBLIC cxx_std_20)
         nsc_enable_warnings(nsc_cpp_interop)
         if(NSC_CPP_INTEROP_SESSION_TESTS)
+            get_filename_component(NSC_CPP_INTEROP_TEST_ROOT_DEFAULT "${CMAKE_BINARY_DIR}" DIRECTORY)
+            set(NSC_CPP_INTEROP_TEST_ROOT "${NSC_CPP_INTEROP_TEST_ROOT_DEFAULT}" CACHE PATH
+                "Root containing the C/C++ interop test fixtures and temporary files")
             add_executable(nsc_cpp_session_tests tests/unit/CppClangSessionTests.cpp)
             target_include_directories(nsc_cpp_session_tests SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
             target_link_libraries(nsc_cpp_session_tests PRIVATE nsc_cpp_interop nsc_frontend nsc_precompiled)
@@ -888,7 +891,7 @@ if(LLVM_FOUND)
             nsc_enable_warnings(nsc_cpp_session_tests)
             enable_testing()
             add_test(NAME nsc.cpp-interop.session COMMAND nsc_cpp_session_tests
-                "${CLANG_INSTALL_PREFIX}/lib/clang/23" "${CMAKE_BINARY_DIR}"
+                "${CLANG_INSTALL_PREFIX}/lib/clang/23" "${NSC_CPP_INTEROP_TEST_ROOT}"
                 "${CLANG_INSTALL_PREFIX}/bin/clang${CMAKE_EXECUTABLE_SUFFIX}")
             add_test(NAME nsc.cpp-interop.incompatible-clang
                 COMMAND "${CMAKE_COMMAND}"
