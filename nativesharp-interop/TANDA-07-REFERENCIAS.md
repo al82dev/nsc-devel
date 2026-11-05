@@ -11,6 +11,11 @@ Estado: análisis e implementación agrupados en curso; no se da la tanda por ce
   referencia contiene header, biblioteca, DLL, lenguaje, estándar, directorios y
   macros. `CppProjectSessions.cpp` abre una sesión por referencia, en orden y
   agrupada por proyecto del grafo, con triple y recursos del entorno compartido.
+- `ProjectGraphLoader.cpp` recorre las referencias de proyecto con dependencias
+  primero y conserva las referencias C/C++ de cada propietario al normalizar las
+  fuentes. `TypeSpellingAndVisibility.cpp` calcula los proyectos alcanzables por
+  referencias transitivas; los proveedores usan esa visibilidad para las
+  categorías que ya implementan. No implica exportación universal de C++.
 - `CompilationInputManifest` registra como entradas el header principal, la
   biblioteca y la DLL; la identidad de bundle rechaza proyectos con referencias
   C/C++ porque aún no cubre las dependencias transitivas y búsquedas negativas.
@@ -41,3 +46,14 @@ Estado: análisis e implementación agrupados en curso; no se da la tanda por ce
 Siguiente paso: comprobar visibilidad y procedencia en el grafo, completar las
 pruebas de referencias independientes y cambio de header y ejecutar la validación
 agrupada de la tanda. No habilitar la caché sin identidad de dependencias completa.
+
+## Validación agrupada en curso
+
+- La construcción incremental ON está en curso; se ejecutará CTest al terminar.
+- `pruebas-tanda-07-dos-bibliotecas/validar.cmd` terminó con código 0: Clang
+  generó dos bibliotecas C y NSC enlazó y ejecutó un consumidor con macros
+  independientes; el enlazador registró dos bibliotecas.
+- `pruebas-tanda-07-header/validar.cmd` terminó con código 0: el análisis inicial
+  fue correcto y, tras cambiar la firma en un header transitivo, NSC rechazó la
+  llamada de dos argumentos. Se deshabilita la caché para este tipo de referencia;
+  esto comprueba reanálisis, no invalidación de una entrada de caché activa.
