@@ -14,6 +14,29 @@ esa opción y se preparó una corrección que transporta dimensiones de campos
 desde Clang. Ninguna corrección posterior se ha vuelto a validar. Siguiente:
 diagnosticar en conjunto los fallos restantes y repetir la batería agrupada.
 
+## Tercera validación agrupada: casos preparados aprobados
+
+`validar-tanda-08.cmd` terminó con código 0. La construcción incremental de
+`nsc` y de `nsc_cpp_session_tests` con interoperabilidad activada, y de
+`nsc_frontend` con interoperabilidad desactivada, terminó correctamente. La
+comprobación del runtime estático del compilador pasó. La suite de sesiones
+Clang y los siete proyectos preparados (valores, incompleto, record C, union,
+layout, callback y enum en función) terminaron con código 0.
+
+El proyecto record C comprobó acceso a campos anidados y matriz, un global
+compartido con C y una llamada con punteros restrict a objetos distintos. Su
+LLVM contiene `store volatile` y `load volatile` para el campo probado. Los
+proyectos se construyeron a O0 para Windows x64, con Clang 23.1.0; los casos
+aprobados no demuestran todos los layouts, calificadores, callbacks, ABI de
+agregados ni configuraciones de optimización. Persisten advertencias de
+inicialización en la construcción. Las observaciones detalladas posteriores
+de este documento que digan «sin validar» deben interpretarse a la luz de
+esta pasada solo para los casos concretos mencionados aquí.
+
+Siguiente acción: contrastar T08-001 a T08-020 con evidencia y código, cerrar
+solo los puntos cuya formulación completa esté cubierta y resolver los huecos
+sin presentar diagnósticos o una muestra limitada como interoperabilidad total.
+
 - `ClangSession.cpp::describeType` conserva clase, spelling, tipo canónico,
   calificadores y tamaño/alineación cuando Clang dispone de ellos. Modela
   punteros, referencias, arreglos constantes, enums, records y funciones, pero
