@@ -1301,6 +1301,12 @@ int main(int argc, char** argv)
                                 std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1), states, enumError);
                             const bool correct = provided && states.size() == 1 && states[0].isCppEnumConstant &&
                                 states[0].isConst && !states[0].isCppExternal && states[0].integerValue == 0xfffffffdULL;
+                            std::vector<nativesharp::frontend::CppImportedTypeDeclaration> enumTypes;
+                            const bool typeProvided = provideCppEnumTypes(finalGraph, enumGroups, enumTypes, enumError);
+                            const bool correctType = typeProvided && enumTypes.size() == 1 &&
+                                enumTypes[0].identity.name() == "ChoiceType" && enumTypes[0].enumBase &&
+                                enumTypes[0].enumBase->token == nativesharp::lexer::TokenKind::KwInt &&
+                                enumTypes[0].objectLayout && enumTypes[0].objectLayout->sizeBytes == 4;
                             enumGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
                                 CppLanguageMode::C, "enum ChoiceType { Choice = 5 };\n")));
                             const bool conflicted = provideCppSemanticEnumConstants(finalGraph, enumGroups,
@@ -1311,7 +1317,7 @@ int main(int argc, char** argv)
                                 CppLanguageMode::C, "extern int Choice;\n")));
                             const bool combined = provideCppSemanticValues(finalGraph, enumGroups,
                                 std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1), states, enumError);
-                            ok &= expect(correct && conflictingEnums && combined && states.size() == 1 &&
+                            ok &= expect(correct && correctType && conflictingEnums && combined && states.size() == 1 &&
                                          states[0].cppImportError.find("conflicts") != std::string::npos,
                                          "C enum provider preserves value and reports conflicting observations");
                         }
