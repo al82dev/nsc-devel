@@ -25,6 +25,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
@@ -71,11 +72,32 @@ struct ProjectOopHirModelTestAccess;
 
 
 
+struct CppImportedObjectLayout final
+{
+    std::uint64_t sizeBytes;
+    std::uint64_t alignmentBytes;
+};
+
+struct CppImportedTypeDeclaration final
+{
+    compilation::TypeIdentity identity;
+    NamedTypeDeclarationKind kind;
+    NamedTypeAccessibility accessibility;
+    std::size_t projectOrdinal;
+    std::string sourcePath;
+    // Physical dimensions only: this does not define fields, object lifetime, or call ABI.
+    std::optional<CppImportedObjectLayout> objectLayout = std::nullopt;
+    // Bounds for accessing verified fields by pointer; never authorizes value storage or lifetime.
+    std::optional<CppImportedObjectLayout> memberAccessLayout = std::nullopt;
+};
+
 class ProjectNameLookup final
 {
 public:
     ProjectNameLookup();
     explicit ProjectNameLookup(ProjectCompilationIndexes& indexes) noexcept;
+    bool setImportedNamespaces(std::vector<std::pair<std::size_t, std::string>> namespaces);
+    bool setCppImportedTypes(std::vector<CppImportedTypeDeclaration> types);
 
     bool build(
         const compilation::ProjectGraph& graph,
@@ -96,6 +118,8 @@ public:
     std::span<const TypeNameBinding> bindings() const noexcept;
     const NamedTypeDeclaration* typeForOrdinal(std::size_t ordinal) const noexcept;
     std::optional<std::size_t> typeOrdinalForIdentity(std::string_view identity) const;
+    std::optional<std::size_t> cppImportedTypeIndex(std::size_t typeOrdinal) const noexcept;
+    const CppImportedTypeDeclaration* cppImportedType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
     bool hasTypeIndex() const noexcept;
     // NS304-T08-F05: trait-impl parts whose target is an external type (the module owns the trait,
@@ -561,11 +585,15 @@ private:
     // NSC-LIMIT-009. Los anidados directos de los contenedores lexicos, de dentro hacia fuera.
     // Es el PRIMER escalon de la busqueda dentro de un tipo, antes del namespace.
     bool namespaceExistsVisible(std::size_t projectOrdinal, const std::string& namespaceName) const;
+    bool installImportedNamespaces(diagnostics::DiagnosticEngine& diagnostics);
     std::optional<std::string> resolveNamespaceTarget(
         std::size_t projectOrdinal,
         const std::vector<std::string>& namespaceSegments,
         const std::string& target) const;
     std::vector<std::unique_ptr<ModuleDeclarationSpace>> modules_;
+    std::vector<std::pair<std::size_t, std::string>> importedNamespaces_;
+    std::vector<CppImportedTypeDeclaration> cppImportedTypes_;
+    std::unordered_map<std::size_t, std::size_t> cppImportedTypeIndices_;
     std::vector<PendingTypeDeclaration> pendingTypes_;
     std::vector<NamedTypeDeclaration> namedTypes_;
     std::vector<NamedTypeDeclarationPart> externalTraitImplParts_;

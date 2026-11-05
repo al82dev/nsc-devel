@@ -40,6 +40,30 @@ ProjectNameLookup::ProjectNameLookup(ProjectCompilationIndexes& indexes) noexcep
 {
 }
 
+bool ProjectNameLookup::setImportedNamespaces(
+    std::vector<std::pair<std::size_t, std::string>> namespaces)
+{
+    if (built_ || !modules_.empty()) return false;
+    importedNamespaces_ = std::move(namespaces);
+    return true;
+}
+
+bool ProjectNameLookup::setCppImportedTypes(std::vector<CppImportedTypeDeclaration> types)
+{
+    if (built_ || !modules_.empty()) return false;
+    for (const auto& type : types)
+        for (const auto& layout : {type.objectLayout, type.memberAccessLayout})
+        if (layout)
+        {
+            const auto size = layout->sizeBytes;
+            const auto alignment = layout->alignmentBytes;
+            if (size == 0 || alignment == 0 || (alignment & (alignment - 1)) != 0 || size % alignment != 0)
+                return false;
+        }
+    cppImportedTypes_ = std::move(types);
+    return true;
+}
+
 ModuleDeclarationSpace::ModuleDeclarationSpace(
     std::size_t projectOrdinal,
     std::string moduleName)
@@ -110,9 +134,25 @@ bool ProjectNameLookup::build(
         return false;
 
     initializeModules(graph);
+    if (!installImportedNamespaces(diagnostics)) return false;
     buildVisibility(graph);
     driver::CompilationWorkerPool& workers = *workerPool;
     collectDeclarationIndexes(graph, units, workers);
+    for (const auto& imported : cppImportedTypes_)
+    {
+        if (imported.projectOrdinal >= graph.projects().size() || !imported.identity.isValid() ||
+            imported.identity.moduleName() != graph.projects()[imported.projectOrdinal].moduleName() ||
+            imported.sourcePath.empty())
+            return false;
+        NamedTypeDeclarationPart part;
+        part.kind = imported.kind;
+        part.accessibility = imported.accessibility;
+        part.hasExplicitAccessibility = true;
+        part.isNested = !imported.identity.containingTypes().empty();
+        part.projectOrdinal = imported.projectOrdinal;
+        part.sourcePath = imported.sourcePath;
+        pendingTypes_.push_back({imported.identity, std::move(part)});
+    }
     reportUnsupportedGlobalDeclarations(units, diagnostics);
     finalizePredeclarations(diagnostics);
     finalizeReexports(units, diagnostics);
@@ -120,7 +160,21 @@ bool ProjectNameLookup::build(
     finalizeNamespaceDeclarations();
     collectBindingIndexes(units, diagnostics, workers);
     built_ = true;
-    return !diagnostics.hasErrors();
+    if (diagnostics.hasErrors()) return false;
+    std::unordered_map<std::size_t, std::size_t> importedIndices;
+    for (std::size_t index = 0; index < cppImportedTypes_.size(); ++index)
+    {
+        const auto& imported = cppImportedTypes_[index];
+        const auto ordinal = indexes_->typeOrdinalForIdentity(imported.identity.key());
+        const auto* declaration = ordinal ? indexes_->typeForOrdinal(*ordinal) : nullptr;
+        if (!declaration || declaration->projectOrdinal != imported.projectOrdinal ||
+            declaration->parts.size() != 1 || declaration->parts.front().syntax != nullptr ||
+            declaration->parts.front().sourcePath != imported.sourcePath ||
+            !importedIndices.emplace(*ordinal, index).second)
+            return false;
+    }
+    cppImportedTypeIndices_ = std::move(importedIndices);
+    return true;
 }
 
 std::span<const std::unique_ptr<ModuleDeclarationSpace>> ProjectNameLookup::modules() const noexcept
@@ -142,6 +196,18 @@ std::optional<std::size_t> ProjectNameLookup::typeOrdinalForIdentity(
     std::string_view identity) const
 {
     return indexes_->typeOrdinalForIdentity(identity);
+}
+
+std::optional<std::size_t> ProjectNameLookup::cppImportedTypeIndex(std::size_t typeOrdinal) const noexcept
+{
+    const auto found = cppImportedTypeIndices_.find(typeOrdinal);
+    return found == cppImportedTypeIndices_.end() ? std::nullopt : std::optional<std::size_t>(found->second);
+}
+
+const CppImportedTypeDeclaration* ProjectNameLookup::cppImportedType(std::size_t typeOrdinal) const noexcept
+{
+    const auto index = cppImportedTypeIndex(typeOrdinal);
+    return index && *index < cppImportedTypes_.size() ? &cppImportedTypes_[*index] : nullptr;
 }
 
 std::span<const std::size_t> ProjectNameLookup::typeOrdinalsForName(
