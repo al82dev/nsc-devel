@@ -572,6 +572,7 @@ CppRecordObservationResult prepareCppRecordObservation(
         result.types.push_back({group.identity, frontend::NamedTypeDeclarationKind::Struct,
                                 frontend::NamedTypeAccessibility::Public, group.projectOrdinal,
                                 std::move(sourcePath), objectLayout, memberAccessLayout});
+        result.types.back().isIncomplete = group.status == CppRecordGroupStatus::ForwardOnly;
         result.groupByImportedType.push_back(groupIndex);
     }
     return result;

@@ -615,14 +615,15 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutNamedType(
     }
 
     const NamedTypeDeclaration& type = nameLookup_->namedTypes()[typeOrdinal];
-    if (nameLookup_->cppImportedTypeIndex(typeOrdinal))
+    if (const auto* imported = nameLookup_->cppImportedType(typeOrdinal))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::IncompleteType,
             diagnostics::DiagnosticSeverity::Error,
             useRange,
             "C/C++ type '" + type.identity.fullyQualifiedName() +
-                "' has no imported object layout yet");
+                (imported->isIncomplete ? "' is incomplete and has no object layout" :
+                                          "' has no imported object layout yet"));
         return std::nullopt;
     }
     if (type.kind == NamedTypeDeclarationKind::Class ||

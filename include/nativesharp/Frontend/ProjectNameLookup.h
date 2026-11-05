@@ -100,6 +100,8 @@ struct CppImportedTypeDeclaration final
     std::optional<CppImportedEnumBase> enumBase = std::nullopt;
     // A conflicting external declaration is diagnosed only when its type is used.
     std::string deferredImportError;
+    // True only when Clang supplied declarations but no complete definition.
+    bool isIncomplete = false;
 };
 
 class ProjectNameLookup final
