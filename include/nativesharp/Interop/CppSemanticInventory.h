@@ -18,6 +18,7 @@ namespace nativesharp::frontend
 {
 struct CppFunctionDemand;
 struct CppImportedTypeAlias;
+struct CppImportedTypeDeclaration;
 struct NamespaceStateSymbol;
 }
 
@@ -80,6 +81,9 @@ using CppSemanticEnumInventoryResult =
 // declarations have been resolved; values are not inserted into NSC here.
 CppSemanticEnumInventoryResult collectCppSemanticEnums(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
+bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects,
+    std::vector<frontend::CppImportedTypeDeclaration>& types, std::string& error);
 
 struct CppSemanticEnumConstant
 {

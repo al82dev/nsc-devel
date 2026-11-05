@@ -1,5 +1,7 @@
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Frontend/CppImportedTypeAlias.h"
+#include "nativesharp/Frontend/CppAliasBuiltinType.h"
+#include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 
@@ -216,6 +218,58 @@ bool provideCppSemanticGlobals(
                 result.push_back(std::move(state));
             }
     states = std::move(result);
+    error.clear();
+    return true;
+}
+
+bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects,
+    std::vector<frontend::CppImportedTypeDeclaration>& types, std::string& error)
+{
+    auto inventory = collectCppSemanticEnums(graph, projects);
+    if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&inventory))
+    { error = failure->message; return false; }
+    using Key = std::pair<std::size_t, std::string>;
+    std::map<Key, const CppSemanticEnumEntry*> selected;
+    for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(inventory))
+    {
+        const auto& value = entry.declaration;
+        if (value.isCxx || value.name.empty() || !value.complete || !value.underlyingType ||
+            !value.sizeBits || !value.alignmentBits || !value.location ||
+            entry.projectOrdinal >= graph.projects().size()) continue;
+        const Key key{entry.projectOrdinal, value.name};
+        const auto [where, inserted] = selected.emplace(key, &entry);
+        if (!inserted)
+        {
+            const auto& prior = where->second->declaration;
+            bool same = where->second->targetTriple == entry.targetTriple &&
+                prior.sizeBits == value.sizeBits && prior.alignmentBits == value.alignmentBits &&
+                prior.underlyingType && prior.underlyingType->canonicalSpelling == value.underlyingType->canonicalSpelling &&
+                prior.enumerators.size() == value.enumerators.size();
+            for (std::size_t i = 0; same && i < value.enumerators.size(); ++i)
+                same = prior.enumerators[i].name == value.enumerators[i].name &&
+                    prior.enumerators[i].decimalValue == value.enumerators[i].decimalValue;
+            if (!same) { error = "conflicting C enum declarations: " + value.name; return false; }
+        }
+    }
+    std::vector<frontend::CppImportedTypeDeclaration> result;
+    for (const auto& [key, entry] : selected)
+    {
+        const auto& value = entry->declaration;
+        const auto base = frontend::cppAliasBuiltinType(*value.underlyingType);
+        if (!base || base->pointerDepth || entry->targetTriple != "x86_64-pc-windows-msvc" ||
+            *value.sizeBits == 0 || *value.alignmentBits == 0 || *value.sizeBits % 8 || *value.alignmentBits % 8 ||
+            (value.underlyingType->kind != CppTypeKind::SignedInteger &&
+             value.underlyingType->kind != CppTypeKind::UnsignedInteger)) continue;
+        compilation::TypeIdentity identity(graph.projects()[key.first].moduleName(), {}, {}, value.name);
+        if (!identity.isValid()) { error = "invalid C enum identity: " + value.name; return false; }
+        frontend::CppImportedTypeDeclaration type{std::move(identity), frontend::NamedTypeDeclarationKind::Enum,
+            frontend::NamedTypeAccessibility::Public, key.first, value.location->file.generic_string()};
+        type.objectLayout = frontend::CppImportedObjectLayout{*value.sizeBits / 8, *value.alignmentBits / 8};
+        type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
+        result.push_back(std::move(type));
+    }
+    types = std::move(result);
     error.clear();
     return true;
 }
