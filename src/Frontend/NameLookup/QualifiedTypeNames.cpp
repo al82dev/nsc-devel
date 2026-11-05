@@ -1,5 +1,6 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
+#include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Frontend/CppAliasRecordType.h"
 #include "nativesharp/Frontend/QualifiedNamespaceTarget.h"
 #include "../Internal/LookupEnvironment.h"
@@ -249,6 +250,35 @@ bool ProjectNameLookup::expandCppTypeAlias(
             mutableSyntax->setOriginNamespace("");
             mutableSyntax->prependModifiers(std::vector<ast::TypeModifierSyntax>(record->pointerDepth));
             mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || record->pointeeConst);
+            return true;
+        }
+        const auto array = cppAliasArrayType(selected->declaration.underlyingType);
+        if (array && selected->targetTriple == "x86_64-pc-windows-msvc")
+        {
+            if ((array->element.pointeeConst && !syntax->modifiers().empty()) ||
+                (syntax->isPointeeConst() && array->element.pointerDepth != 0))
+                return report(diagnostics::DiagnosticId::InvalidUsingTarget,
+                              "C/C++ array alias has qualifiers that cannot yet be represented: '" +
+                              syntax->baseName() + "'");
+            auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
+            auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
+            std::vector<ast::TypeModifierSyntax> modifiers(array->element.pointerDepth);
+            for (auto dimension = array->dimensions.rbegin(); dimension != array->dimensions.rend(); ++dimension)
+            {
+                auto* count = arena.make<ast::AstNode>(ast::AstNodeKind::IntegerLiteralExpression, syntax->range());
+                count->setTokenKind(lexer::TokenKind::IntegerLiteral);
+                count->setText(std::to_string(*dimension));
+                count->setIntegerValue(*dimension);
+                ast::TypeModifierSyntax modifier;
+                modifier.kind = ast::TypeModifierSyntaxKind::Array;
+                modifier.arrayCount = count;
+                modifier.range = syntax->range();
+                modifiers.push_back(modifier);
+            }
+            mutableSyntax->setBaseTokenKind(array->element.token);
+            mutableSyntax->setBaseName(std::string(array->element.name));
+            mutableSyntax->prependModifiers(modifiers);
+            mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || array->element.pointeeConst);
             return true;
         }
         const auto mapped = cppAliasBuiltinType(selected->declaration.underlyingType);
