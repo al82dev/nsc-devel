@@ -4743,6 +4743,14 @@ int main(int argc, char** argv)
                     const std::vector<std::pair<std::size_t, std::string>> extra{{appOrdinal, "External.More"}};
                     const auto inventory = nativesharp::frontend::cppParserProjectInventories(
                         *graph, inventoryUnits, imported, extra);
+                    CppTypeAliasDeclaration parserAlias;
+                    parserAlias.name = "CNumber";
+                    parserAlias.qualifiedName = "External::CNumber";
+                    const std::vector<nativesharp::frontend::CppImportedTypeAlias> parserAliases{{
+                        appOrdinal, graph->projects()[appOrdinal].projectFile(), 0,
+                        "x86_64-pc-windows-msvc", parserAlias}};
+                    const auto withAlias = nativesharp::frontend::cppParserProjectInventories(
+                        *graph, inventoryUnits, imported, extra, parserAliases);
                     auto contains = [](const auto& values, const auto& value) {
                         return std::find(values.begin(), values.end(), value) != values.end();
                     };
@@ -4755,6 +4763,10 @@ int main(int argc, char** argv)
                         contains((*inventory)[appOrdinal].namespaces, "External.More") &&
                         contains((*inventory)[appOrdinal].namespaces, "External"),
                         "parser inventory follows project references and retains native and C++ namespace prefixes");
+                    ok &= expect(withAlias &&
+                        contains((*withAlias)[appOrdinal].cppTypes, "External.CNumber") &&
+                        !contains((*withAlias)[ownerCore].cppTypes, "External.CNumber"),
+                        "parser alias names follow project visibility and C++ namespace spelling");
                     const auto consumer = root / "Consumer";
                     std::filesystem::create_directories(consumer);
                     { std::ofstream file(consumer / "Consumer.nsproj");
