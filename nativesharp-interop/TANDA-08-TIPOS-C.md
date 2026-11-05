@@ -196,3 +196,10 @@ El selector incorpora ahora enums referidos por campos de records C
 seleccionados, incluso tras punteros o arreglos, y se preparó una prueba donde
 solo se escribe el tipo del record. Todavía falta comprobar colisiones con
 tipos NS y seleccionar dependencias de firmas; no hay resultados de ejecución.
+
+La observación conserva ahora las identidades de enums que colisionan y el
+selector las comprueba también cuando un campo introduce la dependencia. Hay
+una prueba preparada con un struct NS homónimo. Las demandas de funciones se
+capturan después del índice de nombres (`ProjectCompilationSnapshots.cpp`),
+por lo que seleccionar los enums de una firma requiere resolver ese orden;
+no basta con proyectar la función al final. Esta ruta no se ha validado.
