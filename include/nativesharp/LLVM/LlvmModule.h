@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <string_view>
+#include <memory>
 
 namespace nativesharp::runtime
 {
@@ -24,6 +26,7 @@ public:
     LlvmModule& operator=(const LlvmModule&) = delete;
     ~LlvmModule();
 
+    static std::unique_ptr<LlvmModule> parseText(std::string_view ir, std::string& error);
     bool verify(std::string& error) const;
     std::string text() const;
 

@@ -24,6 +24,36 @@ LlvmModule::~LlvmModule()
     }
 }
 
+std::unique_ptr<LlvmModule> LlvmModule::parseText(std::string_view ir, std::string& error)
+{
+    error.clear();
+    if (!verifyLoadedLlvmVersion(error)) return nullptr;
+    auto context = llvm_api::LLVMContextCreate();
+    if (!context) { error = "cannot create LLVM context"; return nullptr; }
+    auto buffer = llvm_api::LLVMCreateMemoryBufferWithMemoryRangeCopy(ir.data(), ir.size(), "nsc.cpp.ir");
+    if (!buffer)
+    {
+        llvm_api::LLVMContextDispose(context);
+        error = "cannot create LLVM IR buffer";
+        return nullptr;
+    }
+    llvm_api::LLVMModuleRef module = nullptr;
+    char* message = nullptr;
+    // LLVMParseIRInContext consumes the memory buffer on success and failure.
+    const int failed = llvm_api::LLVMParseIRInContext(context, buffer, &module, &message);
+    if (message) { error.assign(message); llvm_api::LLVMDisposeMessage(message); }
+    if (failed || !module)
+    {
+        if (module) llvm_api::LLVMDisposeModule(module);
+        llvm_api::LLVMContextDispose(context);
+        if (error.empty()) error = "cannot parse LLVM IR";
+        return nullptr;
+    }
+    auto result = std::unique_ptr<LlvmModule>(new LlvmModule(context, module));
+    if (!result->verify(error)) return nullptr;
+    return result;
+}
+
 bool LlvmModule::verify(std::string& error) const
 {
     error.clear();
