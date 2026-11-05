@@ -1240,17 +1240,33 @@ int main(int argc, char** argv)
                         std::vector<CppProjectSessions> recordGroups(2);
                         recordGroups[0].projectFile = otherProject->projectFile();
                         recordGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                            CppLanguageMode::Cpp, "struct Shared { int x; }; struct Same { int x; }; struct Equal { int x; }; struct Forward; struct OnlyForward; "
+                            CppLanguageMode::Cpp, "typedef int InventoryAlias; struct Shared { int x; }; struct Same { int x; }; struct Equal { int x; }; struct Forward; struct OnlyForward; "
                             "Shared* use(Shared*); OnlyForward* store(OnlyForward*); int nestedPtr(Shared**); "
                             "void observe(const OnlyForward*); Shared value(Shared); "
                             "template<class T> struct Box {}; int specialized(Box<int>*);\n")));
                         recordGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                            CppLanguageMode::Cpp, "struct Shared { double x; }; struct Same { float x; }; struct Equal { int x; }; struct Forward { int x; };\n")));
+                            CppLanguageMode::Cpp, "typedef double InventoryAlias; struct Shared { double x; }; struct Same { float x; }; struct Equal { int x; }; struct Forward { int x; };\n")));
                         recordGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
                             CppLanguageMode::Cpp, "struct Shared { int x; }; struct Same { int x; };\n")));
                         recordGroups[1].projectFile = project->projectFile();
                         recordGroups[1].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                            CppLanguageMode::Cpp, "namespace { struct Hidden {}; } struct Item {}; struct Shared {}; Shared* own(Shared*);\n")));
+                            CppLanguageMode::Cpp, "typedef int InventoryAlias; namespace { struct Hidden {}; } struct Item {}; struct Shared {}; Shared* own(Shared*);\n")));
+                        auto aliasInventory = collectCppSemanticTypeAliases(finalGraph, recordGroups);
+                        const auto* aliases = std::get_if<std::vector<CppSemanticTypeAliasEntry>>(&aliasInventory);
+                        bool aliasFirst = false, aliasSecond = false, aliasOtherProject = false;
+                        if (aliases)
+                            for (const auto& entry : *aliases)
+                            {
+                                if (entry.declaration.name != "InventoryAlias") continue;
+                                aliasFirst |= entry.projectOrdinal == 1 && entry.referenceIndex == 0 &&
+                                    entry.declaration.underlyingType.kind == CppTypeKind::SignedInteger;
+                                aliasSecond |= entry.projectOrdinal == 1 && entry.referenceIndex == 1 &&
+                                    entry.declaration.underlyingType.kind == CppTypeKind::Floating;
+                                aliasOtherProject |= entry.projectOrdinal == 2 && entry.referenceIndex == 0 &&
+                                    entry.declaration.underlyingType.kind == CppTypeKind::SignedInteger;
+                            }
+                        ok &= expect(aliasFirst && aliasSecond && aliasOtherProject,
+                                     "typedef inventory retains conflicting observations and project origins");
                         auto inventory = collectCppSemanticRecords(finalGraph, recordGroups);
                         const auto* entries = std::get_if<std::vector<CppSemanticRecordEntry>>(&inventory);
                         bool first = false, second = false, item = false, anonymous = false, forward = false;
