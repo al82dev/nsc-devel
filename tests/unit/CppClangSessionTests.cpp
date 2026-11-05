@@ -2525,6 +2525,38 @@ int main(int argc, char** argv)
                 nativesharp::frontend::ProjectCompilation compilation;
                 std::string error;
                 const auto semanticPath = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                {
+                    nativesharp::frontend::ProjectCompilation aliasCompilation;
+                    aliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() == "Main.ns")
+                            return "Count Echo(Count value) { return value; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    bool supplied = false;
+                    const auto snapshot = cAliases;
+                    const bool configured = aliasCompilation.setCppTypeAliasProvider(
+                        [snapshot, &supplied](const auto& graph, auto, auto& output, auto& why) {
+                            if (!snapshot || graph.projects().empty()) { why = "alias fixture unavailable"; return false; }
+                            for (const auto& alias : *snapshot)
+                                if (alias.name == "Count")
+                                {
+                                    output.push_back({0, graph.projects()[0].projectFile(), 0,
+                                                      "x86_64-pc-windows-msvc", alias});
+                                    supplied = true;
+                                }
+                            return supplied;
+                        }, error);
+                    const bool bound = configured && aliasCompilation.compileProjectNames(semanticPath, error);
+                    bool expanded = false;
+                    if (bound && aliasCompilation.nameLookup())
+                        for (const auto& binding : aliasCompilation.nameLookup()->bindings())
+                            expanded |= binding.writtenName == "Count" && binding.syntax &&
+                                binding.syntax->baseTokenKind() == nativesharp::lexer::TokenKind::KwUInt;
+                    if (!bound) std::cerr << "C typedef semantic setup failed: " << error << '\n';
+                    ok &= expect(bound && supplied && expanded,
+                                 "scalar typedef enters parser and resolves to its underlying NativeSharp type");
+                }
                 auto incompleteProjection = imported;
                 incompleteProjection.mangledName.clear();
                 ok &= expect(!compilation.setCppImportedFunctions({incompleteProjection}, error) &&
