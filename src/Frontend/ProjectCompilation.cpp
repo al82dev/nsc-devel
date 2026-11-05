@@ -1495,6 +1495,10 @@ bool ProjectCompilation::compileProjectMethodBodies(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "method-bodies");
     methodBodyModel_ = std::make_unique<ProjectMethodBodyModel>();
+    if (experimentalCppLifetimeAnalysisForTests_ && experimentalCppLifetimeMethodProvider_)
+        methodBodyModel_->enableCppLifetimeAnalysisForTests();
+    if (experimentalCppLocalLifetimeAnalysisForTests_)
+        methodBodyModel_->enableCppLocalLifetimeAnalysisForTests();
     std::optional<std::size_t> publicSurfaceProjectOrdinal;
     if (projectGraph_.has_value() && projectGraph_->rootProject() != nullptr &&
         projectGraph_->rootProject()->outputKind() != compilation::ProjectOutputKind::Executable)
