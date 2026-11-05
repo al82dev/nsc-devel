@@ -1611,6 +1611,11 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Causa: la observación captura demandas sintácticas antes de la resolución de variables locales; la selección nueva transforma un candidato conflictivo en error inmediato. Debe dejar esos candidatos sin seleccionar para que la resolución posterior aplique la precedencia y, si realmente se usa el global, rechace su proyección no disponible.
 - Presupuesto: únicamente `src/Interop/Cpp/CppSemanticRecord.cpp` y registro Markdown. Conservar la selección de candidatos sin conflicto y los demás diagnósticos existentes. Repetir la batería agrupada con los tres casos preparados.
 
+### Uso real de global enum conflictivo
+
+- Presupuesto: `Collision.ns.txt`, `validar.cmd` de `nativesharp-interop/pruebas-tanda-08-enum-funcion` y registro Markdown. Comprobar que un global C efectivamente utilizado se rechaza si su enum colisiona con un struct NativeSharp, incluso tras diferir la observación especulativa.
+- El diagnóstico debe identificar que el global C no se puede proyectar; no basta con cualquier error de compilación.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.

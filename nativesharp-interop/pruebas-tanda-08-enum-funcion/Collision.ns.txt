@@ -1,0 +1,5 @@
+struct HiddenState { int value; }
+int Main()
+{
+    return (int)hidden_global;
+}
