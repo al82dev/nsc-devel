@@ -6,3 +6,5 @@ enum Mood apply_mood(MoodCallback callback, enum Mood value);
 struct MoodData { enum Mood value; enum Mood values[2]; };
 struct MoodData* get_mood_data(void);
 int read_mood_data(struct MoodData* data);
+extern enum Mood shared_mood;
+int read_shared_mood(void);

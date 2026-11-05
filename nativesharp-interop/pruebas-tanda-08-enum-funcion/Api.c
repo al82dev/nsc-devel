@@ -5,3 +5,5 @@ enum Mood apply_mood(MoodCallback callback, enum Mood value) { return callback(v
 static struct MoodData data = { Happy, { Happy, Happy } };
 struct MoodData* get_mood_data(void) { return &data; }
 int read_mood_data(struct MoodData* value) { return (int)value->value + (int)value->values[1]; }
+enum Mood shared_mood = Happy;
+int read_shared_mood(void) { return (int)shared_mood; }

@@ -1579,3 +1579,10 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Objetivo: comprobar llamadas C con aliases de enteros de 8, 16 y 32 bits, incluyendo un argumento negativo y valores positivos de tipos sin signo.
 - Presupuesto: `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-callback`, y registro Markdown. No cambiar el compilador antes de obtener evidencia del fixture.
 - Verificación: proyecto mixto con Clang 23.1.0 y NativeSharp en la batería agrupada. Esta muestra no cierra T08-006 ni cubre todos los valores o tipos de C.
+
+## Tanda 08: global C de tipo enum
+
+- Objetivo: consumir una variable global externa C de tipo enum conservando su identidad nominal, tamaño, signo y calificadores, y seleccionar el enum cuando sea requerido por el global aunque no aparezca explícitamente en código NativeSharp.
+- Evidencia inicial: `projectCppSemanticGlobal` llama `mapGlobalType`, que solo proyecta escalares y punteros a escalares; `projectCppSemanticEnumType` valida enum contra el índice de tipos de `ProjectNameLookup`. El proveedor de globales no recibe actualmente ese índice; la observación previa de dependencias contempla firmas de función, pero no tipos de globales.
+- Presupuesto inicial de reproducción: `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, y registro Markdown. Para la implementación se delimitarán símbolos y consumidores tras completar la inspección del orden de selección; no modificar NSLink, LLVM ni desplegar en C:.
+- La prueba mixta inicial usa un enum también mencionado por funciones, por lo que no demuestra la selección de dependencias cuando solo aparece en el global. Añadir un caso independiente para esa condición antes de considerar resuelto el contrato.

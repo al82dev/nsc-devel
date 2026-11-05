@@ -7,5 +7,7 @@ int Main()
     data->value = current_mood();
     data->values[1] = current_mood();
     if (read_mood_data(data) != -6) return 3;
+    shared_mood = current_mood();
+    if (read_mood(shared_mood) != -3 || read_shared_mood() != -3) return 4;
     return 0;
 }
