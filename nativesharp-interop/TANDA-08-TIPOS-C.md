@@ -99,6 +99,11 @@ un struct o union anónimos, en la declaración y en la identidad de tipo. Se
 preparó una prueba de ambas formas. No se ha compilado ni ejecutado esta
 implementación, ni se ha demostrado la importación de esos tipos por el driver.
 
+El proyecto `pruebas-tanda-08-layout` prepara una comparación de tamaño,
+alineación y offset frente a funciones C compiladas por Clang desde el mismo
+header. El script está preparado; la comparación aún no se ha ejecutado y no
+demuestra cobertura de otros layouts.
+
 `pruebas-tanda-08-union` prepara un recorrido donde NativeSharp escribe un
 miembro de una union C y C lee el byte superpuesto. El script existe, pero no
 se ha ejecutado y no cubre paso de la union por valor.
