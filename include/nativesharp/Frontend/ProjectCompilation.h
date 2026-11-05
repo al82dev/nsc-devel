@@ -5,6 +5,8 @@
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
+#include "nativesharp/Interop/CppInteropSession.h"
+#include "nativesharp/Interop/CppProjectSessions.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectCompilationLifetime.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
