@@ -494,17 +494,12 @@ bool configurePrecompiledModules(
              !compilation.enableCppImportedNoexceptLocalLifetime(error) ||
              !compilation.enableExperimentalCppDiscardedLifetimeLoweringForTests(error))) return false;
         if (hasSessions && !compilation.setCppFunctionProvider(
-                [&compilation, hasCppSessions](const auto& graph, auto projects, auto, auto demands, auto& projected,
+                [&compilation](const auto& graph, auto projects, auto, auto demands, auto& projected,
                    auto& deferred, auto& providerError) {
-                    if (hasCppSessions)
-                    {
-                        const auto* lookup = compilation.nameLookup();
-                        if (!lookup) { providerError = "C++ name lookup is unavailable"; return false; }
-                        return interop::provideExperimentalCppFunctionsWithRecords(
-                            graph, projects, *lookup, demands, projected, deferred, providerError);
-                    }
-                    return interop::provideCppSemanticFunctions(
-                        graph, projects, demands, projected, deferred, providerError);
+                    const auto* lookup = compilation.nameLookup();
+                    if (!lookup) { providerError = "C/C++ name lookup is unavailable"; return false; }
+                    return interop::provideExperimentalCppFunctionsWithRecords(
+                        graph, projects, *lookup, demands, projected, deferred, providerError);
                 }, error))
             return false;
         if (hasSessions && !compilation.setCppGlobalProvider(
