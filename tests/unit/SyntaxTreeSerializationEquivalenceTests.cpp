@@ -23,13 +23,13 @@
 // EN: The syntax tree serializer of TemplateCatalogCodec.cpp writes the syntax products of the syntax
 //     caches and of the `.nsproducts` sidecar, a persistent format. It used to build one string per
 //     subtree recursively; it now writes into one buffer with an explicit worklist. This test keeps a
-//     literal copy of the recursive version as the reference and requires byte-identical output for
+//     recursive version as the reference, updated for later format fields, and requires byte-identical output for
 //     every NativeSharp source of the repository's libraries and test corpora.
 // ES: El serializador de árboles sintácticos de TemplateCatalogCodec.cpp escribe los productos
 //     sintácticos de las cachés de sintaxis y del sidecar `.nsproducts`, un formato persistente. Antes
 //     construía un string por subárbol de forma recursiva; ahora escribe en un solo buffer con una lista
 //     de trabajo explícita. Esta prueba conserva una copia literal de la versión recursiva como
-//     referencia y exige la misma salida, byte por byte, para cada fuente NativeSharp de las bibliotecas
+//     referencia, actualizada con campos posteriores del formato, y exige la misma salida, byte por byte, para cada fuente NativeSharp de las bibliotecas
 //     y de los corpus de prueba del repositorio.
 
 namespace nativesharp::frontend::internal
@@ -49,8 +49,8 @@ std::string legacyAstNodeTree(const ast::AstNode* node);
 std::string legacyGenericParameter(const ast::GenericParameterSyntax& parameter);
 std::string legacyGenericConstraint(const ast::GenericConstraintClause& clause);
 
-// ---- Reference: the recursive serializer as it was, copied verbatim (names prefixed). ----
-// ---- Referencia: el serializador recursivo tal como era, copiado literal (nombres con prefijo). ----
+// ---- Reference: recursive serializer, with later format fields kept in sync. ----
+// ---- Referencia: serializador recursivo con los campos posteriores del formato actualizados. ----
 
 void writeSourceRange(std::string& out, SourceRange range)
 {
@@ -88,6 +88,7 @@ std::string legacyGenericConstraint(
     frontend::internal::CachePayloadWriter::byte(out, clause.requiresUnmanaged ? 1U : 0U);
     frontend::internal::CachePayloadWriter::byte(out, clause.requiresNotNull ? 1U : 0U);
     frontend::internal::CachePayloadWriter::byte(out, clause.requiresRefLike ? 1U : 0U);
+    frontend::internal::CachePayloadWriter::byte(out, clause.enclosingTypeParameter ? 1U : 0U);
     frontend::internal::CachePayloadWriter::byte(out, clause.equalityConstraint != nullptr ? 1U : 0U);
     if (clause.equalityConstraint != nullptr)
         out += legacyTypeSyntaxTree(clause.equalityConstraint);
