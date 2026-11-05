@@ -1479,7 +1479,7 @@ int main(int argc, char** argv)
                                 {
                                     noRepeatedLayout |= refined->groups[prepared->groupByImportedType[i]].identity.name() == "Equal" &&
                                         !prepared->types[i].objectLayout && !prepared->types[i].isIncomplete;
-                                    forwardIncomplete |= refined->groups[prepared->groupByImportedType[i]].identity.name() == "Forward" &&
+                                    forwardIncomplete |= refined->groups[prepared->groupByImportedType[i]].identity.name() == "OnlyForward" &&
                                         !prepared->types[i].objectLayout && prepared->types[i].isIncomplete;
                                 }
                             auto noHashEntries = *entries;
