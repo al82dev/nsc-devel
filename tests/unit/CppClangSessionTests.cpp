@@ -1714,14 +1714,17 @@ int main(int argc, char** argv)
                     nativesharp::driver::DriverExecutionScope scope(driverOutput, driverErrors);
                     auto* previousScope = nativesharp::driver::activeExecutionScope;
                     nativesharp::driver::activeExecutionScope = &scope;
-                    scope.cppSessionFactory = &factory;
+                    RejectUnexpectedOpen missingEnvironmentFactory;
+                    scope.cppSessionFactory = &missingEnvironmentFactory;
                     CompilationInputManifest ordinaryManifest(combinedGraph, {});
                     nativesharp::frontend::ProjectCompilation ordinaryCompilation;
                     error.clear();
                     const bool ordinaryPrepared = nativesharp::driver::configurePrecompiledModules(
                         ordinaryManifest, ordinaryCompilation, error, false);
-                    ok &= expect(ordinaryPrepared && ordinaryCompilation.cppProjectSessions().empty(),
-                                 "driver without explicit environment does not create C/C++ sessions");
+                    ok &= expect(!ordinaryPrepared && missingEnvironmentFactory.calls == 0 &&
+                                 error.find("--cpp-clang-root") != std::string::npos &&
+                                 ordinaryCompilation.cppProjectSessions().empty(),
+                                 "driver rejects C/C++ references without configuration before opening a session");
                     if (plainProject)
                     {
                         ProjectGraph plainGraph(plainProject->projectFile(), std::vector<Project>{*plainProject});
