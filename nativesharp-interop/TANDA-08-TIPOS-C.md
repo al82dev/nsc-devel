@@ -42,3 +42,14 @@ aliases en `SyntaxBinding.cpp` usa `LookupEnvironment::typeAliases` y objetos
 ninguno de esos puntos. El siguiente trabajo es conectar ambas fases respetando
 visibilidad entre proyectos, colisiones y calificadores, y después continuar con
 enums y registros. No se considera terminado un alias por reconocer su nombre.
+
+### Procedencia de alias y enums
+
+`CppSemanticInventory.h` y `CppSemanticInventory.cpp` contienen ahora
+inventarios que asocian cada observación de alias o enum al ordinal del proyecto,
+la referencia y el triple. No fusionan declaraciones homónimas. Las pruebas
+preparadas abarcan referencias distintas, valores diferentes y una sesión cerrada;
+siguen sin ejecutar hasta la validación agrupada. Los inventarios todavía no se
+conectan al parser ni a `ProjectNameLookup` y no deciden compatibilidad entre
+declaraciones. El próximo paso sigue siendo esa conexión, no marcar T08-005 ni
+T08-009 como terminados.
