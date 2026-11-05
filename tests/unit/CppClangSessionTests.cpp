@@ -2684,6 +2684,276 @@ int main(int argc, char** argv)
                     ok &= expect(emitted, "inferred C++ record pointer lowers to a verified Windows object");
                 }
             }
+            {
+                const auto methodHeader = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/method-api.h";
+                { std::ofstream file(methodHeader); file <<
+                    "namespace Demo { class Widget { public: Widget(int) noexcept; Widget(long) noexcept; Widget(int*) noexcept; Widget(int&) noexcept; ~Widget() noexcept; int padding; int value; const int immutable; volatile int changing; static int shared; static const int limit; static volatile int io; static thread_local int tls; int ping(int) const noexcept; int mutate(int) noexcept; double factor(double) const noexcept; int mixed(int, double, int, double) const noexcept; int skip(int) volatile; "
+                    "int merge(int); static int merge(double); static int scale(int) noexcept; static int scale(double) noexcept; }; Widget* create(); "
+                    "struct Thing { int marker; int compute(int) const noexcept; }; Thing* createThing(); "
+                    "struct Ready { Ready(int) noexcept; ~Ready() noexcept; }; struct Risky { Risky(int); ~Risky() noexcept(false); }; "
+                    "struct Implicit { int value; }; struct Deleted { const int value; }; "
+                    "struct CountedMember { int value; CountedMember() noexcept(false); ~CountedMember() noexcept(false); }; "
+                    "struct FailingMember { int value; FailingMember() noexcept(false); ~FailingMember() noexcept(false); }; "
+                    "struct Observed { CountedMember member; FailingMember second; }; } extern \"C\" void cpp_local_throw();\n"; }
+                auto configure = [&](nativesharp::frontend::ProjectCompilation& compilation, std::string& error) {
+                    compilation.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns") return "int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    CppProjectSessions group;
+                    group.projectFile = std::filesystem::absolute(path);
+                    auto methodOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp, "");
+                    methodOptions.input = CppFileInput{methodHeader};
+                    group.sessions.push_back(open(factory, std::move(methodOptions)));
+                    std::vector<CppProjectSessions> groups;
+                    groups.push_back(std::move(group));
+                    return compilation.setCppProjectSessions(std::move(groups), error) &&
+                        compilation.setExperimentalCppTypeProvider(provideExperimentalCppRecordCandidates, error) &&
+                        compilation.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, error) &&
+                        compilation.setExperimentalCppInstanceMethodProvider(provideExperimentalCppInstanceMethods, error);
+                };
+                nativesharp::frontend::ProjectCompilation automaticMethods;
+                std::string automaticError;
+                const bool ready = configure(automaticMethods, automaticError) &&
+                    automaticMethods.compileProjectMembers(path, automaticError);
+                const auto* names = automaticMethods.nameLookup();
+                const auto* members = automaticMethods.memberModel();
+                const auto ordinal = names ? names->typeOrdinalForIdentity("Semantic::Demo.Widget") : std::nullopt;
+                const auto methods = ordinal && members ? members->findMembers(*ordinal, "ping") : std::span<const std::size_t>{};
+                const auto* indexed = methods.size() == 1 ? &members->members()[methods[0]] : nullptr;
+                ok &= expect(ready && indexed && indexed->isCppExternal && indexed->isReadonly &&
+                             indexed->cppExternalSymbol == "?ping@Widget@Demo@@QEBAHH@Z" &&
+                             members->findMembers(*ordinal, "skip").empty() &&
+                             members->findMembers(*ordinal, "merge").empty() &&
+                             !automaticMethods.setExperimentalCppInstanceMethodProvider({}, automaticError),
+                             "project compilation obtains instance method metadata from a physical C++ header");
+                std::vector<CppSemanticLifetimeFamily> lifetimeFamilies;
+                std::string lifetimeError;
+                const bool lifetimeCollected = ready && names && automaticMethods.projectGraph() &&
+                    collectCppSemanticLifetimeFamilies(*automaticMethods.projectGraph(),
+                        automaticMethods.cppProjectSessions(), *names, lifetimeFamilies, lifetimeError);
+                const auto family = std::find_if(lifetimeFamilies.begin(), lifetimeFamilies.end(), [](const auto& item) {
+                    return item.ownerIdentityKey == "Semantic::Demo.Widget";
+                });
+                bool indexedCtor = false, indexedPointerCtor = false, indexedDtor = false, deferredCtor = false, implicitCopy = false;
+                if (family != lifetimeFamilies.end())
+                {
+                    for (const auto& item : family->methods)
+                    {
+                        indexedCtor |= item.kind == CppMethodKind::Constructor &&
+                            item.externalSymbol == "??0Widget@Demo@@QEAA@H@Z" && item.parameters.size() == 1 &&
+                            item.returnAbi == CppLifetimeReturnAbi::ThisPointer;
+                        indexedPointerCtor |= item.kind == CppMethodKind::Constructor && item.parameters.size() == 1 &&
+                            item.parameters[0].nativeSharpTypeKey == "builtin:int*";
+                        indexedDtor |= item.kind == CppMethodKind::Destructor &&
+                            item.externalSymbol == "??1Widget@Demo@@QEAA@XZ" &&
+                            item.returnAbi == CppLifetimeReturnAbi::Void;
+                    }
+                    for (const auto& item : family->deferred)
+                        deferredCtor |= item.kind == CppMethodKind::Constructor && !item.reason.empty();
+                    if (family->implicitDeclarations) for (const auto& item : *family->implicitDeclarations)
+                        implicitCopy |= item.kind == CppImplicitLifetimeKind::CopyConstructor && item.parameters.size() == 1;
+                }
+                ok &= expect(lifetimeCollected && indexedCtor && indexedPointerCtor && indexedDtor && deferredCtor && implicitCopy &&
+                             family->hasProjectedSignatureCollision,
+                             "project lifetime family retains explicit, implicit, deferred and colliding overloads");
+                if (family != lifetimeFamilies.end() && names)
+                {
+                    std::vector<nativesharp::frontend::CppImportedLifetimeMethod> physicalMembers;
+                    for (const auto& item : family->methods)
+                        if (item.kind == CppMethodKind::Destructor || item.externalSymbol == "??0Widget@Demo@@QEAA@H@Z")
+                            physicalMembers.push_back(toCppImportedLifetimeMethod(item));
+                    nativesharp::frontend::ProjectMemberModel model;
+                    std::string memberError;
+                    nativesharp::diagnostics::DiagnosticEngine memberDiagnostics;
+                    const bool configured = model.setExperimentalCppLifetimeMethods(physicalMembers, memberError);
+                    auto duplicated = physicalMembers;
+                    if (!duplicated.empty()) duplicated.push_back(duplicated.front());
+                    const bool duplicateRejected = !model.setExperimentalCppLifetimeMethods(duplicated, memberError);
+                    if (!duplicated.empty()) duplicated.back().externalSymbol += "_other";
+                    const bool ambiguousRejected = !model.setExperimentalCppLifetimeMethods(duplicated, memberError);
+                    const bool built = configured && model.build(*names, automaticMethods.units(), memberDiagnostics,
+                                                                 automaticMethods.genericModel());
+                    const auto constructors = ordinal ? model.constructorsOfType(*ordinal) : std::span<const std::size_t>{};
+                    const auto* ctor = constructors.size() == 1 ? &model.members()[constructors[0]] : nullptr;
+                    bool dtor = false;
+                    if (ordinal) for (const auto index : model.membersOfType(*ordinal))
+                    {
+                        const auto& member = model.members()[index];
+                        dtor |= member.kind == nativesharp::frontend::ClassMemberKind::Destructor && member.isCppExternal &&
+                            member.cppExternalSymbol == "??1Widget@Demo@@QEAA@XZ" && member.cppLifetimeNonThrowing;
+                    }
+                    ok &= expect(built && duplicateRejected && ambiguousRejected && ctor && ctor->isCppExternal &&
+                                 ctor->cppExternalSymbol == "??0Widget@Demo@@QEAA@H@Z" &&
+                                 ctor->parameters.size() == 1 && ctor->parameters[0].typeKey == "builtin:int" &&
+                                 ctor->cppLifetimeNonThrowing && dtor &&
+                                 !model.setExperimentalCppLifetimeMethods({}, memberError),
+                                 "isolated member model indexes imported C++ constructor and destructor metadata");
+                    if (!physicalMembers.empty())
+                    {
+                        auto wrongMembers = physicalMembers;
+                        wrongMembers.front().projectOrdinal = 999;
+                        nativesharp::frontend::ProjectMemberModel wrongOwner;
+                        nativesharp::diagnostics::DiagnosticEngine wrongDiagnostics;
+                        const bool wrongConfigured = wrongOwner.setExperimentalCppLifetimeMethods(std::move(wrongMembers), memberError);
+                        ok &= expect(wrongConfigured && !wrongOwner.build(*names, automaticMethods.units(), wrongDiagnostics,
+                                                                         automaticMethods.genericModel()) &&
+                                     wrongDiagnostics.hasErrors(),
+                                     "imported C++ lifetime methods reject an owner from another project");
+                    }
+                }
+                nativesharp::frontend::ProjectCompilation lifetimeProject;
+                std::string projectLifetimeError;
+                const bool lifetimeConfigured = configure(lifetimeProject, projectLifetimeError) &&
+                    lifetimeProject.setExperimentalCppLifetimeMethodProvider(provideExperimentalCppLifetimeMethods, projectLifetimeError);
+                lifetimeProject.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { Demo.Ready* p = null; Demo.Widget* q = null; Demo.Implicit* r = null; Demo.Deleted* s = null; return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool lifetimeReady = lifetimeConfigured && lifetimeProject.compileProjectMembers(path, projectLifetimeError);
+                const auto* lifetimeNames = lifetimeProject.nameLookup();
+                const auto* lifetimeMembers = lifetimeProject.memberModel();
+                const auto readyType = lifetimeNames ? lifetimeNames->typeOrdinalForIdentity("Semantic::Demo.Ready") : std::nullopt;
+                const auto widgetType = lifetimeNames ? lifetimeNames->typeOrdinalForIdentity("Semantic::Demo.Widget") : std::nullopt;
+                const auto implicitType = lifetimeNames ? lifetimeNames->typeOrdinalForIdentity("Semantic::Demo.Implicit") : std::nullopt;
+                const auto deletedType = lifetimeNames ? lifetimeNames->typeOrdinalForIdentity("Semantic::Demo.Deleted") : std::nullopt;
+                const auto readyConstructors = readyType && lifetimeMembers ? lifetimeMembers->constructorsOfType(*readyType) : std::span<const std::size_t>{};
+                const auto widgetConstructors = widgetType && lifetimeMembers ? lifetimeMembers->constructorsOfType(*widgetType) : std::span<const std::size_t>{};
+                const auto* readyCtor = readyConstructors.size() == 1 ? &lifetimeMembers->members()[readyConstructors[0]] : nullptr;
+                const auto implicitCtors = implicitType && lifetimeMembers ? lifetimeMembers->constructorsOfType(*implicitType) : std::span<const std::size_t>{};
+                const auto implicitDtors = implicitType && lifetimeMembers ? lifetimeMembers->findMembers(*implicitType, ".dtor") : std::span<const std::size_t>{};
+                const auto deletedCtors = deletedType && lifetimeMembers ? lifetimeMembers->constructorsOfType(*deletedType) : std::span<const std::size_t>{};
+                const auto* implicitCtor = implicitCtors.size() == 1 ? &lifetimeMembers->members()[implicitCtors[0]] : nullptr;
+                const auto* implicitDtor = implicitDtors.size() == 1 ? &lifetimeMembers->members()[implicitDtors[0]] : nullptr;
+                ok &= expect(implicitCtor && implicitCtor->cppLifetimeImplicit && implicitCtor->cppLifetimeTrivial &&
+                             implicitCtor->cppLifetimeNonThrowing &&
+                             implicitCtor->cppExternalSymbol == "??0Implicit@Demo@@QEAA@XZ" &&
+                             implicitDtor && implicitDtor->cppLifetimeImplicit && implicitDtor->cppLifetimeTrivial &&
+                             implicitDtor->cppLifetimeNonThrowing &&
+                             implicitDtor->cppExternalSymbol == "??1Implicit@Demo@@QEAA@XZ" &&
+                             deletedType && deletedCtors.empty(),
+                             "project indexes implicit default constructor and destructor but not a deleted default constructor");
+                if (lifetimeReady && lifetimeNames && lifetimeMembers && implicitCtor && implicitDtor &&
+                    readyCtor && lifetimeProject.projectGraph())
+                {
+                    std::vector<CppImplicitLifetimeEmissionRequest> plan;
+                    const std::vector<std::size_t> selected{implicitCtors[0], implicitDtors[0], implicitCtors[0]};
+                    const bool planned = planCppImplicitLifetimeEmission(*lifetimeProject.projectGraph(),
+                        lifetimeProject.cppProjectSessions(), *lifetimeNames, *lifetimeMembers, selected, plan, projectLifetimeError);
+                    const auto directory = std::filesystem::path(argv[2]) / "cpp-fixtures" / "lifetime-emission";
+                    std::error_code ec;
+                    std::filesystem::create_directories(directory, ec);
+                    const bool emittedPlan = planned && plan.size() == 2 && plan[0].session &&
+                        plan[0].qualifiedType == "Demo::Implicit" && plan[0].abiSymbol == implicitCtor->cppExternalSymbol &&
+                        plan[1].abiSymbol == implicitDtor->cppExternalSymbol &&
+                        nativesharp::llvm_backend::emitCppImplicitLifetimeObject(*plan[0].session, plan[0].qualifiedType,
+                            plan[0].kind, nativesharp::llvm_backend::LlvmOptimizationLevel::O0,
+                            directory / "planned-implicit.obj", projectLifetimeError);
+                    const std::vector<std::size_t> explicitSelection{readyConstructors[0]};
+                    const bool rejectsExplicit = !planCppImplicitLifetimeEmission(*lifetimeProject.projectGraph(),
+                        lifetimeProject.cppProjectSessions(), *lifetimeNames, *lifetimeMembers, explicitSelection, plan, projectLifetimeError) &&
+                        plan.size() == 2 && !projectLifetimeError.empty();
+                    const std::vector<std::size_t> invalidSelection{lifetimeMembers->members().size()};
+                    const bool rejectsInvalid = !planCppImplicitLifetimeEmission(*lifetimeProject.projectGraph(),
+                        lifetimeProject.cppProjectSessions(), *lifetimeNames, *lifetimeMembers, invalidSelection, plan, projectLifetimeError) &&
+                        plan.size() == 2 && !projectLifetimeError.empty();
+                    nativesharp::frontend::ObjectConstructionBinding construction;
+                    construction.targetTypeOrdinal = *implicitType;
+                    construction.resolution = nativesharp::frontend::ConstructionResolutionKind::ResolvedExplicit;
+                    construction.selectedConstructorMemberOrdinal = implicitCtors[0];
+                    nativesharp::frontend::ClassDestructionPlan destruction;
+                    destruction.typeOrdinal = *implicitType;
+                    destruction.explicitDestructorMemberOrdinal = implicitDtors[0];
+                    destruction.destructorMemberOrdinals.push_back(implicitDtors[0]);
+                    const std::vector constructions{construction, construction};
+                    const std::vector destructions{destruction};
+                    const bool plannedBindings = planCppImplicitLifetimeFromBindings(*lifetimeProject.projectGraph(),
+                        lifetimeProject.cppProjectSessions(), *lifetimeNames, *lifetimeMembers,
+                        constructions, destructions, plan, projectLifetimeError) &&
+                        plan.size() == 2 && plan[0].memberOrdinal == implicitCtors[0] && plan[1].memberOrdinal == implicitDtors[0];
+                    construction.resolution = nativesharp::frontend::ConstructionResolutionKind::ResolvedImplicitDefault;
+                    const std::vector invalidConstructions{construction};
+                    const bool rejectsNativeDefault = !planCppImplicitLifetimeFromBindings(*lifetimeProject.projectGraph(),
+                        lifetimeProject.cppProjectSessions(), *lifetimeNames, *lifetimeMembers,
+                        invalidConstructions, destructions, plan, projectLifetimeError) && plan.size() == 2;
+                    destruction.explicitDestructorMemberOrdinal.reset();
+                    destruction.destructorMemberOrdinals.clear();
+                    const std::vector missingDestruction{destruction};
+                    const bool rejectsMissingDestructor = !planCppImplicitLifetimeFromBindings(*lifetimeProject.projectGraph(),
+                        lifetimeProject.cppProjectSessions(), *lifetimeNames, *lifetimeMembers,
+                        constructions, missingDestruction, plan, projectLifetimeError) && plan.size() == 2;
+                    ok &= expect(!ec && emittedPlan && rejectsExplicit && rejectsInvalid && plannedBindings &&
+                                 rejectsNativeDefault && rejectsMissingDestructor,
+                                 "selected implicit members resolve their owner session and emit without duplicates");
+                }
+                ok &= expect(lifetimeReady && readyCtor && readyCtor->cppExternalSymbol == "??0Ready@Demo@@QEAA@H@Z" &&
+                             widgetType && widgetConstructors.empty() &&
+                             !lifetimeProject.setExperimentalCppLifetimeMethodProvider({}, projectLifetimeError),
+                             "project lifetime provider indexes complete observed families and defers ambiguous ones");
+                CppProjectSessions noImplicitGroup;
+                noImplicitGroup.projectFile = std::filesystem::absolute(path);
+                auto noImplicitOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp, "");
+                noImplicitOptions.input = CppFileInput{methodHeader};
+                auto underlyingSession = open(factory, std::move(noImplicitOptions));
+                if (underlyingSession) noImplicitGroup.sessions.push_back(std::make_unique<NoImplicitSession>(std::move(underlyingSession)));
+                std::vector<CppProjectSessions> noImplicitGroups;
+                noImplicitGroups.push_back(std::move(noImplicitGroup));
+                std::vector<CppSemanticLifetimeFamily> unavailableFamilies;
+                std::vector<nativesharp::frontend::CppImportedLifetimeMethod> unavailableMethods;
+                const bool unavailableCollected = lifetimeReady && lifetimeNames && lifetimeProject.projectGraph() &&
+                    collectCppSemanticLifetimeFamilies(*lifetimeProject.projectGraph(), noImplicitGroups, *lifetimeNames,
+                                                       unavailableFamilies, projectLifetimeError) &&
+                    provideExperimentalCppLifetimeMethods(*lifetimeProject.projectGraph(), noImplicitGroups, *lifetimeNames,
+                                                          unavailableMethods, projectLifetimeError);
+                const auto unavailableReady = std::find_if(unavailableFamilies.begin(), unavailableFamilies.end(), [](const auto& item) {
+                    return item.ownerIdentityKey == "Semantic::Demo.Ready";
+                });
+                ok &= expect(unavailableCollected && unavailableReady != unavailableFamilies.end() &&
+                             !unavailableReady->implicitDeclarations &&
+                             std::none_of(unavailableMethods.begin(), unavailableMethods.end(), [](const auto& item) {
+                                 return item.ownerIdentityKey == "Semantic::Demo.Ready";
+                             }), "an unavailable implicit-member observation is not treated as an empty result");
+                nativesharp::frontend::ProjectCompilation lifetimeGuardProject;
+                std::string lifetimeGuardError;
+                const bool lifetimeGuardConfigured = configure(lifetimeGuardProject, lifetimeGuardError) &&
+                    lifetimeGuardProject.setExperimentalCppLifetimeMethodProvider(provideExperimentalCppLifetimeMethods, lifetimeGuardError);
+                const bool escapedLifetimeGuard = lifetimeGuardConfigured && lifetimeGuardProject.compileProjectInheritance(path, lifetimeGuardError);
+                ok &= expect(lifetimeGuardConfigured && !escapedLifetimeGuard && lifetimeGuardError.find("lifetime members") != std::string::npos,
+                             "experimental lifetime indexing cannot proceed to code generation");
+                auto configureRealConstruction = [&](nativesharp::frontend::ProjectCompilation& project, std::string& error) {
+                    const bool configured = configure(project, error) &&
+                        project.setExperimentalCppLifetimeMethodProvider(provideExperimentalCppLifetimeMethods, error) &&
+                        project.enableExperimentalCppLifetimeAnalysisForTests(error) &&
+                        project.enableExperimentalCppInstanceMethodLoweringForTests(error) &&
+                        project.enableExperimentalCppInstanceFieldLoweringForTests(error);
+                    project.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns") return "int Main() { new Demo.Implicit(); return 0; }\n";
+                        return std::nullopt;
+                    });
+                    return configured;
+                };
+                nativesharp::frontend::ProjectCompilation localLifetime;
+                std::string localLifetimeError;
+                const bool localLifetimeConfigured = configureRealConstruction(localLifetime, localLifetimeError) &&
+                    localLifetime.enableExperimentalCppLocalLifetimeAnalysisForTests(localLifetimeError);
+                localLifetime.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { Demo.Ready value = new Demo.Ready(1); return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool localLifetimeReady = localLifetimeConfigured &&
+                    localLifetime.compileProjectOopHir(path, localLifetimeError);
+                if (!localLifetimeReady) std::cerr << "C++ local lifetime analysis: " << localLifetimeError << '\n';
+                bool hasLocalDrop = false;
+                if (localLifetimeReady && localLifetime.methodBodyModel())
+                {
+                    const auto locals = localLifetime.methodBodyModel()->locals();
+                    for (std::size_t index = 0; index < locals.size(); ++index)
+                        if (locals[index].name == "value" && locals[index].requiresValueDrop)
+                            for (const auto& region : localLifetime.methodBodyModel()->cleanupRegions())
+                                hasLocalDrop |= region.kind == nativesharp::frontend::MethodCleanupRegionKind::ValueLocalDrop &&
+                                    region.resourceLocalOrdinal == index;
+                }
+            }
         }
     }
     return ok ? 0 : 1;
