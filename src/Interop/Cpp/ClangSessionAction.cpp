@@ -4,6 +4,7 @@
 #include <clang/Frontend/ASTUnit.h>
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/CompilerInvocation.h>
+#include <clang/Frontend/FrontendActions.h>
 #include <clang/Serialization/PCHContainerOperations.h>
 #include <clang/Tooling/ArgumentsAdjusters.h>
 #include <clang/Tooling/Tooling.h>
@@ -15,6 +16,10 @@ namespace nativesharp::interop::detail
 {
 namespace
 {
+class SessionFrontendAction final : public clang::SyntaxOnlyAction
+{
+};
+
 class SessionAction final : public clang::tooling::ToolAction
 {
 public:
@@ -27,10 +32,16 @@ public:
     {
         auto diagnostics = clang::CompilerInstance::createDiagnostics(
             files->getVirtualFileSystem(), invocation->getDiagnosticOpts(), consumer, false);
-        ast_ = clang::ASTUnit::LoadFromCompilerInvocation(
-            std::move(invocation), std::move(pch), nullptr, std::move(diagnostics), files,
-            false, clang::CaptureDiagsKind::None);
-        return ast_ != nullptr;
+        auto unit = clang::ASTUnit::create(invocation, nullptr, diagnostics,
+                                           clang::CaptureDiagsKind::None, false);
+        if (!unit) return false;
+        unit->getFileManager().setVirtualFileSystem(files->getVirtualFileSystemPtr());
+        SessionFrontendAction frontend;
+        if (clang::ASTUnit::LoadFromCompilerInvocationAction(
+                std::move(invocation), std::move(pch), nullptr, std::move(diagnostics),
+                &frontend, unit.get(), true) != unit.get()) return false;
+        ast_ = std::move(unit);
+        return true;
     }
 
 private:
