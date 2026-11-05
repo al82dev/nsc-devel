@@ -1,0 +1,1 @@
+int Main() { int* p = stackalloc int[1]; p[0] = 42; int const* q = Demo.Source.readSource(); { Demo.Cross value = new Demo.Cross(q, p); } return Demo.checkChoice(4); }

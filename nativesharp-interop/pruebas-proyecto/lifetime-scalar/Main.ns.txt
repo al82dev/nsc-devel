@@ -1,0 +1,1 @@
+int Main() { { Demo.Scalar value = new Demo.Scalar(42, 2.5); } return Demo.check(); }

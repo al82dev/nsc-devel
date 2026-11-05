@@ -1,0 +1,12 @@
+int Main() {
+    bool a = true;
+    sbyte b = -100;
+    byte c = 240;
+    short d = -30000;
+    ushort e = 60000;
+    uint f = 4000000000u;
+    long g = -1234567890123L;
+    ulong h = 123456789012345UL;
+    { Demo.Narrow value = new Demo.Narrow(a, b, c, d, e, f, g, h); }
+    return Demo.check();
+}

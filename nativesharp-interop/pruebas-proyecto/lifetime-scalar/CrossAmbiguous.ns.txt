@@ -1,0 +1,1 @@
+int Main() { int* p = stackalloc int[1]; p[0] = 42; { Demo.Cross value = new Demo.Cross(p, p); } return 0; }
