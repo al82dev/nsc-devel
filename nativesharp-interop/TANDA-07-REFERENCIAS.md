@@ -15,9 +15,17 @@ Estado: análisis e implementación agrupados en curso; no se da la tanda por ce
   biblioteca y la DLL; la identidad de bundle rechaza proyectos con referencias
   C/C++ porque aún no cubre las dependencias transitivas y búsquedas negativas.
   No debe retirarse esa barrera basándose solo en hashes de archivos observados.
-- Las entradas de inventario de funciones y globals conservan proyecto, ordinal,
-  referencia y triple junto con la declaración. Se debe comprobar la procedencia
-  de otras categorías y su propagación antes de afirmar que cubre todo C++.
+- Las entradas de inventario de funciones, globals y records conservan proyecto,
+  ordinal, referencia y triple junto con la declaración; el inventario de
+  namespaces conserva proyecto, ordinal, referencia y módulo. Las selecciones de
+  funciones usan `visibleProjects`, y `ProjectCompilationSnapshots.cpp` verifica
+  que los orígenes seleccionados correspondan al proyecto y referencia activos.
+  Esto describe las categorías implementadas, no toda declaración posible de C++.
+- La validación estructural de las referencias de un proyecto se ejecuta antes de
+  abrir sus sesiones: idioma, estándar no vacío, header no vacío y forma de
+  includes/macros. La existencia real y semántica completa del estándar siguen
+  a cargo de la apertura y de Clang; no se afirma un diagnóstico anticipado de
+  todas las opciones posibles. Pendiente de prueba agrupada.
 - La sesión puede enumerar archivos observados y calcular el SHA-256 del buffer
   cargado por Clang. Esto no incluye necesariamente consultas fallidas, buffers
   virtuales ni modificaciones concurrentes, y por sí solo no valida la caché.
