@@ -201,6 +201,11 @@ definitivo. Hay una prueba preparada para un resultado enum no nombrado por
 NativeSharp. Faltan comprobar regresiones de genéricos, snapshots, colisiones y
 la ejecución ABI; los cambios no se han compilado ni ejecutado.
 
+El proyecto `pruebas-tanda-08-enum-funcion` y su script preparan una prueba
+de extremo a extremo: un valor enum negativo se devuelve desde C y se vuelve
+a pasar a otra función C desde NativeSharp. Debe devolver cero; aún no se ha
+construido ni ejecutado.
+
 ### Campos enum C, sin validar
 
 Un helper común comprueba propietario, representación y conflictos del enum.
