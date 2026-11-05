@@ -1,0 +1,4 @@
+int Main() {
+    var widget = Demo.make();
+    return widget->classify(null);
+}

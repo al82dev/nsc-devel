@@ -1,0 +1,7 @@
+int Main() {
+    var widget = Demo.make();
+    var value = Demo.number();
+    var readonlyValue = Demo.Widget.viewStatic(value);
+    widget->forward(readonlyValue);
+    return 0;
+}

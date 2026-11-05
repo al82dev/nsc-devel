@@ -1,0 +1,42 @@
+int Main() {
+    var widget = Demo.make();
+    var value = Demo.number();
+    var result = widget->forward(value);
+    var finalValue = Demo.Widget.forwardStatic(result);
+    var input = widget->getPayload();
+    var payloadResult = widget->forwardPayload(input);
+    var finalPayload = Demo.Widget.forwardPayloadStatic(payloadResult);
+    var readonlyPayload = Demo.Widget.viewPayloadStatic(widget->viewPayload(finalPayload));
+    if (finalPayload->hidden->value != 31) return 214;
+    finalPayload->hidden->value = 32;
+    if (Demo.Widget.sharedHidden->value != 32) return 215;
+    Demo.Widget.sharedHidden = finalPayload->hidden;
+    finalPayload->next = finalPayload;
+    finalPayload->next->value = 12;
+    if (finalPayload->viewNext->value != 12) return 211;
+    if (Demo.Widget.sharedViewPayload->value != 12) return 212;
+    Demo.Widget.sharedPayload = finalPayload->next;
+    if (Demo.Widget.sharedPayload->value != 12) return 213;
+    if (*(finalPayload->ref) != 83) return 205;
+    if (*(finalPayload->viewRef) != 83) return 206;
+    if (*(finalPayload->fixedRef) != 83) return 207;
+    finalPayload->ref = finalValue;
+    *(finalPayload->ref) = *(finalPayload->ref) + 1;
+    *(readonlyPayload->ref) = *(readonlyPayload->ref) + 1;
+    *(finalPayload->fixedRef) = *(finalPayload->fixedRef) + 1;
+    if (*(Demo.Widget.sharedRef) != 86) return 208;
+    if (*(Demo.Widget.sharedView) != 86) return 209;
+    if (*(Demo.Widget.sharedFixed) != 86) return 210;
+    Demo.Widget.sharedRef = finalValue;
+    *(Demo.Widget.sharedFixed) = *(Demo.Widget.sharedFixed) + 1;
+    var classified = widget->classify(finalValue) + widget->classify(widget->view(finalValue));
+    classified = classified + Demo.Widget.classifyStatic(finalValue) + Demo.Widget.classifyStatic(widget->view(finalValue));
+    if (finalPayload->mix(finalValue) != 1) return 201;
+    if (finalPayload->mix(widget->view(finalValue)) != 2) return 202;
+    if (readonlyPayload->mix(finalValue) != 4) return 203;
+    if (readonlyPayload->mix(widget->view(finalValue)) != 8) return 204;
+    var mixed = finalPayload->mix(finalValue) + finalPayload->mix(widget->view(finalValue)) +
+                readonlyPayload->mix(finalValue) + readonlyPayload->mix(widget->view(finalValue));
+    return *Demo.Widget.viewStatic(widget->view(finalValue)) + readonlyPayload->value + classified +
+           finalPayload->select() + readonlyPayload->select() + mixed;
+}
