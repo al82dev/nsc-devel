@@ -8,6 +8,7 @@
 
 namespace nativesharp::interop
 {
+struct CppFunctionType;
 enum class CppTypeKind
 {
     Void, Boolean, SignedInteger, UnsignedInteger, Floating,
@@ -37,5 +38,17 @@ struct CppType
     std::optional<std::uint64_t> arrayCount;
     std::optional<CppRecordTypeIdentity> recordIdentity;
     std::shared_ptr<const CppType> element;
+    // Present for a captured function type when the recursion limit permits it.
+    std::shared_ptr<const CppFunctionType> function;
+};
+
+// A description of the Clang function type, not a promise that NSC can call it.
+struct CppFunctionType
+{
+    CppType returnType;
+    std::vector<CppType> parameterTypes;
+    std::string callingConvention;
+    bool hasPrototype = false;
+    bool variadic = false;
 };
 }
