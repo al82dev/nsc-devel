@@ -18,13 +18,34 @@ namespace nativesharp::interop
 {
 namespace
 {
-std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type)
+std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std::size_t projectOrdinal,
+    std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
 {
     const auto array = frontend::cppAliasArrayType(type);
-    if (!array || array->element.token == lexer::TokenKind::KwVoid || array->element.pointeeConst)
-        return std::nullopt;
-    std::string key = "builtin:" + std::string(array->element.name) + std::string(array->element.pointerDepth, '*');
-    for (auto dimension = array->dimensions.rbegin(); dimension != array->dimensions.rend(); ++dimension)
+    std::string key;
+    std::vector<std::uint64_t> dimensions;
+    if (array)
+    {
+        if (array->element.token == lexer::TokenKind::KwVoid || array->element.pointeeConst) return std::nullopt;
+        key = "builtin:" + std::string(array->element.name) + std::string(array->element.pointerDepth, '*');
+        dimensions = array->dimensions;
+    }
+    else
+    {
+        const CppType* element = &type;
+        while (element && element->kind == CppTypeKind::Array && dimensions.size() < 64)
+        {
+            if (element->isConst || element->isVolatile || !element->arrayCount || *element->arrayCount == 0)
+                return std::nullopt;
+            dimensions.push_back(*element->arrayCount);
+            element = element->element.get();
+        }
+        if (dimensions.empty() || !element || element->isConst) return std::nullopt;
+        const auto mapped = projectCppSemanticEnumType(*element, projectOrdinal, moduleName, lookup);
+        if (!mapped) return std::nullopt;
+        key = mapped->nativeSharpTypeKey;
+    }
+    for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
         key += "[" + std::to_string(*dimension) + "]";
     return CppScalarTypeMapping{std::move(key), type.canonicalSpelling, false, false};
 }
@@ -46,7 +67,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         *field.type.sizeBits > *record.sizeBits - *field.offsetBits) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
     if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Array)
-        mapped = projectCArrayField(field.type);
+        mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && !record.isCxx)
         mapped = projectCppSemanticEnumType(field.type, projectOrdinal, moduleName, lookup);
     bool pointeeReadonly = false;
