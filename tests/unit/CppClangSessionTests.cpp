@@ -6680,5 +6680,39 @@ int main(int argc, char** argv)
             }
         }
     }
+
+    {
+        const auto header = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/equivalence.h";
+        std::filesystem::create_directories(header.parent_path());
+        { std::ofstream file(header); file <<
+            "struct Shared {\n#if FIELD_FLOAT\nfloat value;\n#else\nint value;\n#endif\n};\n"; }
+        auto makeOptions = [&](bool fieldFloat, std::string standard = "c++20") {
+            auto value = options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp, "");
+            value.input = CppFileInput{header};
+            value.languageStandard = std::move(standard);
+            value.macros.push_back({CppMacroAction::Define, fieldFloat ? "FIELD_FLOAT=1" : "FIELD_FLOAT=0"});
+            return value;
+        };
+        auto first = open(factory, makeOptions(false));
+        auto same = open(factory, makeOptions(false));
+        auto different = open(factory, makeOptions(true));
+        auto differentStandard = open(factory, makeOptions(false, "c++17"));
+        ok &= expect(first && same && different && differentStandard,
+                     "structural comparison fixture opens independent sessions");
+        if (first && same && different && differentStandard)
+        {
+            ok &= expect(first->structurallyEquivalentRecord(*same, "Shared") == std::optional<bool>(true) &&
+                         first->structurallyEquivalentRecord(*first, "Shared") == std::optional<bool>(true),
+                         "Clang structurally compares repeated definitions including the same session");
+            ok &= expect(first->structurallyEquivalentRecord(*different, "Shared") == std::optional<bool>(false),
+                         "same header and layout with different macro types are not structurally equivalent");
+            ok &= expect(!first->structurallyEquivalentRecord(*same, "Missing") &&
+                         !first->structurallyEquivalentRecord(*differentStandard, "Shared"),
+                         "missing records and incompatible language standards are not compared");
+            same->close();
+            ok &= expect(!first->structurallyEquivalentRecord(*same, "Shared"),
+                         "closed session cannot participate in structural comparison");
+        }
+    }
     return ok ? 0 : 1;
 }
