@@ -1395,7 +1395,7 @@ bool ProjectCompilation::compileProjectMembers(
         return false;
     }
 
-    if (!buildNamespaceFunctionModel()) return false;
+    if (!buildNamespaceFunctionModel(loadError)) return false;
     std::vector<PrecompiledNamespaceFunctionIdentity> precompiledNamespaceFunctions;
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
