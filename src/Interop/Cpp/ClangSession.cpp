@@ -89,5 +89,79 @@ private:
     std::vector<CppSessionDiagnostic>& diagnostics_;
 };
 
+CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned depth = 0)
+{
+    CppType result;
+    if (type.isNull()) return result;
+    result.spelling = type.getAsString();
+    const clang::QualType canonical = type.getCanonicalType();
+    result.canonicalSpelling = canonical.getAsString();
+    result.unqualifiedCanonicalSpelling = canonical.getUnqualifiedType().getAsString();
+    result.isConst = canonical.isConstQualified();
+    result.isVolatile = canonical.isVolatileQualified();
+    const clang::Type* raw = canonical.getTypePtr();
+    clang::QualType element;
+    if (raw->isVoidType()) result.kind = CppTypeKind::Void;
+    else if (raw->isBooleanType()) result.kind = CppTypeKind::Boolean;
+    else if (raw->isEnumeralType()) result.kind = CppTypeKind::Enumeration;
+    else if (raw->isSignedIntegerType()) result.kind = CppTypeKind::SignedInteger;
+    else if (raw->isUnsignedIntegerType()) result.kind = CppTypeKind::UnsignedInteger;
+    else if (raw->isRealFloatingType()) result.kind = CppTypeKind::Floating;
+    else if (raw->isPointerType()) { result.kind = CppTypeKind::Pointer; element = raw->getPointeeType(); }
+    else if (raw->isLValueReferenceType()) { result.kind = CppTypeKind::LValueReference; element = raw->getPointeeType(); }
+    else if (raw->isRValueReferenceType()) { result.kind = CppTypeKind::RValueReference; element = raw->getPointeeType(); }
+    else if (raw->isArrayType())
+    {
+        result.kind = CppTypeKind::Array;
+        if (const auto* array = context.getAsConstantArrayType(canonical))
+        {
+            element = array->getElementType();
+            if (array->getSize().getActiveBits() <= 64)
+                result.arrayCount = array->getSize().getZExtValue();
+        }
+    }
+    else if (const auto* recordType = raw->getAs<clang::RecordType>())
+    {
+        result.kind = CppTypeKind::Record;
+        const auto* record = recordType->getDecl()->getCanonicalDecl();
+        CppRecordTypeIdentity identity;
+        identity.name = record->getNameAsString();
+        identity.anonymousContext = identity.name.empty();
+        for (const clang::DeclContext* current = record; current != nullptr; current = current->getParent())
+        {
+            identity.specializationContext |= llvm::isa<clang::ClassTemplateSpecializationDecl>(current);
+            if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(current))
+            {
+                if (ns->isAnonymousNamespace()) identity.anonymousContext = true;
+                else identity.namespaceSegments.push_back(ns->getNameAsString());
+            }
+            else if (current != record)
+                if (const auto* enclosing = llvm::dyn_cast<clang::RecordDecl>(current))
+                {
+                    const auto name = enclosing->getNameAsString();
+                    if (name.empty()) identity.anonymousContext = true;
+                    else identity.containingRecords.push_back(name);
+                }
+        }
+        std::reverse(identity.namespaceSegments.begin(), identity.namespaceSegments.end());
+        std::reverse(identity.containingRecords.begin(), identity.containingRecords.end());
+        result.recordIdentity = std::move(identity);
+    }
+    else if (raw->isFunctionType()) result.kind = CppTypeKind::Function;
+
+    if (!element.isNull() && depth < 64)
+        result.element = std::make_shared<CppType>(describeType(element, context, depth + 1));
+    if (result.kind != CppTypeKind::Unsupported && result.kind != CppTypeKind::Void &&
+        result.kind != CppTypeKind::Function && result.kind != CppTypeKind::LValueReference &&
+        result.kind != CppTypeKind::RValueReference && !raw->isIncompleteType() &&
+        !raw->isDependentType() && !raw->isUndeducedType() && !raw->isSizelessType() &&
+        !raw->isVariablyModifiedType())
+    {
+        result.sizeBits = context.getTypeSize(canonical);
+        result.alignmentBits = context.getTypeAlign(canonical);
+    }
+    return result;
+}
+
 }
 }
