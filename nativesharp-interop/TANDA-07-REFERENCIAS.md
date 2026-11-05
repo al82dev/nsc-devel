@@ -57,3 +57,7 @@ agrupada de la tanda. No habilitar la caché sin identidad de dependencias compl
   fue correcto y, tras cambiar la firma en un header transitivo, NSC rechazó la
   llamada de dos argumentos. Se deshabilita la caché para este tipo de referencia;
   esto comprueba reanálisis, no invalidación de una entrada de caché activa.
+- La primera ejecución de CTest falló en el fixture de header del mismo tamaño:
+  el original se escribió en binario y el reemplazo en modo texto de Windows.
+  Se corrigió el reemplazo para escribirlo en binario y se está repitiendo la
+  suite. La prueba de versión incompatible sí pasó en esa ejecución.
