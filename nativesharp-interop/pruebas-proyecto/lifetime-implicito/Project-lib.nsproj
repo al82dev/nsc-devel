@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CppImplicitLifetimeLibrary</Name><OutputType>StaticLibrary</OutputType></PropertyGroup>
+  <ItemGroup><CppLibraryReference Header="Api.h" Language="C++" Standard="c++20" Library="api.lib" /></ItemGroup>
+</Project>
