@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
+#include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Frontend/CppImportedTypeAlias.h"
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
@@ -24,6 +25,20 @@ namespace
 std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size_t projectOrdinal,
     std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
 {
+    if (type.kind == CppTypeKind::Array)
+    {
+        const auto array = frontend::cppAliasArrayType(type);
+        if (!array || array->element.pointeeConst) return std::nullopt;
+        const CppType* element = &type;
+        while (element && element->kind == CppTypeKind::Array) element = element->element.get();
+        if (!element) return std::nullopt;
+        auto mapped = mapGlobalType(*element, projectOrdinal, moduleName, lookup);
+        if (!mapped || mapped->isConst || mapped->isVolatile) return std::nullopt;
+        for (auto dimension = array->dimensions.rbegin(); dimension != array->dimensions.rend(); ++dimension)
+            mapped->nativeSharpTypeKey += "[" + std::to_string(*dimension) + "]";
+        mapped->canonicalCppType = type.canonicalSpelling;
+        return mapped;
+    }
     if (type.kind != CppTypeKind::Pointer)
     {
         if (type.kind == CppTypeKind::Enumeration)

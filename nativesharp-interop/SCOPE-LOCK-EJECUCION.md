@@ -1628,6 +1628,13 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, `Api.h`, `Api.c`, `Main.ns` y `validar.cmd` del proyecto enum, y registro Markdown. No cambiar el tratamiento de punteros a volatile, campos, TLS ni otros consumidores del helper de enum.
 - Comprobar ejecución y presencia de `load volatile` y `store volatile` del símbolo específico en LLVM IR, junto con la batería agrupada.
 
+### Arreglos globales C de escalares
+
+- Objetivo: importar globales C con arreglos fijos no calificados de elementos escalares representables, conservando dimensiones y símbolo externo para acceso indexado.
+- Evidencia: `mapGlobalType` solo mapea escalares y punteros; `cppAliasArrayType` valida dimensiones fijas y `mapLlvmType` representa arreglos fijos inline. La semántica completa del acceso global todavía debe verificarse en un proyecto mixto.
+- Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, el proyecto `pruebas-tanda-08-record-c` y registros Markdown. Mantener rechazo de límites desconocidos y calificadores no representados; no modificar NSLink ni el árbol LLVM.
+- Verificar escritura y lectura de un arreglo de una dimensión y una matriz mediante NativeSharp y una función C; compilar y validar agrupadamente. No cerrar T08-004 ni T08-016 por estos casos.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
