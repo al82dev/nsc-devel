@@ -48,6 +48,13 @@ codec de caché de sintaxis (`TemplateCatalogCodec.cpp`): hay que determinar y
 verificar su conservación o invalidación en esas rutas antes de cerrar
 T08-015. Las pruebas aprobadas de la tercera pasada no cubren ese caso.
 
+Se preparó una representación diferenciada de arreglos C incompletos y la
+expansión inicial de sus typedefs, con casos para el tamaño del puntero y el
+diagnóstico al pedir el tamaño del arreglo. También se preparó conservar
+`restrict` en el codec de sintaxis y se versionaron las cachés afectadas. Estas
+modificaciones y el caso nuevo de global volatile requieren una nueva
+construcción y validación agrupada; no cierran todavía T08-013 ni T08-015.
+
 - `ClangSession.cpp::describeType` conserva clase, spelling, tipo canónico,
   calificadores y tamaño/alineación cuando Clang dispone de ellos. Modela
   punteros, referencias, arreglos constantes, enums, records y funciones, pero
