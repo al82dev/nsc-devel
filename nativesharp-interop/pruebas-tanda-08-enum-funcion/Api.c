@@ -9,6 +9,8 @@ enum Mood shared_mood = Happy;
 int read_shared_mood(void) { return (int)shared_mood; }
 const enum Mood readonly_mood = Sad;
 enum Mood* shared_mood_ptr = &shared_mood;
+volatile enum Mood volatile_mood = Happy;
+int read_volatile_mood(void) { return (int)volatile_mood; }
 enum HiddenState hidden_global = HiddenReady;
 int read_hidden_raw(void) { return (int)hidden_global; }
 static enum PointerState pointer_value = PointerReady;

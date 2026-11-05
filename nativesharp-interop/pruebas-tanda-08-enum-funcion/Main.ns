@@ -15,5 +15,7 @@ int Main()
     if ((int)*pointer_global_only != 9) return 8;
     if ((int)*(*double_pointer_global_only) != 11) return 9;
     if (read_pointer_globals() != 20) return 10;
+    volatile_mood = current_mood();
+    if (read_mood(volatile_mood) != -3 || read_volatile_mood() != -3) return 11;
     return 0;
 }
