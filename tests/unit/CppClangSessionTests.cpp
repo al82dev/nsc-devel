@@ -1463,11 +1463,15 @@ int main(int argc, char** argv)
                                 }
                             const auto refinedPrepared = refined ? prepareCppRecordObservation(*entries, *refined) :
                                 CppRecordObservationResult{CppRecordObservationFailure{"refinement failed"}};
-                            bool noRepeatedLayout = false;
+                            bool noRepeatedLayout = false, forwardIncomplete = false;
                             if (const auto* prepared = std::get_if<CppRecordObservationInputs>(&refinedPrepared))
                                 for (std::size_t i = 0; i < prepared->types.size(); ++i)
+                                {
                                     noRepeatedLayout |= refined->groups[prepared->groupByImportedType[i]].identity.name() == "Equal" &&
-                                        !prepared->types[i].objectLayout;
+                                        !prepared->types[i].objectLayout && !prepared->types[i].isIncomplete;
+                                    forwardIncomplete |= refined->groups[prepared->groupByImportedType[i]].identity.name() == "Forward" &&
+                                        !prepared->types[i].objectLayout && prepared->types[i].isIncomplete;
+                                }
                             auto noHashEntries = *entries;
                             for (auto& entry : noHashEntries)
                                 if (entry.declaration.name == "Equal" && entry.referenceIndex == 1) entry.declaration.odrHash.reset();
@@ -1477,7 +1481,7 @@ int main(int argc, char** argv)
                                 for (const auto& record : missing->groups)
                                     missingEvidenceRetained |= record.identity.name() == "Equal" &&
                                         record.status == CppRecordGroupStatus::MultipleDefinitionsUnverified;
-                            ok &= expect(equalPointerOnly && conflictsPreserved && noRepeatedLayout && missingEvidenceRetained,
+                            ok &= expect(equalPointerOnly && conflictsPreserved && noRepeatedLayout && forwardIncomplete && missingEvidenceRetained,
                                          "structural refinement admits only pointer transport with complete matching evidence");
                             auto invalidComparisonGroups = grouped;
                             invalidComparisonGroups.groups.push_back(grouped.groups.front());
