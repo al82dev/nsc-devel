@@ -2,6 +2,19 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Validación agrupada de arreglos globales enum: 2026-11-05
+
+Con `27f11ff19` y `39fc011f7`, `call nativesharp-interop\validar-tanda-08.cmd`
+terminó con código 0. Pasaron la construcción incremental ON/OFF, la suite de
+sesión Clang, las pruebas de serialización y restauración y los siete proyectos.
+NativeSharp copió elementos de un arreglo y una matriz globales de enums C;
+una función C comprobó los valores. Los tipos enum se seleccionaron sin
+nombrarlos en NativeSharp ni utilizarlos en las firmas invocadas.
+
+La evidencia corresponde a arreglos fijos sin calificar en Windows x64 O0.
+No demuestra elementos calificados, record, punteros a enum ni otras variantes;
+T08-004, T08-009 y T08-016 permanecen abiertos.
+
 ## Validación agrupada de arreglos globales C: 2026-11-05
 
 La primera ejecución después de `7ca9b4533`, `c919ab94d` y `482d14f21`
