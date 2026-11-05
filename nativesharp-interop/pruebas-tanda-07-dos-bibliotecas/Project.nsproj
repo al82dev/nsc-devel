@@ -1,0 +1,4 @@
+<Project><PropertyGroup><Name>TwoLibraries</Name></PropertyGroup><ItemGroup>
+  <CppLibraryReference Header="a.h" Language="C" Standard="c11" Library="a.lib"><Define Value="LIB_CONFIG=11" /></CppLibraryReference>
+  <CppLibraryReference Header="b.h" Language="C" Standard="c11" Library="b.lib"><Define Value="LIB_CONFIG=22" /></CppLibraryReference>
+</ItemGroup></Project>

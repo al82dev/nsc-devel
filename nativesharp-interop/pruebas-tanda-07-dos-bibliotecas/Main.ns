@@ -1,0 +1,1 @@
+int Main() { return add_a(19) + add_b(20) - 42; }
