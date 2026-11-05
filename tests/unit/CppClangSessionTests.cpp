@@ -5269,12 +5269,14 @@ int main(int argc, char** argv)
                     ok &= expect(ready && selectedShade && selectedNode,
                                  "array typedef selects its enum and record element dependencies");
                 }
+                for (bool collide : {false, true})
                 {
                     nativesharp::frontend::ProjectCompilation recordDependencies;
-                    recordDependencies.setSourceBufferProvider([](const std::filesystem::path& source)
+                    recordDependencies.setSourceBufferProvider([collide](const std::filesystem::path& source)
                         -> std::optional<std::string> {
                         if (source.filename() == "Main.ns")
-                            return "int Use(Branch* value) { return 0; } int Main() { return 0; }\n";
+                            return collide ? "struct Leaf {} int Use(Branch* value) { return 0; } int Main() { return 0; }\n"
+                                           : "int Use(Branch* value) { return 0; } int Main() { return 0; }\n";
                         return std::nullopt;
                     });
                     CppProjectSessions group;
@@ -5295,9 +5297,10 @@ int main(int argc, char** argv)
                             branch |= type.identity.name() == "Branch" && type.kind == nativesharp::frontend::NamedTypeDeclarationKind::Struct;
                             leaf |= type.identity.name() == "Leaf" && type.kind == nativesharp::frontend::NamedTypeDeclarationKind::Struct;
                         }
-                    if (!ready) std::cerr << "C nested record dependencies: " << dependencyError << '\n';
-                    ok &= expect(ready && branch && leaf,
-                                 "C record fields select array element dependencies and handle cycles");
+                    if (!ready && !collide) std::cerr << "C nested record dependencies: " << dependencyError << '\n';
+                    ok &= expect(collide ? !ready && dependencyError.find("C field record dependency conflicts") != std::string::npos
+                                         : ready && branch && leaf,
+                                 "C record dependencies handle cycles and reject a conflicting native type");
                 }
                 for (bool useCollision : {false, true})
                 {
