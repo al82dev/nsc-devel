@@ -139,11 +139,42 @@ bool ProjectCompilation::loadPrecompiledSnapshot(
 //     compilation of a producer, with the FileId of the captured API unit.
 // ES: Construye el modelo de miembros con los snapshots aceptados (plan 3.3) y, en la compilación
 //     de referencia de un productor, con el FileId de la unidad de API capturada.
-bool ProjectCompilation::buildMemberModel()
+bool ProjectCompilation::buildMemberModel(std::string& error)
 {
     memberModel_ = std::make_unique<ProjectMemberModel>(lifetime_->indexes());
-    memberModel_->setPrecompiledSnapshots(precompiledSnapshots_);
-    if (precompiledSnapshotCapture_.has_value())
+    if (experimentalCppLifetimeMethodProvider_)
+    {
+        std::vector<CppImportedLifetimeMethod> methods;
+        if (!experimentalCppLifetimeMethodProvider_(*projectGraph_, cppProjectSessions_, *nameLookup_, methods, error) ||
+            !memberModel_->setExperimentalCppLifetimeMethods(std::move(methods), error)) return false;
+    }
+    if (experimentalCppInstanceMethodProvider_)
+    {
+        std::vector<CppImportedInstanceMethod> methods;
+        if (!experimentalCppInstanceMethodProvider_(*projectGraph_, cppProjectSessions_, *nameLookup_, methods, error) ||
+            !memberModel_->setExperimentalCppInstanceMethods(std::move(methods), error)) return false;
+    }
+    if (experimentalCppInstanceFieldProvider_)
+    {
+        std::vector<CppImportedInstanceField> fields;
+        if (!experimentalCppInstanceFieldProvider_(*projectGraph_, cppProjectSessions_, *nameLookup_, fields, error) ||
+            !memberModel_->setExperimentalCppInstanceFields(std::move(fields), error)) return false;
+    }
+    if (experimentalCppStaticMethodProvider_)
+    {
+        std::vector<CppImportedStaticMethod> methods;
+        if (!experimentalCppStaticMethodProvider_(*projectGraph_, cppProjectSessions_, *nameLookup_, methods, error) ||
+            !memberModel_->setExperimentalCppStaticMethods(std::move(methods), error)) return false;
+    }
+    if (experimentalCppStaticFieldProvider_)
+    {
+        std::vector<CppImportedStaticField> fields;
+        if (!experimentalCppStaticFieldProvider_(*projectGraph_, cppProjectSessions_, *nameLookup_, fields, error) ||
+            !memberModel_->setExperimentalCppStaticFields(std::move(fields), error)) return false;
+    }
+    if (!experimentalCppLifetimeMethodProvider_ && !experimentalCppInstanceMethodProvider_ && !experimentalCppInstanceFieldProvider_ && !experimentalCppStaticMethodProvider_ && !experimentalCppStaticFieldProvider_)
+        memberModel_->setPrecompiledSnapshots(precompiledSnapshots_);
+    if (!experimentalCppLifetimeMethodProvider_ && !experimentalCppInstanceMethodProvider_ && !experimentalCppInstanceFieldProvider_ && !experimentalCppStaticMethodProvider_ && !experimentalCppStaticFieldProvider_ && precompiledSnapshotCapture_.has_value())
         memberModel_->setPrecompiledSnapshotCaptureFile(units_[precompiledSnapshotCapture_->unitOrdinal]->fileId());
     if (!memberModel_->build(*nameLookup_, units_, diagnostics_, genericModel_.get())) return false;
     if (reportSink_ && !precompiledSnapshots_.empty())
