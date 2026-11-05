@@ -974,11 +974,30 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     const std::size_t stateOrdinal = reference.candidateStateOrdinals.front();
     if (stateOrdinal >= namespaceFunctionModel_->states().size()) return result;
     const NamespaceStateSymbol& state = namespaceFunctionModel_->states()[stateOrdinal];
+    if (!state.cppImportError.empty())
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidMemberAccess,
+            diagnostics::DiagnosticSeverity::Error,
+            expression != nullptr ? expression->range() : SourceRange{},
+            "cannot import C/C++ global '" + reference.writtenName + "': " + state.cppImportError);
+        return result;
+    }
+    if (state.isCppExternal && (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly) &&
+        formingAddressOperand_ && expression == formingAddressTarget_)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression != nullptr ? expression->range() : SourceRange{},
+            "cannot take the address of a qualified C/C++ global until qualified pointers are supported");
+        return result;
+    }
     result.typeKey = state.declaredTypeKey;
     result.valid = true;
-    result.assignable = !state.isConst;
-    result.addressable = true;
-    result.readonlyReceiver = state.isConst;
+    result.assignable = !state.isConst && !state.isCppReadonly;
+    result.addressable = !(state.isCppExternal &&
+        (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly));
+    result.readonlyReceiver = state.isConst || state.isCppReadonly;
+    result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;
     recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::NamespaceState,
         expression,
@@ -1035,10 +1054,16 @@ else if (expression->tokenKind() == TokenKind::Amp &&
     }
 }
 const bool previousAddressFormation = formingAddressOperand_;
-if (expression->tokenKind() == TokenKind::Amp) formingAddressOperand_ = true;
+const ast::AstNode* const previousAddressTarget = formingAddressTarget_;
+if (expression->tokenKind() == TokenKind::Amp)
+{
+    formingAddressOperand_ = true;
+    formingAddressTarget_ = expression->first();
+}
 ExpressionResult operand = analyzeExpression(
     expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
 formingAddressOperand_ = previousAddressFormation;
+formingAddressTarget_ = previousAddressTarget;
 definiteAssignmentWriteTarget_ = previousWriteTarget;
 if (rawUnassignedAddressLocal.has_value())
 {

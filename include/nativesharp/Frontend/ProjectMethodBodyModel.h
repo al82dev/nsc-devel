@@ -289,6 +289,8 @@ class ProjectMethodBodyModel final
     friend class ProjectCallableWaveReducer;
 
 public:
+    void enableCppLifetimeAnalysisForTests() noexcept { cppLifetimeAnalysisForTests_ = true; }
+    void enableCppLocalLifetimeAnalysisForTests() noexcept { cppLocalLifetimeAnalysisForTests_ = true; }
     // NSC-LIMIT-007, tercera vuelta. El modelo de constraints entra aqui porque la unica fase que
     // puede decidir si una violacion de constraint es un error del programa es esta: la que
     // resuelve sobrecargas conociendo los tipos de los argumentos. Es un puntero y admite null
@@ -5520,6 +5522,7 @@ private:
     std::unordered_set<const ast::AstNode*> reportedUnassignedReads_;
     bool inUnevaluatedOperand_ = false;
     bool formingAddressOperand_ = false;
+    const ast::AstNode* formingAddressTarget_ = nullptr;
     bool ownershipFlowReachable_ = true;
     // EN: Freeze 3.0 C-05. Per lowered match statement (its `$__nsc_match_N` temporary), whether
     //     some arm body reached its end; an exhaustive match whose arms all exit ends the flow.
@@ -5576,6 +5579,8 @@ private:
     mutable ProjectOwnershipFlowStatistics ownershipFlowStatistics_;
     mutable ProjectEscapePropagationStatistics escapePropagationStatistics_;
     ProjectCallableAnalysisStatistics callableAnalysisStatistics_;
+    bool cppLifetimeAnalysisForTests_ = false;
+    bool cppLocalLifetimeAnalysisForTests_ = false;
     bool built_ = false;
 };
 
