@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CppStaticRuntimeProducer</Name><OutputType>StaticLibrary</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="StaticProducer.ns" />
+    <CppLibraryReference Header="Api.h" Language="C++" Standard="c++20" Library="api.lib" Runtime="api.dll" />
+  </ItemGroup>
+</Project>
