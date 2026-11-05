@@ -27,7 +27,14 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
     if (type.kind != CppTypeKind::Pointer)
     {
         if (type.kind == CppTypeKind::Enumeration)
-            return projectCppSemanticEnumType(type, projectOrdinal, moduleName, lookup);
+        {
+            // Top-level volatile applies to the global access; enum identity/layout are unqualified.
+            CppType unqualified = type;
+            unqualified.isVolatile = false;
+            auto projected = projectCppSemanticEnumType(unqualified, projectOrdinal, moduleName, lookup);
+            if (projected) projected->isVolatile = type.isVolatile;
+            return projected;
+        }
         return mapCppScalarType(type);
     }
     const CppType* current = &type;

@@ -1622,6 +1622,12 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `src/Interop/Cpp/CppSemanticRecord.cpp`, `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. Limitar el recorrido a punteros y 64 niveles; no añadir soporte para calificadores o arreglos.
 - Verificar puntero y doble puntero cuyos enums no se mencionan en las firmas usadas ni en NativeSharp, además de los casos de global escalar y sombra. Ejecutar con la batería agrupada.
 
+### Global C volatile enum
+
+- Objetivo: proyectar un global enum con `volatile` de nivel superior, verificando identidad y layout sin perder el calificador en los accesos emitidos.
+- Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, `Api.h`, `Api.c`, `Main.ns` y `validar.cmd` del proyecto enum, y registro Markdown. No cambiar el tratamiento de punteros a volatile, campos, TLS ni otros consumidores del helper de enum.
+- Comprobar ejecución y presencia de `load volatile` y `store volatile` del símbolo específico en LLVM IR, junto con la batería agrupada.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
