@@ -190,5 +190,76 @@ void collectNamespaces(const clang::DeclContext& context, clang::ASTContext& ast
     }
 }
 
+void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& astContext,
+                          clang::MangleContext& mangler,
+                          std::set<const clang::FunctionDecl*>& seen,
+                          std::vector<CppFunctionDeclaration>& result)
+{
+    for (const clang::Decl* declaration : context.decls())
+    {
+        if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+        {
+            collectFreeFunctions(*nested, astContext, mangler, seen, result);
+            continue;
+        }
+        if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+        {
+            collectFreeFunctions(*linkage, astContext, mangler, seen, result);
+            continue;
+        }
+        const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+        if (!function || function->isImplicit() || function->getDeclName().isEmpty() ||
+            function->getDescribedFunctionTemplate() || function->isDependentContext() ||
+            !seen.insert(function->getCanonicalDecl()).second)
+            continue;
+
+        CppFunctionDeclaration value;
+        value.name = function->getNameAsString();
+        value.qualifiedName = function->getQualifiedNameAsString();
+        value.canonicalFunctionType = function->getType().getCanonicalType().getAsString();
+        if (const auto* type = function->getType()->getAs<clang::FunctionType>())
+            value.callingConvention = clang::FunctionType::getNameForCallConv(type->getCallConv()).str();
+        switch (function->getLanguageLinkage())
+        {
+        case clang::CLanguageLinkage: value.languageLinkage = CppLanguageLinkage::C; break;
+        case clang::CXXLanguageLinkage: value.languageLinkage = CppLanguageLinkage::Cpp; break;
+        case clang::NoLanguageLinkage: value.languageLinkage = CppLanguageLinkage::None; break;
+        }
+        value.returnTypeSpelling = function->getReturnType().getAsString();
+        value.canonicalReturnTypeSpelling = function->getReturnType().getCanonicalType().getAsString();
+        value.returnType = describeType(function->getReturnType(), astContext);
+        value.variadic = function->isVariadic();
+        value.externalLinkage = function->isExternallyVisible();
+        value.dllImport = function->hasAttr<clang::DLLImportAttr>();
+        if (const auto* prototype = function->getType()->getAs<clang::FunctionProtoType>())
+            if (!clang::isUnresolvedExceptionSpec(prototype->getExceptionSpecType()))
+                value.isNonThrowing = prototype->isNothrow();
+        for (const clang::ParmVarDecl* parameter : function->parameters())
+        {
+            value.parameters.push_back(CppFunctionParameter{
+                parameter->getNameAsString(), parameter->getType().getAsString(),
+                parameter->getType().getCanonicalType().getAsString(),
+                describeType(parameter->getType(), astContext), parameter->hasDefaultArg()});
+        }
+        if (value.externalLinkage)
+        {
+            if (mangler.shouldMangleDeclName(function))
+            {
+                llvm::SmallString<128> symbol;
+                llvm::raw_svector_ostream stream(symbol);
+                mangler.mangleName(clang::GlobalDecl(function), stream);
+                value.externalSymbol = std::string(symbol.str());
+            }
+            else
+                value.externalSymbol = value.name;
+        }
+        const auto location = astContext.getSourceManager().getPresumedLoc(function->getLocation());
+        if (location.isValid())
+            value.location = CppSourcePoint{
+                pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+        result.push_back(std::move(value));
+    }
+}
+
 }
 }
