@@ -1,0 +1,1 @@
+public struct Wrapper { public static int Run() { new Demo.Outer(); return Demo.check(); } }
