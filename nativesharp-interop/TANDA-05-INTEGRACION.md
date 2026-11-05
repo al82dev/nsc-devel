@@ -34,3 +34,14 @@ Estado: implementación en curso; la tanda no está validada ni cerrada.
 Siguiente acción: completar el inventario de creaciones y los casos de prueba de
 sesiones y diagnósticos, terminar los cambios de esta tanda y ejecutar una única
 validación incremental agrupada. Corregir y repetir al aparecer errores.
+
+## Validación agrupada en curso
+
+- ON: `cmake --build A:/nsc-interop-build/tanda1-ON --target nsc nsc_cpp_session_tests -j 4`
+  terminó con código 0; el enlace verificó el runtime estático del host.
+- ON: `A:/nsc-interop-build/tanda1-ON/bin/nsc_cpp_session_tests.exe` con recursos
+  `A:/al82dev-clang/lib/clang/23`, temporales `A:/nsc-interop-build` y el
+  `clang.exe` de `A:/al82dev-clang/bin` terminó con código 0.
+- OFF: construcción incremental de `nsc` en curso. Después se deben verificar
+  su comportamiento con y sin solicitud de interoperabilidad. Esta tanda sigue
+  abierta hasta que terminen esos controles y se registren sus resultados.
