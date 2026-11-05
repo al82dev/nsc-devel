@@ -42,6 +42,11 @@ struct NamespaceFunctionSymbol final
     std::string signatureKey;
     std::string callableIdentityKey;
     std::string mangledName;
+    // Non-empty only for a declaration imported from C/C++; its identity stays distinct from
+    // the NativeSharp representation key used for value types and overload candidates.
+    std::string cppCanonicalIdentity;
+    std::string cppCallingConvention;
+    bool cppDllImport = false;
     const ast::AstNode* declarationSyntax = nullptr;
     const ast::AstNode* definitionSyntax = nullptr;
     std::vector<NamespaceFunctionPart> parts;
