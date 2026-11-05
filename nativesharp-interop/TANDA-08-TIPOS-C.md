@@ -149,3 +149,12 @@ preparó una aserción de recolección para dos definiciones distintas. Quedan p
 comprobar el diagnóstico integrado en usos de tipo y expresión, la selección
 junto a records, las colisiones con tipos NS y el flujo del driver. El script
 de `pruebas-tanda-08-record-c` quedó preparado, sin ejecutar.
+
+### Selección conjunta de enums y records, sin validar
+
+El controlador suministra candidatos de ambos tipos. La observación resuelve
+enums junto a records, conserva los enums usados y el selector los instala con
+los records seleccionados. Se preparó una prueba que usa ambos vía typedef.
+Todavía deben comprobarse colisiones con declaraciones NS, candidatos de
+expresión, firmas de funciones y resultados de ejecución. La implementación y
+las pruebas de esta sección no se han compilado ni ejecutado.
