@@ -181,7 +181,7 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
         value.qualifiedName = enumeration->getQualifiedNameAsString();
         value.complete = enumeration->isCompleteDefinition();
         value.scoped = enumeration->isScoped();
-        const auto enumType = astContext.getEnumType(enumeration);
+        const clang::QualType enumType = astContext.getCanonicalTagType(enumeration);
         if (!enumType->isIncompleteType() && !enumType->isDependentType())
         {
             value.sizeBits = astContext.getTypeSize(enumType);
