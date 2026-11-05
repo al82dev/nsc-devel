@@ -4,5 +4,9 @@ int Main()
     Callback* indirect = &callback;
     if (apply_callback(callback, 40) != 42) return 1;
     if (apply_callback_ptr(indirect, 40) != 42) return 2;
+    FloatValue single = 1.5f;
+    DoubleValue wide = 1.5;
+    if (add_float(single, single) != 3.0f) return 3;
+    if (add_double(wide, wide) != 3.0) return 4;
     return 0;
 }

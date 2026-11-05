@@ -1555,3 +1555,9 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Objetivo: comprobar la segunda ruta de expansión del alias `ColorCallback*`, cuya firma incluye un enum importado; conservar firma, convención C y modificador de puntero adicional.
 - Presupuesto: `tests/unit/CppClangSessionTests.cpp` y registro Markdown. Esta prueba semántica complementa la ejecución C/NativeSharp del caso escalar; no sustituye una llamada ejecutable con enum ni cierra T08-017.
 - Verificación: junto a las demás pruebas de la tanda, sin construir la suite por cada cambio.
+
+## Tanda 08: escalares flotantes C en llamada ejecutable
+
+- Objetivo: verificar que parámetros y resultados C `float` y `double`, también por typedef, se importan y usan desde NativeSharp con valores exactamente representables.
+- Presupuesto: `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-callback`, más registro Markdown. No presupone soporte de `long double` ni otras plataformas.
+- Verificación: la biblioteca C compilada por Clang y el ejecutable NativeSharp del proyecto deben producir los resultados esperados en la batería agrupada. No cerrar T08-007 con esta muestra.
