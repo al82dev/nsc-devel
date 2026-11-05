@@ -95,8 +95,12 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     {
         result.kind = CppTypeKind::Record;
         const auto* record = recordType->getDecl()->getCanonicalDecl();
+        if (const auto* definition = record->getDefinition()) record = definition;
         CppRecordTypeIdentity identity;
         identity.name = record->getNameAsString();
+        if (identity.name.empty() && !context.getLangOpts().CPlusPlus)
+            if (const auto* alias = record->getTypedefNameForAnonDecl())
+                identity.name = alias->getNameAsString();
         identity.anonymousContext = identity.name.empty();
         for (const clang::DeclContext* current = record; current != nullptr; current = current->getParent())
         {
@@ -415,15 +419,20 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
             continue;
         }
         const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration);
-        if (!record || record->isImplicit() || record->getName().empty() ||
+        if (!record || record->isImplicit() ||
             record->isDependentContext() || !seen.insert(record->getCanonicalDecl()).second)
             continue;
         if (const auto* definition = record->getDefinition()) record = definition;
 
+        const auto* anonymousAlias = !astContext.getLangOpts().CPlusPlus && record->getName().empty()
+            ? record->getTypedefNameForAnonDecl() : nullptr;
+        if (record->getName().empty() && !anonymousAlias) continue;
+
         CppRecordDeclaration value;
         value.isCxx = astContext.getLangOpts().CPlusPlus;
-        value.name = record->getNameAsString();
-        value.qualifiedName = record->getQualifiedNameAsString();
+        value.name = anonymousAlias ? anonymousAlias->getNameAsString() : record->getNameAsString();
+        value.qualifiedName = anonymousAlias ? anonymousAlias->getQualifiedNameAsString()
+                                             : record->getQualifiedNameAsString();
         for (const clang::DeclContext* parent = record->getDeclContext(); parent != nullptr;
              parent = parent->getParent())
         {
