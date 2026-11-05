@@ -7,6 +7,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Interop/CppInteropSession.h"
 #include "nativesharp/Interop/CppProjectSessions.h"
+#include "nativesharp/Frontend/CppImportedTypeAlias.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectCompilationLifetime.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
@@ -70,6 +71,9 @@ public:
     using ExperimentalCppTypeProvider = std::function<bool(
         const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
         std::vector<CppImportedTypeDeclaration>&, std::string&)>;
+    using CppTypeAliasProvider = std::function<bool(
+        const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
+        std::vector<CppImportedTypeAlias>&, std::string&)>;
     using ExperimentalCppTypeSelector = std::function<bool(
         const ProjectCompilation&, std::vector<CppImportedTypeDeclaration>&, std::string&)>;
     using ExperimentalCppInstanceMethodProvider = std::function<bool(
@@ -101,6 +105,7 @@ public:
     // object-layout or lifetime semantics and this must not be enabled by the production driver.
     bool setExperimentalCppImportedTypes(std::vector<CppImportedTypeDeclaration> types, std::string& error);
     bool setExperimentalCppTypeProvider(ExperimentalCppTypeProvider provider, std::string& error);
+    bool setCppTypeAliasProvider(CppTypeAliasProvider provider, std::string& error);
     bool setExperimentalCppTypeSelector(ExperimentalCppTypeSelector selector, std::string& error);
     bool setExperimentalCppInstanceMethodProvider(ExperimentalCppInstanceMethodProvider provider, std::string& error);
     bool setExperimentalCppLifetimeMethodProvider(ExperimentalCppLifetimeMethodProvider provider, std::string& error);
@@ -321,6 +326,8 @@ private:
     std::vector<NamespaceFunctionSymbol> cppImportedFunctions_;
     std::vector<NamespaceStateSymbol> experimentalCppImportedStates_;
     std::vector<CppImportedTypeDeclaration> experimentalCppImportedTypes_;
+    std::vector<CppImportedTypeAlias> cppImportedTypeAliases_;
+    CppTypeAliasProvider cppTypeAliasProvider_;
     ExperimentalCppTypeProvider experimentalCppTypeProvider_;
     ExperimentalCppTypeSelector experimentalCppTypeSelector_;
     ExperimentalCppInstanceMethodProvider experimentalCppInstanceMethodProvider_;

@@ -119,6 +119,18 @@ bool ProjectCompilation::setExperimentalCppImportedTypes(
     return true;
 }
 
+bool ProjectCompilation::setCppTypeAliasProvider(CppTypeAliasProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "C/C++ type alias provider must be set before compilation starts";
+        return false;
+    }
+    cppTypeAliasProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
 bool ProjectCompilation::setExperimentalCppTypeProvider(ExperimentalCppTypeProvider provider, std::string& error)
 {
     if (compilationAttempted_)
