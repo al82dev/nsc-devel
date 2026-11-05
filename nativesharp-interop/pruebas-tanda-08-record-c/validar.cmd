@@ -65,7 +65,13 @@ copy /y "%~dp0VolatileArrayAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-array-address.exe" > "%DEST%\volatile-array-address.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /i /c:"volatile" /c:"qualified" "%DEST%\volatile-array-address.log" >nul
+findstr /c:"cannot take the address of a volatile C/C++ array element" "%DEST%\volatile-array-address.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileMatrixAddress.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-matrix-address.exe" > "%DEST%\volatile-matrix-address.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"cannot take the address of a volatile C/C++ array element" "%DEST%\volatile-matrix-address.log" >nul
 if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

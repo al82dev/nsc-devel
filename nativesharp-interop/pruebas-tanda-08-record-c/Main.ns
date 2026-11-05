@@ -19,6 +19,8 @@ int Main()
     shared_volatile = 42;
     if (shared_volatile != 42 || read_shared_volatile() != 42) return 6;
     shared_array[1] = 19;
+    int* shared_element = &shared_array[1];
+    if (*shared_element != 19) return 10;
     shared_matrix[1][2] = 23;
     if (shared_array[1] != 19 || shared_matrix[1][2] != 23 || read_shared_arrays() != 42) return 7;
     if (readonly_array[1] != 17 || read_readonly_array() != 17) return 8;

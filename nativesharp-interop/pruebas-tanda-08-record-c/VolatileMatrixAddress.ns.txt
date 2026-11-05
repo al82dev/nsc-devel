@@ -1,0 +1,5 @@
+int Main()
+{
+    int* pointer = &volatile_matrix[1][1];
+    return 0;
+}
