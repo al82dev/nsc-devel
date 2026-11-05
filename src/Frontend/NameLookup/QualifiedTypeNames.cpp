@@ -221,9 +221,16 @@ bool ProjectNameLookup::expandCppTypeAlias(
         {
             if (record && record->pointerDepth == 0 && !record->pointeeConst && nativeCandidates.size() == 1)
             {
-                const auto* imported = cppImportedType(nativeCandidates.front());
-                if (imported && imported->projectOrdinal == selected->projectOrdinal &&
-                    imported->identity.fullyQualifiedName() == record->canonicalName) return true;
+                // Imported ordinal indices are finalized after binding. Inspect the already
+                // aggregated declaration and its originating input instead of that later index.
+                const auto* declaration = typeForOrdinal(nativeCandidates.front());
+                if (declaration && declaration->projectOrdinal == selected->projectOrdinal &&
+                    declaration->identity.fullyQualifiedName() == record->canonicalName &&
+                    declaration->parts.size() == 1 && !declaration->parts.front().syntax)
+                    for (const auto& imported : cppImportedTypes_)
+                        if (imported.projectOrdinal == selected->projectOrdinal &&
+                            imported.identity.key() == declaration->identity.key() &&
+                            imported.sourcePath == declaration->parts.front().sourcePath) return true;
             }
             return report(diagnostics::DiagnosticId::AmbiguousTypeName,
                           "C/C++ type alias conflicts with a native type '" + syntax->baseName() + "'");
