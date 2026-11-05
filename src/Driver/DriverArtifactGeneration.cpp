@@ -272,11 +272,12 @@ bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
     return true;
 }
 
-bool publishExecutableArtifact(std::string_view outputPath, const frontend::ProjectOopMirFunction &entryFunction,
+bool publishExecutableArtifact(std::string_view outputPath, const frontend::ProjectCompilation &compilation,
+                               const frontend::ProjectOopMirFunction &entryFunction,
                                const llvm_backend::ProjectOopObjectBundle &objectBundle,
                                llvm_backend::LlvmOptimizationLevel optimizationLevel,
                                llvm_backend::DebugInformationKind debugInformation, bool incrementalLink,
-                               std::span<const std::filesystem::path> runtimeLibraries,
+                               std::vector<std::filesystem::path> &runtimeLibraries,
                                linker::WindowsExecutableBuilder &builder,
                                std::vector<std::filesystem::path> &packagedRuntimes, std::ostream &error)
 {
