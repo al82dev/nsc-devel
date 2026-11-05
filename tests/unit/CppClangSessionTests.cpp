@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/CppAliasRecordType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Frontend/CppAliasEnumType.h"
+#include "nativesharp/Frontend/CppAliasFunctionType.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticRenderer.h"
@@ -2285,6 +2286,17 @@ int main(int argc, char** argv)
                      callbackType->parameterTypes[0].element && callbackType->parameterTypes[0].element->isConst &&
                      oldCallbackType && !oldCallbackType->hasPrototype,
                      "C function pointer typedef retains signature and distinguishes old-style declarations");
+        const auto projectedCallback = callbackAlias
+            ? nativesharp::frontend::cppAliasFunctionType(callbackAlias->underlyingType) : std::nullopt;
+        const auto projectedOldCallback = oldCallbackAlias
+            ? nativesharp::frontend::cppAliasFunctionType(oldCallbackAlias->underlyingType) : std::nullopt;
+        ok &= expect(projectedCallback && projectedCallback->variadic &&
+                     projectedCallback->callingConvention == nativesharp::ast::FunctionCallingConventionSyntaxKind::C &&
+                     projectedCallback->result.name == "int" && projectedCallback->parameters.size() == 1 &&
+                     projectedCallback->parameters[0].name == "int" &&
+                     projectedCallback->parameters[0].pointerDepth == 1 &&
+                     projectedCallback->parameters[0].pointeeConst && !projectedOldCallback,
+                     "C function pointer projection preserves signature and rejects unspecified parameters");
         cEnums = c->enumsSnapshot();
         const CppEnumDeclaration* color = nullptr;
         const CppEnumDeclaration* anonymous = nullptr;
