@@ -2,6 +2,7 @@
 #include "nativesharp/Frontend/CppDiagnosticAdapter.h"
 #include "nativesharp/Frontend/CppAliasRecordType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
+#include "nativesharp/Frontend/CppAliasEnumType.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticRenderer.h"
 #include "nativesharp/Source/SourceManager.h"
@@ -2187,7 +2188,7 @@ int main(int argc, char** argv)
                                   "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
-                                  "enum Color { CMinus = -3, CPlus = 5 }; enum { CAnonymous = 9 };\n"
+                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; enum { CAnonymous = 9 };\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
                                   "union CValue { int integer; float real; }; struct Flags { unsigned a:3; unsigned b:5; }; "
@@ -2217,6 +2218,7 @@ int main(int argc, char** argv)
         const auto* incompleteArrayAlias = aliasByName("IncompleteArray");
         const auto* fixedArrayAlias = aliasByName("FixedArray");
         const auto* matrixAlias = aliasByName("Matrix");
+        const auto* colorAlias = aliasByName("ColorAlias");
         const auto* callbackAlias = aliasByName("Callback");
         const auto* oldCallbackAlias = aliasByName("OldCallback");
         ok &= expect(countAlias && countAlias->underlyingType.kind == CppTypeKind::UnsignedInteger &&
@@ -2258,6 +2260,11 @@ int main(int argc, char** argv)
                      matrixType->element.token == nativesharp::lexer::TokenKind::KwInt &&
                      incompleteArrayAlias && !nativesharp::frontend::cppAliasArrayType(incompleteArrayAlias->underlyingType),
                      "array typedef preserves C dimensions and rejects an unknown bound");
+        const auto projectedEnum = colorAlias ? nativesharp::frontend::cppAliasEnumType(colorAlias->underlyingType)
+                                              : std::nullopt;
+        ok &= expect(projectedEnum && projectedEnum->name == "Color" &&
+                     projectedEnum->base.token == nativesharp::lexer::TokenKind::KwInt,
+                     "enum typedef preserves its identity and Clang integer representation");
         const auto* callbackType = callbackAlias && callbackAlias->underlyingType.element
             ? callbackAlias->underlyingType.element->function.get() : nullptr;
         const auto* oldCallbackType = oldCallbackAlias && oldCallbackAlias->underlyingType.element
@@ -2281,6 +2288,7 @@ int main(int argc, char** argv)
                     enumeration.enumerators.front().name == "CAnonymous") anonymous = &enumeration;
             }
         ok &= expect(color && color->complete && color->underlyingType && color->location &&
+                     color->sizeBits == 32 && color->alignmentBits == 32 && !color->isCxx &&
                      color->enumerators.size() == 2 && color->enumerators[0].name == "CMinus" &&
                      color->enumerators[0].decimalValue == "-3" && color->enumerators[0].location &&
                      color->enumerators[0].valueType.kind == CppTypeKind::SignedInteger &&
