@@ -69,6 +69,13 @@ CppSemanticDemandSelection selectCppSemanticDemands(
     std::span<const CppSemanticInventoryEntry> entries,
     std::span<const frontend::CppFunctionDemand> demands, bool deferConflicts = false);
 
+// Returns candidate indices for enums appearing in functions selected by the supplied demands.
+// Unprojected and conflicting overloads are included because later resolution may need them.
+std::variant<std::vector<std::size_t>, CppSignatureEnumFailure> selectCppDemandedEnumCandidates(
+    std::span<const CppSignatureEnumDependency> dependencies,
+    std::span<const CppSemanticDemandCandidates> demands, std::size_t functionCount,
+    std::size_t enumCandidateCount);
+
 struct CppDeferredFunctionFailure
 {
     std::size_t selectionIndex;

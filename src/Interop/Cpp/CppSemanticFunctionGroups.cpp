@@ -11,6 +11,38 @@
 
 namespace nativesharp::interop
 {
+std::variant<std::vector<std::size_t>, CppSignatureEnumFailure> selectCppDemandedEnumCandidates(
+    std::span<const CppSignatureEnumDependency> dependencies,
+    std::span<const CppSemanticDemandCandidates> demands, std::size_t functionCount,
+    std::size_t enumCandidateCount)
+{
+    std::set<std::size_t> selectedFunctions;
+    for (const auto& demand : demands)
+    {
+        for (const auto& group : demand.candidates.groups)
+            selectedFunctions.insert(group.inventoryIndices.begin(), group.inventoryIndices.end());
+        selectedFunctions.insert(demand.candidates.unprojectedIndices.begin(), demand.candidates.unprojectedIndices.end());
+        if (demand.deferredConflict)
+        {
+            selectedFunctions.insert(demand.deferredConflict->firstIndex);
+            selectedFunctions.insert(demand.deferredConflict->conflictingIndex);
+        }
+    }
+    if (!selectedFunctions.empty() && *selectedFunctions.rbegin() >= functionCount)
+        return CppSignatureEnumFailure{"demand references a function outside its inventory"};
+    std::set<std::size_t> selectedEnums;
+    for (const auto& dependency : dependencies)
+    {
+        if (dependency.functionIndex >= functionCount)
+            return CppSignatureEnumFailure{"enum dependency references a function outside its inventory"};
+        if (!selectedFunctions.contains(dependency.functionIndex) ||
+            dependency.status != CppSignatureEnumStatus::Matched) continue;
+        if (!dependency.candidateIndex || *dependency.candidateIndex >= enumCandidateCount)
+            return CppSignatureEnumFailure{"enum dependency references a candidate outside its inventory"};
+        selectedEnums.insert(*dependency.candidateIndex);
+    }
+    return std::vector<std::size_t>(selectedEnums.begin(), selectedEnums.end());
+}
 CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
     std::span<const CppSemanticInventoryEntry> entries)
 {
