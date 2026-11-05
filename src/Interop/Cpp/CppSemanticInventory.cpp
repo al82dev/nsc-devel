@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 
 #include <algorithm>
+#include <charconv>
 #include <optional>
 #include <set>
 #include <system_error>
@@ -216,6 +217,47 @@ bool provideCppSemanticGlobals(
     states = std::move(result);
     error.clear();
     return true;
+}
+
+CppSemanticEnumConstantResult projectCppEnumConstant(
+    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex)
+{
+    if (entry.declaration.isCxx || !entry.declaration.complete ||
+        enumeratorIndex >= entry.declaration.enumerators.size())
+        return CppSemanticEnumConstantFailure{"enum constant is unavailable for C projection"};
+    const auto& value = entry.declaration.enumerators[enumeratorIndex];
+    const auto& type = value.valueType;
+    const auto mapped = mapCppScalarType(type);
+    if (!mapped || value.name.empty() || !type.sizeBits || *type.sizeBits == 0 || *type.sizeBits > 64 ||
+        (type.kind != CppTypeKind::SignedInteger && type.kind != CppTypeKind::UnsignedInteger))
+        return CppSemanticEnumConstantFailure{"enum constant type cannot be represented"};
+    const auto width = static_cast<unsigned>(*type.sizeBits);
+    const auto first = value.decimalValue.data();
+    const auto last = first + value.decimalValue.size();
+    std::uint64_t bits = 0;
+    if (type.kind == CppTypeKind::SignedInteger)
+    {
+        std::int64_t number = 0;
+        const auto parsed = std::from_chars(first, last, number);
+        if (parsed.ec != std::errc{} || parsed.ptr != last)
+            return CppSemanticEnumConstantFailure{"enum constant is outside signed 64-bit range"};
+        if (width < 64)
+        {
+            const auto limit = std::int64_t{1} << (width - 1);
+            if (number < -limit || number >= limit)
+                return CppSemanticEnumConstantFailure{"enum constant is outside its declared type"};
+        }
+        bits = static_cast<std::uint64_t>(number);
+    }
+    else
+    {
+        const auto parsed = std::from_chars(first, last, bits);
+        if (parsed.ec != std::errc{} || parsed.ptr != last ||
+            (width < 64 && bits >= (std::uint64_t{1} << width)))
+            return CppSemanticEnumConstantFailure{"enum constant is outside its unsigned type"};
+    }
+    if (width < 64) bits &= (std::uint64_t{1} << width) - 1;
+    return CppSemanticEnumConstant{entry.projectOrdinal, value.name, mapped->nativeSharpTypeKey, bits};
 }
 
 CppSemanticEnumInventoryResult collectCppSemanticEnums(

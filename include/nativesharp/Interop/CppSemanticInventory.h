@@ -6,6 +6,7 @@
 #include "nativesharp/Interop/CppGlobalDeclaration.h"
 
 #include <filesystem>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -79,6 +80,21 @@ using CppSemanticEnumInventoryResult =
 // declarations have been resolved; values are not inserted into NSC here.
 CppSemanticEnumInventoryResult collectCppSemanticEnums(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
+
+struct CppSemanticEnumConstant
+{
+    std::size_t projectOrdinal;
+    std::string name;
+    std::string typeKey;
+    std::uint64_t bits;
+};
+struct CppSemanticEnumConstantFailure { std::string message; };
+using CppSemanticEnumConstantResult =
+    std::variant<CppSemanticEnumConstant, CppSemanticEnumConstantFailure>;
+// Converts an exact C enumerator to the value representation used by NSC.
+// It does not insert the name or establish constant-expression semantics.
+CppSemanticEnumConstantResult projectCppEnumConstant(
+    const CppSemanticEnumEntry& entry, std::size_t enumeratorIndex);
 
 struct CppSemanticGlobal
 {
