@@ -158,3 +158,11 @@ los records seleccionados. Se preparó una prueba que usa ambos vía typedef.
 Todavía deben comprobarse colisiones con declaraciones NS, candidatos de
 expresión, firmas de funciones y resultados de ejecución. La implementación y
 las pruebas de esta sección no se han compilado ni ejecutado.
+
+### Colisión de enum con otro tipo, sin validar
+
+La observación registra los enums que comparten identidad con un tipo NS o un
+record y devuelve un error si un enlace de tipo o candidato de expresión los
+utiliza. Se prepararon casos de colisión usada y no usada. Falta verificar
+aliases, ámbitos, diagnósticos de uso real y la ejecución agrupada; la prueba
+todavía no se ha ejecutado.
