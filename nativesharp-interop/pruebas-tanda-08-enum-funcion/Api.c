@@ -19,3 +19,6 @@ static enum DoublePointerState double_pointer_value = DoublePointerReady;
 static enum DoublePointerState* double_pointer_inner = &double_pointer_value;
 enum DoublePointerState** double_pointer_global_only = &double_pointer_inner;
 int read_pointer_globals(void) { return (int)*pointer_global_only + (int)**double_pointer_global_only; }
+enum ArrayState array_states[2] = { ArrayLow, ArrayHigh };
+enum MatrixState matrix_states[2][2] = { { MatrixLow, MatrixLow }, { MatrixLow, MatrixHigh } };
+int read_state_arrays(void) { return (int)array_states[0] + (int)matrix_states[1][0]; }

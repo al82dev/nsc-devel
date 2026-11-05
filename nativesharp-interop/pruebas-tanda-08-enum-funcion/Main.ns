@@ -17,5 +17,8 @@ int Main()
     if (read_pointer_globals() != 20) return 10;
     volatile_mood = current_mood();
     if (read_mood(volatile_mood) != -3 || read_volatile_mood() != -3) return 11;
+    array_states[0] = array_states[1];
+    matrix_states[1][0] = matrix_states[1][1];
+    if ((int)array_states[0] != 8 || (int)matrix_states[1][0] != 12 || read_state_arrays() != 20) return 12;
     return 0;
 }
