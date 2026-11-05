@@ -4755,6 +4755,188 @@ int main(int argc, char** argv)
                         scopeBound |= binding.writtenName == expected && binding.targetTypeOrdinal == scopeOrdinal;
                 ok &= expect(scopeReady && scopeBound, "imported record resolves through using or namespace alias");
             }
+            {
+                const auto directory = std::filesystem::path(argv[2]) / "cpp-fixtures/observation-multi";
+                std::filesystem::create_directories(directory);
+                { std::ofstream file(directory / "Multi.nsproj"); file << "<Project><PropertyGroup><Name>Multi</Name></PropertyGroup></Project>"; }
+                { std::ofstream file(directory / "Types.ns"); file << "namespace game { struct Node {} }\n"; }
+                { std::ofstream file(directory / "Main.ns"); file << "using N = game.Node; int Use(N* item) { return 0; } int Main() { return 0; }\n"; }
+                nativesharp::frontend::ProjectCompilation multi;
+                std::string multiError;
+                const bool parsedMulti = multi.compileProjectSyntax(directory / "Multi.nsproj", multiError);
+                std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> copies;
+                nativesharp::diagnostics::DiagnosticEngine copyDiagnostics;
+                const bool copied = parsedMulti && multi.cloneSyntaxForObservation(copies, copyDiagnostics, multiError);
+                bool identitiesMatch = copied && copies.size() == 2 && multi.units().size() == copies.size();
+                for (std::size_t i = 0; identitiesMatch && i < copies.size(); ++i)
+                    identitiesMatch &= copies[i]->projectOrdinal() == multi.units()[i]->projectOrdinal() &&
+                        copies[i]->sourceOrdinal() == multi.units()[i]->sourceOrdinal() &&
+                        copies[i]->fileId() == multi.units()[i]->fileId() &&
+                        copies[i]->moduleName() == multi.units()[i]->moduleName() &&
+                        copies[i]->syntaxTree() != multi.units()[i]->syntaxTree();
+                const nativesharp::ast::TypeSyntax* originalMultiAlias = nullptr;
+                std::vector<const nativesharp::ast::AstNode*> multiPending;
+                std::unordered_set<const nativesharp::ast::AstNode*> multiVisited;
+                for (const auto& unit : multi.units())
+                    if (unit && unit->syntaxTree()) multiPending.push_back(unit->syntaxTree());
+                while (!multiPending.empty())
+                {
+                    const auto* node = multiPending.back(); multiPending.pop_back();
+                    if (!node || !multiVisited.insert(node).second) continue;
+                    if (node->typeSyntax() && node->typeSyntax()->baseName() == "N") originalMultiAlias = node->typeSyntax();
+                    multiPending.push_back(node->first()); multiPending.push_back(node->second()); multiPending.push_back(node->third());
+                    for (const auto* child : node->children()) multiPending.push_back(child);
+                }
+                nativesharp::frontend::ProjectNameLookup copyLookup;
+                const bool copyReady = copied && copyLookup.build(*multi.projectGraph(), copies, copyDiagnostics);
+                bool copiedBinding = false;
+                for (const auto& binding : copyLookup.bindings())
+                    copiedBinding |= binding.syntax && binding.syntax->baseName() == "game.Node" && binding.targetTypeOrdinal.has_value();
+                const bool originalUnchanged = originalMultiAlias && originalMultiAlias->baseName() == "N";
+                nativesharp::frontend::ProjectNameLookup originalLookup;
+                const bool originalReady = copyReady && originalLookup.build(*multi.projectGraph(), multi.units(), multi.diagnostics());
+                bool originalBinding = false;
+                for (const auto& binding : originalLookup.bindings())
+                    originalBinding |= binding.syntax && binding.syntax->baseName() == "game.Node" && binding.targetTypeOrdinal.has_value();
+                bool nativeWithoutCppOrigin = false;
+                for (std::size_t i = 0; i < originalLookup.namedTypes().size(); ++i)
+                    if (originalLookup.namedTypes()[i].identity.name() == "Node")
+                        nativeWithoutCppOrigin = !originalLookup.cppImportedTypeIndex(i);
+                if (!(identitiesMatch && copyReady && copiedBinding && originalReady && originalBinding))
+                    std::cerr << "multi observation: " << multiError << '\n';
+                ok &= expect(identitiesMatch && copyReady && copiedBinding && originalUnchanged && originalReady && originalBinding && nativeWithoutCppOrigin &&
+                             originalMultiAlias->baseName() == "game.Node" &&
+                             !copyDiagnostics.hasErrors() && !multi.diagnostics().hasErrors(),
+                             "isolated observation preserves cross-file type resolution and source identities");
+            }
+            {
+                for (bool shadowed : {false, true})
+                {
+                    nativesharp::frontend::ProjectCompilation receiverCompilation;
+                    receiverCompilation.setSourceBufferProvider([shadowed](const std::filesystem::path& file)
+                        -> std::optional<std::string> {
+                        if (file.filename() != "Main.ns") return std::nullopt;
+                        return shadowed
+                            ? "using A.B; class Holder { public int value; } int Main() { Holder C; return C.value; }\n"
+                            : "using A.B; int Main() { return C.value; }\n";
+                    });
+                    std::string receiverError;
+                    const bool receiverParsed = receiverCompilation.compileProjectSyntax(path, receiverError);
+                    std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> receiverCopies;
+                    nativesharp::diagnostics::DiagnosticEngine receiverDiagnostics;
+                    const bool receiverCopied = receiverParsed && receiverCompilation.cloneSyntaxForObservation(
+                        receiverCopies, receiverDiagnostics, receiverError);
+                    nativesharp::frontend::ProjectNameLookup receiverLookup;
+                    const bool receiverReady = receiverCopied && receiverLookup.setImportedNamespaces({{0, "A.B"}}) &&
+                        receiverLookup.setCppImportedTypes({{*namespaceIdentity,
+                            nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                            nativesharp::frontend::NamedTypeAccessibility::Public, 0,
+                            namespaceC->location ? namespaceC->location->file.generic_string() : ""}}) &&
+                        receiverLookup.build(*receiverCompilation.projectGraph(), receiverCopies, receiverDiagnostics);
+                    const auto receiverOrdinal = receiverReady ? receiverLookup.typeOrdinalForIdentity(namespaceIdentity->key()) : std::nullopt;
+                    bool candidate = false;
+                    if (receiverOrdinal)
+                        for (const auto& binding : receiverLookup.expressionTypeBindings())
+                            if (binding.writtenName == "C")
+                                candidate |= std::find(binding.candidateTypeOrdinals.begin(), binding.candidateTypeOrdinals.end(),
+                                                       *receiverOrdinal) != binding.candidateTypeOrdinals.end();
+                    ok &= expect(receiverReady && candidate && !receiverDiagnostics.hasErrors(),
+                                 "expression type lookup retains a C++ candidate even when a local may shadow it");
+                    const auto receiverSelected = selectCppRecordBindings(receiverLookup, selectionGroups, mapping);
+                    const auto* receiverSelection = std::get_if<CppRecordBindingSelection>(&receiverSelected);
+                    ok &= expect(receiverSelection && receiverSelection->referencedGroups.empty() &&
+                                 receiverSelection->expressionCandidateGroups == mapping,
+                                 "expression record candidates remain separate from confirmed type references");
+                }
+                for (bool shadowed : {false, true})
+                {
+                    nativesharp::frontend::ProjectCompilation bodyCompilation;
+                    bodyCompilation.setSourceBufferProvider([shadowed](const std::filesystem::path& file)
+                        -> std::optional<std::string> {
+                        if (file.filename() != "Main.ns") return std::nullopt;
+                        return shadowed
+                            ? "class C { public static int Get() { return 1; } } class Holder { public int Get() { return 2; } } class Program { static int Main() { Holder C = new Holder(); return C.Get(); } }\n"
+                            : "class C { public static int Get() { return 1; } } class Program { static int Main() { return C.Get(); } }\n";
+                    });
+                    std::string bodyError;
+                    const bool bodyReady = bodyCompilation.compileProjectMethodBodies(path, bodyError);
+                    bool local = false, type = false;
+                    if (bodyReady && bodyCompilation.methodBodyModel())
+                        for (const auto& binding : bodyCompilation.methodBodyModel()->nameBindings())
+                            if (binding.name == "C")
+                            {
+                                local |= binding.kind == nativesharp::frontend::MethodNameBindingKind::Local;
+                                type |= binding.kind == nativesharp::frontend::MethodNameBindingKind::TypeReference;
+                            }
+                    if (!bodyReady) std::cerr << "receiver body: " << bodyError << '\n';
+                    ok &= expect(bodyReady && (shadowed ? local && !type : type && !local),
+                                 "body analysis distinguishes a local receiver from a static type receiver");
+                }
+            }
+            {
+                nativesharp::frontend::ProjectCompilation aliasCompilation;
+                aliasCompilation.setSourceBufferProvider([](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns")
+                        return "using Alias = A.B.C; int Use(Alias* item) { return 0; } int Main() { return 0; }\n";
+                    return std::nullopt;
+                });
+                std::string aliasError;
+                const bool parsedAlias = aliasCompilation.compileProjectSyntax(path, aliasError);
+                const nativesharp::ast::TypeSyntax* originalAlias = nullptr;
+                std::vector<const nativesharp::ast::AstNode*> pending;
+                std::unordered_set<const nativesharp::ast::AstNode*> visited;
+                for (const auto& unit : aliasCompilation.units())
+                    if (unit && unit->syntaxTree()) pending.push_back(unit->syntaxTree());
+                while (!pending.empty())
+                {
+                    const auto* node = pending.back(); pending.pop_back();
+                    if (!node || !visited.insert(node).second) continue;
+                    if (node->typeSyntax() && node->typeSyntax()->baseName() == "Alias") originalAlias = node->typeSyntax();
+                    pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
+                    for (const auto* child : node->children()) pending.push_back(child);
+                }
+                std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> observerUnits;
+                nativesharp::diagnostics::DiagnosticEngine cloneDiagnostics;
+                const bool cloned = parsedAlias && aliasCompilation.cloneSyntaxForObservation(
+                    observerUnits, cloneDiagnostics, aliasError);
+                const auto* savedUnit = observerUnits.empty() ? nullptr : observerUnits[0].get();
+                nativesharp::frontend::ProjectCompilation unprepared;
+                std::string rejectedError;
+                ok &= expect(cloned && savedUnit && !unprepared.cloneSyntaxForObservation(
+                                 observerUnits, cloneDiagnostics, rejectedError) &&
+                             !rejectedError.empty() && observerUnits[0].get() == savedUnit,
+                             "syntax observation rejects an unparsed project without replacing existing output");
+                nativesharp::diagnostics::DiagnosticEngine aliasDiagnostics;
+                nativesharp::frontend::ProjectNameLookup aliasObserver;
+                const bool aliasConfigured = cloned && aliasObserver.setImportedNamespaces({{0, "A.B"}}) &&
+                    aliasObserver.setCppImportedTypes({{*namespaceIdentity,
+                        nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                        nativesharp::frontend::NamedTypeAccessibility::Public, 0,
+                        namespaceC->location ? namespaceC->location->file.generic_string() : ""}});
+                const bool aliasReady = aliasConfigured && aliasObserver.build(
+                    *aliasCompilation.projectGraph(), observerUnits, aliasDiagnostics);
+                bool expanded = false;
+                for (const auto& binding : aliasObserver.bindings())
+                    expanded |= binding.syntax && binding.syntax->baseName() == "A.B.C";
+                ok &= expect(aliasConfigured && aliasReady && expanded && originalAlias &&
+                             originalAlias->baseName() == "Alias" && !aliasCompilation.diagnostics().hasErrors(),
+                             "isolated syntax observation expands aliases without mutating the original tree");
+                nativesharp::frontend::ProjectNameLookup finalLookup;
+                const bool finalReady = finalLookup.setImportedNamespaces({{0, "A.B"}}) &&
+                    finalLookup.setCppImportedTypes({{*namespaceIdentity,
+                        nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                        nativesharp::frontend::NamedTypeAccessibility::Public, 0,
+                        namespaceC->location ? namespaceC->location->file.generic_string() : ""}}) &&
+                    finalLookup.build(*aliasCompilation.projectGraph(), aliasCompilation.units(), aliasCompilation.diagnostics());
+                const auto finalOrdinal = finalReady ? finalLookup.typeOrdinalForIdentity(namespaceIdentity->key()) : std::nullopt;
+                bool finalBound = false;
+                if (finalOrdinal)
+                    for (const auto& binding : finalLookup.bindings())
+                        finalBound |= binding.targetTypeOrdinal == finalOrdinal;
+                ok &= expect(finalReady && finalBound && originalAlias && originalAlias->baseName() == "A.B.C",
+                             "production syntax resolves the alias normally after isolated observation");
+            }
         }
     }
     return ok ? 0 : 1;
