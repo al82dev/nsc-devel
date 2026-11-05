@@ -2253,7 +2253,7 @@ int main(int argc, char** argv)
                                   "int bridge_probe(size_t n, ...);\n"
                                   "struct Pair { char a; int b; }; struct OuterPair { struct Pair nested; struct Pair array[2][3]; }; struct Incomplete;\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
-                                  "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
+                                  "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef struct Pair PairMatrix[2][3]; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
@@ -2790,7 +2790,7 @@ int main(int argc, char** argv)
                     recordAliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
                         -> std::optional<std::string> {
                         if (path.filename() == "Main.ns")
-                            return "PairAlias* Echo(Pair* value) { return value; } int Main() { return 0; }\n";
+                            return "PairAlias* Echo(Pair* value) { return value; } int Use(PairMatrix value) { return 0; } int Main() { return 0; }\n";
                         return std::nullopt;
                     });
                     const auto* captured = cRecords ? recordByName(*cRecords, "Pair") : nullptr;
@@ -2811,23 +2811,31 @@ int main(int argc, char** argv)
                         [aliasesSnapshot](const auto& graph, auto, auto& output, auto& why) {
                             if (!aliasesSnapshot || graph.projects().empty()) { why = "alias fixture unavailable"; return false; }
                             for (const auto& alias : *aliasesSnapshot)
-                                if (alias.name == "Pair" || alias.name == "PairAlias")
+                                if (alias.name == "Pair" || alias.name == "PairAlias" || alias.name == "PairMatrix")
                                     output.push_back({0, graph.projects()[0].projectFile(), 0,
                                                       "x86_64-pc-windows-msvc", alias});
                             return true;
                         }, error);
                     const bool bound = configured && recordAliasCompilation.compileProjectNames(semanticPath, error);
-                    bool aliasBound = false, tagBound = false;
+                    bool aliasBound = false, tagBound = false, arrayBound = false;
                     if (bound && recordAliasCompilation.nameLookup())
                         for (const auto& binding : recordAliasCompilation.nameLookup()->bindings())
                         {
                             aliasBound |= binding.writtenName == "PairAlias" && binding.syntax &&
                                 binding.syntax->baseName() == "Pair";
                             tagBound |= binding.writtenName == "Pair";
+                            if (binding.writtenName == "PairMatrix" && binding.syntax)
+                            {
+                                const auto& modifiers = binding.syntax->modifiers();
+                                arrayBound |= binding.syntax->baseName() == "Pair" && binding.targetTypeOrdinal &&
+                                    modifiers.size() == 2 && modifiers[0].arrayCount && modifiers[1].arrayCount &&
+                                    modifiers[0].arrayCount->integerValue() == 3 && modifiers[1].arrayCount->integerValue() == 2;
+                            }
                         }
                     if (!bound) std::cerr << "C record typedef semantic setup failed: " << error << '\n';
                     ok &= expect(bound && aliasBound && tagBound,
                                  "record typedef and same-named C tag bind to the imported record");
+                    ok &= expect(bound && arrayBound, "record array typedef preserves identity and both dimensions");
                     const auto* outer = cRecords ? recordByName(*cRecords, "OuterPair") : nullptr;
                     const auto nested = outer && recordAliasCompilation.nameLookup()
                         ? projectCppSemanticInstanceField(*outer, 0, 0, "Semantic", "x86_64-pc-windows-msvc",
