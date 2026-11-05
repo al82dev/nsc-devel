@@ -2570,6 +2570,29 @@ int main(int argc, char** argv)
                 std::string error;
                 const auto semanticPath = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
                 {
+                    nativesharp::frontend::ProjectCompilation enumCompilation;
+                    enumCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() == "Main.ns")
+                            return "int Main() { switch (0) { case CMinus: return 7; default: return 0; } }\n";
+                        return std::nullopt;
+                    });
+                    nativesharp::frontend::NamespaceStateSymbol constant;
+                    constant.projectOrdinal = 0;
+                    constant.moduleName = "Semantic";
+                    constant.name = "CMinus";
+                    constant.declaredTypeKey = "builtin:int";
+                    constant.storageName = "__nsc_cenum_8_Semantic_6_CMinus";
+                    constant.isConst = true;
+                    constant.isCppEnumConstant = true;
+                    constant.initializerKind = nativesharp::frontend::NamespaceStateInitializerKind::Integer;
+                    constant.integerValue = 0xfffffffdULL;
+                    const bool configured = enumCompilation.setExperimentalCppImportedStates({constant}, error);
+                    const bool ready = configured && enumCompilation.compileProjectMethodBodies(semanticPath, error);
+                    if (!ready) std::cerr << "C enum switch setup failed: " << error << '\n';
+                    ok &= expect(ready, "imported C enumerator is accepted as a switch constant");
+                }
+                {
                     nativesharp::frontend::ProjectCompilation aliasCompilation;
                     aliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
                         -> std::optional<std::string> {
