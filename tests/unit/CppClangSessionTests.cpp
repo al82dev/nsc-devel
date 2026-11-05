@@ -179,9 +179,11 @@ int main(int argc, char** argv)
         config.includePaths = {{"A:/user", CppIncludeKind::User}, {"A:/system", CppIncludeKind::System}};
         config.macros = {{CppMacroAction::Define, "ONE=1"}, {CppMacroAction::Undefine, "TWO"}};
         const auto actual = nativesharp::interop::detail::buildClangInvocationArguments(config);
+        const auto includePath = (config.resourceDirectory / "include").u8string();
+        const std::string resourceInclude(reinterpret_cast<const char*>(includePath.data()), includePath.size());
         const std::vector<std::string> expected{
             "-target", "x86_64-pc-windows-msvc", "-x", "c", "-std=c11",
-            "-resource-dir", "A:/resource", "-nostdinc", "-isystem", "A:/resource/include",
+            "-resource-dir", "A:/resource", "-nostdinc", "-isystem", resourceInclude,
             "-I", "A:/user", "-isystem", "A:/system", "-DONE=1", "-UTWO"};
         ok &= expect(actual == expected, "Clang arguments preserve language, resources and option order");
         config.language = CppLanguageMode::Cpp;
