@@ -49,5 +49,45 @@ std::filesystem::path pathFromUtf8(const char* text)
         reinterpret_cast<const char8_t*>(bytes.data()), bytes.size()));
 }
 
+class DiagnosticCollector final : public clang::DiagnosticConsumer
+{
+public:
+    explicit DiagnosticCollector(std::vector<CppSessionDiagnostic>& diagnostics)
+        : diagnostics_(diagnostics) {}
+
+    void HandleDiagnostic(clang::DiagnosticsEngine::Level level, const clang::Diagnostic& info) override
+    {
+        clang::DiagnosticConsumer::HandleDiagnostic(level, info);
+        if (level == clang::DiagnosticsEngine::Ignored) return;
+        CppSessionDiagnostic diagnostic;
+        switch (level)
+        {
+        case clang::DiagnosticsEngine::Note: diagnostic.severity = CppSessionDiagnosticSeverity::Note; break;
+        case clang::DiagnosticsEngine::Remark: diagnostic.severity = CppSessionDiagnosticSeverity::Remark; break;
+        case clang::DiagnosticsEngine::Warning: diagnostic.severity = CppSessionDiagnosticSeverity::Warning; break;
+        case clang::DiagnosticsEngine::Fatal: diagnostic.severity = CppSessionDiagnosticSeverity::Fatal; break;
+        default: diagnostic.severity = CppSessionDiagnosticSeverity::Error; break;
+        }
+        llvm::SmallString<256> message;
+        info.FormatDiagnostic(message);
+        diagnostic.message = std::string(message.str());
+        diagnostic.originalId = info.getID();
+        if (info.hasSourceManager() && info.getLocation().isValid())
+        {
+            const auto location = info.getSourceManager().getPresumedLoc(info.getLocation());
+            if (location.isValid())
+                diagnostic.location = CppSourcePoint{
+                    pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+        }
+        if (level == clang::DiagnosticsEngine::Note && !diagnostics_.empty())
+            diagnostics_.back().notes.push_back(std::move(diagnostic));
+        else
+            diagnostics_.push_back(std::move(diagnostic));
+    }
+
+private:
+    std::vector<CppSessionDiagnostic>& diagnostics_;
+};
+
 }
 }
