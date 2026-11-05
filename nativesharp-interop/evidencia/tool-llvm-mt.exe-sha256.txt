@@ -1,0 +1,3 @@
+SHA256 hash of C:\clang-llvm\bin\llvm-mt.exe:
+d8511da5e3f9303d1983b105d20afac15cdabc9e1580f486b656004f47d538c6
+CertUtil: -hashfile command completed successfully.

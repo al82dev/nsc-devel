@@ -1,0 +1,3 @@
+SHA256 hash of C:\clang-llvm\bin\llvm-ml.exe:
+746ab098ca1089a8b2e9aebd1ac423d4803f0dcdb9cedce44d656c78947aa7d5
+CertUtil: -hashfile command completed successfully.
