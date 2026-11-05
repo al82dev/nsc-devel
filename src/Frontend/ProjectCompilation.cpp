@@ -2637,6 +2637,7 @@ bool ProjectCompilation::compileSyntaxCore(
     const std::filesystem::path& projectFile,
     std::string& loadError)
 {
+    compilationAttempted_ = true;
     loadError.clear();
     if (!isSyntaxCompilationFresh(loadError))
     {
