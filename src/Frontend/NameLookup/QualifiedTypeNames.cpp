@@ -354,6 +354,64 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 mutableSyntax->addTypeArgument(makeType(parameter));
             return true;
         }
+        const auto& underlying = selected->declaration.underlyingType;
+        if (selected->targetTriple == "x86_64-pc-windows-msvc" &&
+            underlying.kind == interop::CppTypeKind::Pointer && underlying.sizeBits == 64 &&
+            !underlying.isConst && !underlying.isVolatile && underlying.element &&
+            underlying.element->kind == interop::CppTypeKind::Function && underlying.element->function &&
+            underlying.element->function->hasPrototype && syntax->modifiers().empty() && !syntax->isPointeeConst())
+        {
+            const auto& signature = *underlying.element->function;
+            auto convention = ast::FunctionCallingConventionSyntaxKind::NativeSharp;
+            if (signature.callingConvention == "cdecl") convention = ast::FunctionCallingConventionSyntaxKind::C;
+            else if (signature.callingConvention == "stdcall") convention = ast::FunctionCallingConventionSyntaxKind::StdCall;
+            else if (signature.callingConvention == "fastcall") convention = ast::FunctionCallingConventionSyntaxKind::FastCall;
+            else if (signature.callingConvention == "vectorcall") convention = ast::FunctionCallingConventionSyntaxKind::VectorCall;
+            else if (signature.callingConvention == "ms_abi") convention = ast::FunctionCallingConventionSyntaxKind::Win64;
+            else return report(diagnostics::DiagnosticId::InvalidUsingTarget, "unsupported C callback calling convention");
+            auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
+            const auto makeType = [&](const interop::CppType& type) -> ast::TypeSyntax* {
+                if (const auto builtin = cppAliasBuiltinType(type))
+                {
+                    auto* value = arena.make<ast::TypeSyntax>(syntax->range(), builtin->token, std::string(builtin->name));
+                    value->prependModifiers(std::vector<ast::TypeModifierSyntax>(builtin->pointerDepth));
+                    value->setPointeeConst(builtin->pointeeConst);
+                    return value;
+                }
+                const auto enumType = cppAliasEnumType(type);
+                const auto recordType = cppAliasRecordType(type);
+                const std::string name = enumType ? enumType->name : recordType ? recordType->name : std::string{};
+                const std::string canonical = enumType ? enumType->name : recordType ? recordType->canonicalName : std::string{};
+                if (name.empty()) return nullptr;
+                const auto found = std::find_if(cppImportedTypes_.begin(), cppImportedTypes_.end(), [&](const auto& item) {
+                    return item.projectOrdinal == selected->projectOrdinal && item.identity.fullyQualifiedName() == canonical &&
+                        item.deferredImportError.empty() && (enumType ? item.enumBase && item.enumBase->token == enumType->base.token
+                                                                     : item.kind == NamedTypeDeclarationKind::Struct);
+                });
+                if (found == cppImportedTypes_.end()) return nullptr;
+                auto* value = arena.make<ast::TypeSyntax>(syntax->range(), lexer::TokenKind::Identifier, name);
+                value->setOriginProjectOrdinal(selected->projectOrdinal);
+                value->setOriginNamespace("");
+                value->prependModifiers(std::vector<ast::TypeModifierSyntax>(enumType ? enumType->pointerDepth : recordType->pointerDepth));
+                value->setPointeeConst(enumType ? enumType->pointeeConst : recordType->pointeeConst);
+                return value;
+            };
+            auto* result = makeType(signature.returnType);
+            std::vector<ast::TypeSyntax*> parameters;
+            for (const auto& parameter : signature.parameterTypes) parameters.push_back(makeType(parameter));
+            if (!result || std::find(parameters.begin(), parameters.end(), nullptr) != parameters.end())
+                return report(diagnostics::DiagnosticId::InvalidUsingTarget, "C callback signature contains an unavailable type");
+            auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
+            mutableSyntax->setBaseTokenKind(lexer::TokenKind::Invalid);
+            mutableSyntax->setBaseName("$function");
+            mutableSyntax->setFunction();
+            mutableSyntax->setFunctionCarrier(ast::FunctionTypeCarrierSyntaxKind::Pointer);
+            mutableSyntax->setFunctionCallingConvention(convention);
+            mutableSyntax->setFunctionReturnType(result);
+            mutableSyntax->setFunctionVariadic(signature.variadic);
+            for (auto* parameter : parameters) mutableSyntax->addTypeArgument(parameter);
+            return true;
+        }
         const auto mapped = cppAliasBuiltinType(selected->declaration.underlyingType);
         if (selected->targetTriple != "x86_64-pc-windows-msvc" || !mapped ||
             (mapped->pointeeConst && !syntax->modifiers().empty()) ||
