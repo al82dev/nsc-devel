@@ -372,6 +372,26 @@ bool OopLlvmImplementation::collectLocalStorage(
                 node->referenceLocal
             ? typeKey + "*"
             : typeKey;
+        const auto cppOrdinal = storageTypeKey.starts_with("type:")
+            ? nameLookup_.typeOrdinalForIdentity(std::string_view(storageTypeKey).substr(5))
+            : std::nullopt;
+        const auto* cppType = cppOrdinal ? nameLookup_.cppImportedType(*cppOrdinal) : nullptr;
+        if (cppType != nullptr)
+        {
+            const bool captured = currentMirFunction_ != nullptr && std::ranges::find(
+                currentMirFunction_->capturedLocalOrdinals, *node->localOrdinal) !=
+                currentMirFunction_->capturedLocalOrdinals.end();
+            if (node->kind != frontend::ProjectOopMirNodeKind::LocalDeclaration || node->staticLocal || captured ||
+                !cppType->objectLayout || cppType->objectLayout->sizeBytes == 0 ||
+                cppType->objectLayout->alignmentBytes == 0)
+                return fail(error, "C++ local storage requires an uncaptured automatic record with layout");
+            LLVMTypeRef bytes = LLVMArrayType2(LLVMInt8TypeInContext(context_), cppType->objectLayout->sizeBytes);
+            LLVMValueRef slot = entryBlockAlloca(bytes, static_cast<unsigned>(cppType->objectLayout->alignmentBytes),
+                localValueName(*node->localOrdinal, "local", ".addr").c_str());
+            if (slot == nullptr) return fail(error, "C++ local storage allocation failed");
+            localStorage_[*node->localOrdinal] = slot;
+            return true;
+        }
         // T07-F04. A local inferred as `never` is a control-flow fact, not an object.
         // Its initializer terminates the block, so reserving even one byte would invent
         // a layout and debugger lifetime for an uninhabited type.
