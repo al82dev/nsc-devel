@@ -1,6 +1,8 @@
 # Tanda 07: referencias y dependencias C/C++
 
-Estado: validación agrupada aprobada; registro de ítems en curso.
+Estado: tanda 07 cerrada con validación agrupada aprobada y commits individuales.
+Las limitaciones de procedencia, caché, formatos de importación y servicio de
+lenguaje siguen registradas; no equivalen a interoperabilidad total.
 
 - `ProjectLoader.cpp::parseCppLibraryReferenceItem` admite `Header`, `Language`
   (`C` o `C++`), `Standard` y opcionalmente `Library` y `Runtime`. Los hijos
