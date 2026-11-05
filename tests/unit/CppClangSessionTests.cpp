@@ -1,4 +1,9 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
+#include "nativesharp/Frontend/CppDiagnosticAdapter.h"
+#include "nativesharp/Diagnostics/DiagnosticEngine.h"
+#include "nativesharp/Diagnostics/DiagnosticRenderer.h"
+#include "nativesharp/Source/SourceManager.h"
+#include <sstream>
 #include "../../src/Interop/Cpp/ClangSessionSupport.h"
 #include <clang/Frontend/ASTUnit.h>
 #include <atomic>
@@ -233,6 +238,40 @@ int main(int argc, char** argv)
     if (argc != 4 && argc != 5) return 2;
     CppClangSessionFactory factory;
     bool ok = true;
+    {
+        using namespace nativesharp;
+        interop::CppSessionDiagnostic fatal;
+        fatal.severity = interop::CppSessionDiagnosticSeverity::Fatal;
+        fatal.message = "invalid declaration";
+        fatal.location = interop::CppSourcePoint{"A:/headers/test.hpp", 12, 7};
+        interop::CppSessionDiagnostic note;
+        note.message = "declared here";
+        note.location = interop::CppSourcePoint{"A:/headers/test.hpp", 3, 2};
+        fatal.notes.push_back(note);
+        interop::CppSessionDiagnostic warning;
+        warning.severity = interop::CppSessionDiagnosticSeverity::Warning;
+        warning.message = "warning text";
+        interop::CppSessionDiagnostic remark;
+        remark.severity = interop::CppSessionDiagnosticSeverity::Remark;
+        remark.message = "remark text";
+        const std::vector<interop::CppSessionDiagnostic> input{fatal, warning, remark};
+        diagnostics::DiagnosticEngine converted;
+        frontend::appendCppDiagnostics(input, converted);
+        const auto& values = converted.diagnostics();
+        ok &= expect(values.size() == 3 && values[0].severity() == diagnostics::DiagnosticSeverity::Error &&
+                     values[1].severity() == diagnostics::DiagnosticSeverity::Warning &&
+                     values[2].severity() == diagnostics::DiagnosticSeverity::Note &&
+                     values[0].message().find("A:/headers/test.hpp:12:7") != std::string::npos &&
+                     values[0].notes().size() == 1 &&
+                     values[0].notes()[0].find("A:/headers/test.hpp:3:2") != std::string::npos,
+                     "Clang diagnostics retain severity, external locations and notes");
+        source::SourceManager sources;
+        std::ostringstream rendered;
+        diagnostics::DiagnosticRenderer(sources).renderAll(converted, rendered);
+        ok &= expect(rendered.str().find("<source>") == std::string::npos &&
+                     rendered.str().find("declared here") != std::string::npos,
+                     "unresolved C++ locations render without inventing NativeSharp locations");
+    }
     {
         CppSessionOptions config;
         config.language = CppLanguageMode::C;
