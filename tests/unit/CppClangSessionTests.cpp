@@ -637,7 +637,7 @@ int main(int argc, char** argv)
             ok &= expect(!session->sourceFilesSnapshot() && !session->sourceFileContentsSnapshot() &&
                              contains(nestedHeader) && contents && nested != contents->end() && nested->digest == expectedNested,
                          "copied source-file snapshot survives session closure");
-            { std::ofstream file(nestedHeader, std::ios::trunc); file << "struct SestedDependency {};\n"; }
+            { std::ofstream file(nestedHeader, std::ios::binary | std::ios::trunc); file << "struct SestedDependency {};\n"; }
             auto changedConfig = options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp, "");
             changedConfig.input = CppFileInput{mainHeader};
             auto changedSession = open(factory, std::move(changedConfig));
