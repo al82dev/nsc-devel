@@ -1,0 +1,99 @@
+#pragma once
+
+#include "nativesharp/Interop/CppSemanticInventory.h"
+#include "nativesharp/Interop/CppDeferredFunctionCandidate.h"
+
+#include <cstddef>
+#include <span>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <variant>
+#include <vector>
+
+namespace nativesharp::frontend { struct CppFunctionDemand; class ProjectNameLookup; }
+
+namespace nativesharp::interop
+{
+struct CppSemanticFunctionGroup
+{
+    frontend::NamespaceFunctionSymbol symbol;
+    std::vector<std::size_t> inventoryIndices;
+};
+
+struct CppSemanticFunctionGroups
+{
+    std::vector<CppSemanticFunctionGroup> groups;
+    std::vector<std::size_t> unprojectedIndices;
+};
+
+struct CppSemanticFunctionGroupFailure
+{
+    std::size_t firstIndex;
+    std::size_t conflictingIndex;
+    std::string message;
+};
+
+using CppSemanticFunctionGroupsResult =
+    std::variant<CppSemanticFunctionGroups, CppSemanticFunctionGroupFailure>;
+
+// Groups candidates for semantic lookup; this does not prove ODR or binary compatibility.
+CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
+    std::span<const CppSemanticInventoryEntry> entries);
+
+// Restricts lookup to one C++ qualified name while checking aliases of its external symbols.
+// All returned inventory indices refer to the original, unfiltered input.
+CppSemanticFunctionGroupsResult selectCppSemanticFunctions(
+    std::span<const CppSemanticInventoryEntry> entries, std::size_t projectOrdinal,
+    std::string_view qualifiedName);
+
+struct CppSemanticDemandCandidates
+{
+    std::size_t demandIndex;
+    std::size_t projectOrdinal;
+    std::string namespaceName;
+    CppSemanticFunctionGroups candidates;
+    std::optional<CppSemanticFunctionGroupFailure> deferredConflict;
+};
+
+struct CppSemanticDemandFailure
+{
+    std::size_t demandIndex;
+    CppSemanticFunctionGroupFailure conflict;
+};
+
+using CppSemanticDemandSelection =
+    std::variant<std::vector<CppSemanticDemandCandidates>, CppSemanticDemandFailure>;
+
+CppSemanticDemandSelection selectCppSemanticDemands(
+    std::span<const CppSemanticInventoryEntry> entries,
+    std::span<const frontend::CppFunctionDemand> demands, bool deferConflicts = false);
+
+struct CppDeferredFunctionFailure
+{
+    std::size_t selectionIndex;
+    std::string message;
+};
+
+using CppDeferredFunctionResult =
+    std::variant<std::vector<CppDeferredFunctionCandidate>, CppDeferredFunctionFailure>;
+
+// The copied declarations outlive the inventory; syntax remains owned by the compilation.
+CppDeferredFunctionResult materializeCppDeferredFunctions(
+    std::span<const CppSemanticInventoryEntry> entries,
+    std::span<const frontend::CppFunctionDemand> demands,
+    std::span<const CppSemanticDemandCandidates> selections);
+
+bool provideCppSemanticFunctions(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceFunctionSymbol>& projected,
+    std::vector<CppDeferredFunctionCandidate>& deferred, std::string& error);
+
+// Isolated route: record signatures are projected only for types installed as imported C++ records.
+bool provideExperimentalCppFunctionsWithRecords(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    const frontend::ProjectNameLookup& lookup, std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceFunctionSymbol>& projected,
+    std::vector<CppDeferredFunctionCandidate>& deferred, std::string& error);
+}
