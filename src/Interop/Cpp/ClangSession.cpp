@@ -844,7 +844,11 @@ public:
             ast_.reset();
             return failure("cancel", "C/C++ session opening was cancelled");
         }
-        if (!ast_ || ast_->getDiagnostics().hasErrorOccurred())
+        const bool capturedError = std::any_of(diagnostics_.begin(), diagnostics_.end(), [](const auto& diagnostic) {
+            return diagnostic.severity == CppSessionDiagnosticSeverity::Error ||
+                   diagnostic.severity == CppSessionDiagnosticSeverity::Fatal;
+        });
+        if (!ast_ || capturedError || ast_->getDiagnostics().hasErrorOccurred())
         {
             ast_.reset();
             return failure("parse", "Clang could not analyze the translation unit");
