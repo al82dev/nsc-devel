@@ -276,6 +276,9 @@ int main(int argc, char** argv)
         ok &= expect(values.size() == 3 && values[0].severity() == diagnostics::DiagnosticSeverity::Error &&
                      values[1].severity() == diagnostics::DiagnosticSeverity::Warning &&
                      values[2].severity() == diagnostics::DiagnosticSeverity::Note &&
+                     values[0].externalLocation() && values[0].externalLocation()->line == 12 &&
+                     values[0].externalLocation()->column == 7 &&
+                     values[0].externalLocation()->file == std::filesystem::path("A:/headers/test.hpp") &&
                      values[0].message().find("A:/headers/test.hpp:12:7") != std::string::npos &&
                      values[0].notes().size() == 1 &&
                      values[0].notes()[0].find("A:/headers/test.hpp:3:2") != std::string::npos,
@@ -297,6 +300,12 @@ int main(int argc, char** argv)
                      resolved.diagnostics()[0].location() == location &&
                      resolved.diagnostics()[0].message().find("A:/headers/test.hpp:12:7") == std::string::npos,
                      "explicitly resolved C++ locations use the supplied NativeSharp range");
+        diagnostics::DiagnosticEngine copied;
+        copied.append(values[0]);
+        ok &= expect(copied.diagnostics().size() == 1 && copied.diagnostics()[0].externalLocation() &&
+                     copied.diagnostics()[0].externalLocation()->line == 12 &&
+                     copied.diagnostics()[0].externalLocation()->column == 7,
+                     "appending a C++ diagnostic preserves its structured external location");
     }
     {
         CppSessionOptions config;
