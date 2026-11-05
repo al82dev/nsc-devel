@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
+#include "nativesharp/Interop/CppSemanticFunctionGroups.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
@@ -876,6 +877,45 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
         if (binding.targetTypeOrdinal) addEnum(*binding.targetTypeOrdinal);
     for (const auto& binding : lookup.expressionTypeBindings())
         for (const auto ordinal : binding.candidateTypeOrdinals) addEnum(ordinal);
+    std::vector<frontend::CppImportedTypeDeclaration> signatureEnums;
+    if (!provideCppEnumTypes(*graph, compilation.cppProjectSessions(), signatureEnums, error))
+        return CppRecordObservationFailure{std::move(error)};
+    auto functionInventory = collectCppSemanticFunctions(*graph, compilation.cppProjectSessions());
+    if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&functionInventory))
+        return CppRecordObservationFailure{failure->message};
+    const auto& functions = std::get<std::vector<CppSemanticInventoryEntry>>(functionInventory);
+    auto dependencies = collectCppSignatureEnumDependencies(*graph, functions, signatureEnums);
+    if (const auto* failure = std::get_if<CppSignatureEnumFailure>(&dependencies))
+        return CppRecordObservationFailure{failure->message};
+    const auto& enumDependencies = std::get<std::vector<CppSignatureEnumDependency>>(dependencies);
+    if (!enumDependencies.empty())
+    {
+        frontend::ProjectMemberModel members;
+        members.setPrecompiledSnapshots(finalSnapshots);
+        diagnostics::DiagnosticEngine demandDiagnostics;
+        if (!members.build(lookup, units, demandDiagnostics, compilation.genericModel()))
+            return CppRecordObservationFailure{"cannot build preliminary members for C enum function demands"};
+        frontend::ProjectNamespaceFunctionModel demands;
+        demands.setCaptureCppFunctionDemands(true);
+        demands.setPrecompiledSnapshots(finalSnapshots);
+        if (!demands.build(lookup, members, units, demandDiagnostics, compilation.genericModel()))
+            return CppRecordObservationFailure{"cannot observe C enum function demands"};
+        auto selections = selectCppSemanticDemands(functions, demands.cppFunctionDemands(), true);
+        if (const auto* failure = std::get_if<CppSemanticDemandFailure>(&selections))
+            return CppRecordObservationFailure{failure->conflict.message};
+        auto selectedEnums = selectCppDemandedEnumCandidates(enumDependencies,
+            std::get<std::vector<CppSemanticDemandCandidates>>(selections), functions.size(), signatureEnums.size());
+        if (const auto* failure = std::get_if<CppSignatureEnumFailure>(&selectedEnums))
+            return CppRecordObservationFailure{failure->message};
+        for (const auto index : std::get<std::vector<std::size_t>>(selectedEnums))
+        {
+            const auto& type = signatureEnums[index];
+            if (!type.deferredImportError.empty()) return CppRecordObservationFailure{type.deferredImportError};
+            if (collidingEnumIdentities.contains(type.identity.key()))
+                return CppRecordObservationFailure{"C enum function signature conflicts with another type: " + type.identity.name()};
+            if (enumIdentities.insert(type.identity.key()).second) result.referencedEnumTypes.push_back(type);
+        }
+    }
     return result;
 }
 
