@@ -1285,6 +1285,29 @@ int main(int argc, char** argv)
                             }
                         ok &= expect(enumFirst && enumSecond,
                                      "enum inventory retains values and distinct reference origins");
+                        {
+                            std::vector<CppProjectSessions> enumGroups(1);
+                            enumGroups[0].projectFile = otherProject->projectFile();
+                            enumGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                                CppLanguageMode::C, "enum ChoiceType { Choice = -3 };\n")));
+                            nativesharp::frontend::CppFunctionDemand demand;
+                            demand.lookupName = "Choice";
+                            demand.lookupNamespaces = {""};
+                            demand.visibleProjects = {1};
+                            std::vector<nativesharp::frontend::NamespaceStateSymbol> states;
+                            std::string enumError;
+                            const bool provided = provideCppSemanticEnumConstants(finalGraph, enumGroups,
+                                std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1), states, enumError);
+                            const bool correct = provided && states.size() == 1 && states[0].isCppEnumConstant &&
+                                states[0].isConst && !states[0].isCppExternal && states[0].integerValue == 0xfffffffdULL;
+                            enumGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                                CppLanguageMode::C, "enum ChoiceType { Choice = 5 };\n")));
+                            const bool conflicted = provideCppSemanticEnumConstants(finalGraph, enumGroups,
+                                std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1), states, enumError);
+                            ok &= expect(correct && conflicted && states.size() == 1 &&
+                                         !states[0].cppImportError.empty(),
+                                         "C enum provider preserves value and reports conflicting observations");
+                        }
                         auto inventory = collectCppSemanticRecords(finalGraph, recordGroups);
                         const auto* entries = std::get_if<std::vector<CppSemanticRecordEntry>>(&inventory);
                         bool first = false, second = false, item = false, anonymous = false, forward = false;
