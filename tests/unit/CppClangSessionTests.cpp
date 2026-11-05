@@ -4968,6 +4968,33 @@ int main(int argc, char** argv)
                         enumReferenced |= type.identity.name() == "Color" && type.enumBase.has_value();
                 ok &= expect(aliasResult && aliasReferenced && enumReferenced,
                              "record observation selects C record and enum typedefs together");
+                {
+                    nativesharp::frontend::ProjectCompilation fieldDependency;
+                    fieldDependency.setSourceBufferProvider([](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns")
+                            return "int Use(Box* value) { return 0; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    CppProjectSessions group;
+                    group.projectFile = std::filesystem::absolute(path);
+                    group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::C, "enum Shade { Dark = 1 }; struct Box { enum Shade color; };\n")));
+                    std::vector<CppProjectSessions> groups;
+                    groups.push_back(std::move(group));
+                    std::string dependencyError;
+                    const bool ready = fieldDependency.setCppProjectSessions(std::move(groups), dependencyError) &&
+                        fieldDependency.setExperimentalCppTypeProvider(provideCppInteropTypes, dependencyError) &&
+                        fieldDependency.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, dependencyError) &&
+                        fieldDependency.compileProjectNames(path, dependencyError);
+                    bool selectedShade = false;
+                    if (ready && fieldDependency.nameLookup())
+                        for (const auto& type : fieldDependency.nameLookup()->namedTypes())
+                            selectedShade |= type.identity.name() == "Shade" &&
+                                type.kind == nativesharp::frontend::NamedTypeDeclarationKind::Enum;
+                    if (!ready) std::cerr << "C record enum dependency: " << dependencyError << '\n';
+                    ok &= expect(ready && selectedShade, "record field selects its enum dependency without a direct type use");
+                }
                 for (bool useCollision : {false, true})
                 {
                     nativesharp::frontend::ProjectCompilation collisionCompilation;
