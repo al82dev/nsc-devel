@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
+#include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
@@ -28,11 +29,15 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         *field.type.sizeBits == 0 || *field.offsetBits > *record.sizeBits ||
         *field.type.sizeBits > *record.sizeBits - *field.offsetBits) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
+    if (!mapped && !record.isCxx)
+        mapped = projectCppSemanticEnumType(field.type, projectOrdinal, moduleName, lookup);
     bool pointeeReadonly = false;
     if (field.type.kind == CppTypeKind::Pointer && field.type.sizeBits == 64 &&
         field.type.element && !field.type.element->isVolatile)
     {
         auto element = mapCppScalarType(*field.type.element);
+        if (!element && !record.isCxx)
+            element = projectCppSemanticEnumType(*field.type.element, projectOrdinal, moduleName, lookup);
         if (!element && lookup && field.type.element->kind == CppTypeKind::Record)
         {
             const auto target = projectCppRecordTypeIdentity(*field.type.element, moduleName);
