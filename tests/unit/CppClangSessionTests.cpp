@@ -3229,6 +3229,277 @@ int main(int argc, char** argv)
                     ok &= expect(throwingEmitted && !throwingEntry.empty() && static_cast<bool>(throwingHarness),
                                  "throwing C++ local objects and harness are emitted");
                 }
+                nativesharp::frontend::ProjectCompilation localGuard;
+                std::string localGuardError;
+                const bool localGuardConfigured = configureRealConstruction(localGuard, localGuardError) &&
+                    localGuard.enableExperimentalCppLocalLifetimeAnalysisForTests(localGuardError);
+                localGuard.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { Demo.Ready value = new Demo.Ready(1); new Demo.Ready(1); return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool localDiscardedEnabled = localGuardConfigured &&
+                    localGuard.enableExperimentalCppDiscardedLifetimeLoweringForTests(localGuardError);
+                localGuardError.clear();
+                const bool localMirIntegrated = localDiscardedEnabled && localGuard.compileProjectOopMir(path, localGuardError);
+                if (!localMirIntegrated) std::cerr << "C++ integrated local MIR: " << localGuardError << '\n';
+                ok &= expect(localMirIntegrated && localGuard.oopMirModel(),
+                             "experimental local and discarded C++ constructions reach MIR together");
+                if (argc > 4 && (std::string_view(argv[4]) == "lifetime" || std::string_view(argv[4]) == "bundle-link"))
+                {
+                    const auto output = std::filesystem::path(argv[2]) / "cpp-fixtures" / "lifetime-emission";
+                    bool integratedArchives = localMirIntegrated;
+                    for (int opt : {0, 2})
+                    {
+                        const auto level = opt == 0 ? nativesharp::llvm_backend::LlvmOptimizationLevel::O0 :
+                            nativesharp::llvm_backend::LlvmOptimizationLevel::O2;
+                        nativesharp::llvm_backend::ProjectOopObjectGenerator generator;
+                        auto bundle = localMirIntegrated ? generator.generate(*localGuard.nameLookup(), *localGuard.memberModel(),
+                            *localGuard.oopMirModel(), localGuard.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+                            level, 1, {}, localGuardError) : nullptr;
+                        const bool appended = bundle && nativesharp::driver::appendCppImplicitLifetimeObjects(
+                            localGuard, *localGuard.oopMirModel(), *bundle, level, localGuardError);
+                        nativesharp::linker::WindowsLibraryBuilder builder;
+                        builder.setRuntimeLibrary("A:/nsc-interop-build/tanda1-ON/generated/NativeSharp.Runtime.Win32.lib");
+                        integratedArchives &= appended && builder.buildStaticObjects(bundle->objectFiles(),
+                            output / ("integrated-local-O" + std::to_string(opt) + ".lib"), level, localGuardError);
+                    }
+                    std::string entry;
+                    if (localMirIntegrated)
+                        for (const auto& function : localGuard.oopMirModel()->functions())
+                            if (function.namespaceFunctionOrdinal && function.returnTypeKey == "builtin:int") entry = function.mangledName;
+                    std::ofstream harness(output / "integrated-local-harness.cpp");
+                    harness << "namespace Demo { struct Ready { Ready(int) noexcept; ~Ready() noexcept; }; }\n"
+                        "static void* slots[2]; static int step; static int bad; "
+                        "Demo::Ready::Ready(int v) noexcept { if(v!=1 || step>1) bad=1; else slots[step]=this; ++step; }\n"
+                        "Demo::Ready::~Ready() noexcept { if(step==2 && this==slots[1]) ++step; else if(step==3 && this==slots[0]) ++step; else bad=1; }\n"
+                        "extern \"C\" int invoke_ns() __asm__(\"" << entry << "\");\n"
+                        "extern \"C\" __declspec(dllimport) void __stdcall ExitProcess(unsigned int);\n"
+                        "extern \"C\" void* memset(void* d,int v,unsigned long long n){auto p=(unsigned char*)d; for(unsigned long long i=0;i<n;++i)p[i]=(unsigned char)v; return d;}\n"
+                        "extern \"C\" void mainCRTStartup(){int r=invoke_ns(); ExitProcess(r==0 && step==4 && !bad && slots[0]!=slots[1] ? 0 : 1);}\n";
+                    harness.close();
+                    if (!integratedArchives) std::cerr << "Integrated local archives: " << localGuardError << '\n';
+                    ok &= expect(integratedArchives && !entry.empty() && static_cast<bool>(harness),
+                                 "integrated local and temporary objects are archived with lifetime bodies");
+                }
+                nativesharp::frontend::ProjectCompilation localCopy;
+                std::string localCopyError;
+                const bool localCopyConfigured = configureRealConstruction(localCopy, localCopyError) &&
+                    localCopy.enableExperimentalCppLocalLifetimeAnalysisForTests(localCopyError);
+                localCopy.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { Demo.Ready a = new Demo.Ready(1); Demo.Ready b = a; return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool localCopyCompiled = localCopyConfigured && localCopy.compileProjectOopMir(path, localCopyError);
+                bool localCopyDiagnostic = false;
+                for (const auto& diagnostic : localCopy.diagnostics().diagnostics())
+                    localCopyDiagnostic |= diagnostic.message().find("cannot be copied into local 'b'") != std::string::npos;
+                ok &= expect(localCopyConfigured && !localCopyCompiled && localCopyDiagnostic,
+                             "experimental C++ local copies cannot reach MIR");
+                nativesharp::frontend::ProjectCompilation realConstruction;
+                std::string realConstructionError;
+                const bool realConfigured = configureRealConstruction(realConstruction, realConstructionError);
+                const bool realReady = realConfigured && realConstruction.compileProjectConstructions(path, realConstructionError);
+                std::vector<CppImplicitLifetimeEmissionRequest> realPlan;
+                const bool realSelected = realReady && realConstruction.constructionModel() &&
+                    realConstruction.nameLookup() && realConstruction.memberModel() && realConstruction.projectGraph() &&
+                    planCppImplicitLifetimeFromBindings(*realConstruction.projectGraph(), realConstruction.cppProjectSessions(),
+                        *realConstruction.nameLookup(), *realConstruction.memberModel(),
+                        realConstruction.constructionModel()->constructions(), {}, realPlan, realConstructionError) &&
+                    realPlan.size() == 1 && realPlan[0].qualifiedType == "Demo::Implicit" &&
+                    realPlan[0].kind == CppImplicitLifetimeKind::DefaultConstructor;
+                const auto realOutput = std::filesystem::path(argv[2]) / "cpp-fixtures" / "lifetime-emission" / "real-selection.obj";
+                const bool emittedRealSelection = realSelected &&
+                    nativesharp::llvm_backend::emitCppImplicitLifetimeObject(*realPlan[0].session, realPlan[0].qualifiedType,
+                        realPlan[0].kind, nativesharp::llvm_backend::LlvmOptimizationLevel::O0, realOutput, realConstructionError);
+                nativesharp::frontend::ProjectObjectLayoutModel isolatedLayout;
+                nativesharp::diagnostics::DiagnosticEngine isolatedLayoutDiagnostics;
+                const bool isolatedLayoutBuilt = realReady && realConstruction.inheritanceModel() &&
+                    isolatedLayout.build(*realConstruction.nameLookup(), *realConstruction.memberModel(),
+                        *realConstruction.inheritanceModel(), *realConstruction.constructionModel(), isolatedLayoutDiagnostics);
+                const auto realBindings = realReady && realConstruction.constructionModel()
+                    ? realConstruction.constructionModel()->constructions()
+                    : std::span<const nativesharp::frontend::ObjectConstructionBinding>{};
+                const auto* cppConstruction = realBindings.empty() ? nullptr : &realBindings.front();
+                const auto importedPhysicalLayout = isolatedLayoutBuilt && cppConstruction
+                    ? isolatedLayout.valueLayoutForTypeKey(*realConstruction.nameLookup(), cppConstruction->targetTypeKey)
+                    : std::nullopt;
+                ok &= expect(isolatedLayoutBuilt && cppConstruction && importedPhysicalLayout.has_value() &&
+                             importedPhysicalLayout->first > 0 && importedPhysicalLayout->second > 0 &&
+                             isolatedLayout.structLayoutForType(cppConstruction->targetTypeOrdinal) == nullptr,
+                             "C++ physical layout is available independently from the NativeSharp struct layout");
+                nativesharp::frontend::ProjectOopHirModel isolatedHir;
+                std::string isolatedHirError;
+                const bool isolatedHirBuilt = isolatedLayoutBuilt && realConstruction.interfaceModel() &&
+                    realConstruction.methodBodyModel() && isolatedHir.build(*realConstruction.nameLookup(),
+                        *realConstruction.memberModel(), *realConstruction.inheritanceModel(),
+                        *realConstruction.interfaceModel(), *realConstruction.methodBodyModel(),
+                        *realConstruction.constructionModel(), isolatedLayout, isolatedHirError,
+                        realConstruction.genericConstraintModel(), 1, realConstruction.namespaceFunctionModel());
+                if (!isolatedHirBuilt) std::cerr << "Isolated C++ construction HIR: " << isolatedHirError << '\n';
+                const auto* selectedHirConstructor = isolatedHirBuilt && cppConstruction &&
+                    cppConstruction->selectedConstructorMemberOrdinal
+                    ? isolatedHir.functionForMember(*cppConstruction->selectedConstructorMemberOrdinal) : nullptr;
+                bool hirConstructionObserved = false;
+                if (isolatedHirBuilt && cppConstruction)
+                {
+                    std::vector<const nativesharp::frontend::ProjectOopHirNode*> pending;
+                    for (const auto& function : isolatedHir.functions())
+                        if (function.body) pending.push_back(function.body.get());
+                    while (!pending.empty())
+                    {
+                        const auto* node = pending.back();
+                        pending.pop_back();
+                        if (node->kind == nativesharp::frontend::ProjectOopHirNodeKind::ValueConstruction &&
+                            node->memberOrdinal == cppConstruction->selectedConstructorMemberOrdinal &&
+                            node->targetTypeOrdinal == cppConstruction->targetTypeOrdinal)
+                            hirConstructionObserved = true;
+                        for (const auto& child : node->children) if (child) pending.push_back(child.get());
+                    }
+                }
+                ok &= expect(isolatedHirBuilt && hirConstructionObserved && selectedHirConstructor &&
+                             selectedHirConstructor->isCppExternal &&
+                             selectedHirConstructor->mangledName == "??0Implicit@Demo@@QEAA@XZ",
+                             "isolated HIR preserves the selected external C++ constructor and its ABI symbol");
+                const auto realDestructors = cppConstruction
+                    ? realConstruction.memberModel()->findMembers(cppConstruction->targetTypeOrdinal, ".dtor")
+                    : std::span<const std::size_t>{};
+                const auto* selectedHirDestructor = isolatedHirBuilt && realDestructors.size() == 1
+                    ? isolatedHir.functionForMember(realDestructors[0]) : nullptr;
+                ok &= expect(selectedHirDestructor && selectedHirDestructor->destructor &&
+                             !selectedHirDestructor->constructor && selectedHirDestructor->isCppExternal &&
+                             selectedHirDestructor->returnTypeKey == "builtin:void" &&
+                             selectedHirDestructor->mangledName == "??1Implicit@Demo@@QEAA@XZ",
+                             "isolated HIR preserves the C++ destructor identity and ABI symbol");
+                nativesharp::frontend::ProjectOopMirModel isolatedMir;
+                std::string isolatedMirError;
+                const bool isolatedMirBuilt = isolatedHirBuilt && realConstruction.virtualDispatchModel() &&
+                    realConstruction.destructionModel() && isolatedMir.build(*realConstruction.nameLookup(),
+                        *realConstruction.memberModel(), isolatedLayout, *realConstruction.virtualDispatchModel(),
+                        *realConstruction.interfaceModel(), *realConstruction.destructionModel(), isolatedHir,
+                        *realConstruction.namespaceFunctionModel(), isolatedMirError);
+                if (!isolatedMirBuilt) std::cerr << "Isolated C++ construction MIR: " << isolatedMirError << '\n';
+                bool mirConstructionObserved = false;
+                if (isolatedMirBuilt && cppConstruction && importedPhysicalLayout)
+                {
+                    std::vector<const nativesharp::frontend::ProjectOopMirNode*> pending;
+                    for (const auto& function : isolatedMir.functions())
+                        if (function.body) pending.push_back(function.body.get());
+                    while (!pending.empty())
+                    {
+                        const auto* node = pending.back();
+                        pending.pop_back();
+                        if (node->kind == nativesharp::frontend::ProjectOopMirNodeKind::ValueConstruct &&
+                            node->memberOrdinal == cppConstruction->selectedConstructorMemberOrdinal &&
+                            node->immediate == importedPhysicalLayout->first &&
+                            node->alignment == importedPhysicalLayout->second && node->zeroInitialize &&
+                            node->calleeName == "??0Implicit@Demo@@QEAA@XZ")
+                            mirConstructionObserved = true;
+                        for (const auto& child : node->children) if (child) pending.push_back(child.get());
+                    }
+                }
+                ok &= expect(isolatedMirBuilt && mirConstructionObserved,
+                             "isolated MIR uses Clang layout and selected implicit C++ constructor");
+                bool mirDestructorObserved = false;
+                if (isolatedMirBuilt && realDestructors.size() == 1)
+                    for (const auto& function : isolatedMir.functions())
+                        mirDestructorObserved |= function.memberOrdinal == realDestructors[0] &&
+                            function.destructor && function.isCppExternal &&
+                            function.returnTypeKey == "builtin:void" &&
+                            function.mangledName == "??1Implicit@Demo@@QEAA@XZ";
+                ok &= expect(mirDestructorObserved, "isolated MIR preserves the external C++ destructor identity");
+                nativesharp::llvm_backend::ProjectOopLlvmLowerer isolatedLowerer;
+                auto isolatedModule = isolatedMirBuilt
+                    ? isolatedLowerer.lower(*realConstruction.nameLookup(), isolatedMir) : nullptr;
+                std::string isolatedLlvmError;
+                const bool isolatedModuleValid = isolatedModule && isolatedModule->verify(isolatedLlvmError);
+                const auto isolatedIr = isolatedModule ? isolatedModule->text() : std::string{};
+                const bool constructorCalled =
+                    isolatedIr.find("call ptr @\"??0Implicit@Demo@@QEAA@XZ\"") != std::string::npos ||
+                    isolatedIr.find("invoke ptr @\"??0Implicit@Demo@@QEAA@XZ\"") != std::string::npos;
+                const auto constructorCall = isolatedIr.find("call ptr @\"??0Implicit@Demo@@QEAA@XZ\"") != std::string::npos
+                    ? isolatedIr.find("call ptr @\"??0Implicit@Demo@@QEAA@XZ\"")
+                    : isolatedIr.find("invoke ptr @\"??0Implicit@Demo@@QEAA@XZ\"");
+                const auto destructorCall = isolatedIr.find("call void @\"??1Implicit@Demo@@QEAA@XZ\"") != std::string::npos
+                    ? isolatedIr.find("call void @\"??1Implicit@Demo@@QEAA@XZ\"")
+                    : isolatedIr.find("invoke void @\"??1Implicit@Demo@@QEAA@XZ\"");
+                if (!isolatedModuleValid) std::cerr << "Isolated C++ construction LLVM: " << isolatedLlvmError << '\n';
+                ok &= expect(isolatedModuleValid && isolatedIr.find("alloca [4 x i8]") != std::string::npos &&
+                             isolatedIr.find("declare ptr @\"??0Implicit@Demo@@QEAA@XZ\"(ptr") != std::string::npos &&
+                             isolatedIr.find("declare void @\"??1Implicit@Demo@@QEAA@XZ\"(ptr") != std::string::npos &&
+                             constructorCalled && destructorCall != std::string::npos &&
+                             constructorCall < destructorCall && isolatedIr.find("struct.new.value") == std::string::npos,
+                             "discarded C++ temporary is destroyed in place after successful construction");
+                nativesharp::frontend::ProjectCompilation observedProject;
+                std::string observedError;
+                const bool observedConfigured = configureRealConstruction(observedProject, observedError) &&
+                    observedProject.enableExperimentalCppDiscardedLifetimeLoweringForTests(observedError);
+                observedProject.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { new Demo.Observed(); new Demo.Observed(); return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool observedMirBuilt = observedConfigured && observedProject.compileProjectOopMir(path, observedError) &&
+                    observedProject.oopMirModel();
+                const auto* observedMir = observedProject.oopMirModel();
+                std::vector<CppImplicitLifetimeEmissionRequest> observedPlan;
+                const bool observedPlanned = observedMirBuilt &&
+                    planCppImplicitLifetimeFromValues(*observedProject.projectGraph(), observedProject.cppProjectSessions(),
+                        *observedProject.nameLookup(), *observedProject.memberModel(),
+                        observedProject.constructionModel()->constructions(), *observedMir, observedPlan, observedError) &&
+                    observedPlan.size() == 2 && observedPlan[0].qualifiedType == "Demo::Observed" &&
+                    observedPlan[0].kind == CppImplicitLifetimeKind::DefaultConstructor &&
+                    observedPlan[1].qualifiedType == "Demo::Observed" &&
+                    observedPlan[1].kind == CppImplicitLifetimeKind::Destructor;
+                const bool rejectsMissingConstruction = observedPlanned &&
+                    !planCppImplicitLifetimeFromValues(*observedProject.projectGraph(), observedProject.cppProjectSessions(),
+                        *observedProject.nameLookup(), *observedProject.memberModel(), {}, *observedMir, observedPlan, observedError) &&
+                    observedPlan.size() == 2;
+                ok &= expect(rejectsMissingConstruction,
+                             "discarded value lifetime planning rejects missing bindings without changing the prior plan");
+                nativesharp::llvm_backend::ProjectOopObjectGenerator observedGenerator;
+                auto ownedBundle = observedPlanned ? observedGenerator.generate(*observedProject.nameLookup(),
+                    *observedProject.memberModel(), *observedMir, observedProject.sourceManager(),
+                    nativesharp::llvm_backend::DebugInformationKind::None,
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 1, {}, observedError) : nullptr;
+                bool bundlePublished = false, bundleFailurePreserved = false, bundleCleaned = false;
+                std::vector<std::filesystem::path> ownedPaths;
+                if (ownedBundle)
+                {
+                    const auto initialCount = ownedBundle->objectFiles().size();
+                    bundleFailurePreserved = !ownedBundle->appendGeneratedObjects(1,
+                        [](std::span<const std::filesystem::path>, std::string& error) {
+                            error = "intentional emitter failure"; return false;
+                        }, observedError) && ownedBundle->objectFiles().size() == initialCount;
+                    nativesharp::frontend::ProjectOopMirModel unbuiltMir;
+                    const bool rejectedUnbuiltMir = !nativesharp::driver::appendCppImplicitLifetimeObjects(
+                        observedProject, unbuiltMir, *ownedBundle, nativesharp::llvm_backend::LlvmOptimizationLevel::O0,
+                        observedError) && ownedBundle->objectFiles().size() == initialCount;
+                    nativesharp::frontend::ProjectCompilation projectWithoutCppSessions;
+                    const bool noSessionsIsNoOp = nativesharp::driver::appendCppImplicitLifetimeObjects(
+                        projectWithoutCppSessions, unbuiltMir, *ownedBundle,
+                        nativesharp::llvm_backend::LlvmOptimizationLevel::O0, observedError) &&
+                        ownedBundle->objectFiles().size() == initialCount;
+                    bundleFailurePreserved &= rejectedUnbuiltMir && noSessionsIsNoOp;
+                    bundlePublished = nativesharp::driver::appendCppImplicitLifetimeObjects(observedProject,
+                        *observedMir, *ownedBundle, nativesharp::llvm_backend::LlvmOptimizationLevel::O0, observedError) &&
+                        ownedBundle->objectFiles().size() == initialCount + observedPlan.size();
+                    if (bundlePublished)
+                        ownedPaths.assign(ownedBundle->objectFiles().begin() + initialCount, ownedBundle->objectFiles().end());
+                    bundlePublished &= ownedPaths.size() == observedPlan.size() &&
+                        std::all_of(ownedPaths.begin(), ownedPaths.end(), [](const auto& path) { return std::filesystem::is_regular_file(path); });
+                    if (argc > 4 && (std::string_view(argv[4]) == "lifetime" || std::string_view(argv[4]) == "bundle-link"))
+                    {
+                        nativesharp::linker::WindowsLibraryBuilder archiveBuilder;
+                        archiveBuilder.setRuntimeLibrary("A:/nsc-interop-build/tanda1-ON/generated/NativeSharp.Runtime.Win32.lib");
+                        const auto archivePath = std::filesystem::path(argv[2]) / "cpp-fixtures" / "lifetime-emission" / "observed-bundle.lib";
+                        const bool archiveBuilt = bundlePublished && archiveBuilder.buildStaticObjects(
+                            ownedBundle->objectFiles(), archivePath,
+                            nativesharp::llvm_backend::LlvmOptimizationLevel::O0, observedError);
+                        if (!archiveBuilt) std::cerr << "C++ lifetime archive: " << observedError << '\n';
+                        ok &= expect(archiveBuilt, "NativeSharp static archive includes the C++ lifetime object bundle");
+                    }
+                    ownedBundle.reset();
+                    bundleCleaned = std::all_of(ownedPaths.begin(), ownedPaths.end(), [](const auto& path) { return !std::filesystem::exists(path); });
+                }
             }
         }
     }
