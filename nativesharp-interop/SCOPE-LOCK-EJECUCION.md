@@ -1604,3 +1604,9 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Objetivo: verificar que una variable local o parámetro NativeSharp llamado igual que un global C no exige resolver el enum C de ese global cuando existe un tipo NativeSharp homónimo al enum.
 - Presupuesto: `Shadow.ns.txt` y `validar.cmd` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. Si falla, identificar primero la resolución causante antes de modificar producción.
 - Verificación junto con la batería agrupada; este fixture no agota las formas de sombra o colisión.
+
+### Global enum const
+
+- Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
+- Presupuesto: `Api.h`, `Api.c`, `Main.ns`, `ConstWrite.ns.txt` y `validar.cmd` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. No modificar producción sin observar el resultado.
+- La lectura y el rechazo deben ejecutarse con la batería agrupada. Un rechazo de compilación no basta para cerrar el soporte completo de calificadores.

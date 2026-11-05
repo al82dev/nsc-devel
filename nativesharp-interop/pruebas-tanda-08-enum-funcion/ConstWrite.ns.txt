@@ -1,0 +1,5 @@
+int Main()
+{
+    readonly_mood = current_mood();
+    return 0;
+}

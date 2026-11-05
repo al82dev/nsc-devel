@@ -10,5 +10,6 @@ int Main()
     shared_mood = current_mood();
     if (read_mood(shared_mood) != -3 || read_shared_mood() != -3) return 4;
     if ((int)hidden_global != 7 || read_hidden_raw() != 7) return 5;
+    if ((int)readonly_mood != -3) return 6;
     return 0;
 }
