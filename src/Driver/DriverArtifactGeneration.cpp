@@ -438,7 +438,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     }
     builder.setExtraLinkLibraries(linkLibraries);
     builder.setRemoveUnreferencedSections(objectBundle->thinLtoInternalized());
-    if (!publishExecutableArtifact(outputPath, *entryFunction, *objectBundle, optimizationLevel, debugInformation,
+    if (!publishExecutableArtifact(outputPath, compilation, *entryFunction, *objectBundle, optimizationLevel, debugInformation,
                                    incrementalLink, runtimeLibraries, builder, packagedRuntimes, error))
         return ExitCode::CompilationError;
     for (const std::filesystem::path &runtime : packagedRuntimes)
