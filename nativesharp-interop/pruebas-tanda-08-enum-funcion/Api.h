@@ -13,3 +13,8 @@ extern enum Mood* shared_mood_ptr;
 enum HiddenState { HiddenReady = 7 };
 extern enum HiddenState hidden_global;
 int read_hidden_raw(void);
+enum PointerState { PointerReady = 9 };
+extern enum PointerState* pointer_global_only;
+enum DoublePointerState { DoublePointerReady = 11 };
+extern enum DoublePointerState** double_pointer_global_only;
+int read_pointer_globals(void);

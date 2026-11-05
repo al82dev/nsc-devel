@@ -11,3 +11,9 @@ const enum Mood readonly_mood = Sad;
 enum Mood* shared_mood_ptr = &shared_mood;
 enum HiddenState hidden_global = HiddenReady;
 int read_hidden_raw(void) { return (int)hidden_global; }
+static enum PointerState pointer_value = PointerReady;
+enum PointerState* pointer_global_only = &pointer_value;
+static enum DoublePointerState double_pointer_value = DoublePointerReady;
+static enum DoublePointerState* double_pointer_inner = &double_pointer_value;
+enum DoublePointerState** double_pointer_global_only = &double_pointer_inner;
+int read_pointer_globals(void) { return (int)*pointer_global_only + (int)**double_pointer_global_only; }
