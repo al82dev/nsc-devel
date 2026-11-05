@@ -16,6 +16,7 @@ evidencias y descripciones históricas mantienen las rutas que tenían cuando se
 capturaron; no se deben interpretar como rutas de trabajo vigentes. El código
 fuente LLVM/Clang sigue utilizándose como referencia de solo lectura.
 
-La carpeta se retirará de la rama de LLVM mediante un commit normal, conservando
-sus commits históricos. El traslado no cambia el estado de validación de ninguna
+La rama anterior de LLVM se conserva como antecedente sin reescribir ni borrar
+su remoto. Se selecciona una rama de fuentes limpia desde la base 23.1.0, que no
+contiene esta carpeta. El traslado no cambia el estado de validación de ninguna
 tanda ni demuestra que todas las pruebas se hayan ejecutado en la ruta nueva.
