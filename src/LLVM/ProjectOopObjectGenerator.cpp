@@ -1192,6 +1192,42 @@ std::span<const std::filesystem::path> ProjectOopObjectBundle::objectFiles() con
     return objectFiles_;
 }
 
+bool ProjectOopObjectBundle::appendGeneratedObjects(std::size_t count,
+    const std::function<bool(std::span<const std::filesystem::path>, std::string&)>& emit,
+    std::string& error)
+{
+    if (!emit || temporaryDirectory_.empty() || !temporaryDirectory_.is_absolute())
+    { error = "generated objects require an owned temporary directory and emitter"; return false; }
+    if (thinLtoSummaryCount_ != 0 || !thinLtoUnitBitcode_.empty() || thinLtoInternalized_)
+    { error = "generated native objects are not yet supported in ThinLTO bundles"; return false; }
+    if (count == 0) { error.clear(); return true; }
+    std::filesystem::path group;
+    std::error_code filesystemError;
+    for (std::size_t attempt = 0; attempt < 100; ++attempt)
+    {
+        group = temporaryDirectory_ / ("external-group-" + std::to_string(generatedObjectGroup_++));
+        if (std::filesystem::create_directory(group, filesystemError)) break;
+        if (filesystemError && filesystemError != std::errc::file_exists)
+        { error = "could not create generated object directory: " + filesystemError.message(); return false; }
+        group.clear();
+        filesystemError.clear();
+    }
+    if (group.empty()) { error = "could not allocate generated object directory"; return false; }
+    std::vector<std::filesystem::path> paths;
+    paths.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) paths.push_back(group / ("member-" + std::to_string(i) + ".obj"));
+    if (!emit(paths, error)) return false;
+    for (const auto& path : paths)
+    {
+        filesystemError.clear();
+        if (!std::filesystem::is_regular_file(path, filesystemError) || filesystemError)
+        { error = "generated object is missing or not a regular file"; return false; }
+    }
+    objectFiles_.insert(objectFiles_.end(), paths.begin(), paths.end());
+    error.clear();
+    return true;
+}
+
 const std::string& ProjectOopObjectBundle::combinedLlvmText() const noexcept
 {
     return combinedLlvmText_;

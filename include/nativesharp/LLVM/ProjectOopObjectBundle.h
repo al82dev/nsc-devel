@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <span>
 #include <string>
 #include <vector>
@@ -21,6 +22,10 @@ public:
     ~ProjectOopObjectBundle();
 
     std::span<const std::filesystem::path> objectFiles() const noexcept;
+    // External objects stay in this bundle's owned temporary directory until linking finishes.
+    bool appendGeneratedObjects(std::size_t count,
+        const std::function<bool(std::span<const std::filesystem::path>, std::string&)>& emit,
+        std::string& error);
     const std::string& combinedLlvmText() const noexcept;
     std::size_t codeUnitCount() const noexcept;
     bool usedParallelOptimization() const noexcept;
@@ -58,6 +63,7 @@ private:
 
     std::filesystem::path temporaryDirectory_;
     std::vector<std::filesystem::path> objectFiles_;
+    std::size_t generatedObjectGroup_ = 0;
     std::string combinedLlvmText_;
     std::size_t codeUnitCount_ = 0;
     bool usedParallelOptimization_ = false;
