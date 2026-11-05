@@ -41,7 +41,7 @@ bool OopLlvmImplementation::declareStaticFields(std::string& error, bool defineS
                 return false;
             }
             staticFieldInfo_[field.memberOrdinal] = &field;
-            if (!field.isConst)
+            if (!field.isConst && !field.isCppExternal)
             {
                 LLVMTypeRef accessorType = LLVMFunctionType(
                     LLVMPointerTypeInContext(context_, 0), nullptr, 0, 0);
@@ -60,7 +60,8 @@ bool OopLlvmImplementation::declareStaticFields(std::string& error, bool defineS
             if (global == nullptr)
                 return fail(error, "Stage 37 failed to declare static field global " + field.storageSymbol);
             staticFieldGlobals_[field.memberOrdinal] = global;
-            if (!defineStorage)
+            if (field.cppDllImport) LLVMSetDLLStorageClass(global, LLVMDLLImportStorageClass);
+            if (!defineStorage || field.isCppExternal)
             {
                 LLVMSetLinkage(global, LLVMExternalLinkage);
                 continue;
@@ -137,7 +138,7 @@ bool OopLlvmImplementation::defineStaticFieldAccessors(std::string& error)
             if (fieldOrdinal >= staticFieldDeclarations_.size() ||
                 staticFieldDeclarations_[fieldOrdinal] == 0U) continue;
             const frontend::ProjectOopMirStaticField& field = fields[fieldOrdinal];
-            if (field.isConst || field.isImported) continue;
+            if (field.isConst || field.isImported || field.isCppExternal) continue;
             const auto accessorFound = staticFieldAccessorFunctions_.find(field.memberOrdinal);
             const auto globalFound = staticFieldGlobals_.find(field.memberOrdinal);
             if (accessorFound == staticFieldAccessorFunctions_.end() ||
