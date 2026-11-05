@@ -2602,7 +2602,8 @@ bool ProjectCompilation::parseSyntaxUnits(
         if (!units_[index]->isLexicallyValid() || units_[index]->isSyntaxValid()) continue;
         syntaxWorkers.submit([&, index](std::size_t)
         {
-            units_[index]->parse(localDiagnostics[index], knownTypeNameIndex);
+            units_[index]->parse(localDiagnostics[index], *knownTypesByProject.at(units_[index]->projectOrdinal()),
+                                 scopedNames[index] ? &*scopedNames[index] : nullptr);
             const std::filesystem::path sourcePath(sourceManager_.getPath(
                 SourceLocation(units_[index]->fileId(), 0U)));
             if (!isMetadataBackedVirtualSource(sourcePath))
