@@ -344,7 +344,7 @@ LLVMValueRef OopLlvmImplementation::staticFieldAddress(const frontend::ProjectOo
         }
         if (globalFound == staticFieldGlobals_.end())
             return failValue(error, "Stage 37 static field has no declared LLVM global");
-        if (!field.isConst && !ensureTypeInitialized(field.declaringTypeOrdinal, error))
+        if (!field.isConst && !field.isCppExternal && !ensureTypeInitialized(field.declaringTypeOrdinal, error))
         {
             return nullptr;
         }
