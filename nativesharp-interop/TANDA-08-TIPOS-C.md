@@ -74,3 +74,13 @@ También se captura el tipo de expresión de cada enumerador por separado del
 tipo de almacenamiento del enum. Ninguno de estos cambios ha pasado la batería
 de la tanda: faltan, entre otros, la integración completa de enums y constantes,
 casos compuestos, activación del proveedor y pruebas de ejecución de unions.
+
+### Enumeradores C, sin validar
+
+Se preparó la conversión de valores C con verificación de ancho y signo, un
+estado semántico que distingue enumeradores de variables externas, el acceso al
+valor desde el evaluador entero y un proveedor que reúne los nombres solicitados.
+La combinación con variables conserva una colisión como error diferido. Hay
+pruebas preparadas de conversión, conflicto y uso en `switch`; el driver todavía
+no activa la ruta. Faltan la representación del tipo enum, casos C++ y pruebas
+ejecutadas de constantes y expresiones. T08-009 sigue sin cerrar.
