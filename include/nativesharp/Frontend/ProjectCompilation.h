@@ -55,8 +55,72 @@ class ProjectCompilation final
 public:
     using SourceBufferProvider =
         std::function<std::optional<std::string>(const std::filesystem::path&)>;
+    using CppFunctionProvider = std::function<bool(
+        const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
+        std::span<const std::unique_ptr<ProjectSyntaxUnit>>,
+        std::span<const CppFunctionDemand>,
+        std::vector<NamespaceFunctionSymbol>&,
+        std::vector<interop::CppDeferredFunctionCandidate>&, std::string&)>;
+    using CppNamespaceProvider = std::function<bool(
+        const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
+        std::vector<std::pair<std::size_t, std::string>>&, std::string&)>;
+    using CppGlobalProvider = std::function<bool(
+        const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
+        std::span<const CppFunctionDemand>, std::vector<NamespaceStateSymbol>&, std::string&)>;
+    using ExperimentalCppTypeProvider = std::function<bool(
+        const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
+        std::vector<CppImportedTypeDeclaration>&, std::string&)>;
+    using ExperimentalCppTypeSelector = std::function<bool(
+        const ProjectCompilation&, std::vector<CppImportedTypeDeclaration>&, std::string&)>;
+    using ExperimentalCppInstanceMethodProvider = std::function<bool(
+        const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
+        const ProjectNameLookup&, std::vector<CppImportedInstanceMethod>&, std::string&)>;
+    using ExperimentalCppLifetimeMethodProvider = std::function<bool(
+        const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
+        const ProjectNameLookup&, std::vector<CppImportedLifetimeMethod>&, std::string&)>;
+    using ExperimentalCppInstanceFieldProvider = std::function<bool(
+        const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
+        const ProjectNameLookup&, std::vector<CppImportedInstanceField>&, std::string&)>;
+    using ExperimentalCppStaticMethodProvider = std::function<bool(
+        const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
+        const ProjectNameLookup&, std::vector<CppImportedStaticMethod>&, std::string&)>;
+    using ExperimentalCppStaticFieldProvider = std::function<bool(
+        const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
+        const ProjectNameLookup&, std::vector<CppImportedStaticField>&, std::string&)>;
+    using CppRecordObserver = std::function<void(const ProjectCompilation&)>;
 
     void setLifetime(ProjectCompilationLifetime& lifetime) noexcept;
+    // Must be called before the first compilation attempt. Ownership is transferred.
+    bool setCppInteropSession(std::unique_ptr<interop::CppInteropSession> session, std::string& error);
+    interop::CppInteropSession* cppInteropSession() const noexcept;
+    bool setCppProjectSessions(std::vector<interop::CppProjectSessions> sessions, std::string& error);
+    std::span<const interop::CppProjectSessions> cppProjectSessions() const noexcept;
+    bool setCppImportedFunctions(std::vector<NamespaceFunctionSymbol> functions, std::string& error);
+    bool setExperimentalCppImportedStates(std::vector<NamespaceStateSymbol> states, std::string& error);
+    // Experimental injection for isolated compiler tests. Imported records do not yet have
+    // object-layout or lifetime semantics and this must not be enabled by the production driver.
+    bool setExperimentalCppImportedTypes(std::vector<CppImportedTypeDeclaration> types, std::string& error);
+    bool setExperimentalCppTypeProvider(ExperimentalCppTypeProvider provider, std::string& error);
+    bool setExperimentalCppTypeSelector(ExperimentalCppTypeSelector selector, std::string& error);
+    bool setExperimentalCppInstanceMethodProvider(ExperimentalCppInstanceMethodProvider provider, std::string& error);
+    bool setExperimentalCppLifetimeMethodProvider(ExperimentalCppLifetimeMethodProvider provider, std::string& error);
+    bool setExperimentalCppInstanceFieldProvider(ExperimentalCppInstanceFieldProvider provider, std::string& error);
+    bool setExperimentalCppStaticMethodProvider(ExperimentalCppStaticMethodProvider provider, std::string& error);
+    bool setExperimentalCppStaticFieldProvider(ExperimentalCppStaticFieldProvider provider, std::string& error);
+    // Lowering for the subset currently represented by the C++ member providers.
+    bool enableCppImportedMethodLowering(std::string& error);
+    bool enableCppImportedFieldLowering(std::string& error);
+    // Compatibility entry points for isolated compiler experiments.
+    bool enableExperimentalCppInstanceMethodLoweringForTests(std::string& error);
+    bool enableExperimentalCppInstanceFieldLoweringForTests(std::string& error);
+    bool enableExperimentalCppLifetimeAnalysisForTests(std::string& error);
+    bool enableExperimentalCppLocalLifetimeAnalysisForTests(std::string& error);
+    bool enableCppImportedNoexceptLocalLifetime(std::string& error);
+    bool enableExperimentalCppDiscardedLifetimeLoweringForTests(std::string& error);
+    bool setCppFunctionProvider(CppFunctionProvider provider, std::string& error);
+    bool setCppNamespaceProvider(CppNamespaceProvider provider, std::string& error);
+    bool setCppGlobalProvider(CppGlobalProvider provider, std::string& error);
+    bool setCppRecordObserver(CppRecordObserver observer, std::string& error);
     void setCompilationJobs(std::size_t jobs) noexcept;
     void setProjectLoadOptions(compilation::ProjectLoadOptions options);
     const compilation::ProjectLoadOptions& projectLoadOptions() const noexcept;
