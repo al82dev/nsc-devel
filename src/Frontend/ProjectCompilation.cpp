@@ -995,6 +995,93 @@ std::vector<std::string> collectParserKnownTypeNames(
     }
     return std::vector<std::string>(names.begin(), names.end());
 }
+
+// Imported names can change the grammar of `T * value;`. Only expose a C++ name to a unit
+// when its project can see the owning project through the same reference closure as name lookup.
+std::vector<std::shared_ptr<const parser::KnownTypeNameSet>> parserTypeIndexesByProject(
+    const compilation::ProjectGraph& graph,
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+    std::span<const CppImportedTypeDeclaration> importedTypes)
+{
+    const auto projects = graph.projects();
+    const auto nativeNames = collectParserKnownTypeNames(units);
+    const auto nativeIndex = std::make_shared<const parser::KnownTypeNameSet>(parser::buildKnownTypeNameSet(nativeNames));
+    if (importedTypes.empty()) return std::vector<std::shared_ptr<const parser::KnownTypeNameSet>>(projects.size(), nativeIndex);
+    auto pathKey = [](const std::filesystem::path& path) {
+        std::error_code error;
+        auto canonical = std::filesystem::weakly_canonical(path, error);
+        if (error) canonical = std::filesystem::absolute(path).lexically_normal();
+        auto key = canonical.generic_string();
+        std::transform(key.begin(), key.end(), key.begin(),
+                       [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+        return key;
+    };
+    std::unordered_map<std::string, std::size_t> projectByPath;
+    for (std::size_t index = 0; index < projects.size(); ++index)
+        projectByPath.emplace(pathKey(projects[index].projectFile()), index);
+    std::vector<std::vector<std::size_t>> dependencies(projects.size());
+    for (std::size_t owner = 0; owner < projects.size(); ++owner)
+        for (const auto& reference : projects[owner].projectReferences())
+            if (const auto target = projectByPath.find(pathKey(reference)); target != projectByPath.end())
+                dependencies[owner].push_back(target->second);
+    std::vector<std::shared_ptr<const parser::KnownTypeNameSet>> indexes;
+    indexes.reserve(projects.size());
+    for (std::size_t owner = 0; owner < projects.size(); ++owner)
+    {
+        std::vector<bool> visible(projects.size(), false);
+        std::vector<std::size_t> pending{owner};
+        visible[owner] = true;
+        while (!pending.empty())
+        {
+            const auto current = pending.back(); pending.pop_back();
+            for (const auto target : dependencies[current])
+                if (!visible[target]) { visible[target] = true; pending.push_back(target); }
+        }
+        std::vector<CppImportedTypeDeclaration> accessible;
+        for (const auto& imported : importedTypes)
+            if (imported.projectOrdinal < visible.size() && visible[imported.projectOrdinal])
+                accessible.push_back(imported);
+        if (accessible.empty()) indexes.push_back(nativeIndex);
+        else
+        {
+            const auto names = collectParserKnownTypeNames(units, accessible);
+            indexes.push_back(std::make_shared<const parser::KnownTypeNameSet>(parser::buildKnownTypeNameSet(names)));
+        }
+    }
+    return indexes;
+}
+
+bool prepareCppScopedParserNames(
+    const compilation::ProjectGraph& graph,
+    std::span<const std::unique_ptr<ProjectSyntaxUnit>> units,
+    std::span<const CppImportedTypeDeclaration> types,
+    std::span<const std::pair<std::size_t, std::string>> cppNamespaces,
+    std::vector<std::optional<parser::ScopedKnownTypeNames>>& output,
+    std::string& error)
+{
+    output.clear();
+    output.resize(units.size());
+    if (types.empty()) return true;
+    const auto inventories = cppParserProjectInventories(graph, units, types, cppNamespaces);
+    if (!inventories) { error = "cannot prepare C/C++ parser project visibility"; return false; }
+    for (std::size_t i = 0; i < units.size(); ++i)
+    {
+        const auto& unit = units[i];
+        if (!unit || !unit->isLexicallyValid()) continue;
+        const auto& inventory = inventories->at(unit->projectOrdinal());
+        if (inventory.cppTypes.empty()) continue;
+        const auto scopes = parser::lexicalNamespaceScopes(unit->tokens());
+        auto names = cppScopedTypeNames(scopes, inventory.namespaces, inventory.cppTypes);
+        if (!names)
+        {
+            error = "cannot prepare scoped C/C++ type names for source unit " + std::to_string(i) +
+                ": namespace or alias requires unsupported resolution";
+            return false;
+        }
+        output[i] = std::move(*names);
+    }
+    return true;
+}
 }
 
 bool ProjectCompilation::setPrecompiledModules(
