@@ -247,6 +247,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     { error = failure->message; return false; }
     using Key = std::pair<std::size_t, std::string>;
     std::map<Key, const CppSemanticEnumEntry*> selected;
+    std::set<Key> conflicts;
     for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(inventory))
     {
         const auto& value = entry.declaration;
@@ -265,7 +266,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             for (std::size_t i = 0; same && i < value.enumerators.size(); ++i)
                 same = prior.enumerators[i].name == value.enumerators[i].name &&
                     prior.enumerators[i].decimalValue == value.enumerators[i].decimalValue;
-            if (!same) { error = "conflicting C enum declarations: " + value.name; return false; }
+            if (!same) conflicts.insert(key);
         }
     }
     std::vector<frontend::CppImportedTypeDeclaration> result;
@@ -283,6 +284,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             frontend::NamedTypeAccessibility::Public, key.first, value.location->file.generic_string()};
         type.objectLayout = frontend::CppImportedObjectLayout{*value.sizeBits / 8, *value.alignmentBits / 8};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
+        if (conflicts.contains(key)) type.deferredImportError = "conflicting C enum declarations: " + value.name;
         result.push_back(std::move(type));
     }
     types = std::move(result);

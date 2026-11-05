@@ -98,6 +98,8 @@ struct CppImportedTypeDeclaration final
     std::optional<CppImportedObjectLayout> memberAccessLayout = std::nullopt;
     // Present only for a complete imported enum with a verified integer representation.
     std::optional<CppImportedEnumBase> enumBase = std::nullopt;
+    // A conflicting external declaration is diagnosed only when its type is used.
+    std::string deferredImportError;
 };
 
 class ProjectNameLookup final

@@ -142,6 +142,14 @@ void ProjectNameLookup::resolveTypeNameBinding(
     {
         binding.kind = TypeNameBindingKind::Resolved;
         binding.targetTypeOrdinal = binding.candidateTypeOrdinals.front();
+        const auto& identity = namedTypes_[*binding.targetTypeOrdinal].identity;
+        for (const auto& imported : cppImportedTypes_)
+            if (!imported.deferredImportError.empty() && imported.identity.key() == identity.key())
+            {
+                diagnostics.report(diagnostics::DiagnosticId::AmbiguousTypeName,
+                    diagnostics::DiagnosticSeverity::Error, syntax->range(), imported.deferredImportError);
+                return;
+            }
         if (syntax->isDynamicTrait() &&
             namedTypes_[*binding.targetTypeOrdinal].kind != NamedTypeDeclarationKind::Interface)
         {
