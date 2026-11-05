@@ -1,0 +1,5 @@
+class Guard { ~Guard() { cpp_cross_record(); } }
+int Main() {
+    raii Guard guard = new Guard();
+    return Demo.Thrower.raiseStatic(42);
+}

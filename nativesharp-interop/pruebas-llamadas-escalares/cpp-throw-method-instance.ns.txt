@@ -1,0 +1,6 @@
+class Guard { ~Guard() { cpp_cross_record(); } }
+int Main() {
+    raii Guard guard = new Guard();
+    var p = Demo.make();
+    return p->raise(42);
+}
