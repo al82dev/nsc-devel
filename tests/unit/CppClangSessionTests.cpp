@@ -1738,5 +1738,494 @@ int main(int argc, char** argv)
                          "project reference rejects a session for a different input");
         }
     }
+    auto c = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
+                                  "#include <stddef.h>\nint bridge_probe(size_t n, ...);\n"
+                                  "int c_add(int left, int right);\n"
+                                  "int ptr_read(int* p);\n"
+                                  "int ptr_const(const int* p); int ptr_volatile(volatile int* p); int** ptr_nested(int** p);\n"
+                                  "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
+                                  "int bridge_probe(size_t n, ...);\n"
+                                  "struct Pair { char a; int b; }; struct Incomplete;\n"
+                                  "extern int c_global; extern int c_global; static const int c_local = 3; "
+                                  "extern volatile int c_volatile; extern const volatile float c_float;\n"
+                                  "struct Flags { unsigned a:3; unsigned b:5; }; "
+                                  "struct Later; struct Later { int value; };\n"));
+    std::optional<std::vector<CppFunctionDeclaration>> cFunctions;
+    std::optional<std::vector<CppRecordDeclaration>> cRecords;
+    std::optional<std::vector<CppGlobalDeclaration>> cGlobals;
+    ok &= expect(static_cast<bool>(c), "valid C translation unit opens");
+    if (c)
+    {
+        const auto namespaces = c->namespacesSnapshot();
+        ok &= expect(namespaces && namespaces->empty(), "C translation unit has no C++ namespaces");
+        ok &= expect(c->state() == CppSessionState::Ready, "C session is ready");
+        auto count = c->topLevelDeclarationCount();
+        ok &= expect(count && *count > 0, "C AST is available after parsing");
+        cFunctions = c->freeFunctionsSnapshot();
+        const auto* probe = cFunctions ? functionByName(*cFunctions, "bridge_probe") : nullptr;
+        ok &= expect(probe && probe->externalSymbol == "bridge_probe" && probe->variadic &&
+                     probe->parameters.size() == 1 && !probe->parameters[0].canonicalTypeSpelling.empty() &&
+                     probe->location.has_value() && !probe->canonicalFunctionType.empty() &&
+                     probe->callingConvention == "cdecl" && probe->languageLinkage == CppLanguageLinkage::C,
+                     "C function projection preserves symbol, signature and source");
+        if (probe)
+        {
+            auto projected = projectCppSemanticFunction(*probe, 0, "Semantic");
+            const auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projected);
+            ok &= expect(symbol && symbol->isVariadic && symbol->parameters.size() == 1 &&
+                         symbol->mangledName == "bridge_probe" &&
+                         symbol->cppCanonicalIdentity.find("...") != std::string::npos,
+                         "Clang C variadic signature projects with its external identity");
+            if (symbol)
+            {
+                nativesharp::frontend::ProjectCompilation compilation;
+                compilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns")
+                        return "int Main() { byte x = 3; float y = 1.5f; return bridge_probe(2, x, y); }\n";
+                    return std::nullopt;
+                });
+                std::string error;
+                const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                const bool ready = compilation.setCppImportedFunctions({*symbol}, error) &&
+                    compilation.compileProjectOopMir(path, error);
+                if (!ready)
+                {
+                    std::cerr << "C variadic MIR failed: " << error << '\n';
+                    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                        std::cerr << diagnostic.message() << '\n';
+                }
+                bool emitted = false;
+                if (ready && compilation.oopMirModel() && compilation.nameLookup())
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+                    const bool valid = module && module->verify(error);
+                    const auto ir = module ? module->text() : std::string{};
+                    ok &= expect(valid && ir.find("@bridge_probe(i64, ...)") != std::string::npos,
+                                 "C variadic declaration reaches LLVM with its fixed argument");
+                    auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(error);
+                    emitted = valid && target && target->emit(*module,
+                        std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/variadic-call.obj",
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object, error);
+                    if (!emitted) std::cerr << "C variadic object failed: " << lowerer.error() << ' ' << error << '\n';
+                }
+                ok &= expect(emitted, "C variadic call emits a Windows x64 object");
+            }
+        }
+        if (cFunctions)
+            ok &= expect(std::count_if(cFunctions->begin(), cFunctions->end(), [](const auto& value) {
+                return value.qualifiedName == "bridge_probe";
+            }) == 1, "repeated declarations share one canonical function");
+        cRecords = c->recordsSnapshot();
+        cGlobals = c->globalsSnapshot();
+        const auto* global = cGlobals ? globalByName(*cGlobals, "c_global") : nullptr;
+        const auto* local = cGlobals ? globalByName(*cGlobals, "c_local") : nullptr;
+        const auto* volatileGlobal = cGlobals ? globalByName(*cGlobals, "c_volatile") : nullptr;
+        const auto* qualifiedFloat = cGlobals ? globalByName(*cGlobals, "c_float") : nullptr;
+        ok &= expect(global && global->externalSymbol == "c_global" && global->type.sizeBits == 32 &&
+                     global->location && std::count_if(cGlobals->begin(), cGlobals->end(), [](const auto& value) {
+                         return value.qualifiedName == "c_global";
+                     }) == 1, "C global declaration preserves symbol, type and canonical identity");
+        ok &= expect(local && !local->externalLinkage && !local->externalSymbol && local->type.isConst,
+                     "internal C global preserves const without an external symbol");
+        const auto globalMapping = global ? mapCppScalarType(global->type) : std::nullopt;
+        const auto constMapping = local ? mapCppScalarType(local->type) : std::nullopt;
+        const auto volatileMapping = volatileGlobal ? mapCppScalarType(volatileGlobal->type) : std::nullopt;
+        const auto floatMapping = qualifiedFloat ? mapCppScalarType(qualifiedFloat->type) : std::nullopt;
+        ok &= expect(globalMapping && globalMapping->nativeSharpTypeKey == "builtin:int" &&
+                     !globalMapping->isConst && !globalMapping->isVolatile && constMapping &&
+                     constMapping->nativeSharpTypeKey == "builtin:int" && constMapping->isConst &&
+                     volatileMapping && volatileMapping->nativeSharpTypeKey == "builtin:int" &&
+                     volatileMapping->isVolatile && floatMapping && floatMapping->isConst &&
+                     floatMapping->isVolatile && floatMapping->nativeSharpTypeKey == "builtin:float",
+                     "scalar representation mapping retains const and volatile from Clang");
+        const auto* pointerRead = cFunctions ? functionByName(*cFunctions, "ptr_read") : nullptr;
+        const auto* pointerConst = cFunctions ? functionByName(*cFunctions, "ptr_const") : nullptr;
+        const auto* pointerVolatile = cFunctions ? functionByName(*cFunctions, "ptr_volatile") : nullptr;
+        const auto* pointerNested = cFunctions ? functionByName(*cFunctions, "ptr_nested") : nullptr;
+        const auto* pointerVoid = cFunctions ? functionByName(*cFunctions, "ptr_void") : nullptr;
+        const auto* pointerNestedConst = cFunctions ? functionByName(*cFunctions, "ptr_nested_const") : nullptr;
+        ok &= expect(pointerVolatile && pointerNestedConst &&
+                     std::holds_alternative<CppSemanticFunctionFailure>(projectCppSemanticFunction(*pointerVolatile, 0, "Semantic")) &&
+                     std::holds_alternative<CppSemanticFunctionFailure>(projectCppSemanticFunction(*pointerNestedConst, 0, "Semantic")),
+                     "qualified pointees are not silently mapped to mutable pointers");
+        if (pointerConst)
+        {
+            const auto projectedConst = projectCppSemanticFunction(*pointerConst, 0, "Semantic");
+            const auto* constSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projectedConst);
+            ok &= expect(constSymbol && constSymbol->parameters.size() == 1 &&
+                         constSymbol->parameters[0].typeKey == "builtin:int*" &&
+                         constSymbol->parameters[0].pointerPointeeReadonly,
+                         "C const pointer parameter preserves pointee readonly");
+            if (constSymbol && pointerRead)
+            {
+                const auto mutableProjection = projectCppSemanticFunction(*pointerRead, 0, "Semantic");
+                const auto* mutableSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&mutableProjection);
+                for (const bool readonlyTarget : {true, false})
+                {
+                    nativesharp::frontend::ProjectCompilation compilation;
+                    compilation.setSourceBufferProvider([readonlyTarget](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() == "Main.ns")
+                            return readonlyTarget
+                                ? "int Main() { int value = 41; int const* p = &value; return ptr_const(p); }\n"
+                                : "int Main() { int value = 41; int const* p = &value; return ptr_read(p); }\n";
+                        return std::nullopt;
+                    });
+                    std::string error;
+                    const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                    const bool configured = mutableSymbol && compilation.setCppImportedFunctions(
+                        {*constSymbol, *mutableSymbol}, error);
+                    const bool ready = configured && (readonlyTarget
+                        ? compilation.compileProjectOopMir(path, error)
+                        : compilation.compileProjectMethodBodies(path, error));
+                    bool expectedDiagnostic = false;
+                    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                        expectedDiagnostic |= diagnostic.message().find("no viable overload of namespace function 'ptr_read'") !=
+                            std::string::npos;
+                    ok &= expect(configured && (readonlyTarget ? ready && !compilation.diagnostics().hasErrors()
+                                                                : !ready && expectedDiagnostic),
+                                 readonlyTarget ? "readonly pointer argument calls a const C parameter"
+                                                : "readonly pointer argument cannot call a mutable C parameter");
+                    if (readonlyTarget && ready && compilation.nameLookup() && compilation.oopMirModel())
+                    {
+                        nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                        auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+                        std::string llvmError;
+                        const bool valid = module && module->verify(llvmError);
+                        auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(llvmError);
+                        const bool emitted = valid && target && target->emit(*module,
+                            std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/const-pointer-call.obj",
+                            nativesharp::llvm_backend::LlvmCodeGenFileType::Object, llvmError);
+                        if (!emitted) std::cerr << "Const pointer LLVM/object failed: " << lowerer.error() << ' ' << llvmError << '\n';
+                        ok &= expect(emitted, "readonly pointer call emits a verified Windows x64 object");
+                    }
+                }
+            }
+        }
+        else ok &= expect(false, "Clang exposes the const pointer parameter fixture");
+        if (pointerVoid)
+        {
+            const auto projectedVoid = projectCppSemanticFunction(*pointerVoid, 0, "Semantic");
+            const auto* voidSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projectedVoid);
+            ok &= expect(voidSymbol && voidSymbol->declaredTypeKey == "builtin:void*" &&
+                         voidSymbol->parameters.size() == 1 && voidSymbol->parameters[0].typeKey == "builtin:void*",
+                         "void pointer return and parameter retain pointer type");
+        }
+        else ok &= expect(false, "Clang exposes the void pointer fixture");
+        if (pointerNested)
+        {
+            const auto nested = projectCppSemanticFunction(*pointerNested, 0, "Semantic");
+            const auto* nestedSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&nested);
+            ok &= expect(nestedSymbol && nestedSymbol->declaredTypeKey == "builtin:int**" &&
+                         nestedSymbol->parameters.size() == 1 && nestedSymbol->parameters[0].typeKey == "builtin:int**",
+                         "nested pointer return and parameter retain both levels");
+        }
+        else ok &= expect(false, "Clang exposes the nested pointer fixture");
+        if (pointerRead)
+        {
+            const auto projectedPointer = projectCppSemanticFunction(*pointerRead, 0, "Semantic");
+            const auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projectedPointer);
+            ok &= expect(symbol && symbol->parameters.size() == 1 &&
+                         symbol->parameters[0].typeKey == "builtin:int*",
+                         "C pointer to int maps to a NativeSharp pointer parameter");
+            if (symbol)
+            {
+                nativesharp::frontend::ProjectCompilation pointerCompilation;
+                pointerCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns")
+                        return "int Main() { int value = 41; return ptr_read(&value); }\n";
+                    return std::nullopt;
+                });
+                std::string error;
+                const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                const bool ready = pointerCompilation.setCppImportedFunctions({*symbol}, error) &&
+                    pointerCompilation.compileProjectOopMir(path, error);
+                if (!ready) std::cerr << "C pointer MIR failed: " << error << '\n';
+                ok &= expect(ready && pointerCompilation.oopMirModel(),
+                             "C pointer call reaches MIR from NativeSharp");
+                if (ready && pointerCompilation.oopMirModel() && pointerCompilation.nameLookup())
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*pointerCompilation.nameLookup(), *pointerCompilation.oopMirModel());
+                    std::string llvmError;
+                    const bool valid = module && module->verify(llvmError);
+                    const std::string ir = module ? module->text() : std::string{};
+                    ok &= expect(valid && ir.find("declare i32 @ptr_read(ptr)") != std::string::npos &&
+                                 ir.find("call i32 @ptr_read(ptr") != std::string::npos,
+                                 "C pointer call reaches verified LLVM with pointer ABI");
+                    auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(llvmError);
+                    const bool emitted = valid && target && target->emit(*module,
+                        std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/pointer-call.obj",
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object, llvmError);
+                    if (!emitted) std::cerr << "C pointer LLVM/object failed: " << lowerer.error() << ' ' << llvmError << '\n';
+                    ok &= expect(emitted, "C pointer call emits a Windows x64 object");
+                }
+            }
+        }
+        else ok &= expect(false, "Clang exposes the pointer parameter fixture");
+        const auto* add = cFunctions ? functionByName(*cFunctions, "c_add") : nullptr;
+        if (add && add->externalSymbol && add->parameters.size() == 2)
+        {
+            ok &= expect(std::holds_alternative<CppSemanticFunctionFailure>(
+                             projectCppSemanticFunction(*add, 0, "")),
+                         "semantic conversion requires an owning module");
+            auto projected = projectCppSemanticFunction(*add, 0, "Semantic");
+            auto* projectedSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projected);
+            ok &= expect(projectedSymbol != nullptr, "C function converts automatically for semantic indexing");
+            if (projectedSymbol)
+            {
+                const auto imported = *projectedSymbol;
+                {
+                    nativesharp::frontend::ProjectCompilation bodies;
+                    std::string bodyError;
+                    const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                    const bool configured = bodies.setCppImportedFunctions({imported}, bodyError);
+                    const bool ready = configured && bodies.compileProjectMethodBodies(path, bodyError);
+                    if (!ready)
+                        for (const auto& diagnostic : bodies.diagnostics().diagnostics())
+                            std::cerr << "C++ import body diagnostic: " << diagnostic.message() << '\n';
+                    ok &= expect(configured && ready && !bodies.diagnostics().hasErrors(),
+                                 "Clang function is recognized as external in body analysis");
+                }
+                {
+                    nativesharp::frontend::ProjectCompilation hir;
+                    std::string hirError;
+                    const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                    const bool ready = hir.setCppImportedFunctions({imported}, hirError) &&
+                        hir.compileProjectOopHir(path, hirError);
+                    bool found = false;
+                    if (ready && hir.oopHirModel())
+                        for (const auto& function : hir.oopHirModel()->functions())
+                            found |= function.isImportedC && function.mangledName == "c_add" &&
+                                function.cAbiName == "c_add";
+                    if (!ready) std::cerr << "Clang C HIR setup failed: " << hirError << '\n';
+                    ok &= expect(found, "Clang C external symbol reaches HIR as a declaration");
+                    nativesharp::frontend::ProjectCompilation mir;
+                    const bool mirReady = mir.setCppImportedFunctions({imported}, hirError) &&
+                        mir.compileProjectOopMir(path, hirError);
+                    bool mirFound = false;
+                    if (mirReady && mir.oopMirModel())
+                        for (const auto& function : mir.oopMirModel()->functions())
+                            mirFound |= function.isImportedC && function.mangledName == "c_add" &&
+                                function.cAbiName == "c_add";
+                    if (!mirReady) std::cerr << "Clang C MIR setup failed: " << hirError << '\n';
+                    ok &= expect(mirFound, "Clang C external symbol reaches MIR as a declaration");
+                    if (mirFound && mir.nameLookup())
+                    {
+                        nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                        auto module = lowerer.lower(*mir.nameLookup(), *mir.oopMirModel());
+                        std::string verifyError;
+                        const bool valid = module && module->verify(verifyError);
+                        const std::string ir = module ? module->text() : std::string{};
+                        if (!valid) std::cerr << "Clang C LLVM failed: " << lowerer.error() << ' ' << verifyError << '\n';
+                        ok &= expect(valid && ir.find("declare i32 @c_add(i32, i32)") != std::string::npos &&
+                                     ir.find("call i32 @c_add(") != std::string::npos,
+                                     "Clang C external declaration and call reach verified LLVM");
+                        auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(verifyError);
+                        const bool emitted = valid && target && target->emit(*module,
+                            std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/c-call.obj",
+                            nativesharp::llvm_backend::LlvmCodeGenFileType::Object, verifyError);
+                        if (!emitted) std::cerr << "Clang C object failed: " << verifyError << '\n';
+                        ok &= expect(emitted, "Clang C call emits a Windows x64 object");
+                    }
+                }
+                {
+                    nativesharp::frontend::ProjectCompilation ordinaryPrototype;
+                    ordinaryPrototype.setSourceBufferProvider([](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() == "Main.ns")
+                            return "int missing(int value); int Main() { return missing(1); }\n";
+                        return std::nullopt;
+                    });
+                    std::string bodyError;
+                    const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                    const bool ready = ordinaryPrototype.compileProjectMethodBodies(path, bodyError);
+                    bool missingDefinition = false;
+                    for (const auto& diagnostic : ordinaryPrototype.diagnostics().diagnostics())
+                        missingDefinition |= diagnostic.id() == nativesharp::diagnostics::DiagnosticId::MissingFunctionDefinition;
+                    ok &= expect(!ready && missingDefinition,
+                                 "ordinary NativeSharp prototype still requires a definition when called");
+                }
+                nativesharp::frontend::ProjectCompilation compilation;
+                std::string error;
+                const auto semanticPath = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                auto incompleteProjection = imported;
+                incompleteProjection.mangledName.clear();
+                ok &= expect(!compilation.setCppImportedFunctions({incompleteProjection}, error) &&
+                             !compilation.setCppImportedFunctions({imported, imported}, error) &&
+                             compilation.setCppImportedFunctions({imported}, error),
+                             "compilation validates imported symbols before starting");
+                const bool nativeReady = compilation.compileProjectMembers(semanticPath, error);
+                if (!nativeReady) std::cerr << "Native semantic setup failed: " << error << '\n';
+                ok &= expect(nativeReady && compilation.nameLookup() && compilation.memberModel(),
+                             "ordinary project provides semantic models for C import test");
+                if (nativeReady && compilation.nameLookup() && compilation.memberModel())
+                {
+                    const auto* compiledModel = compilation.namespaceFunctionModel();
+                    ok &= expect(compiledModel && compiledModel->findFunctions(0, "", "c_add").size() == 1 &&
+                                 !compilation.setCppImportedFunctions({}, error),
+                                 "project compilation installs imported functions and rejects late changes");
+                    nativesharp::frontend::ProjectNamespaceFunctionModel model;
+                    auto incomplete = imported; incomplete.mangledName.clear();
+                    ok &= expect(!model.setCppImportedFunctions({incomplete}, error),
+                                 "semantic index rejects incomplete imported symbols");
+                    ok &= expect(!model.setCppImportedFunctions({imported, imported}, error),
+                                 "semantic index rejects duplicate Clang identities");
+                    ok &= expect(model.setCppImportedFunctions({imported}, error) &&
+                                 model.build(*compilation.nameLookup(), *compilation.memberModel(),
+                                             compilation.units(), compilation.diagnostics(), compilation.genericModel()),
+                                 "semantic model builds with a function projected from Clang");
+                    const auto ordinals = model.findFunctions(0, "", "c_add");
+                    ok &= expect(ordinals.size() == 1 && ordinals[0] < model.functions().size() &&
+                                 model.functions()[ordinals[0]].mangledName == "c_add" &&
+                                 model.functions()[ordinals[0]].cppCallingConvention == "cdecl" &&
+                                 model.functions()[ordinals[0]].cppCanonicalIdentity.starts_with("c_add|"),
+                                 "semantic lookup finds imported C function and retains its symbol");
+                    ok &= expect(model.findFunctions(0, "", "Main").size() == 1,
+                                 "importing a function preserves ordinary NativeSharp functions");
+                    const auto bindings = model.referenceBindings();
+                    const auto bound = std::find_if(bindings.begin(), bindings.end(), [](const auto& binding) {
+                        return binding.writtenName == "c_add";
+                    });
+                    ok &= expect(bound != bindings.end() && bound->candidateFunctionOrdinals.size() == 1 &&
+                                 ordinals.size() == 1 && bound->candidateFunctionOrdinals[0] == ordinals[0],
+                                 "NativeSharp call name binds to the Clang-projected candidate");
+                    nativesharp::frontend::ProjectNamespaceFunctionModel observer;
+                    const bool observed = observer.setCaptureCppFunctionDemands(true) &&
+                        observer.setCppImportedFunctions({imported}, error) &&
+                        observer.build(*compilation.nameLookup(), *compilation.memberModel(), compilation.units(),
+                                       compilation.diagnostics(), compilation.genericModel());
+                    bool directDemand = false;
+                    if (observed)
+                        for (const auto& demand : observer.cppFunctionDemands())
+                            directDemand |= demand.directCall && demand.writtenName == "c_add" &&
+                                demand.projectOrdinal == 0 && demand.syntax != nullptr;
+                    ok &= expect(directDemand, "demand capture includes an unqualified direct C call");
+                    ok &= expect(!model.setCppImportedFunctions({}, error),
+                                 "semantic imports cannot change after model construction");
+                    nativesharp::frontend::ProjectNamespaceFunctionModel badOwnerModel;
+                    nativesharp::diagnostics::DiagnosticEngine badOwnerDiagnostics;
+                    auto badOwner = imported;
+                    badOwner.projectOrdinal = 999999;
+                    ok &= expect(badOwnerModel.setCppImportedFunctions({badOwner}, error) &&
+                                 !badOwnerModel.build(*compilation.nameLookup(), *compilation.memberModel(),
+                                     compilation.units(), badOwnerDiagnostics, compilation.genericModel()) &&
+                                 badOwnerDiagnostics.hasErrors() &&
+                                 badOwnerModel.findFunctions(badOwner.projectOrdinal, "", "c_add").empty(),
+                                 "semantic index rejects an owner outside the project graph");
+                }
+                {
+                    nativesharp::frontend::ProjectCompilation deferred;
+                    CppProjectSessions group;
+                    group.projectFile = std::filesystem::absolute(semanticPath);
+                    group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::C, "int c_add(int left, int right);\n")));
+                    std::vector<CppProjectSessions> groups;
+                    groups.push_back(std::move(group));
+                    std::size_t invocations = 0;
+                    bool sawSyntax = false;
+                    bool sawDemand = false;
+                    auto provider = [&invocations, &sawSyntax, &sawDemand](const auto& graph, auto sessions, auto units,
+                                                               auto demands, auto& output, auto&, auto& why) {
+                        ++invocations;
+                        sawSyntax = !units.empty() && units.front() && units.front()->syntaxTree();
+                        for (const auto& demand : demands)
+                            sawDemand |= demand.directCall && demand.writtenName == "c_add" &&
+                                demand.projectOrdinal == 0 && demand.syntax != nullptr &&
+                                demand.lookupName == "c_add" && demand.lookupNamespaces.size() == 1 &&
+                                demand.lookupNamespaces[0].empty() &&
+                                std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), 0) !=
+                                    demand.visibleProjects.end();
+                        auto inventory = collectCppSemanticFunctions(graph, sessions);
+                        if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&inventory))
+                        { why = failure->message; return false; }
+                        for (auto& entry : std::get<std::vector<CppSemanticInventoryEntry>>(inventory))
+                        {
+                            auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(
+                                &entry.projection);
+                            if (!symbol) { why = "unrepresented declaration in test"; return false; }
+                            output.push_back(std::move(*symbol));
+                        }
+                        return true;
+                    };
+                    nativesharp::frontend::ProjectCompilation syntaxOnly;
+                    ok &= expect(syntaxOnly.setCppFunctionProvider(provider, error) &&
+                                 syntaxOnly.compileProjectSyntax(semanticPath, error) && invocations == 0,
+                                 "syntax-only compilation does not invoke the semantic function provider");
+                    ok &= expect(deferred.setCppProjectSessions(std::move(groups), error) &&
+                                 deferred.setCppFunctionProvider(provider, error) &&
+                                 !deferred.setCppImportedFunctions({imported}, error),
+                                 "deferred provider and direct symbols are mutually exclusive");
+                    error.clear();
+                    const bool deferredReady = deferred.compileProjectMembers(semanticPath, error);
+                    if (!deferredReady) std::cerr << "Deferred semantic setup failed: " << error << '\n';
+                    ok &= expect(deferredReady && invocations == 1 && sawSyntax && sawDemand && deferred.namespaceFunctionModel() &&
+                                 deferred.namespaceFunctionModel()->findFunctions(0, "", "c_add").size() == 1 &&
+                                 !deferred.setCppFunctionProvider({}, error),
+                                 "provider projects real Clang functions after the graph is prepared");
+                    nativesharp::frontend::ProjectCompilation failedProvider;
+                    ok &= expect(failedProvider.setCppFunctionProvider(
+                        [](const auto&, auto, auto, auto, auto&, auto&, auto& why) { why = "provider test failure"; return false; },
+                        error), "failing provider installs before compilation");
+                    error.clear();
+                    ok &= expect(!failedProvider.compileProjectMembers(semanticPath, error) &&
+                                 error == "provider test failure",
+                                 "provider failure stops compilation and preserves its diagnostic");
+                    nativesharp::frontend::ProjectCompilation duplicateDefinition;
+                    duplicateDefinition.setSourceBufferProvider([](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() == "Main.ns")
+                            return "int duplicate() { return 1; } int duplicate() { return 2; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    bool duplicateProviderCalled = false;
+                    ok &= expect(duplicateDefinition.setCppFunctionProvider(
+                        [&duplicateProviderCalled](const auto&, auto, auto, auto, auto&, auto&, auto&) {
+                            duplicateProviderCalled = true; return true;
+                        }, error), "duplicate-definition test installs a provider");
+                    error.clear();
+                    const bool duplicateReady = duplicateDefinition.compileProjectMembers(semanticPath, error);
+                    bool duplicateReported = false;
+                    for (const auto& diagnostic : duplicateDefinition.diagnostics().diagnostics())
+                        duplicateReported |= diagnostic.message().find("already has a definition") != std::string::npos;
+                    ok &= expect(!duplicateReady && !duplicateProviderCalled && duplicateReported,
+                                 "observer failure preserves real diagnostics without invoking provider");
+                    nativesharp::frontend::ProjectCompilation invalidProvider;
+                    ok &= expect(invalidProvider.setCppFunctionProvider(
+                        [incompleteProjection](const auto&, auto, auto, auto, auto& output, auto&, auto&) {
+                            output.push_back(incompleteProjection); return true;
+                        }, error), "provider of invalid symbols installs before compilation");
+                    error.clear();
+                    ok &= expect(!invalidProvider.compileProjectMembers(semanticPath, error) &&
+                                 error.find("incomplete imported") != std::string::npos,
+                                 "provider output is validated before semantic installation");
+                    nativesharp::frontend::ProjectCompilation directFirst;
+                    ok &= expect(directFirst.setCppImportedFunctions({imported}, error) &&
+                                 !directFirst.setCppFunctionProvider(provider, error),
+                                 "direct symbols also prevent a conflicting provider");
+                }
+            }
+        }
+        else ok &= expect(false, "Clang exposes the C function used in semantic test");
+        const auto* pair = cRecords ? recordByName(*cRecords, "Pair") : nullptr;
+        const auto* incomplete = cRecords ? recordByName(*cRecords, "Incomplete") : nullptr;
+        const auto* flags = cRecords ? recordByName(*cRecords, "Flags") : nullptr;
+        const auto* later = cRecords ? recordByName(*cRecords, "Later") : nullptr;
+        ok &= expect(pair && pair->complete && pair->odrHash && pair->sizeBits == 64 && pair->fields.size() == 2 &&
+                     pair->fields[0].offsetBits == 0 && pair->fields[1].offsetBits == 32,
+                     "C struct size and field offsets match the target");
+        ok &= expect(incomplete && !incomplete->complete && !incomplete->sizeBits && !incomplete->odrHash,
+                     "incomplete record has no invented layout");
+        ok &= expect(flags && flags->fields.size() == 2 && flags->fields[0].offsetBits == 0 &&
+                     flags->fields[0].bitWidth == 3 && flags->fields[1].offsetBits == 3 &&
+                     flags->fields[1].bitWidth == 5, "bitfield widths and offsets come from Clang");
+        ok &= expect(later && later->complete && later->sizeBits == 32 &&
+                     std::count_if(cRecords->begin(), cRecords->end(), [](const auto& value) {
+                         return value.qualifiedName == "Later";
+                     }) == 1, "forward declaration resolves once to its definition");
+    }
     return ok ? 0 : 1;
 }
