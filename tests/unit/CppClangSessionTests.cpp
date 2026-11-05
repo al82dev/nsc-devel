@@ -2256,7 +2256,7 @@ int main(int argc, char** argv)
                                   "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef struct Pair PairMatrix[2][3]; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
-                                  "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
+                                  "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)(); typedef int *restrict RestrictedPtr;\n"
                                   "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; typedef enum Color ColorMatrix[2][3]; typedef enum Color (*ColorCallback)(enum Color); typedef enum Color (*NestedCallback)(enum Color (*)(enum Color)); enum Color color_echo(enum Color value); int apply_color(enum Color (*cb)(enum Color)); struct Paint { enum Color shade; const enum Color* view; enum Color colors[2][3]; }; enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
@@ -2291,6 +2291,11 @@ int main(int argc, char** argv)
         const auto* modeAlias = aliasByName("Mode");
         const auto* callbackAlias = aliasByName("Callback");
         const auto* oldCallbackAlias = aliasByName("OldCallback");
+        const auto* restrictedAlias = aliasByName("RestrictedPtr");
+        ok &= expect(restrictedAlias && restrictedAlias->underlyingType.kind == CppTypeKind::Pointer &&
+                     restrictedAlias->underlyingType.isRestrict && restrictedAlias->underlyingType.element &&
+                     !restrictedAlias->underlyingType.element->isRestrict,
+                     "C typedef snapshot retains restrict at the qualified pointer level");
         ok &= expect(countAlias && countAlias->underlyingType.kind == CppTypeKind::UnsignedInteger &&
                      countAlias->underlyingType.sizeBits == 32 && countAlias->location &&
                      pointerAlias && pointerAlias->underlyingType.kind == CppTypeKind::Pointer &&
