@@ -474,6 +474,8 @@ bool configurePrecompiledModules(
                     return true;
                 }, error))
             return false;
+        if (hasSessions && !compilation.setCppTypeAliasProvider(interop::provideCppTypeAliases, error))
+            return false;
         if (hasCppSessions &&
             (!compilation.setExperimentalCppTypeProvider(interop::provideExperimentalCppRecordCandidates, error) ||
              !compilation.setExperimentalCppTypeSelector(interop::selectExperimentalCppRecordTypesForCompilation, error) ||
