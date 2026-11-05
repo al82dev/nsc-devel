@@ -149,6 +149,8 @@ ExitCode dumpSourceFileSyntax(std::string_view action, std::string_view path, st
     if (!configurePrecompiledModules(*manifest, compilation, loadError))
     {
         error << "nsc: error: " << loadError << '\n';
+        if (!compilation.diagnostics().diagnostics().empty())
+            diagnostics::DiagnosticRenderer(compilation.sourceManager()).renderAll(compilation.diagnostics(), error);
         return ExitCode::CompilationError;
     }
     const bool success = compilation.compileProjectSyntax(*project, loadError);
@@ -276,6 +278,8 @@ bool lowerSourceFileModule(
     if (!configurePrecompiledModules(*manifest, compilation, loadError))
     {
         error << "nsc: error: " << loadError << '\n';
+        if (!compilation.diagnostics().diagnostics().empty())
+            diagnostics::DiagnosticRenderer(compilation.sourceManager()).renderAll(compilation.diagnostics(), error);
         return false;
     }
     const bool success = compilation.compileProjectOopMir(*project, loadError);

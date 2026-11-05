@@ -471,6 +471,8 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
             [&] { return configurePrecompiledModules(*manifest, projectCompilation, loadError); }))
     {
         error << "nsc: error: " << loadError << '\n';
+        if (!projectCompilation.diagnostics().diagnostics().empty())
+            diagnostics::DiagnosticRenderer(projectCompilation.sourceManager()).renderAll(projectCompilation.diagnostics(), error);
         return ExitCode::CompilationError;
     }
     bool oopLlvmAction = false;
@@ -509,6 +511,8 @@ bool prepareOopCodeCompilation(std::string_view inputPath,
             [&] { return configurePrecompiledModules(manifest, compilation, loadError); }))
     {
         error << "nsc: error: " << loadError << '\n';
+        if (!compilation.diagnostics().diagnostics().empty())
+            diagnostics::DiagnosticRenderer(compilation.sourceManager()).renderAll(compilation.diagnostics(), error);
         return false;
     }
     if (!restoreCompilationBundle(manifest, restored, loadError))
