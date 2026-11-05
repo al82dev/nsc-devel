@@ -2200,7 +2200,7 @@ int main(int argc, char** argv)
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
-                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; enum Color color_echo(enum Color value); enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
+                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; enum Color color_echo(enum Color value); struct Paint { enum Color shade; const enum Color* view; }; enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
                                   "union CValue { int integer; float real; }; struct Flags { unsigned a:3; unsigned b:5; }; "
@@ -2810,6 +2810,17 @@ int main(int argc, char** argv)
                                  symbol->parameters.size() == 1 &&
                                  symbol->parameters[0].typeKey == symbol->declaredTypeKey,
                                  "C enum function preserves its imported type in parameter and result");
+                    const auto* paint = cRecords ? recordByName(*cRecords, "Paint") : nullptr;
+                    const auto shade = paint && enumAliasCompilation.nameLookup()
+                        ? projectCppSemanticInstanceField(*paint, 0, 0, "Semantic", "x86_64-pc-windows-msvc",
+                                                          enumAliasCompilation.nameLookup()) : std::nullopt;
+                    const auto view = paint && enumAliasCompilation.nameLookup()
+                        ? projectCppSemanticInstanceField(*paint, 1, 0, "Semantic", "x86_64-pc-windows-msvc",
+                                                          enumAliasCompilation.nameLookup()) : std::nullopt;
+                    ok &= expect(shade && shade->type.nativeSharpTypeKey == "type:" + enumIdentity.key() &&
+                                 view && view->type.nativeSharpTypeKey == "type:" + enumIdentity.key() + "*" &&
+                                 view->pointeeReadonly,
+                                 "C enum fields preserve enum identity and readonly pointee");
                 }
                 {
                     nativesharp::frontend::ProjectCompilation callbackCompilation;
