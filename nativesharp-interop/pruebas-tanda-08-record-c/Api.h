@@ -6,3 +6,6 @@ struct Parent { struct Child child; struct Child children[2]; };
 struct Parent* make_parent(void);
 int read_parent(struct Parent* value);
 void add_distinct(int* restrict destination, const int* restrict source);
+struct Device { volatile int counter; };
+struct Device* get_device(void);
+int read_device(struct Device* value);

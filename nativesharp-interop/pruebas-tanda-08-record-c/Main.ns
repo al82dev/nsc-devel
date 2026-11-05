@@ -11,5 +11,8 @@ int Main()
     int source = 23;
     add_distinct(&destination, &source);
     if (destination != 42) return 3;
+    Device* device = get_device();
+    device.counter = 42;
+    if (device.counter != 42 || read_device(device) != 42) return 4;
     return 0;
 }
