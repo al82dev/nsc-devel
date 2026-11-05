@@ -3,7 +3,7 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
-#include "nativesharp/Frontend/CppAliasEnumType.h"
+#include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "nativesharp/Frontend/ObjectConstructionBinding.h"
 #include "nativesharp/Frontend/ClassDestructionPlan.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
@@ -25,23 +25,12 @@ using RecordIndex = std::unordered_map<std::string, CppRecordGroupStatus>;
 std::optional<CppScalarTypeMapping> mapFunctionType(
     const CppType& type, bool allowReadonlyPointee = false, const RecordIndex* records = nullptr,
     std::string_view moduleName = {}, std::size_t depth = 0,
-    const frontend::ProjectNameLookup* lookup = nullptr)
+    const frontend::ProjectNameLookup* lookup = nullptr, std::optional<std::size_t> owner = std::nullopt)
 {
     if (depth > 64) return std::nullopt;
     if (type.kind == CppTypeKind::Enumeration && lookup && !type.isVolatile)
     {
-        const auto enumeration = frontend::cppAliasEnumType(type);
-        if (!enumeration || enumeration->pointerDepth || enumeration->name.find('.') != std::string::npos)
-            return std::nullopt;
-        const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, enumeration->name);
-        const auto ordinal = lookup->typeOrdinalForIdentity(identity.key());
-        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-        if (!imported || !imported->enumBase || !imported->deferredImportError.empty() ||
-            imported->enumBase->token != enumeration->base.token || !imported->objectLayout ||
-            !type.sizeBits || *type.sizeBits != imported->objectLayout->sizeBytes * 8 ||
-            !type.alignmentBits || *type.alignmentBits != imported->objectLayout->alignmentBytes * 8)
-            return std::nullopt;
-        return CppScalarTypeMapping{"type:" + identity.key(), type.canonicalSpelling, type.isConst, false};
+        return owner ? projectCppSemanticEnumType(type, *owner, moduleName, lookup) : std::nullopt;
     }
     if (type.kind == CppTypeKind::Record)
     {
@@ -61,7 +50,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     if (type.canonicalSpelling.empty() || type.sizeBits != 64 || !type.element ||
         type.isConst || type.isVolatile || (type.element->isConst && !readonlyScalar) || type.element->isVolatile)
         return std::nullopt;
-    auto element = mapFunctionType(*type.element, false, records, moduleName, depth + 1, lookup);
+    auto element = mapFunctionType(*type.element, false, records, moduleName, depth + 1, lookup, owner);
     if (!element) return std::nullopt;
     return CppScalarTypeMapping{element->nativeSharpTypeKey + "*", type.canonicalSpelling, readonlyScalar, false};
 }
@@ -83,7 +72,7 @@ CppSemanticFunctionResult projectFunction(
     if (function.variadic && (function.languageLinkage != CppLanguageLinkage::C ||
                               function.callingConvention != "cdecl"))
         return failure("variadic C++ or non-cdecl functions are not yet projected");
-    const auto resultType = mapFunctionType(function.returnType, false, records, moduleName, 0, lookup);
+    const auto resultType = mapFunctionType(function.returnType, false, records, moduleName, 0, lookup, projectOrdinal);
     if (!resultType) return failure("C/C++ return type is not yet mapped");
 
     std::string cppNamespace;
@@ -119,7 +108,7 @@ CppSemanticFunctionResult projectFunction(
     for (std::size_t index = 0; index < function.parameters.size(); ++index)
     {
         const auto& input = function.parameters[index];
-        const auto parameterType = mapFunctionType(input.type, true, records, moduleName, 0, lookup);
+        const auto parameterType = mapFunctionType(input.type, true, records, moduleName, 0, lookup, projectOrdinal);
         if (!parameterType || input.type.kind == CppTypeKind::Void)
             return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
         frontend::MethodParameterSymbol parameter;
