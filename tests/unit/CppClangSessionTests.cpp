@@ -657,5 +657,33 @@ int main(int argc, char** argv)
                      !invalidUnit.parse(invalidDiagnostics, aliasKnown) && invalidDiagnostics.hasErrors(),
                      "invalid alias remains unsupported and the ordinary parser reports its syntax error");
     }
+    {
+        const nativesharp::FileId file{80};
+        const std::string source = "namespace Left { using N = Shared; using T = Shared.Item; using U = T; "
+            "int F() { N.Item* n = null; T* t = null; U* u = null; return 0; } "
+            "namespace Child { int H() { U* p = null; return 0; } } } "
+            "namespace Right { int G() { int T = 1; int p = 2; T * p; return T; } }";
+        nativesharp::source::SourceFile input(file, "cpp-scope-aliases.ns", source);
+        nativesharp::frontend::ProjectSyntaxUnit unit(0, 0, "ScopeTest", file);
+        nativesharp::diagnostics::DiagnosticEngine diagnostics;
+        const bool lexed = unit.lex(input, diagnostics);
+        const auto scopes = nativesharp::parser::lexicalNamespaceScopes(unit.tokens());
+        const std::vector<std::string> namespaces{"Shared"};
+        const std::vector<std::string> types{"Shared.Item"};
+        const auto scoped = nativesharp::frontend::cppScopedTypeNames(scopes, namespaces, types);
+        const auto left = static_cast<std::uint32_t>(source.find("N.Item*"));
+        const auto right = static_cast<std::uint32_t>(source.find("T * p"));
+        const auto child = static_cast<std::uint32_t>(source.find("U* p"));
+        const bool correctNames = scoped &&
+            scoped->contains(nativesharp::SourceLocation(file, left), "N.Item") &&
+            scoped->contains(nativesharp::SourceLocation(file, left), "T") &&
+            scoped->contains(nativesharp::SourceLocation(file, left), "U") &&
+            scoped->contains(nativesharp::SourceLocation(file, child), "U") &&
+            !scoped->contains(nativesharp::SourceLocation(file, right), "T");
+        const auto known = nativesharp::parser::buildKnownTypeNameSet();
+        const bool parsed = lexed && scoped && unit.parse(diagnostics, known, &*scoped);
+        ok &= expect(correctNames && parsed && !diagnostics.hasErrors(),
+                     "scoped C++ names resolve namespace and chained type aliases without leaking to siblings");
+    }
     return ok ? 0 : 1;
 }
