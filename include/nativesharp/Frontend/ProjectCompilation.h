@@ -315,6 +315,32 @@ private:
     bool compileSyntaxCore(const std::filesystem::path& projectFile, std::string& loadError);
     bool enterStage(CompilationStage stage, std::string& error);
 
+    // Declared before the project models so that it outlives their destruction.
+    std::unique_ptr<interop::CppInteropSession> cppInteropSession_;
+    std::vector<interop::CppProjectSessions> cppProjectSessions_;
+    std::vector<NamespaceFunctionSymbol> cppImportedFunctions_;
+    std::vector<NamespaceStateSymbol> experimentalCppImportedStates_;
+    std::vector<CppImportedTypeDeclaration> experimentalCppImportedTypes_;
+    ExperimentalCppTypeProvider experimentalCppTypeProvider_;
+    ExperimentalCppTypeSelector experimentalCppTypeSelector_;
+    ExperimentalCppInstanceMethodProvider experimentalCppInstanceMethodProvider_;
+    ExperimentalCppLifetimeMethodProvider experimentalCppLifetimeMethodProvider_;
+    ExperimentalCppInstanceFieldProvider experimentalCppInstanceFieldProvider_;
+    ExperimentalCppStaticMethodProvider experimentalCppStaticMethodProvider_;
+    ExperimentalCppStaticFieldProvider experimentalCppStaticFieldProvider_;
+    bool experimentalCppInstanceMethodLoweringForTests_ = false;
+    bool experimentalCppInstanceFieldLoweringForTests_ = false;
+    bool experimentalCppLifetimeAnalysisForTests_ = false;
+    bool experimentalCppLocalLifetimeAnalysisForTests_ = false;
+    bool cppNoexceptLocalLifetimeOnly_ = false;
+    bool experimentalCppDiscardedLifetimeLoweringForTests_ = false;
+    bool experimentalCppImportedTypesConfigured_ = false;
+    CppFunctionProvider cppFunctionProvider_;
+    CppNamespaceProvider cppNamespaceProvider_;
+    CppGlobalProvider cppGlobalProvider_;
+    CppRecordObserver cppRecordObserver_;
+    bool cppImportedFunctionsConfigured_ = false;
+    bool compilationAttempted_ = false;
     std::optional<compilation::ProjectGraph> projectGraph_;
     std::vector<PrecompiledSyntaxModule> precompiledModules_;
     // Canonical project file -> first project-graph ordinal with that file. Built once per
