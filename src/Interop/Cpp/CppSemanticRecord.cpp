@@ -18,7 +18,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     std::string_view moduleName, std::string_view targetTriple, const frontend::ProjectNameLookup* lookup)
 {
     if (targetTriple != "x86_64-pc-windows-msvc" || !record.complete || !record.sizeBits || !record.alignmentBits ||
-        record.kind == CppRecordKind::Union || fieldIndex >= record.fields.size()) return std::nullopt;
+        (record.kind == CppRecordKind::Union && record.isCxx) || fieldIndex >= record.fields.size()) return std::nullopt;
     const auto identity = projectCppRecordIdentity(record, moduleName);
     const auto& field = record.fields[fieldIndex];
     if (!identity || field.name.empty() || field.access != CppAccess::Public || field.bitWidth ||
