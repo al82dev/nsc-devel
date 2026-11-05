@@ -20,3 +20,19 @@ Estado: implementación agrupada registrada; validación en curso.
   importaciones normales y diferidas con `--coff-imports`.
 - Construcción agrupada OFF terminada con código 0; construcción ON y ejecución
   de CTest y del escenario de ejecutables todavía pendientes de resultado.
+
+## Primera validación y corrección
+
+- ON y OFF construyeron con código 0. La prueba de ejecutables ordinarios pasó
+  en ambos modos; cada uno importó `KERNEL32.dll`, `ucrtbase.dll`,
+  `KERNELBASE.dll` y `SHELL32.dll`, sin directorio de importación diferida en
+  estos dos ejecutables. Los detalles están en
+  `A:/nsc-interop-build/tanda06/imports-on.txt` y `imports-off.txt`.
+- CTest rechazó correctamente el paquete simulado 22.1.0, pero la suite de
+  sesiones falló: se le pasó una raíz sin los fixtures requeridos y el caso de
+  inicio reutilizaba opciones ya transferidas. Se corrigieron ambos puntos y se
+  agregó una guarda que informa si falta el proyecto de fixture. Revalidación ON
+  en curso; la tanda permanece abierta hasta que CTest pase.
+- La suite depende actualmente de fixtures ya preparados bajo
+  `A:/nsc-interop-build/cpp-fixtures`; registrarla en CTest no demuestra que pueda
+  reconstruir todos esos fixtures desde un directorio vacío.
