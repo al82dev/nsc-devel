@@ -3,5 +3,12 @@ int Main()
     if (sizeof(Pair) != (nuint)pair_size()) return 1;
     if (alignof(Pair) != (nuint)pair_alignment()) return 2;
     if (offsetof(Pair, b) != (nuint)pair_b_offset()) return 3;
+    if (sizeof(Cell) != (nuint)cell_size()) return 4;
+    if (alignof(Cell) != (nuint)cell_alignment()) return 5;
+    if (offsetof(Cell, real) != (nuint)cell_real_offset()) return 6;
+    if (sizeof(Container) != (nuint)container_size()) return 7;
+    if (alignof(Container) != (nuint)container_alignment()) return 8;
+    if (offsetof(Container, pairs) != (nuint)container_pairs_offset()) return 9;
+    if (offsetof(Container, cell) != (nuint)container_cell_offset()) return 10;
     return 0;
 }

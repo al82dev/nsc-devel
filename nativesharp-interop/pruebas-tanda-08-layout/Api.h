@@ -1,4 +1,13 @@
 typedef struct Pair { char a; int b; } Pair;
+typedef union Cell { int integer; double real; } Cell;
+typedef struct Container { char tag; Pair pairs[2][3]; Cell cell; } Container;
 int pair_size(void);
 int pair_alignment(void);
 int pair_b_offset(void);
+int cell_size(void);
+int cell_alignment(void);
+int cell_real_offset(void);
+int container_size(void);
+int container_alignment(void);
+int container_pairs_offset(void);
+int container_cell_offset(void);
