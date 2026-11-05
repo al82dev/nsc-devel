@@ -2648,10 +2648,99 @@ bool ProjectCompilation::compileSyntaxCore(
     {
         return false;
     }
+    for (const auto& project : projectGraph_->projects())
+    {
+        if (!project.cppLibraryReferences().empty())
+        {
+            const interop::CppProjectSessions* group = nullptr;
+            for (const auto& candidate : cppProjectSessions_)
+            {
+                std::error_code ec;
+                if (std::filesystem::equivalent(candidate.projectFile, project.projectFile(), ec) && !ec)
+                { group = &candidate; break; }
+            }
+            bool valid = cppNamespaceProvider_ && cppFunctionProvider_ && group != nullptr &&
+                group->sessions.size() == project.cppLibraryReferences().size();
+            for (std::size_t i = 0; valid && i < project.cppLibraryReferences().size(); ++i)
+            {
+                const auto& reference = project.cppLibraryReferences()[i];
+                const auto options = group->sessions[i]->optionsSnapshot();
+                const auto* input = std::get_if<interop::CppFileInput>(&options.input);
+                std::error_code ec;
+                valid = group->sessions[i]->state() == interop::CppSessionState::Ready && input != nullptr &&
+                    std::filesystem::equivalent(input->path, reference.headerPath, ec) && !ec &&
+                    options.language == reference.language && options.languageStandard == reference.languageStandard &&
+                    options.targetTriple == "x86_64-pc-windows-msvc" &&
+                    options.macros.size() == reference.macros.size() &&
+                    options.includePaths.size() >= reference.includePaths.size();
+                for (std::size_t j = 0; valid && j < reference.macros.size(); ++j)
+                    valid = options.macros[j].action == reference.macros[j].action &&
+                        options.macros[j].text == reference.macros[j].text;
+                for (std::size_t j = 0; valid && j < reference.includePaths.size(); ++j)
+                {
+                    ec.clear();
+                    valid = options.includePaths[j].kind == reference.includePaths[j].kind &&
+                        std::filesystem::equivalent(options.includePaths[j].path, reference.includePaths[j].path, ec) && !ec;
+                }
+            }
+            if (!valid)
+            {
+                loadError = "C/C++ project references are not yet connected to NativeSharp compilation";
+                return false;
+            }
+        }
+    }
     if (cancellationRequested(loadError, "syntax")) return false;
+    std::vector<std::filesystem::path> cppTypeOwners;
+    cppTypeOwners.reserve(experimentalCppImportedTypes_.size());
+    for (const auto& type : experimentalCppImportedTypes_)
+    {
+        if (type.projectOrdinal >= projectGraph_->projects().size() ||
+            projectGraph_->projects()[type.projectOrdinal].moduleName() != type.identity.moduleName())
+        {
+            loadError = "experimental C/C++ type has an invalid project owner before precompiled projects";
+            return false;
+        }
+        cppTypeOwners.push_back(projectGraph_->projects()[type.projectOrdinal].projectFile());
+    }
     if (!addPrecompiledProjects(loadError))
     {
         return false;
+    }
+    for (std::size_t i = 0; i < experimentalCppImportedTypes_.size(); ++i)
+    {
+        auto& type = experimentalCppImportedTypes_[i];
+        std::optional<std::size_t> owner;
+        for (std::size_t ordinal = 0; ordinal < projectGraph_->projects().size(); ++ordinal)
+        {
+            const auto& project = projectGraph_->projects()[ordinal];
+            if (project.moduleName() != type.identity.moduleName()) continue;
+            std::error_code ec;
+            if (!std::filesystem::equivalent(cppTypeOwners[i], project.projectFile(), ec) || ec) continue;
+            if (owner) { loadError = "ambiguous C/C++ type project after precompiled projects"; return false; }
+            owner = ordinal;
+        }
+        if (!owner) { loadError = "C/C++ type project disappeared after precompiled projects"; return false; }
+        type.projectOrdinal = *owner;
+    }
+    if (experimentalCppTypeProvider_)
+    {
+        std::vector<CppImportedTypeDeclaration> types;
+        if (!experimentalCppTypeProvider_(*projectGraph_, cppProjectSessions_, types, loadError)) return false;
+        for (const auto& type : types)
+            if (type.projectOrdinal >= projectGraph_->projects().size() ||
+                projectGraph_->projects()[type.projectOrdinal].moduleName() != type.identity.moduleName())
+            {
+                loadError = "experimental C/C++ type provider returned an invalid project owner";
+                return false;
+            }
+        ProjectNameLookup validation;
+        if (!validation.setCppImportedTypes(types))
+        {
+            loadError = "experimental C/C++ type provider returned invalid declarations";
+            return false;
+        }
+        experimentalCppImportedTypes_ = std::move(types);
     }
     comptimeRecords_.clear();
     driver::CompilationWorkerPool& syntaxWorkers = lifetime_->workerPool();
