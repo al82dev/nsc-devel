@@ -10,6 +10,12 @@ Clang 23.1.0; este crea internamente su acción de frontend y administra la
 apertura y cierre de la unidad. Debe contrastarse el alcance literal de
 T04-018 con esa decisión, además de verificar los caminos de éxito y error.
 
+La revisión de `clang/lib/Frontend/ASTUnit.cpp`, función `ASTUnit::Parse`, halló
+que si `BeginSourceFile` falla se retorna sin `EndSourceFile`, pero también que
+si `Execute` devuelve error se retorna antes de `EndSourceFile`. Por tanto,
+T04-024 no está demostrado para todos los casos tras un inicio exitoso: hay que
+resolver esa ruta sin modificar Clang y verificarla antes de cerrar la tanda.
+
 El sistema de archivos consulta el token de cancelación en operaciones que
 pueden interceptarse. Esto no garantiza interrupción inmediata durante trabajo
 de CPU ni en una operación de E/S ya iniciada. Las pruebas añadidas verifican
