@@ -340,7 +340,7 @@ int main(int argc, char** argv)
 
         auto failingFilesystem = llvm::vfs::createPhysicalFileSystem();
         CountingSessionDiagnostics rejectedDiagnostics;
-        arguments.push_back("-definitely-invalid-nsc-session-test");
+        arguments[4] = "-std=not-a-real-c-standard";
         auto rejected = nativesharp::interop::detail::runClangSessionAction(
             "int rejected_probe;\n", arguments,
             (std::filesystem::path(argv[2]) / "rejected_probe.c").generic_string(), argv[3], &rejectedDiagnostics,
