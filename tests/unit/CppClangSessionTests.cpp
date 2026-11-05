@@ -6536,6 +6536,149 @@ int main(int argc, char** argv)
                                  "optional demand capture preserves using and alias context without changing defaults");
                 }
             }
+            for (const auto& [source, expected] : std::vector<std::pair<std::string, std::string>>{
+                     {"using tools; int Main() { return blend(1); }\n", "blend"},
+                     {"using T = tools; int Main() { return T.blend(1); }\n", "T.blend"},
+                     {"int Main() { return tools.blend(1); }\n", "tools.blend"}})
+            {
+                nativesharp::frontend::ProjectCompilation automatic;
+                automatic.setSourceBufferProvider([source](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns") return source;
+                    return std::nullopt;
+                });
+                CppProjectSessions group;
+                group.projectFile = std::filesystem::absolute(projectPath);
+                group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                    "namespace tools { int blend(int); double blend(double); }\n")));
+                std::vector<CppProjectSessions> sessions;
+                sessions.push_back(std::move(group));
+                bool namespaceProviderCalled = false;
+                auto namespaceProvider = [&namespaceProviderCalled](const auto& graph, auto projectSessions,
+                                                                    auto& output, auto& why) {
+                    namespaceProviderCalled = true;
+                    auto inventory = collectCppNamespaces(graph, projectSessions);
+                    if (const auto* failure = std::get_if<CppNamespaceInventoryFailure>(&inventory))
+                    { why = failure->message; return false; }
+                    auto names = visibleCppNamespaces(std::get<std::vector<CppNamespaceInventoryEntry>>(inventory));
+                    if (const auto* failure = std::get_if<CppNamespaceInventoryFailure>(&names))
+                    { why = failure->message; return false; }
+                    auto& extracted = std::get<std::vector<std::pair<std::size_t, std::string>>>(names);
+                    output.insert(output.end(), extracted.begin(), extracted.end());
+                    return true;
+                };
+                bool sawDemand = false;
+                auto functionProvider = [&sawDemand, &expected](const auto& graph, auto projectSessions, auto, auto demands, auto& output, auto& deferred, auto& why) {
+                    for (const auto& demand : demands)
+                        if (demand.directCall && demand.writtenName == expected && demand.syntax)
+                        {
+                            if (demand.lookupName != "blend" ||
+                                std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), "tools") ==
+                                    demand.lookupNamespaces.end()) continue;
+                            if (expected == "blend")
+                                sawDemand |= std::find(demand.importedNamespaces.begin(),
+                                    demand.importedNamespaces.end(), "tools") != demand.importedNamespaces.end();
+                            else if (expected == "T.blend")
+                            {
+                                const auto alias = demand.aliases.find("T");
+                                sawDemand |= alias != demand.aliases.end() && alias->second == "tools";
+                            }
+                            else sawDemand = true;
+                        }
+                    return provideCppSemanticFunctions(graph, projectSessions, demands, output, deferred, why);
+                };
+                const bool configured = automatic.setCppProjectSessions(std::move(sessions), error) &&
+                    automatic.setCppNamespaceProvider(namespaceProvider, error) &&
+                    automatic.setCppFunctionProvider(functionProvider, error);
+                const bool ready = configured && automatic.compileProjectMembers(projectPath, error);
+                bool bound = false;
+                if (ready && automatic.namespaceFunctionModel())
+                    for (const auto& binding : automatic.namespaceFunctionModel()->referenceBindings())
+                        bound |= binding.writtenName == expected && binding.candidateFunctionOrdinals.size() == 2;
+                ok &= expect(ready && namespaceProviderCalled && sawDemand && bound &&
+                             !automatic.setCppNamespaceProvider({}, error),
+                             "Clang sessions provide namespaces before using and functions before binding");
+            }
+            {
+                nativesharp::frontend::ProjectCompilation failedNamespaceProvider;
+                ok &= expect(failedNamespaceProvider.setCppNamespaceProvider(
+                    [](const auto&, auto, auto&, auto& why) {
+                        why = "namespace provider failure"; return false;
+                    }, error), "namespace provider installs before compilation");
+                error.clear();
+                ok &= expect(!failedNamespaceProvider.compileProjectNames(projectPath, error) &&
+                             error == "namespace provider failure",
+                             "namespace provider failure stops name binding with its diagnostic");
+            }
+            if (!projected.empty())
+            {
+                auto wrongOwner = projected.front();
+                wrongOwner.moduleName = "WrongModule";
+                nativesharp::frontend::ProjectCompilation wrongCompilation;
+                ok &= expect(wrongCompilation.setCppImportedFunctions({wrongOwner}, error) &&
+                             !wrongCompilation.compileProjectNames(projectPath, error) &&
+                             error.find("invalid project owner") != std::string::npos,
+                             "imported namespace cannot be installed for the wrong module");
+            }
+            {
+                nativesharp::frontend::ProjectCompilation unknownNamespace;
+                unknownNamespace.setSourceBufferProvider([](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns") return "using nonexistent; int Main() { return 0; }\n";
+                    return std::nullopt;
+                });
+                error.clear();
+                ok &= expect(!unknownNamespace.compileProjectNames(projectPath, error) &&
+                             unknownNamespace.diagnostics().hasErrors(),
+                             "unimported namespaces remain invalid in ordinary projects");
+            }
+            {
+                nativesharp::frontend::ProjectCompilation qualifiedCompilation;
+                qualifiedCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns") return "int Main() { return tools.blend(1); }\n";
+                    return std::nullopt;
+                });
+                const bool configured = qualifiedCompilation.setCppImportedFunctions(projected, error);
+                const bool qualifiedReady = configured && qualifiedCompilation.compileProjectMembers(projectPath, error);
+                const auto* qualifiedModel = qualifiedCompilation.namespaceFunctionModel();
+                bool bound = false;
+                if (qualifiedReady && qualifiedModel)
+                    for (const auto& binding : qualifiedModel->referenceBindings())
+                        if (binding.writtenName == "tools.blend" && binding.candidateFunctionOrdinals.size() == 2)
+                            bound = true;
+                ok &= expect(bound, "qualified NativeSharp call finds the imported C++ namespace and overloads");
+                if (qualifiedReady && qualifiedCompilation.nameLookup() && qualifiedCompilation.memberModel())
+                {
+                    nativesharp::frontend::ProjectNamespaceFunctionModel observer;
+                    const bool observed = observer.setCaptureCppFunctionDemands(true) &&
+                        observer.setCppImportedFunctions(projected, error) &&
+                        observer.build(*qualifiedCompilation.nameLookup(), *qualifiedCompilation.memberModel(),
+                            qualifiedCompilation.units(), qualifiedCompilation.diagnostics(), qualifiedCompilation.genericModel());
+                    bool qualifiedDemand = false;
+                    if (observed)
+                        for (const auto& demand : observer.cppFunctionDemands())
+                            qualifiedDemand |= demand.directCall && demand.writtenName == "tools.blend" &&
+                                demand.projectOrdinal == 0 && demand.syntax != nullptr;
+                    ok &= expect(qualifiedDemand, "demand capture includes qualified function calls");
+                }
+            }
+            const bool ready = compilation.compileProjectMembers(projectPath, error);
+            ok &= expect(ready && projected.size() == 2, "C++ overload test has native model and both projections");
+            if (ready && projected.size() == 2)
+            {
+                nativesharp::frontend::ProjectNamespaceFunctionModel model;
+                ok &= expect(model.setCppImportedFunctions(std::move(projected), error) &&
+                             model.build(*compilation.nameLookup(), *compilation.memberModel(), compilation.units(),
+                                         compilation.diagnostics(), compilation.genericModel()),
+                             "semantic index accepts C++ overload projections");
+                const auto overloads = model.findFunctions(0, "tools", "blend");
+                ok &= expect(overloads.size() == 2 &&
+                             model.functions()[overloads[0]].cppCanonicalIdentity !=
+                                 model.functions()[overloads[1]].cppCanonicalIdentity,
+                             "semantic index preserves distinct Clang overload identities");
+            }
+        }
     }
     return ok ? 0 : 1;
 }
