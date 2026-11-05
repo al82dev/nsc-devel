@@ -830,6 +830,7 @@ private:
         std::string_view stem,
         std::string& error,
         bool allowNamedThunk = true);
+    LLVMValueRef cppUnwindDestructorBoundary(std::string& error);
 
     bool emitFixedArrayDropAddress(
         LLVMValueRef address,
@@ -2748,7 +2749,9 @@ private:
     LLVMValueRef lowerValueConstruction(
         const frontend::ProjectOopMirNode* node,
         std::string& error,
-        const std::vector<LLVMValueRef>* argumentOverrides = nullptr);
+        const std::vector<LLVMValueRef>* argumentOverrides = nullptr,
+        bool discardCppTemporary = false,
+        LLVMValueRef cppDestination = nullptr);
 
     LLVMValueRef lowerParameterPack(
         const frontend::ProjectOopMirNode* node,
@@ -3436,6 +3439,7 @@ private:
     // was pushed inside it does not. See structuredExitLeavesCatchBody().
     std::vector<ActiveCatchBody> activeCatchExceptions_;
     LLVMValueRef sehPersonalityFunction_ = nullptr;
+    LLVMValueRef cppUnwindDestructorBoundary_ = nullptr;
     LLVMTypeRef sehPersonalityFunctionType_ = nullptr;
     LLVMValueRef memsetFunction_ = nullptr;
     LLVMTypeRef memsetFunctionType_ = nullptr;
