@@ -2200,7 +2200,7 @@ int main(int argc, char** argv)
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
-                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; enum { CAnonymous = 9 };\n"
+                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
                                   "union CValue { int integer; float real; }; struct Flags { unsigned a:3; unsigned b:5; }; "
@@ -2231,6 +2231,7 @@ int main(int argc, char** argv)
         const auto* fixedArrayAlias = aliasByName("FixedArray");
         const auto* matrixAlias = aliasByName("Matrix");
         const auto* colorAlias = aliasByName("ColorAlias");
+        const auto* modeAlias = aliasByName("Mode");
         const auto* callbackAlias = aliasByName("Callback");
         const auto* oldCallbackAlias = aliasByName("OldCallback");
         ok &= expect(countAlias && countAlias->underlyingType.kind == CppTypeKind::UnsignedInteger &&
@@ -2303,13 +2304,20 @@ int main(int argc, char** argv)
         cEnums = c->enumsSnapshot();
         const CppEnumDeclaration* color = nullptr;
         const CppEnumDeclaration* anonymous = nullptr;
+        const CppEnumDeclaration* mode = nullptr;
         if (cEnums)
             for (const auto& enumeration : *cEnums)
             {
                 if (enumeration.name == "Color") color = &enumeration;
+                if (enumeration.name == "Mode") mode = &enumeration;
                 if (enumeration.name.empty() && !enumeration.enumerators.empty() &&
                     enumeration.enumerators.front().name == "CAnonymous") anonymous = &enumeration;
             }
+        const auto mappedMode = modeAlias ? nativesharp::frontend::cppAliasEnumType(modeAlias->underlyingType)
+                                          : std::nullopt;
+        ok &= expect(mode && mode->complete && mode->enumerators.size() == 1 &&
+                     mode->enumerators[0].name == "ModeA" && mappedMode && mappedMode->name == "Mode",
+                     "anonymous C enum typedef preserves declaration and type identity");
         ok &= expect(color && color->complete && color->underlyingType && color->location &&
                      color->sizeBits == 32 && color->alignmentBits == 32 && !color->isCxx &&
                      color->enumerators.size() == 2 && color->enumerators[0].name == "CMinus" &&
