@@ -4607,6 +4607,20 @@ void ProjectMethodBodyModel::analyzeVariable(
         : (isVariableLengthArray
             ? variableLengthArrayElementTypeKey + '*'
             : memberModel_->canonicalTypeKey(variable->typeSyntax(), *nameLookup_));
+    if (!isReferenceLocal && typeKey.starts_with("type:"))
+    {
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(typeKey).substr(5));
+        if (ordinal && nameLookup_->cppImportedTypeIndex(*ordinal) && !cppLocalLifetimeAnalysisForTests_)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::IncompleteType,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->range(),
+                "C/C++ object local '" + variable->text() +
+                    "' cannot be created by value until object lifetime is implemented");
+            return;
+        }
+    }
     const sema::OwnershipKind declaredOwnership = ownershipKindFromSyntax(variable->typeSyntax());
     const bool isBorrowed = declaredOwnership == sema::OwnershipKind::Borrowed;
     // EN: Freeze 3.0 P3: a `ref` local aliases its place; it neither copies nor owns a move-only value
