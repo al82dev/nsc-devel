@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
+#include "ClangSessionSupport.h"
 
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/ASTStructuralEquivalence.h>
@@ -48,46 +49,6 @@ std::filesystem::path pathFromUtf8(const char* text)
     return std::filesystem::path(std::u8string(
         reinterpret_cast<const char8_t*>(bytes.data()), bytes.size()));
 }
-
-class DiagnosticCollector final : public clang::DiagnosticConsumer
-{
-public:
-    explicit DiagnosticCollector(std::vector<CppSessionDiagnostic>& diagnostics)
-        : diagnostics_(diagnostics) {}
-
-    void HandleDiagnostic(clang::DiagnosticsEngine::Level level, const clang::Diagnostic& info) override
-    {
-        clang::DiagnosticConsumer::HandleDiagnostic(level, info);
-        if (level == clang::DiagnosticsEngine::Ignored) return;
-        CppSessionDiagnostic diagnostic;
-        switch (level)
-        {
-        case clang::DiagnosticsEngine::Note: diagnostic.severity = CppSessionDiagnosticSeverity::Note; break;
-        case clang::DiagnosticsEngine::Remark: diagnostic.severity = CppSessionDiagnosticSeverity::Remark; break;
-        case clang::DiagnosticsEngine::Warning: diagnostic.severity = CppSessionDiagnosticSeverity::Warning; break;
-        case clang::DiagnosticsEngine::Fatal: diagnostic.severity = CppSessionDiagnosticSeverity::Fatal; break;
-        default: diagnostic.severity = CppSessionDiagnosticSeverity::Error; break;
-        }
-        llvm::SmallString<256> message;
-        info.FormatDiagnostic(message);
-        diagnostic.message = std::string(message.str());
-        diagnostic.originalId = info.getID();
-        if (info.hasSourceManager() && info.getLocation().isValid())
-        {
-            const auto location = info.getSourceManager().getPresumedLoc(info.getLocation());
-            if (location.isValid())
-                diagnostic.location = CppSourcePoint{
-                    pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
-        }
-        if (level == clang::DiagnosticsEngine::Note && !diagnostics_.empty())
-            diagnostics_.back().notes.push_back(std::move(diagnostic));
-        else
-            diagnostics_.push_back(std::move(diagnostic));
-    }
-
-private:
-    std::vector<CppSessionDiagnostic>& diagnostics_;
-};
 
 CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned depth = 0)
 {
@@ -871,18 +832,7 @@ public:
             if (inputPath.is_relative()) inputPath = options_.workingDirectory / inputPath;
             source = buffer.contents;
         }
-        std::vector<std::string> args = {
-            "-target", options_.targetTriple, "-x",
-            options_.language == CppLanguageMode::C ? "c" : "c++",
-            "-std=" + options_.languageStandard, "-resource-dir", utf8(options_.resourceDirectory),
-            "-nostdinc", "-isystem", utf8(options_.resourceDirectory / "include")};
-        for (const auto& path : options_.includePaths)
-        {
-            args.push_back(path.kind == CppIncludeKind::System ? "-isystem" : "-I");
-            args.push_back(utf8(path.path));
-        }
-        for (const auto& macro : options_.macros)
-            args.push_back((macro.action == CppMacroAction::Define ? "-D" : "-U") + macro.text);
+        const auto args = detail::buildClangInvocationArguments(options_);
 
         ast_ = clang::tooling::buildASTFromCodeWithArgs(
             source, args, utf8(inputPath), utf8(options_.driverReferencePath),
@@ -911,7 +861,7 @@ private:
     mutable std::mutex mutex_;
     CppSessionOptions options_;
     std::vector<CppSessionDiagnostic> diagnostics_;
-    DiagnosticCollector consumer_;
+    detail::DiagnosticCollector consumer_;
     // Destroy before consumer_: Clang's diagnostic engine borrows the consumer.
     std::unique_ptr<clang::ASTUnit> ast_;
     CppSessionState state_ = CppSessionState::Closed;

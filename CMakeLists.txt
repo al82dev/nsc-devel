@@ -868,6 +868,7 @@ if(LLVM_FOUND)
                 "LLVM: ${NSC_CPP_LLVM_PREFIX}; Clang: ${NSC_CPP_CLANG_PREFIX}")
         endif()
         add_library(nsc_cpp_interop STATIC src/Interop/Cpp/ClangSession.cpp src/Interop/Cpp/CppProjectSessions.cpp
+            src/Interop/Cpp/ClangInvocationBuilder.cpp src/Interop/Cpp/ClangDiagnosticConsumer.cpp
             src/Interop/Cpp/CppSessionConfigurationIdentity.cpp
             src/Interop/Cpp/CppScalarTypeMapping.cpp src/Interop/Cpp/CppSemanticFunction.cpp src/Interop/Cpp/CppSemanticRecord.cpp
             src/Interop/Cpp/CppSemanticInventory.cpp src/Interop/Cpp/CppSemanticFunctionGroups.cpp
