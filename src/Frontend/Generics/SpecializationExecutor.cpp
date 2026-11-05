@@ -269,7 +269,7 @@ bool ProjectGenericModel::commitTypeSpecializationProduct(
     if (templateCache_.enabled() && !diagnostics.hasErrors())
     {
         std::string error;
-        (void)templateCache_.store("nsc-c3-syntax-v2:" + key, specializationPayload, error);
+        (void)templateCache_.store(templateCacheKey("nsc-c3-syntax-v2:" + key), specializationPayload, error);
     }
     // processNode may recursively materialize another generic and therefore replace all four
     // current-instantiation fields. They describe a call stack, not global "last call" state:
@@ -402,7 +402,7 @@ std::string ProjectGenericModel::executeTypeDemand(
         std::string payload;
         bool hit = false;
         std::string error;
-        if (templateCache_.restore("nsc-c3-syntax-v2:" + key, payload, hit, error) && hit)
+        if (templateCache_.restore(templateCacheKey("nsc-c3-syntax-v2:" + key), payload, hit, error) && hit)
         {
             CachePayloadReader reader(payload);
             ast::AstNode* clone = deserializeAstNodeTree(state.unit->arena(), reader);
@@ -470,7 +470,7 @@ bool ProjectGenericModel::restoreTypeSpecializationFromCache(
     std::string payload;
     bool hit = false;
     std::string error;
-    if (!templateCache_.restore("nsc-c3-syntax-v2:" + key, payload, hit, error) || !hit) return false;
+    if (!templateCache_.restore(templateCacheKey("nsc-c3-syntax-v2:" + key), payload, hit, error) || !hit) return false;
 
     CachePayloadReader reader(payload);
     ast::AstNode* clone = deserializeAstNodeTree(state.unit->arena(), reader);
