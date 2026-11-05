@@ -129,6 +129,7 @@ void ProjectNameLookup::bindTypeSyntax(
     // binding record must keep saying `PointAlias`, not the type it turned out to mean.
     const std::string writtenName = syntax->baseName();
     expandTypeAlias(syntax, environment, diagnostics);
+    if (!expandCppTypeAlias(unit, syntax, namespaceSegments, environment, diagnostics)) return;
     bindChildTypeSyntaxes(unit, syntax, namespaceSegments, environment, diagnostics, index);
     // Stage 52 fix: a generic type argument substituted into a specialization cloned from a
     // referenced project's template (e.g. List<MyOwnClass> where List<T> lives in a shared

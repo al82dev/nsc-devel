@@ -468,6 +468,9 @@ private:
         const ast::TypeSyntax* syntax,
         const LookupEnvironment& environment,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool expandCppTypeAlias(const ProjectSyntaxUnit& unit, const ast::TypeSyntax* syntax,
+        const std::vector<std::string>& namespaceSegments, const LookupEnvironment& environment,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     void bindChildTypeSyntaxes(
         const ProjectSyntaxUnit& unit,
         const ast::TypeSyntax* syntax,
