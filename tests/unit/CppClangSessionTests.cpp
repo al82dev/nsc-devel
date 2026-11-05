@@ -5194,6 +5194,137 @@ int main(int argc, char** argv)
                              "volatile pointer global emits volatile pointer loads and stores");
             }
         }
+        const auto* cppInternal = globals ? globalByName(*globals, "tools::cpp_internal") : nullptr;
+        const auto* tlsValue = globals ? globalByName(*globals, "tools::tls_value") : nullptr;
+        ok &= expect(cppGlobal && cppGlobal->externalSymbol == "?cpp_global@tools@@3HA" &&
+                     cppGlobal->type.sizeBits == 32 && !cppGlobal->threadLocal,
+                     "C++ global has the expected target symbol and type");
+        if (cppVolatile)
+        {
+            auto projected = projectCppSemanticGlobal(*cppVolatile, 0, "Semantic");
+            const auto* symbol = std::get_if<CppSemanticGlobal>(&projected);
+            ok &= expect(symbol && symbol->isVolatile, "C++ global retains Clang volatile qualification");
+            if (symbol)
+            for (int scenario = 0; scenario < 3; ++scenario)
+            {
+                nativesharp::frontend::NamespaceStateSymbol state;
+                state.projectOrdinal = symbol->projectOrdinal;
+                state.moduleName = symbol->moduleName;
+                state.namespaceName = symbol->namespaceName;
+                state.name = symbol->name;
+                state.declaredTypeKey = symbol->typeKey;
+                state.storageName = symbol->externalSymbol;
+                state.isCppExternal = true;
+                state.isVolatile = symbol->isVolatile;
+                state.accessibility = nativesharp::frontend::NamespaceFunctionAccessibility::Public;
+                nativesharp::frontend::ProjectCompilation compilation;
+                compilation.setSourceBufferProvider([scenario](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() != "Main.ns") return std::nullopt;
+                    if (scenario == 0)
+                        return "int Main() { tools.cpp_volatile = 5; tools.cpp_volatile += 2; return tools.cpp_volatile; }\n";
+                    if (scenario == 1) return "int Main() { int* p = &tools.cpp_volatile; return 0; }\n";
+                    return "int Main() { ref int alias = ref tools.cpp_volatile; return alias; }\n";
+                });
+                std::string error;
+                const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                const bool configured = compilation.setExperimentalCppImportedStates({state}, error);
+                const bool ready = configured && compilation.compileProjectOopMir(path, error);
+                bool addressError = false;
+                for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                    addressError |= diagnostic.message().find(scenario == 1
+                        ? "cannot take the address of a qualified C/C++ global"
+                        : "reference-local initializer must be a mutable addressable storage location") != std::string::npos;
+                ok &= expect(configured && (scenario == 0 ? ready : !ready && addressError),
+                             "volatile globals allow direct operations and reject an unqualified address");
+                if (scenario == 0 && ready && compilation.oopMirModel() && compilation.nameLookup())
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+                    const bool valid = module && module->verify(error);
+                    const auto ir = module ? module->text() : std::string{};
+                    const auto firstLoad = ir.find("load volatile i32");
+                    const auto firstStore = ir.find("store volatile i32");
+                    ok &= expect(valid && firstLoad != std::string::npos && firstStore != std::string::npos &&
+                                 ir.find("load volatile i32", firstLoad + 1) != std::string::npos &&
+                                 ir.find("store volatile i32", firstStore + 1) != std::string::npos,
+                                 "direct and compound global accesses reach LLVM as volatile operations");
+                }
+            }
+        }
+        else ok &= expect(false, "Clang exposes the volatile global");
+        if (cppConstant && cppConstVolatile)
+        {
+            auto first = projectCppSemanticGlobal(*cppConstant, 0, "Semantic");
+            auto second = projectCppSemanticGlobal(*cppConstVolatile, 0, "Semantic");
+            const auto* constant = std::get_if<CppSemanticGlobal>(&first);
+            const auto* constVolatile = std::get_if<CppSemanticGlobal>(&second);
+            ok &= expect(constant && constant->isConst && !constant->isVolatile && constVolatile &&
+                         constVolatile->isConst && constVolatile->isVolatile,
+                         "Clang const and const volatile qualifiers survive projection");
+            if (constant && constVolatile)
+            for (int scenario = 0; scenario < 4; ++scenario)
+            {
+                std::vector<nativesharp::frontend::NamespaceStateSymbol> states;
+                for (const auto* symbol : {constant, constVolatile})
+                {
+                    nativesharp::frontend::NamespaceStateSymbol state;
+                    state.projectOrdinal = symbol->projectOrdinal;
+                    state.moduleName = symbol->moduleName;
+                    state.namespaceName = symbol->namespaceName;
+                    state.name = symbol->name;
+                    state.declaredTypeKey = symbol->typeKey;
+                    state.storageName = symbol->externalSymbol;
+                    state.isCppExternal = true;
+                    state.isCppReadonly = symbol->isConst;
+                    state.isVolatile = symbol->isVolatile;
+                    state.accessibility = nativesharp::frontend::NamespaceFunctionAccessibility::Public;
+                    states.push_back(std::move(state));
+                }
+                nativesharp::frontend::ProjectCompilation compilation;
+                compilation.setSourceBufferProvider([scenario](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() != "Main.ns") return std::nullopt;
+                    switch (scenario)
+                    {
+                        case 0: return "int Main() { return tools.cpp_constant + tools.cpp_const_volatile; }\n";
+                        case 1: return "int Main() { tools.cpp_constant = 1; return 0; }\n";
+                        case 2: return "int Main() { int* p = &tools.cpp_constant; return 0; }\n";
+                        default: return "int Main() { ref int p = ref tools.cpp_constant; return p; }\n";
+                    }
+                });
+                std::string error;
+                const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                const bool configured = compilation.setExperimentalCppImportedStates(std::move(states), error);
+                const bool ready = configured && compilation.compileProjectOopMir(path, error);
+                bool expectedDiagnostic = false;
+                const char* expected = scenario == 1 ? "left side of assignment is not assignable" :
+                    scenario == 2 ? "cannot take the address of a qualified C/C++ global" :
+                    "reference-local initializer must be a mutable addressable storage location";
+                for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                    expectedDiagnostic |= diagnostic.message().find(expected) != std::string::npos;
+                if (!configured || (scenario == 0 ? !ready : ready || !expectedDiagnostic))
+                {
+                    std::cerr << "const global scenario " << scenario << ": " << error << '\n';
+                    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                        std::cerr << diagnostic.message() << '\n';
+                }
+                ok &= expect(configured && (scenario == 0 ? ready : !ready && expectedDiagnostic),
+                             "const global reads succeed and mutable uses are rejected");
+                if (scenario == 0 && ready && compilation.oopMirModel() && compilation.nameLookup())
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*compilation.nameLookup(), *compilation.oopMirModel());
+                    const bool valid = module && module->verify(error);
+                    const auto ir = module ? module->text() : std::string{};
+                    ok &= expect(valid && ir.find("@\"" + constant->externalSymbol + "\" = external global i32") != std::string::npos &&
+                                 ir.find("@\"" + constVolatile->externalSymbol + "\" = external global i32") != std::string::npos &&
+                                 ir.find("load volatile i32") != std::string::npos,
+                                 "const globals use external data and const volatile reads remain volatile");
+                }
+            }
+        }
+        else ok &= expect(false, "Clang exposes const global fixtures");
     }
     return ok ? 0 : 1;
 }
