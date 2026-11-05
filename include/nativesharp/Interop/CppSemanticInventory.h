@@ -49,6 +49,22 @@ using CppSemanticInventoryResult =
 CppSemanticInventoryResult collectCppSemanticFunctions(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
 
+enum class CppSignatureEnumStatus { Matched, Missing, Unprojectable };
+struct CppSignatureEnumDependency
+{
+    std::size_t functionIndex;
+    std::optional<std::size_t> parameterIndex;
+    std::size_t indirectionDepth;
+    CppSignatureEnumStatus status;
+    std::optional<std::size_t> candidateIndex;
+};
+struct CppSignatureEnumFailure { std::string message; };
+using CppSignatureEnumResult = std::variant<std::vector<CppSignatureEnumDependency>, CppSignatureEnumFailure>;
+// Inventory indices are retained; this does not itself select functions or prove ABI compatibility.
+CppSignatureEnumResult collectCppSignatureEnumDependencies(
+    const compilation::ProjectGraph& graph, std::span<const CppSemanticInventoryEntry> functions,
+    std::span<const frontend::CppImportedTypeDeclaration> enumCandidates);
+
 // Preserve every observation and its owning project/reference. Repeated names are not
 // merged here: compatibility and visibility must be resolved before binding an alias.
 struct CppSemanticTypeAliasEntry

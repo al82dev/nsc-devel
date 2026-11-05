@@ -521,6 +521,59 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
     return result;
 }
 
+CppSignatureEnumResult collectCppSignatureEnumDependencies(
+    const compilation::ProjectGraph& graph, std::span<const CppSemanticInventoryEntry> functions,
+    std::span<const frontend::CppImportedTypeDeclaration> enumCandidates)
+{
+    std::map<std::pair<std::size_t, std::string>, std::size_t> candidates;
+    for (std::size_t index = 0; index < enumCandidates.size(); ++index)
+    {
+        const auto& candidate = enumCandidates[index];
+        if (candidate.kind != frontend::NamedTypeDeclarationKind::Enum ||
+            !candidates.emplace(std::make_pair(candidate.projectOrdinal, candidate.identity.key()), index).second)
+            return CppSignatureEnumFailure{"invalid or duplicate enum candidate"};
+    }
+    std::vector<CppSignatureEnumDependency> result;
+    for (std::size_t functionIndex = 0; functionIndex < functions.size(); ++functionIndex)
+    {
+        const auto& function = functions[functionIndex];
+        if (function.projectOrdinal >= graph.projects().size())
+            return CppSignatureEnumFailure{"function owner is outside the project graph"};
+        const auto collect = [&](const CppType& root, std::optional<std::size_t> parameter) {
+            const CppType* type = &root;
+            std::size_t depth = 0;
+            while (type && depth < 64 && (type->kind == CppTypeKind::Pointer ||
+                   type->kind == CppTypeKind::LValueReference || type->kind == CppTypeKind::RValueReference ||
+                   type->kind == CppTypeKind::Array)) { type = type->element.get(); ++depth; }
+            if (!type) return false;
+            if (depth == 64 && (type->kind == CppTypeKind::Pointer || type->kind == CppTypeKind::Array ||
+                                type->kind == CppTypeKind::LValueReference || type->kind == CppTypeKind::RValueReference))
+                return false;
+            if (type->kind != CppTypeKind::Enumeration) return true;
+            if (!type->enumIdentity || type->enumIdentity->anonymousContext || type->enumIdentity->name.empty() ||
+                type->enumIdentity->qualifiedName != type->enumIdentity->name)
+            {
+                result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Unprojectable, std::nullopt});
+                return true;
+            }
+            const compilation::TypeIdentity identity(graph.projects()[function.projectOrdinal].moduleName(), {}, {},
+                                                     type->enumIdentity->name);
+            const auto found = candidates.find({function.projectOrdinal, identity.key()});
+            if (found == candidates.end())
+                result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Missing, std::nullopt});
+            else
+                result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Matched, found->second});
+            return true;
+        };
+        if (!collect(function.declaration.returnType, std::nullopt))
+            return CppSignatureEnumFailure{"incomplete or excessively nested function return type"};
+        for (std::size_t index = 0; index < function.declaration.parameters.size(); ++index)
+            if (!collect(function.declaration.parameters[index].type, index))
+                return CppSignatureEnumFailure{"incomplete or excessively nested function parameter type"};
+    }
+    return result;
+}
+
 CppSemanticInventoryResult collectCppSemanticFunctions(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects)
 {
