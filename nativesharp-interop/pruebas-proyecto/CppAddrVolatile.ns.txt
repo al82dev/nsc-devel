@@ -1,0 +1,1 @@
+int Main() { int* p = &tools.flagged; return 0; }
