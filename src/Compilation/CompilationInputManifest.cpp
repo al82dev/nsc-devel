@@ -201,6 +201,16 @@ bool CompilationInputManifest::calculateIdentity(
     const LibraryMetadataRepository& metadataRepository,
     std::string& error)
 {
+    // Until Clang's transitive includes and semantic imports participate in the bundle identity,
+    // a cached artifact must not make an unimplemented C/C++ reference appear to compile.
+    for (const Project& project : graph_.projects())
+    {
+        if (!project.cppLibraryReferences().empty())
+        {
+            error = "C/C++ project references are not yet connected to NativeSharp compilation";
+            return false;
+        }
+    }
     std::vector<std::pair<std::string, std::string>> fields = identityFields_;
     std::sort(fields.begin(), fields.end());
     std::string material;
@@ -395,6 +405,12 @@ void CompilationInputManifest::collectGraphInputs(const ProjectGraph& graph)
                     inputFiles_.push_back(thinLtoSidecar);
                 }
             }
+        }
+        for (const CppLibraryReference& reference : project.cppLibraryReferences())
+        {
+            if (!reference.headerPath.empty()) inputFiles_.push_back(reference.headerPath);
+            if (!reference.libraryPath.empty()) inputFiles_.push_back(reference.libraryPath);
+            if (!reference.runtimePath.empty()) inputFiles_.push_back(reference.runtimePath);
         }
         for (const SdkManifest& sdk : project.sdkReferences())
         {
