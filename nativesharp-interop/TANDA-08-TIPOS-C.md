@@ -206,6 +206,10 @@ indexación, copia de elementos y compatibilidad ABI.
 puntero al tipo adelantado y rechazo de `sizeof` con diagnóstico. El script no
 se ha ejecutado; la comprobación real sigue pendiente.
 
+El análisis semántico prepara ahora un diagnóstico específico para `sizeof` y
+`alignof` sobre el valor incompleto. El caso positivo incluye `sizeof` del
+puntero para distinguirlo del valor. Ambos siguen sin ejecutarse.
+
 ### Enum C anónimo con typedef, sin validar
 
 La captura usa el nombre de typedef asociado por Clang como identidad del enum
