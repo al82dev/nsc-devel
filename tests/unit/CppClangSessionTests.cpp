@@ -136,16 +136,30 @@ public:
 
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override
     {
-        if (path.str().find("cancel_during_parse.h") != std::string::npos)
-        {
-            observed = true;
-            token_.cancel();
-        }
+        if (cancelAtHeader(path)) return std::make_error_code(std::errc::operation_canceled);
         return ProxyFileSystem::status(path);
+    }
+
+    bool exists(const llvm::Twine& path) override
+    {
+        return !cancelAtHeader(path) && ProxyFileSystem::exists(path);
+    }
+
+    llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> openFileForRead(const llvm::Twine& path) override
+    {
+        if (cancelAtHeader(path)) return std::make_error_code(std::errc::operation_canceled);
+        return ProxyFileSystem::openFileForRead(path);
     }
 
     bool observed = false;
 private:
+    bool cancelAtHeader(const llvm::Twine& path)
+    {
+        if (path.str().find("cancel_during_parse.h") == std::string::npos) return false;
+        observed = true;
+        token_.cancel();
+        return true;
+    }
     CppCancellationToken token_;
 };
 
@@ -265,6 +279,10 @@ int main(int argc, char** argv)
         auto ast = nativesharp::interop::detail::runClangSessionAction(
             "#include \"cancel_during_parse.h\"\nint main(void) { return 0; }\n",
             args, input, argv[3], &consumer, observed, token);
+        if (!observed->observed || !token.cancelled() || (ast && !ast->getDiagnostics().hasErrorOccurred()))
+            std::cerr << "cancel analysis observed=" << observed->observed << " cancelled=" << token.cancelled()
+                      << " ast=" << static_cast<bool>(ast) << " errors="
+                      << (ast && ast->getDiagnostics().hasErrorOccurred()) << '\n';
         ok &= expect(observed->observed && token.cancelled() &&
                      (!ast || ast->getDiagnostics().hasErrorOccurred()),
                      "cancellation during real Clang header lookup interrupts the analysis");
@@ -320,6 +338,9 @@ int main(int argc, char** argv)
             "int rejected_probe;\n", arguments,
             (std::filesystem::path(argv[2]) / "rejected_probe.c").generic_string(), argv[3], &rejectedDiagnostics,
             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>(failingFilesystem.release()), {});
+        if (rejected || rejectedDiagnostics.begins != 0 || rejectedDiagnostics.ends != 0)
+            std::cerr << "rejected invocation ast=" << static_cast<bool>(rejected)
+                      << " begins=" << rejectedDiagnostics.begins << " ends=" << rejectedDiagnostics.ends << '\n';
         ok &= expect(!rejected && rejectedDiagnostics.begins == 0 && rejectedDiagnostics.ends == 0,
                      "failed driver invocation does not begin or end a source file");
     }
