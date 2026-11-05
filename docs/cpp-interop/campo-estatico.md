@@ -1,0 +1,9 @@
+# Campo estatico
+
+Define datos de un campo estático C++ importado.
+
+Archivo: `include/nativesharp/Frontend/CppImportedStaticField.h`.
+
+Declaraciones principales: `CppImportedStaticField`.
+
+Este cambio forma parte del trabajo de interoperabilidad acumulado; depende de otros cambios pendientes de registrar. La validación previa corresponde al conjunto de la tanda, no a este commit aislado.
