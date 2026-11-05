@@ -29,6 +29,30 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
 {
     if (type.kind == CppTypeKind::Array)
     {
+        const CppType* base = &type;
+        std::vector<std::uint64_t> fixedDimensions;
+        bool readonly = false;
+        while (base && base->kind == CppTypeKind::Array)
+        {
+            if (base->isVolatile || !base->arrayCount || *base->arrayCount == 0 ||
+                !base->element || fixedDimensions.size() >= 64) return std::nullopt;
+            readonly |= base->isConst;
+            fixedDimensions.push_back(*base->arrayCount);
+            base = base->element.get();
+        }
+        if (base && base->kind != CppTypeKind::Pointer && !base->isVolatile &&
+            (readonly || base->isConst))
+        {
+            CppType unqualified = *base;
+            unqualified.isConst = false;
+            auto mapped = mapGlobalType(unqualified, projectOrdinal, moduleName, lookup);
+            if (!mapped || mapped->isVolatile) return std::nullopt;
+            for (auto dimension = fixedDimensions.rbegin(); dimension != fixedDimensions.rend(); ++dimension)
+                mapped->nativeSharpTypeKey += "[" + std::to_string(*dimension) + "]";
+            mapped->canonicalCppType = type.canonicalSpelling;
+            mapped->isConst = true;
+            return mapped;
+        }
         const auto array = frontend::cppAliasArrayType(type);
         if (!array)
         {
@@ -124,7 +148,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         else nsNamespace.push_back(cppNamespace[i]);
     return CppSemanticGlobal{projectOrdinal, std::string(moduleName), std::move(nsNamespace),
                              global.name, type->nativeSharpTypeKey, type->canonicalCppType,
-                             *global.externalSymbol, global.type.isVolatile, global.type.isConst,
+                             *global.externalSymbol, global.type.isVolatile, type->isConst,
                              global.type.kind == CppTypeKind::Pointer && global.type.element &&
                                  global.type.element->isConst, global.dllImport};
 }

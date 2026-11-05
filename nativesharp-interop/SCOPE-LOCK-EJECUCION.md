@@ -1654,6 +1654,13 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Interop/Cpp/CppSemanticRecord.cpp`, `Api.h`, `Api.c`, `Main.ns` de `pruebas-tanda-08-enum-funcion` y registros Markdown. Preservar límites de arreglos incompletos y rechazo de calificadores no representados; no alterar NSLink ni LLVM.
 - Validación agrupada: escritura y lectura de elemento de enum mediante NativeSharp, comprobación por C y regresiones de arreglos escalares, punteros, conflictos y `const`. No cierra T08-004, T08-009 ni T08-016.
 
+### Arreglos globales C const de escalares y enum
+
+- Objetivo: proyectar arreglos globales fijos C cuyos elementos escalares o enum son `const`, permitir su lectura y rechazar la escritura de elementos conservando la mutabilidad de otros arreglos.
+- Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, el proyecto `pruebas-tanda-08-record-c`, el proyecto `pruebas-tanda-08-enum-funcion` y registros Markdown. La ruta aplica a elementos escalares o enum sin punteros; sigue rechazando `volatile`, límites desconocidos y calificadores no representados.
+- Conservar `const` aunque Clang lo sitúe en el arreglo o en su elemento, y propagarlo como `isCppReadonly`; verificar escritura rechazada y lectura compartida con C. No cambiar otras rutas de identidad o NSLink.
+- Construir incrementalmente y validar de manera agrupada todos los casos de la tanda; no cerrar T08-015 con estas muestras.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
