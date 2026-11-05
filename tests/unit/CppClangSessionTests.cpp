@@ -2203,9 +2203,15 @@ int main(int argc, char** argv)
                                                  : std::nullopt;
         const auto projectedRecordPointer = recordPointerAlias
             ? nativesharp::frontend::cppAliasRecordType(recordPointerAlias->underlyingType) : std::nullopt;
+        CppType nestedRecordType;
+        nestedRecordType.kind = CppTypeKind::Record;
+        nestedRecordType.recordIdentity = CppRecordTypeIdentity{"Inner", {"N"}, {"Outer"}, false, false};
+        const auto nestedRecord = nativesharp::frontend::cppAliasRecordType(nestedRecordType);
         ok &= expect(projectedRecord && projectedRecord->name == "Pair" && projectedRecord->pointerDepth == 0 &&
                      projectedRecordPointer && projectedRecordPointer->name == "Pair" &&
-                     projectedRecordPointer->pointerDepth == 1 && projectedRecordPointer->pointeeConst,
+                     projectedRecordPointer->pointerDepth == 1 && projectedRecordPointer->pointeeConst &&
+                     nestedRecord && nestedRecord->name == "N.Outer.Inner" &&
+                     nestedRecord->canonicalName == "N.Outer+Inner",
                      "record typedef projection preserves identity, pointer and pointee const");
         ok &= expect(incompleteArrayAlias && incompleteArrayAlias->underlyingType.kind == CppTypeKind::Array &&
                      incompleteArrayAlias->underlyingType.element &&
