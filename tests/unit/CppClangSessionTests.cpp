@@ -685,5 +685,49 @@ int main(int argc, char** argv)
         ok &= expect(correctNames && parsed && !diagnostics.hasErrors(),
                      "scoped C++ names resolve namespace and chained type aliases without leaking to siblings");
     }
+    {
+        using namespace nativesharp::compilation;
+        const auto fixture = std::filesystem::path(argv[2]) / "cpp-fixtures";
+        const auto projectPath = fixture / "project" / "CppProbe.nsproj";
+        std::string error;
+        ProjectLoader loader;
+        auto project = loader.load(projectPath, error);
+        if (!project) std::cerr << "Project load failed: " << error << '\n';
+        ok &= expect(project && project->cppLibraryReferences().size() == 2,
+                     "project loads C and C++ references");
+        if (project && project->cppLibraryReferences().size() == 2)
+        {
+            const auto& cRef = project->cppLibraryReferences()[0];
+            const auto& cppRef = project->cppLibraryReferences()[1];
+            ok &= expect(cRef.language == CppLanguageMode::C && cRef.languageStandard == "c11" &&
+                         !cRef.libraryPath.empty() && cRef.includePaths.size() == 1 &&
+                         cRef.macros.size() == 3 && cRef.macros[0].action == CppMacroAction::Define &&
+                         cRef.macros[1].action == CppMacroAction::Undefine &&
+                         cRef.macros[2].action == CppMacroAction::Define,
+                         "C library options and macro ordering survive loading");
+            ok &= expect(cppRef.language == CppLanguageMode::Cpp && cppRef.libraryPath.empty(),
+                         "C++ header-only references need no library");
+            const CppProjectSessionEnvironment environment{
+                "x86_64-pc-windows-msvc", argv[3], argv[1], argv[2], {fixture}};
+            auto opened = openCppProjectSessions(project->cppLibraryReferences(), environment, factory, {});
+            auto* sessions = std::get_if<CppProjectSessions>(&opened);
+            ok &= expect(sessions && sessions->sessions.size() == 2,
+                         "project references each open a real Clang session");
+            if (sessions && sessions->sessions.size() == 2)
+            {
+                const auto cOptions = sessions->sessions[0]->optionsSnapshot();
+                const auto cppOptions = sessions->sessions[1]->optionsSnapshot();
+                const auto* file = std::get_if<CppFileInput>(&cOptions.input);
+                ok &= expect(cOptions.language == CppLanguageMode::C && cOptions.macros.size() == 3 &&
+                             cOptions.includePaths.size() == 2 &&
+                             cOptions.includePaths[1].kind == CppIncludeKind::System &&
+                             cOptions.includePaths[1].path == fixture && file && file->path == cRef.headerPath &&
+                             cppOptions.language == CppLanguageMode::Cpp && cppOptions.macros.empty() &&
+                             cppOptions.languageStandard == "c++20" && cppOptions.includePaths.size() == 1 &&
+                             cppOptions.includePaths[0].kind == CppIncludeKind::System,
+                             "project session options retain each reference configuration and order");
+            }
+        }
+    }
     return ok ? 0 : 1;
 }
