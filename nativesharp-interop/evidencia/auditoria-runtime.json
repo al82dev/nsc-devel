@@ -1,0 +1,9 @@
+{
+  "source": "A:\\llvm-project-al82dev\\nativesharp-interop\\evidencia\\clang-commands.txt",
+  "scope": "generated Ninja compile commands, not execution logs",
+  "counts": {
+    "compile_commands": 2673,
+    "MT": 2673
+  },
+  "exceptions": []
+}

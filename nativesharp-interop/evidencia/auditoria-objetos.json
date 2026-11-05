@@ -1,0 +1,61 @@
+{
+  "scope": "Existing objects identified from generated clang target commands; directives do not prove actual linker selection or runtime loads",
+  "commands_unparsed_lines": [],
+  "expected_unique_objects": 2673,
+  "present_objects": 2673,
+  "missing_objects": [],
+  "statistics": {
+    "readobj_files": 2673,
+    "mt_staticrelease": 2664,
+    "no_runtime_mismatch": 9
+  },
+  "special": [
+    {
+      "file": "A:\\al82dev-clang\\lib\\Support\\BLAKE3\\CMakeFiles\\LLVMSupportBlake3.dir\\blake3.c.obj",
+      "classification": "no_runtime_mismatch",
+      "directives": "/defaultlib:libcmt.lib /defaultlib:oldnames.lib"
+    },
+    {
+      "file": "A:\\al82dev-clang\\lib\\Support\\BLAKE3\\CMakeFiles\\LLVMSupportBlake3.dir\\blake3_dispatch.c.obj",
+      "classification": "no_runtime_mismatch",
+      "directives": "/defaultlib:libcmt.lib /defaultlib:oldnames.lib /defaultlib:uuid.lib /defaultlib:uuid.lib"
+    },
+    {
+      "file": "A:\\al82dev-clang\\lib\\Support\\BLAKE3\\CMakeFiles\\LLVMSupportBlake3.dir\\blake3_neon.c.obj",
+      "classification": "no_runtime_mismatch",
+      "directives": "/defaultlib:libcmt.lib /defaultlib:oldnames.lib"
+    },
+    {
+      "file": "A:\\al82dev-clang\\lib\\Support\\BLAKE3\\CMakeFiles\\LLVMSupportBlake3.dir\\blake3_portable.c.obj",
+      "classification": "no_runtime_mismatch",
+      "directives": "/defaultlib:libcmt.lib /defaultlib:oldnames.lib"
+    },
+    {
+      "file": "A:\\al82dev-clang\\lib\\Support\\CMakeFiles\\LLVMSupport.dir\\regcomp.c.obj",
+      "classification": "no_runtime_mismatch",
+      "directives": "/defaultlib:libcmt.lib /defaultlib:oldnames.lib"
+    },
+    {
+      "file": "A:\\al82dev-clang\\lib\\Support\\CMakeFiles\\LLVMSupport.dir\\regerror.c.obj",
+      "classification": "no_runtime_mismatch",
+      "directives": "/defaultlib:libcmt.lib /defaultlib:oldnames.lib"
+    },
+    {
+      "file": "A:\\al82dev-clang\\lib\\Support\\CMakeFiles\\LLVMSupport.dir\\regexec.c.obj",
+      "classification": "no_runtime_mismatch",
+      "directives": "/defaultlib:libcmt.lib /defaultlib:oldnames.lib"
+    },
+    {
+      "file": "A:\\al82dev-clang\\lib\\Support\\CMakeFiles\\LLVMSupport.dir\\regfree.c.obj",
+      "classification": "no_runtime_mismatch",
+      "directives": "/defaultlib:libcmt.lib /defaultlib:oldnames.lib"
+    },
+    {
+      "file": "A:\\al82dev-clang\\lib\\Support\\CMakeFiles\\LLVMSupport.dir\\regstrlcpy.c.obj",
+      "classification": "no_runtime_mismatch",
+      "directives": "/defaultlib:libcmt.lib /defaultlib:oldnames.lib"
+    }
+  ],
+  "errors": [],
+  "report": "A:\\llvm-project-al82dev\\nativesharp-interop\\evidencia\\directivas-objetos.txt"
+}

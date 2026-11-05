@@ -1,0 +1,255 @@
+
+File: A:\al82dev-clang\bin\clang.exe
+Format: COFF-x86-64
+Arch: x86_64
+AddressSize: 64bit
+Import {
+  Name: KERNEL32.dll
+  ImportLookupTableRVA: 0x5185420
+  ImportAddressTableRVA: 0x5185A00
+  Symbol: AcquireSRWLockExclusive (0)
+  Symbol: AcquireSRWLockShared (1)
+  Symbol: AssignProcessToJobObject (39)
+  Symbol: CloseHandle (160)
+  Symbol: CloseThreadpoolWork (173)
+  Symbol: CompareStringEx (180)
+  Symbol: CompareStringW (182)
+  Symbol: CreateDirectoryW (215)
+  Symbol: CreateFileMappingW (230)
+  Symbol: CreateFileW (233)
+  Symbol: CreateHardLinkW (237)
+  Symbol: CreateJobObjectW (241)
+  Symbol: CreateProcessW (261)
+  Symbol: CreateSymbolicLinkW (272)
+  Symbol: CreateThread (274)
+  Symbol: CreateThreadpoolWork (280)
+  Symbol: DecodePointer (299)
+  Symbol: DeleteCriticalSection (306)
+  Symbol: DeviceIoControl (324)
+  Symbol: DuplicateHandle (338)
+  Symbol: EncodePointer (342)
+  Symbol: EnterCriticalSection (346)
+  Symbol: EnumSystemLocalesW (382)
+  Symbol: ExitProcess (393)
+  Symbol: ExitThread (394)
+  Symbol: ExpandEnvironmentStringsW (397)
+  Symbol: FindClose (416)
+  Symbol: FindFirstFileExW (422)
+  Symbol: FindFirstFileW (427)
+  Symbol: FindNextFileW (439)
+  Symbol: FlsAlloc (453)
+  Symbol: FlsFree (454)
+  Symbol: FlsGetValue (455)
+  Symbol: FlsSetValue (457)
+  Symbol: FlushFileBuffers (459)
+  Symbol: FormatMessageA (466)
+  Symbol: FreeEnvironmentStringsW (470)
+  Symbol: FreeLibrary (471)
+  Symbol: FreeLibraryAndExitThread (472)
+  Symbol: FreeLibraryWhenCallbackReturns (473)
+  Symbol: GetACP (478)
+  Symbol: GetCPInfo (493)
+  Symbol: GetCommandLineA (514)
+  Symbol: GetCommandLineW (515)
+  Symbol: GetConsoleMode (552)
+  Symbol: GetConsoleOutputCP (556)
+  Symbol: GetConsoleScreenBufferInfo (558)
+  Symbol: GetCurrentDirectoryW (573)
+  Symbol: GetCurrentProcess (580)
+  Symbol: GetCurrentProcessId (581)
+  Symbol: GetCurrentThread (584)
+  Symbol: GetCurrentThreadId (585)
+  Symbol: GetDateFormatW (591)
+  Symbol: GetDriveTypeW (605)
+  Symbol: GetEnvironmentStringsW (613)
+  Symbol: GetEnvironmentVariableW (615)
+  Symbol: GetExitCodeProcess (618)
+  Symbol: GetExitCodeThread (619)
+  Symbol: GetFileAttributesW (627)
+  Symbol: GetFileInformationByHandle (629)
+  Symbol: GetFileSizeEx (635)
+  Symbol: GetFileType (637)
+  Symbol: GetFinalPathNameByHandleW (639)
+  Symbol: GetLastError (656)
+  Symbol: GetLocaleInfoEx (659)
+  Symbol: GetLocaleInfoW (660)
+  Symbol: GetLogicalProcessorInformationEx (665)
+  Symbol: GetLongPathNameW (669)
+  Symbol: GetModuleFileNameW (676)
+  Symbol: GetModuleHandleExW (679)
+  Symbol: GetModuleHandleW (680)
+  Symbol: GetNativeSystemInfo (693)
+  Symbol: GetOEMCP (713)
+  Symbol: GetProcAddress (736)
+  Symbol: GetProcessAffinityMask (737)
+  Symbol: GetProcessGroupAffinity (741)
+  Symbol: GetProcessHeap (743)
+  Symbol: GetProcessTimes (753)
+  Symbol: GetStartupInfoW (772)
+  Symbol: GetStdHandle (774)
+  Symbol: GetStringTypeW (779)
+  Symbol: GetSystemDirectoryW (788)
+  Symbol: GetSystemInfo (791)
+  Symbol: GetSystemTime (795)
+  Symbol: GetSystemTimeAsFileTime (797)
+  Symbol: GetSystemTimePreciseAsFileTime (798)
+  Symbol: GetThreadId (819)
+  Symbol: GetTimeFormatW (836)
+  Symbol: GetTimeZoneInformation (838)
+  Symbol: GetUserDefaultLCID (844)
+  Symbol: GetVolumePathNameW (860)
+  Symbol: HeapAlloc (895)
+  Symbol: HeapFree (899)
+  Symbol: HeapQueryInformation (901)
+  Symbol: HeapReAlloc (902)
+  Symbol: HeapSize (904)
+  Symbol: HeapValidate (907)
+  Symbol: HeapWalk (908)
+  Symbol: InitOnceBeginInitialize (913)
+  Symbol: InitOnceComplete (914)
+  Symbol: InitializeCriticalSection (920)
+  Symbol: InitializeCriticalSectionEx (922)
+  Symbol: InitializeSListHead (925)
+  Symbol: IsDebuggerPresent (947)
+  Symbol: IsProcessorFeaturePresent (955)
+  Symbol: IsValidCodePage (961)
+  Symbol: IsValidLocale (963)
+  Symbol: K32EnumProcessModulesEx (974)
+  Symbol: K32GetProcessMemoryInfo (990)
+  Symbol: LCMapStringEx (998)
+  Symbol: LCMapStringW (999)
+  Symbol: LeaveCriticalSection (1011)
+  Symbol: LoadLibraryExA (1016)
+  Symbol: LoadLibraryExW (1017)
+  Symbol: LoadLibraryW (1018)
+  Symbol: LocalFree (1029)
+  Symbol: LockFileEx (1040)
+  Symbol: MapViewOfFile (1045)
+  Symbol: MoveFileExW (1055)
+  Symbol: MultiByteToWideChar (1062)
+  Symbol: OpenSemaphoreA (1093)
+  Symbol: QueryPerformanceCounter (1156)
+  Symbol: QueryPerformanceFrequency (1157)
+  Symbol: RaiseException (1179)
+  Symbol: ReadConsoleW (1193)
+  Symbol: ReadFile (1196)
+  Symbol: ReleaseSRWLockExclusive (1261)
+  Symbol: ReleaseSRWLockShared (1262)
+  Symbol: ReleaseSemaphore (1263)
+  Symbol: ResumeThread (1290)
+  Symbol: SearchPathW (1313)
+  Symbol: SetConsoleCtrlHandler (1330)
+  Symbol: SetConsoleMode (1346)
+  Symbol: SetConsoleTextAttribute (1355)
+  Symbol: SetCurrentDirectoryW (1362)
+  Symbol: SetEndOfFile (1369)
+  Symbol: SetEnvironmentVariableW (1373)
+  Symbol: SetErrorMode (1374)
+  Symbol: SetFileInformationByHandle (1385)
+  Symbol: SetFilePointerEx (1388)
+  Symbol: SetFileTime (1391)
+  Symbol: SetInformationJobObject (1399)
+  Symbol: SetLastError (1403)
+  Symbol: SetProcessAffinityMask (1414)
+  Symbol: SetStdHandle (1430)
+  Symbol: SetThreadGroupAffinity (1444)
+  Symbol: SetUnhandledExceptionFilter (1467)
+  Symbol: Sleep (1483)
+  Symbol: SleepConditionVariableSRW (1485)
+  Symbol: SubmitThreadpoolWork (1491)
+  Symbol: SystemTimeToFileTime (1495)
+  Symbol: TerminateProcess (1499)
+  Symbol: UnhandledExceptionFilter (1534)
+  Symbol: UnlockFileEx (1536)
+  Symbol: UnmapViewOfFile (1537)
+  Symbol: VirtualProtect (1565)
+  Symbol: VirtualQuery (1567)
+  Symbol: WaitForSingleObject (1576)
+  Symbol: WaitForSingleObjectEx (1577)
+  Symbol: WakeAllConditionVariable (1584)
+  Symbol: WakeConditionVariable (1585)
+  Symbol: WideCharToMultiByte (1615)
+  Symbol: WriteConsoleW (1634)
+  Symbol: WriteFile (1635)
+}
+Import {
+  Name: ADVAPI32.dll
+  ImportLookupTableRVA: 0x5185948
+  ImportAddressTableRVA: 0x5185F28
+  Symbol: CryptAcquireContextW (194)
+  Symbol: CryptGenRandom (210)
+  Symbol: CryptReleaseContext (220)
+  Symbol: RegCloseKey (600)
+  Symbol: RegEnumKeyExA (630)
+  Symbol: RegGetValueW (638)
+  Symbol: RegOpenKeyExA (648)
+  Symbol: RegQueryValueExW (662)
+}
+Import {
+  Name: ntdll.dll
+  ImportLookupTableRVA: 0x5185990
+  ImportAddressTableRVA: 0x5185F70
+  Symbol: RtlCaptureContext (781)
+  Symbol: RtlGetLastNtStatus (1104)
+  Symbol: RtlLookupFunctionEntry (1315)
+  Symbol: RtlPcToFileHeader (1358)
+  Symbol: RtlUnwind (1638)
+  Symbol: RtlUnwindEx (1639)
+  Symbol: RtlVirtualUnwind (1667)
+}
+Import {
+  Name: VERSION.dll
+  ImportLookupTableRVA: 0x51859D0
+  ImportAddressTableRVA: 0x5185FB0
+  Symbol: GetFileVersionInfoSizeW (7)
+  Symbol: GetFileVersionInfoW (8)
+  Symbol: VerQueryValueW (16)
+}
+Import {
+  Name: OLEAUT32.dll
+  ImportLookupTableRVA: 0x51859F0
+  ImportAddressTableRVA: 0x5185FD0
+  Symbol:  (6)
+}
+DelayImport {
+  Name: SHELL32.dll
+  Attributes: 0x1
+  ModuleHandle: 0x51C6F50
+  ImportAddressTable: 0x51C6F60
+  ImportNameTable: 0x51852E8
+  BoundDelayImportTable: 0x0
+  UnloadDelayImportTable: 0x0
+  Import {
+    Symbol: SHGetKnownFolderPath (0)
+    Address: 0x1443B7376
+  }
+}
+DelayImport {
+  Name: ole32.dll
+  Attributes: 0x1
+  ModuleHandle: 0x51C6F58
+  ImportAddressTable: 0x51C6F70
+  ImportNameTable: 0x51852F8
+  BoundDelayImportTable: 0x0
+  UnloadDelayImportTable: 0x0
+  Import {
+    Symbol: CoCreateInstance (0)
+    Address: 0x1443B73F9
+  }
+  Import {
+    Symbol: CoInitializeEx (0)
+    Address: 0x1443B7405
+  }
+  Import {
+    Symbol: CoTaskMemFree (0)
+    Address: 0x1443B7411
+  }
+  Import {
+    Symbol: CoUninitialize (0)
+    Address: 0x1443B741D
+  }
+  Import {
+    Symbol: OleRun (0)
+    Address: 0x1443B7429
+  }
+}
