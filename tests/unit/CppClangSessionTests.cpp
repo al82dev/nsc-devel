@@ -2595,6 +2595,95 @@ int main(int argc, char** argv)
                                  "unused C++ conflict and native collision do not block experimental name lookup");
                 }
             }
+            for (int implicitScenario : {0, 1, 2, 3, 4, 5})
+            {
+                const bool conflicting = implicitScenario == 1 || implicitScenario == 3;
+                const bool inferred = implicitScenario >= 2;
+                nativesharp::frontend::ProjectCompilation implicitRecord;
+                implicitRecord.setSourceBufferProvider([inferred, implicitScenario](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return implicitScenario == 4
+                        ? "int Main() { var p = A.B.create(); return A.B.consume(p); }\n" : inferred
+                        ? "int Main() { var p = A.B.create(); return A.B.consume(p + 1); }\n"
+                        : "int Main() { return A.B.consume(null); }\n";
+                    return std::nullopt;
+                });
+                CppProjectSessions group;
+                group.projectFile = std::filesystem::absolute(path);
+                auto implicitOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp, "");
+                implicitOptions.input = CppFileInput{recordHeader};
+                group.sessions.push_back(open(factory, std::move(implicitOptions)));
+                if (implicitScenario >= 4)
+                {
+                    auto repeatedOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp, "");
+                    repeatedOptions.input = CppFileInput{recordHeader};
+                    group.sessions.push_back(open(factory, std::move(repeatedOptions)));
+                }
+                if (conflicting)
+                    group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                        "namespace A { namespace B { struct C { long long x; }; int consume(C*); C* create(); } }\n")));
+                std::vector<CppProjectSessions> groups;
+                groups.push_back(std::move(group));
+                std::string implicitError;
+                const bool configured = implicitRecord.setCppProjectSessions(std::move(groups), implicitError) &&
+                    implicitRecord.setExperimentalCppTypeProvider(provideExperimentalCppRecordCandidates, implicitError) &&
+                    implicitRecord.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, implicitError) &&
+                    implicitRecord.setCppNamespaceProvider([](const auto& graph, auto sessions, auto& output, auto& error) {
+                        auto inventory = collectCppNamespaces(graph, sessions);
+                        if (const auto* failure = std::get_if<CppNamespaceInventoryFailure>(&inventory))
+                        { error = failure->message; return false; }
+                        auto visible = visibleCppNamespaces(std::get<std::vector<CppNamespaceInventoryEntry>>(inventory));
+                        if (const auto* failure = std::get_if<CppNamespaceInventoryFailure>(&visible))
+                        { error = failure->message; return false; }
+                        output = std::move(std::get<std::vector<std::pair<std::size_t, std::string>>>(visible));
+                        return true;
+                    }, implicitError) &&
+                    implicitRecord.setCppFunctionProvider([&](const auto& graph, auto sessions, auto, auto demands,
+                        auto& projected, auto& deferred, auto& error) {
+                        const auto* names = implicitRecord.nameLookup();
+                        if (!names) { error = "name lookup is unavailable"; return false; }
+                        return provideExperimentalCppFunctionsWithRecords(graph, sessions, *names, demands,
+                                                                           projected, deferred, error);
+                    }, implicitError);
+                const bool ready = configured && implicitRecord.compileProjectOopMir(path, implicitError);
+                bool deferredRecord = false;
+                if (const auto* functions = implicitRecord.namespaceFunctionModel())
+                    for (const auto& candidate : functions->cppDeferredFunctions())
+                        deferredRecord |= candidate.directCall &&
+                            (candidate.declaration.qualifiedName == "A::B::consume" ||
+                             (inferred && candidate.declaration.qualifiedName == "A::B::create")) &&
+                            !candidate.reason.empty();
+                if (conflicting && ready)
+                    std::cerr << "conflicting implicit record was incorrectly accepted\n";
+                if (!conflicting && implicitScenario != 5 && !ready)
+                {
+                    std::cerr << "implicit record projection: " << implicitError << '\n';
+                    for (const auto& diagnostic : implicitRecord.diagnostics().diagnostics())
+                        std::cerr << diagnostic.message() << '\n';
+                }
+                bool layoutError = implicitError.find("layout") != std::string::npos;
+                for (const auto& diagnostic : implicitRecord.diagnostics().diagnostics())
+                    layoutError |= diagnostic.message().find("layout") != std::string::npos;
+                ok &= expect(configured && (conflicting ? !ready && deferredRecord && implicitRecord.diagnostics().hasErrors()
+                    : implicitScenario == 5 ? !ready && layoutError
+                    : ready && implicitRecord.oopMirModel() && !deferredRecord),
+                             "implicit signature record is projected only with a valid C++ definition");
+                if (inferred && !conflicting && ready && implicitRecord.oopMirModel() && implicitRecord.nameLookup())
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*implicitRecord.nameLookup(), *implicitRecord.oopMirModel());
+                    std::string llvmError;
+                    const bool valid = module && module->verify(llvmError);
+                    auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(llvmError);
+                    const bool emitted = valid && target && target->emit(*module,
+                        std::filesystem::path(argv[2]) / (implicitScenario == 4
+                            ? "cpp-fixtures/semantic/cpp-record-repeated-call.obj"
+                            : "cpp-fixtures/semantic/cpp-record-inferred-call.obj"),
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object, llvmError);
+                    if (!emitted) std::cerr << "inferred record object: " << lowerer.error() << ' ' << llvmError << '\n';
+                    ok &= expect(emitted, "inferred C++ record pointer lowers to a verified Windows object");
+                }
+            }
         }
     }
     return ok ? 0 : 1;
