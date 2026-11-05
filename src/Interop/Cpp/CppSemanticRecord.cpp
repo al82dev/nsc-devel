@@ -1030,6 +1030,47 @@ bool selectExperimentalCppRecordTypesForCompilation(
     if (!provideCppEnumTypes(*graph, compilation.cppProjectSessions(), enumCandidates, error)) return false;
     std::set<std::string> selectedIdentities;
     for (const auto& type : output) selectedIdentities.insert(type.identity.key());
+    auto allPrepared = prepareCppRecordObservation(observation.inventory, observation.groups);
+    if (const auto* failure = std::get_if<CppRecordObservationFailure>(&allPrepared))
+    { error = failure->message; return false; }
+    const auto& candidates = std::get<CppRecordObservationInputs>(allPrepared);
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        for (const auto& group : observation.groups.groups)
+        {
+            if (!selectedIdentities.contains(group.identity.key())) continue;
+            const auto definition = selectCppRecordMemberDefinition(observation.inventory, group);
+            if (!definition || *definition >= observation.inventory.size()) continue;
+            const auto& record = observation.inventory[*definition].declaration;
+            if (record.isCxx) continue;
+            for (const auto& field : record.fields)
+            {
+                const CppType* element = &field.type;
+                for (std::size_t depth = 0; element && depth < 64 &&
+                     (element->kind == CppTypeKind::Pointer || element->kind == CppTypeKind::Array); ++depth)
+                    element = element->element.get();
+                if (!element || element->kind != CppTypeKind::Record) continue;
+                const auto identity = projectCppRecordTypeIdentity(*element, group.identity.moduleName());
+                if (!identity || selectedIdentities.contains(identity->key())) continue;
+                const auto target = std::find_if(candidates.types.begin(), candidates.types.end(), [&](const auto& item) {
+                    return item.projectOrdinal == group.projectOrdinal && item.identity.key() == identity->key();
+                });
+                if (target == candidates.types.end()) { error = "C field record dependency is unavailable: " + identity->key(); return false; }
+                const auto index = static_cast<std::size_t>(target - candidates.types.begin());
+                const auto groupIndex = candidates.groupByImportedType[index];
+                const auto status = observation.groups.groups[groupIndex].status;
+                if (std::find(observation.collidingGroups.begin(), observation.collidingGroups.end(), groupIndex) != observation.collidingGroups.end() ||
+                    (status != CppRecordGroupStatus::ForwardOnly && status != CppRecordGroupStatus::OneDefinition &&
+                     status != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible))
+                { error = "C field record dependency conflicts or is unverified: " + identity->key(); return false; }
+                selectedIdentities.insert(identity->key());
+                output.push_back(*target);
+                changed = true;
+            }
+        }
+    }
     const auto selectedRecordIdentities = selectedIdentities;
     const auto addEnum = [&](const frontend::CppImportedTypeDeclaration& type) {
         if (selectedIdentities.insert(type.identity.key()).second) output.push_back(type);
