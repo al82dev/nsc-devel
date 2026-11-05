@@ -754,6 +754,869 @@ int main(int argc, char** argv)
                 const auto functions = systemSessions->sessions[0]->freeFunctionsSnapshot();
                 foundSystemFunction = functions && functionByName(*functions, "common_system_function");
             }
+            ok &= expect(foundSystemFunction, "common system include paths are used to parse headers");
+
+            auto projectOpened = openCppProjectSessions(*project, environment, factory, {});
+            auto* ownedSessions = std::get_if<CppProjectSessions>(&projectOpened);
+            ok &= expect(ownedSessions && ownedSessions->projectFile == project->projectFile(),
+                         "project session set retains its owner identity");
+            auto otherProject = loader.load(fixture / "other" / "Other.nsproj", error);
+            ok &= expect(static_cast<bool>(otherProject), "second project loads");
+            if (otherProject)
+            {
+                auto plainProject = loader.load(fixture / "plain" / "Plain.nsproj", error);
+                ok &= expect(static_cast<bool>(plainProject), "project without C/C++ references loads");
+                std::vector<Project> graphProjects;
+                graphProjects.push_back(*otherProject);
+                if (plainProject) graphProjects.push_back(*plainProject);
+                graphProjects.push_back(*project);
+                ProjectGraph combinedGraph(project->projectFile(), std::move(graphProjects));
+                {
+                    std::vector<CppProjectSessions> groups(2);
+                    groups[0].projectFile = otherProject->projectFile();
+                    groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::C, "struct Opaque; int other_value(void); int pointer_value(struct Opaque* p); extern int c_global; static int internal_global;\n")));
+                    groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::C, "int other_value(void);\n")));
+                    groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::Cpp, "namespace other {} namespace { namespace hidden {} }\n")));
+                    groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::Cpp, "namespace other { namespace deep {} }\n")));
+                    groups[1].projectFile = project->projectFile();
+                    groups[1].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::Cpp, "namespace feature { int value(int); double value(double); extern int shared; extern const int limit; extern volatile int io; extern thread_local int tls; static int local; }\n")));
+                    groups[1].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::C, "int other_value(void);\n")));
+                    std::vector<Project> originalOrder{*otherProject, *project};
+                    ProjectGraph finalGraph(project->projectFile(), std::move(originalOrder));
+                    const std::vector<PrecompiledProjectDescriptor> addedModules{{
+                        project->projectFile(), fixture / "invented-metadata.nsmeta", "InventoryMetadata"}};
+                    ok &= expect(finalGraph.addPrecompiledProjects(addedModules, error),
+                                 "test inserts a precompiled module before the source projects");
+                    {
+                        const auto globals = collectCppSemanticGlobals(finalGraph, groups);
+                        const auto* entries = std::get_if<std::vector<CppSemanticGlobalEntry>>(&globals);
+                        bool cGlobal = false, cppGlobal = false, internalRejected = false;
+                        bool volatileProjected = false, constProjected = false, tlsRejected = false;
+                        if (entries)
+                            for (const auto& entry : *entries)
+                            {
+                                const auto* symbol = std::get_if<CppSemanticGlobal>(&entry.projection);
+                                const auto* rejected = std::get_if<CppSemanticGlobalFailure>(&entry.projection);
+                                if (entry.declaration.name == "c_global")
+                                    cGlobal = symbol && entry.projectOrdinal == 1 && entry.referenceIndex == 0 &&
+                                        symbol->externalSymbol == "c_global" && symbol->typeKey == "builtin:int" &&
+                                        symbol->namespaceName.empty() && entry.targetTriple == "x86_64-pc-windows-msvc";
+                                if (entry.declaration.name == "shared")
+                                    cppGlobal = symbol && entry.projectOrdinal == 2 && entry.referenceIndex == 0 &&
+                                        symbol->externalSymbol == "?shared@feature@@3HA" && symbol->namespaceName == "feature" &&
+                                        symbol->typeKey == "builtin:int";
+                                if (entry.declaration.name == "local" || entry.declaration.name == "internal_global")
+                                    internalRejected |= rejected && !entry.declaration.externalLinkage;
+                                if (entry.declaration.name == "io") volatileProjected = symbol && symbol->isVolatile;
+                                if (entry.declaration.name == "limit") constProjected = symbol && symbol->isConst;
+                                if (entry.declaration.name == "tls") tlsRejected = rejected && entry.declaration.threadLocal;
+                            }
+                        ok &= expect(entries && entries->size() == 7 && cGlobal && cppGlobal && internalRejected &&
+                                     volatileProjected && constProjected && tlsRejected,
+                                     "global inventory preserves project, exact symbol, type and unsupported storage contracts");
+                        if (entries)
+                        {
+                            nativesharp::frontend::CppFunctionDemand globalDemand;
+                            globalDemand.lookupName = "shared";
+                            globalDemand.lookupNamespaces = {"feature"};
+                            globalDemand.visibleProjects = {2};
+                            auto unsupportedDemand = globalDemand;
+                            unsupportedDemand.lookupName = "tls";
+                            auto invisibleDemand = globalDemand;
+                            invisibleDemand.visibleProjects = {1};
+                            const std::vector demands{globalDemand, globalDemand, unsupportedDemand, invisibleDemand};
+                            std::vector<nativesharp::frontend::NamespaceStateSymbol> provided;
+                            std::string providerError;
+                            const bool providedOk = provideCppSemanticGlobals(finalGraph, groups, demands, provided, providerError);
+                            bool foundShared = false, foundDeferred = false;
+                            for (const auto& state : provided)
+                            {
+                                foundShared |= state.name == "shared" && state.projectOrdinal == 2 &&
+                                    state.storageName == "?shared@feature@@3HA" && state.cppImportError.empty();
+                                foundDeferred |= state.name == "tls" && state.projectOrdinal == 2 &&
+                                    state.cppImportError.find("thread-local") != std::string::npos;
+                            }
+                            ok &= expect(providedOk && provided.size() == 2 && foundShared && foundDeferred,
+                                         "global provider deduplicates demands, keeps project visibility and defers unsupported storage");
+                            const auto selected = selectCppSemanticGlobal(*entries, 2, "feature::shared");
+                            const auto internal = selectCppSemanticGlobal(*entries, 2, "feature::local");
+                            const auto unsupported = selectCppSemanticGlobal(*entries, 2, "feature::tls");
+                            const auto invisible = selectCppSemanticGlobal(*entries, 1, "feature::shared");
+                            ok &= expect(selected.candidate && selected.declarationIndices.size() == 1 &&
+                                         internal.internalIndices.size() == 1 && !internal.candidate &&
+                                         unsupported.unsupportedIndices.size() == 1 && !unsupported.candidate &&
+                                         invisible.declarationIndices.empty(),
+                                         "global selection retains project, internal and unsupported declarations");
+                            if (selected.candidate && !selected.declarationIndices.empty())
+                            {
+                            auto repeated = *entries;
+                            repeated.push_back((*entries)[selected.declarationIndices[0]]);
+                            repeated.back().referenceIndex += 10;
+                            const auto same = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(same.candidate && same.declarationIndices.size() == 2 && same.conflict.empty(),
+                                         "identical external global declarations retain both origins");
+                            repeated.back().declaration.type.canonicalSpelling = "double";
+                            const auto conflict = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(!conflict.candidate && !conflict.conflict.empty() &&
+                                         conflict.declarationIndices.size() == 2,
+                                         "different types on repeated global declarations conflict");
+                            repeated.back() = (*entries)[selected.declarationIndices[0]];
+                            repeated.back().declaration.dllImport = !repeated.back().declaration.dllImport;
+                            const auto dllConflict = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(!dllConflict.candidate && !dllConflict.conflict.empty(),
+                                         "different DLL import attributes on repeated global declarations conflict");
+                            repeated.back() = (*entries)[selected.declarationIndices[0]];
+                            repeated.back().declaration.qualifiedName = "feature::alias";
+                            repeated.back().declaration.type.isVolatile = true;
+                            const auto alias = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(!alias.candidate && !alias.conflict.empty() && alias.aliasIndices.size() == 1,
+                                         "an incompatible alias of the same data symbol conflicts");
+                            repeated.back().declaration.type.isVolatile = false;
+                            repeated.back().targetTriple = "other-target";
+                            const auto targetConflict = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(!targetConflict.candidate && !targetConflict.conflict.empty(),
+                                         "a symbol alias from a different target cannot be merged");
+                            }
+                        }
+                    }
+                    {
+                        std::vector<CppProjectSessions> recordGroups(2);
+                        recordGroups[0].projectFile = otherProject->projectFile();
+                        recordGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                            CppLanguageMode::Cpp, "struct Shared { int x; }; struct Same { int x; }; struct Equal { int x; }; struct Forward; struct OnlyForward; "
+                            "Shared* use(Shared*); OnlyForward* store(OnlyForward*); int nestedPtr(Shared**); "
+                            "void observe(const OnlyForward*); Shared value(Shared); "
+                            "template<class T> struct Box {}; int specialized(Box<int>*);\n")));
+                        recordGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                            CppLanguageMode::Cpp, "struct Shared { double x; }; struct Same { float x; }; struct Equal { int x; }; struct Forward { int x; };\n")));
+                        recordGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                            CppLanguageMode::Cpp, "struct Shared { int x; }; struct Same { int x; };\n")));
+                        recordGroups[1].projectFile = project->projectFile();
+                        recordGroups[1].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                            CppLanguageMode::Cpp, "namespace { struct Hidden {}; } struct Item {}; struct Shared {}; Shared* own(Shared*);\n")));
+                        auto inventory = collectCppSemanticRecords(finalGraph, recordGroups);
+                        const auto* entries = std::get_if<std::vector<CppSemanticRecordEntry>>(&inventory);
+                        bool first = false, second = false, item = false, anonymous = false, forward = false;
+                        std::optional<std::uint32_t> hashA, hashB, hashAgain;
+                        if (entries)
+                            for (const auto& entry : *entries)
+                            {
+                                first |= entry.projectOrdinal == 1 && entry.referenceIndex == 0 &&
+                                    entry.declaration.name == "Shared" && entry.declaration.sizeBits == 32 && entry.identity;
+                                second |= entry.projectOrdinal == 1 && entry.referenceIndex == 1 &&
+                                    entry.declaration.name == "Shared" && entry.declaration.sizeBits == 64 && entry.identity;
+                                item |= entry.projectOrdinal == 2 && entry.declaration.name == "Item" && entry.identity;
+                                anonymous |= entry.projectOrdinal == 2 && entry.declaration.name == "Hidden" && !entry.identity;
+                                forward |= entry.projectOrdinal == 1 && entry.declaration.name == "Forward" &&
+                                    !entry.declaration.complete && !entry.declaration.odrHash;
+                                if (entry.projectOrdinal == 1 && entry.declaration.name == "Same")
+                                {
+                                    if (entry.referenceIndex == 0) hashA = entry.declaration.odrHash;
+                                    if (entry.referenceIndex == 1) hashB = entry.declaration.odrHash;
+                                    if (entry.referenceIndex == 2) hashAgain = entry.declaration.odrHash;
+                                }
+                            }
+                        ok &= expect(first && second && item && anonymous,
+                                     "record inventory retains conflicting definitions, origins and anonymous entries");
+                        ok &= expect(forward && hashA && hashB && hashAgain && *hashA != *hashB && *hashA == *hashAgain,
+                                     "Clang ODR fingerprints distinguish equal-size fields and remain stable across sessions");
+                        if (entries)
+                        {
+                            const auto grouped = groupCppSemanticRecords(*entries);
+                            bool sharedConflict = false, sameConflict = false, equalUnverified = false;
+                            bool oneDefinition = false, forwardOnly = false, forwardAndDefinition = false, anonymousRetained = false;
+                            for (const auto& group : grouped.groups)
+                            {
+                                sharedConflict |= group.identity.name() == "Shared" && group.projectOrdinal == 1 &&
+                                    group.status == CppRecordGroupStatus::Conflict && group.inventoryIndices.size() == 3;
+                                sameConflict |= group.identity.name() == "Same" && group.projectOrdinal == 1 &&
+                                    group.status == CppRecordGroupStatus::Conflict && group.inventoryIndices.size() == 3;
+                                equalUnverified |= group.identity.name() == "Equal" &&
+                                    group.status == CppRecordGroupStatus::MultipleDefinitionsUnverified &&
+                                    group.inventoryIndices.size() == 2;
+                                oneDefinition |= group.identity.name() == "Item" && group.projectOrdinal == 2 &&
+                                    group.status == CppRecordGroupStatus::OneDefinition;
+                                forwardOnly |= group.identity.name() == "OnlyForward" &&
+                                    group.status == CppRecordGroupStatus::ForwardOnly;
+                                forwardAndDefinition |= group.identity.name() == "Forward" &&
+                                    group.status == CppRecordGroupStatus::OneDefinition && group.inventoryIndices.size() == 2;
+                            }
+                            for (const auto index : grouped.unprojectedIndices)
+                                anonymousRetained |= index < entries->size() && (*entries)[index].declaration.name == "Hidden";
+                            ok &= expect(sharedConflict && sameConflict && equalUnverified && oneDefinition &&
+                                         forwardOnly && forwardAndDefinition && anonymousRetained,
+                                         "record groups retain origins, proven conflicts and unverified matches");
+                            const auto comparison = compareCppRecordDefinitions(*entries, grouped, recordGroups);
+                            const auto* compared = std::get_if<std::vector<CppRecordStructuralComparison>>(&comparison);
+                            bool sameDifferent = false, sharedDifferent = false, equalEquivalent = false;
+                            if (compared)
+                                for (const auto& item : *compared)
+                                {
+                                    const auto& record = grouped.groups[item.groupIndex];
+                                    sameDifferent |= record.identity.name() == "Same" && item.comparedDefinitions == 3 &&
+                                        item.verdict == CppRecordStructuralVerdict::Different;
+                                    sharedDifferent |= record.identity.name() == "Shared" && item.comparedDefinitions == 3 &&
+                                        item.verdict == CppRecordStructuralVerdict::Different;
+                                    equalEquivalent |= record.identity.name() == "Equal" && item.comparedDefinitions == 2 &&
+                                        item.verdict == CppRecordStructuralVerdict::Equivalent;
+                                }
+                            ok &= expect(sameDifferent && sharedDifferent && equalEquivalent,
+                                         "record-group comparison retains structural evidence for each owner and definition");
+                            const auto refinement = refineCppRecordGroupsForPointerTransport(*entries, grouped, recordGroups);
+                            const auto* refined = std::get_if<CppRecordGroups>(&refinement);
+                            bool equalPointerOnly = false, conflictsPreserved = false;
+                            if (refined)
+                                for (const auto& record : refined->groups)
+                                {
+                                    equalPointerOnly |= record.identity.name() == "Equal" &&
+                                        record.status == CppRecordGroupStatus::MultipleDefinitionsPointerCompatible;
+                                    conflictsPreserved |= record.identity.name() == "Same" &&
+                                        record.status == CppRecordGroupStatus::Conflict;
+                                    if (record.identity.name() == "Equal" && record.inventoryIndices.size() == 2)
+                                    {
+                                        auto candidateEntries = *entries;
+                                        for (const auto i : record.inventoryIndices)
+                                            candidateEntries[i].declaration.location = CppSourcePoint{
+                                                std::filesystem::path(argv[3]), 1, 1};
+                                        const bool selected = selectCppRecordMemberDefinition(candidateEntries, record).has_value();
+                                        auto& changed = candidateEntries[record.inventoryIndices.back()].declaration;
+                                        if (!changed.fields.empty()) changed.fields[0].access = CppAccess::Private;
+                                        const bool rejected = !selectCppRecordMemberDefinition(candidateEntries, record);
+                                        ok &= expect(selected && rejected,
+                                                     "repeated members require equal captured contracts at one physical source location");
+                                    }
+                                }
+                            const auto refinedPrepared = refined ? prepareCppRecordObservation(*entries, *refined) :
+                                CppRecordObservationResult{CppRecordObservationFailure{"refinement failed"}};
+                            bool noRepeatedLayout = false;
+                            if (const auto* prepared = std::get_if<CppRecordObservationInputs>(&refinedPrepared))
+                                for (std::size_t i = 0; i < prepared->types.size(); ++i)
+                                    noRepeatedLayout |= refined->groups[prepared->groupByImportedType[i]].identity.name() == "Equal" &&
+                                        !prepared->types[i].objectLayout;
+                            auto noHashEntries = *entries;
+                            for (auto& entry : noHashEntries)
+                                if (entry.declaration.name == "Equal" && entry.referenceIndex == 1) entry.declaration.odrHash.reset();
+                            const auto noHashRefinement = refineCppRecordGroupsForPointerTransport(noHashEntries, grouped, recordGroups);
+                            bool missingEvidenceRetained = false;
+                            if (const auto* missing = std::get_if<CppRecordGroups>(&noHashRefinement))
+                                for (const auto& record : missing->groups)
+                                    missingEvidenceRetained |= record.identity.name() == "Equal" &&
+                                        record.status == CppRecordGroupStatus::MultipleDefinitionsUnverified;
+                            ok &= expect(equalPointerOnly && conflictsPreserved && noRepeatedLayout && missingEvidenceRetained,
+                                         "structural refinement admits only pointer transport with complete matching evidence");
+                            auto invalidComparisonGroups = grouped;
+                            invalidComparisonGroups.groups.push_back(grouped.groups.front());
+                            ok &= expect(std::holds_alternative<CppRecordStructuralComparisonFailure>(
+                                             compareCppRecordDefinitions(*entries, invalidComparisonGroups, recordGroups)),
+                                         "record-group comparison rejects duplicate groups");
+                            auto invalidEntries = *entries;
+                            invalidEntries[grouped.groups.front().inventoryIndices.front()].referenceIndex = recordGroups[0].sessions.size() + 10;
+                            ok &= expect(std::holds_alternative<CppRecordStructuralComparisonFailure>(
+                                             compareCppRecordDefinitions(invalidEntries, grouped, recordGroups)),
+                                         "record-group comparison rejects missing session references");
+                            invalidEntries = *entries;
+                            invalidEntries[grouped.groups.front().inventoryIndices.front()].targetTriple = "different-target";
+                            ok &= expect(std::holds_alternative<CppRecordStructuralComparisonFailure>(
+                                             compareCppRecordDefinitions(invalidEntries, grouped, recordGroups)),
+                                         "record-group comparison rejects a target inconsistent with its session");
+                            auto signatures = collectCppSemanticFunctions(finalGraph, recordGroups);
+                            const auto* signatureEntries = std::get_if<std::vector<CppSemanticInventoryEntry>>(&signatures);
+                            bool signatureUseReturn = false, signatureUseParameter = false, signatureNested = false;
+                            bool signatureForward = false, signatureOtherOwner = false, signatureSpecialized = false;
+                            if (signatureEntries)
+                            {
+                                bool projectedForward = false, projectedReadonly = false, projectedOther = false;
+                                bool rejectedConflict = false, rejectedValue = false, rejectedSpecialization = false;
+                                bool rejectedWrongOwner = false, rejectedDuplicate = false, rejectedUnverified = false;
+                                for (const auto& entry : *signatureEntries)
+                                {
+                                    const auto& moduleName = finalGraph.projects()[entry.projectOrdinal].moduleName();
+                                    const auto projection = projectCppSemanticFunctionWithRecords(
+                                        entry.declaration, entry.projectOrdinal, moduleName, grouped);
+                                    const auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projection);
+                                    const bool failed = std::holds_alternative<CppSemanticFunctionFailure>(projection);
+                                    if (entry.declaration.name == "store")
+                                    {
+                                        const auto identity = projectCppRecordTypeIdentity(*entry.declaration.returnType.element, moduleName);
+                                        projectedForward = symbol && identity && symbol->declaredTypeKey == "type:" + identity->key() + "*" &&
+                                            symbol->parameters.size() == 1 && symbol->parameters[0].typeKey == "type:" + identity->key() + "*";
+                                        auto duplicate = grouped;
+                                        for (const auto& group : grouped.groups)
+                                            if (group.projectOrdinal == entry.projectOrdinal && group.identity.name() == "OnlyForward")
+                                            { duplicate.groups.push_back(group); break; }
+                                        rejectedDuplicate = std::holds_alternative<CppSemanticFunctionFailure>(
+                                            projectCppSemanticFunctionWithRecords(entry.declaration, entry.projectOrdinal, moduleName, duplicate));
+                                        auto unverified = grouped;
+                                        for (auto& group : unverified.groups)
+                                            if (group.projectOrdinal == entry.projectOrdinal && group.identity.name() == "OnlyForward")
+                                                group.status = CppRecordGroupStatus::MultipleDefinitionsUnverified;
+                                        rejectedUnverified = std::holds_alternative<CppSemanticFunctionFailure>(
+                                            projectCppSemanticFunctionWithRecords(entry.declaration, entry.projectOrdinal, moduleName, unverified));
+                                        rejectedWrongOwner = std::holds_alternative<CppSemanticFunctionFailure>(
+                                            projectCppSemanticFunctionWithRecords(entry.declaration, 2, moduleName, grouped));
+                                    }
+                                    if (entry.declaration.name == "observe")
+                                        projectedReadonly = symbol && symbol->parameters.size() == 1 && symbol->parameters[0].pointerPointeeReadonly;
+                                    if (entry.declaration.name == "own") projectedOther = symbol && symbol->projectOrdinal == 2;
+                                    if (entry.declaration.name == "use") rejectedConflict = failed;
+                                    if (entry.declaration.name == "value") rejectedValue = failed;
+                                    if (entry.declaration.name == "specialized") rejectedSpecialization = failed;
+                                }
+                                ok &= expect(projectedForward && projectedReadonly && projectedOther && rejectedConflict &&
+                                             rejectedValue && rejectedSpecialization && rejectedWrongOwner && rejectedDuplicate && rejectedUnverified,
+                                             "isolated record pointer projection preserves identity and rejects unsafe or ambiguous records");
+                                const auto dependencyResult = collectCppSignatureRecordDependencies(finalGraph, *signatureEntries, grouped);
+                                if (const auto* dependencies = std::get_if<std::vector<CppSignatureRecordDependency>>(&dependencyResult))
+                                    for (const auto& dependency : *dependencies)
+                                    {
+                                        const auto& function = (*signatureEntries)[dependency.functionIndex];
+                                        const CppRecordGroup* group = dependency.groupIndex ? &grouped.groups[*dependency.groupIndex] : nullptr;
+                                        const bool conflict = group && group->projectOrdinal == 1 &&
+                                            group->identity.name() == "Shared" && group->status == CppRecordGroupStatus::Conflict;
+                                        if (function.declaration.name == "use" && dependency.indirectionDepth == 1 && conflict)
+                                        {
+                                            signatureUseReturn |= !dependency.parameterIndex;
+                                            signatureUseParameter |= dependency.parameterIndex == std::optional<std::size_t>(0);
+                                        }
+                                        signatureNested |= function.declaration.name == "nestedPtr" && dependency.indirectionDepth == 2 && conflict;
+                                        signatureForward |= function.declaration.name == "store" && group &&
+                                            group->status == CppRecordGroupStatus::ForwardOnly;
+                                        signatureOtherOwner |= function.declaration.name == "own" && group &&
+                                            group->projectOrdinal == 2 && group->identity.name() == "Shared";
+                                        signatureSpecialized |= function.declaration.name == "specialized" &&
+                                            dependency.status == CppSignatureRecordStatus::Unprojectable && !dependency.groupIndex;
+                                    }
+                                auto invalidSignatureGroups = grouped;
+                                invalidSignatureGroups.groups.push_back(grouped.groups[0]);
+                                ok &= expect(std::holds_alternative<CppSignatureRecordFailure>(
+                                                 collectCppSignatureRecordDependencies(finalGraph, *signatureEntries, invalidSignatureGroups)),
+                                             "signature record association rejects duplicate groups");
+                                auto absentGroups = grouped;
+                                std::erase_if(absentGroups.groups, [](const auto& item) {
+                                    return item.projectOrdinal == 1 && item.identity.name() == "Shared";
+                                });
+                                const auto missingResult = collectCppSignatureRecordDependencies(finalGraph, *signatureEntries, absentGroups);
+                                bool missingReported = false;
+                                if (const auto* missing = std::get_if<std::vector<CppSignatureRecordDependency>>(&missingResult))
+                                    for (const auto& dependency : *missing)
+                                        missingReported |= (*signatureEntries)[dependency.functionIndex].declaration.name == "use" &&
+                                            dependency.status == CppSignatureRecordStatus::Missing && !dependency.groupIndex;
+                                auto malformedSignatures = *signatureEntries;
+                                for (auto& entry : malformedSignatures)
+                                    if (entry.declaration.name == "use") entry.declaration.returnType.element.reset();
+                                ok &= expect(missingReported && std::holds_alternative<CppSignatureRecordFailure>(
+                                                 collectCppSignatureRecordDependencies(finalGraph, malformedSignatures, grouped)),
+                                             "signature association reports missing records and rejects incomplete type descriptions");
+                            }
+                            ok &= expect(signatureUseReturn && signatureUseParameter && signatureNested && signatureForward &&
+                                         signatureOtherOwner && signatureSpecialized,
+                                         "signature records retain function position, owning project, conflicts and unprojectable types");
+                            const auto prepared = prepareCppRecordObservation(*entries, grouped);
+                            const auto* inputs = std::get_if<CppRecordObservationInputs>(&prepared);
+                            bool preparedConflict = false, preparedOther = false, preparedForwardNoLayout = false;
+                            bool preparedUnverifiedNoLayout = false, originsMatch = inputs &&
+                                inputs->types.size() == inputs->groupByImportedType.size();
+                            if (inputs)
+                                for (std::size_t i = 0; i < inputs->types.size(); ++i)
+                                {
+                                    const auto groupIndex = inputs->groupByImportedType[i];
+                                    if (groupIndex >= grouped.groups.size()) { originsMatch = false; continue; }
+                                    const auto& group = grouped.groups[groupIndex];
+                                    originsMatch &= inputs->types[i].projectOrdinal == group.projectOrdinal &&
+                                        inputs->types[i].identity.key() == group.identity.key() &&
+                                        !inputs->types[i].sourcePath.empty();
+                                    preparedConflict |= group.identity.name() == "Shared" &&
+                                        group.status == CppRecordGroupStatus::Conflict && group.inventoryIndices.size() == 3 &&
+                                        !inputs->types[i].objectLayout;
+                                    preparedOther |= group.identity.name() == "Item" && group.projectOrdinal == 2;
+                                    preparedForwardNoLayout |= group.identity.name() == "OnlyForward" && !inputs->types[i].objectLayout;
+                                    preparedUnverifiedNoLayout |= group.identity.name() == "Equal" && !inputs->types[i].objectLayout;
+                                }
+                            ok &= expect(inputs && originsMatch && preparedConflict && preparedOther &&
+                                         preparedForwardNoLayout && preparedUnverifiedNoLayout,
+                                         "record observation inputs retain origins and do not invent uncertain layouts");
+                            auto invalidGroups = grouped;
+                            invalidGroups.groups[0].inventoryIndices.push_back(entries->size());
+                            ok &= expect(std::holds_alternative<CppRecordObservationFailure>(
+                                             prepareCppRecordObservation(*entries, invalidGroups)),
+                                         "record observation rejects invalid inventory indices");
+                            auto changedTarget = *entries;
+                            for (auto& entry : changedTarget)
+                                if (entry.declaration.name == "Equal" && entry.referenceIndex == 1)
+                                    entry.targetTriple = "different-target";
+                            const auto changedGroups = groupCppSemanticRecords(changedTarget);
+                            bool targetConflict = false;
+                            for (const auto& group : changedGroups.groups)
+                                targetConflict |= group.identity.name() == "Equal" && group.status == CppRecordGroupStatus::Conflict;
+                            ok &= expect(targetConflict, "record grouping detects target mismatches");
+                        }
+                        recordGroups[1].sessions[0]->close();
+                        auto closed = collectCppSemanticRecords(finalGraph, recordGroups);
+                        const auto* closedError = std::get_if<CppSemanticRecordFailure>(&closed);
+                        ok &= expect(closedError && closedError->projectFile == project->projectFile() &&
+                                     closedError->referenceIndex == 0,
+                                     "record inventory reports the owner and index of a closed session");
+                        if (entries)
+                        {
+                            const auto grouped = groupCppSemanticRecords(*entries);
+                            recordGroups[0].sessions[2]->close();
+                            const auto partlyClosed = compareCppRecordDefinitions(*entries, grouped, recordGroups);
+                            bool differenceWins = false;
+                            if (const auto* results = std::get_if<std::vector<CppRecordStructuralComparison>>(&partlyClosed))
+                                for (const auto& item : *results)
+                                    differenceWins |= grouped.groups[item.groupIndex].identity.name() == "Same" &&
+                                        item.verdict == CppRecordStructuralVerdict::Different;
+                            recordGroups[0].sessions[1]->close();
+                            const auto closedComparison = compareCppRecordDefinitions(*entries, grouped, recordGroups);
+                            bool unavailable = false;
+                            if (const auto* results = std::get_if<std::vector<CppRecordStructuralComparison>>(&closedComparison))
+                                for (const auto& item : *results)
+                                    unavailable |= grouped.groups[item.groupIndex].identity.name() == "Equal" &&
+                                        item.verdict == CppRecordStructuralVerdict::Unavailable;
+                            const auto closedRefinement = refineCppRecordGroupsForPointerTransport(*entries, grouped, recordGroups);
+                            bool closedNotPromoted = false;
+                            if (const auto* result = std::get_if<CppRecordGroups>(&closedRefinement))
+                                for (const auto& record : result->groups)
+                                    closedNotPromoted |= record.identity.name() == "Equal" &&
+                                        record.status == CppRecordGroupStatus::MultipleDefinitionsUnverified;
+                            ok &= expect(differenceWins && unavailable && closedNotPromoted,
+                                         "record comparison preserves differences and reports closed-session uncertainty");
+                        }
+                        recordGroups[0].projectFile = fixture / "missing-owner.nsproj";
+                        auto missingOwner = collectCppSemanticRecords(finalGraph, recordGroups);
+                        ok &= expect(std::holds_alternative<CppSemanticRecordFailure>(missingOwner),
+                                     "record inventory rejects a missing project owner");
+                    }
+                    auto namespaceInventory = collectCppNamespaces(finalGraph, groups);
+                    const auto* namespaceEntries = std::get_if<std::vector<CppNamespaceInventoryEntry>>(
+                        &namespaceInventory);
+                    bool otherNamespace = false, featureNamespace = false, anonymousChild = false;
+                    if (namespaceEntries)
+                        for (const auto& entry : *namespaceEntries)
+                        {
+                            otherNamespace |= entry.declaration.qualifiedName == "other" &&
+                                entry.projectOrdinal == 1 && entry.referenceIndex == 2 &&
+                                entry.moduleName == otherProject->moduleName();
+                            featureNamespace |= entry.declaration.qualifiedName == "feature" &&
+                                entry.projectOrdinal == 2 && entry.referenceIndex == 0 &&
+                                entry.moduleName == project->moduleName();
+                            anonymousChild |= entry.projectOrdinal == 1 && entry.declaration.insideAnonymous;
+                        }
+                    ok &= expect(namespaceEntries && otherNamespace && featureNamespace && anonymousChild,
+                                 "namespace inventory preserves project, reference and anonymous provenance");
+                    if (namespaceEntries)
+                    {
+                        const auto visible = visibleCppNamespaces(*namespaceEntries);
+                        const auto* names = std::get_if<std::vector<std::pair<std::size_t, std::string>>>(&visible);
+                        const auto contains = [&](std::size_t owner, std::string_view name) {
+                            return names && std::any_of(names->begin(), names->end(), [&](const auto& item) {
+                                return item.first == owner && item.second == name;
+                            });
+                        };
+                        ok &= expect(names && names->size() == 3 && contains(1, "other") &&
+                                     contains(1, "other.deep") && contains(2, "feature"),
+                                     "visible namespaces deduplicate reopened names and exclude anonymous descendants");
+                    }
+                    auto inventory = collectCppSemanticFunctions(finalGraph, groups);
+                    const auto* entries = std::get_if<std::vector<CppSemanticInventoryEntry>>(&inventory);
+                    bool otherFound = false, rejectedPointer = false, cppFound = false;
+                    if (entries)
+                    {
+                        for (const auto& entry : *entries)
+                        {
+                            const auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(
+                                &entry.projection);
+                            if (entry.declaration.name == "other_value")
+                                otherFound |= symbol && symbol->projectOrdinal == 1 &&
+                                    symbol->moduleName == otherProject->moduleName() &&
+                                    entry.projectFile == otherProject->projectFile() && entry.referenceIndex == 0;
+                            if (entry.declaration.name == "pointer_value")
+                                rejectedPointer = std::holds_alternative<CppSemanticFunctionFailure>(entry.projection);
+                            if (entry.declaration.name == "value")
+                                cppFound = symbol && symbol->projectOrdinal == 2 &&
+                                    symbol->moduleName == project->moduleName() && symbol->namespaceName == "feature";
+                        }
+                    }
+                    ok &= expect(entries && entries->size() == 6 && otherFound && rejectedPointer && cppFound,
+                                 "inventory uses final graph owners and retains unsupported declarations");
+                    if (entries)
+                    {
+                        auto grouped = groupCppSemanticFunctions(*entries);
+                        const auto* groupedValue = std::get_if<CppSemanticFunctionGroups>(&grouped);
+                        bool duplicateRetained = false, separateOwner = false;
+                        if (groupedValue)
+                        {
+                            for (const auto& group : groupedValue->groups)
+                            {
+                                if (group.symbol.name == "other_value" && group.symbol.projectOrdinal == 1)
+                                    duplicateRetained = group.inventoryIndices.size() == 2 &&
+                                        (*entries)[group.inventoryIndices[0]].referenceIndex == 0 &&
+                                        (*entries)[group.inventoryIndices[1]].referenceIndex == 1;
+                                else if (group.symbol.name == "other_value" && group.symbol.projectOrdinal == 2)
+                                    separateOwner = group.inventoryIndices.size() == 1;
+                            }
+                        }
+                        ok &= expect(groupedValue && groupedValue->groups.size() == 4 &&
+                                     groupedValue->unprojectedIndices.size() == 1 && duplicateRetained && separateOwner,
+                                     "matching declarations group while origins and overloads remain distinct");
+                        if (groupedValue && !groupedValue->groups.empty())
+                        {
+                            auto conflictingDll = *entries;
+                            conflictingDll.push_back((*entries)[groupedValue->groups[0].inventoryIndices[0]]);
+                            conflictingDll.back().declaration.dllImport = !conflictingDll.back().declaration.dllImport;
+                            const auto conflict = selectCppSemanticFunctions(conflictingDll,
+                                conflictingDll.back().projectOrdinal, conflictingDll.back().declaration.qualifiedName);
+                            ok &= expect(std::holds_alternative<CppSemanticFunctionGroupFailure>(conflict),
+                                         "function redeclarations with conflicting DLL import attributes are rejected");
+                        }
+                        const auto absent = selectCppSemanticFunctions(*entries, 1, "missing_function");
+                        const auto* absentValue = std::get_if<CppSemanticFunctionGroups>(&absent);
+                        ok &= expect(absentValue && absentValue->groups.empty() &&
+                                     absentValue->unprojectedIndices.empty(),
+                                     "lookup of an absent name returns no candidates");
+                        const auto otherOwner = selectCppSemanticFunctions(*entries, 2, "other_value");
+                        const auto* ownerValue = std::get_if<CppSemanticFunctionGroups>(&otherOwner);
+                        ok &= expect(ownerValue && ownerValue->groups.size() == 1 &&
+                                     ownerValue->groups[0].symbol.projectOrdinal == 2,
+                                     "lookup does not mix owners of the same name");
+                        bool everyLookupMatches = true;
+                        for (const auto& entry : *entries)
+                        {
+                            const auto& qualified = entry.declaration.qualifiedName;
+                            const auto separator = qualified.rfind("::");
+                            nativesharp::frontend::CppFunctionDemand demand;
+                            demand.lookupName = separator == std::string::npos ? qualified : qualified.substr(separator + 2);
+                            std::string ns = separator == std::string::npos ? "" : qualified.substr(0, separator);
+                            for (std::size_t p = 0; (p = ns.find("::", p)) != std::string::npos; ++p)
+                                ns.replace(p, 2, ".");
+                            demand.lookupNamespaces = {ns};
+                            demand.visibleProjects = {entry.projectOrdinal};
+                            const std::vector demands{demand};
+                            const auto reference = selectCppSemanticFunctions(*entries, entry.projectOrdinal, qualified);
+                            const auto indexed = selectCppSemanticDemands(*entries, demands);
+                            const auto* referenceGroups = std::get_if<CppSemanticFunctionGroups>(&reference);
+                            const auto* indexedGroups = std::get_if<std::vector<CppSemanticDemandCandidates>>(&indexed);
+                            if (!referenceGroups || !indexedGroups || indexedGroups->size() != 1 ||
+                                (*indexedGroups)[0].candidates.unprojectedIndices != referenceGroups->unprojectedIndices ||
+                                (*indexedGroups)[0].candidates.groups.size() != referenceGroups->groups.size())
+                            { everyLookupMatches = false; continue; }
+                            for (std::size_t i = 0; i < referenceGroups->groups.size(); ++i)
+                                everyLookupMatches &= (*indexedGroups)[0].candidates.groups[i].inventoryIndices ==
+                                    referenceGroups->groups[i].inventoryIndices &&
+                                    (*indexedGroups)[0].candidates.groups[i].symbol.mangledName ==
+                                        referenceGroups->groups[i].symbol.mangledName;
+                        }
+                        ok &= expect(everyLookupMatches, "indexed lookup agrees for every real inventory declaration");
+                    }
+                    groups[1].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::Cpp, "namespace feature { struct Opaque; int value(Opaque*); } namespace top { namespace inner { int f(); } }\n")));
+                    auto overloadedInventory = collectCppSemanticFunctions(finalGraph, groups);
+                    const auto* overloadedEntries = std::get_if<std::vector<CppSemanticInventoryEntry>>(
+                        &overloadedInventory);
+                    if (overloadedEntries)
+                    {
+                        auto selected = selectCppSemanticFunctions(*overloadedEntries, 2, "feature::value");
+                        const auto* selectedValue = std::get_if<CppSemanticFunctionGroups>(&selected);
+                        ok &= expect(selectedValue && selectedValue->groups.size() == 2 &&
+                                     selectedValue->unprojectedIndices.size() == 1 &&
+                                     (*overloadedEntries)[selectedValue->unprojectedIndices[0]].declaration.name == "value",
+                                     "lookup retains representable and unprojected overloads with original indices");
+                        nativesharp::frontend::CppFunctionDemand demand;
+                        demand.lookupName = "value";
+                        demand.lookupNamespaces = {"feature"};
+                        demand.visibleProjects = {2};
+                        auto inaccessible = demand;
+                        inaccessible.visibleProjects = {1};
+                        auto nested = demand;
+                        nested.lookupName = "f";
+                        nested.lookupNamespaces = {"top.inner"};
+                        const std::vector demands{demand, demand, inaccessible, nested};
+                        const auto selection = selectCppSemanticDemands(*overloadedEntries, demands);
+                        const auto* matches = std::get_if<std::vector<CppSemanticDemandCandidates>>(&selection);
+                        bool agreesWithReference = selectedValue && matches && !matches->empty() &&
+                            (*matches)[0].candidates.unprojectedIndices == selectedValue->unprojectedIndices &&
+                            (*matches)[0].candidates.groups.size() == selectedValue->groups.size();
+                        if (agreesWithReference)
+                            for (std::size_t i = 0; i < selectedValue->groups.size(); ++i)
+                                agreesWithReference &= (*matches)[0].candidates.groups[i].inventoryIndices ==
+                                    selectedValue->groups[i].inventoryIndices &&
+                                    (*matches)[0].candidates.groups[i].symbol.mangledName ==
+                                        selectedValue->groups[i].symbol.mangledName;
+                        ok &= expect(matches && matches->size() == 3 && (*matches)[0].demandIndex == 0 &&
+                                     (*matches)[1].demandIndex == 1 && (*matches)[0].projectOrdinal == 2 &&
+                                     (*matches)[0].namespaceName == "feature" &&
+                                     (*matches)[0].candidates.groups.size() == 2 &&
+                                     (*matches)[0].candidates.unprojectedIndices.size() == 1 &&
+                                     (*matches)[2].demandIndex == 3 && (*matches)[2].namespaceName == "top.inner" &&
+                                     (*matches)[2].candidates.groups.size() == 1 &&
+                                     (*matches)[2].candidates.groups[0].symbol.name == "f",
+                                     "demand selection preserves overloads, visibility and demand provenance");
+                        ok &= expect(agreesWithReference, "indexed demand selection agrees with the reference lookup");
+                    }
+                    else ok &= expect(false, "overloaded inventory is available");
+                    groups[1].sessions.pop_back();
+                    groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::C, "int pointer_value(int p);\n")));
+                    auto pointerConflict = collectCppSemanticFunctions(finalGraph, groups);
+                    const auto* pointerConflictEntries = std::get_if<std::vector<CppSemanticInventoryEntry>>(
+                        &pointerConflict);
+                    ok &= expect(pointerConflictEntries && std::holds_alternative<CppSemanticFunctionGroupFailure>(
+                                     groupCppSemanticFunctions(*pointerConflictEntries)),
+                                 "conflict is detected even when one C signature is unprojected");
+                    if (pointerConflictEntries)
+                    {
+                        const auto related = selectCppSemanticFunctions(*pointerConflictEntries, 1, "pointer_value");
+                        const auto* conflict = std::get_if<CppSemanticFunctionGroupFailure>(&related);
+                        const auto unrelated = selectCppSemanticFunctions(*pointerConflictEntries, 2, "feature::value");
+                        const auto* unrelatedValue = std::get_if<CppSemanticFunctionGroups>(&unrelated);
+                        ok &= expect(conflict && conflict->firstIndex < pointerConflictEntries->size() &&
+                                     conflict->conflictingIndex < pointerConflictEntries->size() &&
+                                     (*pointerConflictEntries)[conflict->firstIndex].declaration.name == "pointer_value" &&
+                                     unrelatedValue && unrelatedValue->groups.size() == 2,
+                                     "lookup reports relevant conflict by original indices without blocking other names");
+                        nativesharp::frontend::CppFunctionDemand demand;
+                        demand.lookupName = "pointer_value";
+                        demand.lookupNamespaces = {""};
+                        demand.visibleProjects = {1};
+                        const std::vector demands{demand};
+                        const auto demandSelection = selectCppSemanticDemands(*pointerConflictEntries, demands);
+                        const auto* demandFailure = std::get_if<CppSemanticDemandFailure>(&demandSelection);
+                        ok &= expect(conflict && demandFailure && demandFailure->demandIndex == 0 &&
+                                     demandFailure->conflict.firstIndex == conflict->firstIndex &&
+                                     demandFailure->conflict.conflictingIndex == conflict->conflictingIndex,
+                                     "demand selection reports the originating conflict without losing indices");
+                    }
+                    groups[0].sessions.pop_back();
+                    groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::Cpp, "namespace alpha { extern \"C\" int alias(int); }\n")));
+                    groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::Cpp, "namespace beta { extern \"C\" double alias(int); }\n")));
+                    auto aliasInventory = collectCppSemanticFunctions(finalGraph, groups);
+                    const auto* aliasEntries = std::get_if<std::vector<CppSemanticInventoryEntry>>(&aliasInventory);
+                    if (aliasEntries)
+                    {
+                        const auto aliasResult = selectCppSemanticFunctions(*aliasEntries, 1, "alpha::alias");
+                        const auto* aliasFailure = std::get_if<CppSemanticFunctionGroupFailure>(&aliasResult);
+                        ok &= expect(aliasFailure && aliasFailure->firstIndex < aliasEntries->size() &&
+                                     aliasFailure->conflictingIndex < aliasEntries->size() &&
+                                     (*aliasEntries)[aliasFailure->conflictingIndex].declaration.qualifiedName ==
+                                         "beta::alias",
+                                     "selection checks incompatible aliases of the same C symbol");
+                        nativesharp::frontend::CppFunctionDemand demand;
+                        demand.lookupName = "alias";
+                        demand.lookupNamespaces = {"alpha"};
+                        demand.visibleProjects = {1};
+                        const std::vector demands{demand};
+                        const auto indexed = selectCppSemanticDemands(*aliasEntries, demands);
+                        const auto* indexedFailure = std::get_if<CppSemanticDemandFailure>(&indexed);
+                        ok &= expect(aliasFailure && indexedFailure &&
+                                     indexedFailure->conflict.firstIndex == aliasFailure->firstIndex &&
+                                     indexedFailure->conflict.conflictingIndex == aliasFailure->conflictingIndex,
+                                     "indexed selection preserves conflicts between names sharing a C symbol");
+                        const auto delayed = selectCppSemanticDemands(*aliasEntries, demands, true);
+                        const auto* delayedMatches = std::get_if<std::vector<CppSemanticDemandCandidates>>(&delayed);
+                        ok &= expect(aliasFailure && delayedMatches && delayedMatches->size() == 1 &&
+                                     delayedMatches->front().deferredConflict &&
+                                     delayedMatches->front().deferredConflict->firstIndex == aliasFailure->firstIndex &&
+                                     delayedMatches->front().deferredConflict->conflictingIndex == aliasFailure->conflictingIndex,
+                                     "deferred selection preserves conflicts between aliases of one C symbol");
+                    }
+                    else ok &= expect(false, "alias inventory is available");
+                    groups[0].sessions.pop_back();
+                    groups[0].sessions.pop_back();
+                    groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::C, "double other_value(void);\n")));
+                    auto conflictInventory = collectCppSemanticFunctions(finalGraph, groups);
+                    const auto* conflictEntries = std::get_if<std::vector<CppSemanticInventoryEntry>>(
+                        &conflictInventory);
+                    ok &= expect(conflictEntries && std::holds_alternative<CppSemanticFunctionGroupFailure>(
+                                     groupCppSemanticFunctions(*conflictEntries)),
+                                 "separate Clang sessions with conflicting C signatures are not grouped");
+                    std::vector<Project> duplicateOwners{*otherProject, *otherProject, *project};
+                    ProjectGraph ambiguousGraph(project->projectFile(), std::move(duplicateOwners));
+                    ok &= expect(std::holds_alternative<CppSemanticInventoryFailure>(
+                                     collectCppSemanticFunctions(ambiguousGraph, groups)),
+                                 "inventory rejects ambiguous project owners");
+                    ok &= expect(std::holds_alternative<CppNamespaceInventoryFailure>(
+                                     collectCppNamespaces(ambiguousGraph, groups)),
+                                 "namespace inventory rejects ambiguous project owners");
+                    std::vector<CppProjectSessions> invalidGroup(1);
+                    invalidGroup[0].projectFile = fixture / "missing-owner.nsproj";
+                    ok &= expect(std::holds_alternative<CppSemanticInventoryFailure>(
+                                     collectCppSemanticFunctions(finalGraph, invalidGroup)),
+                                 "inventory rejects missing project owners");
+                    ok &= expect(std::holds_alternative<CppNamespaceInventoryFailure>(
+                                     collectCppNamespaces(finalGraph, invalidGroup)),
+                                 "namespace inventory rejects missing project owners");
+                    invalidGroup[0].projectFile = project->projectFile();
+                    invalidGroup[0].sessions.push_back(nullptr);
+                    const auto nullResult = collectCppSemanticFunctions(finalGraph, invalidGroup);
+                    const auto* nullFailure = std::get_if<CppSemanticInventoryFailure>(&nullResult);
+                    ok &= expect(nullFailure && nullFailure->referenceIndex == 0 &&
+                                 nullFailure->message.find("null") != std::string::npos,
+                                 "inventory identifies a null session");
+                    const auto nullNamespaceResult = collectCppNamespaces(finalGraph, invalidGroup);
+                    const auto* nullNamespaceFailure = std::get_if<CppNamespaceInventoryFailure>(&nullNamespaceResult);
+                    ok &= expect(nullNamespaceFailure && nullNamespaceFailure->referenceIndex == 0,
+                                 "namespace inventory identifies a null session");
+                    if (groups[0].sessions[0]) groups[0].sessions[0]->close();
+                    ok &= expect(std::holds_alternative<CppSemanticInventoryFailure>(
+                                     collectCppSemanticFunctions(finalGraph, groups)),
+                                 "inventory rejects unavailable sessions without partial results");
+                    ok &= expect(std::holds_alternative<CppNamespaceInventoryFailure>(
+                                     collectCppNamespaces(finalGraph, groups)),
+                                 "namespace inventory rejects unavailable sessions without partial results");
+                }
+                {
+                    std::ostringstream driverOutput, driverErrors;
+                    nativesharp::driver::DriverExecutionScope scope(driverOutput, driverErrors);
+                    auto* previousScope = nativesharp::driver::activeExecutionScope;
+                    nativesharp::driver::activeExecutionScope = &scope;
+                    scope.cppSessionFactory = &factory;
+                    CompilationInputManifest ordinaryManifest(combinedGraph, {});
+                    nativesharp::frontend::ProjectCompilation ordinaryCompilation;
+                    error.clear();
+                    const bool ordinaryPrepared = nativesharp::driver::configurePrecompiledModules(
+                        ordinaryManifest, ordinaryCompilation, error, false);
+                    ok &= expect(ordinaryPrepared && ordinaryCompilation.cppProjectSessions().empty(),
+                                 "driver without explicit environment does not create C/C++ sessions");
+                    if (plainProject)
+                    {
+                        ProjectGraph plainGraph(plainProject->projectFile(), std::vector<Project>{*plainProject});
+                        CompilationInputManifest plainManifest(plainGraph, {});
+                        nativesharp::frontend::ProjectCompilation plainCompilation;
+                        RejectUnexpectedOpen unexpectedFactory;
+                        scope.cppSessionEnvironment = environment;
+                        scope.cppSessionFactory = &unexpectedFactory;
+                        error.clear();
+                        const bool plainPrepared = nativesharp::driver::configurePrecompiledModules(
+                            plainManifest, plainCompilation, error, false);
+                        ok &= expect(plainPrepared && unexpectedFactory.calls == 0 &&
+                                     plainCompilation.cppProjectSessions().empty(),
+                                     "driver with C/C++ support and no references opens no Clang session");
+                    }
+                    scope.cppSessionEnvironment = environment;
+                    scope.cppSessionFactory = nullptr;
+                    CompilationInputManifest noFactoryManifest(combinedGraph, {});
+                    nativesharp::frontend::ProjectCompilation noFactoryCompilation;
+                    error.clear();
+                    ok &= expect(!nativesharp::driver::configurePrecompiledModules(
+                                     noFactoryManifest, noFactoryCompilation, error, false) &&
+                                 error.find("requires a session factory") != std::string::npos,
+                                 "driver rejects an explicit environment without a factory");
+                    scope.cppSessionFactory = &factory;
+                    CompilationInputManifest driverManifest(combinedGraph, {});
+                    nativesharp::frontend::ProjectCompilation driverCompilation;
+                    error.clear();
+                    const bool prepared = nativesharp::driver::configurePrecompiledModules(
+                        driverManifest, driverCompilation, error, false);
+                    if (!prepared) std::cerr << "Driver preparation failed: " << error << '\n';
+                    ok &= expect(prepared && driverCompilation.cppProjectSessions().size() == 2,
+                                 "driver prepares real project sessions before compilation");
+                    if (prepared)
+                    {
+                        error.clear();
+                        ok &= expect(!driverCompilation.setCppImportedFunctions({}, error) &&
+                                     error.find("function provider") != std::string::npos,
+                                     "driver installs the C/C++ function provider with real sessions");
+                    }
+                    scope.cppSessionEnvironment->resourceDirectory /= "nonexistent-resource";
+                    CompilationInputManifest failedManifest(combinedGraph, {});
+                    nativesharp::frontend::ProjectCompilation failedCompilation;
+                    error.clear();
+                    ok &= expect(!nativesharp::driver::configurePrecompiledModules(
+                                     failedManifest, failedCompilation, error, false) &&
+                                 error.find("C/C++ session failed") != std::string::npos &&
+                                 error.find("reference 0") != std::string::npos,
+                                 "driver reports the project and reference when Clang preparation fails");
+                    nativesharp::driver::activeExecutionScope = previousScope;
+                }
+                auto graphOpened = openCppGraphSessions(combinedGraph, environment, factory, {});
+                auto* graphSessions = std::get_if<CppGraphSessions>(&graphOpened);
+                ok &= expect(graphSessions && graphSessions->projects.size() == 2 &&
+                             graphSessions->projects[0].projectFile == otherProject->projectFile() &&
+                             graphSessions->projects[1].projectFile == project->projectFile() &&
+                             graphSessions->projects[0].sessions.size() == 1 &&
+                             graphSessions->projects[1].sessions.size() == 2,
+                             "graph session groups retain project and reference order");
+                if (graphSessions)
+                {
+                    nativesharp::frontend::ProjectCompilation graphOwner;
+                    ok &= expect(graphOwner.setCppProjectSessions(std::move(graphSessions->projects), error) &&
+                                 graphOwner.cppProjectSessions().size() == 2,
+                                 "graph sessions transfer directly into frontend ownership");
+                }
+                FailThirdOpen failingFactory(factory);
+                auto graphFailed = openCppGraphSessions(combinedGraph, environment, failingFactory, {});
+                const auto* graphFailure = std::get_if<CppGraphSessionFailure>(&graphFailed);
+                ok &= expect(graphFailure && graphFailure->projectFile == project->projectFile() &&
+                             graphFailure->projectFailure.referenceIndex == 1 &&
+                             graphFailure->projectFailure.failure.phase == "test",
+                             "graph failure identifies the exact project and reference without partial output");
+                CppCancellationToken graphCancelled;
+                graphCancelled.cancel();
+                auto graphCancelledResult = openCppGraphSessions(combinedGraph, environment, factory, graphCancelled);
+                const auto* cancelledGraphFailure = std::get_if<CppGraphSessionFailure>(&graphCancelledResult);
+                ok &= expect(cancelledGraphFailure && cancelledGraphFailure->projectFile == otherProject->projectFile() &&
+                             cancelledGraphFailure->projectFailure.failure.phase == "cancel",
+                             "graph session creation propagates cancellation at the owning project");
+                auto first = openCppProjectSessions(*project, environment, factory, {});
+                auto second = openCppProjectSessions(*otherProject, environment, factory, {});
+                auto* firstGroup = std::get_if<CppProjectSessions>(&first);
+                auto* secondGroup = std::get_if<CppProjectSessions>(&second);
+                ok &= expect(firstGroup && secondGroup, "sessions for separate projects open");
+                if (firstGroup && secondGroup)
+                {
+                    std::vector<CppProjectSessions> multiple;
+                    multiple.push_back(std::move(*firstGroup));
+                    multiple.push_back(std::move(*secondGroup));
+                    nativesharp::frontend::ProjectCompilation multiOwner;
+                    ok &= expect(multiOwner.setCppProjectSessions(std::move(multiple), error) &&
+                                 multiOwner.cppProjectSessions().size() == 2 &&
+                                 multiOwner.cppProjectSessions()[0].projectFile !=
+                                     multiOwner.cppProjectSessions()[1].projectFile &&
+                                 multiOwner.cppProjectSessions()[1].sessions[0]->optionsSnapshot().macros.size() == 1,
+                                 "frontend keeps sessions and options separate for two projects");
+                }
+            }
+            if (ownedSessions)
+            {
+                nativesharp::frontend::ProjectCompilation owner;
+                std::vector<CppProjectSessions> groups;
+                groups.push_back(std::move(*ownedSessions));
+                error.clear();
+                ok &= expect(owner.setCppProjectSessions(std::move(groups), error) && error.empty() &&
+                             owner.cppProjectSessions().size() == 1 &&
+                             owner.cppProjectSessions()[0].sessions.size() == 2 &&
+                             owner.cppProjectSessions()[0].sessions[0]->topLevelDeclarationCount().has_value(),
+                             "frontend retains real sessions for their project");
+                std::vector<CppProjectSessions> duplicateGroups(2);
+                duplicateGroups[0].projectFile = project->projectFile();
+                duplicateGroups[1].projectFile = project->projectFile();
+                ok &= expect(!owner.setCppProjectSessions(std::move(duplicateGroups), error) &&
+                             owner.cppProjectSessions().size() == 1,
+                             "duplicate owners are rejected without replacing existing sessions");
+                std::vector<CppProjectSessions> missingOwner(1);
+                ok &= expect(!owner.setCppProjectSessions(std::move(missingOwner), error) &&
+                             owner.cppProjectSessions().size() == 1,
+                             "missing owner is rejected without replacing existing sessions");
+                std::vector<CppProjectSessions> nullSession(1);
+                nullSession[0].projectFile = project->projectFile();
+                nullSession[0].sessions.push_back(nullptr);
+                ok &= expect(!owner.setCppProjectSessions(std::move(nullSession), error) &&
+                             owner.cppProjectSessions().size() == 1,
+                             "null session is rejected without replacing existing sessions");
+                owner.compileProjectSyntax(projectPath, error);
+                ok &= expect(!owner.setCppProjectSessions({}, error) && !error.empty() &&
+                             owner.cppProjectSessions().size() == 1,
+                             "project session sets cannot be replaced after compilation begins");
+            }
         }
     }
     return ok ? 0 : 1;
