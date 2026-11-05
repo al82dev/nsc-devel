@@ -1,0 +1,1 @@
+int Main() { cpp_cross_throw(); return 0; }

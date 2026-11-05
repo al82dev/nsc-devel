@@ -1,0 +1,8 @@
+class Guard {
+    ~Guard() { cpp_cross_record(); }
+}
+int Main() {
+    raii Guard guard = new Guard();
+    cpp_cross_throw();
+    return 0;
+}
