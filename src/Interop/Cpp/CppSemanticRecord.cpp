@@ -978,7 +978,14 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     if (const auto* failure = std::get_if<CppSignatureEnumFailure>(&dependencies))
         return CppRecordObservationFailure{failure->message};
     const auto& enumDependencies = std::get<std::vector<CppSignatureEnumDependency>>(dependencies);
-    if (!enumDependencies.empty())
+    auto globalInventory = collectCppSemanticGlobals(*graph, compilation.cppProjectSessions());
+    if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&globalInventory))
+        return CppRecordObservationFailure{failure->message};
+    const auto& globals = std::get<std::vector<CppSemanticGlobalEntry>>(globalInventory);
+    const bool hasEnumGlobals = std::any_of(globals.begin(), globals.end(), [](const auto& entry) {
+        return entry.declaration.externalLinkage && entry.declaration.type.kind == CppTypeKind::Enumeration;
+    });
+    if (!enumDependencies.empty() || hasEnumGlobals)
     {
         frontend::ProjectMemberModel members;
         members.setPrecompiledSnapshots(finalSnapshots);
@@ -1005,6 +1012,38 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
                 return CppRecordObservationFailure{"C enum function signature conflicts with another type: " + type.identity.name()};
             if (enumIdentities.insert(type.identity.key()).second) result.referencedEnumTypes.push_back(type);
         }
+        for (const auto& demand : demands.cppFunctionDemands())
+            for (const auto owner : demand.visibleProjects)
+                for (const auto& ns : demand.lookupNamespaces)
+                {
+                    if (owner >= graph->projects().size() || demand.lookupName.empty()) continue;
+                    std::string qualified;
+                    for (const char c : ns) qualified += c == '.' ? "::" : std::string(1, c);
+                    if (!qualified.empty()) qualified += "::";
+                    qualified += demand.lookupName;
+                    for (const auto& entry : globals)
+                    {
+                        const auto& global = entry.declaration;
+                        const auto& enumType = global.type;
+                        if (entry.projectOrdinal != owner || !global.externalLinkage ||
+                            global.qualifiedName != qualified || enumType.kind != CppTypeKind::Enumeration ||
+                            !enumType.enumIdentity || enumType.enumIdentity->anonymousContext ||
+                            enumType.enumIdentity->name.empty() ||
+                            enumType.enumIdentity->qualifiedName != enumType.enumIdentity->name) continue;
+                        const compilation::TypeIdentity identity(graph->projects()[owner].moduleName(), {}, {},
+                                                                 enumType.enumIdentity->name);
+                        const auto candidate = std::find_if(signatureEnums.begin(), signatureEnums.end(), [&](const auto& type) {
+                            return type.projectOrdinal == owner && type.identity.key() == identity.key();
+                        });
+                        if (candidate == signatureEnums.end()) continue;
+                        if (!candidate->deferredImportError.empty())
+                            return CppRecordObservationFailure{candidate->deferredImportError};
+                        if (collidingEnumIdentities.contains(candidate->identity.key()))
+                            return CppRecordObservationFailure{"C enum global type conflicts with another type: " + candidate->identity.name()};
+                        if (enumIdentities.insert(candidate->identity.key()).second)
+                            result.referencedEnumTypes.push_back(*candidate);
+                    }
+                }
     }
     return result;
 }
