@@ -1293,7 +1293,7 @@ int main(int argc, char** argv)
                             std::vector<CppProjectSessions> enumGroups(1);
                             enumGroups[0].projectFile = otherProject->projectFile();
                             enumGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                                CppLanguageMode::C, "enum ChoiceType { Choice = -3 }; enum ChoiceType echo_choice(enum ChoiceType* x);\n")));
+                                CppLanguageMode::C, "enum ChoiceType { Choice = -3 }; enum ChoiceType echo_choice(enum ChoiceType* x); int apply_choice(enum ChoiceType (*cb)(enum ChoiceType*));\n")));
                             nativesharp::frontend::CppFunctionDemand demand;
                             demand.lookupName = "Choice";
                             demand.lookupNamespaces = {""};
@@ -1316,6 +1316,7 @@ int main(int argc, char** argv)
                                 : CppSignatureEnumResult{CppSignatureEnumFailure{"function fixture unavailable"}};
                             const auto* enumDependencies = std::get_if<std::vector<CppSignatureEnumDependency>>(&dependencies);
                             bool resultDependency = false, parameterDependency = false;
+                            bool callbackResult = false, callbackParameter = false;
                             if (enumDependencies)
                                 for (const auto& dependency : *enumDependencies)
                                 {
@@ -1323,6 +1324,13 @@ int main(int argc, char** argv)
                                         dependency.status == CppSignatureEnumStatus::Matched && dependency.candidateIndex == 0;
                                     parameterDependency |= dependency.parameterIndex == 0 && dependency.indirectionDepth == 1 &&
                                         dependency.status == CppSignatureEnumStatus::Matched && dependency.candidateIndex == 0;
+                                    if (functions && dependency.functionIndex < functions->size() &&
+                                        (*functions)[dependency.functionIndex].declaration.name == "apply_choice" &&
+                                        dependency.parameterIndex == 0 && dependency.status == CppSignatureEnumStatus::Matched)
+                                    {
+                                        callbackResult |= dependency.indirectionDepth == 1;
+                                        callbackParameter |= dependency.indirectionDepth == 2;
+                                    }
                                 }
                             nativesharp::frontend::CppFunctionDemand callDemand;
                             callDemand.lookupName = "echo_choice";
@@ -1351,7 +1359,8 @@ int main(int argc, char** argv)
                                 CppLanguageMode::C, "extern int Choice;\n")));
                             const bool combined = provideCppSemanticValues(finalGraph, enumGroups,
                                 std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1), states, enumError);
-                            ok &= expect(correct && correctType && resultDependency && parameterDependency && demandedEnum &&
+                            ok &= expect(correct && correctType && resultDependency && parameterDependency &&
+                                         callbackResult && callbackParameter && demandedEnum &&
                                          conflictingEnums && deferredType && combined && states.size() == 1 &&
                                          states[0].cppImportError.find("conflicts") != std::string::npos,
                                          "C enum provider preserves value and reports conflicting observations");
