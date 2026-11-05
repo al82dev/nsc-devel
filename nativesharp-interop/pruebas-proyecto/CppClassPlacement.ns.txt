@@ -1,0 +1,1 @@
+int Main() { var p = Demo.make(); var value = new (p) Demo.Widget(); return 0; }

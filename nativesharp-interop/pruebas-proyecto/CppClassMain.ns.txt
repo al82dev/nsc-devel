@@ -1,0 +1,5 @@
+int Main() {
+    var p = Demo.make();
+    p->value = 12;
+    return p->add(2) + Demo.Widget.scale(3) + Demo.Widget.shared + p->value;
+}
