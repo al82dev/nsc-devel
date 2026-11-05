@@ -1069,6 +1069,15 @@ int main(int argc, char** argv)
             ok &= expect(invalidOptionsFailure && invalidOptionsFailure->referenceIndex == 1 &&
                          invalidOptionsFailure->failure.phase == "options" && preflightFactory.calls == 0,
                          "invalid later reference is rejected before opening any project session");
+            for (const auto* invalidStandard : {"not-a-real-standard", "c11"})
+            {
+                invalidOptions[1].languageStandard = invalidStandard;
+                const auto result = openCppProjectSessions(invalidOptions, environment, preflightFactory, {});
+                const auto* failure = std::get_if<CppProjectSessionFailure>(&result);
+                ok &= expect(failure && failure->referenceIndex == 1 && failure->failure.phase == "options" &&
+                             preflightFactory.calls == 0,
+                             "unknown or wrong-language standard is rejected before opening sessions");
+            }
             broken[1].headerPath = fixture / "missing-session-header.h";
             auto failed = openCppProjectSessions(broken, environment, factory, {});
             const auto* failure = std::get_if<CppProjectSessionFailure>(&failed);
