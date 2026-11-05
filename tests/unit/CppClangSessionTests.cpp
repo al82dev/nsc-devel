@@ -2154,7 +2154,7 @@ int main(int argc, char** argv)
                                   "int bridge_probe(size_t n, ...);\n"
                                   "struct Pair { char a; int b; }; struct Incomplete;\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
-                                  "typedef struct Pair PairAlias; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
+                                  "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
                                   "enum Color { CMinus = -3, CPlus = 5 }; enum { CAnonymous = 9 };\n"
@@ -2566,6 +2566,47 @@ int main(int argc, char** argv)
                     if (!bound) std::cerr << "C typedef semantic setup failed: " << error << '\n';
                     ok &= expect(bound && supplied && expanded,
                                  "scalar typedef enters parser and resolves to its underlying NativeSharp type");
+                }
+                {
+                    nativesharp::frontend::ProjectCompilation recordAliasCompilation;
+                    recordAliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() == "Main.ns")
+                            return "PairAlias* Echo(Pair* value) { return value; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    const auto* captured = cRecords ? recordByName(*cRecords, "Pair") : nullptr;
+                    const auto recordSnapshot = captured ? std::optional<CppRecordDeclaration>(*captured) : std::nullopt;
+                    const auto aliasesSnapshot = cAliases;
+                    const bool configured = recordAliasCompilation.setExperimentalCppTypeProvider(
+                        [recordSnapshot](const auto& graph, auto, auto& output, auto& why) {
+                            if (!recordSnapshot || graph.projects().empty()) { why = "record fixture unavailable"; return false; }
+                            const auto identity = projectCppRecordIdentity(*recordSnapshot, graph.projects()[0].moduleName());
+                            if (!identity) { why = "record identity unavailable"; return false; }
+                            output.push_back({*identity, nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                                nativesharp::frontend::NamedTypeAccessibility::Public, 0, "probe.c"});
+                            return true;
+                        }, error) && recordAliasCompilation.setCppTypeAliasProvider(
+                        [aliasesSnapshot](const auto& graph, auto, auto& output, auto& why) {
+                            if (!aliasesSnapshot || graph.projects().empty()) { why = "alias fixture unavailable"; return false; }
+                            for (const auto& alias : *aliasesSnapshot)
+                                if (alias.name == "Pair" || alias.name == "PairAlias")
+                                    output.push_back({0, graph.projects()[0].projectFile(), 0,
+                                                      "x86_64-pc-windows-msvc", alias});
+                            return true;
+                        }, error);
+                    const bool bound = configured && recordAliasCompilation.compileProjectNames(semanticPath, error);
+                    bool aliasBound = false, tagBound = false;
+                    if (bound && recordAliasCompilation.nameLookup())
+                        for (const auto& binding : recordAliasCompilation.nameLookup()->bindings())
+                        {
+                            aliasBound |= binding.writtenName == "PairAlias" && binding.syntax &&
+                                binding.syntax->baseName() == "Pair";
+                            tagBound |= binding.writtenName == "Pair";
+                        }
+                    if (!bound) std::cerr << "C record typedef semantic setup failed: " << error << '\n';
+                    ok &= expect(bound && aliasBound && tagBound,
+                                 "record typedef and same-named C tag bind to the imported record");
                 }
                 auto incompleteProjection = imported;
                 incompleteProjection.mangledName.clear();
