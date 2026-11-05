@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>SnapshotConsumer</Name></PropertyGroup><ItemGroup><Compile Include="Consumer.ns" /><LibraryReference Include="SnapshotProducer.lib" /></ItemGroup></Project>
