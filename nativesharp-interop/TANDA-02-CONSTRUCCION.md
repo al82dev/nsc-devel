@@ -26,8 +26,8 @@ pertenece a las tandas posteriores y no se infiere de esta validación de constr
 Comandos de configuración existentes, ejecutados desde CMD y con el entorno definido por el script del proyecto:
 
 ```cmd
-call A:\llvm-project-al82dev\nativesharp-interop\configurar-nsc-tanda1.cmd OFF
-call A:\llvm-project-al82dev\nativesharp-interop\configurar-nsc-tanda1.cmd ON ON
+call A:\nsc-devel\nativesharp-interop\configurar-nsc-tanda1.cmd OFF
+call A:\nsc-devel\nativesharp-interop\configurar-nsc-tanda1.cmd ON ON
 ```
 
 El segundo argumento activa el target de pruebas de sesión. Los comandos anteriores documentan la configuración;

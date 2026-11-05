@@ -1710,7 +1710,7 @@ int main(int argc, char** argv)
         }
     }
     {
-        const auto projectPath = std::filesystem::path("A:/llvm-project-al82dev/nativesharp-interop/pruebas-proyecto/CppProject.nsproj");
+        const auto projectPath = std::filesystem::path("A:/nsc-devel/nativesharp-interop/pruebas-proyecto/CppProject.nsproj");
         nativesharp::compilation::ProjectGraphLoader loader;
         std::string error;
         auto graph = loader.load(projectPath, error);

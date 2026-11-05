@@ -47,7 +47,7 @@ Fuentes: `A:/nsc-devel`, rama `development-cpp-clang` y revisión fijada más ad
 |---|---|
 | Objetivo | Analizar Carbon, NSC y Clang, y documentar cómo lograr interoperabilidad directa C/C++ ↔ NativeSharp con cambios concretos y evidencia. |
 | Naturaleza | Investigación y documentación; no implementar las modificaciones propuestas. |
-| Escritura | Documentos del plan en `A:/llvm-project-al82dev/nativesharp-interop/`. No modificar código, configuraciones de build, pruebas ni Git. |
+| Escritura | Históricamente, documentos del plan en el fork de LLVM. El directorio vigente es `A:/nsc-devel/nativesharp-interop/`; ver [traslado](TRASLADO-A-NSC.md). La restricción de solo planificación correspondía a aquella fase. |
 | Fuentes de solo lectura | `A:/nsc-devel`, el código fuente del fork `A:/llvm-project-al82dev`, `A:/al82dev-carbon-lang`, y antecedentes `A:/nslink-devel` y `A:/nsc-bindings-devel`. |
 | Referencia preservada | Tag `development-freeze` y comportamiento existente de NSC; su commit observado se registra en la revisión local. La rama de trabajo observada es `development-cpp-clang`. No se conoce por esta consulta la revisión exacta del binario instalado en C:. |
 | Compilación y pruebas | Ninguna ejecución de builds o pruebas en esta etapa de planificación. La validación documental consiste en revisar sus fuentes y coherencia. Las pruebas existentes no se modifican. |

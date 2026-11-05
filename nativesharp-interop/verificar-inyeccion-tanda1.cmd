@@ -9,7 +9,7 @@ set "PATH=A:\al82dev-clang\bin;%PATH%"
 set "TEMP=A:\nsc-interop-build\temp"
 set "TMP=%TEMP%"
 cd /d A:\nsc-interop-build
-A:\al82dev-clang\bin\clang-cl.exe /nologo /std:c++20 /MT /W4 /WX /clang:-fuse-ld=lld /I A:\nsc-devel\include /I A:\nsc-interop-build\tanda1-OFF\generated /FeA:\nsc-interop-build\prueba-inyeccion.exe A:\llvm-project-al82dev\nativesharp-interop\prueba-inyeccion-tanda1.cpp A:\nsc-interop-build\tanda1-OFF\lib\nsc_frontend.lib A:\nsc-interop-build\tanda1-OFF\lib\nsc_precompiled.lib A:\nsc-interop-build\tanda1-OFF\lib\nsc_compilation.lib A:\nsc-interop-build\tanda1-OFF\lib\nsc_target.lib A:\nsc-interop-build\tanda1-OFF\lib\nsc_basic.lib /link /nologo
+A:\al82dev-clang\bin\clang-cl.exe /nologo /std:c++20 /MT /W4 /WX /clang:-fuse-ld=lld /I A:\nsc-devel\include /I A:\nsc-interop-build\tanda1-OFF\generated /FeA:\nsc-interop-build\prueba-inyeccion.exe A:\nsc-devel\nativesharp-interop\prueba-inyeccion-tanda1.cpp A:\nsc-interop-build\tanda1-OFF\lib\nsc_frontend.lib A:\nsc-interop-build\tanda1-OFF\lib\nsc_precompiled.lib A:\nsc-interop-build\tanda1-OFF\lib\nsc_compilation.lib A:\nsc-interop-build\tanda1-OFF\lib\nsc_target.lib A:\nsc-interop-build\tanda1-OFF\lib\nsc_basic.lib /link /nologo
 if errorlevel 1 exit /b %ERRORLEVEL%
 A:\nsc-interop-build\prueba-inyeccion.exe
 exit /b %ERRORLEVEL%

@@ -1,10 +1,10 @@
 @echo off
 setlocal
-cd /d A:\llvm-project-al82dev\nativesharp-interop
+cd /d A:\nsc-devel\nativesharp-interop
 if not exist evidencia mkdir evidencia
 if not exist temp mkdir temp
-set "TEMP=A:\llvm-project-al82dev\nativesharp-interop\temp"
-set "TMP=A:\llvm-project-al82dev\nativesharp-interop\temp"
+set "TEMP=A:\nsc-devel\nativesharp-interop\temp"
+set "TMP=A:\nsc-devel\nativesharp-interop\temp"
 git -C A:\llvm-project-al82dev rev-parse HEAD > evidencia\llvm-commit.txt 2>&1
 git -C A:\llvm-project-al82dev status --short > evidencia\llvm-status.txt 2>&1
 git -C A:\nsc-devel rev-parse HEAD > evidencia\nsc-commit.txt 2>&1

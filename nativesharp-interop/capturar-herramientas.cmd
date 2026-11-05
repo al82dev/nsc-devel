@@ -1,8 +1,8 @@
 @echo off
 setlocal
-cd /d A:\llvm-project-al82dev\nativesharp-interop
-set "TEMP=A:\llvm-project-al82dev\nativesharp-interop\temp"
-set "TMP=A:\llvm-project-al82dev\nativesharp-interop\temp"
+cd /d A:\nsc-devel\nativesharp-interop
+set "TEMP=A:\nsc-devel\nativesharp-interop\temp"
+set "TMP=A:\nsc-devel\nativesharp-interop\temp"
 for %%G in (clang-cl.exe lld-link.exe llvm-lib.exe llvm-ml.exe llvm-rc.exe llvm-mt.exe cmake.exe ninja.exe) do (
   for %%H in ("%%~$PATH:G") do certutil -hashfile "%%~H" SHA256 > evidencia\tool-%%G-sha256.txt 2>&1
 )

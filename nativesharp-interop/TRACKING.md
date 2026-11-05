@@ -1,5 +1,9 @@
 # Tracking: interoperabilidad directa de C y C++ con NativeSharp
 
+**Ubicación vigente:** `A:/nsc-devel/nativesharp-interop`. El historial, las
+pruebas y la evidencia se trasladaron desde el fork de LLVM; detalles en
+[TRASLADO-A-NSC.md](TRASLADO-A-NSC.md).
+
 ## Objetivo y forma de usar este documento
 
 Poder escribir programas en NativeSharp que consuman bibliotecas C y C++ de manera directa y cómoda, con una cobertura amplia de sus características. Las tandas ordenan el trabajo y su comprobación; completar una tanda no significa haber terminado la interoperabilidad.
