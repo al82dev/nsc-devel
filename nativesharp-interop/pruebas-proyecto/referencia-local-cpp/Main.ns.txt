@@ -1,0 +1,6 @@
+int Main() {
+    var p = Demo.make();
+    ref Demo.Widget value = ref *p;
+    value.value = 12;
+    return value.add(2) + p->value;
+}

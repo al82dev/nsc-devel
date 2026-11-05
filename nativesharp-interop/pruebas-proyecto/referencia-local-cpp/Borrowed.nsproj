@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CppBorrowedReference</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Borrowed.ns" />
+    <CppLibraryReference Header="OwnedApi.h" Language="C++" Standard="c++20" Library="owned-api.lib" />
+  </ItemGroup>
+</Project>

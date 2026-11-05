@@ -1,0 +1,13 @@
+int Main() {
+    var p = BorrowedDemo.make();
+    {
+        ref BorrowedDemo.Widget value = ref *p;
+        value.value = 12;
+        if (value.add(2) != 14) return 91;
+    }
+    if (BorrowedDemo.destroyed() != 0) return 92;
+    int result = p->value + p->add(2);
+    BorrowedDemo.releaseObject();
+    if (BorrowedDemo.destroyed() != 1) return 93;
+    return result;
+}
