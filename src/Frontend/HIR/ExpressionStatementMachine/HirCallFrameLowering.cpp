@@ -670,6 +670,20 @@ bool ProjectOopHirModel::acceptNamespaceCallArgumentChild(
         call.binding->selectedArgumentParameterOrdinals[selectedIndex];
     if (parameterOrdinal >= call.target->parameters.size())
     {
+        if (call.target->isVariadic && !call.target->cppCanonicalIdentity.empty() &&
+            selectedIndex < call.binding->selectedConversions.size())
+        {
+            const auto& conversion = call.binding->selectedConversions[selectedIndex];
+            const ast::AstNode* argumentSyntax = call.node->syntax->children()[index];
+            if (conversion.kind != ProjectConversionKind::Identity)
+                child = wrapImplicitConversion(std::move(child), conversion, argumentSyntax);
+            call.node->children.push_back(std::move(child));
+            call.node->argumentParameterOrdinals.push_back(parameterOrdinal);
+            call.node->argumentTypeKeys.push_back(conversion.targetTypeKey);
+            if (call.nextArgument == call.node->syntax->children().size())
+                call.stage = internal::NamespaceCallFrameStage::Ready;
+            return true;
+        }
         error = "namespace function argument has no matching parameter";
         return false;
     }
