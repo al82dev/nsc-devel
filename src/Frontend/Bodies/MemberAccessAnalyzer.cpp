@@ -787,7 +787,10 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
         readonlyFieldAssignable(field, methodMemberOrdinal);
     result.assignable = !receiver.readonlyReceiver && !field.isConst &&
         (!field.isReadonly || readonlyOnThis);
-    result.addressable = !field.isBitField;
+    // C++ qualified storage cannot be exposed through an unqualified pointer until
+    // the pointer type carries the field's const/volatile contract.
+    result.addressable = !field.isBitField &&
+        !(field.isCppExternal && (field.isReadonly || field.isVolatile));
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
     result.pointerNullable = field.declaredPointerNullable;
