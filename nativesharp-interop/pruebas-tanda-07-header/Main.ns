@@ -1,0 +1,1 @@
+int Main() { return project_sum(1, 2); }

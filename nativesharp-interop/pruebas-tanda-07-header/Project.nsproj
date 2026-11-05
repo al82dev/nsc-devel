@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>HeaderChange</Name></PropertyGroup><ItemGroup><CppLibraryReference Header="Api.h" Language="C" Standard="c11" /></ItemGroup></Project>
