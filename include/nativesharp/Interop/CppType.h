@@ -40,6 +40,7 @@ struct CppType
     std::string unqualifiedCanonicalSpelling;
     bool isConst = false;
     bool isVolatile = false;
+    bool isRestrict = false;
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
     std::optional<std::uint64_t> arrayCount;

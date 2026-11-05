@@ -408,7 +408,7 @@ bool sameMemberType(const CppType& a, const CppType& b, unsigned depth = 0)
 {
     if (depth > 64 || a.kind != b.kind || a.canonicalSpelling != b.canonicalSpelling ||
         a.unqualifiedCanonicalSpelling != b.unqualifiedCanonicalSpelling ||
-        a.isConst != b.isConst || a.isVolatile != b.isVolatile || a.sizeBits != b.sizeBits ||
+        a.isConst != b.isConst || a.isVolatile != b.isVolatile || a.isRestrict != b.isRestrict || a.sizeBits != b.sizeBits ||
         a.alignmentBits != b.alignmentBits || a.arrayCount != b.arrayCount ||
         static_cast<bool>(a.element) != static_cast<bool>(b.element) ||
         static_cast<bool>(a.enumUnderlying) != static_cast<bool>(b.enumUnderlying) ||

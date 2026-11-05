@@ -60,6 +60,7 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     result.unqualifiedCanonicalSpelling = canonical.getUnqualifiedType().getAsString();
     result.isConst = canonical.isConstQualified();
     result.isVolatile = canonical.isVolatileQualified();
+    result.isRestrict = canonical.isRestrictQualified();
     const clang::Type* raw = canonical.getTypePtr();
     clang::QualType element;
     if (raw->isVoidType()) result.kind = CppTypeKind::Void;
