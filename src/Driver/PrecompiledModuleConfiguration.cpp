@@ -311,6 +311,29 @@ bool lookupCompilationBundle(
     // below reports the cache as disabled and the sources are read again by the syntax phase.
     if (artifactCache != nullptr && artifactCache->enabled())
     {
+        interop::LibraryMetadataCodec codec;
+        for (const auto& project : closedGraph.projects())
+            for (const auto& reference : project.libraryReferences())
+            {
+                const auto metadata = compilation.libraryMetadataRepository().decode(
+                    reference.metadataPath,
+                    [&codec](std::span<const std::uint8_t> bytes, interop::LibraryMetadata& model,
+                             std::string& decodeError) { return codec.read(bytes, model, decodeError); },
+                    error);
+                if (!metadata) return false;
+                if (!metadata->cppBinaryDependencies.empty())
+                {
+                    std::vector<interop::ResolvedCppBinaryDependency> dependencies;
+                    if (!interop::resolveCppBinaryMetadataDependencies(metadata->cppBinaryDependencies,
+                            reference.metadataPath.parent_path(), dependencies, error))
+                        return false;
+                    for (const auto& dependency : dependencies)
+                    {
+                        manifest.addInputFile(dependency.libraryPath);
+                        if (!dependency.runtimePath.empty()) manifest.addInputFile(dependency.runtimePath);
+                    }
+                }
+            }
         bundleCache.setRoot(
             artifactCache->root() / "compilation-bundles");
         manifest.setInputDigestCacheRoot(artifactCache->root() / "input-digests");
