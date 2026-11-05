@@ -2,6 +2,24 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Validación agrupada de arreglos globales C: 2026-11-05
+
+La primera ejecución después de `7ca9b4533`, `c919ab94d` y `482d14f21`
+comprobó el acceso a elementos, pero falló porque la asignación del arreglo
+completo se compiló. `120f0423f` corrigió la asignabilidad del estado externo
+sin cambiar la mutabilidad de los elementos.
+
+La segunda ejecución de `call nativesharp-interop\validar-tanda-08.cmd`
+terminó con código 0: pasaron ON/OFF, suite Clang, restauración, equivalencia y
+los siete proyectos. NativeSharp escribió y leyó un arreglo `int[3]` y una
+matriz `int[2][3]`; C comprobó los mismos valores. `array-assign.log` confirmó
+el rechazo `left side of assignment is not assignable` para el arreglo entero.
+
+El resultado corresponde a Windows x64 O0, escalares sin calificar y los
+fixtures indicados. No demuestra globales de enum o record en arreglos,
+calificadores, límites incompletos ni todas las dimensiones; T08-004 y T08-016
+permanecen abiertos.
+
 ## Validación agrupada de punteros y volatile enum: 2026-11-05
 
 Con `87aa55ced`, `1f3c9c6cb`, `2deedabf2` y `84a75735f`, la ejecución de
