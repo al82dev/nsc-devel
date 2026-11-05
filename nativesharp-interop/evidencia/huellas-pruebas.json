@@ -1,0 +1,948 @@
+{
+  "scope": "A:\\clang-tests",
+  "excludes": [
+    "temp"
+  ],
+  "files": [
+    {
+      "path": "A:\\clang-tests\\archivos-01\\compilacion-inventario.txt",
+      "bytes": 27373,
+      "sha256": "a7294e2722eb8c5a1626b79f198f65793ddf65304d1d3ab7600f0a1db73cf806"
+    },
+    {
+      "path": "A:\\clang-tests\\archivos-01\\inventario.exe",
+      "bytes": 240640,
+      "sha256": "dcac9d498cc2a034d8db3d270c8432bf280b5d5566ce6b46c1883ca21725fc34"
+    },
+    {
+      "path": "A:\\clang-tests\\archivos-01\\resultado.txt",
+      "bytes": 9,
+      "sha256": "fe24bd9795710cc0d4d485043ee330f6c1b65e7a0f547e1ccd2739a3a14fd6cb"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\clang-o0.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\clang-o2.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\consumer-o0.exe",
+      "bytes": 136704,
+      "sha256": "d456043cea03f3e8e38177fd2560d39f8a466aa2a0a5bb63cef29594ac419dff"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\consumer-o2.exe",
+      "bytes": 134656,
+      "sha256": "d330ea0872697df56644c295216b8dc413fbb1f7df840924068aae6f5ef5a87d"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\consumer.cpp",
+      "bytes": 1133,
+      "sha256": "eef618e8530c1f1492a775f7fe36176b56d11ac280f9afa3ade1685440283191"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\MyClass.h",
+      "bytes": 1921,
+      "sha256": "5dd1baaf467d62bb36c8879533b08113727bbae77d4a05925da2dce5824f99ff"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\MyClass.lib",
+      "bytes": 7708,
+      "sha256": "660c998f008154982d73695b4830a5eee733b1d03aaf03df0f65cf87bc9f33aa"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\MyClass.ns",
+      "bytes": 281,
+      "sha256": "b06ae7b022e72ce4b3ac2ba0f539765a64fa68d8978d46b231f312b9279c216b"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\MyClass.nsmeta",
+      "bytes": 1802,
+      "sha256": "8f3cdc6f68ead841a6eab57d77a90bff32b25cc1ae5bbc27398fd940ed346bb8"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\MyClass.nsproducts",
+      "bytes": 5856,
+      "sha256": "8f5d083bb42b5a9845ec83a26fc1e6bd6c942db458977f23b6defcd6263d1e24"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\MyClass.nsproj",
+      "bytes": 168,
+      "sha256": "b326e9e062d5576dfb102b1c4d203208eb2f027c0a3045bc7ae012b91b0587a8"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\MyClassO2.h",
+      "bytes": 1921,
+      "sha256": "5dd1baaf467d62bb36c8879533b08113727bbae77d4a05925da2dce5824f99ff"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\MyClassO2.lib",
+      "bytes": 5124,
+      "sha256": "76862cb01c6dec1d76426a67a3b524e5b69c81c3c92522ba341a0c1486edae81"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\MyClassO2.nsmeta",
+      "bytes": 1802,
+      "sha256": "8f3cdc6f68ead841a6eab57d77a90bff32b25cc1ae5bbc27398fd940ed346bb8"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\MyClassO2.nsproducts",
+      "bytes": 5856,
+      "sha256": "8f5d083bb42b5a9845ec83a26fc1e6bd6c942db458977f23b6defcd6263d1e24"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\NativeSharpRuntime.lib",
+      "bytes": 32018,
+      "sha256": "23c570268a04a2dbabf9d232d453b3cb49f79f60358775002a39a0a52f7a0988"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\nsc-o0.txt",
+      "bytes": 203,
+      "sha256": "207de25f71cc7cbad05814851996adfcede94ea879d48975ba86d1f88c33f8b6"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\nsc-o2.txt",
+      "bytes": 203,
+      "sha256": "207de25f71cc7cbad05814851996adfcede94ea879d48975ba86d1f88c33f8b6"
+    },
+    {
+      "path": "A:\\clang-tests\\clase-estado-01\\runtime.txt",
+      "bytes": 57,
+      "sha256": "6a64bf7086c95bf43b7aeab614e8cd4d60cb35467a84499d66ef8566c05993e3"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\Api.dll",
+      "bytes": 17920,
+      "sha256": "6d08027bd523954a860c83af8341248b26ae9adc4e9d11540a65261a2ba77aed"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\Api.h",
+      "bytes": 2044,
+      "sha256": "07abff84361a80bd7ad8947ab6456ec770b620bb6a196c4308632856b52fbdbe"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\Api.lib",
+      "bytes": 2424,
+      "sha256": "7832ce590b086f2589a3e83bdc1251f73cbdb818c6c5d5c91eb818c1ab9fd1d8"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\Api.ns",
+      "bytes": 184,
+      "sha256": "90ad630447038a8c92581f7fffbeba7ed1ad2140551befbf463290004946eb1a"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\Api.nsmeta",
+      "bytes": 900,
+      "sha256": "fb5139d49e781909bf89cfdf1d10c3227181bc2b69a61fdc00cbcf0d07b9bc04"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\Api.nsproducts",
+      "bytes": 4099,
+      "sha256": "e472178b0d611ff26d64adf4350bdc1118500c3e9559e77ca9a479cc08fbb503"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\Api.nsproj",
+      "bytes": 167,
+      "sha256": "bda1e4cb84965b553757578ba9805fa647a3c5f59ab8b95b849a100403c466b0"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\clang-c.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\clang-cpp.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\consumer-c.exe",
+      "bytes": 118784,
+      "sha256": "ed4bae3abbef0da623afff51573aa042e8a38b2043e5d289920913d9c2768c70"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\consumer-cpp.exe",
+      "bytes": 118784,
+      "sha256": "82c53094bbd3ab91dbbceba4a659b2c835590c0c494c990016865f8441dea2d1"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\consumer.c",
+      "bytes": 74,
+      "sha256": "483ea4416bed9a12a4ae9fe50a73fb6e859e4f8e7aae71ad6bd3182470e927c0"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\consumer.cpp",
+      "bytes": 70,
+      "sha256": "1d352a4b50a43ce8c74001251cb1df1a11bca1a5b48bc8aab05e0f0047c66e79"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\nsc-dll.txt",
+      "bytes": 193,
+      "sha256": "cacd0230fe4321bb2f43e58a94205f3f9bef387629b0c354e874880f5082d3c9"
+    },
+    {
+      "path": "A:\\clang-tests\\dll-ns-01\\nsc-header.txt",
+      "bytes": 171,
+      "sha256": "a82da55ca513dc30f114f3bda61755ba52872070b9e07d1c5c15fd42a5ca75df"
+    },
+    {
+      "path": "A:\\clang-tests\\enlace-01\\enlace.exe",
+      "bytes": 240640,
+      "sha256": "f12376fd9870a2577109eb6186ce801f57908ae6435e82ace69b9e0bd954997b"
+    },
+    {
+      "path": "A:\\clang-tests\\enlace-01\\enlace.txt",
+      "bytes": 905927,
+      "sha256": "e410aa54946c7969824eb7db4bb2e0d0927fcabe9694061ab7719f45ced48886"
+    },
+    {
+      "path": "A:\\clang-tests\\enlace-01\\resultado.txt",
+      "bytes": 9,
+      "sha256": "fe24bd9795710cc0d4d485043ee330f6c1b65e7a0f547e1ccd2739a3a14fd6cb"
+    },
+    {
+      "path": "A:\\clang-tests\\hello-c.exe",
+      "bytes": 121856,
+      "sha256": "7054e3386cb007ecf60df3b2e9dbf3bbeb260ee2d0588d37a80a5eebd89dfe32"
+    },
+    {
+      "path": "A:\\clang-tests\\hello-cpp.exe",
+      "bytes": 240640,
+      "sha256": "f726c764a36fbd3249b5bbda5de9497e6519dd044c472ed5c7e3c5a832953a56"
+    },
+    {
+      "path": "A:\\clang-tests\\hello.c",
+      "bytes": 72,
+      "sha256": "e8adee1d118d5f9200acfa76ad41ba82a1f14c11e84606c0cf4078d1410b0104"
+    },
+    {
+      "path": "A:\\clang-tests\\hello.cpp",
+      "bytes": 196,
+      "sha256": "25c5ecacc54d0956d49c22b13153e45189774af6e0903b279dbd5dc140dd83f7"
+    },
+    {
+      "path": "A:\\clang-tests\\inventariar-archivos.cmd",
+      "bytes": 1042,
+      "sha256": "403f5bfcb94ecdc3528a80c886a0b97d3a79795452a5e347b1bcbd54b065274e"
+    },
+    {
+      "path": "A:\\clang-tests\\inventariar-enlace.cmd",
+      "bytes": 964,
+      "sha256": "bf04c61aa73282a0f415e6f87dbcd40ce9ee359a46899aa4682892c29e343502"
+    },
+    {
+      "path": "A:\\clang-tests\\mangling-01\\api.cpp",
+      "bytes": 205,
+      "sha256": "2c61586ec30018f3bc3d19eda1429bfb8487cf259cc3fa72e780d11420c4cc40"
+    },
+    {
+      "path": "A:\\clang-tests\\mangling-01\\api.dll",
+      "bytes": 114688,
+      "sha256": "ffaf108905d4af656cc515cb44f4190d167c116a8b771ce07414564a77edd7ab"
+    },
+    {
+      "path": "A:\\clang-tests\\mangling-01\\api.lib",
+      "bytes": 2388,
+      "sha256": "97c56206769f29841f2faa381f8576e593690fb037cee8a25f057fe7c2cfabf9"
+    },
+    {
+      "path": "A:\\clang-tests\\mangling-01\\compilacion.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\mangling-01\\exportaciones.txt",
+      "bytes": 431,
+      "sha256": "19237c75ef85b1959c765ae9d53d62b7805bd0658aba57ff125b7a7c1cffe30b"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\clang.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\consumer.cpp",
+      "bytes": 595,
+      "sha256": "efe113b56de687319f04afb3dbdd57a5cedbb1360230ba9e61c710fdcadf78d0"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\consumer.exe",
+      "bytes": 133632,
+      "sha256": "58e9d9acb857337446793db918d41fe68051dd01d1865b5b67474e48c96850a8"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\MyClass.dll",
+      "bytes": 19456,
+      "sha256": "e451b80341ae35ee61a2766635205f7071c4f562305865015511ac03cfe1926d"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\MyClass.h",
+      "bytes": 2050,
+      "sha256": "8f6dab8f8836efcc0f16c9cef25ed17a6b4865954c653de194cc7079b94eea0e"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\MyClass.lib",
+      "bytes": 3186,
+      "sha256": "40f81f7d903e244043bb72b50c3c5b82913774769faf49890c90a9bc61338d45"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\MyClass.ns",
+      "bytes": 170,
+      "sha256": "d764d19f8bd1b9189cec4af0ec1e7e1752ffb727b93ad20e8e7a05f171954318"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\MyClass.nsmeta",
+      "bytes": 1564,
+      "sha256": "aa890e8891e4192ad7ef9b146e468f80ad5292a728c835d04eec6bde1366125e"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\MyClass.nsproducts",
+      "bytes": 4716,
+      "sha256": "9e04717a2156e59982cf337e1cb54ba6f54874665d2e73dfa79f0a676a61d433"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\MyClass.nsproj",
+      "bytes": 173,
+      "sha256": "8cc9f330d1efba00fce8c250831ff124026424e90b1731aeee2a0621bc1c2781"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\NativeSharpRuntime.lib",
+      "bytes": 32018,
+      "sha256": "3a37c7019e7fc8f6fcfc5ca82d6075cd9b9809de6ecf1d95b6c926fc4764fa39"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\nsc.txt",
+      "bytes": 208,
+      "sha256": "82e95624fd4767e402190d48cd6d9c8eb3e6e49f2a3f9edfb154b1613260dd13"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-dll\\runtime.txt",
+      "bytes": 57,
+      "sha256": "6a64bf7086c95bf43b7aeab614e8cd4d60cb35467a84499d66ef8566c05993e3"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\clang.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\consumer.cpp",
+      "bytes": 368,
+      "sha256": "7c21a6d8286966f34398277f1e45c3ff1b204049baf7be1056ad612fd03e40b0"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\consumer.exe",
+      "bytes": 133632,
+      "sha256": "727aae3726db9e681822f721ee489d14603ee04448b205c68c287b66e2e521a7"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\MyClass.h",
+      "bytes": 1924,
+      "sha256": "d9d284bba47e8beb75d19293efab20ef9650bf4501f4038e0cfbbef7bec42cc0"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\MyClass.lib",
+      "bytes": 7150,
+      "sha256": "895dc200198c3daf00fab33c118226f94b1a9b790c171c19407144e436f80e7a"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\MyClass.ns",
+      "bytes": 159,
+      "sha256": "4199812340f9e282470ff53c64beea5f54c54ded35b7efdb63da3b8e8368b381"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\MyClass.nsmeta",
+      "bytes": 1504,
+      "sha256": "9b35c4c5d171439b88acb4ebef9a26c4d45ed6057e83dc8a6c73fc74dab10769"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\MyClass.nsproducts",
+      "bytes": 4798,
+      "sha256": "967c113f11e2708b0ed0f29cb58fd3d71c399d01059b5085134ace062b3a0683"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\MyClass.nsproj",
+      "bytes": 169,
+      "sha256": "6ff020ddb9a29c3dbe38ce3761bf7420b2d1c4f4138ea0148711a9208a27848d"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\NativeSharpRuntime.lib",
+      "bytes": 32018,
+      "sha256": "8b65c66c552b9507082afc3ac7a1d413f259fcd258eaaec33b64b805cb9bad8d"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\nsc.txt",
+      "bytes": 211,
+      "sha256": "bfe09892be3fd5a9d5b6fa2c93ee40a44f123921c9b77cfee099f8800107c5de"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class-static\\runtime.txt",
+      "bytes": 57,
+      "sha256": "6a64bf7086c95bf43b7aeab614e8cd4d60cb35467a84499d66ef8566c05993e3"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\clang.txt",
+      "bytes": 341,
+      "sha256": "2fe935406bc2f06d7680a2b0a8fe27b7f93fd8669e84ee05b66c21f7c8cfa22c"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\consumer.cpp",
+      "bytes": 716,
+      "sha256": "22871087ea3bec96bc01ee76c736746a35fba21ea059fdd651845f708a438f70"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\consumer.exe",
+      "bytes": 135168,
+      "sha256": "be5cc4a46a7b7589e98a70c3a54bda7ffa5165aa95e00d24d087b0788f625b94"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\MyClass.h",
+      "bytes": 1927,
+      "sha256": "d957a8dbcf049c2eccb39e0fcbbbcb872129d89c49ca5f38b081b04472160cad"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\MyClass.lib",
+      "bytes": 7174,
+      "sha256": "b0f4710c1d65e5b0d8e26b5e17ea07143c35bde3e08564834fb2e331d51cc862"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\MyClass.ns",
+      "bytes": 170,
+      "sha256": "d764d19f8bd1b9189cec4af0ec1e7e1752ffb727b93ad20e8e7a05f171954318"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\MyClass.nsmeta",
+      "bytes": 1519,
+      "sha256": "06192ca9af91122389db0fa4195ae8540c5a4780dd0553fa1e2996e0a1f53fe0"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\MyClass.nsproducts",
+      "bytes": 4683,
+      "sha256": "7eea4849bc34a4a73879d1693a66d7c690d00db40f99541fcc13d3c1d1f733cc"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\MyClass.nsproj",
+      "bytes": 170,
+      "sha256": "dcc31f4beee928a3c26d3d024010ba6665d66f307742783a59b4047805ffec2b"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\NativeSharpRuntime.lib",
+      "bytes": 32018,
+      "sha256": "8e5e3f08a5a6cfe66d4589dcf42f3028249eb63170e1cd9fd5346f01e97cd466"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\nsc.txt",
+      "bytes": 204,
+      "sha256": "d2a7fd7eed332eaf7a4801d32c20b116e8d4bb0a471d875fe3ca0e462c65fd5c"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\class\\runtime.txt",
+      "bytes": 57,
+      "sha256": "6a64bf7086c95bf43b7aeab614e8cd4d60cb35467a84499d66ef8566c05993e3"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\Api.dll",
+      "bytes": 3072,
+      "sha256": "1cee096a5ff7ac91eeca3614847a7ddf02f1b6f44afe587088adc459de0d2796"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\Api.h",
+      "bytes": 2046,
+      "sha256": "00f1854261b0db6a63f571f627788d630f463519e6288aac3f8c173874e09d87"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\Api.lib",
+      "bytes": 1700,
+      "sha256": "aafd54261a3c42b6665da6bbe74b55a3de7a30c4a1db23f0f76b023fb3f231ca"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\Api.ns",
+      "bytes": 96,
+      "sha256": "f670a1ace98c2de80286d17d3dadc9b54a1941fbf1f9aba860a2f8bdc2a02953"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\Api.nsmeta",
+      "bytes": 610,
+      "sha256": "3ee589e511c675b1bb4075fde2629391250080fd4f2702a70886dce2e7fe057c"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\Api.nsproducts",
+      "bytes": 2613,
+      "sha256": "8649763517d25b97000cdcea44a9ffcf0aa22c0c00a2950bfc0d1c943eab67b7"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\Api.nsproj",
+      "bytes": 168,
+      "sha256": "84fddf8d6cee95d82ba29390562013fbfef75769b328f74328a236a32c861313"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\clang.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\consumer.cpp",
+      "bytes": 186,
+      "sha256": "8f4eb6082d558cae235932e7f5dcb5b6d79a46d720c4111ea1388313fd6bca38"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\consumer.exe",
+      "bytes": 132608,
+      "sha256": "f088b0acf21fdd4c563e065a32d72656e2027372c387cf9f786d997638ee4fec"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\NativeSharpRuntime.lib",
+      "bytes": 32018,
+      "sha256": "5af1df74495ce1ae4590891dc0cf10802dbfceb186a6cd36223f411e36aa4a58"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\nsc.txt",
+      "bytes": 210,
+      "sha256": "e6e626ece709254893a6b8f543e9edd32dc246ff2d4b346341f106261ea5972c"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\native-function\\runtime.txt",
+      "bytes": 57,
+      "sha256": "6a64bf7086c95bf43b7aeab614e8cd4d60cb35467a84499d66ef8566c05993e3"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\Api.h",
+      "bytes": 1932,
+      "sha256": "f4c4c00d5a469eab128443040579cdb63d9ed618ce0c2a2bd4b2209e3c171380"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\Api.lib",
+      "bytes": 4378,
+      "sha256": "4c86078563cfad4fb75e27ce39cebcaf781094a03569a2dd89bf1217190401b7"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\Api.ns",
+      "bytes": 184,
+      "sha256": "90ad630447038a8c92581f7fffbeba7ed1ad2140551befbf463290004946eb1a"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\Api.nsmeta",
+      "bytes": 900,
+      "sha256": "8151f161a4cecf0b25028143e3b365368e8226e21819b6e37aa84fa2202ab58d"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\Api.nsproducts",
+      "bytes": 4099,
+      "sha256": "b95cd4e72416f88d54c558d8def3aa3d8d18039446cd2e091b4b11bbadc78fbb"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\Api.nsproj",
+      "bytes": 167,
+      "sha256": "0c19e31ef42d62c2f5b544a259930decbe430be3b1eb9a881fe87a0cf4a548ee"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\clang.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\consumer.exe",
+      "bytes": 133120,
+      "sha256": "6c09baa5ab2521a03d1693b690a17f06e550319b168c6e5fafe5617e5c3d19a2"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\native_consumer.cpp",
+      "bytes": 185,
+      "sha256": "421f2253e10b7bf30ed27504ba12ff6952d9de6f9faea7000d5d85dfc3c8d20d"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\NativeSharpRuntime.lib",
+      "bytes": 32018,
+      "sha256": "6bc39c76a30dd31974657cc8f9b8fac9c226279b7ca262d0822b099af484424c"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\nsc.txt",
+      "bytes": 201,
+      "sha256": "dc8e75b0c730582cf06fcb45660767b35d2e19236761948549a05d7597187051"
+    },
+    {
+      "path": "A:\\clang-tests\\nativos-01\\static\\runtime.txt",
+      "bytes": 57,
+      "sha256": "6a64bf7086c95bf43b7aeab614e8cd4d60cb35467a84499d66ef8566c05993e3"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\Api.h",
+      "bytes": 1932,
+      "sha256": "f4c4c00d5a469eab128443040579cdb63d9ed618ce0c2a2bd4b2209e3c171380"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\Api.lib",
+      "bytes": 4378,
+      "sha256": "4c86078563cfad4fb75e27ce39cebcaf781094a03569a2dd89bf1217190401b7"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\Api.ns",
+      "bytes": 183,
+      "sha256": "eb374a50c39b191a86c7c4d6c3f7abf70065139fc2605eccffa9369f4cd5d227"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\Api.nsmeta",
+      "bytes": 900,
+      "sha256": "8151f161a4cecf0b25028143e3b365368e8226e21819b6e37aa84fa2202ab58d"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\Api.nsproducts",
+      "bytes": 4099,
+      "sha256": "b95cd4e72416f88d54c558d8def3aa3d8d18039446cd2e091b4b11bbadc78fbb"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\Api.nsproj",
+      "bytes": 166,
+      "sha256": "405553059190a467fd0e7593c96f7abae8d61f92876c3f891272d354ad5c1869"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\clang-c.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\clang-cpp.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\consumer-c.exe",
+      "bytes": 133120,
+      "sha256": "396590218351a5a277da2d68e677eb32debecea352f576e9dbfd265637b6b29f"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\consumer-cpp.exe",
+      "bytes": 133120,
+      "sha256": "396590218351a5a277da2d68e677eb32debecea352f576e9dbfd265637b6b29f"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\consumer.c",
+      "bytes": 73,
+      "sha256": "ce4feee58ca11763e668a84e0de1e98065f5e003f01fe7ab85ef8a60fa973fb6"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\consumer.cpp",
+      "bytes": 69,
+      "sha256": "62cbc0472288e2a8ae854ec9678b5da3e952f1169668f3e7cce6f491e005e6ab"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\NativeSharpRuntime.lib",
+      "bytes": 32018,
+      "sha256": "e70ffbb2a60fddc6e05ce3dba2d71726a83b8c0e3c9886963ead2b3c7046a5bc"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\nsc-header.txt",
+      "bytes": 171,
+      "sha256": "a82da55ca513dc30f114f3bda61755ba52872070b9e07d1c5c15fd42a5ca75df"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\nsc-lib.txt",
+      "bytes": 198,
+      "sha256": "2fa26924e0d8c5803459706418eebe0eaf1efeeed6e843c724ed79c555be4eee"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-estatico-02\\nsc-runtime.txt",
+      "bytes": 57,
+      "sha256": "6a64bf7086c95bf43b7aeab614e8cd4d60cb35467a84499d66ef8566c05993e3"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\Api.h",
+      "bytes": 1932,
+      "sha256": "f4c4c00d5a469eab128443040579cdb63d9ed618ce0c2a2bd4b2209e3c171380"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\Api.lib",
+      "bytes": 4378,
+      "sha256": "4c86078563cfad4fb75e27ce39cebcaf781094a03569a2dd89bf1217190401b7"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\Api.ns",
+      "bytes": 183,
+      "sha256": "eb374a50c39b191a86c7c4d6c3f7abf70065139fc2605eccffa9369f4cd5d227"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\Api.nsmeta",
+      "bytes": 900,
+      "sha256": "8151f161a4cecf0b25028143e3b365368e8226e21819b6e37aa84fa2202ab58d"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\Api.nsproducts",
+      "bytes": 4099,
+      "sha256": "b95cd4e72416f88d54c558d8def3aa3d8d18039446cd2e091b4b11bbadc78fbb"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\Api.nsproj",
+      "bytes": 166,
+      "sha256": "405553059190a467fd0e7593c96f7abae8d61f92876c3f891272d354ad5c1869"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\build-c.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\build-cpp.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\build-nsc.txt",
+      "bytes": 193,
+      "sha256": "099646374109c1948579518a98449ae4f20490b32d976b2fef4cbc4161b64f0e"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\consumer-c.exe",
+      "bytes": 133120,
+      "sha256": "fa8128b761b4cd44a937f110edb4ad550505a8d7da43468ce996347d0f0e7acc"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\consumer-cpp.exe",
+      "bytes": 133120,
+      "sha256": "fa8128b761b4cd44a937f110edb4ad550505a8d7da43468ce996347d0f0e7acc"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\consumer.c",
+      "bytes": 73,
+      "sha256": "ce4feee58ca11763e668a84e0de1e98065f5e003f01fe7ab85ef8a60fa973fb6"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\consumer.cpp",
+      "bytes": 69,
+      "sha256": "62cbc0472288e2a8ae854ec9678b5da3e952f1169668f3e7cce6f491e005e6ab"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\header-nsc.txt",
+      "bytes": 171,
+      "sha256": "a82da55ca513dc30f114f3bda61755ba52872070b9e07d1c5c15fd42a5ca75df"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\NativeSharpRuntime.lib",
+      "bytes": 32018,
+      "sha256": "0ae6160e98cd78a63a7a137283c863c285b2c5868b12f92291442cef4827b701"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\reproducir.cmd",
+      "bytes": 1381,
+      "sha256": "8cfcb7bc398cdeed5444c6158e74388ad22dbbd7716c235438038560fa503a2c"
+    },
+    {
+      "path": "A:\\clang-tests\\ns-static\\runtime-nsc.txt",
+      "bytes": 57,
+      "sha256": "6a64bf7086c95bf43b7aeab614e8cd4d60cb35467a84499d66ef8566c05993e3"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-01\\Api.dll",
+      "bytes": 17920,
+      "sha256": "0146e9e5233139a5905e79ac383d4a621a55045e537466ec9e2656e53441d775"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-01\\Api.h",
+      "bytes": 2040,
+      "sha256": "425d5ec544691e27f305c75f5716372719c074244a4d1b2ee035260f2f3c5967"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-01\\Api.lib",
+      "bytes": 2414,
+      "sha256": "38f2a49a3fb2a5095686254edb2bf2e4f3a7e01ec4bdee238eb0d679ce8fcefa"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-01\\Api.ns",
+      "bytes": 175,
+      "sha256": "a7dcc3722fb3ba82f15a9f5ea99fcb2b4276ddd1d20421a609911ce0c3dbda92"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-01\\Api.nsmeta",
+      "bytes": 897,
+      "sha256": "24d1f480e5b68a6f099b1bd69e3c4ad4473e88706b7193bcf634d88fc8b563b6"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-01\\Api.nsproducts",
+      "bytes": 4097,
+      "sha256": "7dd9f426f486901f3a2ada30f54a0f4bc0a55e4de4fbdad46699484bf00a7a1c"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-01\\Api.nsproj",
+      "bytes": 165,
+      "sha256": "6a5a226d803d9697a5682ca2cba3eafad8efa37d92f34e9241b4e2ad21ec3a04"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-01\\inicial.txt",
+      "bytes": 194,
+      "sha256": "29e80dad6b17f3af0abe59a4f3ac9ced1d8027b6037ebf680d6131bb0b3f051f"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-01\\siguiente.txt",
+      "bytes": 194,
+      "sha256": "29e80dad6b17f3af0abe59a4f3ac9ced1d8027b6037ebf680d6131bb0b3f051f"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-fuentes\\Api.nsproj",
+      "bytes": 165,
+      "sha256": "6a5a226d803d9697a5682ca2cba3eafad8efa37d92f34e9241b4e2ad21ec3a04"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-fuentes\\inicial.ns",
+      "bytes": 104,
+      "sha256": "5f80951452859d6c7e7e1f8138baa4980057214a28eae3787dcd2192c75df721"
+    },
+    {
+      "path": "A:\\clang-tests\\rebuild-fuentes\\siguiente.ns",
+      "bytes": 175,
+      "sha256": "a7dcc3722fb3ba82f15a9f5ea99fcb2b4276ddd1d20421a609911ce0c3dbda92"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\build-c.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\build-cpp.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\hash-c.txt",
+      "bytes": 148,
+      "sha256": "4e4a40699a584acca03f85c6ae977ccad155330d37d3e25cabafffdb9f54dc14"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\hash-cpp.txt",
+      "bytes": 150,
+      "sha256": "bb26c03d144d650d077eec5990aa352c24ca76f5e44b1b151185e173dc222ec6"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\hello-c.exe",
+      "bytes": 121856,
+      "sha256": "226ddbc298db72ab65839ae09290247feadaaa8cab7f82c6ab86bfdfe3b18554"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\hello-cpp.exe",
+      "bytes": 240640,
+      "sha256": "9c401b8d9c9e9bc3653639d3e792366790d0e73546edd427ac53e2d39b351d95"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\imports-c.txt",
+      "bytes": 2472,
+      "sha256": "7d53c15b715be394e359189b46d1de033bf1a24d82f9cce3ef3a6f1bb693bda6"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\imports-cpp.txt",
+      "bytes": 2912,
+      "sha256": "151cc8e91271908455cf70d285d54c0b8e91674182df0d9f3aebcf9e88605197"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\output-c.txt",
+      "bytes": 7,
+      "sha256": "ef24c474e128f27e624dc2dd1ee4068070a3a523c57e07febecd9cf2cb5851f6"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\output-cpp.txt",
+      "bytes": 9,
+      "sha256": "fe24bd9795710cc0d4d485043ee330f6c1b65e7a0f547e1ccd2739a3a14fd6cb"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\trace-c.txt",
+      "bytes": 2048,
+      "sha256": "2cbe3ac53c2f28fc84aed0d10f2e9e133e1324a4241a5f3725302b044c329712"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-20261102-01\\trace-cpp.txt",
+      "bytes": 2145,
+      "sha256": "7dd9cd687930039fc2763402ac28948b80b5f0648462fed3f5bbb5bafa0d54d9"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-casos-nativos.cmd",
+      "bytes": 1854,
+      "sha256": "8cee3fb1732a9a8d1ab64559830713589ef322ff291b7ee99918213ea717f895"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-clase-estado.cmd",
+      "bytes": 1789,
+      "sha256": "efcc396a5ab9367f380ccb6b2f5f3f423eaa46f9331e44139552d7d60dabfd08"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-dll-ns.cmd",
+      "bytes": 1554,
+      "sha256": "5040fc14564907787071ec3b7d098d8fcd2ef3cc7179b776730af2be39030d2f"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-mangling.cmd",
+      "bytes": 926,
+      "sha256": "0586e106076621910bf1dfddaf0ff556d50f235838b6c4bdb88487627293d330"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-ns-estatico-limpio.cmd",
+      "bytes": 1646,
+      "sha256": "063a4776690649624b75296757da4a618703fa1822752a483e66ad4e87860bff"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-rebuild.cmd",
+      "bytes": 633,
+      "sha256": "81f9081e2b816ec1155b52bdbdadd7f5327e1edbdd775c9be92b5d579644f1d9"
+    },
+    {
+      "path": "A:\\clang-tests\\repro-reverso.cmd",
+      "bytes": 1207,
+      "sha256": "8478d1294e3d3abb1254caae43f2b9cfa78ca9115b6d46ac7d60f17a4fe6254e"
+    },
+    {
+      "path": "A:\\clang-tests\\reproducir-desde-cero.cmd",
+      "bytes": 1793,
+      "sha256": "25fb23409a4bba42923a4ed623e2d6f267ca418d9618bc345b0477b5728b84a8"
+    },
+    {
+      "path": "A:\\clang-tests\\reverso-01\\api.cpp",
+      "bytes": 78,
+      "sha256": "cd6419f1e643b0603640564de39069ff74a84a15df67d7b73ada62f6cc4ea04b"
+    },
+    {
+      "path": "A:\\clang-tests\\reverso-01\\clang-dll.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "A:\\clang-tests\\reverso-01\\cppapi.dll",
+      "bytes": 114176,
+      "sha256": "84a59cec153e8766c36ea7084f57331ce14e9eb286c6a80c8cc05a7be17e707f"
+    },
+    {
+      "path": "A:\\clang-tests\\reverso-01\\cppapi.lib",
+      "bytes": 1320,
+      "sha256": "6838b7ece884423ac456d6915342f22dff13e0d5eee783e9982b40280119495e"
+    },
+    {
+      "path": "A:\\clang-tests\\reverso-01\\Main.ns",
+      "bytes": 143,
+      "sha256": "01d5c2ab988073e9b614bcc88521e7e18eff9e2a7690203d16d37afd43847037"
+    },
+    {
+      "path": "A:\\clang-tests\\reverso-01\\Main.nsproj",
+      "bytes": 152,
+      "sha256": "2d504b93953014d328628d14e545577742cecb0ee2fadabc13d51f2a05ec0dcd"
+    },
+    {
+      "path": "A:\\clang-tests\\reverso-01\\nsc-exe.txt",
+      "bytes": 195,
+      "sha256": "6aa22170ba95949db924eed6d558aa6874c64540ed9d2fad7ac8f52b6d051847"
+    },
+    {
+      "path": "A:\\clang-tests\\reverso-01\\reverse.exe",
+      "bytes": 18944,
+      "sha256": "c797686c004d913ca3eb0cd44b63f47a233fb24b80aecde3bb5f835dc5cffb21"
+    },
+    {
+      "path": "A:\\clang-tests\\test-clang.cmd",
+      "bytes": 1013,
+      "sha256": "7c1d9ede2404660d2ba4dc1917c3072f66de38ed9aee421ee00abe5fdfcea4e2"
+    },
+    {
+      "path": "A:\\clang-tests\\verificar-resultados.cmd",
+      "bytes": 1161,
+      "sha256": "f24a11d2e9c8a4045725b8b549763005af8bf1de6e13b9e6d802c4785bab4048"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+ninja: Entering directory `A:\al82dev-clang'
+ninja: no work to do.
