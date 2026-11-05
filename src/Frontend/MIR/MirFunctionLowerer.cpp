@@ -219,8 +219,10 @@ void copyFunctionMetadata(
     function.inliningPolicy = source.inliningPolicy;
     function.isExportedC = source.isExportedC;
     function.isImportedC = source.isImportedC;
+    function.cppDllImport = source.cppDllImport;
     function.isVariadic = source.isVariadic;
     function.isImportedNative = source.isImportedNative;
+    function.isCppExternal = source.isCppExternal;
     function.isTransportedInlineBody = source.isTransportedInlineBody;
     function.isSyntheticImplicitConstructor = source.isSyntheticImplicitConstructor;
     function.importDllName = source.importDllName;

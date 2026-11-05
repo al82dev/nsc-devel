@@ -178,8 +178,10 @@ void writeFunctionIdentity(
     output.scalar(function.inliningPolicy);
     output.scalar(function.isExportedC);
     output.scalar(function.isImportedC);
+    output.scalar(function.cppDllImport);
     output.scalar(function.isVariadic);
     output.scalar(function.isImportedNative);
+    output.scalar(function.isCppExternal);
     output.scalar(function.isTransportedInlineBody);
     output.scalar(function.isSyntheticImplicitConstructor);
     output.text(function.importDllName);
@@ -320,6 +322,8 @@ void writeStaticFields(IdentityWriter& output, const frontend::ProjectOopMirMode
         output.scalar(field.memberOrdinal); output.scalar(field.declaringTypeOrdinal);
         output.text(field.name); output.text(field.typeKey); output.scalar(field.isReadonly);
         output.scalar(field.isVolatile); output.scalar(field.isConst); output.scalar(field.isImported);
+        output.scalar(field.isCppExternal);
+        output.scalar(field.cppDllImport);
         output.text(field.genericSpecializationKey); output.text(field.storageSymbol);
         output.text(field.accessorName); output.scalar(field.hasConstantInitializer);
         output.scalar(field.constantIntegerValue);

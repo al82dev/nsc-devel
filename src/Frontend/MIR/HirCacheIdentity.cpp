@@ -178,8 +178,8 @@ void appendFunctionFlags(std::string& out, const ProjectOopHirFunction& function
     const bool values[] = {
         function.constructor, function.destructor, function.isStatic,
         function.referenceReturn, function.isNoHeap, function.isAsyncPoll,
-        function.isExportedC, function.isImportedC, function.isVariadic,
-        function.isImportedNative, function.isTransportedInlineBody,
+        function.isExportedC, function.isImportedC, function.cppDllImport, function.isVariadic,
+        function.isImportedNative, function.isCppExternal, function.isTransportedInlineBody,
         function.isSyntheticImplicitConstructor, function.importRequiresRuntimeBinding,
         function.isLambda, function.hasClosureEnvironment, function.isGeneratorConstructor,
         function.capturesThisCell};
