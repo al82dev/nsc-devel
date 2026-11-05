@@ -168,8 +168,9 @@ class CancelDuringHeaderLookup final : public llvm::vfs::ProxyFileSystem
 {
 public:
     CancelDuringHeaderLookup(llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> underlying,
-                             CppCancellationToken token)
-        : llvm::vfs::ProxyFileSystem(std::move(underlying)), token_(std::move(token)) {}
+                             CppCancellationToken token, bool& destroyed)
+        : llvm::vfs::ProxyFileSystem(std::move(underlying)), token_(std::move(token)), destroyed_(destroyed) {}
+    ~CancelDuringHeaderLookup() override { destroyed_ = true; }
 
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override
     {
@@ -198,6 +199,7 @@ private:
         return true;
     }
     CppCancellationToken token_;
+    bool& destroyed_;
 };
 
 class CountingSessionDiagnostics final : public clang::DiagnosticConsumer
@@ -384,8 +386,9 @@ int main(int argc, char** argv)
         const auto args = nativesharp::interop::detail::buildClangInvocationArguments(config);
         auto physical = llvm::vfs::createPhysicalFileSystem();
         CppCancellationToken token;
+        bool filesystemDestroyed = false;
         auto observed = llvm::makeIntrusiveRefCnt<CancelDuringHeaderLookup>(
-            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>(physical.release()), token);
+            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>(physical.release()), token, filesystemDestroyed);
         std::vector<CppSessionDiagnostic> diagnostics;
         nativesharp::interop::detail::DiagnosticCollector consumer(diagnostics);
         const auto input = (directory / "main.c").generic_string();
@@ -399,6 +402,9 @@ int main(int argc, char** argv)
         ok &= expect(observed->observed && token.cancelled() &&
                      (!ast || ast->getDiagnostics().hasErrorOccurred()),
                      "cancellation during real Clang header lookup interrupts the analysis");
+        ast.reset();
+        observed.reset();
+        ok &= expect(filesystemDestroyed, "cancelled analysis releases the observed filesystem");
     }
     {
         auto left = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
