@@ -21,5 +21,7 @@ enum DoublePointerState** double_pointer_global_only = &double_pointer_inner;
 int read_pointer_globals(void) { return (int)*pointer_global_only + (int)**double_pointer_global_only; }
 enum ArrayState array_states[2] = { ArrayLow, ArrayHigh };
 const enum ArrayState readonly_states[2] = { ArrayLow, ArrayHigh };
+volatile enum ArrayState volatile_states[2] = { ArrayLow, ArrayHigh };
+int read_volatile_state_array(void) { return (int)volatile_states[0]; }
 enum MatrixState matrix_states[2][2] = { { MatrixLow, MatrixLow }, { MatrixLow, MatrixHigh } };
 int read_state_arrays(void) { return (int)array_states[0] + (int)matrix_states[1][0]; }
