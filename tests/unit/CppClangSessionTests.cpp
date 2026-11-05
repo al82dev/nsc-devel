@@ -727,6 +727,33 @@ int main(int argc, char** argv)
                              cppOptions.includePaths[0].kind == CppIncludeKind::System,
                              "project session options retain each reference configuration and order");
             }
+            std::vector<CppLibraryReference> broken(project->cppLibraryReferences().begin(),
+                                                     project->cppLibraryReferences().end());
+            broken[1].headerPath = fixture / "missing-session-header.h";
+            auto failed = openCppProjectSessions(broken, environment, factory, {});
+            const auto* failure = std::get_if<CppProjectSessionFailure>(&failed);
+            ok &= expect(failure && failure->referenceIndex == 1 && failure->failure.phase == "input",
+                         "failed second session returns its index without a partial session set");
+            CppCancellationToken cancelledToken;
+            cancelledToken.cancel();
+            auto cancelledProject = openCppProjectSessions(project->cppLibraryReferences(), environment,
+                                                            factory, cancelledToken);
+            const auto* cancelledProjectFailure = std::get_if<CppProjectSessionFailure>(&cancelledProject);
+            ok &= expect(cancelledProjectFailure && cancelledProjectFailure->referenceIndex == 0 &&
+                         cancelledProjectFailure->failure.phase == "cancel",
+                         "project session opening propagates cancellation");
+            auto systemReference = std::vector<CppLibraryReference>{cRef};
+            systemReference[0].headerPath = fixture / "system-probe.h";
+            auto systemEnvironment = environment;
+            systemEnvironment.systemIncludePaths = {fixture / "system"};
+            auto systemOpened = openCppProjectSessions(systemReference, systemEnvironment, factory, {});
+            const auto* systemSessions = std::get_if<CppProjectSessions>(&systemOpened);
+            bool foundSystemFunction = false;
+            if (systemSessions && systemSessions->sessions.size() == 1)
+            {
+                const auto functions = systemSessions->sessions[0]->freeFunctionsSnapshot();
+                foundSystemFunction = functions && functionByName(*functions, "common_system_function");
+            }
         }
     }
     return ok ? 0 : 1;
