@@ -353,7 +353,7 @@ bool publishExecutableArtifact(std::string_view outputPath, const frontend::Proj
         error << "nsc: error: incremental-state output preflight failed: " << buildError << '\n';
         return false;
     }
-    if (!artifactPublisher.addRuntimeArtifacts(destination.parent_path(), packagedRuntimes, buildError))
+    if (!artifactPublisher.addRuntimeArtifacts(destination.parent_path(), packagedRuntimes, buildError, protectExistingRuntimes))
     {
         error << "nsc: error: runtime output preflight failed: " << buildError << '\n';
         return false;
