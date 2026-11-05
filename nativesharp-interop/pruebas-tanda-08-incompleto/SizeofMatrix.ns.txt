@@ -1,0 +1,5 @@
+int Main()
+{
+    nuint size = sizeof(IncompleteMatrix);
+    return 0;
+}

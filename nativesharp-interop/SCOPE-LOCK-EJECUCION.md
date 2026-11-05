@@ -1543,3 +1543,9 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Evidencia: `QualifiedTypeNames.cpp` rechaza todo modificador en el sitio de uso del alias; `ProjectMemberModel::canonicalTypeKey` agrega modificadores después de la identidad estructural de función y `CppSemanticFunction.cpp::mapFunctionType` recorre punteros adicionales. Estas rutas deben comprobarse juntas en un proyecto ejecutable.
 - Presupuesto: `src/Frontend/NameLookup/QualifiedTypeNames.cpp`, los archivos `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-callback`, los registros Markdown de la tanda y del commit. Permitir únicamente modificadores de puntero; conservar los rechazos de otros modificadores y de calificadores aún no representados.
 - Preservar la ruta original `Callback`, la convención y firma importadas, las demás rutas del compilador y el árbol LLVM/Clang. No modificar NSLink ni desplegar en C:. La validación se agrupará con la de la tanda 08 y este caso aislado no cierra T08-017.
+
+## Tanda 08: prueba de matriz C incompleta
+
+- Objetivo: comprobar que un typedef C de matriz `[][3]` conserva su límite exterior incompleto al consultar `sizeof` del puntero y del propio tipo.
+- Presupuesto: `Api.h`, `Pointer.ns.txt`, `SizeofMatrix.ns.txt` y `validar.cmd` de `nativesharp-interop/pruebas-tanda-08-incompleto`, más registro Markdown. No modificar producción por anticipado; si la validación detecta un defecto se investigará y delimitará su corrección.
+- Verificación prevista: construcción incremental y batería agrupada de la tanda. El caso no cierra T08-013 ni acredita todas las dimensiones y usos.
