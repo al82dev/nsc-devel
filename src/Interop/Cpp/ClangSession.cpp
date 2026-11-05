@@ -261,5 +261,52 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
     }
 }
 
+void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astContext,
+                    clang::MangleContext& mangler, std::set<const clang::VarDecl*>& seen,
+                    std::vector<CppGlobalDeclaration>& result)
+{
+    for (const clang::Decl* declaration : context.decls())
+    {
+        if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+        {
+            collectGlobals(*nested, astContext, mangler, seen, result);
+            continue;
+        }
+        if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+        {
+            collectGlobals(*linkage, astContext, mangler, seen, result);
+            continue;
+        }
+        const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration);
+        if (!variable || !variable->isFileVarDecl() || variable->isImplicit() ||
+            variable->getDeclName().isEmpty() || variable->getDeclContext()->isDependentContext() ||
+            !seen.insert(variable->getCanonicalDecl()).second)
+            continue;
+        CppGlobalDeclaration value;
+        value.name = variable->getNameAsString();
+        value.qualifiedName = variable->getQualifiedNameAsString();
+        value.type = describeType(variable->getType(), astContext);
+        value.externalLinkage = variable->isExternallyVisible();
+        value.threadLocal = variable->getTLSKind() != clang::VarDecl::TLS_None;
+        value.dllImport = variable->hasAttr<clang::DLLImportAttr>();
+        if (value.externalLinkage)
+        {
+            if (mangler.shouldMangleDeclName(variable))
+            {
+                llvm::SmallString<128> symbol;
+                llvm::raw_svector_ostream stream(symbol);
+                mangler.mangleName(clang::GlobalDecl(variable), stream);
+                value.externalSymbol = std::string(symbol.str());
+            }
+            else value.externalSymbol = value.name;
+        }
+        const auto location = astContext.getSourceManager().getPresumedLoc(variable->getLocation());
+        if (location.isValid())
+            value.location = CppSourcePoint{
+                pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+        result.push_back(std::move(value));
+    }
+}
+
 }
 }
