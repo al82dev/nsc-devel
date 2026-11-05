@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CppStaticConsumer</Name></PropertyGroup>
+  <ItemGroup><Compile Include="StaticConsumer.ns" /><LibraryReference Include="NativeProducer.lib" /></ItemGroup>
+</Project>
