@@ -11,6 +11,7 @@
 #include "nativesharp/Frontend/NamespaceCompletionScope.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Interop/CppDeferredFunctionCandidate.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -39,6 +40,21 @@ struct FunctionLookupEnvironment;
 struct WalkWork;
 }
 
+// A syntactic lookup request, not a resolved function or proof that the expression is callable.
+struct CppFunctionDemand
+{
+    std::size_t projectOrdinal = 0;
+    FileId fileId;
+    const ast::AstNode* syntax = nullptr;
+    std::string writtenName;
+    std::string lexicalNamespace;
+    std::vector<std::string> importedNamespaces;
+    std::unordered_map<std::string, std::string> aliases;
+    bool directCall = false;
+    std::string lookupName;
+    std::vector<std::string> lookupNamespaces;
+    std::vector<std::size_t> visibleProjects;
+};
 
 
 
@@ -48,6 +64,13 @@ struct WalkWork;
 class ProjectNamespaceFunctionModel final
 {
 public:
+    // Supplies already-projected symbols before build; no ABI or C++ overload resolution is implied.
+    bool setCppImportedFunctions(std::vector<NamespaceFunctionSymbol> functions, std::string& error);
+    bool setCppImportedStates(std::vector<NamespaceStateSymbol> states, std::string& error);
+    bool setCppDeferredFunctions(std::vector<interop::CppDeferredFunctionCandidate> functions, std::string& error);
+    std::span<const interop::CppDeferredFunctionCandidate> cppDeferredFunctions() const noexcept;
+    bool setCaptureCppFunctionDemands(bool enabled) noexcept;
+    std::span<const CppFunctionDemand> cppFunctionDemands() const noexcept;
     bool build(
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
@@ -301,6 +324,11 @@ private:
         const ast::AstNode* node,
         std::string_view lexicalNamespace,
         const internal::FunctionLookupEnvironment& environment);
+    void captureCppFunctionDemand(
+        const ProjectNameLookup& nameLookup, const ProjectSyntaxUnit& unit,
+        const ast::AstNode* syntax, std::string_view lexicalNamespace,
+        const internal::FunctionLookupEnvironment& environment,
+        std::string_view written, bool directCall);
     void bindCallReference(
         const ProjectNameLookup& nameLookup,
         const ProjectSyntaxUnit& unit,
@@ -349,10 +377,16 @@ private:
         std::vector<internal::WalkWork>& work) const;
 
     std::vector<NamespaceFunctionSymbol> functions_;
+    std::vector<NamespaceFunctionSymbol> cppImportedFunctions_;
+    std::vector<NamespaceStateSymbol> cppImportedStates_;
+    std::vector<interop::CppDeferredFunctionCandidate> cppDeferredFunctions_;
+    std::vector<CppFunctionDemand> cppFunctionDemands_;
+    bool captureCppFunctionDemands_ = false;
     std::vector<NamespaceStateSymbol> states_;
     std::unordered_map<std::string, std::size_t> stateByName_;
     std::unordered_map<std::string, std::vector<std::size_t>> functionsByName_;
     OrdinalsByNamespaceName functionsByNamespaceName_;
+    std::unordered_map<std::string, std::vector<std::size_t>> cppFunctionsByNamespacePrefix_;
     OrdinalsByNamespaceName statesByNamespaceName_;
     std::map<std::string, std::vector<std::size_t>, std::less<>> extensionFunctionsByName_;
     bool extensionFunctionIndexBuilt_ = false;

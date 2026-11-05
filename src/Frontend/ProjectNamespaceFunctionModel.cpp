@@ -330,13 +330,120 @@ std::optional<std::string> expressionName(const ast::AstNode* expression)
 }
 }
 
+bool ProjectNamespaceFunctionModel::setCppImportedFunctions(
+    std::vector<NamespaceFunctionSymbol> functions, std::string& error)
+{
+    if (built_)
+    {
+        error = "C/C++ functions must be configured before the namespace model is built";
+        return false;
+    }
+    std::unordered_set<std::string> identities;
+    for (const auto& function : functions)
+    {
+        if (function.name.empty() || function.moduleName.empty() || function.declaredTypeKey.empty() ||
+            function.mangledName.empty() || function.cppCanonicalIdentity.empty() ||
+            function.cppCallingConvention.empty() ||
+            function.signatureKey.empty() || function.callableIdentityKey.empty())
+        {
+            error = "incomplete imported C/C++ function";
+            return false;
+        }
+        for (const auto& parameter : function.parameters)
+            if (parameter.typeKey.empty())
+            {
+                error = "imported C/C++ function has an unmapped parameter";
+                return false;
+            }
+        const std::string identity = std::to_string(function.projectOrdinal) + "\x1f" +
+            function.cppCanonicalIdentity;
+        if (!identities.insert(identity).second)
+        {
+            error = "duplicate imported C/C++ function identity";
+            return false;
+        }
+    }
+    cppImportedFunctions_ = std::move(functions);
+    error.clear();
+    return true;
+}
+
+bool ProjectNamespaceFunctionModel::setCppImportedStates(
+    std::vector<NamespaceStateSymbol> states, std::string& error)
+{
+    if (built_)
+    {
+        error = "C/C++ globals must be configured before the namespace model is built";
+        return false;
+    }
+    std::unordered_set<std::string> identities;
+    for (const auto& state : states)
+    {
+        if (!state.isCppExternal || state.isConst || state.isPrecompiled || state.name.empty() ||
+            state.moduleName.empty() || state.declaredTypeKey.empty() ||
+            (state.storageName.empty() && state.cppImportError.empty()))
+        {
+            error = "incomplete imported C/C++ global";
+            return false;
+        }
+        if (!identities.insert(nameLookupKey(state.projectOrdinal, state.namespaceName, state.name)).second)
+        {
+            error = "duplicate imported C/C++ global";
+            return false;
+        }
+    }
+    cppImportedStates_ = std::move(states);
+    error.clear();
+    return true;
+}
+
+bool ProjectNamespaceFunctionModel::setCppDeferredFunctions(
+    std::vector<interop::CppDeferredFunctionCandidate> functions, std::string& error)
+{
+    if (built_)
+    {
+        error = "deferred C/C++ functions must be configured before the namespace model is built";
+        return false;
+    }
+    for (const auto& function : functions)
+        if (!function.syntax || function.reason.empty() || function.declarationProjectFile.empty() ||
+            function.declaration.qualifiedName.empty() || function.declaration.canonicalFunctionType.empty())
+        {
+            error = "incomplete deferred C/C++ function";
+            return false;
+        }
+    cppDeferredFunctions_ = std::move(functions);
+    error.clear();
+    return true;
+}
+
+std::span<const interop::CppDeferredFunctionCandidate>
+ProjectNamespaceFunctionModel::cppDeferredFunctions() const noexcept
+{
+    return cppDeferredFunctions_;
+}
+
+bool ProjectNamespaceFunctionModel::setCaptureCppFunctionDemands(bool enabled) noexcept
+{
+    if (built_) return false;
+    captureCppFunctionDemands_ = enabled;
+    return true;
+}
+
+std::span<const CppFunctionDemand> ProjectNamespaceFunctionModel::cppFunctionDemands() const noexcept
+{
+    return cppFunctionDemands_;
+}
+
 void ProjectNamespaceFunctionModel::resetBuildState()
 {
     functions_.clear();
+    cppFunctionDemands_.clear();
     states_.clear();
     stateByName_.clear();
     functionsByName_.clear();
     functionsByNamespaceName_.clear();
+    cppFunctionsByNamespacePrefix_.clear();
     statesByNamespaceName_.clear();
     extensionFunctionsByName_.clear();
     extensionFunctionIndexBuilt_ = false;
@@ -1015,6 +1122,17 @@ bool ProjectNamespaceFunctionModel::namespaceExists(
             return true;
         }
     }
+    const auto imported = cppFunctionsByNamespacePrefix_.find(std::string(namespaceName));
+    if (imported != cppFunctionsByNamespacePrefix_.end())
+    {
+        const auto visible = visibleProjects(nameLookup, projectOrdinal);
+        for (const auto ordinal : imported->second)
+        {
+            const auto& function = functions_[ordinal];
+            if (symbolVisibleFrom(function.projectOrdinal, function.accessibility, projectOrdinal, visible))
+                return true;
+        }
+    }
     return false;
 }
 
@@ -1151,13 +1269,13 @@ void ProjectNamespaceFunctionModel::appendStateCandidate(
     std::string_view namespaceName,
     std::string_view stateName) const
 {
-    const auto found = stateByName_.find(
-        nameLookupKey(visibleProject, namespaceName, stateName));
-    if (found == stateByName_.end() || found->second >= states_.size()) return;
-    if (visibleProject == projectOrdinal ||
-        states_[found->second].accessibility == NamespaceFunctionAccessibility::Public)
+    for (std::size_t ordinal = 0; ordinal < states_.size(); ++ordinal)
     {
-        candidates.push_back(found->second);
+        const auto& state = states_[ordinal];
+        if (state.projectOrdinal == visibleProject && state.namespaceName == namespaceName &&
+            state.name == stateName && (visibleProject == projectOrdinal ||
+            state.accessibility == NamespaceFunctionAccessibility::Public))
+            candidates.push_back(ordinal);
     }
 }
 
@@ -1167,10 +1285,8 @@ std::vector<std::size_t> ProjectNamespaceFunctionModel::stateCandidatesInNamespa
     std::string_view namespaceName,
     std::string_view stateName) const
 {
-    // EN: statesByNamespaceName_ holds exactly the states that stateByName_ maps (one per project
-    //     key), so this is the same set as one stateByName_ lookup per visible project.
-    // ES: statesByNamespaceName_ guarda exactamente los estados que mapea stateByName_ (uno por
-    //     llave de proyecto), así que es el mismo conjunto que una búsqueda por proyecto visible.
+    // Multiple states can be present when a C/C++ import collides with a NativeSharp state.
+    // Keep both until semantic lookup can report ambiguity after lexical shadowing is considered.
     const std::span<const std::size_t> visible = visibleProjects(nameLookup, projectOrdinal);
     std::vector<std::size_t> candidates;
     for (const std::size_t ordinal : ordinalsInNamespace(statesByNamespaceName_, namespaceName, stateName))
@@ -1312,6 +1428,33 @@ void ProjectNamespaceFunctionModel::bindExtensionReference(
     extensionBindings_.push_back(std::move(binding));
 }
 
+void ProjectNamespaceFunctionModel::captureCppFunctionDemand(
+    const ProjectNameLookup& nameLookup, const ProjectSyntaxUnit& unit,
+    const ast::AstNode* syntax, std::string_view lexicalNamespace,
+    const FunctionLookupEnvironment& environment, std::string_view written, bool directCall)
+{
+    CppFunctionDemand demand{unit.projectOrdinal(), unit.fileId(), syntax, std::string(written),
+        std::string(lexicalNamespace), environment.importedNamespaces, environment.aliases, directCall,
+        {}, {}, {}};
+    const std::size_t dot = written.find_last_of('.');
+    demand.lookupName = std::string(dot == std::string_view::npos ? written : written.substr(dot + 1));
+    if (dot == std::string_view::npos)
+    {
+        demand.lookupNamespaces.emplace_back(lexicalNamespace);
+        for (const auto& imported : environment.importedNamespaces)
+            if (std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), imported) ==
+                demand.lookupNamespaces.end()) demand.lookupNamespaces.push_back(imported);
+    }
+    else if (const auto resolved = resolveNamespace(nameLookup, unit.projectOrdinal(), lexicalNamespace,
+                                                     environment, std::string(written.substr(0, dot))))
+        demand.lookupNamespaces.push_back(*resolved);
+    demand.visibleProjects.push_back(unit.projectOrdinal());
+    for (const auto visible : visibleProjects(nameLookup, unit.projectOrdinal()))
+        if (std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), visible) ==
+            demand.visibleProjects.end()) demand.visibleProjects.push_back(visible);
+    cppFunctionDemands_.push_back(std::move(demand));
+}
+
 void ProjectNamespaceFunctionModel::bindCallReference(
     const ProjectNameLookup& nameLookup,
     const ProjectSyntaxUnit& unit,
@@ -1328,6 +1471,8 @@ void ProjectNamespaceFunctionModel::bindCallReference(
     directCallCallees.insert(node->first());
     const std::optional<std::string> written = expressionName(node->first());
     if (!written.has_value()) return;
+    if (captureCppFunctionDemands_)
+        captureCppFunctionDemand(nameLookup, unit, node, lexicalNamespace, environment, *written, true);
     std::vector<std::size_t> candidates = resolveFunctionCandidates(
         nameLookup, unit.projectOrdinal(), lexicalNamespace, environment, *written);
     if (candidates.empty()) return;
@@ -1358,6 +1503,8 @@ void ProjectNamespaceFunctionModel::bindFunctionValueReference(
     // delegate and a target-typed argument both need the same overload set. A
     // direct call was already bound by its parent CallExpression.
     if (directCallCallees.contains(node)) return;
+    if (captureCppFunctionDemands_)
+        captureCppFunctionDemand(nameLookup, unit, node, lexicalNamespace, environment, written, false);
     std::vector<std::size_t> candidates = resolveFunctionCandidates(
         nameLookup, unit.projectOrdinal(), lexicalNamespace, environment, written);
     if (candidates.empty()) return;
@@ -1695,8 +1842,51 @@ bool ProjectNamespaceFunctionModel::build(
         genericModel,
         symbolByIdentity,
         exportedCByName);
+    for (const auto& function : cppImportedFunctions_)
+    {
+        const auto modules = nameLookup.modules();
+        if (function.projectOrdinal >= modules.size() || !modules[function.projectOrdinal] ||
+            modules[function.projectOrdinal]->moduleName() != function.moduleName)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error, function.range,
+                "imported C/C++ function has an invalid project owner");
+            continue;
+        }
+        const std::size_t ordinal = functions_.size();
+        functionsByName_[nameLookupKey(function.projectOrdinal, function.namespaceName, function.name)]
+            .push_back(ordinal);
+        functionsByNamespaceName_[function.namespaceName][function.name].push_back(ordinal);
+        functions_.push_back(function);
+        std::size_t prefixEnd = 0;
+        while (prefixEnd < function.namespaceName.size())
+        {
+            prefixEnd = function.namespaceName.find('.', prefixEnd);
+            cppFunctionsByNamespacePrefix_[function.namespaceName.substr(0, prefixEnd)].push_back(ordinal);
+            if (prefixEnd == std::string::npos) break;
+            ++prefixEnd;
+        }
+    }
     buildExtensionFunctionIndex();
     collectNamespaceStates(nameLookup, memberModel, diagnostics);
+    for (const auto& state : cppImportedStates_)
+    {
+        const auto modules = nameLookup.modules();
+        if (state.projectOrdinal >= modules.size() || !modules[state.projectOrdinal] ||
+            modules[state.projectOrdinal]->moduleName() != state.moduleName)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error, state.range,
+                "imported C/C++ global has an invalid project owner");
+            continue;
+        }
+        const auto key = nameLookupKey(state.projectOrdinal, state.namespaceName, state.name);
+        // NativeSharp and C/C++ declarations can share a spelling. They remain
+        // separate candidates; the existing lookup reports ambiguity only on use.
+        stateByName_.emplace(key, states_.size());
+        statesByNamespaceName_[state.namespaceName][state.name].push_back(states_.size());
+        states_.push_back(state);
+    }
     bindNamespaceReferences(nameLookup, units);
     built_ = diagnostics.errorCount() == initialErrorCount;
     return built_;
