@@ -1304,8 +1304,14 @@ int main(int argc, char** argv)
                                 CppLanguageMode::C, "enum ChoiceType { Choice = 5 };\n")));
                             const bool conflicted = provideCppSemanticEnumConstants(finalGraph, enumGroups,
                                 std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1), states, enumError);
-                            ok &= expect(correct && conflicted && states.size() == 1 &&
-                                         !states[0].cppImportError.empty(),
+                            const bool conflictingEnums = conflicted && states.size() == 1 &&
+                                !states[0].cppImportError.empty();
+                            enumGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                                CppLanguageMode::C, "extern int Choice;\n")));
+                            const bool combined = provideCppSemanticValues(finalGraph, enumGroups,
+                                std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1), states, enumError);
+                            ok &= expect(correct && conflictingEnums && combined && states.size() == 1 &&
+                                         states[0].cppImportError.find("conflicts") != std::string::npos,
                                          "C enum provider preserves value and reports conflicting observations");
                         }
                         auto inventory = collectCppSemanticRecords(finalGraph, recordGroups);
