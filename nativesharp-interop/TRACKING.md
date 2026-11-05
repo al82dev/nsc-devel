@@ -118,7 +118,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T04-020. Omitir `EndSourceFile` si `BeginSourceFile` falla.
 - [x] T04-021. Ejecutar la acción de frontend sin repetir la inicialización de la unidad.
 - [x] T04-022. Consultar los diagnósticos de error además del resultado de ejecución de Clang.
-- [ ] T04-023. Mantener vivos el AST y el estado semántico durante la vida útil necesaria de la sesión.
+- [x] T04-023. Mantener vivos el AST y el estado semántico durante la vida útil necesaria de la sesión.
 - [ ] T04-024. Cerrar la unidad exactamente una vez después de una apertura exitosa.
 - [ ] T04-025. Liberar los recursos de sesión en el orden compatible con sus dependencias.
 - [ ] T04-026. Evitar una finalización global de LLVM al cerrar una sesión individual.
