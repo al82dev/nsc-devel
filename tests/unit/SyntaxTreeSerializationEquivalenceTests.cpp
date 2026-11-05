@@ -131,6 +131,7 @@ std::string legacyTypeSyntaxTree(const ast::TypeSyntax* type)
         frontend::internal::CachePayloadWriter::byte(out, modifier.pointerHasProvenance ? 1U : 0U);
         frontend::internal::CachePayloadWriter::u64(out, modifier.pointerKnownAlignment);
         frontend::internal::CachePayloadWriter::u32(out, modifier.pointerAddressSpace);
+        frontend::internal::CachePayloadWriter::byte(out, modifier.importedCRestrict ? 1U : 0U);
         frontend::internal::CachePayloadWriter::byte(out, modifier.arrayCount != nullptr ? 1U : 0U);
         if (modifier.arrayCount != nullptr) out += legacyAstNodeTree(modifier.arrayCount);
     }

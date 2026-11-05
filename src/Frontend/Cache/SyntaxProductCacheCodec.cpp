@@ -13,7 +13,7 @@ namespace nativesharp::frontend::internal
 {
 namespace
 {
-constexpr std::string_view syntaxUnitPayloadSchema = "nsc-syntax-product-unit-v1";
+constexpr std::string_view syntaxUnitPayloadSchema = "nsc-syntax-product-unit-v2";
 
 void writeSourceRange(std::string& out, SourceRange range)
 {

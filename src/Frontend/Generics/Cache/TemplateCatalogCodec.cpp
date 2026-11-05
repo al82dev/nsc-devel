@@ -46,7 +46,7 @@ std::string computeTemplateSourceFingerprint(
 }
 
 // NSC305-C01. The C1 cache schema version (bump on any format change).
-static constexpr std::string_view templateCacheSchema = "nsc-c1-template-v3";
+static constexpr std::string_view templateCacheSchema = "nsc-c1-template-v4";
 
 // Writes both FileIds and offsets so a restored tree preserves diagnostic and dump locations
 // exactly. The enclosing syntax-product codec validates unit identity before accepting the tree.
@@ -451,6 +451,7 @@ static bool deserializeTypeSyntaxModifiers(
         std::uint8_t kind = 0;
         std::uint8_t nullability = 0;
         std::uint8_t provenance = 0;
+        std::uint8_t importedCRestrict = 0;
         std::uint8_t hasArrayCount = 0;
         std::uint64_t arrayRank = 0;
         std::uint64_t alignment = 0;
@@ -459,7 +460,8 @@ static bool deserializeTypeSyntaxModifiers(
             !readSourceRange(reader, modifier.range, relocatedFileId) ||
             !reader.u64(arrayRank) || !reader.byte(nullability) ||
             !reader.byte(provenance) || !reader.u64(alignment) ||
-            !reader.u32(addressSpace) || !reader.byte(hasArrayCount))
+            !reader.u32(addressSpace) || !reader.byte(importedCRestrict) || !reader.byte(hasArrayCount) ||
+            importedCRestrict > 1U)
         {
             return false;
         }
@@ -470,6 +472,7 @@ static bool deserializeTypeSyntaxModifiers(
         modifier.pointerHasProvenance = provenance != 0U;
         modifier.pointerKnownAlignment = static_cast<std::size_t>(alignment);
         modifier.pointerAddressSpace = addressSpace;
+        modifier.importedCRestrict = importedCRestrict != 0U;
         if (hasArrayCount != 0U)
         {
             modifier.arrayCount = deserializeAstNodeTreeImpl(
@@ -949,6 +952,7 @@ void writeTypeModifier(
     internal::CachePayloadWriter::byte(out, modifier.pointerHasProvenance ? 1U : 0U);
     internal::CachePayloadWriter::u64(out, modifier.pointerKnownAlignment);
     internal::CachePayloadWriter::u32(out, modifier.pointerAddressSpace);
+    internal::CachePayloadWriter::byte(out, modifier.importedCRestrict ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, modifier.arrayCount != nullptr ? 1U : 0U);
     pushSyntaxStep(steps, SyntaxStep::Kind::TypeModifier, nullptr, &type, index + 1U);
     if (modifier.arrayCount != nullptr)
