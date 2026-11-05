@@ -2,6 +2,7 @@
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Frontend/CppAliasEnumType.h"
+#include "nativesharp/Frontend/CppAliasFunctionType.h"
 #include "nativesharp/Frontend/CppAliasRecordType.h"
 #include "nativesharp/Frontend/QualifiedNamespaceTarget.h"
 #include "../Internal/LookupEnvironment.h"
@@ -325,6 +326,32 @@ bool ProjectNameLookup::expandCppTypeAlias(
             mutableSyntax->setBaseName(std::string(array->element.name));
             mutableSyntax->prependModifiers(modifiers);
             mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || array->element.pointeeConst);
+            return true;
+        }
+        const auto function = cppAliasFunctionType(selected->declaration.underlyingType);
+        if (function && selected->targetTriple == "x86_64-pc-windows-msvc")
+        {
+            if (!syntax->modifiers().empty() || syntax->isPointeeConst())
+                return report(diagnostics::DiagnosticId::InvalidUsingTarget,
+                              "C function pointer alias has unsupported use-site modifiers: '" +
+                              syntax->baseName() + "'");
+            auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
+            const auto makeType = [&](const CppAliasBuiltinType& type) {
+                auto* result = arena.make<ast::TypeSyntax>(syntax->range(), type.token, std::string(type.name));
+                result->prependModifiers(std::vector<ast::TypeModifierSyntax>(type.pointerDepth));
+                result->setPointeeConst(type.pointeeConst);
+                return result;
+            };
+            auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
+            mutableSyntax->setBaseTokenKind(lexer::TokenKind::Invalid);
+            mutableSyntax->setBaseName("$function");
+            mutableSyntax->setFunction();
+            mutableSyntax->setFunctionCarrier(ast::FunctionTypeCarrierSyntaxKind::Pointer);
+            mutableSyntax->setFunctionCallingConvention(function->callingConvention);
+            mutableSyntax->setFunctionReturnType(makeType(function->result));
+            mutableSyntax->setFunctionVariadic(function->variadic);
+            for (const auto& parameter : function->parameters)
+                mutableSyntax->addTypeArgument(makeType(parameter));
             return true;
         }
         const auto mapped = cppAliasBuiltinType(selected->declaration.underlyingType);
