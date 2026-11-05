@@ -2,6 +2,18 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Primera validación agrupada: fallida
+
+La construcción ON y el frontend OFF terminaron tras corregir una llamada a
+una API inexistente de Clang. Pasaron los proyectos de valores, tipo incompleto
+y funciones enum. La suite informó fallos de refinamiento estructural, layout
+de enum y dos casos de tipo incompleto. Los proyectos de union y layout
+rechazaron campos importados; callback falló en el propietario de lambda; el
+caso record-c se detuvo por una opción inválida del volcado LLVM. Se corrigió
+esa opción y se preparó una corrección que transporta dimensiones de campos
+desde Clang. Ninguna corrección posterior se ha vuelto a validar. Siguiente:
+diagnosticar en conjunto los fallos restantes y repetir la batería agrupada.
+
 - `ClangSession.cpp::describeType` conserva clase, spelling, tipo canónico,
   calificadores y tamaño/alineación cuando Clang dispone de ellos. Modela
   punteros, referencias, arreglos constantes, enums, records y funciones, pero
