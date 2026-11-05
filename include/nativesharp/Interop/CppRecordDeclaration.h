@@ -99,5 +99,8 @@ struct CppRecordDeclaration
     std::vector<CppRecordField> fields;
     std::vector<CppStaticField> staticFields;
     std::vector<CppMethodDeclaration> methods;
+    // Identifies the language used to interpret this declaration; C and C++
+    // unions have different member lifetime rules.
+    bool isCxx = true;
 };
 }

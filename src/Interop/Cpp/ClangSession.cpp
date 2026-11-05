@@ -404,6 +404,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         if (const auto* definition = record->getDefinition()) record = definition;
 
         CppRecordDeclaration value;
+        value.isCxx = astContext.getLangOpts().CPlusPlus;
         value.name = record->getNameAsString();
         value.qualifiedName = record->getQualifiedNameAsString();
         for (const clang::DeclContext* parent = record->getDeclContext(); parent != nullptr;
