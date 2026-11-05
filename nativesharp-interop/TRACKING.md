@@ -113,7 +113,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T04-015. Asegurar que el consumidor viva más que el motor de diagnósticos que lo utiliza.
 - [x] T04-016. Crear el `CompilerInstance` con la configuración construida.
 - [x] T04-017. Inicializar los diagnósticos de `CompilerInstance` con propiedad explícita.
-- [ ] T04-018. Crear la acción de frontend propuesta `ClangSessionAction.cpp`.
+- [x] T04-018. Crear la acción de frontend propuesta `ClangSessionAction.cpp`. Evidencia: [tanda 04](TANDA-04-SESION.md).
 - [x] T04-019. Llamar a `BeginSourceFile` una sola vez por apertura de unidad.
 - [x] T04-020. Omitir `EndSourceFile` si `BeginSourceFile` falla.
 - [x] T04-021. Ejecutar la acción de frontend sin repetir la inicialización de la unidad.

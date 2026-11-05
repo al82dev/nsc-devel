@@ -1,16 +1,15 @@
 # Tanda 04: implementación de sesión Clang
 
-Estado: implementación preparada y primera validación agrupada ejecutada. La
-tanda **todavía no está cerrada**: falta determinar la cobertura de cada ítem,
-incluida la cancelación durante el análisis y el ciclo de vida del frontend.
+Estado: implementación y validación agrupada de los 30 ítems completadas para la
+versión fijada de Clang. Las limitaciones indicadas aquí siguen vigentes y no
+constituyen soporte general de interoperabilidad C++.
 
 La sesión separa la construcción de argumentos, la captura de diagnósticos y la
-acción de Clang. La acción propia es un `ToolAction` que utiliza `ASTUnit` de
-Clang 23.1.0; este crea internamente su acción de frontend y administra la
-apertura y cierre de la unidad. Debe contrastarse el alcance literal de
-T04-018 con esa decisión, además de verificar los caminos de éxito y error.
+acción de Clang. Un `ToolAction` instala `SessionFrontendAction`, derivada de
+`SyntaxOnlyAction`, en `ASTUnit::LoadFromCompilerInvocationAction`; la unidad
+retiene el AST y usa el sistema de archivos cancelable de la sesión.
 
-La revisión de `clang/lib/Frontend/ASTUnit.cpp`, función `ASTUnit::Parse`, halló
+La revisión de `clang/lib/Frontend/ASTUnit.cpp` halló
 que si `BeginSourceFile` falla se retorna sin `EndSourceFile`, y que existe una
 rama que retorna antes del cierre si `Execute` devuelve error. En la versión
 23.1.0 fijada, `FrontendAction::Execute` no es virtual y su implementación
@@ -43,6 +42,11 @@ Validación del 5 de noviembre de 2026:
   Tras las correcciones, la construcción incremental y la batería completa de
   sesión terminaron con código 0. La prueba concurrente mantiene las sesiones
   vivas y no afirma ausencia de carreras mediante un detector especializado.
+- Tras instalar la acción de frontend propia, la reconstrucción incremental de
+  `nsc` y `nsc_cpp_session_tests` terminó con código 0 y la batería completa de
+  sesión volvió a terminar con código 0, incluidos diagnósticos, apertura,
+  cancelación, consultas y concurrencia. La configuración OFF no cambió desde su
+  validación anterior.
 
 Las pruebas de sobrecarga de dos punteros siguen siendo trabajo de otra tanda y
 no se consideran aprobadas por esta validación. La cancelación se provocó durante
