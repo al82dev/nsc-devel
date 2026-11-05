@@ -846,6 +846,17 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     if (const auto* failure = std::get_if<CppRecordBindingFailure>(&selected))
         return CppRecordObservationFailure{failure->message};
     result.selection = std::move(std::get<CppRecordBindingSelection>(selected));
+    std::set<std::string> enumIdentities;
+    const auto addEnum = [&](std::size_t ordinal) {
+        const auto* type = lookup.cppImportedType(ordinal);
+        if (type && type->kind == frontend::NamedTypeDeclarationKind::Enum &&
+            enumIdentities.insert(type->identity.key()).second)
+            result.referencedEnumTypes.push_back(*type);
+    };
+    for (const auto& binding : lookup.bindings())
+        if (binding.targetTypeOrdinal) addEnum(*binding.targetTypeOrdinal);
+    for (const auto& binding : lookup.expressionTypeBindings())
+        for (const auto ordinal : binding.candidateTypeOrdinals) addEnum(ordinal);
     return result;
 }
 
@@ -866,6 +877,8 @@ bool selectExperimentalCppRecordTypesForCompilation(
         return false;
     }
     output = std::move(std::get<CppRecordObservationInputs>(selected).types);
+    const auto& enums = std::get<CppRecordObservation>(observed).referencedEnumTypes;
+    output.insert(output.end(), enums.begin(), enums.end());
     error.clear();
     return true;
 }

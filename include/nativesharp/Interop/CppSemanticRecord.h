@@ -173,6 +173,7 @@ struct CppRecordObservation
     std::vector<CppSemanticRecordEntry> inventory;
     CppRecordGroups groups;
     CppRecordBindingSelection selection;
+    std::vector<frontend::CppImportedTypeDeclaration> referencedEnumTypes;
     std::vector<std::size_t> deferredGroups;
     std::vector<std::size_t> collidingGroups;
     std::vector<std::size_t> referencedCollidingGroups;
