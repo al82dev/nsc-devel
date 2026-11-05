@@ -4937,6 +4937,31 @@ int main(int argc, char** argv)
                         enumReferenced |= type.identity.name() == "Color" && type.enumBase.has_value();
                 ok &= expect(aliasResult && aliasReferenced && enumReferenced,
                              "record observation selects C record and enum typedefs together");
+                for (bool useCollision : {false, true})
+                {
+                    nativesharp::frontend::ProjectCompilation collisionCompilation;
+                    collisionCompilation.setSourceBufferProvider([useCollision](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() != "Main.ns") return std::nullopt;
+                        return useCollision ? "struct Collision {} int Use(Collision* x) { return 0; } int Main() { return 0; }\n"
+                                            : "struct Collision {} int Main() { return 0; }\n";
+                    });
+                    CppProjectSessions group;
+                    group.projectFile = std::filesystem::absolute(path);
+                    group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::C, "enum Collision { CValue = 1 };\n")));
+                    std::vector<CppProjectSessions> groups;
+                    groups.push_back(std::move(group));
+                    std::string failure;
+                    const bool parsed = collisionCompilation.setCppProjectSessions(std::move(groups), failure) &&
+                        collisionCompilation.compileProjectSyntax(path, failure);
+                    const auto observed = parsed ? observeCppRecords(collisionCompilation) :
+                        CppRecordObservationRunResult{CppRecordObservationFailure{failure}};
+                    const auto* collisionError = std::get_if<CppRecordObservationFailure>(&observed);
+                    ok &= expect(useCollision ? collisionError && collisionError->message.find("C enum conflicts") != std::string::npos
+                                              : std::holds_alternative<CppRecordObservation>(observed),
+                                 "C enum collision is diagnosed only when the conflicting type is used");
+                }
                 nativesharp::frontend::ProjectCompilation unpreparedObservation;
                 ok &= expect(std::holds_alternative<CppRecordObservationFailure>(observeCppRecords(unpreparedObservation)),
                              "record observation rejects an unprepared compilation");
