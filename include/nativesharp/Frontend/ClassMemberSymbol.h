@@ -39,6 +39,14 @@ struct ClassMemberSymbol final
     // A metadata API part may be precompiled while a transported generic-template part is local
     // and must therefore be analyzed/lowered in the consumer.
     bool isPrecompiled = false;
+    // Experimental C++ identity; never interpreted as an NSMETA-produced member.
+    bool isCppExternal = false;
+    bool cppDllImport = false;
+    // For imported C++ constructors/destructors only; this is not an NS error type.
+    bool cppLifetimeNonThrowing = false;
+    bool cppLifetimeImplicit = false;
+    bool cppLifetimeTrivial = false;
+    std::string cppExternalSymbol;
     bool isTransportedInlineBody = false;
     // Exact physical identity published by the producer's NSMETA.  A precompiled callable is
     // resolved semantically against the synthetic declaration, but its external symbol must
