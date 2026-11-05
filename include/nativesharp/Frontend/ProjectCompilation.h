@@ -187,6 +187,10 @@ public:
     ProjectCompilationIndexes& indexes() noexcept;
     const ProjectCompilationIndexes& indexes() const noexcept;
     const source::SourceManager& sourceManager() const noexcept;
+    bool cloneSyntaxForObservation(
+        std::vector<std::unique_ptr<ProjectSyntaxUnit>>& output,
+        diagnostics::DiagnosticEngine& diagnostics,
+        std::string& error) const;
     diagnostics::DiagnosticEngine& diagnostics() noexcept;
     const diagnostics::DiagnosticEngine& diagnostics() const noexcept;
     std::span<const std::unique_ptr<ProjectSyntaxUnit>> units() const noexcept;
