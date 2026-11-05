@@ -7,6 +7,7 @@
 #include "../../src/Interop/Cpp/ClangSessionSupport.h"
 #include <clang/Frontend/ASTUnit.h>
 #include <atomic>
+#include <array>
 #include <thread>
 #include <llvm/Support/MemoryBuffer.h>
 #include "nativesharp/Basic/ArtifactTransaction.h"
@@ -306,6 +307,21 @@ int main(int argc, char** argv)
                      copied.diagnostics()[0].externalLocation()->line == 12 &&
                      copied.diagnostics()[0].externalLocation()->column == 7,
                      "appending a C++ diagnostic preserves its structured external location");
+        auto later = fatal;
+        later.location->file = "A:/headers/z.hpp";
+        auto earlier = fatal;
+        earlier.location->file = "A:/headers/a.hpp";
+        std::array<diagnostics::DiagnosticEngine, 2> shards;
+        const auto resolver = [location](const interop::CppSourcePoint&) -> std::optional<SourceRange> {
+            return SourceRange(location, location);
+        };
+        frontend::appendCppDiagnostics(std::span(&later, 1), shards[0], resolver);
+        frontend::appendCppDiagnostics(std::span(&earlier, 1), shards[1], resolver);
+        diagnostics::DiagnosticEngine merged;
+        merged.mergeDeterministically(shards);
+        ok &= expect(merged.diagnostics().size() == 2 && merged.diagnostics()[0].externalLocation() &&
+                     merged.diagnostics()[0].externalLocation()->file == std::filesystem::path("A:/headers/a.hpp"),
+                     "external locations break ties deterministically when merging diagnostics");
     }
     {
         CppSessionOptions config;
