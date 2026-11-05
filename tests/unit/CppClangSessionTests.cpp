@@ -321,5 +321,141 @@ int main(int argc, char** argv)
                          "copied source-file snapshot survives session closure");
         }
     }
+    {
+        namespace fs = std::filesystem;
+        const fs::path root = fs::absolute(fs::path(argv[2]) / "cpp-fixtures" / "binary-catalog");
+        std::error_code ec;
+        fs::create_directories(root / "first", ec);
+        if (!ec) fs::create_directories(root / "second", ec);
+        const fs::path library = root / "first" / "api.lib";
+        const fs::path duplicate = root / "second" / "API.lib";
+        const fs::path runtime = root / "first" / "api.dll";
+        { std::ofstream file(library, std::ios::binary); file << "first"; }
+        { std::ofstream file(duplicate, std::ios::binary); file << "different"; }
+        { std::ofstream file(runtime, std::ios::binary); file << "runtime"; }
+        nativesharp::compilation::CppLibraryReference first;
+        first.libraryPath = library; first.runtimePath = runtime;
+        nativesharp::compilation::CppLibraryReference headerOnly;
+        std::vector<nativesharp::interop::CppBinaryDependency> catalog;
+        std::string catalogError;
+        const std::vector<nativesharp::compilation::CppLibraryReference> references = {headerOnly, first, first};
+        const bool built = !ec && nativesharp::interop::collectCppBinaryDependencies(references, catalog, catalogError);
+        const std::string expected = "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e";
+        ok &= expect(built && catalog.size() == 2 && catalog[0].library.fileName == "api.lib" &&
+                         catalog[0].library.size == 5 && nativesharp::basic::sha256Hex(catalog[0].library.digest) == expected &&
+                         catalog[0].runtime.fileName == "api.dll" && catalog[0].runtime.size == 7 &&
+                         catalog[1].library.digest == catalog[0].library.digest,
+                     "C++ binary catalog hashes artifacts and preserves link-order duplicates");
+        std::vector<nativesharp::interop::ResolvedCppBinaryDependency> resolved;
+        const bool resolvedOk = built && nativesharp::interop::resolveCppBinaryDependencies(
+            catalog, root / "first", resolved, catalogError);
+        ok &= expect(resolvedOk && resolved.size() == 2 && resolved[0].libraryPath == library &&
+                         resolved[0].runtimePath == runtime && resolved[1].libraryPath == library,
+                     "C++ binary consumer resolves verified libraries and runtimes in link order");
+        { std::ofstream file(library, std::ios::binary | std::ios::trunc); file << "other"; }
+        ok &= expect(!nativesharp::interop::resolveCppBinaryDependencies(catalog, root / "first", resolved, catalogError) &&
+                         catalogError.find("identity mismatch") != std::string::npos && resolved.size() == 2 &&
+                         resolved[0].libraryPath == library,
+                     "C++ binary consumer rejects modified same-size library without changing output");
+        { std::ofstream file(library, std::ios::binary | std::ios::trunc); file << "first"; }
+        auto unsafeCatalog = catalog;
+        if (!unsafeCatalog.empty()) unsafeCatalog[0].library.fileName = "../api.lib";
+        ok &= expect(!nativesharp::interop::resolveCppBinaryDependencies(unsafeCatalog, root / "first", resolved, catalogError) &&
+                         resolved.size() == 2 && resolved[0].libraryPath == library,
+                     "C++ binary consumer rejects parent traversal without changing output");
+        nativesharp::compilation::CppLibraryReference collision;
+        collision.libraryPath = duplicate;
+        const std::vector<nativesharp::compilation::CppLibraryReference> conflicting = {first, collision};
+        const bool collisionRejected = !nativesharp::interop::collectCppBinaryDependencies(conflicting, catalog, catalogError);
+        ok &= expect(collisionRejected && catalog.size() == 2 && nativesharp::basic::sha256Hex(catalog[0].library.digest) == expected,
+                     "C++ binary catalog rejects conflicting Windows names without changing output");
+        collision.libraryPath = root / "missing.lib";
+        const std::vector<nativesharp::compilation::CppLibraryReference> missing = {first, collision};
+        ok &= expect(!nativesharp::interop::collectCppBinaryDependencies(missing, catalog, catalogError) &&
+                         catalog.size() == 2 && nativesharp::basic::sha256Hex(catalog[0].library.digest) == expected,
+                     "C++ binary catalog rejects missing files without changing output");
+        {
+            using namespace nativesharp::compilation;
+            const auto otherPath = root / "first" / "other.lib";
+            { std::ofstream file(otherPath, std::ios::binary); file << "second"; }
+            CppLibraryReference other;
+            other.libraryPath = otherPath;
+            const auto makeProject = [&](const char* name, std::vector<CppLibraryReference> refs) {
+                return Project(root / name, name, ProjectOutputKind::Library, ProjectSourceSet(root),
+                    {}, {}, {}, nativesharp::language::PanicProfile::Abort, {}, {}, {}, std::move(refs));
+            };
+            std::vector<Project> projects;
+            projects.push_back(makeProject("dep.nsproj", {headerOnly, first}));
+            projects.push_back(makeProject("root.nsproj", {other, first}));
+            ProjectGraph graph(root / "root.nsproj", std::move(projects));
+            std::vector<LibraryMetadataCppBinaryDependency> graphCatalog;
+            const bool graphBuilt = collectCppGraphBinaryMetadataDependencies(graph, graphCatalog, catalogError);
+            ok &= expect(graphBuilt && graphCatalog.size() == 3 && graphCatalog[0].libraryFileName == "api.lib" &&
+                             graphCatalog[1].libraryFileName == "other.lib" && graphCatalog[2].libraryFileName == "api.lib",
+                         "C++ binary catalog includes references from all projects in graph order");
+            collision.libraryPath = duplicate;
+            std::vector<Project> conflictProjects;
+            conflictProjects.push_back(makeProject("dep.nsproj", {first}));
+            conflictProjects.push_back(makeProject("root.nsproj", {collision}));
+            ProjectGraph conflictingGraph(root / "root.nsproj", std::move(conflictProjects));
+            ok &= expect(!collectCppGraphBinaryMetadataDependencies(conflictingGraph, graphCatalog, catalogError) &&
+                             graphCatalog.size() == 3 && graphCatalog[1].libraryFileName == "other.lib",
+                         "C++ graph catalog rejects cross-project name conflicts without changing output");
+        }
+        if (built && !catalog.empty())
+        {
+        nativesharp::interop::LibraryMetadata model;
+        model.moduleName = "BinaryCatalogTest";
+        model.producerVersion = "test";
+        model.targetTriple = "x86_64-pc-windows-msvc";
+        std::string metadataError;
+        auto libraryOnly = first;
+        libraryOnly.runtimePath.clear();
+        const std::vector<nativesharp::compilation::CppLibraryReference> metadataReferences = {first, libraryOnly, first};
+        const bool metadataCollected = nativesharp::interop::collectCppBinaryMetadataDependencies(
+            metadataReferences, model.cppBinaryDependencies, metadataError);
+        nativesharp::interop::LibraryMetadataCodec codec;
+        const auto metadataPath = root / "cpp-closure.nsmeta";
+        nativesharp::interop::LibraryMetadata decoded;
+        const bool encoded = metadataCollected && codec.writeModel(model, metadataPath, metadataError) &&
+            codec.read(metadataPath, decoded, metadataError);
+        ok &= expect(encoded && decoded.formatMinor == 41 && decoded.cppBinaryDependencies == model.cppBinaryDependencies,
+                     "NSMETA preserves ordered C++ binary dependencies and repeated link inputs");
+        std::vector<nativesharp::interop::ResolvedCppBinaryDependency> decodedPaths;
+        const bool decodedResolved = encoded && nativesharp::interop::resolveCppBinaryMetadataDependencies(
+            decoded.cppBinaryDependencies, root / "first", decodedPaths, metadataError);
+        ok &= expect(decodedResolved && decodedPaths.size() == 3 && decodedPaths[0].libraryPath == library &&
+                         decodedPaths[0].runtimePath == runtime && decodedPaths[1].runtimePath.empty() &&
+                         decodedPaths[2].libraryPath == library,
+                     "serialized C++ binary closure resolves in order with an optional runtime");
+        { std::ofstream file(library, std::ios::binary | std::ios::trunc); file << "other"; }
+        ok &= expect(!nativesharp::interop::resolveCppBinaryMetadataDependencies(
+                         decoded.cppBinaryDependencies, root / "first", decodedPaths, metadataError) &&
+                         metadataError.find("identity mismatch") != std::string::npos &&
+                         decodedPaths.size() == 3 && decodedPaths[0].libraryPath == library,
+                     "serialized C++ closure rejects modified files without changing resolved output");
+        { std::ofstream file(library, std::ios::binary | std::ios::trunc); file << "first"; }
+        ok &= expect(encoded && codec.verifyCurrentCompiler(decoded, metadataError),
+                     "NSMETA accepts structurally valid C++ binary and runtime dependencies");
+        auto oldModel = model;
+        oldModel.formatMinor = 40;
+        ok &= expect(!codec.writeModel(oldModel, root / "invalid-old.nsmeta", metadataError),
+                     "NSMETA 1.40 refuses to silently discard C++ dependencies");
+        oldModel.cppBinaryDependencies.clear();
+        nativesharp::interop::LibraryMetadata oldDecoded;
+        const bool oldRoundTrip = codec.writeModel(oldModel, root / "old.nsmeta", metadataError) &&
+            codec.read(root / "old.nsmeta", oldDecoded, metadataError) &&
+            codec.verifyCurrentCompiler(oldDecoded, metadataError);
+        ok &= expect(oldRoundTrip && oldDecoded.formatMinor == 40 && oldDecoded.cppBinaryDependencies.empty(),
+                     "NSMETA 1.40 without C++ closure remains readable and valid");
+        auto baseline = model;
+        baseline.cppBinaryDependencies.clear();
+        nativesharp::interop::LibraryMetadata baselineDecoded;
+        const bool baselineRoundTrip = codec.writeModel(baseline, root / "baseline.nsmeta", metadataError) &&
+            codec.read(root / "baseline.nsmeta", baselineDecoded, metadataError);
+        ok &= expect(encoded && baselineRoundTrip && decoded.abiFingerprint == baselineDecoded.abiFingerprint,
+                     "private C++ binary closure does not change the public ABI fingerprint");
+        }
+    }
     return ok ? 0 : 1;
 }
