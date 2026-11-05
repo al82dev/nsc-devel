@@ -890,6 +890,11 @@ if(LLVM_FOUND)
             add_test(NAME nsc.cpp-interop.session COMMAND nsc_cpp_session_tests
                 "${CLANG_INSTALL_PREFIX}/lib/clang/23" "${CMAKE_BINARY_DIR}"
                 "${CLANG_INSTALL_PREFIX}/bin/clang${CMAKE_EXECUTABLE_SUFFIX}")
+            add_test(NAME nsc.cpp-interop.incompatible-clang
+                COMMAND "${CMAKE_COMMAND}"
+                    "-DNSC_EXPECTED_CLANG_VERSION=${LLVM_PACKAGE_VERSION}"
+                    "-DNSC_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}/cpp-incompatible-clang"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/nativesharp-interop/pruebas-version-clang/verify.cmake")
         endif()
     endif()
     if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
