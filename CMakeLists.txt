@@ -893,6 +893,8 @@ if(LLVM_FOUND)
             add_test(NAME nsc.cpp-interop.session COMMAND nsc_cpp_session_tests
                 "${CLANG_INSTALL_PREFIX}/lib/clang/23" "${NSC_CPP_INTEROP_TEST_ROOT}"
                 "${CLANG_INSTALL_PREFIX}/bin/clang${CMAKE_EXECUTABLE_SUFFIX}")
+            set_tests_properties(nsc.cpp-interop.session PROPERTIES
+                ENVIRONMENT "TMP=${NSC_CPP_INTEROP_TEST_ROOT};TEMP=${NSC_CPP_INTEROP_TEST_ROOT}")
             add_test(NAME nsc.cpp-interop.incompatible-clang
                 COMMAND "${CMAKE_COMMAND}"
                     "-DNSC_EXPECTED_CLANG_VERSION=${LLVM_PACKAGE_VERSION}"
