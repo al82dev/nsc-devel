@@ -7,11 +7,20 @@ call "%~dp0construir-frontend-tanda1.cmd" nsc ON
 if errorlevel 1 exit /b 1
 call "%~dp0construir-frontend-tanda1.cmd" nsc_cpp_session_tests ON
 if errorlevel 1 exit /b 1
+call "%~dp0construir-frontend-tanda1.cmd" nsc_precompiled_syntax_node_index_tests ON
+if errorlevel 1 exit /b 1
+call "%~dp0construir-frontend-tanda1.cmd" nsc_syntax_tree_serialization_equivalence_tests ON
+if errorlevel 1 exit /b 1
 call "%~dp0construir-frontend-tanda1.cmd" nsc_frontend OFF
 if errorlevel 1 exit /b 1
 set "TASK_FAILED=0"
 echo === Pruebas de sesion Clang ===
 A:\nsc-interop-build\tanda1-ON\bin\nsc_cpp_session_tests.exe A:\al82dev-clang\lib\clang\23 A:\nsc-interop-build A:\al82dev-clang\bin\clang.exe
+if errorlevel 1 set "TASK_FAILED=1"
+echo === Restauracion de sintaxis y equivalencia de serializacion ===
+A:\nsc-interop-build\tanda1-ON\bin\nsc_precompiled_syntax_node_index_tests.exe
+if errorlevel 1 set "TASK_FAILED=1"
+A:\nsc-interop-build\tanda1-ON\bin\nsc_syntax_tree_serialization_equivalence_tests.exe
 if errorlevel 1 set "TASK_FAILED=1"
 for %%T in (valores incompleto record-c union layout callback enum-funcion) do call :run_case %%T
 if "%TASK_FAILED%"=="1" (
