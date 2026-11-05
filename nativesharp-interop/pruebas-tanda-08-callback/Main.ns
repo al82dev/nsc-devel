@@ -1,5 +1,8 @@
 int Main()
 {
     Callback callback = (int value) => value + 2;
-    return apply_callback(callback, 40) - 42;
+    Callback* indirect = &callback;
+    if (apply_callback(callback, 40) != 42) return 1;
+    if (apply_callback_ptr(indirect, 40) != 42) return 2;
+    return 0;
 }

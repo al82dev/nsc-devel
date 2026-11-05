@@ -460,7 +460,10 @@ bool ProjectNameLookup::expandCppTypeAlias(
         const auto function = cppAliasFunctionType(selected->declaration.underlyingType);
         if (function && selected->targetTriple == "x86_64-pc-windows-msvc")
         {
-            if (!syntax->modifiers().empty() || syntax->isPointeeConst())
+            if (syntax->isPointeeConst() ||
+                !std::all_of(syntax->modifiers().begin(), syntax->modifiers().end(), [](const auto& modifier) {
+                    return modifier.kind == ast::TypeModifierSyntaxKind::Pointer;
+                }))
                 return report(diagnostics::DiagnosticId::InvalidUsingTarget,
                               "C function pointer alias has unsupported use-site modifiers: '" +
                               syntax->baseName() + "'");
@@ -489,7 +492,10 @@ bool ProjectNameLookup::expandCppTypeAlias(
             underlying.kind == interop::CppTypeKind::Pointer && underlying.sizeBits == 64 &&
             !underlying.isConst && !underlying.isVolatile && underlying.element &&
             underlying.element->kind == interop::CppTypeKind::Function && underlying.element->function &&
-            underlying.element->function->hasPrototype && syntax->modifiers().empty() && !syntax->isPointeeConst())
+            underlying.element->function->hasPrototype && !syntax->isPointeeConst() &&
+            std::all_of(syntax->modifiers().begin(), syntax->modifiers().end(), [](const auto& modifier) {
+                return modifier.kind == ast::TypeModifierSyntaxKind::Pointer;
+            }))
         {
             const auto& signature = *underlying.element->function;
             auto convention = ast::FunctionCallingConventionSyntaxKind::NativeSharp;
