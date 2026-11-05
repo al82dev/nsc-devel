@@ -47,10 +47,12 @@ struct ProjectOopHirFunction final
     // declaration (with the same Win64 ABI mapping every definition gets), and (importDllName,
     // mangledName) flows to the linker so the import library materializes.
     bool isImportedC = false;
+    bool cppDllImport = false;
     bool isVariadic = false;
     // A public NativeSharp method materialized from .nsmeta. Its source declaration participates
     // in ordinary overload resolution, but its body and symbol live in the referenced library.
     bool isImportedNative = false;
+    bool isCppExternal = false;
     bool isTransportedInlineBody = false;
     // Producer-owned callable synthesized for a source class that declares no constructor.
     // It freezes base chaining plus instance field initializers behind the ordinary ctor ABI.

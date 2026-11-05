@@ -44,8 +44,10 @@ struct ProjectOopMirFunction final
     InliningPolicy inliningPolicy = InliningPolicy::Automatic;
     bool isExportedC = false;
     bool isImportedC = false;
+    bool cppDllImport = false;
     bool isVariadic = false;
     bool isImportedNative = false;
+    bool isCppExternal = false;
     bool isTransportedInlineBody = false;
     bool isSyntheticImplicitConstructor = false;
     std::string importDllName;
