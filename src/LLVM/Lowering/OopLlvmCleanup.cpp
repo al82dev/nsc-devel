@@ -1019,6 +1019,52 @@ bool OopLlvmImplementation::emitStructValueDropMembers(
         return true;
     }
 
+LLVMValueRef OopLlvmImplementation::cppUnwindDestructorBoundary(std::string& error)
+{
+        if (cppUnwindDestructorBoundary_ != nullptr) return cppUnwindDestructorBoundary_;
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef voidType = LLVMVoidTypeInContext(context_);
+        LLVMTypeRef args[] = {ptr, ptr};
+        LLVMTypeRef boundaryType = LLVMFunctionType(voidType, args, 2, 0);
+        constexpr const char* name = "__nsc_cpp_unwind_destructor_boundary";
+        if (LLVMGetNamedFunction(module_, name) != nullptr)
+            return failValue(error, "C++ unwind boundary symbol collides with an existing function");
+        LLVMTypeRef personalityType = LLVMFunctionType(LLVMInt32TypeInContext(context_), nullptr, 0, 1);
+        LLVMValueRef personality = LLVMGetNamedFunction(module_, "__CxxFrameHandler3");
+        if (personality == nullptr) personality = LLVMAddFunction(module_, "__CxxFrameHandler3", personalityType);
+        LLVMTypeRef terminateType = LLVMFunctionType(voidType, nullptr, 0, 0);
+        LLVMValueRef terminate = LLVMGetNamedFunction(module_, "__std_terminate");
+        if (terminate == nullptr) terminate = LLVMAddFunction(module_, "__std_terminate", terminateType);
+        LLVMValueRef boundary = LLVMAddFunction(module_, name, boundaryType);
+        if (personality == nullptr || terminate == nullptr || boundary == nullptr)
+            return failValue(error, "C++ unwind boundary declarations are unavailable");
+        if (LLVMGlobalGetValueType(personality) != personalityType ||
+            LLVMGlobalGetValueType(terminate) != terminateType)
+            return failValue(error, "C++ unwind boundary runtime declarations have incompatible types");
+        LLVMSetLinkage(boundary, LLVMInternalLinkage);
+        LLVMSetPersonalityFn(boundary, personality);
+        applyFunctionAttribute(boundary, "nounwind");
+        LLVMBuilderRef helper = LLVMCreateBuilderInContext(context_);
+        LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context_, boundary, "entry");
+        LLVMBasicBlockRef success = LLVMAppendBasicBlockInContext(context_, boundary, "success");
+        LLVMBasicBlockRef failure = LLVMAppendBasicBlockInContext(context_, boundary, "failure");
+        LLVMPositionBuilderAtEnd(helper, entry);
+        LLVMTypeRef destructorType = LLVMFunctionType(voidType, &ptr, 1, 0);
+        LLVMValueRef object = LLVMGetParam(boundary, 1);
+        LLVMBuildInvoke2(helper, destructorType, LLVMGetParam(boundary, 0), &object, 1, success, failure, "");
+        LLVMPositionBuilderAtEnd(helper, success);
+        LLVMBuildRetVoid(helper);
+        LLVMPositionBuilderAtEnd(helper, failure);
+        LLVMValueRef pad = LLVMBuildCleanupPad(helper, nullptr, nullptr, 0, "cpp.terminate.pad");
+        LLVMOperandBundleRef bundle = LLVMCreateOperandBundle("funclet", 7, &pad, 1);
+        LLVMBuildCallWithOperandBundles(helper, terminateType, terminate, nullptr, 0, &bundle, 1, "");
+        LLVMDisposeOperandBundle(bundle);
+        LLVMBuildUnreachable(helper);
+        LLVMDisposeBuilder(helper);
+        cppUnwindDestructorBoundary_ = boundary;
+        return boundary;
+}
+
 bool OopLlvmImplementation::emitValueDropAddress(
         LLVMValueRef address,
         std::string_view typeKey,
@@ -1032,6 +1078,38 @@ bool OopLlvmImplementation::emitValueDropAddress(
         if (!emitFixedArrayDropAddress(
                 address, typeKey, stem, fixedArrayHandled, error)) return false;
         if (fixedArrayHandled) return true;
+        const auto cppOrdinal = typeKey.starts_with("type:")
+            ? nameLookup_.typeOrdinalForIdentity(typeKey.substr(5)) : std::nullopt;
+        if (cppOrdinal && nameLookup_.cppImportedType(*cppOrdinal))
+        {
+            const frontend::ProjectOopMirFunction* destructor = nullptr;
+            for (const auto& function : mirModel_.functions())
+            {
+                if (!function.isCppExternal || !function.destructor ||
+                    function.declaringTypeOrdinal != *cppOrdinal) continue;
+                if (destructor != nullptr) return fail(error, "C++ local has ambiguous destructor");
+                destructor = &function;
+            }
+            if (destructor == nullptr) return fail(error, "C++ local has no imported destructor");
+            const auto target = functions_.find(destructor->mangledName);
+            if (target == functions_.end()) return fail(error, "C++ local destructor target is missing");
+            if (destructor->memberOrdinal >= memberModel_->members().size())
+                return fail(error, "C++ local destructor metadata is missing");
+            LLVMValueRef arguments[] = {address};
+            if (!funcletStack_.empty() && funcletStack_.back().kind == FuncletKind::Cleanup &&
+                !memberModel_->members()[destructor->memberOrdinal].cppLifetimeNonThrowing)
+            {
+                LLVMValueRef boundary = cppUnwindDestructorBoundary(error);
+                if (boundary == nullptr) return false;
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMTypeRef parameterTypes[] = {ptr, ptr};
+                LLVMTypeRef boundaryType = LLVMFunctionType(LLVMVoidTypeInContext(context_), parameterTypes, 2, 0);
+                LLVMValueRef boundaryArgs[] = {target->second.function, address};
+                return buildNoUnwindCall(boundaryType, boundary, boundaryArgs, 2, "") != nullptr;
+            }
+            return buildPotentiallyThrowingCall(target->second.functionType, target->second.function,
+                arguments, 1, "", error) != nullptr || error.empty();
+        }
         const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
         if (layout == nullptr) return true;
         if (allowNamedThunk && !layout->dropGlueEntryName.empty())
