@@ -1592,6 +1592,12 @@ bool ProjectCompilation::compileProjectObjectLayouts(
     {
         return false;
     }
+    if (experimentalCppLifetimeAnalysisForTests_ && !experimentalCppDiscardedLifetimeLoweringForTests_ &&
+        !experimentalCppLocalLifetimeAnalysisForTests_)
+    {
+        loadError = "experimental C++ lifetime analysis cannot proceed to layout or code generation";
+        return false;
+    }
     if (cancellationRequested(loadError, "layout")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "layout");
