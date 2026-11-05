@@ -2994,6 +2994,14 @@ int main(int argc, char** argv)
                         ? enumAliasCompilation.nameLookup()->typeOrdinalForIdentity(holderKey) : std::nullopt;
                     const auto* holder = holderOrdinal && enumAliasCompilation.objectLayoutModel()
                         ? enumAliasCompilation.objectLayoutModel()->structLayoutForType(*holderOrdinal) : nullptr;
+                    if (!holder || holder->size != 32 || holder->alignment != 4)
+                    {
+                        std::cerr << "C enum holder layout: built=" << layoutsBuilt << " error=" << error;
+                        if (holder) std::cerr << " size=" << holder->size << " alignment=" << holder->alignment;
+                        std::cerr << '\n';
+                        for (const auto& diagnostic : enumAliasCompilation.diagnostics().diagnostics())
+                            std::cerr << diagnostic.message() << '\n';
+                    }
                     ok &= expect(holder && holder->size == 32 && holder->alignment == 4,
                                  "NativeSharp struct layout uses imported enum dimensions");
                 }
