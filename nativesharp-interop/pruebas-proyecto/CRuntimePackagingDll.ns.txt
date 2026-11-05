@@ -1,0 +1,1 @@
+public struct Bridge { public static int Get() { return c_increment(40); } }

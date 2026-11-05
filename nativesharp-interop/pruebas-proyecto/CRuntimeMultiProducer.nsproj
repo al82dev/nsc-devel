@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CppRuntimeMultiProducer</Name><OutputType>StaticLibrary</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Producer.ns" />
+    <CppLibraryReference Header="CDllApi.h" Language="C" Standard="c11" Library="both.lib" Runtime="a.dll" />
+    <CppLibraryReference Header="Unused.h" Language="C" Standard="c11" Library="both.lib" Runtime="b.dll" />
+  </ItemGroup>
+</Project>

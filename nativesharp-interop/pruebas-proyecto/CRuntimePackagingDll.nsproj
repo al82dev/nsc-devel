@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CppRuntimePackagingDll</Name><OutputType>SharedLibrary</OutputType></PropertyGroup>
+  <ItemGroup><CppLibraryReference Header="CDllApi.h" Language="C" Standard="c11" Library="c-dll.lib" Runtime="c-dll.dll" /></ItemGroup>
+</Project>

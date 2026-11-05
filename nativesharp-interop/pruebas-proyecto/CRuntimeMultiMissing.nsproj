@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CppRuntimeMultiMissing</Name><OutputType>StaticLibrary</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Producer.ns" />
+    <CppLibraryReference Header="CDllApi.h" Language="C" Standard="c11" Library="both.lib" Runtime="a.dll" />
+  </ItemGroup>
+</Project>
