@@ -5600,6 +5600,353 @@ int main(int argc, char** argv)
                 nativesharp::llvm_backend::LlvmOptimizationLevel::O0, directory / "missing.obj", invalidError) &&
                 !invalidError.empty();
         }
+        const auto definesSymbol = [](const std::optional<std::string>& ir, std::string_view symbol) {
+            if (!ir) return false;
+            for (auto position = ir->find(symbol); position != std::string::npos;
+                 position = ir->find(symbol, position + symbol.size()))
+            {
+                const auto previous = ir->rfind('\n', position);
+                const auto line = previous == std::string::npos ? 0 : previous + 1;
+                if (ir->compare(line, 7, "define ") == 0) return true;
+            }
+            return false;
+        };
+        ok &= expect(definesSymbol(defaultIr, "??0BaseA@@QEAA@XZ") &&
+                     definesSymbol(destructorIr, "??1BaseA@@QEAA@XZ") &&
+                     definesSymbol(nontrivialCtorIr, "??0ImplicitThrowing@@QEAA@XZ") &&
+                     nontrivialCtorIr->find("??0ThrowingMember@@QEAA@XZ") != std::string::npos &&
+                     definesSymbol(nontrivialDtorIr, "??1ImplicitThrowing@@QEAA@XZ") &&
+                     nontrivialDtorIr->find("??1ThrowingMember@@QEAA@XZ") != std::string::npos &&
+                     repeatedDefaultIr && *repeatedDefaultIr == *defaultIr && nativeObjectEmission &&
+                     !cpp->emitImplicitLifetimeIR("DeletedLifetime", CppImplicitLifetimeKind::DefaultConstructor) &&
+                     !cpp->emitImplicitLifetimeIR("MissingRecord", CppImplicitLifetimeKind::Destructor) &&
+                     !cpp->emitImplicitLifetimeIR("BaseA", CppImplicitLifetimeKind::CopyConstructor),
+                     "Clang CodeGen emits verified IR for implicit default construction and destruction");
+        if (plainLifetime)
+            for (std::size_t i = 0; i < plainLifetime->methods.size(); ++i)
+            {
+                auto projected = projectCppSemanticLifetimeMethod(*plainLifetime, i, 7, "Semantic", "x86_64-pc-windows-msvc");
+                const auto* method = std::get_if<CppSemanticLifetimeMethod>(&projected);
+                if (!method) continue;
+                if (method->kind == CppMethodKind::Constructor)
+                    lifetimeCtor = method->ownerIdentityKey == "Semantic::PlainLifetime" &&
+                        method->externalSymbol == "??0PlainLifetime@@QEAA@H@Z" && method->parameters.size() == 1 &&
+                        method->parameters[0].nativeSharpTypeKey == "builtin:int" &&
+                        method->returnAbi == CppLifetimeReturnAbi::ThisPointer &&
+                        !method->dllImport && method->isNonThrowing;
+                if (method->kind == CppMethodKind::Destructor)
+                    lifetimeDtor = method->externalSymbol == "??1PlainLifetime@@QEAA@XZ" && method->parameters.empty() &&
+                        method->returnAbi == CppLifetimeReturnAbi::Void && !method->dllImport && method->isNonThrowing;
+                auto importedRecord = *plainLifetime;
+                importedRecord.methods[i].dllImport = true;
+                importedRecord.methods[i].isNonThrowing = false;
+                const auto imported = projectCppSemanticLifetimeMethod(importedRecord, i, 7, "Semantic", "x86_64-pc-windows-msvc");
+                const auto* importedMethod = std::get_if<CppSemanticLifetimeMethod>(&imported);
+                ok &= expect(importedMethod && importedMethod->dllImport && !importedMethod->isNonThrowing &&
+                             importedMethod->returnAbi == method->returnAbi,
+                             "lifetime metadata preserves DLL and throwing contract independently of return ABI");
+            }
+        if (lockedLifetime && !lockedLifetime->methods.empty())
+        {
+            privateLifetimeDeferred = true;
+            for (std::size_t i = 0; i < lockedLifetime->methods.size(); ++i)
+                privateLifetimeDeferred &= std::holds_alternative<CppSemanticFunctionFailure>(
+                    projectCppSemanticLifetimeMethod(*lockedLifetime, i, 7, "Semantic", "x86_64-pc-windows-msvc"));
+        }
+        if (basedLifetime && !basedLifetime->methods.empty())
+        {
+            basedLifetimeDeferred = true;
+            for (std::size_t i = 0; i < basedLifetime->methods.size(); ++i)
+                basedLifetimeDeferred &= std::holds_alternative<CppSemanticFunctionFailure>(
+                    projectCppSemanticLifetimeMethod(*basedLifetime, i, 7, "Semantic", "x86_64-pc-windows-msvc"));
+        }
+        ok &= expect(lifetimeCtor && lifetimeDtor && privateLifetimeDeferred && basedLifetimeDeferred,
+                     "explicit C++ lifetime method metadata preserves symbols and defers private or based types");
+        ok &= expect(derived && derived->bases.size() == 1 && derived->bases[0].isVirtual &&
+                     derived->bases[0].access == CppAccess::Public && derived->bases[0].offsetBits &&
+                     multi && multi->bases.size() == 2 && !multi->bases[0].isVirtual &&
+                     multi->bases[0].access == CppAccess::Public && multi->bases[0].offsetBits == 0 &&
+                     multi->bases[1].access == CppAccess::Private && multi->bases[1].offsetBits == 32 &&
+                     multi->bases[0].type.canonicalSpelling.find("BaseA") != std::string::npos &&
+                     multi->bases[1].type.canonicalSpelling.find("BaseB") != std::string::npos,
+                     "direct C++ bases preserve order, access, virtual status and Clang offsets");
+        const auto* nestedPublic = records ? recordByName(*records, "Outer::Inner") : nullptr;
+        const auto* nestedPrivate = records ? recordByName(*records, "Outer::Secret") : nullptr;
+        ok &= expect(nestedPublic && nestedPublic->complete && nestedPublic->sizeBits == 32 &&
+                     nestedPublic->access == CppAccess::Public && nestedPrivate && nestedPrivate->complete &&
+                     nestedPrivate->access == CppAccess::Private &&
+                     std::count_if(records->begin(), records->end(), [](const auto& item) {
+                         return item.qualifiedName == "Outer::Inner";
+                     }) == 1,
+                     "nested records retain qualified identity, access, definition and layout");
+        ok &= expect(record && record->kind == CppRecordKind::Class && record->complete &&
+                     record->sizeBits == 128 && record->fields.size() == 2 &&
+                     record->fields[0].offsetBits == 64 && record->fields[0].access == CppAccess::Private &&
+                     record->fields[1].offsetBits == 96 && record->fields[1].access == CppAccess::Public,
+                     "C++ class layout and field access match the target");
+        if (record)
+        {
+            const auto publicField = projectCppSemanticInstanceField(*record, 1, 7, "Semantic", "x86_64-pc-windows-msvc");
+            auto badLayout = *record;
+            badLayout.fields[1].offsetBits = *badLayout.sizeBits;
+            auto missingLayout = *record;
+            missingLayout.sizeBits.reset();
+            auto missingOffset = *record;
+            missingOffset.fields[1].offsetBits.reset();
+            auto partialByte = *record;
+            partialByte.fields[1].offsetBits = 1;
+            auto unsupportedUnion = *record;
+            unsupportedUnion.kind = CppRecordKind::Union;
+            ok &= expect(publicField && publicField->ownerIdentityKey == "Semantic::MyClass" &&
+                         publicField->projectOrdinal == 7 && publicField->name == "count" &&
+                         publicField->byteOffset == 12 && publicField->type.nativeSharpTypeKey == "builtin:int" &&
+                         !projectCppSemanticInstanceField(*record, 0, 7, "Semantic", "x86_64-pc-windows-msvc") &&
+                         !projectCppSemanticInstanceField(badLayout, 1, 7, "Semantic", "x86_64-pc-windows-msvc") &&
+                         !projectCppSemanticInstanceField(missingLayout, 1, 7, "Semantic", "x86_64-pc-windows-msvc") &&
+                         !projectCppSemanticInstanceField(missingOffset, 1, 7, "Semantic", "x86_64-pc-windows-msvc") &&
+                         !projectCppSemanticInstanceField(partialByte, 1, 7, "Semantic", "x86_64-pc-windows-msvc") &&
+                         !projectCppSemanticInstanceField(unsupportedUnion, 1, 7, "Semantic", "x86_64-pc-windows-msvc") &&
+                         !projectCppSemanticInstanceField(*record, 1, 7, "Semantic", "other-target"),
+                         "isolated field projection retains Clang layout and rejects private or invalid fields");
+            const auto* qualified = records ? recordByName(*records, "QualifiedFields") : nullptr;
+            const auto* packedField = records ? recordByName(*records, "PackedField") : nullptr;
+            const auto constField = qualified ? projectCppSemanticInstanceField(*qualified, 0, 7, "Semantic", "x86_64-pc-windows-msvc") : std::nullopt;
+            const auto volatileField = qualified ? projectCppSemanticInstanceField(*qualified, 1, 7, "Semantic", "x86_64-pc-windows-msvc") : std::nullopt;
+            ok &= expect(qualified && constField && constField->type.isConst && volatileField &&
+                         volatileField->type.isVolatile &&
+                         !projectCppSemanticInstanceField(*qualified, 2, 7, "Semantic", "x86_64-pc-windows-msvc"),
+                         "field projection retains qualifiers and defers bitfields");
+            ok &= expect(packedField && packedField->fields.size() == 2 &&
+                         !projectCppSemanticInstanceField(*packedField, 1, 7, "Semantic", "x86_64-pc-windows-msvc"),
+                         "field projection defers packed fields without guaranteed natural alignment");
+            bool staticShared = false, staticConst = false, staticVolatile = false, staticTls = false, staticPrivate = false;
+            std::optional<CppSemanticStaticField> sharedMetadata, constStaticMetadata, volatileStaticMetadata;
+            for (std::size_t index = 0; index < record->staticFields.size(); ++index)
+            {
+                const auto& field = record->staticFields[index];
+                const auto projected = projectCppSemanticStaticField(*record, index, 7, "Semantic", "x86_64-pc-windows-msvc");
+                if (field.name == "shared") staticShared = projected && projected->projectOrdinal == 7 &&
+                    projected->ownerIdentityKey == "Semantic::MyClass" && projected->externalSymbol == "?shared@MyClass@@2HA" &&
+                    projected->type.nativeSharpTypeKey == "builtin:int" && field.type.sizeBits == 32;
+                if (field.name == "shared" && projected) sharedMetadata = *projected;
+                if (field.name == "limit") { staticConst = projected && projected->type.isConst; if (projected) constStaticMetadata = *projected; }
+                if (field.name == "io") { staticVolatile = projected && projected->type.isVolatile; if (projected) volatileStaticMetadata = *projected; }
+                if (field.name == "tls") staticTls = field.threadLocal && !projected;
+                if (field.name == "secret") staticPrivate = field.access == CppAccess::Private && !projected;
+            }
+            ok &= expect(staticShared && staticConst && staticVolatile && staticTls && staticPrivate &&
+                         !projectCppSemanticStaticField(*record, record->staticFields.size(), 7, "Semantic", "x86_64-pc-windows-msvc") &&
+                         !projectCppSemanticStaticField(*record, 0, 7, "Semantic", "other-target"),
+                         "static fields retain symbols and qualifiers while private and TLS fields are deferred");
+            bool sawCtor = false, sawDtor = false, sawStatic = false, sawVirtual = false;
+            bool sawLvalue = false, sawRvalue = false, sawVectorMethod = false;
+            for (const auto& method : record->methods)
+            {
+                sawLvalue |= method.name == "Q" && method.refQualifier == CppMethodRefQualifier::LValue &&
+                    !method.canonicalFunctionType.empty() && method.callingConvention == "cdecl";
+                sawRvalue |= method.name == "Q" && method.refQualifier == CppMethodRefQualifier::RValue &&
+                    !method.canonicalFunctionType.empty() && method.callingConvention == "cdecl";
+                sawVectorMethod |= method.name == "V" && method.isStatic && method.callingConvention == "vectorcall" &&
+                    !method.canonicalFunctionType.empty();
+                sawCtor |= method.kind == CppMethodKind::Constructor && method.externalSymbol == "??0MyClass@@QEAA@H@Z";
+                sawDtor |= method.kind == CppMethodKind::Destructor && method.externalSymbol == "??1MyClass@@QEAA@XZ";
+                sawStatic |= method.name == "B" && method.isStatic && method.externalSymbol == "?B@MyClass@@SAHN@Z";
+                sawVirtual |= method.name == "C" && method.isVirtual && method.externalSymbol == "?C@MyClass@@UEAAHXZ";
+            }
+            if (!(sawCtor && sawDtor && sawStatic && sawVirtual))
+                for (const auto& method : record->methods)
+                    std::cerr << "method " << method.name << ": "
+                              << method.externalSymbol.value_or("<no symbol>") << '\n';
+            ok &= expect(sawCtor && sawDtor && sawStatic && sawVirtual,
+                         "explicit constructors, destructor, static and virtual methods are projected");
+            ok &= expect(sawLvalue && sawRvalue && sawVectorMethod,
+                         "method snapshots preserve ref qualifiers, canonical types and calling conventions");
+            bool mappedInstance = false, volatilePreserved = false, restrictionsRetained = true;
+            bool sawNoThrow = false, sawExplicitThrow = false, sawUnknownThrow = false;
+            bool staticMapped = false, staticThrowMapped = false, staticRejected = true;
+            std::optional<CppSemanticInstanceMethod> instanceMetadata;
+            std::optional<CppSemanticStaticMethod> staticMetadata;
+            for (std::size_t index = 0; index < record->methods.size(); ++index)
+            {
+                const auto& method = record->methods[index];
+                const auto projected = projectCppSemanticInstanceMethod(*record, index, 7, "Semantic", "x86_64-pc-windows-msvc");
+                const auto* instance = std::get_if<CppSemanticInstanceMethod>(&projected);
+                const auto staticProjection = projectCppSemanticStaticMethod(*record, index, 7, "Semantic", "x86_64-pc-windows-msvc");
+                const auto* staticMethod = std::get_if<CppSemanticStaticMethod>(&staticProjection);
+                if (method.name == "B")
+                {
+                    staticMapped = staticMethod && staticMethod->ownerIdentityKey == "Semantic::MyClass" &&
+                        staticMethod->externalSymbol == "?B@MyClass@@SAHN@Z" &&
+                        staticMethod->result.nativeSharpTypeKey == "builtin:int" && staticMethod->parameters.size() == 1 &&
+                        staticMethod->parameters[0].nativeSharpTypeKey == "builtin:double";
+                    if (staticMethod) staticMetadata = *staticMethod;
+                }
+                if (method.name == "A" || method.name == "HiddenStatic" ||
+                    method.name == "VarStatic" || method.name == "V") staticRejected &= !staticMethod;
+                if (method.name == "ThrowStatic") staticThrowMapped = staticMethod != nullptr;
+                if (method.name == "A")
+                {
+                    mappedInstance = instance && instance->projectOrdinal == 7 &&
+                        instance->ownerIdentityKey == "Semantic::MyClass" && instance->receiverConst &&
+                        instance->externalSymbol == method.externalSymbol &&
+                        instance->result.nativeSharpTypeKey == "builtin:int" && instance->parameters.size() == 1 &&
+                        instance->parameters[0].nativeSharpTypeKey == "builtin:int";
+                    if (instance) instanceMetadata = *instance;
+                }
+                if (method.name == "Volatile") volatilePreserved = method.isVolatile && !instance;
+                if (method.name == "Safe") sawNoThrow = method.isNonThrowing;
+                if (method.name == "Throwing") sawExplicitThrow = !method.isNonThrowing && instance;
+                if (method.name == "Unknown") sawUnknownThrow = !method.isNonThrowing && instance;
+                if (method.name == "hiddenMethod" || method.name == "B" || method.name == "C" || method.name == "Q")
+                    restrictionsRetained &= !instance;
+            }
+            const auto invalidTarget = projectCppSemanticInstanceMethod(*record, 0, 7, "Semantic", "other-target");
+            const auto invalidIndex = projectCppSemanticInstanceMethod(*record, record->methods.size(), 7, "Semantic", "x86_64-pc-windows-msvc");
+            ok &= expect(mappedInstance && volatilePreserved && restrictionsRetained &&
+                         std::holds_alternative<CppSemanticFunctionFailure>(invalidTarget) &&
+                         std::holds_alternative<CppSemanticFunctionFailure>(invalidIndex),
+                         "instance method metadata retains receiver and symbol while deferring unsupported contracts");
+            ok &= expect(sawNoThrow && sawExplicitThrow && sawUnknownThrow,
+                         "Clang method snapshots conservatively retain resolved non-throwing specifications");
+            ok &= expect(staticMapped && staticThrowMapped && staticRejected,
+                         "static method metadata preserves its symbol and defers unsupported contracts");
+            if (instanceMetadata && staticMetadata && publicField && sharedMetadata && constStaticMetadata && volatileStaticMetadata && record->alignmentBits)
+            {
+                const auto identity = projectCppRecordIdentity(*record, "Semantic");
+                nativesharp::frontend::ProjectCompilation methodCompilation;
+                methodCompilation.setSourceBufferProvider([](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { return 0; }\n";
+                    return std::nullopt;
+                });
+                const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                std::string error;
+                const bool configured = identity && methodCompilation.setExperimentalCppImportedTypes({{*identity,
+                    nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                    nativesharp::frontend::NamedTypeAccessibility::Public, 0,
+                    record->location ? record->location->file.generic_string() : "",
+                    nativesharp::frontend::CppImportedObjectLayout{*record->sizeBits / 8, *record->alignmentBits / 8}}}, error);
+                const bool namesReady = configured && methodCompilation.compileProjectNames(path, error);
+                auto imported = toCppImportedInstanceMethod(*instanceMetadata);
+                imported.projectOrdinal = 0;
+                nativesharp::frontend::ProjectMemberModel model;
+                const bool installed = namesReady && model.setExperimentalCppInstanceMethods({imported}, error);
+                const bool duplicateRejected = !model.setExperimentalCppInstanceMethods({imported, imported}, error);
+                auto importedStatic = toCppImportedStaticMethod(*staticMetadata);
+                importedStatic.projectOrdinal = 0;
+                auto overloadStatic = importedStatic;
+                overloadStatic.externalSymbol = "synthetic-overload-symbol";
+                overloadStatic.parameterTypeKeys[0] = "builtin:int";
+                const bool staticInstalled = model.setExperimentalCppStaticMethods({importedStatic, overloadStatic}, error);
+                const bool duplicateStaticRejected = !model.setExperimentalCppStaticMethods({importedStatic, importedStatic}, error);
+                auto sharedField = toCppImportedStaticField(*sharedMetadata);
+                auto limitField = toCppImportedStaticField(*constStaticMetadata);
+                auto ioField = toCppImportedStaticField(*volatileStaticMetadata);
+                sharedField.projectOrdinal = limitField.projectOrdinal = ioField.projectOrdinal = 0;
+                const bool staticFieldsInstalled = model.setExperimentalCppStaticFields({sharedField, limitField, ioField}, error);
+                const bool duplicateStaticFieldRejected = !model.setExperimentalCppStaticFields({sharedField, sharedField}, error);
+                auto importedField = toCppImportedInstanceField(*publicField);
+                importedField.projectOrdinal = 0;
+                const bool fieldInstalled = model.setExperimentalCppInstanceFields({importedField}, error);
+                const bool duplicateFieldRejected = !model.setExperimentalCppInstanceFields({importedField, importedField}, error);
+                for (bool isStatic : {false, true})
+                {
+                    nativesharp::frontend::ProjectMemberModel missingTypeModel;
+                    nativesharp::diagnostics::DiagnosticEngine missingTypeDiagnostics;
+                    auto missingInstance = imported;
+                    auto missingStatic = importedStatic;
+                    missingInstance.returnTypeKey = "type:Semantic::Missing*";
+                    missingStatic.returnTypeKey = "type:Semantic::Missing*";
+                    const bool missingConfigured = isStatic
+                        ? missingTypeModel.setExperimentalCppStaticMethods({missingStatic}, error)
+                        : missingTypeModel.setExperimentalCppInstanceMethods({missingInstance}, error);
+                    ok &= expect(missingConfigured && namesReady &&
+                                 !missingTypeModel.build(*methodCompilation.nameLookup(), methodCompilation.units(),
+                                                         missingTypeDiagnostics, methodCompilation.genericModel()) &&
+                                 missingTypeDiagnostics.hasErrors(),
+                                 "C++ method indexing rejects a record pointer absent from the project lookup");
+                }
+                nativesharp::diagnostics::DiagnosticEngine diagnostics;
+                const bool built = installed && model.build(*methodCompilation.nameLookup(), methodCompilation.units(), diagnostics,
+                                                            methodCompilation.genericModel());
+                const auto ordinal = namesReady ? methodCompilation.nameLookup()->typeOrdinalForIdentity(identity->key()) : std::nullopt;
+                const auto matches = ordinal ? model.findMembers(*ordinal, "A") : std::span<const std::size_t>{};
+                const auto* indexed = matches.size() == 1 ? &model.members()[matches[0]] : nullptr;
+                const auto fieldMatches = ordinal ? model.findMembers(*ordinal, "count") : std::span<const std::size_t>{};
+                const auto* indexedField = fieldMatches.size() == 1 ? &model.members()[fieldMatches[0]] : nullptr;
+                const auto staticMatches = ordinal ? model.findMembers(*ordinal, "B") : std::span<const std::size_t>{};
+                const auto sharedMatches = ordinal ? model.findMembers(*ordinal, "shared") : std::span<const std::size_t>{};
+                const auto limitMatches = ordinal ? model.findMembers(*ordinal, "limit") : std::span<const std::size_t>{};
+                const auto ioMatches = ordinal ? model.findMembers(*ordinal, "io") : std::span<const std::size_t>{};
+                ok &= expect(built && duplicateRejected && indexed && indexed->isCppExternal && indexed->hasImplicitThis &&
+                             indexed->isReadonly && indexed->cppExternalSymbol == imported.externalSymbol &&
+                             indexed->declaredTypeKey == "builtin:int" && indexed->parameters.size() == 1 &&
+                             indexed->parameters[0].typeKey == "builtin:int" && !diagnostics.hasErrors() &&
+                             !model.setExperimentalCppInstanceMethods({}, error),
+                             "isolated member model indexes a Clang method and freezes its identity");
+                ok &= expect(built && fieldInstalled && duplicateFieldRejected && indexedField &&
+                             indexedField->isCppExternal && indexedField->kind == nativesharp::frontend::ClassMemberKind::Field &&
+                             indexedField->explicitFieldOffset == 12 && indexedField->declaredTypeKey == "builtin:int" &&
+                             !model.setExperimentalCppInstanceFields({}, error),
+                             "isolated member model indexes a Clang field with its physical offset");
+                bool staticSymbols = staticMatches.size() == 2;
+                for (const auto index : staticMatches)
+                    staticSymbols &= model.members()[index].isStatic && !model.members()[index].hasImplicitThis &&
+                        model.members()[index].isCppExternal && !model.members()[index].cppExternalSymbol.empty();
+                ok &= expect(built && staticInstalled && duplicateStaticRejected && staticSymbols &&
+                             !model.setExperimentalCppStaticMethods({}, error),
+                             "isolated member model indexes static C++ overloads without a receiver");
+                ok &= expect(built && staticFieldsInstalled && duplicateStaticFieldRejected && sharedMatches.size() == 1 &&
+                             limitMatches.size() == 1 && ioMatches.size() == 1 &&
+                             model.members()[sharedMatches[0]].isStatic && model.members()[sharedMatches[0]].isCppExternal &&
+                             model.members()[sharedMatches[0]].cppExternalSymbol == "?shared@MyClass@@2HA" &&
+                             model.members()[limitMatches[0]].isReadonly && model.members()[ioMatches[0]].isVolatile &&
+                             !model.setExperimentalCppStaticFields({}, error),
+                             "isolated member model indexes external C++ static fields and qualifiers");
+                nativesharp::frontend::ProjectMemberModel wrongStaticOwner;
+                auto invalidStatic = importedStatic;
+                invalidStatic.projectOrdinal = 99;
+                nativesharp::diagnostics::DiagnosticEngine staticDiagnostics;
+                const bool staticOwnerConfigured = wrongStaticOwner.setExperimentalCppStaticMethods({invalidStatic}, error);
+                ok &= expect(staticOwnerConfigured && !wrongStaticOwner.build(*methodCompilation.nameLookup(),
+                             methodCompilation.units(), staticDiagnostics, methodCompilation.genericModel()) &&
+                             staticDiagnostics.hasErrors(), "static C++ method rejects an incorrect owner");
+                nativesharp::frontend::ProjectMemberModel wrongStaticFieldOwner;
+                sharedField.projectOrdinal = 99;
+                nativesharp::diagnostics::DiagnosticEngine staticFieldDiagnostics;
+                const bool staticFieldOwnerConfigured = wrongStaticFieldOwner.setExperimentalCppStaticFields({sharedField}, error);
+                ok &= expect(staticFieldOwnerConfigured && !wrongStaticFieldOwner.build(*methodCompilation.nameLookup(),
+                             methodCompilation.units(), staticFieldDiagnostics, methodCompilation.genericModel()) &&
+                             staticFieldDiagnostics.hasErrors(), "static C++ field rejects an incorrect owner");
+                for (int scenario : {0, 1, 2, 3})
+                {
+                    nativesharp::frontend::ProjectMemberModel fieldModel;
+                    auto probe = importedField;
+                    if (scenario == 0) probe.projectOrdinal = 99;
+                    if (scenario == 1) probe.byteOffset = *record->sizeBits / 8;
+                    if (scenario == 2) probe.name = imported.name;
+                    if (scenario == 3) { probe.isConst = true; probe.isVolatile = true; }
+                    const bool configuredFields = fieldModel.setExperimentalCppInstanceFields({probe}, error) &&
+                        fieldModel.setExperimentalCppInstanceMethods({imported}, error);
+                    nativesharp::diagnostics::DiagnosticEngine fieldDiagnostics;
+                    const bool fieldBuilt = configuredFields && fieldModel.build(*methodCompilation.nameLookup(),
+                        methodCompilation.units(), fieldDiagnostics, methodCompilation.genericModel());
+                    const auto qualifiedMatches = ordinal ? fieldModel.findMembers(*ordinal, "count") : std::span<const std::size_t>{};
+                    const auto* qualifiedField = qualifiedMatches.size() == 1 ? &fieldModel.members()[qualifiedMatches[0]] : nullptr;
+                    ok &= expect(scenario == 3
+                        ? fieldBuilt && qualifiedField && qualifiedField->isReadonly && qualifiedField->isVolatile
+                        : !fieldBuilt && fieldDiagnostics.hasErrors(),
+                        "field index validates ownership, bounds and names while retaining qualifiers");
+                }
+                nativesharp::frontend::ProjectMemberModel wrongOwner;
+                imported.projectOrdinal = 99;
+                nativesharp::diagnostics::DiagnosticEngine badDiagnostics;
+                const bool badConfigured = wrongOwner.setExperimentalCppInstanceMethods({imported}, error);
+                ok &= expect(badConfigured && namesReady &&
+                             !wrongOwner.build(*methodCompilation.nameLookup(), methodCompilation.units(), badDiagnostics,
+                                               methodCompilation.genericModel()) && badDiagnostics.hasErrors(),
+                             "member indexing rejects an instance method owned by a different project");
+            }
     }
     return ok ? 0 : 1;
 }
