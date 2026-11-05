@@ -2304,5 +2304,241 @@ int main(int argc, char** argv)
         ok &= expect(matchedNode && matchedNested && restrictedRejected,
                      "record identities from function types match inventory identities without string parsing");
     }
+    {
+        auto nested = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+            "namespace A { struct B { struct C {}; }; } namespace { struct Hidden {}; } "
+            "template<class T> struct Box; template<> struct Box<int> { int x; };\n"));
+        const auto recordHeader = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/record-api.h";
+        std::filesystem::create_directories(recordHeader.parent_path());
+        { std::ofstream file(recordHeader); file <<
+            "namespace A { namespace B { struct C { long long data; int other; }; int consume(C*); C* create(); } }\n"; }
+        auto recordOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp, "");
+        recordOptions.input = CppFileInput{recordHeader};
+        auto namespaced = open(factory, std::move(recordOptions));
+        auto nestedRecords = nested ? nested->recordsSnapshot() : std::nullopt;
+        auto namespaceRecords = namespaced ? namespaced->recordsSnapshot() : std::nullopt;
+        const auto* nestedC = nestedRecords ? recordByName(*nestedRecords, "A::B::C") : nullptr;
+        const auto* namespaceC = namespaceRecords ? recordByName(*namespaceRecords, "A::B::C") : nullptr;
+        auto nestedIdentity = nestedC ? projectCppRecordIdentity(*nestedC, "Semantic") : std::nullopt;
+        auto namespaceIdentity = namespaceC ? projectCppRecordIdentity(*namespaceC, "Semantic") : std::nullopt;
+        const CppRecordDeclaration* hidden = nullptr;
+        const CppRecordDeclaration* specialization = nullptr;
+        if (nestedRecords)
+            for (const auto& record : *nestedRecords)
+            {
+                if (record.name == "Hidden") hidden = &record;
+                if (record.name == "Box" && record.specializationContext) specialization = &record;
+            }
+        ok &= expect(nestedIdentity && namespaceIdentity &&
+                     nestedIdentity->key() == "Semantic::A.B+C" &&
+                     namespaceIdentity->key() == "Semantic::A.B.C" &&
+                     hidden && hidden->anonymousContext && !projectCppRecordIdentity(*hidden, "Semantic") &&
+                     specialization && !specialization->odrHash &&
+                     !projectCppRecordIdentity(*specialization, "Semantic") &&
+                     !projectCppRecordIdentity(*nestedC, ""),
+                     "record identities distinguish namespace and type contexts and reject anonymous contexts");
+        if (namespaceIdentity)
+        {
+            nativesharp::frontend::ProjectCompilation compilation;
+            compilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                -> std::optional<std::string> {
+                if (path.filename() == "Main.ns") return "int Use(A.B.C* item) { return 0; } int Main() { return 0; }\n";
+                return std::nullopt;
+            });
+            std::string error;
+            const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+            const bool parsed = compilation.compileProjectSyntax(path, error);
+            nativesharp::diagnostics::DiagnosticEngine observationDiagnostics;
+            nativesharp::frontend::ProjectNameLookup observer;
+            const bool observerConfigured = parsed && compilation.projectGraph() &&
+                observer.setImportedNamespaces({{0, "A.B"}});
+            const bool observerReady = observerConfigured && observer.build(
+                *compilation.projectGraph(), compilation.units(), observationDiagnostics);
+            bool observedDemand = false;
+            for (const auto& binding : observer.bindings())
+                observedDemand |= binding.kind == nativesharp::frontend::TypeNameBindingKind::Unresolved &&
+                    binding.writtenName == "A.B.C" && binding.syntax != nullptr && binding.projectOrdinal == 0;
+            ok &= expect(observerConfigured && !observerReady && observationDiagnostics.hasErrors() &&
+                         observedDemand && !compilation.diagnostics().hasErrors(),
+                         "isolated name observation retains unresolved record demand without polluting compilation");
+            nativesharp::frontend::ProjectNameLookup lookup;
+            const bool indexed = parsed && compilation.projectGraph() &&
+                lookup.setImportedNamespaces({{0, "A.B"}}) &&
+                lookup.setCppImportedTypes({{*namespaceIdentity,
+                    nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                    nativesharp::frontend::NamedTypeAccessibility::Public, 0,
+                    namespaceC->location ? namespaceC->location->file.generic_string() : ""}}) &&
+                lookup.build(*compilation.projectGraph(), compilation.units(), compilation.diagnostics());
+            const auto ordinal = indexed ? lookup.typeOrdinalForIdentity(namespaceIdentity->key()) : std::nullopt;
+            bool bound = false;
+            if (ordinal)
+                for (const auto& binding : lookup.bindings())
+                    bound |= binding.targetTypeOrdinal == ordinal && binding.writtenName == "A.B.C";
+            if (!(indexed && ordinal && bound))
+            {
+                std::cerr << "record lookup parsed=" << parsed << " indexed=" << indexed
+                          << " ordinal=" << ordinal.has_value() << " error=" << error << '\n';
+                for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                    std::cerr << diagnostic.message() << '\n';
+                for (const auto& binding : lookup.bindings())
+                    std::cerr << "binding " << binding.writtenName << " target="
+                              << binding.targetTypeOrdinal.has_value() << '\n';
+            }
+            ok &= expect(indexed && ordinal && bound && !lookup.setCppImportedTypes({}),
+                         "NativeSharp type syntax resolves an explicitly imported Clang record");
+            const auto namespaceFunctions = namespaced ? namespaced->freeFunctionsSnapshot() : std::nullopt;
+            const auto* consume = namespaceFunctions ? functionByName(*namespaceFunctions, "A::B::consume") : nullptr;
+            const auto* create = namespaceFunctions ? functionByName(*namespaceFunctions, "A::B::create") : nullptr;
+            CppRecordGroups canonicalGroups;
+            canonicalGroups.groups.push_back({0, *namespaceIdentity, {}, CppRecordGroupStatus::OneDefinition});
+            const auto consumeProjection = consume
+                ? projectCppSemanticFunctionWithRecords(*consume, 0, "Semantic", canonicalGroups)
+                : CppSemanticFunctionResult{CppSemanticFunctionFailure{"missing function"}};
+            const auto* consumeSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&consumeProjection);
+            const auto createProjection = create
+                ? projectCppSemanticFunctionWithRecords(*create, 0, "Semantic", canonicalGroups)
+                : CppSemanticFunctionResult{CppSemanticFunctionFailure{"missing function"}};
+            const auto* createSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&createProjection);
+            nativesharp::frontend::ProjectMemberModel canonicalModel;
+            bool canonicalMatches = false;
+            for (const auto& binding : lookup.bindings())
+                if (binding.syntax && binding.targetTypeOrdinal == ordinal && binding.writtenName == "A.B.C")
+                    canonicalMatches |= consumeSymbol && consumeSymbol->parameters.size() == 1 &&
+                        canonicalModel.canonicalTypeKey(binding.syntax, lookup) == consumeSymbol->parameters[0].typeKey;
+            ok &= expect(canonicalMatches, "C++ record pointer projection equals the actual NativeSharp canonical type key");
+            if (consumeSymbol && createSymbol && consume && consume->externalSymbol && namespaceC->sizeBits && namespaceC->alignmentBits)
+            {
+                // The experimental type is obtained from the owned Clang session and final graph;
+                // no NativeSharp declaration or manually injected type stands in for it.
+                // Only opaque pointer transport is exercised, not layout or lifetime.
+                nativesharp::frontend::ProjectCompilation callCompilation;
+                callCompilation.setSourceBufferProvider([](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns")
+                        return "using Alias = A.B.C; using Ptr = A.B.C*; int Main() { Ptr p = A.B.create(); return (int)alignof(Alias) * 1000000 + (int)sizeof(Alias) * 10000 + A.B.consume(null) * 100 + A.B.consume(p + 1); }\n";
+                    return std::nullopt;
+                });
+                std::string callError;
+                CppProjectSessions recordSessions;
+                recordSessions.projectFile = std::filesystem::absolute(path);
+                recordSessions.sessions.push_back(std::move(namespaced));
+                std::vector<CppProjectSessions> recordSessionGroups;
+                recordSessionGroups.push_back(std::move(recordSessions));
+                const bool providerReady = callCompilation.setCppProjectSessions(std::move(recordSessionGroups), callError) &&
+                    callCompilation.setExperimentalCppTypeProvider(provideExperimentalCppRecordCandidates, callError) &&
+                    callCompilation.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, callError);
+                ok &= expect(providerReady && !callCompilation.setExperimentalCppImportedTypes({}, callError),
+                             "experimental type provider cannot be combined with an explicit type list");
+                const bool callReady = providerReady &&
+                    callCompilation.setCppNamespaceProvider(
+                        [](const auto& graph, auto sessions, auto& output, auto& error) {
+                            auto inventory = collectCppNamespaces(graph, sessions);
+                            if (const auto* failure = std::get_if<CppNamespaceInventoryFailure>(&inventory))
+                            { error = failure->message; return false; }
+                            auto visible = visibleCppNamespaces(std::get<std::vector<CppNamespaceInventoryEntry>>(inventory));
+                            if (const auto* failure = std::get_if<CppNamespaceInventoryFailure>(&visible))
+                            { error = failure->message; return false; }
+                            output = std::move(std::get<std::vector<std::pair<std::size_t, std::string>>>(visible));
+                            return true;
+                        }, callError) &&
+                    callCompilation.setCppFunctionProvider(
+                        [&](const auto& graph, auto sessions, auto, auto demands, auto& projected,
+                            auto& deferred, auto& error) {
+                            const auto* names = callCompilation.nameLookup();
+                            if (!names) { error = "name lookup is unavailable"; return false; }
+                            return provideExperimentalCppFunctionsWithRecords(
+                                graph, sessions, *names, demands, projected, deferred, error);
+                        }, callError) &&
+                    callCompilation.compileProjectOopMir(path, callError);
+                if (!callReady)
+                {
+                    std::cerr << "record pointer call: " << callError << '\n';
+                    for (const auto& diagnostic : callCompilation.diagnostics().diagnostics())
+                        std::cerr << diagnostic.message() << '\n';
+                }
+                ok &= expect(callReady && callCompilation.oopMirModel(),
+                             "record pointer function call reaches MIR with matching nominal identity");
+                const auto* objectLayouts = callCompilation.objectLayoutModel();
+                const auto importedLayout = callReady && objectLayouts && callCompilation.nameLookup()
+                    ? objectLayouts->valueLayoutForTypeKey(*callCompilation.nameLookup(), "type:" + namespaceIdentity->key())
+                    : std::nullopt;
+                const auto importedOrdinal = callReady && callCompilation.nameLookup()
+                    ? callCompilation.nameLookup()->typeOrdinalForIdentity(namespaceIdentity->key()) : std::nullopt;
+                ok &= expect(importedLayout && namespaceC->sizeBits && namespaceC->alignmentBits &&
+                             importedLayout->first * 8 == *namespaceC->sizeBits &&
+                             importedLayout->second * 8 == *namespaceC->alignmentBits && importedOrdinal &&
+                             !objectLayouts->structLayoutForType(*importedOrdinal),
+                             "C++ dimensions come from Clang without fabricating a NativeSharp struct layout");
+                nativesharp::diagnostics::DiagnosticEngine clonedDiagnostics;
+                std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> clonedUnits;
+                std::string cloneError;
+                ok &= expect(callReady && callCompilation.cloneSyntaxForObservation(clonedUnits, clonedDiagnostics, cloneError) &&
+                             !clonedUnits.empty() && !clonedDiagnostics.hasErrors(),
+                             "record alias remains parseable in the isolated syntax copy");
+                ok &= expect(!callCompilation.setExperimentalCppImportedTypes({}, callError),
+                             "experimental imported types cannot change after compilation begins");
+                ok &= expect(!callCompilation.setExperimentalCppTypeProvider({}, callError),
+                             "experimental type provider cannot change after compilation begins");
+                ok &= expect(!callCompilation.setExperimentalCppTypeSelector({}, callError),
+                             "experimental type selector cannot change after compilation begins");
+                if (callReady && callCompilation.oopMirModel() && callCompilation.nameLookup())
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*callCompilation.nameLookup(), *callCompilation.oopMirModel());
+                    std::string llvmError;
+                    const bool valid = module && module->verify(llvmError);
+                    const std::string ir = module ? module->text() : std::string{};
+                    const std::string name = "@\"" + *consume->externalSymbol + "\"";
+                    ok &= expect(valid && ir.find("declare i32 " + name + "(ptr)") != std::string::npos &&
+                                 ir.find("call i32 " + name + "(ptr") != std::string::npos,
+                                 "record pointer call lowers to verified LLVM with the Clang symbol");
+                    auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(llvmError);
+                    const bool emitted = valid && target && target->emit(*module,
+                        std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/cpp-record-pointer-call.obj",
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object, llvmError);
+                    if (!emitted) std::cerr << "record pointer object: " << lowerer.error() << ' ' << llvmError << '\n';
+                    ok &= expect(emitted, "record pointer call emits a Windows x64 object");
+                }
+            }
+            else ok &= expect(false, "record pointer consumer and producer project successfully");
+            if (consume && consume->externalSymbol)
+            {
+                nativesharp::frontend::ProjectCompilation nativeCollision;
+                nativeCollision.setSourceBufferProvider([](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns")
+                        return "namespace A.B { struct C {} } int Main() { return A.B.consume(null); }\n";
+                    return std::nullopt;
+                });
+                CppProjectSessions group;
+                group.projectFile = std::filesystem::absolute(path);
+                group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                    "namespace A { namespace B { struct C {}; int consume(C*); } }\n")));
+                std::vector<CppProjectSessions> groups;
+                groups.push_back(std::move(group));
+                bool checkedNativeOnly = false;
+                std::string collisionError;
+                const bool configured = nativeCollision.setCppProjectSessions(std::move(groups), collisionError) &&
+                    nativeCollision.setCppFunctionProvider(
+                        [&](const auto& graph, auto sessions, auto, auto demands, auto& projected,
+                            auto& deferred, auto& error) {
+                            const auto* names = nativeCollision.nameLookup();
+                            if (!names || !provideExperimentalCppFunctionsWithRecords(
+                                    graph, sessions, *names, demands, projected, deferred, error)) return false;
+                            const bool projectedConsume = std::any_of(projected.begin(), projected.end(), [&](const auto& f) {
+                                return f.mangledName == *consume->externalSymbol;
+                            });
+                            const bool deferredConsume = std::any_of(deferred.begin(), deferred.end(), [](const auto& f) {
+                                return f.declaration.qualifiedName == "A::B::consume";
+                            });
+                            checkedNativeOnly = !projectedConsume && deferredConsume;
+                            return true;
+                        }, collisionError);
+                if (configured) nativeCollision.compileProjectMethodBodies(path, collisionError);
+                ok &= expect(configured && checkedNativeOnly,
+                             "native homonym cannot authorize a C++ record pointer function projection");
+            }
+        }
+    }
     return ok ? 0 : 1;
 }
