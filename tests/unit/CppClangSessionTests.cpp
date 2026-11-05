@@ -244,5 +244,33 @@ int main(int argc, char** argv)
         ok &= expect(installed && read(protectedPath) == "new-runtime",
                      "no-replace transaction installs when destination remains absent");
     }
+    {
+        using namespace nativesharp::interop;
+        auto model = std::make_shared<LibraryMetadata>();
+        LibraryMetadataType keep;
+        keep.identityKey = "Example::Keep";
+        keep.fullyQualifiedName = "Keep";
+        LibraryMetadataType drop;
+        drop.identityKey = "Example::Drop";
+        drop.fullyQualifiedName = "Drop";
+        model->types = {keep, drop};
+        LibraryMetadataCppBinaryDependency first;
+        first.libraryFileName = "one.lib";
+        LibraryMetadataCppBinaryDependency second;
+        second.libraryFileName = "two.lib";
+        model->cppBinaryDependencies = {first, second, first};
+        std::vector<std::shared_ptr<const LibraryMetadata>> modules = {model};
+        nativesharp::compilation::PrecompiledSurfaceReachability reachability(modules, {false});
+        reachability.reach({"Keep"});
+        const auto reduced = reachability.prunedMetadata(0);
+        ok &= expect(reduced != model && reduced->types.size() == 1 &&
+                         reduced->types[0].identityKey == keep.identityKey &&
+                         reduced->cppBinaryDependencies == model->cppBinaryDependencies,
+                     "precompiled surface pruning retains C++ binary dependency order and repetitions");
+        nativesharp::compilation::PrecompiledSurfaceReachability full(modules, {true});
+        ok &= expect(full.prunedMetadata(0) == model &&
+                         full.prunedMetadata(0)->cppBinaryDependencies == model->cppBinaryDependencies,
+                     "full precompiled surface keeps the original C++ binary dependencies");
+    }
     return ok ? 0 : 1;
 }
