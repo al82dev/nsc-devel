@@ -812,6 +812,7 @@ public:
             llvm::vfs::createPhysicalFileSystem().release());
         if (const auto error = filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory)))
             return failure("options", "cannot set session working directory: " + error.message());
+        filesystem = detail::makeCancellationFileSystem(std::move(filesystem), cancellation);
 
         std::filesystem::path inputPath;
         std::string source;
@@ -821,6 +822,7 @@ public:
             if (inputPath.empty()) return failure("input", "input file path is empty");
             if (inputPath.is_relative()) inputPath = options_.workingDirectory / inputPath;
             auto contents = filesystem->getBufferForFile(utf8(inputPath));
+            if (cancellation.cancelled()) return failure("cancel", "C/C++ session opening was cancelled");
             if (!contents) return failure("input", "cannot read input file: " + contents.getError().message());
             source = (*contents)->getBuffer().str();
         }
@@ -834,10 +836,9 @@ public:
         }
         const auto args = detail::buildClangInvocationArguments(options_);
 
-        ast_ = clang::tooling::buildASTFromCodeWithArgs(
+        ast_ = detail::runClangSessionAction(
             source, args, utf8(inputPath), utf8(options_.driverReferencePath),
-            std::make_shared<clang::PCHContainerOperations>(),
-            clang::tooling::getClangStripDependencyFileAdjuster(), {}, &consumer_, filesystem);
+            &consumer_, std::move(filesystem), cancellation);
         if (cancellation.cancelled())
         {
             ast_.reset();
