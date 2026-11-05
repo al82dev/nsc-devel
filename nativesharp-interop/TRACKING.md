@@ -159,7 +159,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T06-011. Comprobar la cancelación y la liberación posterior de recursos. Evidencia: [tanda 06](TANDA-06-VALIDACION.md).
 - [x] T06-012. Comprobar que dos sesiones con opciones distintas no se contaminan. Evidencia: [tanda 06](TANDA-06-VALIDACION.md).
 - [x] T06-013. Comprobar la inyección de una sesión en `ProjectCompilation`. Evidencia: [pruebas con sesión simulada y sesión Clang real](LINEA-BASE-TANDAS.md).
-- [ ] T06-014. Comprobar una compilación NativeSharp normal con la integración desactivada.
+- [x] T06-014. Comprobar una compilación NativeSharp normal con la integración desactivada. Evidencia: [tanda 06](TANDA-06-VALIDACION.md).
 - [ ] T06-015. Comprobar una compilación NativeSharp normal con la integración activada y sin sesión solicitada.
 - [ ] T06-016. Inspeccionar importaciones normales y diferidas de los ejecutables producidos.
 - [ ] T06-017. Registrar resultados, comandos y limitaciones de la primera tanda.
