@@ -935,6 +935,14 @@ analyzeExpressionKindSizeofTypeExpressionOrSizeofExpressionOrAlignofTypeExpressi
                 break;
             }
 
+            if (measuredTypeKey.ends_with("[?]"))
+            {
+                diagnostics.report(diagnostics::DiagnosticId::IncompleteType,
+                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                    "C array with an unknown bound has no object layout");
+                break;
+            }
+
             if (nameLookup_ && measuredTypeKey.starts_with("type:"))
             {
                 const auto ordinal = nameLookup_->typeOrdinalForIdentity(measuredTypeKey.substr(5));

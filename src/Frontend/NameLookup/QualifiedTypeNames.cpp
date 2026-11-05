@@ -315,6 +315,69 @@ bool ProjectNameLookup::expandCppTypeAlias(
             mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || record->pointeeConst);
             return true;
         }
+        const auto& incompleteArray = selected->declaration.underlyingType;
+        if (selected->targetTriple == "x86_64-pc-windows-msvc" &&
+            incompleteArray.kind == interop::CppTypeKind::Array && incompleteArray.isIncompleteArray)
+        {
+            const interop::CppType* element = &incompleteArray;
+            std::vector<std::optional<std::uint64_t>> dimensions;
+            while (element && element->kind == interop::CppTypeKind::Array)
+            {
+                if (element->isConst || element->isVolatile || !element->element ||
+                    (!element->isIncompleteArray && (!element->arrayCount || *element->arrayCount == 0)) ||
+                    (element->isIncompleteArray && !dimensions.empty()))
+                    return report(diagnostics::DiagnosticId::InvalidUsingTarget, "C incomplete array alias has an unsupported bound or qualifier");
+                dimensions.push_back(element->isIncompleteArray ? std::nullopt : element->arrayCount);
+                element = element->element.get();
+            }
+            const auto builtin = element ? cppAliasBuiltinType(*element) : std::nullopt;
+            const auto enumeration = element ? cppAliasEnumType(*element) : std::nullopt;
+            const auto record = element ? cppAliasRecordType(*element) : std::nullopt;
+            if ((!builtin && !enumeration && !record) || syntax->isPointeeConst() ||
+                (builtin && builtin->pointeeConst) || (enumeration && enumeration->pointeeConst) ||
+                (record && record->pointeeConst))
+                return report(diagnostics::DiagnosticId::InvalidUsingTarget, "C incomplete array element cannot be represented safely");
+            const std::string name = builtin ? std::string(builtin->name) : enumeration ? enumeration->name : record->name;
+            if (!builtin)
+            {
+                const std::string identity = enumeration ? enumeration->name : record->canonicalName;
+                const auto found = std::find_if(cppImportedTypes_.begin(), cppImportedTypes_.end(), [&](const auto& item) {
+                    return item.projectOrdinal == selected->projectOrdinal && item.identity.fullyQualifiedName() == identity &&
+                        item.deferredImportError.empty() && (enumeration ? item.enumBase && item.enumBase->token == enumeration->base.token
+                                                                              : item.kind == NamedTypeDeclarationKind::Struct);
+                });
+                if (found == cppImportedTypes_.end())
+                    return report(diagnostics::DiagnosticId::InvalidUsingTarget, "C incomplete array element type is unavailable");
+            }
+            auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
+            auto modifiers = cppPointerModifiers(*element);
+            for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
+            {
+                ast::TypeModifierSyntax modifier;
+                modifier.range = syntax->range();
+                if (!*dimension) modifier.kind = ast::TypeModifierSyntaxKind::IncompleteArray;
+                else
+                {
+                    auto* count = arena.make<ast::AstNode>(ast::AstNodeKind::IntegerLiteralExpression, syntax->range());
+                    count->setTokenKind(lexer::TokenKind::IntegerLiteral);
+                    count->setText(std::to_string(**dimension));
+                    count->setIntegerValue(**dimension);
+                    modifier.kind = ast::TypeModifierSyntaxKind::Array;
+                    modifier.arrayCount = count;
+                }
+                modifiers.push_back(modifier);
+            }
+            auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
+            mutableSyntax->setBaseTokenKind(builtin ? builtin->token : lexer::TokenKind::Identifier);
+            mutableSyntax->setBaseName(name);
+            if (!builtin)
+            {
+                mutableSyntax->setOriginProjectOrdinal(selected->projectOrdinal);
+                mutableSyntax->setOriginNamespace("");
+            }
+            mutableSyntax->prependModifiers(modifiers);
+            return true;
+        }
         const auto array = cppAliasArrayType(selected->declaration.underlyingType);
         if (array && selected->targetTriple == "x86_64-pc-windows-msvc")
         {
