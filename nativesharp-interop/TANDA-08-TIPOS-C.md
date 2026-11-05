@@ -244,6 +244,10 @@ una prueba preparada comprueba también el const del apuntado. Sigue pendiente
 seleccionar transitivamente enums referidos solo por campos o firmas, probar
 acceso y llamadas ejecutables y ejecutar la validación agrupada.
 
+La proyección preparada también acepta campos con arreglos fijos de enum y
+comprueba el tipo importado. Hay una aserción para dimensiones y offset; la
+indexación y ejecución todavía no se han validado.
+
 El selector incorpora ahora enums referidos por campos de records C
 seleccionados, incluso tras punteros o arreglos, y se preparó una prueba donde
 solo se escribe el tipo del record. Todavía falta comprobar colisiones con
