@@ -184,6 +184,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             result.typeKey = resultType;
             result.valid = true;
             result.assignable = false;
+            if (!optionalCarrier.has_value() && ProjectTypeConversion::isPointer(resultType))
+            {
+                if (right.typeKey != "builtin:null" &&
+                    left.pointerAddressSpace != right.pointerAddressSpace)
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "coalescing pointer operands must use the same address space");
+                    result.valid = false;
+                    break;
+                }
+                result.pointerPointeeReadonly = left.pointerPointeeReadonly || right.pointerPointeeReadonly;
+                result.pointerNullable = right.typeKey == "builtin:null" || right.pointerNullable;
+                result.pointerHasProvenance = left.pointerHasProvenance && right.pointerHasProvenance;
+                result.pointerKnownAlignment = std::min(left.pointerKnownAlignment, right.pointerKnownAlignment);
+                result.pointerAddressSpace = left.pointerAddressSpace;
+                result.onePastEndPointer = left.onePastEndPointer || right.onePastEndPointer;
+            }
             // EN: Freeze 3.0 (plan item 135): the result may be either operand, so it keeps a borrow of either.
             // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado puede ser cualquier operando, asi que
             //     conserva el prestamo de cualquiera.
