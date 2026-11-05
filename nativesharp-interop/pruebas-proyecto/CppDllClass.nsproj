@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CppProject</Name></PropertyGroup>
+  <ItemGroup><CppLibraryReference Header="CppDllClass.h" Language="C++" Standard="c++20" Library="cpp-dll-field-library.lib" /></ItemGroup>
+</Project>

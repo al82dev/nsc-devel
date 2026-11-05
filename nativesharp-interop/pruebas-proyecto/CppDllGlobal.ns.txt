@@ -1,0 +1,1 @@
+int Main() { Plugin.shared = 41; return Plugin.increment(40) + Plugin.shared - 41; }

@@ -1,0 +1,5 @@
+int Main() {
+    var p = Plugin.make();
+    Plugin.Imported.value = 10;
+    return p->add(3) + Plugin.Imported.scale(3) + Plugin.Imported.value;
+}
