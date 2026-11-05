@@ -166,3 +166,11 @@ record y devuelve un error si un enlace de tipo o candidato de expresión los
 utiliza. Se prepararon casos de colisión usada y no usada. Falta verificar
 aliases, ámbitos, diagnósticos de uso real y la ejecución agrupada; la prueba
 todavía no se ha ejecutado.
+
+### Enum C anónimo con typedef, sin validar
+
+La captura usa el nombre de typedef asociado por Clang como identidad del enum
+anónimo, tanto en la declaración como en el tipo. Hay una prueba de snapshot
+preparada y un script para el proyecto de valores C. Permanecen pendientes los
+parámetros, resultados y campos de enum, así como la validación agrupada; el
+script y la prueba no se han ejecutado.
