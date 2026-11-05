@@ -84,3 +84,23 @@ La combinación con variables conserva una colisión como error diferido. Hay
 pruebas preparadas de conversión, conflicto y uso en `switch`; el driver todavía
 no activa la ruta. Faltan la representación del tipo enum, casos C++ y pruebas
 ejecutadas de constantes y expresiones. T08-009 sigue sin cerrar.
+
+### Tipos enum y agregados anónimos, sin validar
+
+Se prepararon tipos enum C con su entero subyacente, una sintaxis sintética
+para que el modelo existente consulte ese entero, y la expansión de typedef a
+un enum importado. Las pruebas de snapshot, proveedor y enlace semántico
+están preparadas. La captura consulta `getCanonicalTagType` de Clang 23.1.0.
+La selección de enums aún puede reportar conflictos incluso si no se usan;
+es necesario revisar su resolución diferida antes de activar el flujo normal.
+
+La captura de records C conserva el nombre de typedef asociado por Clang a
+un struct o union anónimos, en la declaración y en la identidad de tipo. Se
+preparó una prueba de ambas formas. No se ha compilado ni ejecutado esta
+implementación, ni se ha demostrado la importación de esos tipos por el driver.
+
+Siguiente trabajo: completar la activación coordinada de proveedores de tipos,
+aliases y valores para referencias C, resolver conflictos por demanda y las
+formas compuestas, incluyendo punteros a función. Después ejecutar la
+construcción incremental y validación agrupada de la tanda completa. Ninguna
+casilla se cierra por estos cambios.
