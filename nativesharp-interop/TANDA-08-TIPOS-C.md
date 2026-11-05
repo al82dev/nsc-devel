@@ -2,6 +2,22 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Validación agrupada posterior: 2026-11-05
+
+`call nativesharp-interop\validar-tanda-08.cmd` terminó con código 0 tras
+corregir la referencia recursiva de la prueba de serialización: le faltaba
+`enclosingTypeParameter`, campo que ya escribían y leían los codecs de
+producción. Pasaron las cuatro comprobaciones de equivalencia, las seis de
+restauración de sintaxis, la suite de sesión Clang y los siete proyectos
+preparados. El detalle de la corrección consta en
+[`t08-referencia-serializacion-constraint.md`](registro-commits/t08-referencia-serializacion-constraint.md).
+
+En esa ejecución se verificaron los casos preparados de arreglo incompleto,
+global C volatile y round trip de restrict. Las notas posteriores que los
+describen como pendientes de ejecución conservan su estado histórico. La
+pasada no demuestra todas las formas de arreglos, calificadores ni el resto de
+los contratos de T08-002 a T08-020: esas casillas permanecen abiertas.
+
 ## Primera validación agrupada: fallida
 
 La construcción ON y el frontend OFF terminaron tras corregir una llamada a
