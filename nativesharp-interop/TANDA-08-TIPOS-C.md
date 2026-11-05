@@ -140,3 +140,12 @@ entrega un puntero a struct y NativeSharp modifica un campo antes de consultar
 el valor desde C. La prueba aún no se ha construido ni ejecutado. Siguiente
 acción: preparar su ejecución reproducible, integrar selección de enums por
 uso y completar los casos compuestos antes de la validación agrupada.
+
+### Conflictos diferidos de enums C, sin validar
+
+Las definiciones incompatibles de un enum se conservan en el candidato con un
+error diferido y el enlace de nombres de tipo informa ese error al usarse. Se
+preparó una aserción de recolección para dos definiciones distintas. Quedan por
+comprobar el diagnóstico integrado en usos de tipo y expresión, la selección
+junto a records, las colisiones con tipos NS y el flujo del driver. El script
+de `pruebas-tanda-08-record-c` quedó preparado, sin ejecutar.
