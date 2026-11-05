@@ -7,5 +7,9 @@ int Main()
     parent.child.value = 19;
     parent.children[1].value = 23;
     if (read_parent(parent) != 42) return 2;
+    int destination = 19;
+    int source = 23;
+    add_distinct(&destination, &source);
+    if (destination != 42) return 3;
     return 0;
 }
