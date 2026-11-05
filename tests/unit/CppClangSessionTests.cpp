@@ -3500,6 +3500,252 @@ int main(int argc, char** argv)
                     ownedBundle.reset();
                     bundleCleaned = std::all_of(ownedPaths.begin(), ownedPaths.end(), [](const auto& path) { return !std::filesystem::exists(path); });
                 }
+                if (!bundlePublished) std::cerr << "Owned C++ object bundle: " << observedError << '\n';
+                ok &= expect(bundleFailurePreserved && bundlePublished && bundleCleaned,
+                             "C++ lifetime objects publish atomically in an owned bundle and are removed with it");
+                for (const auto level : {nativesharp::llvm_backend::LlvmOptimizationLevel::O0,
+                                         nativesharp::llvm_backend::LlvmOptimizationLevel::O2})
+                {
+                    auto thinBundle = observedPlanned ? observedGenerator.generate(*observedProject.nameLookup(),
+                        *observedProject.memberModel(), *observedMir, observedProject.sourceManager(),
+                        nativesharp::llvm_backend::DebugInformationKind::None, level, 1, {},
+                        nativesharp::llvm_backend::LinkTimeOptimizationMode::Thin, observedError) : nullptr;
+                    const auto before = thinBundle ? thinBundle->objectFiles().size() : 0;
+                    const bool rejected = thinBundle && before != 0 &&
+                        !nativesharp::driver::appendCppImplicitLifetimeObjects(observedProject, *observedMir,
+                            *thinBundle, level, observedError) &&
+                        observedError.find("generated native objects are not yet supported in ThinLTO bundles") != std::string::npos &&
+                        thinBundle->objectFiles().size() == before;
+                    if (!rejected) std::cerr << "ThinLTO C++ lifetime gate: " << observedError << '\n';
+                    ok &= expect(rejected, "ThinLTO bundle rejects C++ lifetime objects without publishing them");
+                }
+                if (argc > 4 && std::string_view(argv[4]) == "bundle-link")
+                {
+                nativesharp::frontend::ProjectCompilation linkProject;
+                std::string linkError;
+                const bool linkConfigured = configureRealConstruction(linkProject, linkError) &&
+                    linkProject.enableExperimentalCppDiscardedLifetimeLoweringForTests(linkError);
+                linkProject.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { new Demo.Observed(); new Demo.Observed(); return 17; }\n";
+                    return std::nullopt;
+                });
+                const bool linkMirBuilt = linkConfigured && linkProject.compileProjectOopMir(path, linkError) &&
+                    linkProject.oopMirModel();
+                auto linkBundle = linkMirBuilt ? observedGenerator.generate(*linkProject.nameLookup(),
+                    *linkProject.memberModel(), *linkProject.oopMirModel(), linkProject.sourceManager(),
+                    nativesharp::llvm_backend::DebugInformationKind::None,
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 1, {}, linkError) : nullptr;
+                const bool linkObjectsAdded = linkBundle && nativesharp::driver::appendCppImplicitLifetimeObjects(
+                    linkProject, *linkProject.oopMirModel(), *linkBundle,
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O0, linkError);
+                std::string linkMain;
+                if (linkMirBuilt)
+                    for (const auto& function : linkProject.oopMirModel()->functions())
+                        if (function.namespaceFunctionOrdinal && function.returnTypeKey == "builtin:int") linkMain = function.mangledName;
+                const auto linkDir = std::filesystem::path(argv[2]) / "cpp-fixtures" / "lifetime-emission";
+                nativesharp::linker::WindowsExecutableBuilder linkBuilder;
+                linkBuilder.setExtraLinkLibraries({"A:/vc2026-runtime/lib/x64/release/libcmt.lib",
+                    "A:/vc2026-runtime/lib/x64/release/libvcruntime.lib",
+                    "A:/vc2026-runtime/windows-sdk/10.0.28000.0/lib/ucrt/x64/libucrt.lib",
+                    "A:/vc2026-runtime/windows-sdk/10.0.28000.0/lib/um/x64/kernel32.lib"});
+                std::vector<std::filesystem::path> linkObjects;
+                if (linkObjectsAdded) linkObjects.assign(linkBundle->objectFiles().begin(), linkBundle->objectFiles().end());
+                linkObjects.push_back(linkDir / "bundle-members.obj");
+                const bool executableLinked = linkObjectsAdded && !linkMain.empty() && linkBuilder.buildObjects(
+                    linkObjects, linkBundle->combinedLlvmText(), linkDir / "bundle-linked.exe",
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O0, linkMain, linkError);
+                if (!executableLinked) std::cerr << "NativeSharp bundle link: " << linkError << '\n';
+                ok &= expect(executableLinked, "NativeSharp executable builder links the generated C++ lifetime bundle");
+                }
+                nativesharp::llvm_backend::ProjectOopLlvmLowerer observedLowerer;
+                auto observedModule = observedPlanned ? observedLowerer.lower(*observedProject.nameLookup(), *observedMir) : nullptr;
+                const bool observedVerified = observedModule && observedModule->verify(observedError);
+                const auto observedDir = std::filesystem::path(argv[2]) / "cpp-fixtures" / "lifetime-emission";
+                bool observedEmitted = observedVerified;
+                for (int opt : {0, 2})
+                {
+                    const auto level = opt == 0 ? nativesharp::llvm_backend::LlvmOptimizationLevel::O0 : nativesharp::llvm_backend::LlvmOptimizationLevel::O2;
+                    auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(level, observedError);
+                    observedEmitted &= target && observedModule && target->emit(*observedModule,
+                        observedDir / ("observed-ns-O" + std::to_string(opt) + ".obj"),
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object, observedError);
+                    std::vector<std::filesystem::path> destinations;
+                    for (const auto& request : observedPlan)
+                    {
+                        const auto part = request.kind == CppImplicitLifetimeKind::DefaultConstructor ? "ctor" : "dtor";
+                        destinations.push_back(observedDir / ("observed-" + std::string(part) + "-O" + std::to_string(opt) + ".obj"));
+                    }
+                    std::vector<std::filesystem::path> published;
+                    observedEmitted &= nativesharp::llvm_backend::emitCppImplicitLifetimeObjects(
+                        observedPlan, destinations, level, published, observedError) && published == destinations;
+                    if (destinations.size() == 2)
+                    {
+                        const auto before = published;
+                        destinations[1] = destinations[0];
+                        ok &= expect(!nativesharp::llvm_backend::emitCppImplicitLifetimeObjects(
+                                         observedPlan, destinations, level, published, observedError) && published == before,
+                                     "lifetime batch rejects duplicate outputs without publishing a partial list");
+                        destinations[1] = destinations[0].parent_path() /
+                            ("OBSERVED-CTOR-O" + std::to_string(opt) + ".OBJ");
+                        ok &= expect(!nativesharp::llvm_backend::emitCppImplicitLifetimeObjects(
+                                         observedPlan, destinations, level, published, observedError) && published == before,
+                                     "lifetime batch rejects case aliases on Windows");
+                        const auto hardLink = observedDir / ("observed-hardlink-" +
+                            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".obj");
+                        std::error_code linkError;
+                        std::filesystem::create_hard_link(destinations[0], hardLink, linkError);
+                        if (!linkError)
+                        {
+                            destinations[1] = hardLink;
+                            ok &= expect(!nativesharp::llvm_backend::emitCppImplicitLifetimeObjects(
+                                             observedPlan, destinations, level, published, observedError) && published == before,
+                                         "lifetime batch rejects hard-link aliases");
+                            std::filesystem::remove(hardLink, linkError);
+                            ok &= expect(!linkError, "temporary hard-link fixture is removed");
+                        }
+                        else std::cerr << "Hard-link alias test skipped: " << linkError.message() << '\n';
+                    }
+                }
+                std::string observedMain;
+                if (observedMirBuilt)
+                    for (const auto& function : observedMir->functions())
+                        if (function.namespaceFunctionOrdinal && function.returnTypeKey == "builtin:int") observedMain = function.mangledName;
+                std::ofstream observedHarness(observedDir / "observed-harness.cpp");
+                observedHarness << "namespace Demo { struct CountedMember { int value; CountedMember() noexcept(false); ~CountedMember() noexcept(false); }; struct FailingMember { int value; FailingMember() noexcept(false); ~FailingMember() noexcept(false); }; }\n"
+                    "extern \"C\" __declspec(dllimport) void __stdcall RaiseException(unsigned long, unsigned long, unsigned long, const unsigned long long*);\n"
+                    "static int stage = 0; Demo::CountedMember::CountedMember() noexcept(false) { stage = (stage == 0 || stage == 4) ? stage + 1 : 99;\n"
+                    "#ifdef TRIGGER_FAILURE\n RaiseException(0xE0424242, 0, 0, nullptr);\n#endif\n }\n"
+                    "Demo::CountedMember::~CountedMember() noexcept(false) {\n#ifdef CPP_THROW\n stage = stage == 2 ? 3 : 99;\n#else\n stage = (stage == 3 || stage == 7) ? stage + 1 : 99;\n#endif\n }\n"
+                    "Demo::FailingMember::FailingMember() noexcept(false) { stage = (stage == 1 || stage == 5) ? stage + 1 : 99;\n#ifdef CPP_THROW\n throw 123;\n#endif\n }\n"
+                    "Demo::FailingMember::~FailingMember() noexcept(false) { stage = (stage == 2 || stage == 6) ? stage + 1 : 99; }\n"
+                    "extern \"C\" int invoke_ns() __asm__(\"" << observedMain << "\");\n"
+                    "#ifdef CPP_THROW\n int main() { try { invoke_ns(); } catch (int value) { return value == 123 && stage == 3 ? 0 : 3; } return 4; }\n"
+                    "#else\n int main() {\n#ifdef TRIGGER_FAILURE\n int caught = 0; __try { invoke_ns(); } __except(1) { caught = 1; } return caught && stage == 1 ? 0 : 2;\n#else\n int result = invoke_ns(); return result == 0 && stage == 8 ? 0 : 1;\n#endif\n }\n#endif\n";
+                observedHarness.close();
+                if (!observedEmitted || observedMain.empty())
+                    std::cerr << "Observed lifetime object: " << observedError << ' ' << observedLowerer.error() << '\n';
+                ok &= expect(observedEmitted && !observedMain.empty() && static_cast<bool>(observedHarness),
+                             "real NativeSharp temporary emits objects for nontrivial implicit C++ lifetime");
+                nativesharp::frontend::ProjectCompilation declarationProject;
+                std::string declarationError;
+                const bool declarationConfigured = configureRealConstruction(declarationProject, declarationError);
+                declarationProject.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool declarationReady = declarationConfigured && declarationProject.compileProjectConstructions(path, declarationError);
+                nativesharp::diagnostics::DiagnosticEngine declarationDiagnostics;
+                nativesharp::frontend::ProjectObjectLayoutModel declarationLayout;
+                const bool declarationLayoutBuilt = declarationReady && declarationLayout.build(
+                    *declarationProject.nameLookup(), *declarationProject.memberModel(),
+                    *declarationProject.inheritanceModel(), *declarationProject.constructionModel(), declarationDiagnostics);
+                nativesharp::frontend::ProjectOopHirModel declarationHir;
+                const bool declarationHirBuilt = declarationLayoutBuilt && declarationHir.build(
+                    *declarationProject.nameLookup(), *declarationProject.memberModel(),
+                    *declarationProject.inheritanceModel(), *declarationProject.interfaceModel(),
+                    *declarationProject.methodBodyModel(), *declarationProject.constructionModel(),
+                    declarationLayout, declarationError, declarationProject.genericConstraintModel(), 1,
+                    declarationProject.namespaceFunctionModel());
+                nativesharp::frontend::ProjectOopMirModel declarationMir;
+                const bool declarationMirBuilt = declarationHirBuilt && declarationProject.virtualDispatchModel() &&
+                    declarationProject.destructionModel() && declarationMir.build(*declarationProject.nameLookup(),
+                        *declarationProject.memberModel(), declarationLayout, *declarationProject.virtualDispatchModel(),
+                        *declarationProject.interfaceModel(), *declarationProject.destructionModel(), declarationHir,
+                        *declarationProject.namespaceFunctionModel(), declarationError);
+                nativesharp::llvm_backend::ProjectOopLlvmLowerer declarationLowerer;
+                auto declarationModule = declarationMirBuilt
+                    ? declarationLowerer.lower(*declarationProject.nameLookup(), declarationMir) : nullptr;
+                const bool declarationVerified = declarationModule && declarationModule->verify(declarationError);
+                const auto declarationIr = declarationModule ? declarationModule->text() : std::string{};
+                if (!declarationVerified) std::cerr << "Isolated C++ constructor declaration: " << declarationError << '\n';
+                ok &= expect(declarationVerified && declarationIr.find("declare ptr @\"??0Implicit@Demo@@QEAA@XZ\"(ptr") != std::string::npos,
+                             "external C++ constructor declaration returns this pointer in Windows ABI");
+                if (!realSelected) std::cerr << "Real C++ construction analysis: " << realConstructionError << '\n';
+                ok &= expect(realSelected && emittedRealSelection &&
+                             !realConstruction.enableExperimentalCppLifetimeAnalysisForTests(realConstructionError),
+                             "NativeSharp construction selects and emits the observed implicit C++ constructor");
+                nativesharp::frontend::ProjectCompilation missingLifetimeProvider;
+                std::string missingProviderError;
+                ok &= expect(!missingLifetimeProvider.enableExperimentalCppLifetimeAnalysisForTests(missingProviderError),
+                             "experimental lifetime analysis requires its provider");
+                ok &= expect(!missingLifetimeProvider.enableExperimentalCppDiscardedLifetimeLoweringForTests(missingProviderError),
+                             "experimental discarded lifetime lowering requires its provider");
+                nativesharp::frontend::ProjectCompilation unsupportedValue;
+                std::string unsupportedValueError;
+                const bool unsupportedConfigured = configureRealConstruction(unsupportedValue, unsupportedValueError) &&
+                    unsupportedValue.enableExperimentalCppDiscardedLifetimeLoweringForTests(unsupportedValueError);
+                unsupportedValue.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { Demo.Observed value = new Demo.Observed(); return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool unsupportedReachedMir = unsupportedConfigured && unsupportedValue.compileProjectOopMir(path, unsupportedValueError);
+                ok &= expect(unsupportedConfigured && !unsupportedReachedMir,
+                             "C++ value stored in a local does not reach MIR through discarded-only lowering");
+                nativesharp::frontend::ProjectCompilation explicitConstruction;
+                std::string explicitConstructionError;
+                const bool explicitConfigured = configureRealConstruction(explicitConstruction, explicitConstructionError) &&
+                    explicitConstruction.enableExperimentalCppDiscardedLifetimeLoweringForTests(explicitConstructionError);
+                explicitConstruction.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { new Demo.Ready(1); return 17; }\n";
+                    return std::nullopt;
+                });
+                const bool explicitReachedMir = explicitConfigured && explicitConstruction.compileProjectOopMir(path, explicitConstructionError);
+                std::vector<CppImplicitLifetimeEmissionRequest> explicitPlan;
+                const bool explicitPlanned = explicitReachedMir && explicitConstruction.oopMirModel() &&
+                    planCppImplicitLifetimeFromValues(*explicitConstruction.projectGraph(),
+                        explicitConstruction.cppProjectSessions(), *explicitConstruction.nameLookup(),
+                        *explicitConstruction.memberModel(), explicitConstruction.constructionModel()->constructions(),
+                        *explicitConstruction.oopMirModel(), explicitPlan, explicitConstructionError) && explicitPlan.empty();
+                nativesharp::llvm_backend::ProjectOopLlvmLowerer explicitLowerer;
+                auto explicitModule = explicitPlanned ? explicitLowerer.lower(*explicitConstruction.nameLookup(),
+                    *explicitConstruction.oopMirModel()) : nullptr;
+                bool explicitEmitted = explicitModule && explicitModule->verify(explicitConstructionError);
+                for (int opt : {0, 2})
+                {
+                    const auto level = opt == 0 ? nativesharp::llvm_backend::LlvmOptimizationLevel::O0 :
+                        nativesharp::llvm_backend::LlvmOptimizationLevel::O2;
+                    auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(level, explicitConstructionError);
+                    explicitEmitted &= target && explicitModule && target->emit(*explicitModule,
+                        observedDir / ("explicit-ready-ns-O" + std::to_string(opt) + ".obj"),
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object, explicitConstructionError);
+                }
+                std::string explicitMain;
+                if (explicitReachedMir)
+                    for (const auto& function : explicitConstruction.oopMirModel()->functions())
+                        if (function.namespaceFunctionOrdinal && function.returnTypeKey == "builtin:int") explicitMain = function.mangledName;
+                std::ofstream explicitHarness(observedDir / "explicit-ready-harness.cpp");
+                explicitHarness << "namespace Demo { struct Ready { Ready(int) noexcept; ~Ready() noexcept; }; }\n"
+                    "static int stage = 0; Demo::Ready::Ready(int value) noexcept { stage = value == 1 ? 1 : 99; }\n"
+                    "Demo::Ready::~Ready() noexcept { stage = stage == 1 ? 2 : 99; }\n"
+                    "extern \"C\" int invoke_ns() __asm__(\"" << explicitMain << "\");\n"
+                    "extern \"C\" __declspec(dllimport) void __stdcall ExitProcess(unsigned int);\n"
+                    "extern \"C\" void* memset(void* dst, int value, unsigned long long size) { unsigned char* p = (unsigned char*)dst; for (unsigned long long i = 0; i < size; ++i) p[i] = (unsigned char)value; return dst; }\n"
+                    "extern \"C\" void mainCRTStartup() { int result = invoke_ns(); ExitProcess(result == 17 && stage == 2 ? 0 : 1); }\n";
+                explicitHarness.close();
+                if (!explicitEmitted || explicitMain.empty())
+                    std::cerr << "Explicit C++ construction: " << explicitConstructionError << ' ' << explicitLowerer.error() << '\n';
+                ok &= expect(explicitEmitted && !explicitMain.empty() && static_cast<bool>(explicitHarness),
+                             "discarded C++ value selects external int constructor and destructor without implicit emission");
+                if (argc > 4 && (std::string_view(argv[4]) == "lifetime" || std::string_view(argv[4]) == "bundle-link"))
+                {
+                auto explicitBundle = explicitPlanned ? observedGenerator.generate(*explicitConstruction.nameLookup(),
+                    *explicitConstruction.memberModel(), *explicitConstruction.oopMirModel(), explicitConstruction.sourceManager(),
+                    nativesharp::llvm_backend::DebugInformationKind::None,
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O0, 1, {}, explicitConstructionError) : nullptr;
+                const bool explicitBundleReady = explicitBundle && nativesharp::driver::appendCppImplicitLifetimeObjects(
+                    explicitConstruction, *explicitConstruction.oopMirModel(), *explicitBundle,
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O0, explicitConstructionError);
+                std::vector<std::filesystem::path> explicitObjects;
+                if (explicitBundleReady)
+                    explicitObjects.assign(explicitBundle->objectFiles().begin(), explicitBundle->objectFiles().end());
+                explicitObjects.push_back(observedDir / "explicit-ready-members.obj");
+                nativesharp::linker::WindowsExecutableBuilder explicitBuilder;
+                const bool explicitLinked = explicitBundleReady && !explicitMain.empty() && explicitBuilder.buildObjects(
+                    explicitObjects, explicitBundle->combinedLlvmText(), observedDir / "explicit-ready-builder.exe",
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O0, explicitMain, explicitConstructionError);
+                if (!explicitLinked) std::cerr << "Explicit C++ builder link: " << explicitConstructionError << '\n';
+                ok &= expect(explicitLinked, "NativeSharp executable builder links explicit C++ lifetime");
+                }
             }
         }
     }
