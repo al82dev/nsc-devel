@@ -1,0 +1,14 @@
+namespace NativeSharp.Core { public class Exception { } }
+using NativeSharp.Core;
+class Boom : Exception { }
+class Test {
+    static void Fail() throws Boom {
+        Demo.Ready value = new Demo.Ready(1);
+        throw new Boom();
+    }
+    public static int Main() {
+        try { Fail(); }
+        catch (Boom error) { return Demo.check(); }
+        return 1;
+    }
+}

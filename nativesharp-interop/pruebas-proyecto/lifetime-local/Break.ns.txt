@@ -1,0 +1,8 @@
+int Main() {
+    int i = 0;
+    while (i < 1) {
+        Demo.Ready value = new Demo.Ready(1);
+        break;
+    }
+    return Demo.check();
+}

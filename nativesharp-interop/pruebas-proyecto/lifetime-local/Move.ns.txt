@@ -1,0 +1,1 @@
+int Main() { Demo.Ready value = new Demo.Ready(1); Demo.Ready other = move(value); return 0; }
