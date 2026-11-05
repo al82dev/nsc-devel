@@ -1682,6 +1682,13 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Evidencia: el compilador aceptó `&volatile_array[1]` como `int*`. La dirección indexada no conserva un tipo de puntero calificado.
 - Corrección: `src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp` debe rechazar esa formación de dirección sobre arreglos globales C `volatile` de escalares o enum, incluida la indexación anidada; conservar el sombreado y los punteros no calificados. Extender el fixture con matriz y un caso positivo de arreglo mutable; registrar cada cambio con su Markdown y validar en conjunto.
 
+### Globales C de struct
+
+- Objetivo: importar globales C con tipo struct, puntero a struct y arreglo fijo de structs, preservando identidad, layout, campos y almacenamiento externo. Seleccionar el struct también cuando aparece únicamente en el tipo del global usado.
+- Evidencia inicial: `mapGlobalType` solo proyecta escalares, enums y sus variantes de puntero o arreglo; la selección especulativa por demanda de globales recoge enums pero no records. El soporte de campos de record comprueba identidad y layout de Clang.
+- Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Interop/Cpp/CppSemanticRecord.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, pruebas unitarias de sesión Clang si son necesarias, y registros Markdown. No modificar NSLink ni LLVM. No dar por soportados globales const/volatile de record ni ABI de paso por valor sin evidencia.
+- Preparar casos de objeto, puntero y arreglo donde el nombre del struct no aparezca en código NativeSharp ni en las firmas invocadas; contrastar escrituras con una función C. Implementar el conjunto antes de validar de manera agrupada; conservar rechazo de colisiones y tipos incompatibles sin romper sombras.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.

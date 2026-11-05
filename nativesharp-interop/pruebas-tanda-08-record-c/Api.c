@@ -21,3 +21,8 @@ int read_readonly_array(void) { return readonly_array[1]; }
 volatile int volatile_array[3] = { 1, 2, 3 };
 volatile int volatile_matrix[2][2] = { { 1, 2 }, { 3, 4 } };
 int read_volatile_arrays(void) { return volatile_array[1] + volatile_matrix[1][1]; }
+struct GlobalOnly global_record = { 1 };
+static struct GlobalOnly global_record_target = { 2 };
+struct GlobalOnly* global_record_pointer = &global_record_target;
+struct GlobalOnly global_record_array[2] = { { 3 }, { 4 } };
+int read_global_records(void) { return global_record.value + global_record_pointer->value + global_record_array[1].value; }
