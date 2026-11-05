@@ -2,6 +2,20 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Validación agrupada de arreglos globales const: 2026-11-05
+
+Con `9d01ae4dc`, `5620f689d`, `851b324ae` y `d1e08c811`, la ejecución de
+`call nativesharp-interop\validar-tanda-08.cmd` terminó con código 0. Pasaron
+ON/OFF, suite Clang, restauración y equivalencia de serialización y los siete
+proyectos preparados. Se leyeron arreglos globales `const int` y `const enum`.
+
+Las compilaciones negativas rechazaron la escritura de elementos con `left
+side of assignment is not assignable`. La conversión de la dirección de un
+elemento a `int*` se rechazó por descartar `pointee constness`, según
+`const-array-address.log`. Son casos Windows x64 O0: no cubren arreglos de
+punteros, `volatile`, todas las conversiones ni todos los calificadores.
+T08-004, T08-015 y T08-016 siguen abiertos.
+
 ## Validación agrupada de arreglos globales enum: 2026-11-05
 
 Con `27f11ff19` y `39fc011f7`, `call nativesharp-interop\validar-tanda-08.cmd`
