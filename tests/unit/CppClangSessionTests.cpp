@@ -2115,6 +2115,7 @@ int main(int argc, char** argv)
                                   "struct Pair { char a; int b; }; struct Incomplete;\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
                                   "typedef struct Pair PairAlias; typedef const int* ReadOnlyPtr;\n"
+                                  "typedef int IncompleteArray[]; typedef int FixedArray[7];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
                                   "enum Color { CMinus = -3, CPlus = 5 }; enum { CAnonymous = 9 };\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
@@ -2142,6 +2143,8 @@ int main(int argc, char** argv)
         const auto* pointerAlias = aliasByName("CountPtr");
         const auto* recordAlias = aliasByName("PairAlias");
         const auto* readonlyAlias = aliasByName("ReadOnlyPtr");
+        const auto* incompleteArrayAlias = aliasByName("IncompleteArray");
+        const auto* fixedArrayAlias = aliasByName("FixedArray");
         const auto* callbackAlias = aliasByName("Callback");
         const auto* oldCallbackAlias = aliasByName("OldCallback");
         ok &= expect(countAlias && countAlias->underlyingType.kind == CppTypeKind::UnsignedInteger &&
@@ -2153,6 +2156,15 @@ int main(int argc, char** argv)
                      readonlyAlias && readonlyAlias->underlyingType.element &&
                      readonlyAlias->underlyingType.element->isConst,
                      "C typedef snapshot preserves scalar, pointer, record and const underlying types");
+        ok &= expect(incompleteArrayAlias && incompleteArrayAlias->underlyingType.kind == CppTypeKind::Array &&
+                     incompleteArrayAlias->underlyingType.element &&
+                     incompleteArrayAlias->underlyingType.element->kind == CppTypeKind::SignedInteger &&
+                     !incompleteArrayAlias->underlyingType.arrayCount &&
+                     !incompleteArrayAlias->underlyingType.sizeBits &&
+                     fixedArrayAlias && fixedArrayAlias->underlyingType.element &&
+                     fixedArrayAlias->underlyingType.arrayCount == 7 &&
+                     fixedArrayAlias->underlyingType.sizeBits == 224,
+                     "C array typedef snapshot preserves element and distinguishes incomplete bounds");
         const auto* callbackType = callbackAlias && callbackAlias->underlyingType.element
             ? callbackAlias->underlyingType.element->function.get() : nullptr;
         const auto* oldCallbackType = oldCallbackAlias && oldCallbackAlias->underlyingType.element
