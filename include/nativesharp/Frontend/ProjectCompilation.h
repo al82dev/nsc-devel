@@ -285,8 +285,8 @@ private:
         std::size_t unitOrdinal,
         std::span<const compilation::PrecompiledSnapshotDependency> loadedDependencies,
         std::string& reason);
-    bool buildMemberModel();
-    bool buildNamespaceFunctionModel();
+    bool buildMemberModel(std::string& error);
+    bool buildNamespaceFunctionModel(std::string& error);
     bool buildInheritanceModel();
     bool buildInterfaceModel();
     bool buildVirtualDispatchModel();
