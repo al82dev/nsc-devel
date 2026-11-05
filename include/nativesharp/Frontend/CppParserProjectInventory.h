@@ -102,7 +102,7 @@ inline std::optional<std::vector<CppParserProjectInventory>> cppParserProjectInv
     {
         if (alias.projectOrdinal >= projects.size() || alias.declaration.name.empty()) return std::nullopt;
         std::string name = alias.declaration.qualifiedName;
-        if (name.empty() || name.find("(anonymous namespace)") != std::string::npos) continue;
+        if (name.empty() || alias.declaration.insideAnonymousNamespace) continue;
         std::size_t separator = 0;
         while ((separator = name.find("::", separator)) != std::string::npos)
             name.replace(separator, 2, ".");

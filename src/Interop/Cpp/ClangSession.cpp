@@ -215,6 +215,7 @@ void collectTypeAliases(const clang::DeclContext& context, clang::ASTContext& as
         CppTypeAliasDeclaration value;
         value.name = alias->getNameAsString();
         value.qualifiedName = alias->getQualifiedNameAsString();
+        value.insideAnonymousNamespace = alias->isInAnonymousNamespace();
         value.underlyingType = describeType(alias->getUnderlyingType(), astContext);
         const auto location = astContext.getSourceManager().getPresumedLoc(alias->getLocation());
         if (location.isValid())

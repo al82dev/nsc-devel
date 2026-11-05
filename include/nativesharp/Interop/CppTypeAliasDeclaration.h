@@ -16,5 +16,6 @@ struct CppTypeAliasDeclaration
     std::string qualifiedName;
     CppType underlyingType;
     std::optional<CppSourcePoint> location;
+    bool insideAnonymousNamespace = false;
 };
 }
