@@ -184,7 +184,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T07-013. Hacer disponibles los diagnósticos del header en la compilación NativeSharp. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-014. Registrar los archivos incluidos para detectar cambios en dependencias. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-015. Comprobar la carga de dos bibliotecas con configuraciones independientes. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
-- [ ] T07-016. Comprobar que cambiar un header invalida el resultado que dependa de él.
+- [x] T07-016. Comprobar que cambiar un header invalida el resultado que dependa de él. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 
 ## 08. Declaraciones, nombres y tipos C
 
