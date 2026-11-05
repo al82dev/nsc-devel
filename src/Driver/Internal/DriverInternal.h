@@ -4,6 +4,10 @@
 
 namespace nativesharp::driver
 {
+bool appendCppImplicitLifetimeObjects(frontend::ProjectCompilation &compilation,
+                                      const frontend::ProjectOopMirModel &mir,
+                                      llvm_backend::ProjectOopObjectBundle &bundle,
+                                      llvm_backend::LlvmOptimizationLevel level, std::string &error);
 std::string foldedPathKey(const std::filesystem::path &path);
 std::string foldedName(std::string value);
 std::string escapedStringLiteral(std::string_view value);
