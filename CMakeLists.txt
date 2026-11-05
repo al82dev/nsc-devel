@@ -900,6 +900,8 @@ if(LLVM_FOUND)
                     "-DNSC_EXPECTED_CLANG_VERSION=${LLVM_PACKAGE_VERSION}"
                     "-DNSC_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}/cpp-incompatible-clang"
                     -P "${CMAKE_CURRENT_SOURCE_DIR}/nativesharp-interop/pruebas-version-clang/verify.cmake")
+            set_tests_properties(nsc.cpp-interop.incompatible-clang PROPERTIES
+                ENVIRONMENT "TMP=${NSC_CPP_INTEROP_TEST_ROOT};TEMP=${NSC_CPP_INTEROP_TEST_ROOT}")
         endif()
     endif()
     if(WIN32 AND NSC_HOST_LINKAGE STREQUAL "DYNAMIC")
