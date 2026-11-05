@@ -1,0 +1,1 @@
+int Main() { Demo.Widget value = new Demo.Widget(); return 0; }

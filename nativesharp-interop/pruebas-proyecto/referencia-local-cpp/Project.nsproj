@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CppLocalReference</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <CppLibraryReference Header="CppClassApi.h" Language="C++" Standard="c++20" Library="class-api.lib" />
+  </ItemGroup>
+</Project>
