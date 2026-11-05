@@ -5020,6 +5020,28 @@ int main(int argc, char** argv)
                                               : std::holds_alternative<CppRecordObservation>(observed),
                                  "C enum collision is diagnosed only when the conflicting type is used");
                 }
+                {
+                    nativesharp::frontend::ProjectCompilation dependencyCollision;
+                    dependencyCollision.setSourceBufferProvider([](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns")
+                            return "struct Shade {} int Use(Box* value) { return 0; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    CppProjectSessions group;
+                    group.projectFile = std::filesystem::absolute(path);
+                    group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::C, "enum Shade { Dark = 1 }; struct Box { enum Shade color; };\n")));
+                    std::vector<CppProjectSessions> groups;
+                    groups.push_back(std::move(group));
+                    std::string failure;
+                    const bool configured = dependencyCollision.setCppProjectSessions(std::move(groups), failure) &&
+                        dependencyCollision.setExperimentalCppTypeProvider(provideCppInteropTypes, failure) &&
+                        dependencyCollision.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, failure);
+                    const bool ready = configured && dependencyCollision.compileProjectNames(path, failure);
+                    ok &= expect(configured && !ready && failure.find("C enum field conflicts") != std::string::npos,
+                                 "record enum dependency cannot replace a colliding NativeSharp type");
+                }
                 nativesharp::frontend::ProjectCompilation unpreparedObservation;
                 ok &= expect(std::holds_alternative<CppRecordObservationFailure>(observeCppRecords(unpreparedObservation)),
                              "record observation rejects an unprepared compilation");
