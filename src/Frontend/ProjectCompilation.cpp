@@ -2239,6 +2239,7 @@ bool ProjectCompilation::materializePrecompiledSyntax(std::string& loadError)
 bool ProjectCompilation::calculateTemplateParseCacheKey(std::string& loadError)
 {
     templateParseCacheKey_.clear();
+    if (experimentalCppLifetimeMethodProvider_ || experimentalCppInstanceMethodProvider_ || experimentalCppInstanceFieldProvider_ || experimentalCppStaticMethodProvider_ || experimentalCppStaticFieldProvider_ || !experimentalCppImportedTypes_.empty()) return true;
     if (!kTemplateParseCorpusCacheEnabled || templateCacheRoot_.empty()) return true;
 
     std::string material;
