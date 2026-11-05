@@ -1616,6 +1616,12 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `Collision.ns.txt`, `validar.cmd` de `nativesharp-interop/pruebas-tanda-08-enum-funcion` y registro Markdown. Comprobar que un global C efectivamente utilizado se rechaza si su enum colisiona con un struct NativeSharp, incluso tras diferir la observación especulativa.
 - El diagnóstico debe identificar que el global C no se puede proyectar; no basta con cualquier error de compilación.
 
+### Enum requerido solo por puntero global
+
+- Objetivo: seleccionar por demanda el enum C final de una cadena de punteros global, sin alterar la proyección ni el tratamiento diferido de colisiones.
+- Presupuesto: `src/Interop/Cpp/CppSemanticRecord.cpp`, `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. Limitar el recorrido a punteros y 64 niveles; no añadir soporte para calificadores o arreglos.
+- Verificar puntero y doble puntero cuyos enums no se mencionan en las firmas usadas ni en NativeSharp, además de los casos de global escalar y sombra. Ejecutar con la batería agrupada.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.

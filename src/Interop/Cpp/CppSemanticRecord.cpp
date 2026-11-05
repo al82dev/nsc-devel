@@ -982,8 +982,15 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&globalInventory))
         return CppRecordObservationFailure{failure->message};
     const auto& globals = std::get<std::vector<CppSemanticGlobalEntry>>(globalInventory);
-    const bool hasEnumGlobals = std::any_of(globals.begin(), globals.end(), [](const auto& entry) {
-        return entry.declaration.externalLinkage && entry.declaration.type.kind == CppTypeKind::Enumeration;
+    const auto globalEnum = [](const CppType& root) -> const CppType* {
+        const CppType* type = &root;
+        std::size_t depth = 0;
+        while (type && type->kind == CppTypeKind::Pointer && depth++ < 64)
+            type = type->element.get();
+        return type && type->kind == CppTypeKind::Enumeration ? type : nullptr;
+    };
+    const bool hasEnumGlobals = std::any_of(globals.begin(), globals.end(), [&](const auto& entry) {
+        return entry.declaration.externalLinkage && globalEnum(entry.declaration.type);
     });
     if (!enumDependencies.empty() || hasEnumGlobals)
     {
@@ -1024,14 +1031,14 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
                     for (const auto& entry : globals)
                     {
                         const auto& global = entry.declaration;
-                        const auto& enumType = global.type;
+                        const auto* enumType = globalEnum(global.type);
                         if (entry.projectOrdinal != owner || !global.externalLinkage ||
-                            global.qualifiedName != qualified || enumType.kind != CppTypeKind::Enumeration ||
-                            !enumType.enumIdentity || enumType.enumIdentity->anonymousContext ||
-                            enumType.enumIdentity->name.empty() ||
-                            enumType.enumIdentity->qualifiedName != enumType.enumIdentity->name) continue;
+                            global.qualifiedName != qualified || !enumType ||
+                            !enumType->enumIdentity || enumType->enumIdentity->anonymousContext ||
+                            enumType->enumIdentity->name.empty() ||
+                            enumType->enumIdentity->qualifiedName != enumType->enumIdentity->name) continue;
                         const compilation::TypeIdentity identity(graph->projects()[owner].moduleName(), {}, {},
-                                                                 enumType.enumIdentity->name);
+                                                                 enumType->enumIdentity->name);
                         const auto candidate = std::find_if(signatureEnums.begin(), signatureEnums.end(), [&](const auto& type) {
                             return type.projectOrdinal == owner && type.identity.key() == identity.key();
                         });
