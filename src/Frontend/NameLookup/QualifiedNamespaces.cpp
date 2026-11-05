@@ -53,6 +53,23 @@ std::vector<std::string> splitQualifiedName(const std::string& name)
 }
 }
 
+bool ProjectNameLookup::installImportedNamespaces(diagnostics::DiagnosticEngine& diagnostics)
+{
+    for (const auto& [owner, name] : importedNamespaces_)
+    {
+        if (owner >= modules_.size() || name.empty() || name.front() == '.' || name.back() == '.' ||
+            name.find("..") != std::string::npos)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                diagnostics::DiagnosticSeverity::Error, SourceRange{},
+                "invalid imported C/C++ namespace owner or name");
+            return false;
+        }
+        modules_[owner]->globalNamespace().ensureNamespace(splitQualifiedName(name));
+    }
+    return true;
+}
+
 void ProjectNameLookup::finalizeNamespaceDeclarations()
 {
     std::sort(namespaceFunctions_.begin(), namespaceFunctions_.end(), namespaceFunctionLess);
