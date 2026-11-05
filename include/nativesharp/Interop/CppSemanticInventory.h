@@ -153,4 +153,8 @@ bool provideCppSemanticGlobals(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     std::span<const frontend::CppFunctionDemand> demands,
     std::vector<frontend::NamespaceStateSymbol>& states, std::string& error);
+bool provideCppSemanticValues(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error);
 }

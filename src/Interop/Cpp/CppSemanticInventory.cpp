@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <map>
 #include <optional>
 #include <set>
 #include <system_error>
@@ -258,6 +259,41 @@ CppSemanticEnumConstantResult projectCppEnumConstant(
     }
     if (width < 64) bits &= (std::uint64_t{1} << width) - 1;
     return CppSemanticEnumConstant{entry.projectOrdinal, value.name, mapped->nativeSharpTypeKey, bits};
+}
+
+bool provideCppSemanticValues(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error)
+{
+    std::vector<frontend::NamespaceStateSymbol> globals;
+    std::vector<frontend::NamespaceStateSymbol> enumerators;
+    if (!provideCppSemanticGlobals(graph, projects, demands, globals, error) ||
+        !provideCppSemanticEnumConstants(graph, projects, demands, enumerators, error)) return false;
+    using Key = std::tuple<std::size_t, std::string, std::string>;
+    std::map<Key, std::size_t> index;
+    for (std::size_t i = 0; i < globals.size(); ++i)
+        index.emplace(Key{globals[i].projectOrdinal, globals[i].namespaceName, globals[i].name}, i);
+    for (auto& enumerator : enumerators)
+    {
+        const Key key{enumerator.projectOrdinal, enumerator.namespaceName, enumerator.name};
+        const auto found = index.find(key);
+        if (found == index.end())
+        {
+            index.emplace(key, globals.size());
+            globals.push_back(std::move(enumerator));
+            continue;
+        }
+        auto& candidate = globals[found->second];
+        candidate.isCppExternal = true;
+        candidate.isCppEnumConstant = false;
+        candidate.isConst = false;
+        candidate.storageName.clear();
+        candidate.cppImportError = "C enumerator conflicts with another imported value";
+    }
+    states = std::move(globals);
+    error.clear();
+    return true;
 }
 
 bool provideCppSemanticEnumConstants(
