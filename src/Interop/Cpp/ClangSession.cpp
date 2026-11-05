@@ -543,5 +543,387 @@ void findComparableRecords(const clang::DeclContext& context, std::string_view n
     }
 }
 
+class ClangSession final : public CppInteropSession
+{
+public:
+    explicit ClangSession(CppSessionOptions options)
+        : options_(std::move(options)), consumer_(diagnostics_) {}
+
+    CppSessionState state() const noexcept override
+    {
+        std::lock_guard lock(mutex_);
+        return state_;
+    }
+    CppSessionOptions optionsSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        return options_;
+    }
+    std::vector<CppSessionDiagnostic> diagnosticsSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        return diagnostics_;
+    }
+    std::optional<std::size_t> topLevelDeclarationCount() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        const auto* unit = ast_->getASTContext().getTranslationUnitDecl();
+        return static_cast<std::size_t>(std::distance(unit->decls_begin(), unit->decls_end()));
+    }
+    std::optional<std::vector<CppFunctionDeclaration>> freeFunctionsSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        clang::ASTContext& context = ast_->getASTContext();
+        std::unique_ptr<clang::MangleContext> mangler(context.createMangleContext());
+        std::vector<CppFunctionDeclaration> result;
+        std::set<const clang::FunctionDecl*> seen;
+        collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, seen, result);
+        return result;
+    }
+    std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        clang::ASTContext& context = ast_->getASTContext();
+        std::unique_ptr<clang::MangleContext> mangler(context.createMangleContext());
+        std::vector<CppRecordDeclaration> result;
+        std::set<const clang::TagDecl*> seen;
+        collectRecords(*context.getTranslationUnitDecl(), context, *mangler, seen, result);
+        return result;
+    }
+    std::optional<std::vector<CppImplicitLifetimeDeclaration>> implicitLifetimeDeclarations(
+        std::string_view name) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->hasSema() || name.empty() || !ast_->getASTContext().getLangOpts().CPlusPlus)
+            return std::nullopt;
+        auto& context = ast_->getASTContext();
+        std::set<const clang::TagDecl*> seen;
+        std::vector<const clang::RecordDecl*> records;
+        findComparableRecords(*context.getTranslationUnitDecl(), name, seen, records);
+        if (records.size() != 1) return std::nullopt;
+        auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(const_cast<clang::RecordDecl*>(records.front()));
+        if (!record || !record->isCompleteDefinition() || record->isDependentContext()) return std::nullopt;
+        ast_->getSema().ForceDeclarationOfImplicitMembers(record);
+        std::vector<CppImplicitLifetimeDeclaration> result;
+        std::unique_ptr<clang::MangleContext> mangler(context.createMangleContext());
+        for (const auto* method : record->methods())
+        {
+            if (!method->isImplicit()) continue;
+            std::optional<CppImplicitLifetimeKind> kind;
+            if (const auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method))
+            {
+                if (ctor->isDefaultConstructor()) kind = CppImplicitLifetimeKind::DefaultConstructor;
+                else if (ctor->isCopyConstructor()) kind = CppImplicitLifetimeKind::CopyConstructor;
+                else if (ctor->isMoveConstructor()) kind = CppImplicitLifetimeKind::MoveConstructor;
+            }
+            else if (llvm::isa<clang::CXXDestructorDecl>(method)) kind = CppImplicitLifetimeKind::Destructor;
+            if (!kind) continue;
+            CppExceptionSpecification specification = CppExceptionSpecification::Unresolved;
+            if (const auto* prototype = method->getType()->getAs<clang::FunctionProtoType>())
+            {
+                if (!method->isDeleted() && prototype->getExceptionSpecType() == clang::EST_Unevaluated)
+                    prototype = ast_->getSema().ResolveExceptionSpec(method->getLocation(), prototype);
+                if (prototype)
+                if (!clang::isUnresolvedExceptionSpec(prototype->getExceptionSpecType()))
+                    specification = prototype->isNothrow() ? CppExceptionSpecification::NonThrowing
+                                                           : CppExceptionSpecification::PotentiallyThrowing;
+            }
+            CppImplicitLifetimeDeclaration item{*kind, method->getType().getCanonicalType().getAsString(), {},
+                describeAccess(method->getAccess()), method->isDeleted(), method->isTrivial(), specification, std::nullopt,
+                method->hasAttr<clang::DLLImportAttr>()};
+            if (method->isExternallyVisible() && !method->isDeleted())
+            {
+                llvm::SmallString<128> symbol;
+                llvm::raw_svector_ostream stream(symbol);
+                if (const auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method))
+                    mangler->mangleName(clang::GlobalDecl(ctor, clang::Ctor_Complete), stream);
+                else if (const auto* dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(method))
+                {
+                    const auto variant = context.getTargetInfo().getCXXABI().isMicrosoft() &&
+                        dtor->getParent()->getNumVBases() == 0 ? clang::Dtor_Base : clang::Dtor_Complete;
+                    mangler->mangleName(clang::GlobalDecl(dtor, variant), stream);
+                }
+                item.abiSymbol = std::string(symbol.str());
+            }
+            for (const auto* parameter : method->parameters())
+                item.parameters.push_back(CppFunctionParameter{parameter->getNameAsString(),
+                    parameter->getType().getAsString(), parameter->getType().getCanonicalType().getAsString(),
+                    describeType(parameter->getType(), context), parameter->hasDefaultArg()});
+            result.push_back(std::move(item));
+        }
+        return result;
+    }
+    std::optional<std::string> emitImplicitLifetimeIR(
+        std::string_view name, CppImplicitLifetimeKind requested) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->hasSema() || name.empty() || !ast_->getASTContext().getLangOpts().CPlusPlus ||
+            (requested != CppImplicitLifetimeKind::DefaultConstructor &&
+             requested != CppImplicitLifetimeKind::Destructor)) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        std::set<const clang::TagDecl*> seen;
+        std::vector<const clang::RecordDecl*> records;
+        findComparableRecords(*context.getTranslationUnitDecl(), name, seen, records);
+        if (records.size() != 1) return std::nullopt;
+        auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(const_cast<clang::RecordDecl*>(records.front()));
+        if (!record || !record->isCompleteDefinition() || record->isDependentContext() ||
+            record->getNumVBases() != 0) return std::nullopt;
+        auto& sema = ast_->getSema();
+        sema.ForceDeclarationOfImplicitMembers(record);
+        clang::CXXMethodDecl* selected = nullptr;
+        for (auto* method : record->methods())
+        {
+            if (!method->isImplicit() || method->isDeleted() || method->getAccess() != clang::AS_public)
+                continue;
+            const auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method);
+            const bool matches = requested == CppImplicitLifetimeKind::DefaultConstructor
+                ? ctor && ctor->isDefaultConstructor() : llvm::isa<clang::CXXDestructorDecl>(method);
+            if (!matches) continue;
+            if (selected) return std::nullopt;
+            selected = method;
+        }
+        if (!selected) return std::nullopt;
+        if (!selected->doesThisDeclarationHaveABody())
+        {
+            if (auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(selected))
+                sema.DefineImplicitDefaultConstructor(selected->getLocation(), ctor);
+            else
+                sema.DefineImplicitDestructor(selected->getLocation(), llvm::cast<clang::CXXDestructorDecl>(selected));
+        }
+        if (selected->isInvalidDecl() || !selected->doesThisDeclarationHaveABody()) return std::nullopt;
+        llvm::LLVMContext llvmContext;
+        auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.cpp.lifetime",
+            ast_->getVirtualFileSystemPtr(), ast_->getHeaderSearchOpts(), ast_->getPreprocessorOpts(),
+            ast_->getCodeGenOpts(), llvmContext);
+        if (!generator) return std::nullopt;
+        generator->Initialize(context);
+        if (!generator->HandleTopLevelDecl(clang::DeclGroupRef(selected))) return std::nullopt;
+        std::string requestedSymbol;
+        if (auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(selected))
+        {
+            const clang::GlobalDecl declaration(ctor, clang::Ctor_Complete);
+            requestedSymbol = generator->GetMangledName(declaration).str();
+            generator->GetAddrOfGlobal(declaration, false);
+        }
+        else
+        {
+            auto* dtor = llvm::cast<clang::CXXDestructorDecl>(selected);
+            const auto variant = context.getTargetInfo().getCXXABI().isMicrosoft()
+                ? clang::Dtor_Base : clang::Dtor_Complete;
+            const clang::GlobalDecl declaration(dtor, variant);
+            requestedSymbol = generator->GetMangledName(declaration).str();
+            generator->GetAddrOfGlobal(declaration, false);
+        }
+        generator->HandleTranslationUnit(context);
+        auto module = generator->ReleaseModule();
+        if (!module || requestedSymbol.empty()) return std::nullopt;
+        auto* emitted = module->getFunction(requestedSymbol);
+        if (!emitted || emitted->isDeclaration()) return std::nullopt;
+        // An isolated linkonce_odr definition can be discarded as unused at O2 before
+        // another object is linked. Keep COMDAT deduplication while retaining this export.
+        if (emitted->hasLinkOnceODRLinkage()) emitted->setLinkage(llvm::GlobalValue::WeakODRLinkage);
+        if (!module || llvm::verifyModule(*module, &llvm::errs())) return std::nullopt;
+        std::string ir;
+        llvm::raw_string_ostream stream(ir);
+        module->print(stream, nullptr);
+        return ir;
+    }
+    std::optional<bool> structurallyEquivalentRecord(
+        const CppInteropSession& other, std::string_view name) const override
+    {
+        const auto* rhs = dynamic_cast<const ClangSession*>(&other);
+        if (!rhs || name.empty()) return std::nullopt;
+        auto compare = [&]() -> std::optional<bool> {
+            if (!ast_ || !rhs->ast_ || options_.targetTriple != rhs->options_.targetTriple ||
+                options_.language != rhs->options_.language ||
+                options_.languageStandard != rhs->options_.languageStandard) return std::nullopt;
+            auto& left = ast_->getASTContext();
+            auto& right = rhs->ast_->getASTContext();
+            std::set<const clang::TagDecl*> leftSeen, rightSeen;
+            std::vector<const clang::RecordDecl*> leftRecords, rightRecords;
+            findComparableRecords(*left.getTranslationUnitDecl(), name, leftSeen, leftRecords);
+            findComparableRecords(*right.getTranslationUnitDecl(), name, rightSeen, rightRecords);
+            if (leftRecords.size() != 1 || rightRecords.size() != 1) return std::nullopt;
+            const auto& a = left.getASTRecordLayout(leftRecords[0]);
+            const auto& b = right.getASTRecordLayout(rightRecords[0]);
+            if (left.getCharWidth() != right.getCharWidth() || a.getSize() != b.getSize() ||
+                a.getAlignment() != b.getAlignment()) return false;
+            clang::StructuralEquivalenceContext::NonEquivalentDeclSet unequal;
+            clang::StructuralEquivalenceContext context(left.getLangOpts(), left, right, unequal,
+                clang::StructuralEquivalenceKind::Default, false, false);
+            return context.IsEquivalent(const_cast<clang::RecordDecl*>(leftRecords[0]),
+                                        const_cast<clang::RecordDecl*>(rightRecords[0]));
+        };
+        if (rhs == this) { std::lock_guard lock(mutex_); return compare(); }
+        std::scoped_lock lock(mutex_, rhs->mutex_);
+        return compare();
+    }
+    std::optional<std::vector<CppGlobalDeclaration>> globalsSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        clang::ASTContext& context = ast_->getASTContext();
+        std::unique_ptr<clang::MangleContext> mangler(context.createMangleContext());
+        std::vector<CppGlobalDeclaration> result;
+        std::set<const clang::VarDecl*> seen;
+        collectGlobals(*context.getTranslationUnitDecl(), context, *mangler, seen, result);
+        return result;
+    }
+    std::optional<std::vector<CppNamespaceDeclaration>> namespacesSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        clang::ASTContext& context = ast_->getASTContext();
+        std::vector<CppNamespaceDeclaration> result;
+        std::set<const clang::NamespaceDecl*> seen;
+        collectNamespaces(*context.getTranslationUnitDecl(), context, false, seen, result);
+        return result;
+    }
+    std::optional<std::vector<std::filesystem::path>> sourceFilesSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        const auto& sources = ast_->getSourceManager();
+        std::vector<std::filesystem::path> result;
+        for (auto it = sources.fileinfo_begin(); it != sources.fileinfo_end(); ++it)
+        {
+            auto path = pathFromUtf8(it->first.getName().str().c_str());
+            if (path.is_relative()) path = options_.workingDirectory / path;
+            result.push_back(path.lexically_normal());
+        }
+        std::sort(result.begin(), result.end());
+        result.erase(std::unique(result.begin(), result.end()), result.end());
+        return result;
+    }
+    std::optional<std::vector<CppSourceFileContent>> sourceFileContentsSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        const auto& sources = ast_->getSourceManager();
+        std::vector<CppSourceFileContent> result;
+        for (auto it = sources.fileinfo_begin(); it != sources.fileinfo_end(); ++it)
+        {
+            if (!it->second) return std::nullopt;
+            auto contents = it->second->getBufferDataIfLoaded();
+            if (!contents) return std::nullopt;
+            auto path = pathFromUtf8(it->first.getName().str().c_str());
+            if (path.is_relative()) path = options_.workingDirectory / path;
+            const auto* bytes = reinterpret_cast<const std::uint8_t*>(contents->data());
+            result.push_back({path.lexically_normal(), contents->size(),
+                              basic::sha256(std::span<const std::uint8_t>(bytes, contents->size()))});
+        }
+        std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.path < b.path; });
+        for (std::size_t i = 1; i < result.size(); ++i)
+            if (result[i - 1].path == result[i].path) return std::nullopt;
+        return result;
+    }
+    CppSessionCloseResult close() override
+    {
+        std::lock_guard lock(mutex_);
+        if (state_ == CppSessionState::Closed) return {};
+        state_ = CppSessionState::Closing;
+        ast_.reset();
+        state_ = CppSessionState::Closed;
+        return {};
+    }
+
+    CppSessionOpenFailure initialize(const CppCancellationToken& cancellation)
+    {
+        auto failure = [this](std::string phase, std::string message) {
+            return CppSessionOpenFailure{std::move(phase), std::move(message), diagnostics_};
+        };
+        if (cancellation.cancelled()) return failure("cancel", "C/C++ session opening was cancelled");
+        std::error_code ec;
+        if (options_.languageStandard.empty() || options_.targetTriple.empty() ||
+            options_.driverReferencePath.empty() || !options_.workingDirectory.is_absolute() ||
+            !options_.resourceDirectory.is_absolute())
+            return failure("options", "language standard, target, driver reference and absolute directories are required");
+        if (!std::filesystem::is_directory(options_.workingDirectory, ec) || ec)
+            return failure("options", "working directory is not accessible");
+        ec.clear();
+        if (!std::filesystem::is_directory(options_.resourceDirectory / "include", ec) || ec)
+            return failure("options", "Clang resource include directory is not accessible");
+
+        llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem(
+            llvm::vfs::createPhysicalFileSystem().release());
+        if (const auto error = filesystem->setCurrentWorkingDirectory(utf8(options_.workingDirectory)))
+            return failure("options", "cannot set session working directory: " + error.message());
+
+        std::filesystem::path inputPath;
+        std::string source;
+        if (const auto* file = std::get_if<CppFileInput>(&options_.input))
+        {
+            inputPath = file->path;
+            if (inputPath.empty()) return failure("input", "input file path is empty");
+            if (inputPath.is_relative()) inputPath = options_.workingDirectory / inputPath;
+            auto contents = filesystem->getBufferForFile(utf8(inputPath));
+            if (!contents) return failure("input", "cannot read input file: " + contents.getError().message());
+            source = (*contents)->getBuffer().str();
+        }
+        else
+        {
+            const auto& buffer = std::get<CppBufferInput>(options_.input);
+            inputPath = buffer.virtualPath;
+            if (inputPath.empty()) return failure("input", "virtual input file path is empty");
+            if (inputPath.is_relative()) inputPath = options_.workingDirectory / inputPath;
+            source = buffer.contents;
+        }
+        std::vector<std::string> args = {
+            "-target", options_.targetTriple, "-x",
+            options_.language == CppLanguageMode::C ? "c" : "c++",
+            "-std=" + options_.languageStandard, "-resource-dir", utf8(options_.resourceDirectory),
+            "-nostdinc", "-isystem", utf8(options_.resourceDirectory / "include")};
+        for (const auto& path : options_.includePaths)
+        {
+            args.push_back(path.kind == CppIncludeKind::System ? "-isystem" : "-I");
+            args.push_back(utf8(path.path));
+        }
+        for (const auto& macro : options_.macros)
+            args.push_back((macro.action == CppMacroAction::Define ? "-D" : "-U") + macro.text);
+
+        ast_ = clang::tooling::buildASTFromCodeWithArgs(
+            source, args, utf8(inputPath), utf8(options_.driverReferencePath),
+            std::make_shared<clang::PCHContainerOperations>(),
+            clang::tooling::getClangStripDependencyFileAdjuster(), {}, &consumer_, filesystem);
+        if (cancellation.cancelled())
+        {
+            ast_.reset();
+            return failure("cancel", "C/C++ session opening was cancelled");
+        }
+        if (!ast_ || ast_->getDiagnostics().hasErrorOccurred())
+        {
+            ast_.reset();
+            return failure("parse", "Clang could not analyze the translation unit");
+        }
+        if (!ast_->hasSema())
+        {
+            ast_.reset();
+            return failure("parse", "Clang did not retain the semantic context");
+        }
+        state_ = CppSessionState::Ready;
+        return {};
+    }
+
+private:
+    mutable std::mutex mutex_;
+    CppSessionOptions options_;
+    std::vector<CppSessionDiagnostic> diagnostics_;
+    DiagnosticCollector consumer_;
+    // Destroy before consumer_: Clang's diagnostic engine borrows the consumer.
+    std::unique_ptr<clang::ASTUnit> ast_;
+    CppSessionState state_ = CppSessionState::Closed;
+};
+}
+
+CppSessionOpenResult CppClangSessionFactory::open(
+    CppSessionOptions options, CppCancellationToken cancellation)
+{
+    auto session = std::make_unique<ClangSession>(std::move(options));
+    auto failure = session->initialize(cancellation);
+    if (!failure.phase.empty()) return failure;
+    return std::unique_ptr<CppInteropSession>(std::move(session));
 }
 }
