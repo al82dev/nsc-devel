@@ -123,3 +123,13 @@ una prueba de enlace de callback en `ProjectCompilation`. Los proveedores de
 tipos enum y records C todavía requieren integración y selección segura; queda
 pendiente una prueba del flujo real del controlador. Estos cambios no se han
 compilado ni ejecutado y no cierran ningún ítem de la tanda.
+
+### Selección preliminar de records C, sin validar
+
+La observación final de records recibe los typedef de las sesiones para poder
+seleccionar un record usado mediante su alias. Se preparó una prueba de ese
+recorrido. El controlador configura selección y campos para sesiones C sin C++;
+el proyecto `pruebas-tanda-08-valores` cubre la ruta real de typedef escalar y
+constantes enum. Falta conectar los tipos enum al selector sin que conflictos
+no usados bloqueen proyectos y verificar interacciones con funciones, records,
+aliases y la caché. No se ha ejecutado ninguna de estas pruebas.
