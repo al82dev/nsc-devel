@@ -803,13 +803,15 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     std::vector<frontend::CppImportedTypeDeclaration> enums;
     if (!provideCppEnumTypes(*graph, compilation.cppProjectSessions(), enums, error))
         return CppRecordObservationFailure{std::move(error)};
+    std::set<std::string> collidingEnumIdentities;
     for (auto& enumeration : enums)
     {
         const auto ordinal = nativeLookup.typeOrdinalForIdentity(enumeration.identity.key());
         const auto* native = ordinal ? nativeLookup.typeForOrdinal(*ordinal) : nullptr;
         const bool collidesWithRecord = std::any_of(filteredTypes.begin(), filteredTypes.end(),
             [&](const auto& record) { return record.identity.key() == enumeration.identity.key(); });
-        if (!native && !collidesWithRecord) filteredTypes.push_back(std::move(enumeration));
+        if (native || collidesWithRecord) collidingEnumIdentities.insert(enumeration.identity.key());
+        else filteredTypes.push_back(std::move(enumeration));
     }
     if (!lookup.setImportedNamespaces(std::move(std::get<std::vector<std::pair<std::size_t, std::string>>>(visible))) ||
         !lookup.setCppImportedTypes(std::move(filteredTypes)) ||
@@ -821,6 +823,17 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
         if (!finalDiagnostics.diagnostics().empty()) error += ": " + finalDiagnostics.diagnostics().front().message();
         return CppRecordObservationFailure{std::move(error)};
     }
+    const auto enumCollision = [&](std::size_t ordinal) {
+        return ordinal < lookup.namedTypes().size() &&
+            collidingEnumIdentities.contains(lookup.namedTypes()[ordinal].identity.key());
+    };
+    for (const auto& binding : lookup.bindings())
+        if (binding.targetTypeOrdinal && enumCollision(*binding.targetTypeOrdinal))
+            return CppRecordObservationFailure{"C enum conflicts with another used type: " + binding.writtenName};
+    for (const auto& binding : lookup.expressionTypeBindings())
+        for (const auto ordinal : binding.candidateTypeOrdinals)
+            if (enumCollision(ordinal))
+                return CppRecordObservationFailure{"C enum conflicts with another used expression type"};
     std::unordered_map<std::size_t, std::size_t> collisionByOrdinal;
     for (const auto groupIndex : result.collidingGroups)
     {
