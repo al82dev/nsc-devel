@@ -8,5 +8,6 @@ struct ArtifactTransactionEntry final
 {
     std::filesystem::path destination;
     std::filesystem::path stage;
+    bool noReplace = false;
 };
 }

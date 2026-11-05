@@ -31,6 +31,9 @@ public:
     bool add(const std::filesystem::path& destination, std::filesystem::path& stage, std::string& error);
     bool addStaged(const std::filesystem::path& destination,
         const std::filesystem::path& stage, std::string& error);
+    // Commit fails if destination exists at installation time; it is never replaced.
+    bool addStagedNoReplace(const std::filesystem::path& destination,
+        const std::filesystem::path& stage, std::string& error);
     bool commit(std::string& error);
 
 private:

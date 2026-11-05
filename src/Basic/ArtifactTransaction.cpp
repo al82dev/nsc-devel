@@ -270,6 +270,14 @@ bool ArtifactTransaction::addStaged(const std::filesystem::path& destination,
     return true;
 }
 
+bool ArtifactTransaction::addStagedNoReplace(const std::filesystem::path& destination,
+    const std::filesystem::path& stage, std::string& error)
+{
+    if (!addStaged(destination, stage, error)) return false;
+    entries_.back().noReplace = true;
+    return true;
+}
+
 bool ArtifactTransaction::prepareCommitEntry(
     std::size_t index,
     std::vector<detail::ArtifactCommitState>& states,
@@ -346,6 +354,14 @@ bool ArtifactTransaction::installCommitEntry(
     const Entry& entry = entries_[index];
     detail::ArtifactCommitState& state = states[index];
 #if defined(_WIN32)
+    if (entry.noReplace)
+    {
+        if (::MoveFileExW(extendedPath(state.sibling).c_str(), extendedPath(entry.destination).c_str(),
+                MOVEFILE_WRITE_THROUGH) == 0)
+            return failWin32("artifact commit without replacement", entry.destination, ::GetLastError(), error);
+        state.installed = true;
+        return true;
+    }
     if (!exists(entry.destination, state.hadDestination, error)) return false;
     if (state.hadDestination)
     {
@@ -355,6 +371,18 @@ bool ArtifactTransaction::installCommitEntry(
     if (!moveReplace(state.sibling, entry.destination, error)) return false;
 #else
     std::error_code filesystemError;
+    if (entry.noReplace)
+    {
+        std::filesystem::create_hard_link(state.sibling, entry.destination, filesystemError);
+        if (filesystemError)
+        {
+            error = filesystemError.message();
+            return false;
+        }
+        state.installed = true;
+        removeNoThrow(state.sibling);
+        return true;
+    }
     state.hadDestination = std::filesystem::exists(entry.destination, filesystemError);
     if (state.hadDestination)
     {
