@@ -6,6 +6,7 @@
 #include <sstream>
 #include "../../src/Interop/Cpp/ClangSessionSupport.h"
 #include <clang/Frontend/ASTUnit.h>
+#include <clang/Frontend/FrontendActions.h>
 #include <atomic>
 #include <array>
 #include <thread>
@@ -69,6 +70,21 @@ using namespace nativesharp::interop;
 
 namespace
 {
+class RejectSourceBegin final : public clang::SyntaxOnlyAction
+{
+public:
+    unsigned beginCalls = 0;
+    unsigned endCalls = 0;
+
+protected:
+    bool BeginSourceFileAction(clang::CompilerInstance&) override
+    {
+        ++beginCalls;
+        return false;
+    }
+    void EndSourceFileAction() override { ++endCalls; }
+};
+
 class RejectUnexpectedOpen final : public CppInteropSessionFactory
 {
 public:
@@ -443,6 +459,20 @@ int main(int argc, char** argv)
         const auto* failure = std::get_if<CppSessionOpenFailure>(&rejectedSession);
         ok &= expect(failure && failure->phase == "parse" && !failure->diagnostics.empty(),
                      "opening rejects Clang driver diagnostics even if an AST is produced");
+
+        RejectSourceBegin failingAction;
+        CountingSessionDiagnostics failedBeginDiagnostics;
+        config.languageStandard = "c11";
+        const auto validArgs = nativesharp::interop::detail::buildClangInvocationArguments(config);
+        auto beginFailureFilesystem = llvm::vfs::createPhysicalFileSystem();
+        auto beginFailure = nativesharp::interop::detail::runClangSessionAction(
+            "int begin_failure_probe;\n", validArgs,
+            (std::filesystem::path(argv[2]) / "begin_failure.c").generic_string(), argv[3],
+            &failedBeginDiagnostics,
+            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>(beginFailureFilesystem.release()), {},
+            &failingAction);
+        ok &= expect(!beginFailure && failingAction.beginCalls == 1 && failingAction.endCalls == 0,
+                     "failed BeginSourceFile never calls EndSourceFileAction");
     }
     {
         CppSessionOptions base;
