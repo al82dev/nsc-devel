@@ -1,0 +1,1 @@
+int Main() { int* p = tools.pointer ?? tools.readonly_pointee; return 0; }
