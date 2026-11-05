@@ -16,6 +16,7 @@
 namespace nativesharp::frontend
 {
 struct CppFunctionDemand;
+struct CppImportedTypeAlias;
 struct NamespaceStateSymbol;
 }
 
@@ -60,6 +61,9 @@ using CppSemanticTypeAliasInventoryResult =
     std::variant<std::vector<CppSemanticTypeAliasEntry>, CppSemanticInventoryFailure>;
 CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
+bool provideCppTypeAliases(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects,
+    std::vector<frontend::CppImportedTypeAlias>& output, std::string& error);
 
 struct CppSemanticEnumEntry
 {

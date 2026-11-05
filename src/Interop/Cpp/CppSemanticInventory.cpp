@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppSemanticInventory.h"
+#include "nativesharp/Frontend/CppImportedTypeAlias.h"
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 
@@ -246,6 +247,26 @@ CppSemanticEnumInventoryResult collectCppSemanticEnums(
         }
     }
     return result;
+}
+
+bool provideCppTypeAliases(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects,
+    std::vector<frontend::CppImportedTypeAlias>& output, std::string& error)
+{
+    auto inventory = collectCppSemanticTypeAliases(graph, projects);
+    if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&inventory))
+    {
+        error = "C/C++ type alias collection failed for project '" + failure->projectFile.generic_string() +
+            "', reference " + std::to_string(failure->referenceIndex) + ": " + failure->message;
+        return false;
+    }
+    std::vector<frontend::CppImportedTypeAlias> result;
+    for (auto& entry : std::get<std::vector<CppSemanticTypeAliasEntry>>(inventory))
+        result.push_back({entry.projectOrdinal, std::move(entry.projectFile), entry.referenceIndex,
+                          std::move(entry.targetTriple), std::move(entry.declaration)});
+    output = std::move(result);
+    error.clear();
+    return true;
 }
 
 CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
