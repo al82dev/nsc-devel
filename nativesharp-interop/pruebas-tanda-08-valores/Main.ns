@@ -1,0 +1,9 @@
+int Main()
+{
+    Count value = CExpected;
+    switch (-3)
+    {
+        case CNegative: return value - 17;
+        default: return 1;
+    }
+}
