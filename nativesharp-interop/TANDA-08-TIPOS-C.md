@@ -174,3 +174,12 @@ anónimo, tanto en la declaración como en el tipo. Hay una prueba de snapshot
 preparada y un script para el proyecto de valores C. Permanecen pendientes los
 parámetros, resultados y campos de enum, así como la validación agrupada; el
 script y la prueba no se han ejecutado.
+
+### Enum C en firmas, sin validar
+
+La proyección de funciones consultando el índice importado prepara parámetros,
+resultados y punteros a enum con identidad nominal y verifica el entero base,
+tamaño, alineación y conflictos. Se preparó una prueba de parámetro y resultado
+con `Color`. La selección transitiva del enum desde una firma, el caso const,
+los campos y la ejecución de llamadas siguen pendientes. No se ha compilado ni
+ejecutado esta implementación.
