@@ -1,0 +1,4 @@
+int Main() {
+    *(Demo.Widget.sharedView) = 1;
+    return 0;
+}

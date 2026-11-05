@@ -1,0 +1,4 @@
+int Main() {
+    Demo.Widget.sharedPayload = Demo.Widget.sharedViewPayload;
+    return 0;
+}

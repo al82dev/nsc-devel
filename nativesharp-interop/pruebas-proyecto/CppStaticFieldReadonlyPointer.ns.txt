@@ -1,0 +1,4 @@
+int Main() {
+    Demo.Widget.sharedFixed = null;
+    return 0;
+}
