@@ -184,6 +184,12 @@ con `Color`. La selección transitiva del enum desde una firma, el caso const,
 los campos y la ejecución de llamadas siguen pendientes. No se ha compilado ni
 ejecutado esta implementación.
 
+Se agregó un inventario que identifica enums presentes en resultados y
+parámetros de funciones, con su profundidad e índice de candidato; una prueba
+preparada cubre ambos. Falta usar las demandas reales de llamadas para elegir
+esas dependencias antes del índice definitivo. Ninguno de los cambios de esta
+sección se ha compilado ni ejecutado.
+
 ### Campos enum C, sin validar
 
 Un helper común comprueba propietario, representación y conflictos del enum.
