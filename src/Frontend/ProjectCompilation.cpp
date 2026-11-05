@@ -6,6 +6,9 @@
 #include "Internal/IndexShadowCheckSwitch.h"
 #include "Internal/IndexShadowMismatch.h"
 #include "nativesharp/Frontend/ComptimeEngine.h"
+#include "nativesharp/Frontend/CppParserProjectInventory.h"
+#include "nativesharp/Frontend/CppScopedTypeNames.h"
+#include "nativesharp/Frontend/ProjectOopHirNode.h"
 #include "nativesharp/Frontend/TemplateParseCache.h"
 
 #include "nativesharp/Basic/Sha256.h"
