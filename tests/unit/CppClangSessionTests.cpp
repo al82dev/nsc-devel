@@ -2242,7 +2242,7 @@ int main(int argc, char** argv)
                                   "int ptr_const(const int* p); int ptr_volatile(volatile int* p); int** ptr_nested(int** p);\n"
                                   "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
                                   "int bridge_probe(size_t n, ...);\n"
-                                  "struct Pair { char a; int b; }; struct Incomplete;\n"
+                                  "struct Pair { char a; int b; }; struct OuterPair { struct Pair nested; }; struct Incomplete;\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
                                   "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
@@ -2794,6 +2794,9 @@ int main(int argc, char** argv)
                             if (!identity) { why = "record identity unavailable"; return false; }
                             output.push_back({*identity, nativesharp::frontend::NamedTypeDeclarationKind::Struct,
                                 nativesharp::frontend::NamedTypeAccessibility::Public, 0, "probe.c"});
+                            if (recordSnapshot->sizeBits && recordSnapshot->alignmentBits)
+                                output.back().objectLayout = nativesharp::frontend::CppImportedObjectLayout{
+                                    *recordSnapshot->sizeBits / 8, *recordSnapshot->alignmentBits / 8};
                             return true;
                         }, error) && recordAliasCompilation.setCppTypeAliasProvider(
                         [aliasesSnapshot](const auto& graph, auto, auto& output, auto& why) {
@@ -2816,6 +2819,14 @@ int main(int argc, char** argv)
                     if (!bound) std::cerr << "C record typedef semantic setup failed: " << error << '\n';
                     ok &= expect(bound && aliasBound && tagBound,
                                  "record typedef and same-named C tag bind to the imported record");
+                    const auto* outer = cRecords ? recordByName(*cRecords, "OuterPair") : nullptr;
+                    const auto nested = outer && recordAliasCompilation.nameLookup()
+                        ? projectCppSemanticInstanceField(*outer, 0, 0, "Semantic", "x86_64-pc-windows-msvc",
+                                                          recordAliasCompilation.nameLookup()) : std::nullopt;
+                    const auto pairIdentity = recordSnapshot ? projectCppRecordIdentity(*recordSnapshot, "Semantic") : std::nullopt;
+                    ok &= expect(nested && pairIdentity && nested->type.nativeSharpTypeKey == "type:" + pairIdentity->key() &&
+                                 nested->byteOffset == 0,
+                                 "nested C record field retains imported identity and offset");
                 }
                 {
                     nativesharp::frontend::ProjectCompilation enumAliasCompilation;
