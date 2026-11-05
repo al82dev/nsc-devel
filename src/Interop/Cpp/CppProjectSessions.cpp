@@ -12,6 +12,23 @@ CppProjectSessionsResult openCppProjectSessions(
     CppInteropSessionFactory& factory,
     CppCancellationToken cancellation)
 {
+    if (!references.empty() && cancellation.cancelled())
+        return CppProjectSessionFailure{0, {"cancel", "C/C++ session opening was cancelled", {}}};
+    for (std::size_t index = 0; index < references.size(); ++index)
+    {
+        const auto& reference = references[index];
+        if ((reference.language != CppLanguageMode::C && reference.language != CppLanguageMode::Cpp) ||
+            reference.languageStandard.empty())
+            return CppProjectSessionFailure{index, {"options", "invalid C/C++ language or empty standard", {}}};
+        if (reference.headerPath.empty())
+            return CppProjectSessionFailure{index, {"input", "input file path is empty", {}}};
+        for (const auto& include : reference.includePaths)
+            if (include.path.empty() || (include.kind != CppIncludeKind::User && include.kind != CppIncludeKind::System))
+                return CppProjectSessionFailure{index, {"options", "invalid C/C++ include path", {}}};
+        for (const auto& macro : reference.macros)
+            if (macro.text.empty() || (macro.action != CppMacroAction::Define && macro.action != CppMacroAction::Undefine))
+                return CppProjectSessionFailure{index, {"options", "invalid C/C++ macro option", {}}};
+    }
     CppProjectSessions result;
     result.sessions.reserve(references.size());
     for (std::size_t index = 0; index < references.size(); ++index)
