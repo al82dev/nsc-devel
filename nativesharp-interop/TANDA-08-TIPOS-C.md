@@ -53,3 +53,13 @@ siguen sin ejecutar hasta la validación agrupada. Los inventarios todavía no s
 conectan al parser ni a `ProjectNameLookup` y no deciden compatibilidad entre
 declaraciones. El próximo paso sigue siendo esa conexión, no marcar T08-005 ni
 T08-009 como terminados.
+
+### Conexión inicial de typedef, sin validar
+
+El proveedor opcional conserva alias durante `ProjectCompilation`; los nombres
+se incorporan al inventario sintáctico por proyecto y las observaciones llegan a
+`ProjectNameLookup`. Se agregó una expansión inicial para escalares y punteros
+representables, y una prueba integrada preparada con `Count`. El driver aún no
+instala el proveedor. Faltan tipos compuestos, reglas completas de colisión y
+calificadores, activación del flujo normal y la validación agrupada; ningún ítem
+se marca cerrado por este avance. Continuar desde esas conexiones pendientes.
