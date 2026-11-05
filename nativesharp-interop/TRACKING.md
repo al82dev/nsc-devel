@@ -107,7 +107,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T04-009. Incorporar las rutas configuradas de headers del sistema a la invocación.
 - [x] T04-010. Rechazar una configuración que no identifique los recursos necesarios.
 - [x] T04-011. Crear el consumidor de diagnósticos privado `ClangDiagnosticConsumer.cpp`.
-- [ ] T04-012. Copiar la severidad de cada diagnóstico Clang al formato de sesión.
+- [x] T04-012. Copiar la severidad de cada diagnóstico Clang al formato de sesión.
 - [ ] T04-013. Copiar el mensaje y sus ubicaciones al formato de sesión.
 - [ ] T04-014. Conservar las notas asociadas con su diagnóstico principal.
 - [ ] T04-015. Asegurar que el consumidor viva más que el motor de diagnósticos que lo utiliza.
