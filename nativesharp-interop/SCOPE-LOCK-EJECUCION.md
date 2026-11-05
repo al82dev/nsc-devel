@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Tanda 05: integración y diagnósticos
+
+La tanda se realiza exclusivamente en `A:/nsc-devel`: frontend, controlador,
+interfaces C++ de NSC, sus pruebas, configuración de compilación y esta
+documentación. LLVM y Clang son referencias de solo lectura; NSLink permanece
+sin cambios y no hay despliegue en C:. Cada cambio tendrá su propio commit; la
+construcción incremental y la validación se agrupan al terminar la implementación.
+Las ubicaciones de Clang se preservarán sin inventar correspondencias cuando no
+exista una fuente de NSC que permita resolverlas de forma segura.
+
 **Actualización del 5 de noviembre de 2026:** la ubicación vigente de este
 trabajo, sus pruebas y su documentación es `A:/nsc-devel/nativesharp-interop`.
 El código fuente de `A:/llvm-project-al82dev` se consulta como referencia de
