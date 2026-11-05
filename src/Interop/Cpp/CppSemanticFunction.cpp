@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
+#include "nativesharp/Frontend/CppAliasEnumType.h"
 #include "nativesharp/Frontend/ObjectConstructionBinding.h"
 #include "nativesharp/Frontend/ClassDestructionPlan.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
@@ -23,9 +24,25 @@ using RecordIndex = std::unordered_map<std::string, CppRecordGroupStatus>;
 
 std::optional<CppScalarTypeMapping> mapFunctionType(
     const CppType& type, bool allowReadonlyPointee = false, const RecordIndex* records = nullptr,
-    std::string_view moduleName = {}, std::size_t depth = 0)
+    std::string_view moduleName = {}, std::size_t depth = 0,
+    const frontend::ProjectNameLookup* lookup = nullptr)
 {
     if (depth > 64) return std::nullopt;
+    if (type.kind == CppTypeKind::Enumeration && lookup && !type.isVolatile)
+    {
+        const auto enumeration = frontend::cppAliasEnumType(type);
+        if (!enumeration || enumeration->pointerDepth || enumeration->name.find('.') != std::string::npos)
+            return std::nullopt;
+        const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, enumeration->name);
+        const auto ordinal = lookup->typeOrdinalForIdentity(identity.key());
+        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+        if (!imported || !imported->enumBase || !imported->deferredImportError.empty() ||
+            imported->enumBase->token != enumeration->base.token || !imported->objectLayout ||
+            !type.sizeBits || *type.sizeBits != imported->objectLayout->sizeBytes * 8 ||
+            !type.alignmentBits || *type.alignmentBits != imported->objectLayout->alignmentBytes * 8)
+            return std::nullopt;
+        return CppScalarTypeMapping{"type:" + identity.key(), type.canonicalSpelling, type.isConst, false};
+    }
     if (type.kind == CppTypeKind::Record)
     {
         // Records are mapped only behind a pointer; values require their own ABI and lifetime handling.
@@ -44,7 +61,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     if (type.canonicalSpelling.empty() || type.sizeBits != 64 || !type.element ||
         type.isConst || type.isVolatile || (type.element->isConst && !readonlyScalar) || type.element->isVolatile)
         return std::nullopt;
-    auto element = mapFunctionType(*type.element, false, records, moduleName, depth + 1);
+    auto element = mapFunctionType(*type.element, false, records, moduleName, depth + 1, lookup);
     if (!element) return std::nullopt;
     return CppScalarTypeMapping{element->nativeSharpTypeKey + "*", type.canonicalSpelling, readonlyScalar, false};
 }
@@ -54,7 +71,7 @@ namespace
 {
 CppSemanticFunctionResult projectFunction(
     const CppFunctionDeclaration& function, std::size_t projectOrdinal, std::string_view moduleName,
-    const RecordIndex* records)
+    const RecordIndex* records, const frontend::ProjectNameLookup* lookup = nullptr)
 {
     auto failure = [](std::string message) -> CppSemanticFunctionResult {
         return CppSemanticFunctionFailure{std::move(message)};
@@ -66,7 +83,7 @@ CppSemanticFunctionResult projectFunction(
     if (function.variadic && (function.languageLinkage != CppLanguageLinkage::C ||
                               function.callingConvention != "cdecl"))
         return failure("variadic C++ or non-cdecl functions are not yet projected");
-    const auto resultType = mapFunctionType(function.returnType, false, records, moduleName);
+    const auto resultType = mapFunctionType(function.returnType, false, records, moduleName, 0, lookup);
     if (!resultType) return failure("C/C++ return type is not yet mapped");
 
     std::string cppNamespace;
@@ -102,7 +119,7 @@ CppSemanticFunctionResult projectFunction(
     for (std::size_t index = 0; index < function.parameters.size(); ++index)
     {
         const auto& input = function.parameters[index];
-        const auto parameterType = mapFunctionType(input.type, true, records, moduleName);
+        const auto parameterType = mapFunctionType(input.type, true, records, moduleName, 0, lookup);
         if (!parameterType || input.type.kind == CppTypeKind::Void)
             return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
         frontend::MethodParameterSymbol parameter;
@@ -136,7 +153,7 @@ CppSemanticFunctionResult projectCppSemanticFunction(
 
 CppSemanticFunctionResult projectCppSemanticFunctionWithRecords(
     const CppFunctionDeclaration& function, std::size_t projectOrdinal, std::string_view moduleName,
-    const CppRecordGroups& records)
+    const CppRecordGroups& records, const frontend::ProjectNameLookup* lookup)
 {
     RecordIndex index;
     for (const auto& group : records.groups)
@@ -145,7 +162,7 @@ CppSemanticFunctionResult projectCppSemanticFunctionWithRecords(
         if (!index.emplace(group.identity.key(), group.status).second)
             return CppSemanticFunctionFailure{"duplicate record group for project"};
     }
-    return projectFunction(function, projectOrdinal, moduleName, &index);
+    return projectFunction(function, projectOrdinal, moduleName, &index, lookup);
 }
 
 CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(

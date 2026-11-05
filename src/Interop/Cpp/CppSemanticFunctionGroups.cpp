@@ -311,7 +311,7 @@ static bool provideCppSemanticFunctionsImpl(
             if (std::holds_alternative<CppSemanticFunctionFailure>(entry.projection) &&
                 entry.projectOrdinal < graph.projects().size())
                 entry.projection = projectCppSemanticFunctionWithRecords(
-                    entry.declaration, entry.projectOrdinal, graph.projects()[entry.projectOrdinal].moduleName(), groups);
+                    entry.declaration, entry.projectOrdinal, graph.projects()[entry.projectOrdinal].moduleName(), groups, lookup);
     }
     auto selection = selectCppSemanticDemands(entries, demands, true);
     if (const auto* failure = std::get_if<CppSemanticDemandFailure>(&selection))

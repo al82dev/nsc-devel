@@ -41,7 +41,7 @@ CppSemanticFunctionResult projectCppSemanticFunction(
 // the production frontend or establish object layout, lifetime, or call ABI support.
 CppSemanticFunctionResult projectCppSemanticFunctionWithRecords(
     const CppFunctionDeclaration& function, std::size_t projectOrdinal, std::string_view moduleName,
-    const CppRecordGroups& records);
+    const CppRecordGroups& records, const frontend::ProjectNameLookup* lookup = nullptr);
 
 struct CppSemanticInstanceMethod
 {
