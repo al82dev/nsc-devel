@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CppProject</Name></PropertyGroup>
+  <ItemGroup><CppLibraryReference Header="CDllApi.h" Language="C" Standard="c11" Library="c-dll.lib" /></ItemGroup>
+</Project>
