@@ -16,3 +16,5 @@ int read_shared_volatile(void) { return shared_volatile; }
 int shared_array[3] = { 1, 2, 3 };
 int shared_matrix[2][3] = { { 4, 5, 6 }, { 7, 8, 9 } };
 int read_shared_arrays(void) { return shared_array[1] + shared_matrix[1][2]; }
+const int readonly_array[3] = { 5, 17, 29 };
+int read_readonly_array(void) { return readonly_array[1]; }

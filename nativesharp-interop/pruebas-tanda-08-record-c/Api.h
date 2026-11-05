@@ -16,3 +16,5 @@ int read_shared_volatile(void);
 extern int shared_array[3];
 extern int shared_matrix[2][3];
 int read_shared_arrays(void);
+extern const int readonly_array[3];
+int read_readonly_array(void);
