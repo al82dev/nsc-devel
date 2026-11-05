@@ -190,6 +190,11 @@ preparada cubre ambos. Falta usar las demandas reales de llamadas para elegir
 esas dependencias antes del índice definitivo. Ninguno de los cambios de esta
 sección se ha compilado ni ejecutado.
 
+Se preparó además la selección de candidatos enum a partir de demandas de
+funciones, incluyendo sobrecargas no proyectadas y conflictos diferidos, con
+una prueba de deduplicación. El siguiente paso es obtener las demandas durante
+la observación previa y conectarlas al selector definitivo; sigue sin validarse.
+
 ### Campos enum C, sin validar
 
 Un helper común comprueba propietario, representación y conflictos del enum.
