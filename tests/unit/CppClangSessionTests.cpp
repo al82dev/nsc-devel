@@ -1674,5 +1674,69 @@ int main(int argc, char** argv)
                          "link inputs include each C/C++ archive once and omit header-only references");
         }
     }
+    {
+        const auto projectPath = std::filesystem::path("A:/llvm-project-al82dev/nativesharp-interop/pruebas-proyecto/CppProject.nsproj");
+        nativesharp::compilation::ProjectGraphLoader loader;
+        std::string error;
+        auto graph = loader.load(projectPath, error);
+        const CppProjectSessionEnvironment environment{
+            "x86_64-pc-windows-msvc", argv[3], argv[1], argv[2], {}};
+        auto opened = graph ? openCppGraphSessions(*graph, environment, factory, {}) :
+            CppGraphSessionsResult{CppGraphSessionFailure{}};
+        auto* sessions = std::get_if<CppGraphSessions>(&opened);
+        nativesharp::frontend::ProjectCompilation compilation;
+        const bool configured = sessions && compilation.setCppProjectSessions(std::move(sessions->projects), error) &&
+            compilation.setCppNamespaceProvider([](const auto& graph, auto sessions, auto& output, auto& why) {
+                auto inventory = collectCppNamespaces(graph, sessions);
+                if (!std::holds_alternative<std::vector<CppNamespaceInventoryEntry>>(inventory)) {
+                    why = "namespace inventory failed"; return false;
+                }
+                auto names = visibleCppNamespaces(std::get<std::vector<CppNamespaceInventoryEntry>>(inventory));
+                if (!std::holds_alternative<std::vector<std::pair<std::size_t, std::string>>>(names)) {
+                    why = "namespace projection failed"; return false;
+                }
+                output = std::move(std::get<std::vector<std::pair<std::size_t, std::string>>>(names));
+                return true;
+            }, error) && compilation.setCppFunctionProvider(
+                [](const auto& graph, auto sessions, auto, auto demands, auto& projected, auto& deferred, auto& why) {
+                    return provideCppSemanticFunctions(graph, sessions, demands, projected, deferred, why);
+                }, error) && compilation.setCppGlobalProvider(
+                [](const auto& graph, auto sessions, auto demands, auto& states, auto& why) {
+                    return provideCppSemanticGlobals(graph, sessions, demands, states, why);
+                }, error);
+        const bool ready = configured && compilation.compileProjectOopMir(projectPath, error);
+        if (!ready) std::cerr << "project reference MIR failed: " << error << '\n';
+        bool imported = false;
+        if (ready && compilation.oopMirModel())
+            for (const auto& function : compilation.oopMirModel()->functions())
+                imported |= function.isImportedC && function.mangledName == "project_sum";
+        ok &= expect(ready && imported,
+                     "actual project reference with real Clang sessions reaches MIR");
+        if (graph)
+        {
+            auto missing = openCppGraphSessions(*graph, environment, factory, {});
+            auto* available = std::get_if<CppGraphSessions>(&missing);
+            nativesharp::frontend::ProjectCompilation noProviders;
+            const bool installed = available && noProviders.setCppProjectSessions(std::move(available->projects), error);
+            ok &= expect(installed && !noProviders.compileProjectSyntax(projectPath, error) &&
+                         error.find("not yet connected") != std::string::npos,
+                         "project references require both semantic providers");
+            CppProjectSessions wrongGroup;
+            wrongGroup.projectFile = std::filesystem::absolute(projectPath);
+            auto wrongOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::C, "int other(void);\n");
+            wrongGroup.sessions.push_back(open(factory, std::move(wrongOptions)));
+            std::vector<CppProjectSessions> wrongGroups;
+            wrongGroups.push_back(std::move(wrongGroup));
+            nativesharp::frontend::ProjectCompilation wrongHeader;
+            const bool wrongConfigured = wrongHeader.setCppProjectSessions(std::move(wrongGroups), error) &&
+                wrongHeader.setCppNamespaceProvider([](const auto&, auto, auto&, auto&) { return true; }, error) &&
+                wrongHeader.setCppFunctionProvider([](const auto&, auto, auto, auto, auto&, auto&, auto&) {
+                    return true;
+                }, error);
+            ok &= expect(wrongConfigured && !wrongHeader.compileProjectSyntax(projectPath, error) &&
+                         error.find("not yet connected") != std::string::npos,
+                         "project reference rejects a session for a different input");
+        }
+    }
     return ok ? 0 : 1;
 }
