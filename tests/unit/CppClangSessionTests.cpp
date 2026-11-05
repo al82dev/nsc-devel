@@ -4939,5 +4939,71 @@ int main(int argc, char** argv)
             }
         }
     }
+    {
+        auto incompleteSession = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+            "namespace Missing { struct C; C* fetch(); }\n"));
+        const auto records = incompleteSession ? incompleteSession->recordsSnapshot() : std::nullopt;
+        const auto functions = incompleteSession ? incompleteSession->freeFunctionsSnapshot() : std::nullopt;
+        const auto* record = records ? recordByName(*records, "Missing::C") : nullptr;
+        const auto* getter = functions ? functionByName(*functions, "Missing::fetch") : nullptr;
+        const auto identity = record ? projectCppRecordIdentity(*record, "Semantic") : std::nullopt;
+        const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+        if (record && getter && identity)
+        {
+            const std::vector<CppSemanticRecordEntry> entries{{
+                path, 0, 0, "x86_64-pc-windows-msvc", *record, identity}};
+            const auto groups = groupCppSemanticRecords(entries);
+            const auto prepared = prepareCppRecordObservation(entries, groups);
+            const auto* inputs = std::get_if<CppRecordObservationInputs>(&prepared);
+            const auto projection = projectCppSemanticFunctionWithRecords(*getter, 0, "Semantic", groups);
+            const auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projection);
+            ok &= expect(inputs && inputs->types.size() == 1 && !inputs->types[0].objectLayout && symbol,
+                         "forward-declared C++ record has no object dimensions but its pointer can be projected");
+            if (inputs && symbol)
+                for (int scenario = 0; scenario < 7; ++scenario)
+                {
+                    nativesharp::frontend::ProjectCompilation compilation;
+                    compilation.setSourceBufferProvider([scenario](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() != "Main.ns") return std::nullopt;
+                        switch (scenario)
+                        {
+                            case 0: return "int Main() { Missing.C* p = Missing.fetch(); return p == null ? 0 : 1; }\n";
+                            case 1: return "int Main() { return (int)sizeof(Missing.C); }\n";
+                            case 2: return "int Main() { return (int)alignof(Missing.C); }\n";
+                            case 3: return "int Main() { Missing.C* p = Missing.fetch(); p = p + 1; return 0; }\n";
+                            case 4: return "int Main() { Missing.C* p = Missing.fetch(); p += 1; return 0; }\n";
+                            case 5: return "int Main() { Missing.C* p = Missing.fetch(); Missing.C* q = &p[1]; return q == null ? 0 : 1; }\n";
+                            default: return "int Main() { Missing.C value; return 0; }\n";
+                        }
+                    });
+                    std::string error;
+                    const bool configured = compilation.setExperimentalCppImportedTypes(inputs->types, error) &&
+                        compilation.setCppImportedFunctions({*symbol}, error);
+                    const bool ready = configured && compilation.compileProjectOopMir(path, error);
+                    bool layoutError = error.find("no value layout") != std::string::npos ||
+                        error.find("cannot determine the element layout") != std::string::npos ||
+                        error.find("cannot determine raw element layout") != std::string::npos;
+                    bool localError = false;
+                    for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                    {
+                        layoutError |= diagnostic.message().find("no value layout") != std::string::npos ||
+                            diagnostic.message().find("cannot determine the element layout") != std::string::npos ||
+                            diagnostic.message().find("cannot determine raw element layout") != std::string::npos;
+                        localError |= diagnostic.message().find("cannot be created by value until object lifetime is implemented") != std::string::npos;
+                    }
+                    const bool rejectedAsExpected = !ready && (scenario == 6 ? localError : layoutError);
+                    if (!(configured && (scenario == 0 ? ready : rejectedAsExpected)))
+                    {
+                        std::cerr << "incomplete record scenario " << scenario << " ready=" << ready << " error=" << error << '\n';
+                        for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                            std::cerr << diagnostic.message() << '\n';
+                    }
+                    ok &= expect(configured && (scenario == 0 ? ready : rejectedAsExpected),
+                                 "incomplete record allows pointer transport but rejects layout-dependent operations");
+                }
+        }
+        else ok &= expect(false, "Clang provides the forward-declared record fixture");
+    }
     return ok ? 0 : 1;
 }
