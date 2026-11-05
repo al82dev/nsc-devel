@@ -4,6 +4,8 @@
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
+#include "nativesharp/Frontend/CppAliasFunctionType.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Frontend/ObjectConstructionBinding.h"
 #include "nativesharp/Frontend/ClassDestructionPlan.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
@@ -43,6 +45,33 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
                                        found->second != CppRecordGroupStatus::OneDefinition &&
                                        found->second != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible)) return std::nullopt;
         return CppScalarTypeMapping{"type:" + identity->key(), type.canonicalSpelling, false, false};
+    }
+    if (type.kind == CppTypeKind::Pointer && type.element && type.element->kind == CppTypeKind::Function)
+    {
+        const auto signature = frontend::cppAliasFunctionType(type);
+        if (!signature || signature->result.pointeeConst) return std::nullopt;
+        language::FunctionType function;
+        switch (signature->callingConvention)
+        {
+        case ast::FunctionCallingConventionSyntaxKind::C: function.callingConvention = language::CallingConvention::C; break;
+        case ast::FunctionCallingConventionSyntaxKind::StdCall: function.callingConvention = language::CallingConvention::StdCall; break;
+        case ast::FunctionCallingConventionSyntaxKind::FastCall: function.callingConvention = language::CallingConvention::FastCall; break;
+        case ast::FunctionCallingConventionSyntaxKind::VectorCall: function.callingConvention = language::CallingConvention::VectorCall; break;
+        case ast::FunctionCallingConventionSyntaxKind::Win64: function.callingConvention = language::CallingConvention::Win64; break;
+        default: return std::nullopt;
+        }
+        const auto key = [](const frontend::CppAliasBuiltinType& value) {
+            return "builtin:" + std::string(value.name) + std::string(value.pointerDepth, '*');
+        };
+        function.result = key(signature->result);
+        for (const auto& parameter : signature->parameters)
+        {
+            // The structural function key does not encode pointee const.
+            if (parameter.pointeeConst) return std::nullopt;
+            function.parameters.push_back(key(parameter));
+        }
+        function.variadic = signature->variadic;
+        return CppScalarTypeMapping{language::functionTypeIdentity(function), type.canonicalSpelling, false, false};
     }
     if (type.kind != CppTypeKind::Pointer) return mapCppScalarType(type);
     const bool readonlyScalar = allowReadonlyPointee && type.element && type.element->isConst &&
