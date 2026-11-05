@@ -19,6 +19,9 @@ struct BuildOptions final
     // `-flto`, `-flto=full`, `-flto=thin` o `-flto=none` en la linea de comandos, como none/full/thin.
     std::optional<std::string> linkTimeOptimization;
     std::optional<std::filesystem::path> libraryReferenceRoot;
+    std::vector<std::string> cppInteropOptions;
+    bool cppClangRootSeen = false;
+    bool cppSystemIncludeSeen = false;
     std::optional<std::size_t> compilerJobs;
     bool noRestore = false;
     bool precompiledOnly = false;

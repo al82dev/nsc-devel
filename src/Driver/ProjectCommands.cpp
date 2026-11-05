@@ -1088,6 +1088,30 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
             { error = "--library-reference-root requires an absolute directory"; return false; }
             options.libraryReferenceRoot = fs::path(value);
         }
+        else if (argument.starts_with("--cpp-clang-root=") ||
+                 argument.starts_with("--cpp-system-include="))
+        {
+            constexpr std::string_view rootPrefix = "--cpp-clang-root=";
+            constexpr std::string_view includePrefix = "--cpp-system-include=";
+            const bool isRoot = argument.starts_with(rootPrefix);
+            const std::string_view value = argument.substr(isRoot ? rootPrefix.size() : includePrefix.size());
+            const fs::path path{std::string(value)};
+            if (value.empty() || !path.is_absolute())
+            { error = "C/C++ toolchain paths must be absolute"; return false; }
+            if (isRoot)
+            {
+                if (options.cppClangRootSeen) { error = "duplicate --cpp-clang-root"; return false; }
+                options.cppClangRootSeen = true;
+            }
+            else
+            {
+                std::error_code ec;
+                if (!fs::is_directory(path, ec) || ec)
+                { error = "C/C++ system include directory does not exist"; return false; }
+                options.cppSystemIncludeSeen = true;
+            }
+            options.cppInteropOptions.emplace_back(argument);
+        }
         else if (argument == "-O0" || argument == "-O1" || argument == "-O2" || argument == "-O3")
             options.optimization = std::string(argument.substr(1));
         else if (argument == "-g" || argument == "-g0" || argument == "-gline-tables-only")
@@ -1100,6 +1124,8 @@ bool parseBuildOptions(std::span<const std::string_view> arguments, bool run, Bu
         else if (options.project.has_value()) { error = "build accepts only one project"; return false; }
         else options.project = fs::path(argument);
     }
+    if (options.cppSystemIncludeSeen && !options.cppClangRootSeen)
+    { error = "--cpp-system-include requires --cpp-clang-root"; return false; }
     return true;
 }
 
@@ -1489,6 +1515,7 @@ void appendNestedCompilerOptions(
         owned.push_back(std::to_string(*compilerJobs));
     }
     if (options.validateSystemImports) owned.push_back("--validate-system-imports");
+    owned.insert(owned.end(), options.cppInteropOptions.begin(), options.cppInteropOptions.end());
     if (options.progress)
     {
         owned.push_back(options.progressFormat.has_value()
