@@ -4903,6 +4903,33 @@ int main(int argc, char** argv)
                              "optional record observer runs once and does not install placeholders into production lookup");
             }
             {
+                nativesharp::frontend::ProjectCompilation aliasObservation;
+                aliasObservation.setSourceBufferProvider([](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns")
+                        return "int Use(PairAlias* value) { return 0; } int Main() { return 0; }\n";
+                    return std::nullopt;
+                });
+                CppProjectSessions aliasSession;
+                aliasSession.projectFile = std::filesystem::absolute(path);
+                aliasSession.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                    CppLanguageMode::C, "struct Pair { int value; }; typedef struct Pair PairAlias;\n")));
+                std::vector<CppProjectSessions> aliasSessions;
+                aliasSessions.push_back(std::move(aliasSession));
+                std::string aliasError;
+                const bool aliasParsed = aliasObservation.setCppProjectSessions(std::move(aliasSessions), aliasError) &&
+                    aliasObservation.setCppTypeAliasProvider(provideCppTypeAliases, aliasError) &&
+                    aliasObservation.compileProjectSyntax(path, aliasError);
+                const auto aliasObserved = aliasParsed ? observeCppRecords(aliasObservation) :
+                    CppRecordObservationRunResult{CppRecordObservationFailure{aliasError}};
+                const auto* aliasResult = std::get_if<CppRecordObservation>(&aliasObserved);
+                bool aliasReferenced = false;
+                if (aliasResult)
+                    for (const auto index : aliasResult->selection.referencedGroups)
+                        aliasReferenced |= index < aliasResult->groups.groups.size() &&
+                            aliasResult->groups.groups[index].identity.name() == "Pair";
+                ok &= expect(aliasResult && aliasReferenced,
+                             "record observation selects a C record referenced through its typedef");
                 nativesharp::frontend::ProjectCompilation unpreparedObservation;
                 ok &= expect(std::holds_alternative<CppRecordObservationFailure>(observeCppRecords(unpreparedObservation)),
                              "record observation rejects an unprepared compilation");
