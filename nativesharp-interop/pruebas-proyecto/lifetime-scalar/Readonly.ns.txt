@@ -1,0 +1,1 @@
+int Main() { int const* value = Demo.Source.readSource(); { Demo.ReadPointer object = new Demo.ReadPointer(value); } return Demo.check(); }

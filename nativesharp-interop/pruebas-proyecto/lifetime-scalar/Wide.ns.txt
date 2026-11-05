@@ -1,0 +1,1 @@
+int Main() { { Demo.Wide value = new Demo.Wide(42, 2.5, 3.5f, 7, 8, 4.5); } return Demo.check(); }
