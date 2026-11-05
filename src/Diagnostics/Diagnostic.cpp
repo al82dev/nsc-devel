@@ -11,14 +11,16 @@ Diagnostic::Diagnostic(
     std::optional<SourceRange> range,
     std::string message,
     std::vector<DiagnosticLabel> secondaryLabels,
-    std::vector<std::string> notes)
+    std::vector<std::string> notes,
+    std::optional<ExternalSourceLocation> externalLocation)
     : id_(id),
       severity_(severity),
       location_(location),
       range_(range),
       message_(std::move(message)),
       secondaryLabels_(std::move(secondaryLabels)),
-      notes_(std::move(notes))
+      notes_(std::move(notes)),
+      externalLocation_(std::move(externalLocation))
 {
 }
 
@@ -55,5 +57,10 @@ const std::vector<DiagnosticLabel>& Diagnostic::secondaryLabels() const noexcept
 const std::vector<std::string>& Diagnostic::notes() const noexcept
 {
     return notes_;
+}
+
+const std::optional<ExternalSourceLocation>& Diagnostic::externalLocation() const noexcept
+{
+    return externalLocation_;
 }
 }

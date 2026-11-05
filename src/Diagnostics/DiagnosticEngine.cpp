@@ -75,7 +75,8 @@ void DiagnosticEngine::reportStructured(
     SourceRange primaryRange,
     std::string message,
     std::vector<DiagnosticLabel> secondaryLabels,
-    std::vector<std::string> notes)
+    std::vector<std::string> notes,
+    std::optional<ExternalSourceLocation> externalLocation)
 {
     if (suppress(severity)) return;
     diagnostics_.emplace_back(
@@ -85,7 +86,8 @@ void DiagnosticEngine::reportStructured(
         primaryRange,
         std::move(message),
         std::move(secondaryLabels),
-        std::move(notes));
+        std::move(notes),
+        std::move(externalLocation));
     if (severity == DiagnosticSeverity::Error)
     {
         ++errorCount_;
@@ -123,7 +125,7 @@ std::size_t DiagnosticEngine::lintCount() const noexcept
 
 void DiagnosticEngine::append(const Diagnostic& diagnostic)
 {
-    if (!diagnostic.secondaryLabels().empty() || !diagnostic.notes().empty())
+    if (!diagnostic.secondaryLabels().empty() || !diagnostic.notes().empty() || diagnostic.externalLocation())
     {
         const SourceRange primary = diagnostic.range().value_or(
             SourceRange(diagnostic.location(), diagnostic.location()));
@@ -133,7 +135,8 @@ void DiagnosticEngine::append(const Diagnostic& diagnostic)
             primary,
             diagnostic.message(),
             diagnostic.secondaryLabels(),
-            diagnostic.notes());
+            diagnostic.notes(),
+            diagnostic.externalLocation());
         return;
     }
     if (diagnostic.range().has_value())

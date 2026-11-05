@@ -39,7 +39,8 @@ public:
         SourceRange primaryRange,
         std::string message,
         std::vector<DiagnosticLabel> secondaryLabels,
-        std::vector<std::string> notes);
+        std::vector<std::string> notes,
+        std::optional<ExternalSourceLocation> externalLocation = std::nullopt);
 
     void append(const Diagnostic& diagnostic);
 
