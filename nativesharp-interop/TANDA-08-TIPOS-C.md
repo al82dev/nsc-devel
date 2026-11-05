@@ -189,6 +189,10 @@ aserción de inventario. También se amplió la comparación de miembros repetid
 para conservar firmas de función e identidad y base de enum. Falta probar el
 diagnóstico desde un proyecto y ejecutar la batería agrupada.
 
+Los campos C de arreglos fijos escalares cuentan con una proyección inicial y
+una prueba preparada de matriz multidimensional y arreglo flexible. La
+indexación, los elementos compuestos y el ABI aún no se han validado.
+
 `pruebas-tanda-08-incompleto` prepara ambos casos de proyecto: declaración de
 puntero al tipo adelantado y rechazo de `sizeof` con diagnóstico. El script no
 se ha ejecutado; la comprobación real sigue pendiente.
