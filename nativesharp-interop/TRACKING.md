@@ -134,7 +134,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T05-003. Implementar en `ProjectCompilation.cpp` el almacenamiento de la sesión inyectada. Evidencia: [prueba de inyección](LINEA-BASE-TANDAS.md).
 - [x] T05-004. Añadir un acceso controlado a la sesión desde las fases que la requieran. Evidencia: [prueba de inyección](LINEA-BASE-TANDAS.md).
 - [x] T05-005. Definir el orden de destrucción entre `ProjectCompilation` y la sesión. Evidencia: [tanda 05](TANDA-05-INTEGRACION.md).
-- [ ] T05-006. Integrar la configuración opcional en la ruta correspondiente de `DriverExecution.cpp`.
+- [x] T05-006. Integrar la configuración opcional en la ruta correspondiente de `DriverExecution.cpp`. Evidencia: [tanda 05](TANDA-05-INTEGRACION.md).
 - [ ] T05-007. Revisar la creación de compilaciones desde el servicio de lenguaje.
 - [ ] T05-008. Preservar la vida útil de la sesión cuando existan snapshots de `ProjectCompilation`.
 - [ ] T05-009. Crear `CppDiagnosticAdapter.cpp` en la capa frontend, sin dependencia inversa del target interop.
