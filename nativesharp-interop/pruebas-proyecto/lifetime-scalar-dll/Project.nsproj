@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CppLifetimeScalarDll</Name></PropertyGroup>
+  <ItemGroup><CppLibraryReference Header="Scalar.h" Language="C++" Standard="c++20" Library="scalar.lib" Runtime="scalar.dll" /></ItemGroup>
+</Project>
