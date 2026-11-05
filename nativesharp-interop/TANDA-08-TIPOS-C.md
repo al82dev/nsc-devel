@@ -2,6 +2,18 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Globales C de struct: validación pendiente de corrección
+
+Tras `96b857499`, `9f9ba2b64` y `a4a0b2aad`, la batería agrupada del
+2026-11-05 terminó con código 1. La construcción ON/OFF, la suite Clang y los
+demás proyectos pasaron, pero el proyecto `record-c` falló con
+`Stage 40 cannot map named value type to LLVM carrier: type:CRecordPointer::GlobalOnly`.
+
+La proyección alcanzó el backend, pero falta representar de forma segura el
+almacenamiento externo del record y su indexado sin habilitar por accidente
+el paso, construcción o copia por valor de records no verificados. El fixture
+de struct global, puntero y arreglo queda preparado; ninguno se declara validado.
+
 ## Validación agrupada de arreglos globales volatile: 2026-11-05
 
 Con `017e6c5d1`, `e274bd1f2`, `f23fb09bc`, `262d0d217` y `ba1acfc2f`,
