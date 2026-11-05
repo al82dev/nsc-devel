@@ -2,10 +2,15 @@
 
 Estado: implementación en curso; la tanda no está validada ni cerrada.
 
-- El controlador crea compilaciones propias para ejecutables y bibliotecas
-  estáticas y dinámicas en `src/Driver/DriverArtifactGeneration.cpp`. Cada ruta
-  pasa por `configurePrecompiledModules`; existen además otras rutas de análisis
-  que requieren revisión antes de declarar completo el inventario T05-001.
+- En `src/Driver`, las compilaciones locales aparecen en
+  `DriverArtifactGeneration.cpp` (ejecutable y bibliotecas estática/dinámica),
+  `DriverProjectActions.cpp` (análisis de proyecto y objeto),
+  `DriverImplicitProject.cpp` (análisis y objeto implícitos),
+  `DriverLibraryCommands.cpp` (header y metadatos) y
+  `PrecompiledSnapshotPublication.cpp` (compilación auxiliar del snapshot).
+  Las primeras cuatro usan `configurePrecompiledModules`; la última construye
+  una referencia auxiliar desde metadatos. El servicio de lenguaje crea además
+  compilaciones en `LanguageService.cpp` y `Internal/MemberCompletionAnalysis.cpp`.
 - `CompilerSession.cpp` configura la fábrica solamente cuando se solicita una
   raíz de Clang; `configurePrecompiledModules` abre las sesiones por proyecto
   después de rechazar configuraciones incompatibles de caché. Las referencias
@@ -22,7 +27,9 @@ Estado: implementación en curso; la tanda no está validada ni cerrada.
 - El adaptador nuevo conserva severidades, notas y ubicaciones externas sin
   suponer que un archivo abierto posteriormente coincide con el visto por Clang.
   La presentación sin rango nativo no fabrica una ubicación de NativeSharp.
-  Está pendiente comprobar el resolvedor, los errores del controlador y ON/OFF.
+  Las pruebas agrupadas del resolvedor, errores del controlador y ON/OFF están
+  pendientes de resultado. Se incluyeron las rutas auxiliares descubiertas
+  durante la construcción; debe repetirse el build incremental si fuera necesario.
 
 Siguiente acción: completar el inventario de creaciones y los casos de prueba de
 sesiones y diagnósticos, terminar los cambios de esta tanda y ejecutar una única
