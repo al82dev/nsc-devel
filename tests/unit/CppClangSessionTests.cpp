@@ -1554,6 +1554,13 @@ int main(int argc, char** argv)
                                     differenceWins |= grouped.groups[item.groupIndex].identity.name() == "Same" &&
                                         item.verdict == CppRecordStructuralVerdict::Different;
                             recordGroups[0].sessions[1]->close();
+                            const auto closedAliasInventory = collectCppSemanticTypeAliases(finalGraph, recordGroups);
+                            const auto closedEnumInventory = collectCppSemanticEnums(finalGraph, recordGroups);
+                            const auto* closedAliasFailure = std::get_if<CppSemanticInventoryFailure>(&closedAliasInventory);
+                            const auto* closedEnumFailure = std::get_if<CppSemanticInventoryFailure>(&closedEnumInventory);
+                            ok &= expect(closedAliasFailure && closedAliasFailure->referenceIndex == 1 &&
+                                         closedEnumFailure && closedEnumFailure->referenceIndex == 1,
+                                         "alias and enum inventories report the unavailable reference");
                             const auto closedComparison = compareCppRecordDefinitions(*entries, grouped, recordGroups);
                             bool unavailable = false;
                             if (const auto* results = std::get_if<std::vector<CppRecordStructuralComparison>>(&closedComparison))
