@@ -1,0 +1,7 @@
+int Main() {
+    var widget = Demo.make();
+    var value = Demo.number();
+    var view = widget->view(value);
+    *view = 0;
+    return 0;
+}

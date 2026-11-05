@@ -1,0 +1,6 @@
+int Main() {
+    var widget = Demo.make();
+    var payload = widget->getPayload();
+    var value = Demo.number();
+    return payload->cross(value);
+}
