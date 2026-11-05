@@ -12,6 +12,7 @@ namespace nativesharp::frontend
 struct CppAliasRecordType
 {
     std::string name;
+    std::string canonicalName;
     std::size_t pointerDepth;
     bool pointeeConst;
 };
@@ -41,6 +42,21 @@ inline std::optional<CppAliasRecordType> cppAliasRecordType(const interop::CppTy
     for (const auto& part : identity.namespaceSegments) append(part);
     for (const auto& part : identity.containingRecords) append(part);
     append(identity.name);
-    return CppAliasRecordType{std::move(name), pointers, current->isConst};
+    std::string canonical;
+    for (const auto& part : identity.namespaceSegments)
+    {
+        if (!canonical.empty()) canonical.push_back('.');
+        canonical += part;
+    }
+    bool first = true;
+    for (const auto& part : identity.containingRecords)
+    {
+        if (!canonical.empty()) canonical.push_back(first ? '.' : '+');
+        canonical += part;
+        first = false;
+    }
+    if (!canonical.empty()) canonical.push_back(identity.containingRecords.empty() ? '.' : '+');
+    canonical += identity.name;
+    return CppAliasRecordType{std::move(name), std::move(canonical), pointers, current->isConst};
 }
 }

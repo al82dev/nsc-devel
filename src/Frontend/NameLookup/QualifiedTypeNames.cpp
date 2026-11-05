@@ -223,7 +223,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             {
                 const auto* imported = cppImportedType(nativeCandidates.front());
                 if (imported && imported->projectOrdinal == selected->projectOrdinal &&
-                    imported->identity.fullyQualifiedName() == record->name) return true;
+                    imported->identity.fullyQualifiedName() == record->canonicalName) return true;
             }
             return report(diagnostics::DiagnosticId::AmbiguousTypeName,
                           "C/C++ type alias conflicts with a native type '" + syntax->baseName() + "'");
@@ -233,7 +233,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             const CppImportedTypeDeclaration* target = nullptr;
             for (const auto& imported : cppImportedTypes_)
                 if (imported.projectOrdinal == selected->projectOrdinal &&
-                    imported.identity.fullyQualifiedName() == record->name)
+                    imported.identity.fullyQualifiedName() == record->canonicalName)
                 {
                     if (target) return report(diagnostics::DiagnosticId::AmbiguousTypeName,
                                               "ambiguous imported record for alias '" + syntax->baseName() + "'");
