@@ -21,11 +21,12 @@ Estado: análisis e implementación agrupados en curso; no se da la tanda por ce
   funciones usan `visibleProjects`, y `ProjectCompilationSnapshots.cpp` verifica
   que los orígenes seleccionados correspondan al proyecto y referencia activos.
   Esto describe las categorías implementadas, no toda declaración posible de C++.
-- La validación estructural de las referencias de un proyecto se ejecuta antes de
-  abrir sus sesiones: idioma, estándar no vacío, header no vacío y forma de
-  includes/macros. La existencia real y semántica completa del estándar siguen
-  a cargo de la apertura y de Clang; no se afirma un diagnóstico anticipado de
-  todas las opciones posibles. Pendiente de prueba agrupada.
+- La validación previa de las referencias de un proyecto comprueba idioma,
+  estándar reconocido por la tabla de Clang y compatible con el idioma, header
+  no vacío y forma de includes/macros antes de abrir sus sesiones. La existencia
+  real de los archivos y otras opciones siguen a cargo de la apertura de Clang;
+  no se afirma un diagnóstico anticipado de todas las opciones posibles.
+  Pendiente de prueba agrupada.
 - La sesión puede enumerar archivos observados y calcular el SHA-256 del buffer
   cargado por Clang. Esto no incluye necesariamente consultas fallidas, buffers
   virtuales ni modificaciones concurrentes, y por sí solo no valida la caché.
