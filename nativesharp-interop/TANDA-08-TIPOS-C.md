@@ -37,6 +37,17 @@ Siguiente acción: contrastar T08-001 a T08-020 con evidencia y código, cerrar
 solo los puntos cuya formulación completa esté cubierta y resolver los huecos
 sin presentar diagnósticos o una muestra limitada como interoperabilidad total.
 
+### Seguimiento posterior a la tercera pasada
+
+T08-001 queda cerrado como auditoría. La expansión de un arreglo incompleto
+todavía se rechaza aunque su snapshot conserve el límite desconocido, por lo
+que esa observación no basta para cerrar T08-013. Se preparó un nuevo caso de
+global C volatile con verificaciones LLVM diferenciadas; esa ampliación aún no
+se ha ejecutado. `TypeModifierSyntax::importedCRestrict` tampoco aparece en el
+codec de caché de sintaxis (`TemplateCatalogCodec.cpp`): hay que determinar y
+verificar su conservación o invalidación en esas rutas antes de cerrar
+T08-015. Las pruebas aprobadas de la tercera pasada no cubren ese caso.
+
 - `ClangSession.cpp::describeType` conserva clase, spelling, tipo canónico,
   calificadores y tamaño/alineación cuando Clang dispone de ellos. Modela
   punteros, referencias, arreglos constantes, enums, records y funciones, pero
