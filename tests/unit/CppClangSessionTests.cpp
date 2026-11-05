@@ -2257,7 +2257,7 @@ int main(int argc, char** argv)
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
-                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; typedef enum Color (*ColorCallback)(enum Color); enum Color color_echo(enum Color value); int apply_color(enum Color (*cb)(enum Color)); struct Paint { enum Color shade; const enum Color* view; enum Color colors[2][3]; }; enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
+                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; typedef enum Color (*ColorCallback)(enum Color); typedef enum Color (*NestedCallback)(enum Color (*)(enum Color)); enum Color color_echo(enum Color value); int apply_color(enum Color (*cb)(enum Color)); struct Paint { enum Color shade; const enum Color* view; enum Color colors[2][3]; }; enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
                                   "union CValue { int integer; float real; }; struct Flags { unsigned a:3; unsigned b:5; }; "
@@ -2847,7 +2847,7 @@ int main(int argc, char** argv)
                     enumAliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
                         -> std::optional<std::string> {
                         if (path.filename() == "Main.ns")
-                            return "struct Holder { ColorAlias shade; int count; } ColorAlias Echo(ColorAlias value) { return value; } int Use(ColorCallback cb) { return 0; } int Main() { return 0; }\n";
+                            return "struct Holder { ColorAlias shade; int count; } ColorAlias Echo(ColorAlias value) { return value; } int Use(ColorCallback cb) { return 0; } int UseNested(NestedCallback cb) { return 0; } int Main() { return 0; }\n";
                         return std::nullopt;
                     });
                     nativesharp::compilation::TypeIdentity enumIdentity("Semantic", {}, {}, "Color");
@@ -2863,13 +2863,13 @@ int main(int argc, char** argv)
                         [aliasesSnapshot](const auto& graph, auto, auto& output, auto& why) {
                             if (!aliasesSnapshot || graph.projects().empty()) { why = "alias fixture unavailable"; return false; }
                             for (const auto& alias : *aliasesSnapshot)
-                                if (alias.name == "ColorAlias" || alias.name == "ColorCallback")
+                                if (alias.name == "ColorAlias" || alias.name == "ColorCallback" || alias.name == "NestedCallback")
                                     output.push_back({0, graph.projects()[0].projectFile(), 0,
                                                       "x86_64-pc-windows-msvc", alias});
                             return true;
                         }, error);
                     const bool bound = configured && enumAliasCompilation.compileProjectNames(semanticPath, error);
-                    bool enumBound = false, basePreserved = false, callbackAliasBound = false;
+                    bool enumBound = false, basePreserved = false, callbackAliasBound = false, nestedAliasBound = false;
                     if (bound && enumAliasCompilation.nameLookup())
                     {
                         for (const auto& binding : enumAliasCompilation.nameLookup()->bindings())
@@ -2884,6 +2884,15 @@ int main(int argc, char** argv)
                                     type->typeArguments().size() == 1 && type->typeArguments()[0]->baseName() == "Color" &&
                                     type->functionCallingConvention() == nativesharp::ast::FunctionCallingConventionSyntaxKind::C;
                             }
+                            if (binding.writtenName == "NestedCallback" && binding.syntax &&
+                                binding.syntax->isFunction() && binding.syntax->typeArguments().size() == 1)
+                            {
+                                const auto* inner = binding.syntax->typeArguments()[0];
+                                nestedAliasBound |= inner && inner->isFunction() && inner->functionReturnType() &&
+                                    inner->functionReturnType()->baseName() == "Color" &&
+                                    inner->typeArguments().size() == 1 && inner->typeArguments()[0]->baseName() == "Color" &&
+                                    inner->functionCallingConvention() == nativesharp::ast::FunctionCallingConventionSyntaxKind::C;
+                            }
                         }
                         for (const auto& type : enumAliasCompilation.nameLookup()->namedTypes())
                             if (type.identity.name() == "Color")
@@ -2894,6 +2903,8 @@ int main(int argc, char** argv)
                                  "enum typedef binds to imported enum and preserves its underlying type");
                     ok &= expect(bound && callbackAliasBound,
                                  "callback typedef preserves imported enum in result and parameter");
+                    ok &= expect(bound && nestedAliasBound,
+                                 "nested callback typedef preserves inner signature and calling convention");
                     const auto* echo = cFunctions ? functionByName(*cFunctions, "color_echo") : nullptr;
                     const CppRecordGroups noRecords;
                     const auto projected = echo && enumAliasCompilation.nameLookup()
