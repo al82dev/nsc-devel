@@ -172,7 +172,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T07-004. Auditar qué datos de entrada conserva el manifiesto de compilación actual. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-005. Diseñar cómo declarar que una dependencia expone headers C o C++. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-006. Diseñar cómo indicar el header principal de una dependencia. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
-- [ ] T07-007. Diseñar cómo especificar sus directorios de inclusión.
+- [x] T07-007. Diseñar cómo especificar sus directorios de inclusión. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [ ] T07-008. Diseñar cómo especificar sus macros y opciones de lenguaje.
 - [ ] T07-009. Diseñar cómo especificar bibliotecas estáticas de enlace.
 - [ ] T07-010. Diseñar cómo especificar bibliotecas de importación y DLL de ejecución.
