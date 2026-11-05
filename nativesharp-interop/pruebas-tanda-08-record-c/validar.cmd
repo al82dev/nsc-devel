@@ -31,6 +31,14 @@ findstr /r /c:"load volatile.*@shared_volatile" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile del global. & exit /b 1)
 findstr /r /c:"store volatile.*@shared_volatile" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura LLVM volatile del global. & exit /b 1)
+findstr /r /c:"load volatile.*@volatile_array" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura LLVM volatile del arreglo. & exit /b 1)
+findstr /r /c:"store volatile.*@volatile_array" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura LLVM volatile del arreglo. & exit /b 1)
+findstr /r /c:"load volatile.*@volatile_matrix" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura LLVM volatile de la matriz. & exit /b 1)
+findstr /r /c:"store volatile.*@volatile_matrix" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura LLVM volatile de la matriz. & exit /b 1)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\program.exe"
 if errorlevel 1 exit /b 1
 "%DEST%\program.exe"

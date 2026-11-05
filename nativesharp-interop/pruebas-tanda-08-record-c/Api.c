@@ -18,3 +18,6 @@ int shared_matrix[2][3] = { { 4, 5, 6 }, { 7, 8, 9 } };
 int read_shared_arrays(void) { return shared_array[1] + shared_matrix[1][2]; }
 const int readonly_array[3] = { 5, 17, 29 };
 int read_readonly_array(void) { return readonly_array[1]; }
+volatile int volatile_array[3] = { 1, 2, 3 };
+volatile int volatile_matrix[2][2] = { { 1, 2 }, { 3, 4 } };
+int read_volatile_arrays(void) { return volatile_array[1] + volatile_matrix[1][1]; }

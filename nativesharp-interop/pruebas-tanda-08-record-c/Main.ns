@@ -22,5 +22,8 @@ int Main()
     shared_matrix[1][2] = 23;
     if (shared_array[1] != 19 || shared_matrix[1][2] != 23 || read_shared_arrays() != 42) return 7;
     if (readonly_array[1] != 17 || read_readonly_array() != 17) return 8;
+    volatile_array[1] = 19;
+    volatile_matrix[1][1] = 23;
+    if (volatile_array[1] != 19 || volatile_matrix[1][1] != 23 || read_volatile_arrays() != 42) return 9;
     return 0;
 }
