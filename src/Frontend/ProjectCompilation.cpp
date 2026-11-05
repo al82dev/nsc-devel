@@ -2754,6 +2754,27 @@ bool ProjectCompilation::compileSyntaxCore(
         }
         experimentalCppImportedTypes_ = std::move(types);
     }
+    if (cppTypeAliasProvider_)
+    {
+        std::vector<CppImportedTypeAlias> aliases;
+        if (!cppTypeAliasProvider_(*projectGraph_, cppProjectSessions_, aliases, loadError)) return false;
+        for (const auto& alias : aliases)
+        {
+            if (alias.projectOrdinal >= projectGraph_->projects().size())
+            {
+                loadError = "C/C++ type alias provider returned an invalid project owner";
+                return false;
+            }
+            std::error_code ec;
+            if (!std::filesystem::equivalent(alias.projectFile,
+                    projectGraph_->projects()[alias.projectOrdinal].projectFile(), ec) || ec)
+            {
+                loadError = "C/C++ type alias provider returned inconsistent project provenance";
+                return false;
+            }
+        }
+        cppImportedTypeAliases_ = std::move(aliases);
+    }
     comptimeRecords_.clear();
     driver::CompilationWorkerPool& syntaxWorkers = lifetime_->workerPool();
     std::vector<ProjectSyntaxSourceRead> sourceReads = collectSyntaxSourceReads();
