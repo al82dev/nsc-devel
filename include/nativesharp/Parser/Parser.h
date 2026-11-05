@@ -26,6 +26,7 @@ struct InterpolationPart;
 
 namespace nativesharp::parser
 {
+class ScopedKnownTypeNames;
 struct ParsedVariantCase;
 
 class Parser final
@@ -40,7 +41,8 @@ public:
         std::span<const lexer::Token> tokens,
         ast::AstArena& arena,
         diagnostics::DiagnosticEngine& diagnostics,
-        const KnownTypeNameSet& sharedKnownTypeNames);
+        const KnownTypeNameSet& sharedKnownTypeNames,
+        const ScopedKnownTypeNames* scopedKnownTypeNames = nullptr);
 
     ast::AstNode* parseCompilationUnit();
 
@@ -1703,6 +1705,7 @@ private:
     //     el exterior primero; una clausula `where` de un metodo puede restringir uno de ellos.
     std::vector<std::string> enclosingGenericParameters_;
     const KnownTypeNameSet* sharedKnownTypeNames_ = nullptr;
+    const ScopedKnownTypeNames* scopedKnownTypeNames_ = nullptr;
     const Parser* knownTypeNameParent_ = nullptr;
 };
 }

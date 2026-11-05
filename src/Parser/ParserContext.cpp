@@ -61,11 +61,13 @@ Parser::Parser(
     std::span<const lexer::Token> tokens,
     ast::AstArena& arena,
     diagnostics::DiagnosticEngine& diagnostics,
-    const KnownTypeNameSet& sharedKnownTypeNames)
+    const KnownTypeNameSet& sharedKnownTypeNames,
+    const ScopedKnownTypeNames* scopedKnownTypeNames)
     : tokens_(tokens),
       arena_(arena),
       diagnostics_(diagnostics),
-      sharedKnownTypeNames_(&sharedKnownTypeNames)
+      sharedKnownTypeNames_(&sharedKnownTypeNames),
+      scopedKnownTypeNames_(scopedKnownTypeNames)
 {
     buildConditionalQuestionIndex();
     buildComprehensionDelimiterIndex();

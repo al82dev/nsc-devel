@@ -23,6 +23,8 @@ namespace nativesharp::source
 class SourceFile;
 }
 
+namespace nativesharp::parser { class ScopedKnownTypeNames; }
+
 namespace nativesharp::frontend
 {
 class ProjectSyntaxUnit final
@@ -43,7 +45,8 @@ public:
         std::span<const std::string> knownTypeNames = {});
     bool parse(
         diagnostics::DiagnosticEngine& diagnostics,
-        const parser::KnownTypeNameSet& sharedKnownTypeNames);
+        const parser::KnownTypeNameSet& sharedKnownTypeNames,
+        const parser::ScopedKnownTypeNames* scopedKnownTypeNames = nullptr);
     bool parse(const source::SourceFile& sourceFile, diagnostics::DiagnosticEngine& diagnostics);
 
     std::size_t projectOrdinal() const noexcept;

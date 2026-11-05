@@ -58,7 +58,8 @@ bool ProjectSyntaxUnit::parse(
 
 bool ProjectSyntaxUnit::parse(
     diagnostics::DiagnosticEngine& diagnostics,
-    const parser::KnownTypeNameSet& sharedKnownTypeNames)
+    const parser::KnownTypeNameSet& sharedKnownTypeNames,
+    const parser::ScopedKnownTypeNames* scopedKnownTypeNames)
 {
     if (!lexicallyValid_ || tokens_.empty() || syntaxTree_ != nullptr)
     {
@@ -66,7 +67,7 @@ bool ProjectSyntaxUnit::parse(
     }
 
     const std::size_t errorsBefore = diagnostics.errorCount();
-    parser::Parser parser(tokens_, *arena_, diagnostics, sharedKnownTypeNames);
+    parser::Parser parser(tokens_, *arena_, diagnostics, sharedKnownTypeNames, scopedKnownTypeNames);
     syntaxTree_ = parser.parseCompilationUnit();
     syntaxValid_ = syntaxTree_ != nullptr && diagnostics.errorCount() == errorsBefore;
     return syntaxValid_;

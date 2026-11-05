@@ -1,4 +1,5 @@
 #include "nativesharp/Parser/Parser.h"
+#include "nativesharp/Parser/ScopedKnownTypeNames.h"
 
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
@@ -63,7 +64,9 @@ bool Parser::isKnownTypeName(std::string_view name) const noexcept
     {
         if (parser->knownTypeNames_.contains(name) ||
             (parser->sharedKnownTypeNames_ != nullptr &&
-                parser->sharedKnownTypeNames_->contains(name)))
+                parser->sharedKnownTypeNames_->contains(name)) ||
+            (parser->scopedKnownTypeNames_ != nullptr &&
+                parser->scopedKnownTypeNames_->contains(current().range().begin(), name)))
         {
             return true;
         }
