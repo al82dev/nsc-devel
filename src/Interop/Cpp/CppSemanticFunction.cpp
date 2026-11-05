@@ -4,7 +4,6 @@
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
-#include "nativesharp/Frontend/CppAliasFunctionType.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Frontend/ObjectConstructionBinding.h"
 #include "nativesharp/Frontend/ClassDestructionPlan.h"
@@ -48,29 +47,30 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     }
     if (type.kind == CppTypeKind::Pointer && type.element && type.element->kind == CppTypeKind::Function)
     {
-        const auto signature = frontend::cppAliasFunctionType(type);
-        if (!signature || signature->result.pointeeConst) return std::nullopt;
+        if (type.isConst || type.isVolatile || type.sizeBits != 64 || type.canonicalSpelling.empty() ||
+            !type.element->function || !type.element->function->hasPrototype) return std::nullopt;
+        const auto& signature = *type.element->function;
         language::FunctionType function;
-        switch (signature->callingConvention)
-        {
-        case ast::FunctionCallingConventionSyntaxKind::C: function.callingConvention = language::CallingConvention::C; break;
-        case ast::FunctionCallingConventionSyntaxKind::StdCall: function.callingConvention = language::CallingConvention::StdCall; break;
-        case ast::FunctionCallingConventionSyntaxKind::FastCall: function.callingConvention = language::CallingConvention::FastCall; break;
-        case ast::FunctionCallingConventionSyntaxKind::VectorCall: function.callingConvention = language::CallingConvention::VectorCall; break;
-        case ast::FunctionCallingConventionSyntaxKind::Win64: function.callingConvention = language::CallingConvention::Win64; break;
-        default: return std::nullopt;
-        }
-        const auto key = [](const frontend::CppAliasBuiltinType& value) {
-            return "builtin:" + std::string(value.name) + std::string(value.pointerDepth, '*');
-        };
-        function.result = key(signature->result);
-        for (const auto& parameter : signature->parameters)
+        if (signature.callingConvention == "cdecl") function.callingConvention = language::CallingConvention::C;
+        else if (signature.callingConvention == "stdcall") function.callingConvention = language::CallingConvention::StdCall;
+        else if (signature.callingConvention == "fastcall") function.callingConvention = language::CallingConvention::FastCall;
+        else if (signature.callingConvention == "vectorcall") function.callingConvention = language::CallingConvention::VectorCall;
+        else if (signature.callingConvention == "ms_abi") function.callingConvention = language::CallingConvention::Win64;
+        else return std::nullopt;
+        if (signature.returnType.kind == CppTypeKind::Record) return std::nullopt;
+        const auto result = mapFunctionType(signature.returnType, false, records, moduleName, depth + 1, lookup, owner);
+        if (!result || result->isConst || result->isVolatile) return std::nullopt;
+        function.result = result->nativeSharpTypeKey;
+        for (const auto& parameter : signature.parameterTypes)
         {
             // The structural function key does not encode pointee const.
-            if (parameter.pointeeConst) return std::nullopt;
-            function.parameters.push_back(key(parameter));
+            if (parameter.kind == CppTypeKind::Record) return std::nullopt;
+            const auto mapped = mapFunctionType(parameter, true, records, moduleName, depth + 1, lookup, owner);
+            if (!mapped || mapped->isConst || mapped->isVolatile || parameter.kind == CppTypeKind::Void)
+                return std::nullopt;
+            function.parameters.push_back(mapped->nativeSharpTypeKey);
         }
-        function.variadic = signature->variadic;
+        function.variadic = signature.variadic;
         return CppScalarTypeMapping{language::functionTypeIdentity(function), type.canonicalSpelling, false, false};
     }
     if (type.kind != CppTypeKind::Pointer) return mapCppScalarType(type);
