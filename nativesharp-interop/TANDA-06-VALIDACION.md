@@ -51,3 +51,7 @@ Estado: validación agrupada completada; registro final por ítem en curso.
   ejecutable de pruebas ON. Ambos programas terminaron con código 0.
 - El examen de imports aplica a esos dos programas mínimos; no afirma que todas
   las aplicaciones generadas tengan el mismo conjunto de dependencias.
+- Después se fijaron `TMP` y `TEMP` bajo A: para ambos casos CTest y para el
+  escenario ON/OFF. La construcción incremental, CTest (2 de 2), la compilación
+  y ejecución de ambos programas y la revisión de imports se repitieron con
+  código 0; los nombres y la ausencia de directorio diferido permanecieron iguales.
