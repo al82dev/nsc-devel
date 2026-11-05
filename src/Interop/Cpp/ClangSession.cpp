@@ -516,5 +516,32 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
     }
 }
 
+void findComparableRecords(const clang::DeclContext& context, std::string_view name,
+                           std::set<const clang::TagDecl*>& seen,
+                           std::vector<const clang::RecordDecl*>& matches)
+{
+    for (const auto* declaration : context.decls())
+    {
+        if (const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+        {
+            if (!ns->isAnonymousNamespace()) findComparableRecords(*ns, name, seen, matches);
+            continue;
+        }
+        if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+        {
+            findComparableRecords(*linkage, name, seen, matches);
+            continue;
+        }
+        const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration);
+        if (!record || record->isImplicit() || record->isDependentContext() ||
+            llvm::isa<clang::ClassTemplateSpecializationDecl>(record) ||
+            !seen.insert(record->getCanonicalDecl()).second) continue;
+        if (const auto* definition = record->getDefinition()) record = definition;
+        if (record->isCompleteDefinition() && record->getQualifiedNameAsString() == name)
+            matches.push_back(record);
+        if (record->isCompleteDefinition()) findComparableRecords(*record, name, seen, matches);
+    }
+}
+
 }
 }
