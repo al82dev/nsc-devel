@@ -6808,5 +6808,17 @@ int main(int argc, char** argv)
                      recordByName(*cRecords, "Pair") && cGlobals && globalByName(*cGlobals, "c_global"),
                      "closed session cannot query AST; copied declarations remain valid");
     }
+    if (cpp)
+    {
+        ok &= expect(cpp->topLevelDeclarationCount().has_value(), "closing C session keeps C++ session alive");
+        nativesharp::frontend::ProjectCompilation compilation;
+        std::string error;
+        auto* original = cpp.get();
+        ok &= expect(compilation.setCppInteropSession(std::move(cpp), error),
+                     "real Clang session is accepted by ProjectCompilation");
+        ok &= expect(compilation.cppInteropSession() == original &&
+                     compilation.cppInteropSession()->topLevelDeclarationCount().has_value(),
+                     "injected Clang AST remains accessible");
+    }
     return ok ? 0 : 1;
 }
