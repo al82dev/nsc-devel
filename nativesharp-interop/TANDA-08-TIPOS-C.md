@@ -2,6 +2,21 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Validación agrupada de globales enum C: 2026-11-05
+
+Con los commits `2549bbd07`, `c8c37c02e`, `3712a45be` y `e11d160db`,
+`call nativesharp-interop\validar-tanda-08.cmd` terminó con código 0. Pasaron
+las construcciones incrementales ON/OFF, la suite Clang, las pruebas de
+restauración y equivalencia de serialización y los siete proyectos preparados.
+
+El proyecto mixto asignó y leyó desde NativeSharp un global C enum cuyo tipo
+también aparece en una firma; además leyó otro global cuyo enum no se nombra
+en NativeSharp ni en las firmas utilizadas y comparó su valor con una función
+C de resultado entero. En ambos casos se emplearon Windows x64 y O0. La
+implementación y estas pruebas no demuestran todavía sombras locales, todas
+las colisiones, punteros, TLS, calificadores ni todos los valores de enum;
+T08-004, T08-009 y T08-018 continúan abiertos.
+
 ## Validación agrupada de enums y enteros: 2026-11-05
 
 Tras los commits `93b2d50a6`, `a3ebbf772` y `e7a7dad05`, la ejecución de
