@@ -1,5 +1,6 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
+#include "nativesharp/Frontend/CppAliasRecordType.h"
 #include "nativesharp/Frontend/QualifiedNamespaceTarget.h"
 #include "../Internal/LookupEnvironment.h"
 #include "../Internal/ProjectNameLookupFrame.h"
@@ -184,10 +185,13 @@ bool ProjectNameLookup::expandCppTypeAlias(
     {
         const CppImportedTypeAlias* selected = nullptr;
         std::string selectedName;
-        bool nativeFound = false;
+        std::vector<std::size_t> nativeCandidates;
         for (const auto& spelling : rung.spellings)
         {
-            nativeFound |= !findExactTypeCandidates(owner, spelling, false).empty();
+            const auto native = findExactTypeCandidates(owner, spelling, false);
+            for (const auto ordinal : native)
+                if (std::find(nativeCandidates.begin(), nativeCandidates.end(), ordinal) == nativeCandidates.end())
+                    nativeCandidates.push_back(ordinal);
             for (const auto& alias : cppImportedTypeAliases_)
             {
                 if (alias.declaration.insideAnonymousNamespace ||
@@ -208,12 +212,45 @@ bool ProjectNameLookup::expandCppTypeAlias(
         }
         if (!selected)
         {
-            if (nativeFound) return true;
+            if (!nativeCandidates.empty()) return true;
             continue;
         }
-        if (nativeFound)
+        const auto record = cppAliasRecordType(selected->declaration.underlyingType);
+        if (!nativeCandidates.empty())
+        {
+            if (record && record->pointerDepth == 0 && !record->pointeeConst && nativeCandidates.size() == 1)
+            {
+                const auto* imported = cppImportedType(nativeCandidates.front());
+                if (imported && imported->projectOrdinal == selected->projectOrdinal &&
+                    imported->identity.fullyQualifiedName() == record->name) return true;
+            }
             return report(diagnostics::DiagnosticId::AmbiguousTypeName,
                           "C/C++ type alias conflicts with a native type '" + syntax->baseName() + "'");
+        }
+        if (record && selected->targetTriple == "x86_64-pc-windows-msvc")
+        {
+            const CppImportedTypeDeclaration* target = nullptr;
+            for (const auto& imported : cppImportedTypes_)
+                if (imported.projectOrdinal == selected->projectOrdinal &&
+                    imported.identity.fullyQualifiedName() == record->name)
+                {
+                    if (target) return report(diagnostics::DiagnosticId::AmbiguousTypeName,
+                                              "ambiguous imported record for alias '" + syntax->baseName() + "'");
+                    target = &imported;
+                }
+            if (!target || (record->pointeeConst && !syntax->modifiers().empty()) ||
+                (syntax->isPointeeConst() && record->pointerDepth != 0))
+                return report(diagnostics::DiagnosticId::InvalidUsingTarget,
+                              "C/C++ record alias cannot yet be resolved safely: '" + syntax->baseName() + "'");
+            auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
+            mutableSyntax->setBaseTokenKind(lexer::TokenKind::Identifier);
+            mutableSyntax->setBaseName(record->name);
+            mutableSyntax->setOriginProjectOrdinal(selected->projectOrdinal);
+            mutableSyntax->setOriginNamespace("");
+            mutableSyntax->prependModifiers(std::vector<ast::TypeModifierSyntax>(record->pointerDepth));
+            mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || record->pointeeConst);
+            return true;
+        }
         const auto mapped = cppAliasBuiltinType(selected->declaration.underlyingType);
         if (selected->targetTriple != "x86_64-pc-windows-msvc" || !mapped ||
             (mapped->pointeeConst && !syntax->modifiers().empty()) ||
