@@ -614,6 +614,11 @@ CppRecordBindingResult selectCppRecordBindings(
     {
         const auto imported = lookup.cppImportedTypeIndex(ordinal);
         if (!imported) continue;
+        if (*imported >= groupByImportedType.size())
+        {
+            const auto* type = lookup.cppImportedType(ordinal);
+            if (type && type->kind == frontend::NamedTypeDeclarationKind::Enum) continue;
+        }
         if (*imported >= groupByImportedType.size() || seen[*imported])
             return CppRecordBindingFailure{"invalid imported type mapping"};
         const auto groupIndex = groupByImportedType[*imported];
@@ -795,6 +800,17 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     std::vector<frontend::CppImportedTypeAlias> aliases;
     if (!provideCppTypeAliases(*graph, compilation.cppProjectSessions(), aliases, error))
         return CppRecordObservationFailure{std::move(error)};
+    std::vector<frontend::CppImportedTypeDeclaration> enums;
+    if (!provideCppEnumTypes(*graph, compilation.cppProjectSessions(), enums, error))
+        return CppRecordObservationFailure{std::move(error)};
+    for (auto& enumeration : enums)
+    {
+        const auto ordinal = nativeLookup.typeOrdinalForIdentity(enumeration.identity.key());
+        const auto* native = ordinal ? nativeLookup.typeForOrdinal(*ordinal) : nullptr;
+        const bool collidesWithRecord = std::any_of(filteredTypes.begin(), filteredTypes.end(),
+            [&](const auto& record) { return record.identity.key() == enumeration.identity.key(); });
+        if (!native && !collidesWithRecord) filteredTypes.push_back(std::move(enumeration));
+    }
     if (!lookup.setImportedNamespaces(std::move(std::get<std::vector<std::pair<std::size_t, std::string>>>(visible))) ||
         !lookup.setCppImportedTypes(std::move(filteredTypes)) ||
         !lookup.setCppImportedTypeAliases(std::move(aliases)))
