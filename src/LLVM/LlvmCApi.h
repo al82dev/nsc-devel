@@ -30,6 +30,7 @@ extern "C"
 {
 struct LLVMOpaqueContext;
 struct LLVMOpaqueModule;
+struct LLVMOpaqueMemoryBuffer;
 struct LLVMOpaqueType;
 struct LLVMOpaqueValue;
 struct LLVMOpaqueBasicBlock;
@@ -47,6 +48,7 @@ struct LLVMComdat;
 
 using LLVMContextRef = LLVMOpaqueContext*;
 using LLVMModuleRef = LLVMOpaqueModule*;
+using LLVMMemoryBufferRef = LLVMOpaqueMemoryBuffer*;
 using LLVMTypeRef = LLVMOpaqueType*;
 using LLVMValueRef = LLVMOpaqueValue*;
 using LLVMBasicBlockRef = LLVMOpaqueBasicBlock*;
@@ -140,6 +142,10 @@ void LLVMSetComdatSelectionKind(LLVMComdatRef comdat, LLVMComdatSelectionKind ki
 
 LLVMContextRef LLVMContextCreate();
 void LLVMContextDispose(LLVMContextRef context);
+LLVMMemoryBufferRef LLVMCreateMemoryBufferWithMemoryRangeCopy(
+    const char* inputData, std::size_t inputDataLength, const char* bufferName);
+LLVMBool LLVMParseIRInContext(
+    LLVMContextRef context, LLVMMemoryBufferRef buffer, LLVMModuleRef* module, char** message);
 LLVMModuleRef LLVMModuleCreateWithNameInContext(const char* moduleId, LLVMContextRef context);
 void LLVMDisposeModule(LLVMModuleRef module);
 void LLVMSetTarget(LLVMModuleRef module, const char* triple);
@@ -649,6 +655,9 @@ LLVMMetadataRef LLVMMDStringInContext2(
 LLVMValueRef LLVMMetadataAsValue(LLVMContextRef context, LLVMMetadataRef metadata);
 void LLVMSetFunctionCallConv(LLVMValueRef function, unsigned callingConvention);
 void LLVMSetLinkage(LLVMValueRef global, LLVMLinkage linkage);
+// llvm-c/Core.h LLVMDLLStorageClass, LLVM 23.
+enum LLVMDLLStorageClass { LLVMDefaultStorageClass = 0, LLVMDLLImportStorageClass = 1, LLVMDLLExportStorageClass = 2 };
+void LLVMSetDLLStorageClass(LLVMValueRef global, LLVMDLLStorageClass storageClass);
 LLVMValueRef LLVMGetParam(LLVMValueRef function, unsigned index);
 void LLVMSetValueName2(LLVMValueRef value, const char* name, std::size_t nameLength);
 const char* LLVMGetValueName2(LLVMValueRef value, std::size_t* nameLength);
