@@ -5152,6 +5152,40 @@ int main(int argc, char** argv)
                     ok &= expect(ready && selectedMood,
                                  "function demand selects its enum result without an explicit type use");
                 }
+                {
+                    nativesharp::frontend::ProjectCompilation callbackDependency;
+                    callbackDependency.setSourceBufferProvider([](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns")
+                            return "int Use(Visitor cb) { return 0; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    CppProjectSessions group;
+                    group.projectFile = std::filesystem::absolute(path);
+                    group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
+                        "enum Tone { Low = 1 }; struct Node { int value; }; "
+                        "typedef enum Tone (*Visitor)(struct Node*);\n")));
+                    std::vector<CppProjectSessions> groups;
+                    groups.push_back(std::move(group));
+                    std::string dependencyError;
+                    const bool ready = callbackDependency.setCppProjectSessions(std::move(groups), dependencyError) &&
+                        callbackDependency.setCppTypeAliasProvider(provideCppTypeAliases, dependencyError) &&
+                        callbackDependency.setExperimentalCppTypeProvider(provideCppInteropTypes, dependencyError) &&
+                        callbackDependency.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, dependencyError) &&
+                        callbackDependency.compileProjectNames(path, dependencyError);
+                    bool selectedTone = false, selectedNode = false;
+                    if (ready && callbackDependency.nameLookup())
+                        for (const auto& type : callbackDependency.nameLookup()->namedTypes())
+                        {
+                            selectedTone |= type.identity.name() == "Tone" &&
+                                type.kind == nativesharp::frontend::NamedTypeDeclarationKind::Enum;
+                            selectedNode |= type.identity.name() == "Node" &&
+                                type.kind == nativesharp::frontend::NamedTypeDeclarationKind::Struct;
+                        }
+                    if (!ready) std::cerr << "C callback typedef dependencies: " << dependencyError << '\n';
+                    ok &= expect(ready && selectedTone && selectedNode,
+                                 "callback typedef selects enum and record used only inside its signature");
+                }
                 for (bool useCollision : {false, true})
                 {
                     nativesharp::frontend::ProjectCompilation collisionCompilation;
