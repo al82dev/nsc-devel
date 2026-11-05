@@ -2257,7 +2257,7 @@ int main(int argc, char** argv)
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7]; typedef int Matrix[2][3];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
-                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; enum Color color_echo(enum Color value); struct Paint { enum Color shade; const enum Color* view; enum Color colors[2][3]; }; enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
+                                  "enum Color { CMinus = -3, CPlus = 5 }; typedef enum Color ColorAlias; enum Color color_echo(enum Color value); int apply_color(enum Color (*cb)(enum Color)); struct Paint { enum Color shade; const enum Color* view; enum Color colors[2][3]; }; enum { CAnonymous = 9 }; typedef enum { ModeA = 1 } Mode;\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
                                   "union CValue { int integer; float real; }; struct Flags { unsigned a:3; unsigned b:5; }; "
@@ -2893,6 +2893,18 @@ int main(int argc, char** argv)
                                  symbol->parameters.size() == 1 &&
                                  symbol->parameters[0].typeKey == symbol->declaredTypeKey,
                                  "C enum function preserves its imported type in parameter and result");
+                    const auto* applyColor = cFunctions ? functionByName(*cFunctions, "apply_color") : nullptr;
+                    const auto callbackProjection = applyColor && enumAliasCompilation.nameLookup()
+                        ? projectCppSemanticFunctionWithRecords(*applyColor, 0, "Semantic", noRecords,
+                                                               enumAliasCompilation.nameLookup())
+                        : CppSemanticFunctionResult{CppSemanticFunctionFailure{"fixture unavailable"}};
+                    const auto* callbackSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&callbackProjection);
+                    const auto callback = callbackSymbol && !callbackSymbol->parameters.empty()
+                        ? nativesharp::language::parseFunctionTypeIdentity(callbackSymbol->parameters[0].typeKey) : std::nullopt;
+                    ok &= expect(callback && callback->result == "type:" + enumIdentity.key() &&
+                                 callback->parameters.size() == 1 && callback->parameters[0] == callback->result &&
+                                 callback->callingConvention == nativesharp::language::CallingConvention::C,
+                                 "callback signature preserves the imported enum identity");
                     const auto* paint = cRecords ? recordByName(*cRecords, "Paint") : nullptr;
                     const auto shade = paint && enumAliasCompilation.nameLookup()
                         ? projectCppSemanticInstanceField(*paint, 0, 0, "Semantic", "x86_64-pc-windows-msvc",
