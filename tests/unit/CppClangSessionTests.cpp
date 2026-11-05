@@ -6746,5 +6746,23 @@ int main(int argc, char** argv)
         ok &= expect(secondSession->freeFunctionsSnapshot().has_value(),
                      "closing the first macro session leaves the second available");
     }
+
+    auto withWarning = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
+        "#warning session_warning_marker\nint warning_probe(void);\n"));
+    ok &= expect(static_cast<bool>(withWarning), "warning does not prevent opening a session");
+    if (withWarning)
+    {
+        const auto diagnostics = withWarning->diagnosticsSnapshot();
+        const auto warning = std::find_if(diagnostics.begin(), diagnostics.end(), [](const auto& d) {
+            return d.severity == CppSessionDiagnosticSeverity::Warning &&
+                   d.message.find("session_warning_marker") != std::string::npos;
+        });
+        ok &= expect(warning != diagnostics.end() && warning->location && warning->location->line == 1 &&
+                     warning->location->column > 0 && warning->originalId != 0,
+                     "warning preserves severity, identifier and source location");
+        withWarning->close();
+        ok &= expect(!diagnostics.empty() && diagnostics.front().message.find("session_warning_marker") != std::string::npos,
+                     "copied warning remains valid after session close");
+    }
     return ok ? 0 : 1;
 }
