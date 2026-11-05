@@ -108,7 +108,24 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
         std::reverse(identity.containingRecords.begin(), identity.containingRecords.end());
         result.recordIdentity = std::move(identity);
     }
-    else if (raw->isFunctionType()) result.kind = CppTypeKind::Function;
+    else if (const auto* function = raw->getAs<clang::FunctionType>())
+    {
+        result.kind = CppTypeKind::Function;
+        if (depth < 64)
+        {
+            auto signature = std::make_shared<CppFunctionType>();
+            signature->returnType = describeType(function->getReturnType(), context, depth + 1);
+            signature->callingConvention = clang::FunctionType::getNameForCallConv(function->getCallConv()).str();
+            if (const auto* prototype = llvm::dyn_cast<clang::FunctionProtoType>(function))
+            {
+                signature->hasPrototype = true;
+                signature->variadic = prototype->isVariadic();
+                for (const auto parameter : prototype->param_types())
+                    signature->parameterTypes.push_back(describeType(parameter, context, depth + 1));
+            }
+            result.function = std::move(signature);
+        }
+    }
 
     if (!element.isNull() && depth < 64)
         result.element = std::make_shared<CppType>(describeType(element, context, depth + 1));
