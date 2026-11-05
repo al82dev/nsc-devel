@@ -182,7 +182,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T07-011. Validar las opciones de importación antes de crear la sesión Clang. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-012. Conservar la procedencia de cada declaración importada. Alcance demostrado: categorías actualmente representadas en los inventarios; no cubre todo C++. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-013. Hacer disponibles los diagnósticos del header en la compilación NativeSharp. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
-- [x] T07-014. Registrar los archivos incluidos para detectar cambios en dependencias. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
+- [x] T07-014. Registrar los archivos incluidos para detectar cambios en dependencias. Se registran los archivos observados; el cierre completo de dependencias para caché sigue pendiente. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-015. Comprobar la carga de dos bibliotecas con configuraciones independientes. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 - [x] T07-016. Comprobar que cambiar un header invalida el resultado que dependa de él. Evidencia: [tanda 07](TANDA-07-REFERENCIAS.md).
 
