@@ -267,6 +267,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
         expression,
         binding.typeKey);
     node->namespaceStateOrdinal = stateOrdinal;
+    node->volatileAccess = state.isVolatile;
     node->memberOrdinal =
         (memberModel_ != nullptr ? memberModel_->members().size() : 0) + stateOrdinal;
     node->stringValue = state.storageName;
