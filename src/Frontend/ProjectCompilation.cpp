@@ -1416,6 +1416,27 @@ bool ProjectCompilation::compileProjectInheritance(
     {
         return false;
     }
+    if (experimentalCppLifetimeMethodProvider_ && !experimentalCppLifetimeAnalysisForTests_)
+    {
+        loadError = "C++ lifetime members are not yet supported beyond experimental member indexing";
+        return false;
+    }
+    if ((experimentalCppInstanceFieldProvider_ || experimentalCppStaticFieldProvider_) &&
+        !experimentalCppInstanceFieldLoweringForTests_ && memberModel_ &&
+        std::any_of(memberModel_->members().begin(), memberModel_->members().end(),
+                    [](const auto& member) { return member.isCppExternal && member.kind == ClassMemberKind::Field; }))
+    {
+        loadError = "C++ fields are not yet supported beyond experimental member indexing";
+        return false;
+    }
+    if ((experimentalCppInstanceMethodProvider_ || experimentalCppStaticMethodProvider_) &&
+        !experimentalCppInstanceMethodLoweringForTests_ && memberModel_ &&
+        std::any_of(memberModel_->members().begin(), memberModel_->members().end(),
+                    [](const auto& member) { return member.isCppExternal; }))
+    {
+        loadError = "C++ instance methods are not yet supported beyond experimental member indexing";
+        return false;
+    }
     if (cancellationRequested(loadError, "inheritance")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "inheritance");
