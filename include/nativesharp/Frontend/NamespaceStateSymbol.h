@@ -49,5 +49,13 @@ struct NamespaceStateSymbol final
     std::string stringValue;
     bool isConst = false;
     bool isPrecompiled = false;
+    bool isCppExternal = false;
+    bool cppDllImport = false;
+    bool isVolatile = false;
+    bool isCppReadonly = false;
+    bool cppPointerPointeeReadonly = false;
+    // Nonempty when a C/C++ declaration cannot yet be represented. Report only
+    // if semantic lookup selects it; locals and members may shadow the name.
+    std::string cppImportError;
 };
 }
