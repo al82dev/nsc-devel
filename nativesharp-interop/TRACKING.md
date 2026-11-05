@@ -139,7 +139,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [x] T05-008. Preservar la vida útil de la sesión cuando existan snapshots de `ProjectCompilation`. Evidencia: [tanda 05](TANDA-05-INTEGRACION.md).
 - [x] T05-009. Crear `CppDiagnosticAdapter.cpp` en la capa frontend, sin dependencia inversa del target interop. Evidencia: [tanda 05](TANDA-05-INTEGRACION.md).
 - [x] T05-010. Convertir las severidades de sesión a severidades de NSC. Evidencia: [tanda 05](TANDA-05-INTEGRACION.md).
-- [ ] T05-011. Convertir ubicaciones y notas de sesión a diagnósticos de NSC.
+- [x] T05-011. Convertir ubicaciones y notas de sesión a diagnósticos de NSC. Evidencia: [tanda 05](TANDA-05-INTEGRACION.md); la presentación en el servicio de lenguaje queda pendiente.
 - [x] T05-012. Conservar el comportamiento actual si no se solicita una sesión C/C++. Evidencia: [tanda 05](TANDA-05-INTEGRACION.md).
 - [x] T05-013. Informar un error claro si se solicita interop en una construcción que lo tiene desactivado. Evidencia: [tanda 05](TANDA-05-INTEGRACION.md).
 - [x] T05-014. Evitar crear una sesión por un fallo anterior que impida su uso. Evidencia: [tanda 05](TANDA-05-INTEGRACION.md).
