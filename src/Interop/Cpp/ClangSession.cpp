@@ -64,7 +64,16 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     clang::QualType element;
     if (raw->isVoidType()) result.kind = CppTypeKind::Void;
     else if (raw->isBooleanType()) result.kind = CppTypeKind::Boolean;
-    else if (raw->isEnumeralType()) result.kind = CppTypeKind::Enumeration;
+    else if (const auto* enumType = raw->getAs<clang::EnumType>())
+    {
+        result.kind = CppTypeKind::Enumeration;
+        const auto* declaration = enumType->getDecl();
+        if (const auto* definition = declaration->getDefinition()) declaration = definition;
+        result.enumIdentity = CppEnumTypeIdentity{declaration->getNameAsString(),
+            declaration->getQualifiedNameAsString(), declaration->getName().empty() || declaration->isInAnonymousNamespace()};
+        if (depth < 64 && !declaration->getIntegerType().isNull())
+            result.enumUnderlying = std::make_shared<CppType>(describeType(declaration->getIntegerType(), context, depth + 1));
+    }
     else if (raw->isSignedIntegerType()) result.kind = CppTypeKind::SignedInteger;
     else if (raw->isUnsignedIntegerType()) result.kind = CppTypeKind::UnsignedInteger;
     else if (raw->isRealFloatingType()) result.kind = CppTypeKind::Floating;

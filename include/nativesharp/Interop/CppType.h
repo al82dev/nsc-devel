@@ -24,6 +24,13 @@ struct CppRecordTypeIdentity
     bool specializationContext = false;
 };
 
+struct CppEnumTypeIdentity
+{
+    std::string name;
+    std::string qualifiedName;
+    bool anonymousContext = false;
+};
+
 // Sizes describe a C/C++ object type, not the ABI rules for passing or returning it.
 struct CppType
 {
@@ -37,6 +44,8 @@ struct CppType
     std::optional<std::uint64_t> alignmentBits;
     std::optional<std::uint64_t> arrayCount;
     std::optional<CppRecordTypeIdentity> recordIdentity;
+    std::optional<CppEnumTypeIdentity> enumIdentity;
+    std::shared_ptr<const CppType> enumUnderlying;
     std::shared_ptr<const CppType> element;
     // Present for a captured function type when the recursion limit permits it.
     std::shared_ptr<const CppFunctionType> function;
