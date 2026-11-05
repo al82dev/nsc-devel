@@ -166,6 +166,12 @@ private:
 class CountingSessionDiagnostics final : public clang::DiagnosticConsumer
 {
 public:
+    void HandleDiagnostic(clang::DiagnosticsEngine::Level level, const clang::Diagnostic& info) override
+    {
+        if (level == clang::DiagnosticsEngine::Error || level == clang::DiagnosticsEngine::Fatal)
+            ++errors;
+        clang::DiagnosticConsumer::HandleDiagnostic(level, info);
+    }
     void BeginSourceFile(const clang::LangOptions& options, const clang::Preprocessor* preprocessor) override
     {
         ++begins;
@@ -178,6 +184,7 @@ public:
     }
     unsigned begins = 0;
     unsigned ends = 0;
+    unsigned errors = 0;
 };
 
 const CppFunctionDeclaration* functionByName(const std::vector<CppFunctionDeclaration>& values,
@@ -338,11 +345,14 @@ int main(int argc, char** argv)
             "int rejected_probe;\n", arguments,
             (std::filesystem::path(argv[2]) / "rejected_probe.c").generic_string(), argv[3], &rejectedDiagnostics,
             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>(failingFilesystem.release()), {});
-        if (rejected || rejectedDiagnostics.begins != 0 || rejectedDiagnostics.ends != 0)
-            std::cerr << "rejected invocation ast=" << static_cast<bool>(rejected)
-                      << " begins=" << rejectedDiagnostics.begins << " ends=" << rejectedDiagnostics.ends << '\n';
-        ok &= expect(!rejected && rejectedDiagnostics.begins == 0 && rejectedDiagnostics.ends == 0,
-                     "failed driver invocation does not begin or end a source file");
+        (void)rejected;
+        ok &= expect(rejectedDiagnostics.errors > 0 && rejectedDiagnostics.begins == rejectedDiagnostics.ends,
+                     "driver errors are captured and source begin/end notifications remain balanced");
+        config.languageStandard = "not-a-real-c-standard";
+        const auto rejectedSession = factory.open(std::move(config), {});
+        const auto* failure = std::get_if<CppSessionOpenFailure>(&rejectedSession);
+        ok &= expect(failure && failure->phase == "parse" && !failure->diagnostics.empty(),
+                     "opening rejects Clang driver diagnostics even if an AST is produced");
     }
     {
         CppSessionOptions base;
