@@ -6714,5 +6714,37 @@ int main(int argc, char** argv)
                          "closed session cannot participate in structural comparison");
         }
     }
+    auto fromFileOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::C, "");
+    fromFileOptions.input = CppFileInput{"cpp-fixtures/probe.c"};
+    fromFileOptions.includePaths.push_back({"cpp-fixtures", CppIncludeKind::User});
+    fromFileOptions.macros.push_back({CppMacroAction::Define, "SESSION_FLAG=7"});
+    fromFileOptions.macros.push_back({CppMacroAction::Undefine, "SESSION_FLAG"});
+    fromFileOptions.macros.push_back({CppMacroAction::Define, "SESSION_FLAG=9"});
+    auto fromFile = open(factory, std::move(fromFileOptions));
+    ok &= expect(static_cast<bool>(fromFile), "file input, relative include and ordered macros work");
+    if (fromFile)
+        ok &= expect(fromFile->optionsSnapshot().macros.size() == 3, "session retains its options");
+
+    auto firstOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::C,
+        "#if SESSION_PICK == 1\nint first_session(void);\n#else\nint second_session(void);\n#endif\n");
+    auto secondOptions = firstOptions;
+    firstOptions.macros.push_back({CppMacroAction::Define, "SESSION_PICK=1"});
+    secondOptions.macros.push_back({CppMacroAction::Define, "SESSION_PICK=2"});
+    auto firstSession = open(factory, std::move(firstOptions));
+    auto secondSession = open(factory, std::move(secondOptions));
+    ok &= expect(firstSession && secondSession, "independent macro sessions open");
+    if (firstSession && secondSession)
+    {
+        const auto firstFunctions = firstSession->freeFunctionsSnapshot();
+        const auto secondFunctions = secondSession->freeFunctionsSnapshot();
+        ok &= expect(firstFunctions && secondFunctions && functionByName(*firstFunctions, "first_session") &&
+                     !functionByName(*firstFunctions, "second_session") &&
+                     functionByName(*secondFunctions, "second_session") &&
+                     !functionByName(*secondFunctions, "first_session"),
+                     "sessions independently apply macros while both ASTs remain alive");
+        firstSession->close();
+        ok &= expect(secondSession->freeFunctionsSnapshot().has_value(),
+                     "closing the first macro session leaves the second available");
+    }
     return ok ? 0 : 1;
 }
