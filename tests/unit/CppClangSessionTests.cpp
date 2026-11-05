@@ -2227,5 +2227,36 @@ int main(int argc, char** argv)
                          return value.qualifiedName == "Later";
                      }) == 1, "forward declaration resolves once to its definition");
     }
+    auto namespaceSession = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+        "namespace empty {} namespace reopened { namespace first {} } "
+        "namespace reopened { namespace second {} } inline namespace versioned {} "
+        "namespace { namespace hidden {} }\n"));
+    ok &= expect(static_cast<bool>(namespaceSession), "namespace fixture opens");
+    if (namespaceSession)
+    {
+        const auto namespaces = namespaceSession->namespacesSnapshot();
+        auto count = [&](std::string_view name) {
+            return namespaces ? std::count_if(namespaces->begin(), namespaces->end(), [&](const auto& value) {
+                return value.qualifiedName == name;
+            }) : 0;
+        };
+        bool inlineFound = false, anonymousFound = false, hiddenFound = false, allLocated = namespaces.has_value();
+        if (namespaces)
+            for (const auto& value : *namespaces)
+            {
+                inlineFound |= value.qualifiedName == "versioned" && value.isInline;
+                anonymousFound |= value.isAnonymous && !value.insideAnonymous;
+                hiddenFound |= !value.isAnonymous && value.insideAnonymous &&
+                    value.qualifiedName.find("hidden") != std::string::npos;
+                allLocated &= value.location.has_value();
+            }
+        ok &= expect(namespaces && count("empty") == 1 && count("reopened") == 1 &&
+                     count("reopened::first") == 1 && count("reopened::second") == 1 &&
+                     inlineFound && anonymousFound && hiddenFound && allLocated,
+                     "namespace snapshot keeps empty, reopened, nested, inline and anonymous declarations");
+        namespaceSession->close();
+        ok &= expect(!namespaceSession->namespacesSnapshot() && namespaces && count("reopened::second") == 1,
+                     "copied namespace declarations survive session closure");
+    }
     return ok ? 0 : 1;
 }
