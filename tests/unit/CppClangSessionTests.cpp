@@ -6254,6 +6254,288 @@ int main(int argc, char** argv)
             }
         }
         else ok &= expect(false, "Clang exposes the C++ pointer identity fixture");
+        if (functions)
+        {
+            std::vector<nativesharp::frontend::NamespaceFunctionSymbol> overloads;
+            for (const auto& function : *functions)
+                if (function.qualifiedName == "tools::qualify")
+                {
+                    auto converted = projectCppSemanticFunction(function, 0, "Semantic");
+                    if (auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&converted))
+                        overloads.push_back(std::move(*symbol));
+                }
+            for (const int scenario : {0, 1, 2})
+            {
+                nativesharp::frontend::ProjectCompilation compilation;
+                compilation.setSourceBufferProvider([scenario](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() != "Main.ns") return std::nullopt;
+                    if (scenario == 0) return "int Main() { int value = 1; return tools.qualify(&value); }\n";
+                    if (scenario == 1) return "int Main() { int value = 1; int const* p = &value; return tools.qualify(p); }\n";
+                    return "int Main() { return tools.qualify(null); }\n";
+                });
+                std::string error;
+                const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                const bool ready = overloads.size() == 2 && compilation.setCppImportedFunctions(overloads, error) &&
+                    compilation.compileProjectMethodBodies(path, error);
+                bool selected = false, ambiguous = false;
+                for (const auto& diagnostic : compilation.diagnostics().diagnostics())
+                    ambiguous |= diagnostic.message().find("ambiguous namespace function call") != std::string::npos;
+                if (ready && compilation.methodBodyModel() && compilation.namespaceFunctionModel())
+                    for (const auto& call : compilation.methodBodyModel()->namespaceFunctionCalls())
+                        if (call.writtenName == "tools.qualify" && call.selectedFunctionOrdinal &&
+                            *call.selectedFunctionOrdinal < compilation.namespaceFunctionModel()->functions().size())
+                            selected |= compilation.namespaceFunctionModel()->functions()[*call.selectedFunctionOrdinal]
+                                .parameters[0].pointerPointeeReadonly == (scenario == 1);
+                ok &= expect(scenario == 2 ? !ready && ambiguous : ready && selected,
+                             "C++ pointer overload chooses the proper qualifier and preserves null ambiguity");
+            }
+            nativesharp::frontend::ProjectCompilation executable;
+            executable.setSourceBufferProvider([](const std::filesystem::path& path)
+                -> std::optional<std::string> {
+                if (path.filename() == "Main.ns")
+                    return "int Main() { int value = 1; int const* p = &value; return tools.qualify(&value) * 10 + tools.qualify(p); }\n";
+                return std::nullopt;
+            });
+            std::string error;
+            const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+            const bool ready = overloads.size() == 2 && executable.setCppImportedFunctions(overloads, error) &&
+                executable.compileProjectOopMir(path, error);
+            if (!ready) std::cerr << "C++ const overload MIR failed: " << error << '\n';
+            ok &= expect(ready && executable.oopMirModel(), "both C++ pointer overload calls reach MIR");
+            if (ready && executable.oopMirModel() && executable.nameLookup())
+            {
+                nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                auto module = lowerer.lower(*executable.nameLookup(), *executable.oopMirModel());
+                std::string llvmError;
+                const bool valid = module && module->verify(llvmError);
+                auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(llvmError);
+                const bool emitted = valid && target && target->emit(*module,
+                    std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/cpp-const-overload-call.obj",
+                    nativesharp::llvm_backend::LlvmCodeGenFileType::Object, llvmError);
+                if (!emitted) std::cerr << "C++ const overload object failed: " << lowerer.error() << ' ' << llvmError << '\n';
+                ok &= expect(emitted, "both C++ pointer overload calls emit a verified object");
+            }
+        }
+        const auto* intBlend = functions ? functionByName(*functions, "tools::blend") : nullptr;
+        const auto longMap = widths ? mapCppScalarType(widths->returnType) : std::nullopt;
+        const auto intMap = intBlend ? mapCppScalarType(intBlend->parameters[0].type) : std::nullopt;
+        const auto wideMap = widths && !widths->parameters.empty()
+            ? mapCppScalarType(widths->parameters[0].type) : std::nullopt;
+        ok &= expect(longMap && intMap && wideMap && longMap->nativeSharpTypeKey == "builtin:int" &&
+                     intMap->nativeSharpTypeKey == "builtin:int" &&
+                     longMap->canonicalCppType != intMap->canonicalCppType &&
+                     wideMap->nativeSharpTypeKey == "builtin:long",
+                     "same-width C++ int and long retain distinct canonical identities");
+        ok &= expect(pointer && !mapCppScalarType(pointer->returnType),
+                     "scalar mapping does not misclassify pointers");
+        CppType unusualFloat;
+        unusualFloat.kind = CppTypeKind::Floating;
+        unusualFloat.canonicalSpelling = "long double";
+        unusualFloat.sizeBits = 64;
+        ok &= expect(!mapCppScalarType(unusualFloat),
+                     "equal width alone does not establish floating-point representation");
+        for (const auto& [name, key] : std::vector<std::pair<const char*, const char*>>{
+                 {"scalars::v", "builtin:void"}, {"scalars::b", "builtin:bool"},
+                 {"scalars::i8", "builtin:sbyte"}, {"scalars::u8", "builtin:byte"},
+                 {"scalars::i16", "builtin:short"}, {"scalars::u16", "builtin:ushort"},
+                 {"scalars::u32", "builtin:uint"}, {"scalars::u64", "builtin:ulong"},
+                 {"scalars::f32", "builtin:float"}, {"scalars::f64", "builtin:double"}})
+        {
+            const auto* function = functions ? functionByName(*functions, name) : nullptr;
+            const auto mapping = function ? mapCppScalarType(function->returnType) : std::nullopt;
+            if (!mapping || mapping->nativeSharpTypeKey != key)
+                std::cerr << "Unexpected scalar mapping for " << name << '\n';
+            ok &= expect(mapping && mapping->nativeSharpTypeKey == key,
+                         "Clang scalar representation maps to the matching NativeSharp key");
+        }
+        std::vector<std::string> symbols;
+        if (functions)
+            for (const auto& function : *functions)
+                if (function.qualifiedName == "tools::blend" && function.externalSymbol)
+                    symbols.push_back(*function.externalSymbol);
+        ok &= expect(symbols.size() == 2 && symbols[0] != symbols[1],
+                     "C++ overloads have distinct Clang symbols");
+        ok &= expect(std::find(symbols.begin(), symbols.end(), "?blend@tools@@YAHH@Z") != symbols.end() &&
+                     std::find(symbols.begin(), symbols.end(), "?blend@tools@@YANN@Z") != symbols.end(),
+                     "overload symbols match the Windows x64 Clang object fixture");
+        if (functions)
+        {
+            std::vector<nativesharp::frontend::NamespaceFunctionSymbol> projected;
+            for (const auto& function : *functions)
+            {
+                if (function.qualifiedName != "tools::blend" || !function.externalSymbol ||
+                    function.parameters.size() != 1) continue;
+                auto converted = projectCppSemanticFunction(function, 0, "Semantic");
+                auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&converted);
+                ok &= expect(symbol && symbol->namespaceName == "tools" &&
+                             symbol->mangledName == *function.externalSymbol,
+                             "C++ overload converts with namespace and Clang symbol");
+                if (symbol) projected.push_back(std::move(*symbol));
+            }
+            for (const auto* name : {"tools::local", "tools::pointer", "tools::handle"})
+            {
+                const auto* function = functionByName(*functions, name);
+                ok &= expect(function && std::holds_alternative<CppSemanticFunctionFailure>(
+                                 projectCppSemanticFunction(*function, 0, "Semantic")),
+                             "unsupported or internal C++ function is rejected explicitly");
+            }
+            nativesharp::frontend::ProjectCompilation compilation;
+            std::string error;
+            const auto projectPath = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+            {
+                nativesharp::frontend::ProjectCompilation cppBodies;
+                cppBodies.setSourceBufferProvider([](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns") return "int Main() { return tools.blend(1); }\n";
+                    return std::nullopt;
+                });
+                const bool ready = cppBodies.setCppImportedFunctions(projected, error) &&
+                    cppBodies.compileProjectMethodBodies(projectPath, error);
+                if (!ready)
+                    for (const auto& diagnostic : cppBodies.diagnostics().diagnostics())
+                        std::cerr << "C++ overload body diagnostic: " << diagnostic.message() << '\n';
+                ok &= expect(ready && !cppBodies.diagnostics().hasErrors(),
+                             "C++ overload call is analyzed as an external declaration");
+            }
+            {
+                nativesharp::frontend::ProjectCompilation hir;
+                hir.setSourceBufferProvider([](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns") return "int Main() { return tools.blend(1); }\n";
+                    return std::nullopt;
+                });
+                const bool ready = hir.setCppImportedFunctions(projected, error) &&
+                    hir.compileProjectOopHir(projectPath, error);
+                bool found = false;
+                if (ready && hir.oopHirModel())
+                    for (const auto& function : hir.oopHirModel()->functions())
+                        found |= function.isImportedC && function.mangledName == "?blend@tools@@YAHH@Z" &&
+                            function.cAbiName == "?blend@tools@@YAHH@Z";
+                if (!ready) std::cerr << "Clang C++ HIR setup failed: " << error << '\n';
+                ok &= expect(found, "Clang C++ mangled external symbol reaches HIR as a declaration");
+                nativesharp::frontend::ProjectCompilation mir;
+                mir.setSourceBufferProvider([](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns") return "int Main() { return tools.blend(1); }\n";
+                    return std::nullopt;
+                });
+                const bool mirReady = mir.setCppImportedFunctions(projected, error) &&
+                    mir.compileProjectOopMir(projectPath, error);
+                bool mirFound = false;
+                if (mirReady && mir.oopMirModel())
+                    for (const auto& function : mir.oopMirModel()->functions())
+                        mirFound |= function.isImportedC && function.mangledName == "?blend@tools@@YAHH@Z" &&
+                            function.cAbiName == "?blend@tools@@YAHH@Z";
+                if (!mirReady) std::cerr << "Clang C++ MIR setup failed: " << error << '\n';
+                ok &= expect(mirFound, "Clang C++ mangled external symbol reaches MIR as a declaration");
+                if (mirFound && mir.nameLookup())
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*mir.nameLookup(), *mir.oopMirModel());
+                    std::string verifyError;
+                    const bool valid = module && module->verify(verifyError);
+                    const std::string ir = module ? module->text() : std::string{};
+                    if (!valid) std::cerr << "Clang C++ LLVM failed: " << lowerer.error() << ' ' << verifyError << '\n';
+                    ok &= expect(valid && ir.find("declare i32 @\"?blend@tools@@YAHH@Z\"(i32)") != std::string::npos &&
+                                 ir.find("call i32 @\"?blend@tools@@YAHH@Z\"(") != std::string::npos,
+                                 "Clang C++ external declaration and call reach verified LLVM");
+                    auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(verifyError);
+                    const bool emitted = valid && target && target->emit(*module,
+                        std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/cpp-call.obj",
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object, verifyError);
+                    if (!emitted) std::cerr << "Clang C++ object failed: " << verifyError << '\n';
+                    ok &= expect(emitted, "Clang C++ call emits a Windows x64 object");
+                }
+            }
+            {
+                nativesharp::frontend::ProjectCompilation valueCompilation;
+                valueCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns")
+                        return "delegate int Transform(int value); int Main() { Transform t = tools.blend; return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool ready = valueCompilation.setCppImportedFunctions(projected, error) &&
+                    valueCompilation.compileProjectMembers(projectPath, error);
+                nativesharp::frontend::ProjectNamespaceFunctionModel observer;
+                const bool observed = ready && observer.setCaptureCppFunctionDemands(true) &&
+                    observer.setCppImportedFunctions(projected, error) &&
+                    observer.build(*valueCompilation.nameLookup(), *valueCompilation.memberModel(),
+                        valueCompilation.units(), valueCompilation.diagnostics(), valueCompilation.genericModel());
+                bool valueDemand = false;
+                if (observed)
+                    for (const auto& demand : observer.cppFunctionDemands())
+                        valueDemand |= !demand.directCall && demand.writtenName == "tools.blend" && demand.syntax &&
+                            demand.lookupName == "blend" && demand.lookupNamespaces.size() == 1 &&
+                            demand.lookupNamespaces[0] == "tools";
+                ok &= expect(valueDemand, "demand capture distinguishes a function value from a direct call");
+            }
+            {
+                nativesharp::frontend::ProjectCompilation valueProviderCompilation;
+                valueProviderCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns")
+                        return "delegate int Transform(int value); int Main() { Transform t = tools.blend; return 0; }\n";
+                    return std::nullopt;
+                });
+                bool sawValue = false;
+                const bool configured = valueProviderCompilation.setCppFunctionProvider(
+                    [&sawValue, &projected](const auto&, auto, auto, auto demands, auto& output, auto&, auto&) {
+                        for (const auto& demand : demands)
+                            sawValue |= !demand.directCall && demand.writtenName == "tools.blend" &&
+                                demand.projectOrdinal == 0 && demand.syntax;
+                        output = projected;
+                        return true;
+                    }, error);
+                const bool ready = configured && valueProviderCompilation.compileProjectMembers(projectPath, error);
+                ok &= expect(ready && sawValue, "provider receives function-value demands before binding");
+            }
+            for (const auto& [source, expected] : std::vector<std::pair<std::string, std::string>>{
+                     {"using tools; int Main() { return blend(1); }\n", "blend"},
+                     {"using T = tools; int Main() { return T.blend(1); }\n", "T.blend"}})
+            {
+                nativesharp::frontend::ProjectCompilation usingCompilation;
+                usingCompilation.setSourceBufferProvider([source](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() == "Main.ns") return source;
+                    return std::nullopt;
+                });
+                const bool configured = usingCompilation.setCppImportedFunctions(projected, error);
+                const bool usingReady = configured && usingCompilation.compileProjectMembers(projectPath, error);
+                bool bound = false;
+                if (usingReady && usingCompilation.namespaceFunctionModel())
+                    for (const auto& binding : usingCompilation.namespaceFunctionModel()->referenceBindings())
+                        if (binding.writtenName == expected && binding.candidateFunctionOrdinals.size() == 2)
+                            bound = true;
+                ok &= expect(bound, "NativeSharp using directive resolves an imported C++ namespace");
+                if (usingReady && usingCompilation.nameLookup() && usingCompilation.memberModel())
+                {
+                    nativesharp::frontend::ProjectNamespaceFunctionModel observer;
+                    const bool observed = observer.setCaptureCppFunctionDemands(true) &&
+                        observer.setCppImportedFunctions(projected, error) &&
+                        observer.build(*usingCompilation.nameLookup(), *usingCompilation.memberModel(),
+                            usingCompilation.units(), usingCompilation.diagnostics(), usingCompilation.genericModel());
+                    bool demandFound = false;
+                    if (observed)
+                        for (const auto& demand : observer.cppFunctionDemands())
+                            if (demand.directCall && demand.projectOrdinal == 0 && demand.syntax &&
+                                demand.writtenName == expected && demand.lexicalNamespace.empty())
+                            {
+                                if (expected == "blend")
+                                    demandFound = std::find(demand.importedNamespaces.begin(),
+                                        demand.importedNamespaces.end(), "tools") != demand.importedNamespaces.end();
+                                else
+                                {
+                                    const auto alias = demand.aliases.find("T");
+                                    demandFound = alias != demand.aliases.end() && alias->second == "tools";
+                                }
+                            }
+                    ok &= expect(demandFound && !observer.setCaptureCppFunctionDemands(false) &&
+                                 usingCompilation.namespaceFunctionModel()->cppFunctionDemands().empty(),
+                                 "optional demand capture preserves using and alias context without changing defaults");
+                }
+            }
     }
     return ok ? 0 : 1;
 }
