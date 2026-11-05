@@ -503,8 +503,10 @@ bool configurePrecompiledModules(
                 }, error))
             return false;
         if (hasSessions && !compilation.setCppGlobalProvider(
-                [](const auto& graph, auto projects, auto demands, auto& states, auto& providerError) {
-                    return interop::provideCppSemanticValues(graph, projects, demands, states, providerError);
+                [&compilation](const auto& graph, auto projects, auto demands, auto& states, auto& providerError) {
+                    const auto* lookup = compilation.nameLookup();
+                    if (!lookup) { providerError = "C/C++ name lookup is unavailable"; return false; }
+                    return interop::provideCppSemanticValuesWithLookup(graph, projects, *lookup, demands, states, providerError);
                 }, error))
             return false;
     }

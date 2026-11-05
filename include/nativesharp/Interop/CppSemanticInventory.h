@@ -20,6 +20,7 @@ struct CppFunctionDemand;
 struct CppImportedTypeAlias;
 struct CppImportedTypeDeclaration;
 struct NamespaceStateSymbol;
+class ProjectNameLookup;
 }
 
 namespace nativesharp::interop
@@ -179,5 +180,9 @@ bool provideCppSemanticGlobals(
 bool provideCppSemanticValues(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error);
+bool provideCppSemanticValuesWithLookup(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    const frontend::ProjectNameLookup& lookup, std::span<const frontend::CppFunctionDemand> demands,
     std::vector<frontend::NamespaceStateSymbol>& states, std::string& error);
 }

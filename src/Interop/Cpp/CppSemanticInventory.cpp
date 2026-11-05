@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppSemanticInventory.h"
+#include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "nativesharp/Frontend/CppImportedTypeAlias.h"
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
@@ -20,9 +21,15 @@ namespace nativesharp::interop
 {
 namespace
 {
-std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type)
+std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size_t projectOrdinal,
+    std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
 {
-    if (type.kind != CppTypeKind::Pointer) return mapCppScalarType(type);
+    if (type.kind != CppTypeKind::Pointer)
+    {
+        if (type.kind == CppTypeKind::Enumeration)
+            return projectCppSemanticEnumType(type, projectOrdinal, moduleName, lookup);
+        return mapCppScalarType(type);
+    }
     const CppType* current = &type;
     std::size_t depth = 0;
     while (current->kind == CppTypeKind::Pointer)
@@ -34,15 +41,18 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type)
             (depth != 0 || current->kind == CppTypeKind::Pointer))) return std::nullopt;
         ++depth;
     }
-    const auto element = mapCppScalarType(*current);
+    const auto element = current->kind == CppTypeKind::Enumeration
+        ? projectCppSemanticEnumType(*current, projectOrdinal, moduleName, lookup)
+        : mapCppScalarType(*current);
     if (!element) return std::nullopt;
     return CppScalarTypeMapping{element->nativeSharpTypeKey + std::string(depth, '*'),
                                 type.canonicalSpelling, type.isConst, type.isVolatile};
 }
 }
 
-CppSemanticGlobalResult projectCppSemanticGlobal(
-    const CppGlobalDeclaration& global, std::size_t projectOrdinal, std::string_view moduleName)
+static CppSemanticGlobalResult projectGlobalWithLookup(
+    const CppGlobalDeclaration& global, std::size_t projectOrdinal, std::string_view moduleName,
+    const frontend::ProjectNameLookup* lookup)
 {
     auto failure = [](std::string reason) -> CppSemanticGlobalResult {
         return CppSemanticGlobalFailure{std::move(reason)};
@@ -51,7 +61,7 @@ CppSemanticGlobalResult projectCppSemanticGlobal(
         !global.externalLinkage || !global.externalSymbol || global.externalSymbol->empty())
         return failure("global requires an external symbol and a project owner");
     if (global.threadLocal) return failure("thread-local C/C++ global is not yet projected");
-    const auto type = mapGlobalType(global.type);
+    const auto type = mapGlobalType(global.type, projectOrdinal, moduleName, lookup);
     if (!type || global.type.kind == CppTypeKind::Void)
         return failure("C/C++ global type is not yet mapped");
     std::string cppNamespace;
@@ -72,6 +82,12 @@ CppSemanticGlobalResult projectCppSemanticGlobal(
                              *global.externalSymbol, global.type.isVolatile, global.type.isConst,
                              global.type.kind == CppTypeKind::Pointer && global.type.element &&
                                  global.type.element->isConst, global.dllImport};
+}
+
+CppSemanticGlobalResult projectCppSemanticGlobal(
+    const CppGlobalDeclaration& global, std::size_t projectOrdinal, std::string_view moduleName)
+{
+    return projectGlobalWithLookup(global, projectOrdinal, moduleName, nullptr);
 }
 
 CppSemanticGlobalInventoryResult collectCppSemanticGlobals(
@@ -160,10 +176,11 @@ CppSemanticGlobalSelection selectCppSemanticGlobal(
     return result;
 }
 
-bool provideCppSemanticGlobals(
+static bool provideGlobalsWithLookup(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     std::span<const frontend::CppFunctionDemand> demands,
-    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error)
+    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error,
+    const frontend::ProjectNameLookup* lookup)
 {
     auto inventory = collectCppSemanticGlobals(graph, projects);
     if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&inventory))
@@ -172,7 +189,11 @@ bool provideCppSemanticGlobals(
             "', reference " + std::to_string(failure->referenceIndex) + ": " + failure->message;
         return false;
     }
-    const auto& entries = std::get<std::vector<CppSemanticGlobalEntry>>(inventory);
+    auto& entries = std::get<std::vector<CppSemanticGlobalEntry>>(inventory);
+    if (lookup)
+        for (auto& entry : entries)
+            entry.projection = projectGlobalWithLookup(entry.declaration, entry.projectOrdinal,
+                graph.projects()[entry.projectOrdinal].moduleName(), lookup);
     std::set<std::pair<std::size_t, std::string_view>> availableNames;
     for (const auto& entry : entries)
         if (entry.declaration.externalLinkage)
@@ -222,6 +243,14 @@ bool provideCppSemanticGlobals(
     states = std::move(result);
     error.clear();
     return true;
+}
+
+bool provideCppSemanticGlobals(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error)
+{
+    return provideGlobalsWithLookup(graph, projects, demands, states, error, nullptr);
 }
 
 bool provideCppInteropTypes(const compilation::ProjectGraph& graph,
@@ -333,14 +362,15 @@ CppSemanticEnumConstantResult projectCppEnumConstant(
     return CppSemanticEnumConstant{entry.projectOrdinal, value.name, mapped->nativeSharpTypeKey, bits};
 }
 
-bool provideCppSemanticValues(
+static bool provideValuesWithLookup(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     std::span<const frontend::CppFunctionDemand> demands,
-    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error)
+    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error,
+    const frontend::ProjectNameLookup* lookup)
 {
     std::vector<frontend::NamespaceStateSymbol> globals;
     std::vector<frontend::NamespaceStateSymbol> enumerators;
-    if (!provideCppSemanticGlobals(graph, projects, demands, globals, error) ||
+    if (!provideGlobalsWithLookup(graph, projects, demands, globals, error, lookup) ||
         !provideCppSemanticEnumConstants(graph, projects, demands, enumerators, error)) return false;
     using Key = std::tuple<std::size_t, std::string, std::string>;
     std::map<Key, std::size_t> index;
@@ -366,6 +396,22 @@ bool provideCppSemanticValues(
     states = std::move(globals);
     error.clear();
     return true;
+}
+
+bool provideCppSemanticValues(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error)
+{
+    return provideValuesWithLookup(graph, projects, demands, states, error, nullptr);
+}
+
+bool provideCppSemanticValuesWithLookup(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    const frontend::ProjectNameLookup& lookup, std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceStateSymbol>& states, std::string& error)
+{
+    return provideValuesWithLookup(graph, projects, demands, states, error, &lookup);
 }
 
 bool provideCppSemanticEnumConstants(
