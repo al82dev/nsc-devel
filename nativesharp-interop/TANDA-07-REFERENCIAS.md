@@ -1,6 +1,6 @@
 # Tanda 07: referencias y dependencias C/C++
 
-Estado: análisis e implementación agrupados en curso; no se da la tanda por cerrada.
+Estado: validación agrupada aprobada; registro de ítems en curso.
 
 - `ProjectLoader.cpp::parseCppLibraryReferenceItem` admite `Header`, `Language`
   (`C` o `C++`), `Standard` y opcionalmente `Library` y `Runtime`. Los hijos
@@ -61,3 +61,7 @@ agrupada de la tanda. No habilitar la caché sin identidad de dependencias compl
   el original se escribió en binario y el reemplazo en modo texto de Windows.
   Se corrigió el reemplazo para escribirlo en binario y se está repitiendo la
   suite. La prueba de versión incompatible sí pasó en esa ejecución.
+- Se recompiló incrementalmente la suite corregida y se repitió CTest: las dos
+  pruebas pasaron. El caso de header transitivo verifica un cambio de digest y
+  declaraciones con igual tamaño; los escenarios por consola de reanálisis y
+  dos bibliotecas también terminaron con código 0 en esta validación.
