@@ -271,6 +271,13 @@ Falta comprobar que la observación seleccione dependencias de tipos nombradas
 únicamente dentro del typedef, además de callbacks anidados y llamadas reales.
 El paso de records por valor mantiene pendiente su verificación ABI.
 
+Se preparó la expansión de callbacks anidados y una prueba de su firma, así
+como una prueba de selección de enum y record usados solo dentro de un typedef
+de callback. También se preparó la expansión de typedefs de arreglos fijos de
+enums o records y una prueba de matriz de enum. Ninguno se ha construido ni
+ejecutado; faltan el caso equivalente de record y las pruebas agrupadas de
+selección, acceso, layout y ejecución.
+
 El proyecto `pruebas-tanda-08-enum-funcion` y su script preparan una prueba
 de extremo a extremo: un valor enum negativo se devuelve desde C y se vuelve
 a pasar a otra función C desde NativeSharp. Debe devolver cero; aún no se ha
