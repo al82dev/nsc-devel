@@ -70,6 +70,19 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && !record.isCxx)
         mapped = projectCppSemanticEnumType(field.type, projectOrdinal, moduleName, lookup);
+    if (!mapped && !record.isCxx && lookup && field.type.kind == CppTypeKind::Record && !field.type.isVolatile)
+    {
+        const auto target = projectCppRecordTypeIdentity(field.type, moduleName);
+        const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
+        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+        if (target && imported && imported->projectOrdinal == projectOrdinal && imported->objectLayout &&
+            !imported->isIncomplete && field.type.sizeBits && *field.type.sizeBits % 8 == 0 &&
+            *field.type.sizeBits / 8 == imported->objectLayout->sizeBytes && field.type.alignmentBits &&
+            *field.type.alignmentBits % 8 == 0 &&
+            *field.type.alignmentBits / 8 == imported->objectLayout->alignmentBytes)
+            mapped = CppScalarTypeMapping{"type:" + target->key(), field.type.canonicalSpelling,
+                                          field.type.isConst, false};
+    }
     bool pointeeReadonly = false;
     if (field.type.kind == CppTypeKind::Pointer && field.type.sizeBits == 64 &&
         field.type.element && !field.type.element->isVolatile)
