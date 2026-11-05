@@ -272,5 +272,54 @@ int main(int argc, char** argv)
                          full.prunedMetadata(0)->cppBinaryDependencies == model->cppBinaryDependencies,
                      "full precompiled surface keeps the original C++ binary dependencies");
     }
+    {
+        namespace fs = std::filesystem;
+        const fs::path root = fs::absolute(fs::path(argv[2]) / "cpp-fixtures" / "source-files");
+        std::error_code ec;
+        fs::create_directories(root, ec);
+        const auto mainHeader = root / "root.h";
+        const auto nestedHeader = root / "nested.h";
+        const auto skippedHeader = root / "skipped.h";
+        { std::ofstream file(mainHeader); file << "#include \"nested.h\"\n#if 0\n#include \"skipped.h\"\n#endif\n"; }
+        { std::ofstream file(nestedHeader, std::ios::binary); file << "struct NestedDependency {};\n"; }
+        { std::ofstream file(skippedHeader); file << "struct SkippedDependency {};\n"; }
+        auto config = options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp, "");
+        config.input = CppFileInput{mainHeader};
+        auto session = open(factory, std::move(config));
+        ok &= expect(!ec && static_cast<bool>(session), "file-dependency fixture opens");
+        if (session)
+        {
+            auto files = session->sourceFilesSnapshot();
+            auto contents = session->sourceFileContentsSnapshot();
+            const auto contains = [&](const fs::path& path) {
+                return files && std::find(files->begin(), files->end(), path.lexically_normal()) != files->end();
+            };
+            ok &= expect(files && contains(mainHeader) && contains(nestedHeader) && !contains(skippedHeader) &&
+                             std::is_sorted(files->begin(), files->end()) &&
+                             std::adjacent_find(files->begin(), files->end()) == files->end(),
+                         "Clang source-file snapshot includes observed transitive headers only once");
+            const auto expectedNested = nativesharp::basic::sha256(std::span<const std::uint8_t>(
+                reinterpret_cast<const std::uint8_t*>("struct NestedDependency {};\n"), 28));
+            const auto nested = contents ? std::find_if(contents->begin(), contents->end(), [&](const auto& item) {
+                return item.path == nestedHeader.lexically_normal();
+            }) : std::vector<CppSourceFileContent>::const_iterator{};
+            nativesharp::basic::Sha256Digest rootDigest{};
+            std::uintmax_t rootSize = 0;
+            std::string rootError;
+            const bool rootHashed = nativesharp::basic::sha256File(mainHeader, rootDigest, rootSize, rootError);
+            const auto rootEntry = contents ? std::find_if(contents->begin(), contents->end(), [&](const auto& item) {
+                return item.path == mainHeader.lexically_normal();
+            }) : std::vector<CppSourceFileContent>::const_iterator{};
+            ok &= expect(rootHashed && contents && rootEntry != contents->end() &&
+                             rootEntry->size == rootSize && rootEntry->digest == rootDigest,
+                         "Clang source-file content snapshot hashes the physical root header");
+            ok &= expect(contents && nested != contents->end() && nested->size == 28 && nested->digest == expectedNested,
+                         "Clang source-file content snapshot hashes the observed transitive header");
+            session->close();
+            ok &= expect(!session->sourceFilesSnapshot() && !session->sourceFileContentsSnapshot() &&
+                             contains(nestedHeader) && contents && nested != contents->end() && nested->digest == expectedNested,
+                         "copied source-file snapshot survives session closure");
+        }
+    }
     return ok ? 0 : 1;
 }
