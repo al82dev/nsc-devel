@@ -35,6 +35,8 @@ struct ProjectOopMirStaticField final
     bool isVolatile = false;
     bool isConst = false;
     bool isImported = false;
+    bool isCppExternal = false;
+    bool cppDllImport = false;
     std::string genericSpecializationKey;
     // Mutable static storage remains owned by the producer. Consumers call the stable accessor
     // carried in NSMETA instead of defining a second global with a compilation-local ordinal.
