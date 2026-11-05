@@ -1,4 +1,5 @@
 #include "Internal/DriverInternal.h"
+#include "nativesharp/Interop/CppBinaryDependencies.h"
 #include "../Frontend/Internal/IndexShadowCheckSwitch.h"
 #include "../Frontend/Internal/IndexShadowMismatch.h"
 
@@ -9,6 +10,61 @@ namespace nativesharp::driver
 using target::BuiltinLayoutKind;
 
 bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesystem::path &right);
+
+bool validateCppImportRuntimes(
+    std::span<const std::pair<std::filesystem::path, std::filesystem::path>> references, std::string &error)
+{
+    using Reference = std::pair<std::filesystem::path, std::filesystem::path>;
+    std::unordered_map<std::string, std::vector<Reference>> groups;
+    for (const auto &[library, runtime] : references)
+        if (!runtime.empty()) groups[foldedPathKey(library)].emplace_back(library, runtime);
+    for (const auto &[key, group] : groups)
+    {
+        (void)key;
+        const auto &library = group.front().first;
+        linker::CoffArchiveVerifier verifier;
+        std::vector<std::string> names;
+        if (!verifier.readImportDllNames(library, names))
+        {
+            error = "cannot inspect C/C++ import library '" + library.string() + "': " + verifier.error();
+            return false;
+        }
+        if (names.empty())
+        {
+            error = "cannot establish Runtime identity from C/C++ import library '" + library.string() +
+                    "': no supported import entries";
+            return false;
+        }
+        std::unordered_set<std::string> expected;
+        std::unordered_set<std::string> imported;
+        for (const auto &[unused, runtime] : group)
+        {
+            (void)unused;
+            expected.insert(foldedName(runtime.filename().string()));
+        }
+        for (const auto &name : names)
+        {
+            const auto folded = foldedName(name);
+            imported.insert(folded);
+            if (expected.contains(folded)) continue;
+            if (expected.size() == 1)
+                error = "C/C++ import library '" + library.string() + "' names DLL '" + name +
+                        "' but Runtime is '" + group.front().second.filename().string() + "'";
+            else
+                error = "C/C++ import library '" + library.string() + "' requires undeclared DLL '" + name + "'";
+            return false;
+        }
+        for (const auto &[unused, runtime] : group)
+        {
+            (void)unused;
+            if (imported.contains(foldedName(runtime.filename().string()))) continue;
+            error = "C/C++ import library '" + library.string() + "' does not name declared Runtime '" +
+                    runtime.filename().string() + "'";
+            return false;
+        }
+    }
+    return true;
+}
 
 void appendExternalImport(std::vector<linker::ExternalImportModule> &modules, const std::string &dllName,
                           const std::string &symbol)
@@ -252,12 +308,24 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
             {metadata->moduleName, runtimeName, exportRecord.returnTypeKey, exportRecord.parameterTypeKeys});
     if (!validateLibraryReferenceRuntime(reference, *metadata, nativeSymbols, runtimeNames, runtimeByModule, error))
         return false;
+    std::vector<interop::ResolvedCppBinaryDependency> cppDependencies;
+    if (!metadata->cppBinaryDependencies.empty() &&
+        !interop::resolveCppBinaryMetadataDependencies(metadata->cppBinaryDependencies,
+            reference.metadataPath.parent_path(), cppDependencies, error))
+        return false;
+    std::vector<std::pair<std::filesystem::path, std::filesystem::path>> cppRuntimeReferences;
+    for (const auto &dependency : cppDependencies)
+        cppRuntimeReferences.emplace_back(dependency.libraryPath, dependency.runtimePath);
+    if (!validateCppImportRuntimes(cppRuntimeReferences, error)) return false;
     validatedReferences.insert(libraryKey);
     if (!linkedLibraries.contains(libraryKey))
     {
         linkedLibraries.insert(libraryKey);
         libraries.push_back(reference.libraryPath);
     }
+    // Keep the producer's linker order and repetitions; a static archive does not contain these inputs.
+    for (const auto &dependency : cppDependencies)
+        libraries.push_back(dependency.libraryPath);
     return true;
 }
 
@@ -290,6 +358,15 @@ bool validateProjectLibraryReferences(
                                           runtimeByModule, moduleOwners, publishedExports, publishedNativeMethods,
                                           libraries, inheritedImportBuilder, error))
                 return false;
+    std::vector<std::pair<std::filesystem::path, std::filesystem::path>> cppRuntimeReferences;
+    for (const compilation::Project &project : compilation.projectGraph()->projects())
+        for (const compilation::CppLibraryReference &reference : project.cppLibraryReferences())
+        {
+            cppRuntimeReferences.emplace_back(reference.libraryPath, reference.runtimePath);
+            if (!reference.libraryPath.empty() && linkedLibraries.insert(foldedPathKey(reference.libraryPath)).second)
+                libraries.push_back(reference.libraryPath);
+        }
+    if (!validateCppImportRuntimes(cppRuntimeReferences, error)) return false;
     return true;
 }
 
@@ -340,6 +417,7 @@ bool validateImportedFunctionRuntime(
     std::unordered_set<std::string> &selectedRuntimePaths, std::vector<std::filesystem::path> &runtimeLibraries,
     std::string &error)
 {
+    if (function.isCppExternal) return true;
     if (function.isImportedNative)
     {
         if (!referencedCallees.contains(function.mangledName))
