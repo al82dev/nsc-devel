@@ -188,7 +188,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 ## 08. Declaraciones, nombres y tipos C
 
-- [ ] T08-001. Auditar la representación y búsqueda de nombres actual de NSC.
+- [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
 - [ ] T08-004. Importar declaraciones de variables globales C.
