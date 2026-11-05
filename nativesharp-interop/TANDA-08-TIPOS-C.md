@@ -167,6 +167,14 @@ utiliza. Se prepararon casos de colisión usada y no usada. Falta verificar
 aliases, ámbitos, diagnósticos de uso real y la ejecución agrupada; la prueba
 todavía no se ha ejecutado.
 
+### Records incompletos y comparación de miembros, sin validar
+
+El candidato importado distingue declaraciones sin definición de layouts aún
+no admitidos; el diagnóstico de layout explica la incompletitud. Se preparó una
+aserción de inventario. También se amplió la comparación de miembros repetidos
+para conservar firmas de función e identidad y base de enum. Falta probar el
+diagnóstico desde un proyecto y ejecutar la batería agrupada.
+
 ### Enum C anónimo con typedef, sin validar
 
 La captura usa el nombre de typedef asociado por Clang como identidad del enum
