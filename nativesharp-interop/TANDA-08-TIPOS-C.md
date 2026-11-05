@@ -121,6 +121,10 @@ variadicidad; rechaza los casos cuyo const del apuntado se perdería. Hay una
 prueba de identidad preparada, pero faltan callbacks ejecutables, firmas
 compuestas y la validación agrupada.
 
+El proyecto `pruebas-tanda-08-callback` y su script preparan el recorrido de
+una lambda sin capturas a través de un typedef y una función C. Todavía no se
+ha comprobado que el frontend acepte esa asignación ni que la llamada funcione.
+
 ### Conexión inicial al controlador, sin validar
 
 El controlador instala el proveedor de typedef para grafos con sesiones C/C++
