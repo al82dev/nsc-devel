@@ -163,5 +163,32 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     return result;
 }
 
+void collectNamespaces(const clang::DeclContext& context, clang::ASTContext& astContext,
+                       bool insideAnonymous, std::set<const clang::NamespaceDecl*>& seen,
+                       std::vector<CppNamespaceDeclaration>& result)
+{
+    for (const clang::Decl* declaration : context.decls())
+    {
+        const auto* item = llvm::dyn_cast<clang::NamespaceDecl>(declaration);
+        if (!item) continue;
+        const bool anonymous = item->isAnonymousNamespace();
+        if (seen.insert(item->getCanonicalDecl()).second)
+        {
+            CppNamespaceDeclaration value;
+            value.qualifiedName = item->getQualifiedNameAsString();
+            value.isInline = item->isInline();
+            value.isAnonymous = anonymous;
+            value.insideAnonymous = insideAnonymous;
+            const auto location = astContext.getSourceManager().getPresumedLoc(item->getLocation());
+            if (location.isValid())
+                value.location = CppSourcePoint{
+                    pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+            result.push_back(std::move(value));
+        }
+        // Every reopening may introduce different children, even when the namespace is canonicalized.
+        collectNamespaces(*item, astContext, insideAnonymous || anonymous, seen, result);
+    }
+}
+
 }
 }
