@@ -211,5 +211,38 @@ int main(int argc, char** argv)
         ok &= expect(cppSessionConfigurationIdentity(file) != cppSessionConfigurationIdentity(otherFile),
                      "session configuration identity distinguishes file input paths");
     }
+    {
+        namespace fs = std::filesystem;
+        const auto root = fs::absolute(fs::path(argv[2]) / "cpp-fixtures" / "no-replace-transaction");
+        std::error_code ec;
+        fs::create_directories(root, ec);
+        const auto primary = root / "primary.txt";
+        const auto protectedPath = root / "protected.dll";
+        const auto stagePrimary = root / "primary.stage";
+        const auto stageProtected = root / "protected.stage";
+        { std::ofstream file(primary, std::ios::binary); file << "original"; }
+        { std::ofstream file(stagePrimary, std::ios::binary); file << "replacement"; }
+        { std::ofstream file(stageProtected, std::ios::binary); file << "new-runtime"; }
+        fs::remove(protectedPath, ec);
+        nativesharp::basic::ArtifactTransaction transaction;
+        std::string error;
+        const bool staged = !ec && transaction.addStaged(primary, stagePrimary, error) &&
+            transaction.addStagedNoReplace(protectedPath, stageProtected, error);
+        { std::ofstream file(protectedPath, std::ios::binary); file << "concurrent"; }
+        const bool rejected = staged && !transaction.commit(error);
+        const auto read = [](const fs::path& path) {
+            std::ifstream file(path, std::ios::binary);
+            return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+        };
+        ok &= expect(rejected && error.find("rollback-complete") != std::string::npos &&
+                         read(primary) == "original" && read(protectedPath) == "concurrent",
+                     "no-replace transaction rejects late destination and rolls back earlier artifact");
+        fs::remove(protectedPath, ec);
+        nativesharp::basic::ArtifactTransaction freeTransaction;
+        const bool installed = !ec && freeTransaction.addStagedNoReplace(protectedPath, stageProtected, error) &&
+            freeTransaction.commit(error);
+        ok &= expect(installed && read(protectedPath) == "new-runtime",
+                     "no-replace transaction installs when destination remains absent");
+    }
     return ok ? 0 : 1;
 }
