@@ -1285,7 +1285,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
 
     const bool publishPdb = debugInformation != llvm_backend::DebugInformationKind::None;
     std::vector<std::filesystem::path> packagedRuntimes;
-    if (!commitDynamicLibraryProduct(destination, runtimeLibraries, publishPdb, artifactPublisher, publication,
+    if (!commitDynamicLibraryProduct(destination, compilation, runtimeLibraries, publishPdb, artifactPublisher, publication,
                                      buildError, packagedRuntimes, error))
         return ExitCode::CompilationError;
     for (const std::filesystem::path &runtime : packagedRuntimes)
