@@ -6240,7 +6240,8 @@ int main(int argc, char** argv)
                     {
                         layoutError |= diagnostic.message().find("no value layout") != std::string::npos ||
                             diagnostic.message().find("cannot determine the element layout") != std::string::npos ||
-                            diagnostic.message().find("cannot determine raw element layout") != std::string::npos;
+                            diagnostic.message().find("cannot determine raw element layout") != std::string::npos ||
+                            diagnostic.message().find("is incomplete and has no object layout") != std::string::npos;
                         localError |= diagnostic.message().find("cannot be created by value until object lifetime is implemented") != std::string::npos;
                     }
                     const bool rejectedAsExpected = !ready && (scenario == 6 ? localError : layoutError);
