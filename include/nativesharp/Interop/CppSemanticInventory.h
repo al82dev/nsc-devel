@@ -46,6 +46,21 @@ using CppSemanticInventoryResult =
 CppSemanticInventoryResult collectCppSemanticFunctions(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
 
+// Preserve every observation and its owning project/reference. Repeated names are not
+// merged here: compatibility and visibility must be resolved before binding an alias.
+struct CppSemanticTypeAliasEntry
+{
+    std::filesystem::path projectFile;
+    std::size_t referenceIndex;
+    std::size_t projectOrdinal;
+    std::string targetTriple;
+    CppTypeAliasDeclaration declaration;
+};
+using CppSemanticTypeAliasInventoryResult =
+    std::variant<std::vector<CppSemanticTypeAliasEntry>, CppSemanticInventoryFailure>;
+CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
+
 struct CppSemanticGlobal
 {
     std::size_t projectOrdinal;
