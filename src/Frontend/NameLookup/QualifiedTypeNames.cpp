@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/QualifiedNamespaceTarget.h"
 #include "../Internal/LookupEnvironment.h"
 #include "../Internal/ProjectNameLookupFrame.h"
 
@@ -184,18 +185,9 @@ std::optional<std::string> ProjectNameLookup::resolveNamespaceTarget(
     const std::vector<std::string>& namespaceSegments,
     const std::string& target) const
 {
-    for (std::size_t depth = namespaceSegments.size() + 1; depth > 0; --depth)
-    {
-        const std::size_t prefixCount = depth - 1;
-        const std::string candidate = appendQualified(
-            std::span<const std::string>(namespaceSegments.data(), prefixCount),
-            target);
-        if (namespaceExistsVisible(projectOrdinal, candidate))
-        {
-            return candidate;
-        }
-    }
-    return std::nullopt;
+    return resolveQualifiedNamespaceTarget(namespaceSegments, target, [&](const std::string& candidate) {
+        return namespaceExistsVisible(projectOrdinal, candidate);
+    });
 }
 
 }
