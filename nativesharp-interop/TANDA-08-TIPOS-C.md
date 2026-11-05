@@ -26,3 +26,19 @@ Siguiente acción: completar el diseño de captura y proyección de aliases, enu
 struct/union y punteros a función; implementar las partes y pruebas de la tanda
 como conjunto y ejecutar su validación incremental agrupada. Las limitaciones de
 caché y del servicio de lenguaje de tandas anteriores siguen vigentes.
+
+## Avance de implementación sin validar
+
+Los cambios posteriores a la auditoría añaden snapshots de `typedef` y enums,
+la descripción estructurada de firmas de función y la conservación del elemento
+de arreglos incompletos. Las pruebas correspondientes están preparadas, pero
+todavía no se han construido ni ejecutado en la tanda 08. Ninguna casilla de
+importación se cierra por estas capturas.
+
+El parser recibe sus nombres externos mediante `prepareCppScopedParserNames` y
+`cppParserProjectInventories` antes del análisis sintáctico. La expansión de
+aliases en `SyntaxBinding.cpp` usa `LookupEnvironment::typeAliases` y objetos
+`TypeSyntax` con vida suficiente; actualmente los snapshots de Clang no llegan a
+ninguno de esos puntos. El siguiente trabajo es conectar ambas fases respetando
+visibilidad entre proyectos, colisiones y calificadores, y después continuar con
+enums y registros. No se considera terminado un alias por reconocer su nombre.
