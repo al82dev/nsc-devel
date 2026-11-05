@@ -1,0 +1,3 @@
+NativeSharp Compiler 3.0.0 (nsc)
+Copyright (c) 2026 Alberto Huerta Luna. All rights reserved.
+Build hash: 4998f7ed435b91d5

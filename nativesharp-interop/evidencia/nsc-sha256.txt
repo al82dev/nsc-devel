@@ -1,0 +1,3 @@
+SHA256 hash of C:\native-sharp\bin\nsc.exe:
+3a16efac9700a171edf06c3f4e013ac0720c749c80a12bc9fac6cb6ed9c18516
+CertUtil: -hashfile command completed successfully.
