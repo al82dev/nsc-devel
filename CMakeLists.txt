@@ -19,6 +19,8 @@ endif()
 
 option(NSC_BUILD_TESTS "Build NativeSharp frontend tests" ON)
 option(NSC_ENABLE_CONSOLIDATED_TESTS "Build the opt-in consolidated C++ test executable" OFF)
+option(NSC_ENABLE_CPP_INTEROP "Enable integration with Clang for C and C++ interoperability" OFF)
+option(NSC_CPP_INTEROP_SESSION_TESTS "Build the isolated Clang session tests" OFF)
 option(NSC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 set(NSC_NSLINK_EXECUTABLE "C:/native-sharp/bin/nslink.exe" CACHE FILEPATH
     "NSLink executable used by generated NativeSharp build products")
