@@ -347,8 +347,31 @@ bool sameMemberType(const CppType& a, const CppType& b, unsigned depth = 0)
         a.unqualifiedCanonicalSpelling != b.unqualifiedCanonicalSpelling ||
         a.isConst != b.isConst || a.isVolatile != b.isVolatile || a.sizeBits != b.sizeBits ||
         a.alignmentBits != b.alignmentBits || a.arrayCount != b.arrayCount ||
-        static_cast<bool>(a.element) != static_cast<bool>(b.element)) return false;
-    return !a.element || sameMemberType(*a.element, *b.element, depth + 1);
+        static_cast<bool>(a.element) != static_cast<bool>(b.element) ||
+        static_cast<bool>(a.enumUnderlying) != static_cast<bool>(b.enumUnderlying) ||
+        a.enumIdentity.has_value() != b.enumIdentity.has_value() ||
+        a.recordIdentity.has_value() != b.recordIdentity.has_value() ||
+        static_cast<bool>(a.function) != static_cast<bool>(b.function)) return false;
+    if (a.enumIdentity && (a.enumIdentity->name != b.enumIdentity->name ||
+        a.enumIdentity->qualifiedName != b.enumIdentity->qualifiedName ||
+        a.enumIdentity->anonymousContext != b.enumIdentity->anonymousContext)) return false;
+    if (a.recordIdentity && (a.recordIdentity->name != b.recordIdentity->name ||
+        a.recordIdentity->namespaceSegments != b.recordIdentity->namespaceSegments ||
+        a.recordIdentity->containingRecords != b.recordIdentity->containingRecords ||
+        a.recordIdentity->anonymousContext != b.recordIdentity->anonymousContext ||
+        a.recordIdentity->specializationContext != b.recordIdentity->specializationContext)) return false;
+    if (a.element && !sameMemberType(*a.element, *b.element, depth + 1)) return false;
+    if (a.enumUnderlying && !sameMemberType(*a.enumUnderlying, *b.enumUnderlying, depth + 1)) return false;
+    if (a.function)
+    {
+        const auto& x = *a.function; const auto& y = *b.function;
+        if (x.callingConvention != y.callingConvention || x.hasPrototype != y.hasPrototype ||
+            x.variadic != y.variadic || x.parameterTypes.size() != y.parameterTypes.size() ||
+            !sameMemberType(x.returnType, y.returnType, depth + 1)) return false;
+        for (std::size_t i = 0; i < x.parameterTypes.size(); ++i)
+            if (!sameMemberType(x.parameterTypes[i], y.parameterTypes[i], depth + 1)) return false;
+    }
+    return true;
 }
 bool sameCapturedMembers(const CppRecordDeclaration& a, const CppRecordDeclaration& b)
 {
