@@ -135,6 +135,7 @@ public:
     std::optional<std::size_t> topLevelDeclarationCount() const override { return inner_->topLevelDeclarationCount(); }
     std::optional<std::vector<CppFunctionDeclaration>> freeFunctionsSnapshot() const override { return inner_->freeFunctionsSnapshot(); }
     std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const override { return inner_->recordsSnapshot(); }
+    std::optional<std::vector<CppTypeAliasDeclaration>> typeAliasesSnapshot() const override { return inner_->typeAliasesSnapshot(); }
     std::optional<std::vector<CppGlobalDeclaration>> globalsSnapshot() const override { return inner_->globalsSnapshot(); }
     std::optional<std::vector<CppNamespaceDeclaration>> namespacesSnapshot() const override { return inner_->namespacesSnapshot(); }
     std::optional<std::vector<std::filesystem::path>> sourceFilesSnapshot() const override { return inner_->sourceFilesSnapshot(); }
@@ -2111,6 +2112,8 @@ int main(int argc, char** argv)
                                   "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
                                   "int bridge_probe(size_t n, ...);\n"
                                   "struct Pair { char a; int b; }; struct Incomplete;\n"
+                                  "typedef unsigned int Count; typedef Count* CountPtr; "
+                                  "typedef struct Pair PairAlias; typedef const int* ReadOnlyPtr;\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
                                   "struct Flags { unsigned a:3; unsigned b:5; }; "
@@ -2118,12 +2121,32 @@ int main(int argc, char** argv)
     std::optional<std::vector<CppFunctionDeclaration>> cFunctions;
     std::optional<std::vector<CppRecordDeclaration>> cRecords;
     std::optional<std::vector<CppGlobalDeclaration>> cGlobals;
+    std::optional<std::vector<CppTypeAliasDeclaration>> cAliases;
     ok &= expect(static_cast<bool>(c), "valid C translation unit opens");
     if (c)
     {
         const auto namespaces = c->namespacesSnapshot();
         ok &= expect(namespaces && namespaces->empty(), "C translation unit has no C++ namespaces");
         ok &= expect(c->state() == CppSessionState::Ready, "C session is ready");
+        cAliases = c->typeAliasesSnapshot();
+        const auto aliasByName = [&](std::string_view name) -> const CppTypeAliasDeclaration* {
+            if (!cAliases) return nullptr;
+            for (const auto& alias : *cAliases) if (alias.name == name) return &alias;
+            return nullptr;
+        };
+        const auto* countAlias = aliasByName("Count");
+        const auto* pointerAlias = aliasByName("CountPtr");
+        const auto* recordAlias = aliasByName("PairAlias");
+        const auto* readonlyAlias = aliasByName("ReadOnlyPtr");
+        ok &= expect(countAlias && countAlias->underlyingType.kind == CppTypeKind::UnsignedInteger &&
+                     countAlias->underlyingType.sizeBits == 32 && countAlias->location &&
+                     pointerAlias && pointerAlias->underlyingType.kind == CppTypeKind::Pointer &&
+                     pointerAlias->underlyingType.element &&
+                     pointerAlias->underlyingType.element->kind == CppTypeKind::UnsignedInteger &&
+                     recordAlias && recordAlias->underlyingType.kind == CppTypeKind::Record &&
+                     readonlyAlias && readonlyAlias->underlyingType.element &&
+                     readonlyAlias->underlyingType.element->isConst,
+                     "C typedef snapshot preserves scalar, pointer, record and const underlying types");
         auto count = c->topLevelDeclarationCount();
         ok &= expect(count && *count > 0, "C AST is available after parsing");
         cFunctions = c->freeFunctionsSnapshot();
@@ -7168,6 +7191,8 @@ int main(int argc, char** argv)
         ok &= expect(c->close().succeeded && c->close().succeeded, "close is idempotent");
         ok &= expect(c->state() == CppSessionState::Closed && !c->topLevelDeclarationCount(),
                      "closed session does not expose an AST");
+        ok &= expect(!c->typeAliasesSnapshot() && cAliases && !cAliases->empty(),
+                     "copied C typedef snapshots survive closing the Clang session");
         ok &= expect(!c->freeFunctionsSnapshot() && !c->recordsSnapshot() && !c->globalsSnapshot() && cFunctions &&
                      functionByName(*cFunctions, "bridge_probe") && cRecords &&
                      recordByName(*cRecords, "Pair") && cGlobals && globalByName(*cGlobals, "c_global"),
