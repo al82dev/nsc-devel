@@ -1,4 +1,5 @@
 #include "Internal/DriverInternal.h"
+#include "nativesharp/Interop/CppBinaryDependencies.h"
 
 namespace nativesharp::driver
 {
@@ -50,6 +51,141 @@ bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesy
         }
     }
     return leftStream.eof() && rightStream.eof();
+}
+
+bool collectCppRuntimeCandidates(const frontend::ProjectCompilation &compilation,
+                                 std::vector<std::filesystem::path> &candidates,
+                                 std::string &error)
+{
+    if (!compilation.projectGraph()) { error = "C/C++ runtime selection requires a project graph"; return false; }
+    interop::LibraryMetadataCodec codec;
+    std::vector<std::filesystem::path> result;
+    for (const auto &project : compilation.projectGraph()->projects())
+    {
+        for (const auto &reference : project.cppLibraryReferences())
+            if (!reference.runtimePath.empty()) result.push_back(reference.runtimePath);
+        for (const auto &reference : project.libraryReferences())
+        {
+            const auto metadata = compilation.libraryMetadataRepository().decode(
+                reference.metadataPath,
+                [&codec](std::span<const std::uint8_t> bytes, interop::LibraryMetadata &model,
+                         std::string &why) { return codec.read(bytes, model, why); }, error);
+            if (!metadata) return false;
+            if (metadata->cppBinaryDependencies.empty()) continue;
+            std::vector<interop::ResolvedCppBinaryDependency> dependencies;
+            if (!interop::resolveCppBinaryMetadataDependencies(metadata->cppBinaryDependencies,
+                    reference.metadataPath.parent_path(), dependencies, error)) return false;
+            for (const auto &dependency : dependencies)
+                if (!dependency.runtimePath.empty()) result.push_back(dependency.runtimePath);
+        }
+    }
+    candidates = std::move(result);
+    return true;
+}
+
+bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation,
+                                 const linker::PeExecutableInfo &image,
+                                 std::vector<std::filesystem::path> &runtimeLibraries,
+                                 std::string &error)
+{
+    std::vector<std::filesystem::path> candidates;
+    if (!collectCppRuntimeCandidates(compilation, candidates, error)) return false;
+    auto selected = runtimeLibraries;
+    std::unordered_set<std::string> selectedPaths;
+    std::unordered_set<std::string> importedNames;
+    for (const auto &name : image.importedLibraries) importedNames.insert(foldedName(name));
+    for (const auto &path : selected) selectedPaths.insert(foldedPathKey(path));
+    std::size_t scanned = 0;
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        while (scanned < selected.size())
+        {
+            linker::PeExecutableVerifier verifier;
+            if (!verifier.verifyDynamicLibrary(selected[scanned]))
+            {
+                error = "runtime dependency '" + selected[scanned].string() + "' is not a valid AMD64 DLL: " + verifier.error();
+                return false;
+            }
+            for (const auto &name : verifier.info().importedLibraries)
+                importedNames.insert(foldedName(name));
+            ++scanned;
+        }
+        for (const auto &candidate : candidates)
+            if (importedNames.contains(foldedName(candidate.filename().string())) &&
+                selectedPaths.insert(foldedPathKey(candidate)).second)
+            {
+                selected.push_back(candidate);
+                changed = true;
+            }
+    }
+    runtimeLibraries = std::move(selected);
+    return true;
+}
+
+bool validateCppRuntimeDestinations(const frontend::ProjectCompilation &compilation,
+                                    std::span<const std::filesystem::path> runtimeLibraries,
+                                    const std::filesystem::path &destinationDirectory,
+                                    std::string &error)
+{
+    std::vector<std::filesystem::path> candidates;
+    if (!collectCppRuntimeCandidates(compilation, candidates, error)) return false;
+    std::unordered_set<std::string> selected;
+    for (const auto &path : runtimeLibraries) selected.insert(foldedPathKey(path));
+    for (const auto &source : candidates)
+        {
+            if (source.empty() || !selected.contains(foldedPathKey(source))) continue;
+            const auto destination = destinationDirectory / source.filename();
+            std::error_code ec;
+            const bool exists = std::filesystem::exists(destination, ec);
+            if (ec)
+            {
+                error = "cannot inspect C/C++ runtime destination '" + destination.string() + "': " + ec.message();
+                return false;
+            }
+            if (exists && !filesHaveEqualContents(source, destination))
+            {
+                error = "runtime package destination already contains a different '" + destination.filename().string() + "': '" + destination.string() + "'";
+                return false;
+            }
+        }
+    return true;
+}
+
+bool validatePackagedCppRuntimeDestinations(const frontend::ProjectCompilation &compilation,
+                                            std::span<const std::filesystem::path> runtimeLibraries,
+                                            std::span<const std::filesystem::path> stagedRuntimes,
+                                            const std::filesystem::path &destinationDirectory,
+                                            bool &protectExisting,
+                                            std::string &error)
+{
+    std::vector<std::filesystem::path> candidates;
+    if (!collectCppRuntimeCandidates(compilation, candidates, error)) return false;
+    std::unordered_set<std::string> selected;
+    for (const auto &path : runtimeLibraries) selected.insert(foldedPathKey(path));
+    bool hasCppRuntime = false;
+    for (const auto &candidate : candidates)
+        hasCppRuntime |= selected.contains(foldedPathKey(candidate));
+    protectExisting = hasCppRuntime;
+    if (!hasCppRuntime) return true;
+    for (const auto &source : stagedRuntimes)
+    {
+        const auto destination = destinationDirectory / source.filename();
+        std::error_code ec;
+        const bool exists = std::filesystem::exists(destination, ec);
+        if (ec)
+        {
+            error = "cannot inspect runtime destination '" + destination.string() + "': " + ec.message();
+            return false;
+        }
+        if (exists && !filesHaveEqualContents(source, destination))
+        {
+            error = "runtime package destination already contains a different '" + destination.filename().string() + "': '" + destination.string() + "'";
+            return false;
+        }
+    }
+    return true;
 }
 
 bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibraries,
