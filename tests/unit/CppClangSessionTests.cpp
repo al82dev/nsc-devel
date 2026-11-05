@@ -2160,7 +2160,7 @@ int main(int argc, char** argv)
                                   "enum Color { CMinus = -3, CPlus = 5 }; enum { CAnonymous = 9 };\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
-                                  "struct Flags { unsigned a:3; unsigned b:5; }; "
+                                  "union CValue { int integer; float real; }; struct Flags { unsigned a:3; unsigned b:5; }; "
                                   "struct Later; struct Later { int value; };\n"));
     std::optional<std::vector<CppFunctionDeclaration>> cFunctions;
     std::optional<std::vector<CppRecordDeclaration>> cRecords;
@@ -2767,12 +2767,23 @@ int main(int argc, char** argv)
         }
         else ok &= expect(false, "Clang exposes the C function used in semantic test");
         const auto* pair = cRecords ? recordByName(*cRecords, "Pair") : nullptr;
+        const auto* cUnion = cRecords ? recordByName(*cRecords, "CValue") : nullptr;
         const auto* incomplete = cRecords ? recordByName(*cRecords, "Incomplete") : nullptr;
         const auto* flags = cRecords ? recordByName(*cRecords, "Flags") : nullptr;
         const auto* later = cRecords ? recordByName(*cRecords, "Later") : nullptr;
         ok &= expect(pair && pair->complete && pair->odrHash && pair->sizeBits == 64 && pair->fields.size() == 2 &&
                      pair->fields[0].offsetBits == 0 && pair->fields[1].offsetBits == 32,
                      "C struct size and field offsets match the target");
+        const auto unionInteger = cUnion ? projectCppSemanticInstanceField(
+            *cUnion, 0, 0, "Semantic", "x86_64-pc-windows-msvc") : std::nullopt;
+        const auto unionReal = cUnion ? projectCppSemanticInstanceField(
+            *cUnion, 1, 0, "Semantic", "x86_64-pc-windows-msvc") : std::nullopt;
+        ok &= expect(pair && !pair->isCxx && pair->fields[0].access == CppAccess::Public &&
+                     cUnion && !cUnion->isCxx && cUnion->kind == CppRecordKind::Union &&
+                     cUnion->fields.size() == 2 && cUnion->fields[0].offsetBits == 0 &&
+                     cUnion->fields[1].offsetBits == 0 && unionInteger && unionReal &&
+                     unionInteger->byteOffset == 0 && unionReal->byteOffset == 0,
+                     "C record fields are public and overlapping union fields retain Clang offsets");
         ok &= expect(incomplete && !incomplete->complete && !incomplete->sizeBits && !incomplete->odrHash,
                      "incomplete record has no invented layout");
         ok &= expect(flags && flags->fields.size() == 2 && flags->fields[0].offsetBits == 0 &&
