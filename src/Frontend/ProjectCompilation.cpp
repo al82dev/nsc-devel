@@ -1631,6 +1631,74 @@ bool ProjectCompilation::compileProjectOopHir(
             compilationJobs_, namespaceFunctionModel_.get(),
             metaprogrammingModel_.get(), &lifetime_->workerPool()))
     {
+        if (experimentalCppDiscardedLifetimeLoweringForTests_ || experimentalCppLocalLifetimeAnalysisForTests_)
+        {
+            using HirNode = ProjectOopHirNode;
+            std::vector<std::pair<const HirNode*, const HirNode*>> pending;
+            for (const auto& function : oopHirModel_->functions())
+                if (function.body) pending.emplace_back(function.body.get(), nullptr);
+            while (!pending.empty())
+            {
+                const auto [node, parent] = pending.back();
+                pending.pop_back();
+                for (const auto& child : node->children) if (child) pending.emplace_back(child.get(), node);
+                const auto valueOrdinal = node->typeKey.starts_with("type:")
+                    ? nameLookup_->typeOrdinalForIdentity(std::string_view(node->typeKey).substr(5)) : std::nullopt;
+                const bool cppValue = valueOrdinal && nameLookup_->cppImportedType(*valueOrdinal);
+                if (experimentalCppLocalLifetimeAnalysisForTests_ && cppValue &&
+                    node->kind == ProjectOopHirNodeKind::LocalDeclaration && !node->referenceLocal)
+                {
+                    if (node->staticLocal || !node->localOrdinal || !node->cleanupRegionOrdinal ||
+                        !node->automaticDestruction || node->children.size() != 1 || !node->children[0] ||
+                        node->children[0]->kind != ProjectOopHirNodeKind::ValueConstruction ||
+                        node->children[0]->targetTypeOrdinal != valueOrdinal)
+                    { loadError = "experimental C++ local requires direct automatic construction and cleanup"; return false; }
+                }
+                else if (experimentalCppLocalLifetimeAnalysisForTests_ && cppValue &&
+                    node->kind != ProjectOopHirNodeKind::ValueConstruction &&
+                    node->kind != ProjectOopHirNodeKind::LocalAddress &&
+                    !(node->kind == ProjectOopHirNodeKind::LocalDeclaration && node->referenceLocal))
+                { loadError = "experimental C++ local cannot copy or transfer a C++ value"; return false; }
+                const bool construction = node->kind == ProjectOopHirNodeKind::ValueConstruction ||
+                    node->kind == ProjectOopHirNodeKind::ObjectConstruction ||
+                    node->kind == ProjectOopHirNodeKind::PlacementConstruction;
+                if (!construction || !node->targetTypeOrdinal ||
+                    !nameLookup_->cppImportedType(*node->targetTypeOrdinal)) continue;
+                const bool discarded = experimentalCppDiscardedLifetimeLoweringForTests_ && parent &&
+                    parent->kind == ProjectOopHirNodeKind::ExpressionStatement && parent->children.size() == 1;
+                const bool local = experimentalCppLocalLifetimeAnalysisForTests_ && parent &&
+                    parent->kind == ProjectOopHirNodeKind::LocalDeclaration && !parent->referenceLocal &&
+                    !parent->staticLocal && parent->children.size() == 1 && parent->children[0].get() == node &&
+                    parent->typeKey == node->typeKey && parent->localOrdinal && parent->cleanupRegionOrdinal &&
+                    parent->automaticDestruction;
+                if (node->kind != ProjectOopHirNodeKind::ValueConstruction || (!discarded && !local) ||
+                    !node->memberOrdinal || *node->memberOrdinal >= memberModel_->members().size())
+                { loadError = "experimental C++ lifetime requires direct local or discarded construction"; return false; }
+                const auto& constructor = memberModel_->members()[*node->memberOrdinal];
+                const auto destructors = memberModel_->findMembers(*node->targetTypeOrdinal, ".dtor");
+                const bool scalarArguments = constructor.parameters.size() == node->argumentCount &&
+                    std::all_of(constructor.parameters.begin(), constructor.parameters.end(), [](const auto& parameter) {
+                        std::string_view type = parameter.typeKey;
+                        const bool pointer = type.ends_with('*');
+                        while (type.ends_with('*')) type.remove_suffix(1);
+                        return parameter.passKind == ParameterPassKind::Value &&
+                            ((pointer && type == "builtin:void") || type == "builtin:bool" || type == "builtin:sbyte" || type == "builtin:byte" ||
+                             type == "builtin:short" || type == "builtin:ushort" || type == "builtin:int" ||
+                             type == "builtin:uint" || type == "builtin:long" || type == "builtin:ulong" ||
+                             type == "builtin:float" || type == "builtin:double");
+                    });
+                if (!constructor.isCppExternal || constructor.kind != ClassMemberKind::Constructor ||
+                    !scalarArguments || destructors.size() != 1 ||
+                    destructors[0] >= memberModel_->members().size() ||
+                    !memberModel_->members()[destructors[0]].isCppExternal ||
+                    memberModel_->members()[destructors[0]].kind != ClassMemberKind::Destructor)
+                { loadError = "experimental C++ lifetime requires a supported constructor and unique destructor"; return false; }
+                if (local && cppNoexceptLocalLifetimeOnly_ &&
+                    (!constructor.cppLifetimeNonThrowing ||
+                     !memberModel_->members()[destructors[0]].cppLifetimeNonThrowing))
+                { loadError = "C++ local lifetime currently requires a non-throwing constructor and destructor"; return false; }
+            }
+        }
         return true;
     }
 
