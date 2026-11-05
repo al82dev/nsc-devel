@@ -473,6 +473,42 @@ OptionResult handleLibraryReferenceRoot(OptionContext& context)
     return matched(ExitCode::CommandLineError);
 }
 
+OptionResult handleCppInteropPaths(OptionContext& context)
+{
+    constexpr std::string_view rootPrefix = "--cpp-clang-root=";
+    constexpr std::string_view includePrefix = "--cpp-system-include=";
+    const bool root = context.argument.starts_with(rootPrefix);
+    const bool include = context.argument.starts_with(includePrefix);
+    if (!root && !include) return noMatch();
+    const auto value = context.argument.substr(root ? rootPrefix.size() : includePrefix.size());
+    const std::filesystem::path path{std::string(value)};
+    if (value.empty() || !path.is_absolute())
+    {
+        context.error << "nsc: error: C/C++ toolchain paths must be absolute\n";
+        return matched(ExitCode::CommandLineError);
+    }
+    if (root)
+    {
+        if (context.invocation.cppClangRoot.has_value())
+        {
+            context.error << "nsc: error: duplicate --cpp-clang-root\n";
+            return matched(ExitCode::CommandLineError);
+        }
+        context.invocation.cppClangRoot = path.lexically_normal();
+    }
+    else
+    {
+        std::error_code ec;
+        if (!std::filesystem::is_directory(path, ec) || ec)
+        {
+            context.error << "nsc: error: C/C++ system include directory does not exist\n";
+            return matched(ExitCode::CommandLineError);
+        }
+        context.invocation.cppSystemIncludes.push_back(path.lexically_normal());
+    }
+    return matched();
+}
+
 OptionResult handleGenericDepth(OptionContext& context)
 {
     constexpr std::string_view prefix = "--generic-depth-limit=";
@@ -738,6 +774,7 @@ constexpr OptionHandler kOptionHandlers[] = {
     handleArtifactCachePolicy,
     handleArtifactCacheMaximum,
     handleLibraryReferenceRoot,
+    handleCppInteropPaths,
     handleGenericDepth,
     handleGenericCount,
     handleTimeout,

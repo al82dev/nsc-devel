@@ -67,6 +67,8 @@ struct CompilerInvocation final
     bool floatingPointDenormalModeSeen = false;
 
     compilation::ProjectLoadOptions projectLoadOptions;
+    std::optional<std::filesystem::path> cppClangRoot;
+    std::vector<std::filesystem::path> cppSystemIncludes;
     std::optional<std::size_t> requestedJobs;
     std::optional<std::size_t> reservedCores;
     std::optional<std::uint64_t> timeoutMilliseconds;
