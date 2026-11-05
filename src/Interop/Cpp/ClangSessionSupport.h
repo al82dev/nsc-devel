@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-namespace clang { class ASTUnit; }
+namespace clang { class ASTUnit; class FrontendAction; }
 
 namespace nativesharp::interop::detail
 {
@@ -23,7 +23,7 @@ std::unique_ptr<clang::ASTUnit> runClangSessionAction(
     std::string_view source, const std::vector<std::string>& arguments,
     std::string_view inputPath, std::string_view driverPath,
     clang::DiagnosticConsumer* consumer, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem,
-    CppCancellationToken cancellation);
+    CppCancellationToken cancellation, clang::FrontendAction* actionForTest = nullptr);
 
 class DiagnosticCollector final : public clang::DiagnosticConsumer
 {

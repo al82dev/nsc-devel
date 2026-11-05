@@ -23,7 +23,8 @@ class SessionFrontendAction final : public clang::SyntaxOnlyAction
 class SessionAction final : public clang::tooling::ToolAction
 {
 public:
-    explicit SessionAction(std::unique_ptr<clang::ASTUnit>& ast) : ast_(ast) {}
+    SessionAction(std::unique_ptr<clang::ASTUnit>& ast, clang::FrontendAction* actionForTest)
+        : ast_(ast), actionForTest_(actionForTest) {}
 
     bool runInvocation(std::shared_ptr<clang::CompilerInvocation> invocation,
                        clang::FileManager* files,
@@ -39,13 +40,14 @@ public:
         SessionFrontendAction frontend;
         if (clang::ASTUnit::LoadFromCompilerInvocationAction(
                 std::move(invocation), std::move(pch), nullptr, std::move(diagnostics),
-                &frontend, unit.get(), true) != unit.get()) return false;
+                actionForTest_ ? actionForTest_ : &frontend, unit.get(), true) != unit.get()) return false;
         ast_ = std::move(unit);
         return true;
     }
 
 private:
     std::unique_ptr<clang::ASTUnit>& ast_;
+    clang::FrontendAction* actionForTest_;
 };
 }
 
@@ -53,7 +55,7 @@ std::unique_ptr<clang::ASTUnit> runClangSessionAction(
     std::string_view source, const std::vector<std::string>& arguments,
     std::string_view inputPath, std::string_view driverPath,
     clang::DiagnosticConsumer* consumer, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem,
-    CppCancellationToken cancellation)
+    CppCancellationToken cancellation, clang::FrontendAction* actionForTest)
 {
     const std::string input(inputPath);
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(std::move(filesystem));
@@ -70,7 +72,7 @@ std::unique_ptr<clang::ASTUnit> runClangSessionAction(
     args.push_back(input);
 
     std::unique_ptr<clang::ASTUnit> ast;
-    SessionAction action(ast);
+    SessionAction action(ast, actionForTest);
     clang::tooling::ToolInvocation invocation(std::move(args), &action, files.get(),
         std::make_shared<clang::PCHContainerOperations>());
     invocation.setDiagnosticConsumer(consumer);
