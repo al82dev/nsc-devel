@@ -270,6 +270,12 @@ std::unique_ptr<CppInteropSession> open(CppClangSessionFactory& factory, CppSess
 int main(int argc, char** argv)
 {
     if (argc != 4 && argc != 5) return 2;
+    if (!std::filesystem::is_regular_file(std::filesystem::path(argv[2]) /
+                                          "cpp-fixtures" / "project" / "CppProbe.nsproj"))
+    {
+        std::cerr << "C/C++ session fixtures are missing beneath " << argv[2] << '\n';
+        return 2;
+    }
     CppClangSessionFactory factory;
     bool ok = true;
     {
@@ -468,8 +474,8 @@ int main(int argc, char** argv)
 
         RejectSourceBegin failingAction;
         CountingSessionDiagnostics failedBeginDiagnostics;
-        config.languageStandard = "c11";
-        const auto validArgs = nativesharp::interop::detail::buildClangInvocationArguments(config);
+        const auto beginConfig = options(argv[1], argv[2], argv[3], CppLanguageMode::C, "");
+        const auto validArgs = nativesharp::interop::detail::buildClangInvocationArguments(beginConfig);
         auto beginFailureFilesystem = llvm::vfs::createPhysicalFileSystem();
         auto beginFailure = nativesharp::interop::detail::runClangSessionAction(
             "int begin_failure_probe;\n", validArgs,
