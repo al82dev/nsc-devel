@@ -104,3 +104,13 @@ aliases y valores para referencias C, resolver conflictos por demanda y las
 formas compuestas, incluyendo punteros a función. Después ejecutar la
 construcción incremental y validación agrupada de la tanda completa. Ninguna
 casilla se cierra por estos cambios.
+
+### Punteros a función: proyección inicial, sin validar
+
+`CppAliasFunctionType.h` proyecta firmas con prototipo explícito y componentes
+escalares representables; conserva convención de llamada y variadicidad. La
+expansión de typedef construye el tipo estructural de función existente de NSC.
+Hay una prueba preparada contra un callback variádico y otro sin prototipo.
+Faltan la prueba semántica integrada y la ejecución de llamadas, los tipos
+compuestos en la firma, los modificadores del sitio de uso y la activación del
+proveedor en el driver. El mapeo no demuestra interoperabilidad ejecutable.
