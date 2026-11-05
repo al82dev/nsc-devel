@@ -115,6 +115,12 @@ Faltan la prueba semántica integrada y la ejecución de llamadas, los tipos
 compuestos en la firma, los modificadores del sitio de uso y la activación del
 proveedor en el driver. El mapeo no demuestra interoperabilidad ejecutable.
 
+La proyección de firmas de funciones C prepara ahora parámetros que son
+punteros a función con componentes escalares. Conserva convención y
+variadicidad; rechaza los casos cuyo const del apuntado se perdería. Hay una
+prueba de identidad preparada, pero faltan callbacks ejecutables, firmas
+compuestas y la validación agrupada.
+
 ### Conexión inicial al controlador, sin validar
 
 El controlador instala el proveedor de typedef para grafos con sesiones C/C++
