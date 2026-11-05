@@ -152,6 +152,8 @@ struct CppSemanticGlobalEntry
     std::string targetTriple;
     CppGlobalDeclaration declaration;
     CppSemanticGlobalResult projection;
+    // Record storage is only projected under the C object model.
+    bool cLanguage = false;
 };
 using CppSemanticGlobalInventoryResult =
     std::variant<std::vector<CppSemanticGlobalEntry>, CppSemanticInventoryFailure>;

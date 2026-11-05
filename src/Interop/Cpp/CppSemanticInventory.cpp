@@ -191,7 +191,8 @@ CppSemanticGlobalInventoryResult collectCppSemanticGlobals(
             {
                 auto projection = projectCppSemanticGlobal(declaration, *owner, graph.projects()[*owner].moduleName());
                 result.push_back({group.projectFile, index, *owner, options.targetTriple,
-                                  std::move(declaration), std::move(projection)});
+                                  std::move(declaration), std::move(projection),
+                                  options.language == CppLanguageMode::C});
             }
         }
     }

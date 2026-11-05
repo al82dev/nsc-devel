@@ -1685,8 +1685,8 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 ### Globales C de struct
 
 - Objetivo: importar globales C con tipo struct, puntero a struct y arreglo fijo de structs, preservando identidad, layout, campos y almacenamiento externo. Seleccionar el struct también cuando aparece únicamente en el tipo del global usado.
-- Evidencia inicial: `mapGlobalType` solo proyecta escalares, enums y sus variantes de puntero o arreglo; la selección especulativa por demanda de globales recoge enums pero no records. El soporte de campos de record comprueba identidad y layout de Clang.
-- Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Interop/Cpp/CppSemanticRecord.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, pruebas unitarias de sesión Clang si son necesarias, y registros Markdown. No modificar NSLink ni LLVM. No dar por soportados globales const/volatile de record ni ABI de paso por valor sin evidencia.
+- Evidencia inicial: `mapGlobalType` solo proyecta escalares, enums y sus variantes de puntero o arreglo. La selección vigente conserva candidatos de records sin colisión; queda por comprobar la dependencia introducida solo por un global. El soporte de campos de record comprueba identidad y layout de Clang.
+- Presupuesto: `include/nativesharp/Interop/CppSemanticInventory.h`, `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Interop/Cpp/CppSemanticRecord.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, pruebas unitarias de sesión Clang si son necesarias, y registros Markdown. Conservar el modo C de la sesión para no tratar globales de clases C++ como structs C. No modificar NSLink ni LLVM. No dar por soportados globales const/volatile de record ni ABI de paso por valor sin evidencia.
 - Preparar casos de objeto, puntero y arreglo donde el nombre del struct no aparezca en código NativeSharp ni en las firmas invocadas; contrastar escrituras con una función C. Implementar el conjunto antes de validar de manera agrupada; conservar rechazo de colisiones y tipos incompatibles sin romper sombras.
 
 ### Global enum const
