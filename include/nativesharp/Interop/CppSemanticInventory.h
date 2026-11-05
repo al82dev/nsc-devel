@@ -61,6 +61,21 @@ using CppSemanticTypeAliasInventoryResult =
 CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
 
+struct CppSemanticEnumEntry
+{
+    std::filesystem::path projectFile;
+    std::size_t referenceIndex;
+    std::size_t projectOrdinal;
+    std::string targetTriple;
+    CppEnumDeclaration declaration;
+};
+using CppSemanticEnumInventoryResult =
+    std::variant<std::vector<CppSemanticEnumEntry>, CppSemanticInventoryFailure>;
+// Anonymous enums and every observation remain distinct until their scope and
+// declarations have been resolved; values are not inserted into NSC here.
+CppSemanticEnumInventoryResult collectCppSemanticEnums(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
+
 struct CppSemanticGlobal
 {
     std::size_t projectOrdinal;
