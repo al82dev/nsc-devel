@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CppLifetimeDefaultDll</Name></PropertyGroup>
+  <ItemGroup><CppLibraryReference Header="Default.h" Language="C++" Standard="c++20" Library="default.lib" Runtime="default.dll" /></ItemGroup>
+</Project>
