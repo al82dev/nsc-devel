@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+**Actualización del 5 de noviembre de 2026:** la ubicación vigente de este
+trabajo, sus pruebas y su documentación es `A:/nsc-devel/nativesharp-interop`.
+El código fuente de `A:/llvm-project-al82dev` se consulta como referencia de
+solo lectura. Las rutas anteriores de este registro son históricas; para el
+traslado y su historial, ver [TRASLADO-A-NSC.md](TRASLADO-A-NSC.md).
+
 ## Investigación incremental: objetos C++ locales por valor (2026-11-05)
 
 - Objetivo: determinar el camino completo para construir un local C++ en su ubicación definitiva y destruirlo exactamente una vez. Alcance de esta investigación: lectura de NSC y esta bitácora; no retirar barreras ni modificar el compilador. Revisión NSC base `152654e5a0e2d84d4c2f245ea7590488f0497430` con cambios locales; se mantienen las restricciones generales y la tarea completa.
