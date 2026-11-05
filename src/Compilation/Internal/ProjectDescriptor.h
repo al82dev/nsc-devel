@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LibraryReferenceDescriptor.h"
+#include "CppLibraryReferenceDescriptor.h"
 #include "SourceIncludeRule.h"
 
 #include "nativesharp/Compilation/GlobPattern.h"
@@ -26,6 +27,7 @@ struct ProjectDescriptor final
     std::vector<GlobPattern> removes;
     std::vector<std::string> projectReferences;
     std::vector<LibraryReferenceDescriptor> libraryReferences;
+    std::vector<CppLibraryReferenceDescriptor> cppLibraryReferences;
     std::vector<std::string> sdkReferences;
     std::vector<std::string> friendModules;
     // EN: Freeze 3.0 C-05: an implicit (in-memory) project names its source files literally, so

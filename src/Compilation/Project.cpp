@@ -15,13 +15,15 @@ Project::Project(
     language::PanicProfile panicProfile,
     std::string panicHandler,
     std::string packageName,
-    std::vector<std::string> friendModules)
+    std::vector<std::string> friendModules,
+    std::vector<CppLibraryReference> cppLibraryReferences)
     : projectFile_(std::move(projectFile)),
       moduleName_(std::move(moduleName)),
       outputKind_(outputKind),
       sourceSet_(std::move(sourceSet)),
       projectReferences_(std::move(projectReferences)),
       libraryReferences_(std::move(libraryReferences)),
+      cppLibraryReferences_(std::move(cppLibraryReferences)),
       sdkReferences_(std::move(sdkReferences)),
       panicProfile_(panicProfile),
       panicHandler_(std::move(panicHandler)),
@@ -58,6 +60,11 @@ std::span<const std::filesystem::path> Project::projectReferences() const noexce
 std::span<const LibraryReference> Project::libraryReferences() const noexcept
 {
     return libraryReferences_;
+}
+
+std::span<const CppLibraryReference> Project::cppLibraryReferences() const noexcept
+{
+    return cppLibraryReferences_;
 }
 
 std::span<const SdkManifest> Project::sdkReferences() const noexcept
