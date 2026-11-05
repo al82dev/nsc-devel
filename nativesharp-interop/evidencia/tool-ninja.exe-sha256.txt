@@ -1,0 +1,3 @@
+SHA256 hash of a:\apps\ninja\bin\ninja.exe:
+75b8c84105d45e9056505c53311040b091c5c390357d4518284af03e285cc31a
+CertUtil: -hashfile command completed successfully.

@@ -1,0 +1,11 @@
+{
+  "checked_test_files": 188,
+  "checked_runs": 14,
+  "object_statistics": {
+    "readobj_files": 2673,
+    "mt_staticrelease": 2664,
+    "no_runtime_mismatch": 9
+  },
+  "errors": [],
+  "limits": "Checks captured evidence consistency only; does not verify unloaded dependencies, distribution, complete interoperability, or reconstruct the original build log."
+}
