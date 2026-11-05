@@ -9,3 +9,5 @@ void add_distinct(int* restrict destination, const int* restrict source);
 struct Device { volatile int counter; };
 struct Device* get_device(void);
 int read_device(struct Device* value);
+extern int shared_value;
+int read_shared_value(void);

@@ -9,3 +9,5 @@ void add_distinct(int* restrict destination, const int* restrict source) { *dest
 static struct Device device = { 7 };
 struct Device* get_device(void) { return &device; }
 int read_device(struct Device* value) { return value->counter; }
+int shared_value = 7;
+int read_shared_value(void) { return shared_value; }

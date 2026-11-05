@@ -14,5 +14,7 @@ int Main()
     Device* device = get_device();
     device.counter = 42;
     if (device.counter != 42 || read_device(device) != 42) return 4;
+    shared_value = 42;
+    if (shared_value != 42 || read_shared_value() != 42) return 5;
     return 0;
 }
