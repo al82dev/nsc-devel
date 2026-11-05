@@ -336,6 +336,13 @@ void collectPartitionNodeDependencies(
         addPartitionMemberDependency(node->allocatorDeallocateMemberOrdinal, functionByMember, dependencies);
         if (node->automaticDestruction)
         {
+            // Imported C++ value layouts are not represented in structLayouts().
+            // Include their destructors in this unit's declaration set and cache
+            // identity until the partitioner has an imported-type layout index.
+            const auto functions = mirModel.functions();
+            for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
+                if (functions[ordinal].isCppExternal && functions[ordinal].destructor)
+                    dependencies.insert(ordinal);
             std::unordered_set<std::size_t> seen;
             std::vector<std::string_view> typeWork{node->typeKey};
             while (!typeWork.empty())
