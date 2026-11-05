@@ -2251,7 +2251,7 @@ int main(int argc, char** argv)
                                   "int ptr_const(const int* p); int ptr_volatile(volatile int* p); int** ptr_nested(int** p);\n"
                                   "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
                                   "int bridge_probe(size_t n, ...);\n"
-                                  "struct Pair { char a; int b; }; struct OuterPair { struct Pair nested; struct Pair array[2][3]; }; struct Incomplete;\n"
+                                  "struct Pair { char a; int b; }; struct OuterPair { struct Pair nested; struct Pair array[2][3]; }; struct CDevice { volatile int counter; }; struct Incomplete;\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
                                   "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef struct Pair PairMatrix[2][3]; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
@@ -2863,6 +2863,12 @@ int main(int argc, char** argv)
                                  nestedArray->type.nativeSharpTypeKey == "type:" + pairIdentity->key() + "[3][2]" &&
                                  nestedArray->byteOffset == 8,
                                  "nested C record and array fields retain imported identities and offsets");
+                    const auto* device = cRecords ? recordByName(*cRecords, "CDevice") : nullptr;
+                    const auto volatileField = device ? projectCppSemanticInstanceField(
+                        *device, 0, 0, "Semantic", "x86_64-pc-windows-msvc", recordAliasCompilation.nameLookup()) : std::nullopt;
+                    ok &= expect(volatileField && volatileField->type.isVolatile &&
+                                 toCppImportedInstanceField(*volatileField).isVolatile,
+                                 "C volatile field retains its qualifier through semantic projection");
                 }
                 {
                     nativesharp::frontend::ProjectCompilation enumAliasCompilation;
