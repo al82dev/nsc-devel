@@ -13,3 +13,6 @@ int shared_value = 7;
 int read_shared_value(void) { return shared_value; }
 volatile int shared_volatile = 7;
 int read_shared_volatile(void) { return shared_volatile; }
+int shared_array[3] = { 1, 2, 3 };
+int shared_matrix[2][3] = { { 4, 5, 6 }, { 7, 8, 9 } };
+int read_shared_arrays(void) { return shared_array[1] + shared_matrix[1][2]; }

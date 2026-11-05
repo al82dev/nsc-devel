@@ -13,3 +13,6 @@ extern int shared_value;
 int read_shared_value(void);
 extern volatile int shared_volatile;
 int read_shared_volatile(void);
+extern int shared_array[3];
+extern int shared_matrix[2][3];
+int read_shared_arrays(void);
