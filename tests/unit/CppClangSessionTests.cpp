@@ -2115,6 +2115,7 @@ int main(int argc, char** argv)
                                   "struct Pair { char a; int b; }; struct Incomplete;\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
                                   "typedef struct Pair PairAlias; typedef const int* ReadOnlyPtr;\n"
+                                  "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
                                   "enum Color { CMinus = -3, CPlus = 5 }; enum { CAnonymous = 9 };\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
@@ -2141,6 +2142,8 @@ int main(int argc, char** argv)
         const auto* pointerAlias = aliasByName("CountPtr");
         const auto* recordAlias = aliasByName("PairAlias");
         const auto* readonlyAlias = aliasByName("ReadOnlyPtr");
+        const auto* callbackAlias = aliasByName("Callback");
+        const auto* oldCallbackAlias = aliasByName("OldCallback");
         ok &= expect(countAlias && countAlias->underlyingType.kind == CppTypeKind::UnsignedInteger &&
                      countAlias->underlyingType.sizeBits == 32 && countAlias->location &&
                      pointerAlias && pointerAlias->underlyingType.kind == CppTypeKind::Pointer &&
@@ -2150,6 +2153,18 @@ int main(int argc, char** argv)
                      readonlyAlias && readonlyAlias->underlyingType.element &&
                      readonlyAlias->underlyingType.element->isConst,
                      "C typedef snapshot preserves scalar, pointer, record and const underlying types");
+        const auto* callbackType = callbackAlias && callbackAlias->underlyingType.element
+            ? callbackAlias->underlyingType.element->function.get() : nullptr;
+        const auto* oldCallbackType = oldCallbackAlias && oldCallbackAlias->underlyingType.element
+            ? oldCallbackAlias->underlyingType.element->function.get() : nullptr;
+        ok &= expect(callbackType && callbackType->hasPrototype && callbackType->variadic &&
+                     callbackType->callingConvention == "cdecl" &&
+                     callbackType->returnType.kind == CppTypeKind::SignedInteger &&
+                     callbackType->parameterTypes.size() == 1 &&
+                     callbackType->parameterTypes[0].kind == CppTypeKind::Pointer &&
+                     callbackType->parameterTypes[0].element && callbackType->parameterTypes[0].element->isConst &&
+                     oldCallbackType && !oldCallbackType->hasPrototype,
+                     "C function pointer typedef retains signature and distinguishes old-style declarations");
         cEnums = c->enumsSnapshot();
         const CppEnumDeclaration* color = nullptr;
         const CppEnumDeclaration* anonymous = nullptr;
