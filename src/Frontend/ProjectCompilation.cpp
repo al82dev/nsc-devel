@@ -1136,9 +1136,46 @@ bool ProjectCompilation::compileProjectNames(
     if (cancellationRequested(loadError, "names")) return false;
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "names");
+    if (cppRecordObserver_) cppRecordObserver_(*this);
     nameLookup_ = std::make_unique<ProjectNameLookup>(lifetime_->indexes());
+    std::vector<std::pair<std::size_t, std::string>> importedNamespaces;
+    for (const auto& function : cppImportedFunctions_)
+        if (!function.namespaceName.empty())
+        {
+            if (function.projectOrdinal >= projectGraph_->projects().size() ||
+                projectGraph_->projects()[function.projectOrdinal].moduleName() != function.moduleName)
+            {
+                loadError = "imported C/C++ namespace has an invalid project owner";
+                return false;
+            }
+            importedNamespaces.emplace_back(function.projectOrdinal, function.namespaceName);
+        }
+    for (const auto& state : experimentalCppImportedStates_)
+    {
+        if (state.projectOrdinal >= projectGraph_->projects().size() ||
+            projectGraph_->projects()[state.projectOrdinal].moduleName() != state.moduleName)
+        {
+            loadError = "imported C/C++ global has an invalid project owner";
+            return false;
+        }
+        if (!state.namespaceName.empty())
+            importedNamespaces.emplace_back(state.projectOrdinal, state.namespaceName);
+    }
+    if (cppNamespaceProvider_ &&
+        !cppNamespaceProvider_(*projectGraph_, cppProjectSessions_, importedNamespaces, loadError))
+        return false;
+    if (!nameLookup_->setImportedNamespaces(std::move(importedNamespaces))) return false;
+    std::vector<CppImportedTypeDeclaration> selectedCppTypes = experimentalCppImportedTypes_;
+    if (experimentalCppTypeSelector_ && !experimentalCppTypeSelector_(*this, selectedCppTypes, loadError))
+        return false;
+    if (!nameLookup_->setCppImportedTypes(std::move(selectedCppTypes)))
+    {
+        loadError = "cannot configure experimental C/C++ types";
+        return false;
+    }
     nameLookup_->setPrecompiledSnapshots(precompiledSnapshots_);
-    if (precompiledSnapshotCapture_.has_value())
+    if (!experimentalCppLifetimeMethodProvider_ && !experimentalCppInstanceMethodProvider_ && !experimentalCppInstanceFieldProvider_ &&
+        !experimentalCppStaticMethodProvider_ && !experimentalCppStaticFieldProvider_ && precompiledSnapshotCapture_.has_value())
         nameLookup_->setPrecompiledSnapshotCaptureUnit(precompiledSnapshotCapture_->unitOrdinal);
     if (!nameLookup_->build(
             *projectGraph_, units_, diagnostics_, compilationJobs_,
