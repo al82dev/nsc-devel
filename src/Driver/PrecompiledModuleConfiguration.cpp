@@ -477,12 +477,12 @@ bool configurePrecompiledModules(
         if (hasSessions && !compilation.setCppTypeAliasProvider(interop::provideCppTypeAliases, error))
             return false;
         if (hasSessions && !hasCppSessions &&
-            (!compilation.setExperimentalCppTypeProvider(interop::provideExperimentalCppRecordCandidates, error) ||
+            (!compilation.setExperimentalCppTypeProvider(interop::provideCppInteropTypes, error) ||
              !compilation.setExperimentalCppTypeSelector(interop::selectExperimentalCppRecordTypesForCompilation, error) ||
              !compilation.setExperimentalCppInstanceFieldProvider(interop::provideExperimentalCppInstanceFields, error) ||
              !compilation.enableCppImportedFieldLowering(error))) return false;
         if (hasCppSessions &&
-            (!compilation.setExperimentalCppTypeProvider(interop::provideExperimentalCppRecordCandidates, error) ||
+            (!compilation.setExperimentalCppTypeProvider(interop::provideCppInteropTypes, error) ||
              !compilation.setExperimentalCppTypeSelector(interop::selectExperimentalCppRecordTypesForCompilation, error) ||
              !compilation.setExperimentalCppInstanceMethodProvider(interop::provideExperimentalCppInstanceMethods, error) ||
              !compilation.setExperimentalCppStaticMethodProvider(interop::provideExperimentalCppStaticMethods, error) ||
