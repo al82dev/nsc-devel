@@ -223,6 +223,11 @@ con `Color`. La selección transitiva del enum desde una firma, el caso const,
 los campos y la ejecución de llamadas siguen pendientes. No se ha compilado ni
 ejecutado esta implementación.
 
+El cálculo de layout de campos NativeSharp acepta el layout conocido de un
+enum C importado; hay una prueba preparada de un struct que lo contiene. Los
+records importados conservan las barreras de valor y ninguna de estas rutas se
+ha validado todavía.
+
 Se agregó un inventario que identifica enums presentes en resultados y
 parámetros de funciones, con su profundidad e índice de candidato; una prueba
 preparada cubre ambos. Falta usar las demandas reales de llamadas para elegir
