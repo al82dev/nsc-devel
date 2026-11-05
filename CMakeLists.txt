@@ -962,6 +962,7 @@ add_library(nsc_llvm STATIC
     src/LLVM/Internal/StandardErrorCapture.cpp
     src/LLVM/Internal/X64InstructionWalker.cpp
     src/LLVM/LlvmDebugPrefixMap.cpp
+    src/LLVM/CppLifetimeObjectEmitter.cpp
     src/LLVM/LlvmModule.cpp
     src/LLVM/LlvmModuleInspection.cpp
     src/LLVM/LlvmTypeClassification.cpp
