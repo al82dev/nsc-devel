@@ -129,6 +129,7 @@ CppSemanticFunctionResult projectFunction(
     symbol.declaredTypeKey = resultType->nativeSharpTypeKey;
     symbol.mangledName = *function.externalSymbol;
     symbol.cppCallingConvention = function.callingConvention;
+    symbol.cppReturnType = function.returnType;
     symbol.cppDllImport = function.dllImport;
     symbol.isVariadic = function.variadic;
     symbol.cppCanonicalIdentity = *function.externalSymbol + "|" + resultType->canonicalCppType + "(";
@@ -146,6 +147,7 @@ CppSemanticFunctionResult projectFunction(
         parameter.pointerPointeeReadonly = input.type.kind == CppTypeKind::Pointer &&
             input.type.element && input.type.element->isConst;
         symbol.parameters.push_back(std::move(parameter));
+        symbol.cppParameterTypes.push_back(input.type);
         if (index != 0) { symbol.signatureKey.push_back(','); symbol.cppCanonicalIdentity.push_back(','); }
         symbol.signatureKey += parameterType->nativeSharpTypeKey;
         symbol.cppCanonicalIdentity += parameterType->canonicalCppType;

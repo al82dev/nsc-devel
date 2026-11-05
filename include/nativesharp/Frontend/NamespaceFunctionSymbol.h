@@ -4,9 +4,11 @@
 
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Interop/CppType.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -46,6 +48,10 @@ struct NamespaceFunctionSymbol final
     // the NativeSharp representation key used for value types and overload candidates.
     std::string cppCanonicalIdentity;
     std::string cppCallingConvention;
+    // Original Clang types retain qualifiers at every captured level. They do
+    // not, by themselves, authorize emitting noalias or changing call ABI.
+    std::optional<interop::CppType> cppReturnType;
+    std::vector<interop::CppType> cppParameterTypes;
     bool cppDllImport = false;
     const ast::AstNode* declarationSyntax = nullptr;
     const ast::AstNode* definitionSyntax = nullptr;
