@@ -599,6 +599,8 @@ bool ProjectOopMirModel::appendStaticField(
     staticField.isVolatile = field.isVolatile;
     staticField.isConst = field.isConst;
     staticField.isImported = field.isPrecompiled;
+    staticField.isCppExternal = field.isCppExternal;
+    staticField.cppDllImport = field.cppDllImport;
     staticField.genericSpecializationKey =
         genericSpecializationKeyForType(nameLookup, field.declaringTypeOrdinal);
     if (field.declaringTypeOrdinal >= nameLookup.namedTypes().size())
@@ -609,7 +611,13 @@ bool ProjectOopMirModel::appendStaticField(
     const std::string typeFragment = compilation::symbolFragmentForIdentityKey(
         nameLookup.namedTypes()[field.declaringTypeOrdinal].identity.key());
     const std::string fieldFragment = compilation::symbolFragmentForIdentityKey(field.name);
-    staticField.storageSymbol = "__nsc_static_" + typeFragment + "__" + fieldFragment;
+    if (field.isCppExternal && field.cppExternalSymbol.empty())
+    {
+        error = "C++ static field has no external symbol";
+        return false;
+    }
+    staticField.storageSymbol = field.isCppExternal ? field.cppExternalSymbol :
+        "__nsc_static_" + typeFragment + "__" + fieldFragment;
     staticField.accessorName = "__nsc_get_static_" + typeFragment + "__" + fieldFragment;
     staticField.sourceRange = field.range;
     staticField.debugDisplayName =
@@ -650,14 +658,18 @@ void ProjectOopMirModel::buildNamespaceStateFields(
          stateOrdinal < namespaceFunctionModel.states().size(); ++stateOrdinal)
     {
         const NamespaceStateSymbol& state = namespaceFunctionModel.states()[stateOrdinal];
+        if (!state.cppImportError.empty()) continue;
         ProjectOopMirStaticField staticField;
         staticField.memberOrdinal = namespaceStateMemberBase + stateOrdinal;
         staticField.declaringTypeOrdinal = nameLookup.namedTypes().size();
         staticField.name = state.name;
         staticField.typeKey = state.declaredTypeKey;
-        staticField.isReadonly = state.isConst;
+        staticField.isReadonly = state.isConst || state.isCppReadonly;
         staticField.isConst = state.isConst;
+        staticField.isVolatile = state.isVolatile;
         staticField.isImported = state.isPrecompiled;
+        staticField.isCppExternal = state.isCppExternal;
+        staticField.cppDllImport = state.cppDllImport;
         staticField.storageSymbol = state.storageName;
         staticField.accessorName = "__nsc_get_" + state.storageName;
         staticField.namespaceStateOrdinal = stateOrdinal;
