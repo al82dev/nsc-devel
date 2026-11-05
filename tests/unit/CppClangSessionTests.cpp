@@ -136,6 +136,7 @@ public:
     std::optional<std::vector<CppFunctionDeclaration>> freeFunctionsSnapshot() const override { return inner_->freeFunctionsSnapshot(); }
     std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const override { return inner_->recordsSnapshot(); }
     std::optional<std::vector<CppTypeAliasDeclaration>> typeAliasesSnapshot() const override { return inner_->typeAliasesSnapshot(); }
+    std::optional<std::vector<CppEnumDeclaration>> enumsSnapshot() const override { return inner_->enumsSnapshot(); }
     std::optional<std::vector<CppGlobalDeclaration>> globalsSnapshot() const override { return inner_->globalsSnapshot(); }
     std::optional<std::vector<CppNamespaceDeclaration>> namespacesSnapshot() const override { return inner_->namespacesSnapshot(); }
     std::optional<std::vector<std::filesystem::path>> sourceFilesSnapshot() const override { return inner_->sourceFilesSnapshot(); }
@@ -2114,6 +2115,7 @@ int main(int argc, char** argv)
                                   "struct Pair { char a; int b; }; struct Incomplete;\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
                                   "typedef struct Pair PairAlias; typedef const int* ReadOnlyPtr;\n"
+                                  "enum Color { CMinus = -3, CPlus = 5 }; enum { CAnonymous = 9 };\n"
                                   "extern int c_global; extern int c_global; static const int c_local = 3; "
                                   "extern volatile int c_volatile; extern const volatile float c_float;\n"
                                   "struct Flags { unsigned a:3; unsigned b:5; }; "
@@ -2122,6 +2124,7 @@ int main(int argc, char** argv)
     std::optional<std::vector<CppRecordDeclaration>> cRecords;
     std::optional<std::vector<CppGlobalDeclaration>> cGlobals;
     std::optional<std::vector<CppTypeAliasDeclaration>> cAliases;
+    std::optional<std::vector<CppEnumDeclaration>> cEnums;
     ok &= expect(static_cast<bool>(c), "valid C translation unit opens");
     if (c)
     {
@@ -2147,6 +2150,22 @@ int main(int argc, char** argv)
                      readonlyAlias && readonlyAlias->underlyingType.element &&
                      readonlyAlias->underlyingType.element->isConst,
                      "C typedef snapshot preserves scalar, pointer, record and const underlying types");
+        cEnums = c->enumsSnapshot();
+        const CppEnumDeclaration* color = nullptr;
+        const CppEnumDeclaration* anonymous = nullptr;
+        if (cEnums)
+            for (const auto& enumeration : *cEnums)
+            {
+                if (enumeration.name == "Color") color = &enumeration;
+                if (enumeration.name.empty() && !enumeration.enumerators.empty() &&
+                    enumeration.enumerators.front().name == "CAnonymous") anonymous = &enumeration;
+            }
+        ok &= expect(color && color->complete && color->underlyingType && color->location &&
+                     color->enumerators.size() == 2 && color->enumerators[0].name == "CMinus" &&
+                     color->enumerators[0].decimalValue == "-3" && color->enumerators[0].location &&
+                     color->enumerators[1].decimalValue == "5" && anonymous &&
+                     anonymous->enumerators[0].decimalValue == "9",
+                     "C enum snapshot preserves named and anonymous enumerators and signed values");
         auto count = c->topLevelDeclarationCount();
         ok &= expect(count && *count > 0, "C AST is available after parsing");
         cFunctions = c->freeFunctionsSnapshot();
@@ -7193,6 +7212,8 @@ int main(int argc, char** argv)
                      "closed session does not expose an AST");
         ok &= expect(!c->typeAliasesSnapshot() && cAliases && !cAliases->empty(),
                      "copied C typedef snapshots survive closing the Clang session");
+        ok &= expect(!c->enumsSnapshot() && cEnums && !cEnums->empty(),
+                     "copied C enum snapshots survive closing the Clang session");
         ok &= expect(!c->freeFunctionsSnapshot() && !c->recordsSnapshot() && !c->globalsSnapshot() && cFunctions &&
                      functionByName(*cFunctions, "bridge_probe") && cRecords &&
                      recordByName(*cRecords, "Pair") && cGlobals && globalByName(*cGlobals, "c_global"),
