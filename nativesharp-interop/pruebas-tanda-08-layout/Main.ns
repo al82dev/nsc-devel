@@ -1,0 +1,7 @@
+int Main()
+{
+    if (sizeof(Pair) != (nuint)pair_size()) return 1;
+    if (alignof(Pair) != (nuint)pair_alignment()) return 2;
+    if (offsetof(Pair, b) != (nuint)pair_b_offset()) return 3;
+    return 0;
+}
