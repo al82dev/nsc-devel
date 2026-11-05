@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Frontend/CppDiagnosticAdapter.h"
+#include "nativesharp/Frontend/CppAliasRecordType.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticRenderer.h"
 #include "nativesharp/Source/SourceManager.h"
@@ -2153,7 +2154,7 @@ int main(int argc, char** argv)
                                   "int bridge_probe(size_t n, ...);\n"
                                   "struct Pair { char a; int b; }; struct Incomplete;\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
-                                  "typedef struct Pair PairAlias; typedef const int* ReadOnlyPtr;\n"
+                                  "typedef struct Pair PairAlias; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
                                   "typedef int IncompleteArray[]; typedef int FixedArray[7];\n"
                                   "typedef int (*Callback)(const int*, ...); typedef int (*OldCallback)();\n"
                                   "enum Color { CMinus = -3, CPlus = 5 }; enum { CAnonymous = 9 };\n"
@@ -2181,6 +2182,7 @@ int main(int argc, char** argv)
         const auto* countAlias = aliasByName("Count");
         const auto* pointerAlias = aliasByName("CountPtr");
         const auto* recordAlias = aliasByName("PairAlias");
+        const auto* recordPointerAlias = aliasByName("PairPtr");
         const auto* readonlyAlias = aliasByName("ReadOnlyPtr");
         const auto* incompleteArrayAlias = aliasByName("IncompleteArray");
         const auto* fixedArrayAlias = aliasByName("FixedArray");
@@ -2195,6 +2197,14 @@ int main(int argc, char** argv)
                      readonlyAlias && readonlyAlias->underlyingType.element &&
                      readonlyAlias->underlyingType.element->isConst,
                      "C typedef snapshot preserves scalar, pointer, record and const underlying types");
+        const auto projectedRecord = recordAlias ? nativesharp::frontend::cppAliasRecordType(recordAlias->underlyingType)
+                                                 : std::nullopt;
+        const auto projectedRecordPointer = recordPointerAlias
+            ? nativesharp::frontend::cppAliasRecordType(recordPointerAlias->underlyingType) : std::nullopt;
+        ok &= expect(projectedRecord && projectedRecord->name == "Pair" && projectedRecord->pointerDepth == 0 &&
+                     projectedRecordPointer && projectedRecordPointer->name == "Pair" &&
+                     projectedRecordPointer->pointerDepth == 1 && projectedRecordPointer->pointeeConst,
+                     "record typedef projection preserves identity, pointer and pointee const");
         ok &= expect(incompleteArrayAlias && incompleteArrayAlias->underlyingType.kind == CppTypeKind::Array &&
                      incompleteArrayAlias->underlyingType.element &&
                      incompleteArrayAlias->underlyingType.element->kind == CppTypeKind::SignedInteger &&
