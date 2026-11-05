@@ -2228,7 +2228,7 @@ bool ProjectCompilation::materializePrecompiledSyntax(std::string& loadError)
         }
         if (units_.size() > firstUnit) precompiledApiUnits_[moduleIndex] = firstUnit;
     }
-    loadPrecompiledSnapshots();
+    if (!experimentalCppLifetimeMethodProvider_ && !experimentalCppInstanceMethodProvider_ && !experimentalCppInstanceFieldProvider_ && !experimentalCppStaticMethodProvider_ && !experimentalCppStaticFieldProvider_ && experimentalCppImportedTypes_.empty()) loadPrecompiledSnapshots();
     return true;
 }
 
