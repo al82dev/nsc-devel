@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CppLifetimeLocal</Name></PropertyGroup>
+  <ItemGroup><CppLibraryReference Header="Ready.h" Language="C++" Standard="c++20" Library="ready.lib" /></ItemGroup>
+</Project>
