@@ -271,6 +271,17 @@ int main(int argc, char** argv)
         ok &= expect(rendered.str().find("<source>") == std::string::npos &&
                      rendered.str().find("declared here") != std::string::npos,
                      "unresolved C++ locations render without inventing NativeSharp locations");
+        const FileId file = sources.addBuffer("A:/headers/test.hpp", "x\n");
+        const SourceLocation location(file, 0);
+        diagnostics::DiagnosticEngine resolved;
+        frontend::appendCppDiagnostics(std::span(input).first(1), resolved,
+            [location](const interop::CppSourcePoint&) -> std::optional<SourceRange> {
+                return SourceRange(location, location);
+            });
+        ok &= expect(resolved.diagnostics().size() == 1 &&
+                     resolved.diagnostics()[0].location() == location &&
+                     resolved.diagnostics()[0].message().find("A:/headers/test.hpp:12:7") == std::string::npos,
+                     "explicitly resolved C++ locations use the supplied NativeSharp range");
     }
     {
         CppSessionOptions config;
