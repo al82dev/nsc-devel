@@ -1240,7 +1240,7 @@ int main(int argc, char** argv)
                         std::vector<CppProjectSessions> recordGroups(2);
                         recordGroups[0].projectFile = otherProject->projectFile();
                         recordGroups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                            CppLanguageMode::Cpp, "typedef int InventoryAlias; enum InventoryEnum { FirstEnumValue = -2 }; struct Shared { int x; }; struct Same { int x; }; struct Equal { int x; }; struct Forward; struct OnlyForward; "
+                            CppLanguageMode::Cpp, "typedef int InventoryAlias; namespace { typedef int HiddenAlias; } enum InventoryEnum { FirstEnumValue = -2 }; struct Shared { int x; }; struct Same { int x; }; struct Equal { int x; }; struct Forward; struct OnlyForward; "
                             "Shared* use(Shared*); OnlyForward* store(OnlyForward*); int nestedPtr(Shared**); "
                             "void observe(const OnlyForward*); Shared value(Shared); "
                             "template<class T> struct Box {}; int specialized(Box<int>*);\n")));
@@ -1253,10 +1253,12 @@ int main(int argc, char** argv)
                             CppLanguageMode::Cpp, "typedef int InventoryAlias; namespace { struct Hidden {}; } struct Item {}; struct Shared {}; Shared* own(Shared*);\n")));
                         auto aliasInventory = collectCppSemanticTypeAliases(finalGraph, recordGroups);
                         const auto* aliases = std::get_if<std::vector<CppSemanticTypeAliasEntry>>(&aliasInventory);
-                        bool aliasFirst = false, aliasSecond = false, aliasOtherProject = false;
+                        bool aliasFirst = false, aliasSecond = false, aliasOtherProject = false, anonymousAlias = false;
                         if (aliases)
                             for (const auto& entry : *aliases)
                             {
+                                anonymousAlias |= entry.declaration.name == "HiddenAlias" &&
+                                    entry.declaration.insideAnonymousNamespace;
                                 if (entry.declaration.name != "InventoryAlias") continue;
                                 aliasFirst |= entry.projectOrdinal == 1 && entry.referenceIndex == 0 &&
                                     entry.declaration.underlyingType.kind == CppTypeKind::SignedInteger;
@@ -1265,7 +1267,7 @@ int main(int argc, char** argv)
                                 aliasOtherProject |= entry.projectOrdinal == 2 && entry.referenceIndex == 0 &&
                                     entry.declaration.underlyingType.kind == CppTypeKind::SignedInteger;
                             }
-                        ok &= expect(aliasFirst && aliasSecond && aliasOtherProject,
+                        ok &= expect(aliasFirst && aliasSecond && aliasOtherProject && anonymousAlias,
                                      "typedef inventory retains conflicting observations and project origins");
                         auto enumInventory = collectCppSemanticEnums(finalGraph, recordGroups);
                         const auto* enums = std::get_if<std::vector<CppSemanticEnumEntry>>(&enumInventory);
@@ -4746,9 +4748,15 @@ int main(int argc, char** argv)
                     CppTypeAliasDeclaration parserAlias;
                     parserAlias.name = "CNumber";
                     parserAlias.qualifiedName = "External::CNumber";
+                    CppTypeAliasDeclaration hiddenParserAlias;
+                    hiddenParserAlias.name = "HiddenAlias";
+                    hiddenParserAlias.qualifiedName = "HiddenAlias";
+                    hiddenParserAlias.insideAnonymousNamespace = true;
                     const std::vector<nativesharp::frontend::CppImportedTypeAlias> parserAliases{{
                         appOrdinal, graph->projects()[appOrdinal].projectFile(), 0,
-                        "x86_64-pc-windows-msvc", parserAlias}};
+                        "x86_64-pc-windows-msvc", parserAlias}, {
+                        appOrdinal, graph->projects()[appOrdinal].projectFile(), 0,
+                        "x86_64-pc-windows-msvc", hiddenParserAlias}};
                     const auto withAlias = nativesharp::frontend::cppParserProjectInventories(
                         *graph, inventoryUnits, imported, extra, parserAliases);
                     auto contains = [](const auto& values, const auto& value) {
@@ -4765,6 +4773,7 @@ int main(int argc, char** argv)
                         "parser inventory follows project references and retains native and C++ namespace prefixes");
                     ok &= expect(withAlias &&
                         contains((*withAlias)[appOrdinal].cppTypes, "External.CNumber") &&
+                        !contains((*withAlias)[appOrdinal].cppTypes, "HiddenAlias") &&
                         !contains((*withAlias)[ownerCore].cppTypes, "External.CNumber"),
                         "parser alias names follow project visibility and C++ namespace spelling");
                     const auto consumer = root / "Consumer";
