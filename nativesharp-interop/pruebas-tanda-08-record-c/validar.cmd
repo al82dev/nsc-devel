@@ -23,10 +23,14 @@ llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\project.ll"
 if errorlevel 1 exit /b 1
-findstr /c:"load volatile" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta lectura LLVM volatile. & exit /b 1)
-findstr /c:"store volatile" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta escritura LLVM volatile. & exit /b 1)
+findstr /r /c:"load volatile.*%%field.addr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura LLVM volatile del campo. & exit /b 1)
+findstr /r /c:"store volatile.*%%field.addr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura LLVM volatile del campo. & exit /b 1)
+findstr /r /c:"load volatile.*@shared_volatile" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura LLVM volatile del global. & exit /b 1)
+findstr /r /c:"store volatile.*@shared_volatile" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura LLVM volatile del global. & exit /b 1)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\program.exe"
 if errorlevel 1 exit /b 1
 "%DEST%\program.exe"

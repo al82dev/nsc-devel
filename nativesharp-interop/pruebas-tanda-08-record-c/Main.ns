@@ -16,5 +16,7 @@ int Main()
     if (device->counter != 42 || read_device(device) != 42) return 4;
     shared_value = 42;
     if (shared_value != 42 || read_shared_value() != 42) return 5;
+    shared_volatile = 42;
+    if (shared_volatile != 42 || read_shared_volatile() != 42) return 6;
     return 0;
 }

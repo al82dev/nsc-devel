@@ -11,3 +11,5 @@ struct Device* get_device(void);
 int read_device(struct Device* value);
 extern int shared_value;
 int read_shared_value(void);
+extern volatile int shared_volatile;
+int read_shared_volatile(void);

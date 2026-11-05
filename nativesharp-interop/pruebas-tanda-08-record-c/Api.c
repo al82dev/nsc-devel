@@ -11,3 +11,5 @@ struct Device* get_device(void) { return &device; }
 int read_device(struct Device* value) { return value->counter; }
 int shared_value = 7;
 int read_shared_value(void) { return shared_value; }
+volatile int shared_volatile = 7;
+int read_shared_volatile(void) { return shared_volatile; }
