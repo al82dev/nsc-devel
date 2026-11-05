@@ -1158,6 +1158,13 @@ add_library(nsc_driver STATIC
 
 target_include_directories(nsc_driver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(nsc_driver PUBLIC nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target nsc_basic nsc_precompiled)
+if(NSC_ENABLE_CPP_INTEROP)
+    target_link_libraries(nsc_driver PRIVATE nsc_cpp_interop)
+    target_compile_definitions(nsc_driver PRIVATE NSC_ENABLE_CPP_INTEROP=1)
+    if(NSC_CPP_INTEROP_SESSION_TESTS)
+        target_link_libraries(nsc_cpp_session_tests PRIVATE nsc_driver)
+    endif()
+endif()
 target_compile_features(nsc_driver PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_driver)
 
