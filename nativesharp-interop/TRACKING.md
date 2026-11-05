@@ -147,7 +147,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 ## 06. Verificación de la primera tanda
 
 - [x] T06-001. Registrar el módulo de pruebas de sesión en la infraestructura de pruebas que corresponda. Evidencia: [tanda 06](TANDA-06-VALIDACION.md).
-- [ ] T06-002. Asegurar que los temporales de esas pruebas se crean dentro de A:.
+- [x] T06-002. Asegurar que los temporales de esas pruebas se crean dentro de A:. Evidencia: [tanda 06](TANDA-06-VALIDACION.md).
 - [x] T06-003. Comprobar que una sesión C abre una unidad con `bridge_probe` y usa los recursos de Clang. Evidencia: [sesión real](LINEA-BASE-TANDAS.md).
 - [x] T06-004. Comprobar que una sesión C++ abre una unidad con una clase de prueba. Evidencia: [sesión real](LINEA-BASE-TANDAS.md).
 - [ ] T06-005. Comprobar el diagnóstico de una versión de Clang incompatible.
