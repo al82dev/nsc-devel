@@ -5209,6 +5209,40 @@ int main(int argc, char** argv)
                     ok &= expect(ready && selectedTone && selectedNode,
                                  "callback typedef selects enum and record used only inside its signature");
                 }
+                {
+                    nativesharp::frontend::ProjectCompilation arrayDependency;
+                    arrayDependency.setSourceBufferProvider([](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns")
+                            return "int Use(ShadeArray shades, NodeArray nodes) { return 0; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    CppProjectSessions group;
+                    group.projectFile = std::filesystem::absolute(path);
+                    group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
+                        "enum Shade { Light = 1 }; struct Node { int value; }; "
+                        "typedef enum Shade ShadeArray[2]; typedef struct Node NodeArray[2];\n")));
+                    std::vector<CppProjectSessions> groups;
+                    groups.push_back(std::move(group));
+                    std::string dependencyError;
+                    const bool ready = arrayDependency.setCppProjectSessions(std::move(groups), dependencyError) &&
+                        arrayDependency.setCppTypeAliasProvider(provideCppTypeAliases, dependencyError) &&
+                        arrayDependency.setExperimentalCppTypeProvider(provideCppInteropTypes, dependencyError) &&
+                        arrayDependency.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, dependencyError) &&
+                        arrayDependency.compileProjectNames(path, dependencyError);
+                    bool selectedShade = false, selectedNode = false;
+                    if (ready && arrayDependency.nameLookup())
+                        for (const auto& type : arrayDependency.nameLookup()->namedTypes())
+                        {
+                            selectedShade |= type.identity.name() == "Shade" &&
+                                type.kind == nativesharp::frontend::NamedTypeDeclarationKind::Enum;
+                            selectedNode |= type.identity.name() == "Node" &&
+                                type.kind == nativesharp::frontend::NamedTypeDeclarationKind::Struct;
+                        }
+                    if (!ready) std::cerr << "C array typedef dependencies: " << dependencyError << '\n';
+                    ok &= expect(ready && selectedShade && selectedNode,
+                                 "array typedef selects its enum and record element dependencies");
+                }
                 for (bool useCollision : {false, true})
                 {
                     nativesharp::frontend::ProjectCompilation collisionCompilation;
