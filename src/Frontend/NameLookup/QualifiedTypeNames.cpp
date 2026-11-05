@@ -402,9 +402,10 @@ bool ProjectNameLookup::expandCppTypeAlias(
                               "C function pointer alias has unsupported use-site modifiers: '" +
                               syntax->baseName() + "'");
             auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
-            const auto makeType = [&](const CppAliasBuiltinType& type) {
+            const auto& original = *selected->declaration.underlyingType.element->function;
+            const auto makeType = [&](const CppAliasBuiltinType& type, const interop::CppType& source) {
                 auto* result = arena.make<ast::TypeSyntax>(syntax->range(), type.token, std::string(type.name));
-                result->prependModifiers(std::vector<ast::TypeModifierSyntax>(type.pointerDepth));
+                result->prependModifiers(cppPointerModifiers(source));
                 result->setPointeeConst(type.pointeeConst);
                 return result;
             };
@@ -414,10 +415,10 @@ bool ProjectNameLookup::expandCppTypeAlias(
             mutableSyntax->setFunction();
             mutableSyntax->setFunctionCarrier(ast::FunctionTypeCarrierSyntaxKind::Pointer);
             mutableSyntax->setFunctionCallingConvention(function->callingConvention);
-            mutableSyntax->setFunctionReturnType(makeType(function->result));
+            mutableSyntax->setFunctionReturnType(makeType(function->result, original.returnType));
             mutableSyntax->setFunctionVariadic(function->variadic);
-            for (const auto& parameter : function->parameters)
-                mutableSyntax->addTypeArgument(makeType(parameter));
+            for (std::size_t i = 0; i < function->parameters.size(); ++i)
+                mutableSyntax->addTypeArgument(makeType(function->parameters[i], original.parameterTypes[i]));
             return true;
         }
         const auto& underlying = selected->declaration.underlyingType;
