@@ -6231,6 +6231,20 @@ std::optional<ProjectIntegerValue> ProjectMethodBodyModel::foldIntegerConstant(
     return ProjectIntegerEvaluator(&resolver).evaluate(expression, declaringTypeOrdinal);
 }
 
+std::optional<ProjectIntegerValue> ProjectMethodBodyModel::ConstantMemberResolver::resolveDirectInteger(
+    const ast::AstNode* syntax) const
+{
+    if (!syntax || !model_.namespaceFunctionModel_) return std::nullopt;
+    const MethodNameBinding* binding = model_.recordedNameBinding(syntax, callableOrdinal_);
+    if (!binding || binding->kind != MethodNameBindingKind::NamespaceState ||
+        binding->candidateMemberOrdinals.size() != 1) return std::nullopt;
+    const auto ordinal = binding->candidateMemberOrdinals.front();
+    const auto states = model_.namespaceFunctionModel_->states();
+    if (ordinal >= states.size() || !states[ordinal].isCppEnumConstant || !states[ordinal].isConst ||
+        states[ordinal].initializerKind != NamespaceStateInitializerKind::Integer) return std::nullopt;
+    return ProjectIntegerValue{states[ordinal].integerValue, states[ordinal].declaredTypeKey};
+}
+
 std::optional<std::size_t> ProjectMethodBodyModel::ConstantMemberResolver::resolveConstantMember(
     const ast::AstNode* syntax,
     std::optional<std::size_t> declaringTypeOrdinal) const
@@ -6241,7 +6255,8 @@ std::optional<std::size_t> ProjectMethodBodyModel::ConstantMemberResolver::resol
     // segunda vez y arriesgar una respuesta distinta.
     if (syntax == nullptr) return std::nullopt;
     const MethodNameBinding* binding = model_.recordedNameBinding(syntax, callableOrdinal_);
-    if (binding != nullptr && binding->candidateMemberOrdinals.size() == 1)
+    if (binding != nullptr && binding->kind != MethodNameBindingKind::NamespaceState &&
+        binding->candidateMemberOrdinals.size() == 1)
     {
         return binding->candidateMemberOrdinals.front();
     }

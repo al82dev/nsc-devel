@@ -9,6 +9,8 @@ public:
         const ProjectMethodBodyModel& model,
         std::size_t callableOrdinal) noexcept;
 
+    std::optional<ProjectIntegerValue> resolveDirectInteger(const ast::AstNode* syntax) const override;
+
     std::optional<std::size_t> resolveConstantMember(
         const ast::AstNode* syntax,
         std::optional<std::size_t> declaringTypeOrdinal) const override;
