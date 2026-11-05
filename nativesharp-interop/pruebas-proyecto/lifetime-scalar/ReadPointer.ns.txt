@@ -1,0 +1,6 @@
+int Main() {
+    int* value = stackalloc int[1];
+    value[0] = 42;
+    { Demo.ReadPointer object = new Demo.ReadPointer(value); }
+    return Demo.check();
+}

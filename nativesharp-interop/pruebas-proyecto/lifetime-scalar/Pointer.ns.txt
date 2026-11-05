@@ -1,0 +1,7 @@
+int Main() {
+    int* value = stackalloc int[1];
+    value[0] = 0;
+    { Demo.Pointer object = new Demo.Pointer(value); }
+    if (value[0] != 42) return 1;
+    return Demo.check();
+}
