@@ -36,7 +36,15 @@ Validación del 5 de noviembre de 2026:
   separador de ruta de Windows. Se corrigió la expectativa en el commit
   `244f74303`, se recompiló incrementalmente la prueba y la batería terminó con
   código 0 usando recursos de Clang 23 y el compilador de `A:/al82dev-clang`.
+- Tras añadir los casos de cancelación durante búsqueda de encabezado,
+  concurrencia y ciclo de frontend se detectaron fallos en dos controles. La
+  investigación detectó que el controlador puede emitir un error y aun así
+  producir un AST; la sesión ahora rechaza también esos diagnósticos capturados.
+  Tras las correcciones, la construcción incremental y la batería completa de
+  sesión terminaron con código 0. La prueba concurrente mantiene las sesiones
+  vivas y no afirma ausencia de carreras mediante un detector especializado.
 
 Las pruebas de sobrecarga de dos punteros siguen siendo trabajo de otra tanda y
-no se consideran aprobadas por esta validación. Las comprobaciones de E/S del
-token no demuestran una cancelación de una sesión real ya en análisis.
+no se consideran aprobadas por esta validación. La cancelación se provocó durante
+la búsqueda de un encabezado en una acción real de Clang; no se comprobó la
+interrupción inmediata de trabajo de CPU ni de E/S ya iniciada.
