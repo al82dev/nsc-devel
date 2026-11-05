@@ -1,0 +1,6 @@
+int Main()
+{
+    Pair* item = make_pair();
+    item.value = 23;
+    return read_pair(item) - 23;
+}
