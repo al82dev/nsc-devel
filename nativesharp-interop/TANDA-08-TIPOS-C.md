@@ -264,6 +264,13 @@ definitivo. Hay una prueba preparada para un resultado enum no nombrado por
 NativeSharp. Faltan comprobar regresiones de genéricos, snapshots, colisiones y
 la ejecución ABI; los cambios no se han compilado ni ejecutado.
 
+La expansión de un typedef de callback prepara componentes enum o record con
+su identidad importada y convención de llamada. Se agregó una prueba semántica
+para un enum en el resultado y parámetro del callback; aún no se ha ejecutado.
+Falta comprobar que la observación seleccione dependencias de tipos nombradas
+únicamente dentro del typedef, además de callbacks anidados y llamadas reales.
+El paso de records por valor mantiene pendiente su verificación ABI.
+
 El proyecto `pruebas-tanda-08-enum-funcion` y su script preparan una prueba
 de extremo a extremo: un valor enum negativo se devuelve desde C y se vuelve
 a pasar a otra función C desde NativeSharp. Debe devolver cero; aún no se ha
