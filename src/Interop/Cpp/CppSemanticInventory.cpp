@@ -540,29 +540,42 @@ CppSignatureEnumResult collectCppSignatureEnumDependencies(
         if (function.projectOrdinal >= graph.projects().size())
             return CppSignatureEnumFailure{"function owner is outside the project graph"};
         const auto collect = [&](const CppType& root, std::optional<std::size_t> parameter) {
-            const CppType* type = &root;
-            std::size_t depth = 0;
-            while (type && depth < 64 && (type->kind == CppTypeKind::Pointer ||
-                   type->kind == CppTypeKind::LValueReference || type->kind == CppTypeKind::RValueReference ||
-                   type->kind == CppTypeKind::Array)) { type = type->element.get(); ++depth; }
-            if (!type) return false;
-            if (depth == 64 && (type->kind == CppTypeKind::Pointer || type->kind == CppTypeKind::Array ||
-                                type->kind == CppTypeKind::LValueReference || type->kind == CppTypeKind::RValueReference))
-                return false;
-            if (type->kind != CppTypeKind::Enumeration) return true;
-            if (!type->enumIdentity || type->enumIdentity->anonymousContext || type->enumIdentity->name.empty() ||
-                type->enumIdentity->qualifiedName != type->enumIdentity->name)
+            struct Frame { const CppType* type; std::size_t depth; std::size_t nesting; };
+            std::vector<Frame> pending{{&root, 0, 0}};
+            while (!pending.empty())
             {
-                result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Unprojectable, std::nullopt});
-                return true;
+                const auto [type, depth, nesting] = pending.back();
+                pending.pop_back();
+                if (!type || nesting > 64) return false;
+                if (type->kind == CppTypeKind::Pointer || type->kind == CppTypeKind::Array ||
+                    type->kind == CppTypeKind::LValueReference || type->kind == CppTypeKind::RValueReference)
+                {
+                    pending.push_back({type->element.get(), depth + 1, nesting + 1});
+                    continue;
+                }
+                if (type->kind == CppTypeKind::Function)
+                {
+                    if (!type->function) return false;
+                    pending.push_back({&type->function->returnType, depth, nesting + 1});
+                    for (const auto& item : type->function->parameterTypes)
+                        pending.push_back({&item, depth, nesting + 1});
+                    continue;
+                }
+                if (type->kind != CppTypeKind::Enumeration) continue;
+                if (!type->enumIdentity || type->enumIdentity->anonymousContext || type->enumIdentity->name.empty() ||
+                    type->enumIdentity->qualifiedName != type->enumIdentity->name)
+                {
+                    result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Unprojectable, std::nullopt});
+                    continue;
+                }
+                const compilation::TypeIdentity identity(graph.projects()[function.projectOrdinal].moduleName(), {}, {},
+                                                         type->enumIdentity->name);
+                const auto found = candidates.find({function.projectOrdinal, identity.key()});
+                if (found == candidates.end())
+                    result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Missing, std::nullopt});
+                else
+                    result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Matched, found->second});
             }
-            const compilation::TypeIdentity identity(graph.projects()[function.projectOrdinal].moduleName(), {}, {},
-                                                     type->enumIdentity->name);
-            const auto found = candidates.find({function.projectOrdinal, identity.key()});
-            if (found == candidates.end())
-                result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Missing, std::nullopt});
-            else
-                result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Matched, found->second});
             return true;
         };
         if (!collect(function.declaration.returnType, std::nullopt))
