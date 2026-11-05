@@ -79,6 +79,21 @@ public:
     unsigned calls = 0;
 };
 
+class FailWithDiagnostic final : public CppInteropSessionFactory
+{
+public:
+    CppSessionOpenResult open(CppSessionOptions, CppCancellationToken) override
+    {
+        CppSessionDiagnostic diagnostic;
+        diagnostic.message = "header failure";
+        diagnostic.location = CppSourcePoint{"A:/headers/broken.hpp", 4, 9};
+        CppSessionDiagnostic note;
+        note.message = "related declaration";
+        diagnostic.notes.push_back(std::move(note));
+        return CppSessionOpenFailure{"parse", "failed to parse header", {std::move(diagnostic)}};
+    }
+};
+
 class FailThirdOpen final : public CppInteropSessionFactory
 {
 public:
@@ -1749,6 +1764,19 @@ int main(int argc, char** argv)
                                      noFactoryManifest, noFactoryCompilation, error, false) &&
                                  error.find("requires a session factory") != std::string::npos,
                                  "driver rejects an explicit environment without a factory");
+                    FailWithDiagnostic failingFactory;
+                    scope.cppSessionFactory = &failingFactory;
+                    CompilationInputManifest badManifest(combinedGraph, {});
+                    nativesharp::frontend::ProjectCompilation badCompilation;
+                    error.clear();
+                    const bool badPrepared = nativesharp::driver::configurePrecompiledModules(
+                        badManifest, badCompilation, error, false);
+                    const auto& badDiagnostics = badCompilation.diagnostics().diagnostics();
+                    ok &= expect(!badPrepared && badDiagnostics.size() == 1 &&
+                                 badDiagnostics[0].message().find("broken.hpp:4:9") != std::string::npos &&
+                                 badDiagnostics[0].notes().size() == 1 &&
+                                 badDiagnostics[0].notes()[0] == "related declaration",
+                                 "driver preserves Clang failure locations and notes");
                     scope.cppSessionFactory = &factory;
                     CompilationInputManifest driverManifest(combinedGraph, {});
                     nativesharp::frontend::ProjectCompilation driverCompilation;
