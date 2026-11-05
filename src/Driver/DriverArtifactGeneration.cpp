@@ -511,6 +511,109 @@ bool prepareStaticLibraryProject(std::string_view inputPath,
     return true;
 }
 
+bool stageCppStaticDependencies(const frontend::ProjectCompilation &compilation,
+                                const StaticLibraryPublication &publication,
+                                ArtifactPublisher &publisher, std::string &error)
+{
+    interop::LibraryMetadataCodec codec;
+    interop::LibraryMetadata metadata;
+    if (!codec.read(publication.metadataStage, metadata, error)) return false;
+    if (metadata.cppBinaryDependencies.empty()) return true;
+    std::vector<interop::LibraryMetadataCppBinaryDependency> current;
+    if (!interop::collectCppGraphBinaryMetadataDependencies(*compilation.projectGraph(), current, error)) return false;
+    if (current != metadata.cppBinaryDependencies)
+    {
+        error = "C/C++ binary dependencies changed after metadata generation";
+        return false;
+    }
+    std::unordered_map<std::string, const interop::LibraryMetadataCppBinaryDependency *> declaredRuntimes;
+    for (const auto &record : current)
+        if (!record.runtimeFileName.empty()) declaredRuntimes.emplace(foldedName(record.runtimeFileName), &record);
+    for (const auto &project : compilation.projectGraph()->projects())
+        for (const auto &reference : project.cppLibraryReferences())
+        {
+            if (reference.runtimePath.empty()) continue;
+            linker::PeExecutableVerifier verifier;
+            if (!verifier.verifyDynamicLibrary(reference.runtimePath))
+            {
+                error = "invalid C/C++ runtime '" + reference.runtimePath.string() + "': " + verifier.error();
+                return false;
+            }
+            for (const auto &imported : verifier.info().importedLibraries)
+            {
+                const auto leaf = pathFromUtf8(imported);
+                if (leaf.empty() || leaf != leaf.filename() || leaf.has_root_name())
+                {
+                    error = "invalid DLL import name in C/C++ runtime: " + imported;
+                    return false;
+                }
+                const auto sibling = reference.runtimePath.parent_path() / leaf;
+                std::error_code siblingError;
+                const bool present = std::filesystem::is_regular_file(sibling, siblingError);
+                if (siblingError && siblingError != std::errc::no_such_file_or_directory)
+                { error = "cannot inspect C/C++ runtime dependency: " + siblingError.message(); return false; }
+                if (!present) continue;
+                const auto found = declaredRuntimes.find(foldedName(imported));
+                if (found == declaredRuntimes.end())
+                {
+                    error = "C/C++ runtime dependency must be declared for publication: " + imported;
+                    return false;
+                }
+                basic::Sha256Digest digest{};
+                std::uintmax_t size = 0;
+                if (!basic::sha256File(sibling, digest, size, error)) return false;
+                if (size != found->second->runtimeSize || digest != found->second->runtimeDigest)
+                {
+                    error = "C/C++ runtime dependency differs from declared runtime: " + imported;
+                    return false;
+                }
+            }
+        }
+    std::error_code ec;
+    const auto outputDirectory = std::filesystem::absolute(publication.destination, ec).parent_path();
+    if (ec) { error = "cannot resolve static-library output directory: " + ec.message(); return false; }
+    std::unordered_set<std::string> reserved;
+    for (const auto &path : {publication.destination, publication.headerDestination, publication.metadataDestination,
+                             publication.productSidecarDestination, publication.thinLtoSidecarDestination})
+        reserved.insert(foldedPathKey(outputDirectory / path.filename()));
+    std::unordered_set<std::string> stagedNames;
+    std::vector<std::filesystem::path> staged;
+    const auto stageArtifact = [&](const std::filesystem::path &source, std::uint64_t expectedSize,
+                                   const basic::Sha256Digest &expectedDigest) {
+        const auto destination = outputDirectory / source.filename();
+        const auto key = foldedPathKey(destination);
+        if (reserved.contains(key))
+        {
+            error = "C/C++ binary dependency conflicts with a NativeSharp product: " + destination.string();
+            return false;
+        }
+        if (!stagedNames.insert(key).second) return true;
+        const auto stage = publication.stage.parent_path() / "cpp-static-dependencies" / source.filename();
+        if (!basic::seedArtifactStage(source, stage, error)) return false;
+        basic::Sha256Digest digest{};
+        std::uintmax_t size = 0;
+        if (!basic::sha256File(stage, digest, size, error)) return false;
+        if (size != expectedSize || digest != expectedDigest)
+        {
+            error = "C/C++ binary dependency changed while being staged: " + source.string();
+            return false;
+        }
+        staged.push_back(stage);
+        return true;
+    };
+    std::size_t index = 0;
+    for (const auto &project : compilation.projectGraph()->projects())
+        for (const auto &reference : project.cppLibraryReferences())
+        {
+            if (reference.libraryPath.empty()) continue;
+            const auto &record = current[index++];
+            if (!stageArtifact(reference.libraryPath, record.librarySize, record.libraryDigest)) return false;
+            if (!reference.runtimePath.empty() &&
+                !stageArtifact(reference.runtimePath, record.runtimeSize, record.runtimeDigest)) return false;
+        }
+    return publisher.addRuntimeArtifacts(outputDirectory, staged, error, true);
+}
+
 bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::ProjectCompilation &compilation,
                                   const llvm_backend::ProjectOopObjectBundle &objectBundle,
                                   std::span<const std::filesystem::path> referencedLibraries,
