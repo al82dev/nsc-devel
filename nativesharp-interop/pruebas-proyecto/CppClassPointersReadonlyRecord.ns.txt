@@ -1,0 +1,6 @@
+int Main() {
+    var widget = Demo.make();
+    var readonlyPayload = widget->viewPayload(widget->getPayload());
+    readonlyPayload->value = 0;
+    return 0;
+}
