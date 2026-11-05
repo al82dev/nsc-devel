@@ -2538,6 +2538,63 @@ int main(int argc, char** argv)
                 ok &= expect(configured && checkedNativeOnly,
                              "native homonym cannot authorize a C++ record pointer function projection");
             }
+            {
+                nativesharp::frontend::ProjectCompilation conflicting;
+                CppProjectSessions group;
+                group.projectFile = std::filesystem::absolute(path);
+                group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                    "namespace A { namespace B { struct C { int x; }; } }\n")));
+                group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                    "namespace A { namespace B { struct C { long long x; }; } }\n")));
+                std::vector<CppProjectSessions> groups;
+                groups.push_back(std::move(group));
+                std::string conflictError;
+                const bool configured = conflicting.setCppProjectSessions(std::move(groups), conflictError) &&
+                    conflicting.setExperimentalCppTypeProvider(provideExperimentalCppRecordTypes, conflictError);
+                const bool parsedConflict = configured && conflicting.compileProjectSyntax(path, conflictError);
+                ok &= expect(configured && !parsedConflict &&
+                             conflictError.find("conflicting or unverified definitions") != std::string::npos,
+                             "experimental record provider rejects conflicting definitions before parsing");
+                nativesharp::frontend::ProjectCompilation explicitTypes;
+                ok &= expect(explicitTypes.setExperimentalCppImportedTypes({}, conflictError) &&
+                             !explicitTypes.setExperimentalCppTypeProvider(provideExperimentalCppRecordTypes, conflictError),
+                             "explicit type list cannot be combined with an experimental type provider");
+            }
+            for (int scenario : {0, 1, 2})
+            {
+                nativesharp::frontend::ProjectCompilation selectedCompilation;
+                selectedCompilation.setSourceBufferProvider([scenario](const std::filesystem::path& source)
+                    -> std::optional<std::string> {
+                    if (source.filename() != "Main.ns") return std::nullopt;
+                    if (scenario == 1) return "int Use(A.B.C* item) { return 0; } int Main() { return 0; }\n";
+                    if (scenario == 2) return "namespace A.B { struct C {} } int Use(A.B.C* item) { return 0; } int Main() { return 0; }\n";
+                    return "int Main() { return 0; }\n";
+                });
+                CppProjectSessions group;
+                group.projectFile = std::filesystem::absolute(path);
+                group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                    "namespace A { namespace B { struct C { int x; }; } }\n")));
+                group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                    "namespace A { namespace B { struct C { long long x; }; } }\n")));
+                std::vector<CppProjectSessions> groups;
+                groups.push_back(std::move(group));
+                std::string selectedError;
+                const bool configured = selectedCompilation.setCppProjectSessions(std::move(groups), selectedError) &&
+                    selectedCompilation.setExperimentalCppTypeProvider(provideExperimentalCppRecordCandidates, selectedError) &&
+                    selectedCompilation.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, selectedError);
+                const bool ready = configured && selectedCompilation.compileProjectNames(path, selectedError);
+                if (scenario == 1)
+                    ok &= expect(!ready && selectedError.find("conflicting or unverified definitions") != std::string::npos,
+                                 "referenced conflicting C++ record is rejected at experimental name selection");
+                else
+                {
+                    const auto* names = selectedCompilation.nameLookup();
+                    const auto ordinal = names ? names->typeOrdinalForIdentity(namespaceIdentity->key()) : std::nullopt;
+                    ok &= expect(ready && !selectedCompilation.diagnostics().hasErrors() &&
+                                 (scenario == 0 ? !ordinal : ordinal && !names->cppImportedType(*ordinal)),
+                                 "unused C++ conflict and native collision do not block experimental name lookup");
+                }
+            }
         }
     }
     return ok ? 0 : 1;
