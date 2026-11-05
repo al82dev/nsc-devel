@@ -688,6 +688,7 @@ target_compile_features(nsc_frontend PUBLIC cxx_std_20)
 nsc_enable_warnings(nsc_frontend)
 
 add_library(nsc_precompiled STATIC
+    src/Interop/Cpp/CppBinaryDependencies.cpp
     src/Compilation/PrecompiledProductCache.cpp
     src/Compilation/PrecompiledProductSidecarCodec.cpp
     src/Compilation/PrecompiledSemanticSnapshotCodec.cpp
