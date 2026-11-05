@@ -2,5 +2,10 @@ int Main()
 {
     Pair* item = make_pair();
     item.value = 23;
-    return read_pair(item) - 23;
+    if (read_pair(item) != 23) return 1;
+    Parent* parent = make_parent();
+    parent.child.value = 19;
+    parent.children[1].value = 23;
+    if (read_parent(parent) != 42) return 2;
+    return 0;
 }
