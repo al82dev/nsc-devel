@@ -42,6 +42,346 @@ void ProjectCompilation::setLifetime(ProjectCompilationLifetime& lifetime) noexc
     lifetime_->setWorkerCount(compilationJobs_);
 }
 
+bool ProjectCompilation::setCppInteropSession(
+    std::unique_ptr<interop::CppInteropSession> session, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "C/C++ interoperability session must be set before compilation starts";
+        return false;
+    }
+    if (session && session->state() != interop::CppSessionState::Ready)
+    {
+        error = "C/C++ interoperability session must be ready";
+        return false;
+    }
+    cppInteropSession_ = std::move(session);
+    error.clear();
+    return true;
+}
+
+interop::CppInteropSession* ProjectCompilation::cppInteropSession() const noexcept
+{
+    return cppInteropSession_.get();
+}
+
+bool ProjectCompilation::setCppImportedFunctions(
+    std::vector<NamespaceFunctionSymbol> functions, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "C/C++ functions must be set before compilation starts";
+        return false;
+    }
+    if (cppFunctionProvider_)
+    {
+        error = "C/C++ functions and a function provider cannot both be configured";
+        return false;
+    }
+    ProjectNamespaceFunctionModel validation;
+    if (!validation.setCppImportedFunctions(functions, error)) return false;
+    cppImportedFunctions_ = std::move(functions);
+    cppImportedFunctionsConfigured_ = true;
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setExperimentalCppImportedStates(
+    std::vector<NamespaceStateSymbol> states, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C/C++ globals must be set before compilation starts";
+        return false;
+    }
+    ProjectNamespaceFunctionModel validation;
+    if (!validation.setCppImportedStates(states, error)) return false;
+    experimentalCppImportedStates_ = std::move(states);
+    return true;
+}
+
+bool ProjectCompilation::setExperimentalCppImportedTypes(
+    std::vector<CppImportedTypeDeclaration> types, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C/C++ types must be set before compilation starts";
+        return false;
+    }
+    if (experimentalCppTypeProvider_)
+    {
+        error = "experimental C/C++ types and a type provider cannot both be configured";
+        return false;
+    }
+    experimentalCppImportedTypes_ = std::move(types);
+    experimentalCppImportedTypesConfigured_ = true;
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setExperimentalCppTypeProvider(ExperimentalCppTypeProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C/C++ type provider must be set before compilation starts";
+        return false;
+    }
+    if (provider && experimentalCppImportedTypesConfigured_)
+    {
+        error = "experimental C/C++ types and a type provider cannot both be configured";
+        return false;
+    }
+    experimentalCppTypeProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setExperimentalCppTypeSelector(ExperimentalCppTypeSelector selector, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C/C++ type selector must be set before compilation starts";
+        return false;
+    }
+    experimentalCppTypeSelector_ = std::move(selector);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setExperimentalCppInstanceMethodProvider(
+    ExperimentalCppInstanceMethodProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C++ instance method provider must be set before compilation starts";
+        return false;
+    }
+    experimentalCppInstanceMethodProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setExperimentalCppLifetimeMethodProvider(
+    ExperimentalCppLifetimeMethodProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C++ lifetime provider must be set before compilation starts";
+        return false;
+    }
+    experimentalCppLifetimeMethodProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::enableExperimentalCppLifetimeAnalysisForTests(std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C++ lifetime analysis must be enabled before compilation starts";
+        return false;
+    }
+    if (!experimentalCppLifetimeMethodProvider_)
+    {
+        error = "experimental C++ lifetime analysis requires a lifetime provider";
+        return false;
+    }
+    experimentalCppLifetimeAnalysisForTests_ = true;
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::enableExperimentalCppLocalLifetimeAnalysisForTests(std::string& error)
+{
+    if (!enableExperimentalCppLifetimeAnalysisForTests(error)) return false;
+    experimentalCppLocalLifetimeAnalysisForTests_ = true;
+    return true;
+}
+
+bool ProjectCompilation::enableCppImportedNoexceptLocalLifetime(std::string& error)
+{
+    if (!enableExperimentalCppLocalLifetimeAnalysisForTests(error)) return false;
+    cppNoexceptLocalLifetimeOnly_ = true;
+    return true;
+}
+
+bool ProjectCompilation::enableExperimentalCppDiscardedLifetimeLoweringForTests(std::string& error)
+{
+    if (!enableExperimentalCppLifetimeAnalysisForTests(error)) return false;
+    experimentalCppDiscardedLifetimeLoweringForTests_ = true;
+    return true;
+}
+
+bool ProjectCompilation::enableExperimentalCppInstanceMethodLoweringForTests(std::string& error)
+{
+    return enableCppImportedMethodLowering(error);
+}
+
+bool ProjectCompilation::enableCppImportedMethodLowering(std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C++ instance method lowering must be enabled before compilation starts";
+        return false;
+    }
+    experimentalCppInstanceMethodLoweringForTests_ = true;
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setExperimentalCppInstanceFieldProvider(
+    ExperimentalCppInstanceFieldProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C++ instance field provider must be set before compilation starts";
+        return false;
+    }
+    experimentalCppInstanceFieldProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setExperimentalCppStaticMethodProvider(
+    ExperimentalCppStaticMethodProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C++ static method provider must be set before compilation starts";
+        return false;
+    }
+    experimentalCppStaticMethodProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::enableExperimentalCppInstanceFieldLoweringForTests(std::string& error)
+{
+    return enableCppImportedFieldLowering(error);
+}
+
+bool ProjectCompilation::enableCppImportedFieldLowering(std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C++ instance field lowering must be enabled before compilation starts";
+        return false;
+    }
+    experimentalCppInstanceFieldLoweringForTests_ = true;
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setExperimentalCppStaticFieldProvider(
+    ExperimentalCppStaticFieldProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "experimental C++ static field provider must be set before compilation starts";
+        return false;
+    }
+    experimentalCppStaticFieldProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setCppFunctionProvider(CppFunctionProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "C/C++ function provider must be set before compilation starts";
+        return false;
+    }
+    if (provider && cppImportedFunctionsConfigured_)
+    {
+        error = "C/C++ functions and a function provider cannot both be configured";
+        return false;
+    }
+    cppFunctionProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setCppNamespaceProvider(CppNamespaceProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "C/C++ namespace provider must be set before compilation starts";
+        return false;
+    }
+    cppNamespaceProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setCppGlobalProvider(CppGlobalProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "C/C++ global provider must be set before compilation starts";
+        return false;
+    }
+    cppGlobalProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setCppRecordObserver(CppRecordObserver observer, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "C/C++ record observer must be set before compilation starts";
+        return false;
+    }
+    cppRecordObserver_ = std::move(observer);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::setCppProjectSessions(
+    std::vector<interop::CppProjectSessions> sessions, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "C/C++ project sessions must be set before compilation starts";
+        return false;
+    }
+    for (std::size_t index = 0; index < sessions.size(); ++index)
+    {
+        auto& group = sessions[index];
+        std::error_code ec;
+        if (!group.projectFile.is_absolute() || !std::filesystem::is_regular_file(group.projectFile, ec) || ec)
+        {
+            error = "C/C++ session owner must be an existing absolute project path";
+            return false;
+        }
+        for (std::size_t previous = 0; previous < index; ++previous)
+        {
+            ec.clear();
+            const bool same = std::filesystem::equivalent(group.projectFile, sessions[previous].projectFile, ec);
+            if (ec || same)
+            {
+                error = ec ? "cannot compare C/C++ session project paths" : "duplicate C/C++ session project";
+                return false;
+            }
+        }
+        for (const auto& session : group.sessions)
+            if (!session || session->state() != interop::CppSessionState::Ready)
+            {
+                error = "C/C++ project sessions must be non-null and ready";
+                return false;
+            }
+    }
+    cppProjectSessions_ = std::move(sessions);
+    error.clear();
+    return true;
+}
+
+std::span<const interop::CppProjectSessions> ProjectCompilation::cppProjectSessions() const noexcept
+{
+    return cppProjectSessions_;
+}
+
 void ProjectCompilation::setCompilationJobs(std::size_t jobs) noexcept
 {
     compilationJobs_ = std::max<std::size_t>(1, jobs);
