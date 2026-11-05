@@ -124,6 +124,56 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     return result;
 }
 
+void collectEnums(const clang::DeclContext& context, clang::ASTContext& astContext,
+                  std::set<const clang::EnumDecl*>& seen, std::vector<CppEnumDeclaration>& result)
+{
+    for (const clang::Decl* declaration : context.decls())
+    {
+        if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+        {
+            collectEnums(*nested, astContext, seen, result);
+            continue;
+        }
+        if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+        {
+            collectEnums(*linkage, astContext, seen, result);
+            continue;
+        }
+        const auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(declaration);
+        if (!enumeration || enumeration->isImplicit() || enumeration->isDependentContext() ||
+            !seen.insert(enumeration->getCanonicalDecl()).second)
+            continue;
+        if (const auto* definition = enumeration->getDefinition()) enumeration = definition;
+        CppEnumDeclaration value;
+        value.name = enumeration->getNameAsString();
+        value.qualifiedName = enumeration->getQualifiedNameAsString();
+        value.complete = enumeration->isCompleteDefinition();
+        value.scoped = enumeration->isScoped();
+        if (!enumeration->getIntegerType().isNull())
+            value.underlyingType = describeType(enumeration->getIntegerType(), astContext);
+        const auto location = astContext.getSourceManager().getPresumedLoc(enumeration->getLocation());
+        if (location.isValid())
+            value.location = CppSourcePoint{pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+        if (value.complete)
+            for (const auto* enumerator : enumeration->enumerators())
+            {
+                const auto integer = enumerator->getInitVal();
+                llvm::SmallString<32> digits;
+                integer.toString(digits, 10);
+                CppEnumeratorDeclaration item;
+                item.name = enumerator->getNameAsString();
+                item.decimalValue = std::string(digits.str());
+                item.valueBits = integer.getBitWidth();
+                item.valueIsUnsigned = integer.isUnsigned();
+                const auto point = astContext.getSourceManager().getPresumedLoc(enumerator->getLocation());
+                if (point.isValid())
+                    item.location = CppSourcePoint{pathFromUtf8(point.getFilename()), point.getLine(), point.getColumn()};
+                value.enumerators.push_back(std::move(item));
+            }
+        result.push_back(std::move(value));
+    }
+}
+
 void collectTypeAliases(const clang::DeclContext& context, clang::ASTContext& astContext,
                         std::set<const clang::TypedefNameDecl*>& seen,
                         std::vector<CppTypeAliasDeclaration>& result)
@@ -594,6 +644,16 @@ public:
         std::vector<CppTypeAliasDeclaration> result;
         std::set<const clang::TypedefNameDecl*> seen;
         collectTypeAliases(*context.getTranslationUnitDecl(), context, seen, result);
+        return result;
+    }
+    std::optional<std::vector<CppEnumDeclaration>> enumsSnapshot() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        std::vector<CppEnumDeclaration> result;
+        std::set<const clang::EnumDecl*> seen;
+        collectEnums(*context.getTranslationUnitDecl(), context, seen, result);
         return result;
     }
     std::optional<std::vector<CppImplicitLifetimeDeclaration>> implicitLifetimeDeclarations(
