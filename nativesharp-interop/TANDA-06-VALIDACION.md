@@ -1,6 +1,7 @@
 # Tanda 06: validación de sesiones
 
-Estado: validación agrupada completada; registro final por ítem en curso.
+Estado: tanda 06 cerrada. La validación agrupada pasó y los ítems pendientes al
+comenzar quedaron registrados individualmente en el historial de NSC.
 
 - La suite de sesiones está registrada en CTest cuando se habilita
   `NSC_CPP_INTEROP_SESSION_TESTS`, incluso con `NSC_BUILD_TESTS=OFF`. Usa el
