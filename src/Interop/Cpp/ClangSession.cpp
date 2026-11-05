@@ -163,6 +163,7 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
             continue;
         if (const auto* definition = enumeration->getDefinition()) enumeration = definition;
         CppEnumDeclaration value;
+        value.isCxx = astContext.getLangOpts().CPlusPlus;
         value.name = enumeration->getNameAsString();
         value.qualifiedName = enumeration->getQualifiedNameAsString();
         value.complete = enumeration->isCompleteDefinition();

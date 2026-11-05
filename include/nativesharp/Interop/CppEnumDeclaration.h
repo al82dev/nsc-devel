@@ -32,5 +32,6 @@ struct CppEnumDeclaration
     std::optional<CppType> underlyingType;
     std::optional<CppSourcePoint> location;
     std::vector<CppEnumeratorDeclaration> enumerators;
+    bool isCxx = true;
 };
 }
