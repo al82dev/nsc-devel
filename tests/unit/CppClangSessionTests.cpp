@@ -3746,6 +3746,231 @@ int main(int argc, char** argv)
                 if (!explicitLinked) std::cerr << "Explicit C++ builder link: " << explicitConstructionError << '\n';
                 ok &= expect(explicitLinked, "NativeSharp executable builder links explicit C++ lifetime");
                 }
+                nativesharp::frontend::ProjectCompilation realConstructionGuard;
+                std::string realGuardError;
+                const bool realGuardConfigured = configureRealConstruction(realConstructionGuard, realGuardError);
+                const bool realGuardEscaped = realGuardConfigured && realConstructionGuard.compileProjectObjectLayouts(path, realGuardError);
+                ok &= expect(realGuardConfigured && !realGuardEscaped &&
+                             realGuardError.find("cannot proceed to layout") != std::string::npos,
+                             "experimental C++ construction analysis remains blocked before code generation");
+                nativesharp::frontend::ProjectCompilation guardedMethods;
+                std::string guardError;
+                const bool guardConfigured = configure(guardedMethods, guardError);
+                const bool emitted = guardConfigured && guardedMethods.compileProjectOopMir(path, guardError);
+                ok &= expect(guardConfigured && !emitted && guardError.find("not yet supported beyond") != std::string::npos,
+                             "experimental C++ instance methods cannot reach code generation yet");
+                nativesharp::frontend::ProjectCompilation automaticFields;
+                std::string fieldsError;
+                const bool fieldConfigured = configure(automaticFields, fieldsError) &&
+                    automaticFields.setExperimentalCppInstanceFieldProvider(provideExperimentalCppInstanceFields, fieldsError) &&
+                    automaticFields.enableExperimentalCppInstanceMethodLoweringForTests(fieldsError);
+                const bool fieldsReady = fieldConfigured && automaticFields.compileProjectMembers(path, fieldsError);
+                const auto* fieldNames = automaticFields.nameLookup();
+                const auto* fieldMembers = automaticFields.memberModel();
+                const auto fieldOwner = fieldNames ? fieldNames->typeOrdinalForIdentity("Semantic::Demo.Widget") : std::nullopt;
+                const auto valueFields = fieldOwner && fieldMembers ? fieldMembers->findMembers(*fieldOwner, "value") : std::span<const std::size_t>{};
+                const auto* valueField = valueFields.size() == 1 ? &fieldMembers->members()[valueFields[0]] : nullptr;
+                ok &= expect(fieldsReady && valueField && valueField->isCppExternal &&
+                             valueField->explicitFieldOffset == 4 && valueField->declaredTypeKey == "builtin:int" &&
+                             !automaticFields.setExperimentalCppInstanceFieldProvider({}, fieldsError),
+                             "project compilation obtains instance field metadata from a physical C++ header");
+                nativesharp::frontend::ProjectCompilation guardedFields;
+                std::string fieldGuardError;
+                const bool fieldGuardConfigured = configure(guardedFields, fieldGuardError) &&
+                    guardedFields.setExperimentalCppInstanceFieldProvider(provideExperimentalCppInstanceFields, fieldGuardError) &&
+                    guardedFields.enableExperimentalCppInstanceMethodLoweringForTests(fieldGuardError);
+                const bool fieldsEmitted = fieldGuardConfigured && guardedFields.compileProjectOopMir(path, fieldGuardError);
+                ok &= expect(fieldGuardConfigured && !fieldsEmitted && fieldGuardError.find("C++ fields") != std::string::npos,
+                             "instance fields stay blocked even when method lowering tests are enabled");
+                nativesharp::frontend::ProjectCompilation automaticStatics;
+                std::string staticsError;
+                const bool staticConfigured = configure(automaticStatics, staticsError) &&
+                    automaticStatics.setExperimentalCppStaticMethodProvider(provideExperimentalCppStaticMethods, staticsError);
+                const bool staticsReady = staticConfigured && automaticStatics.compileProjectMembers(path, staticsError);
+                const auto* staticNames = automaticStatics.nameLookup();
+                const auto* staticMembers = automaticStatics.memberModel();
+                const auto staticOwner = staticNames ? staticNames->typeOrdinalForIdentity("Semantic::Demo.Widget") : std::nullopt;
+                const auto scaleMethods = staticOwner && staticMembers ? staticMembers->findMembers(*staticOwner, "scale") : std::span<const std::size_t>{};
+                bool scaleIndexed = scaleMethods.size() == 2;
+                for (const auto index : scaleMethods)
+                    scaleIndexed &= staticMembers->members()[index].isCppExternal && staticMembers->members()[index].isStatic &&
+                        !staticMembers->members()[index].hasImplicitThis;
+                ok &= expect(staticsReady && scaleIndexed && staticMembers->findMembers(*staticOwner, "merge").empty() &&
+                             !automaticStatics.setExperimentalCppStaticMethodProvider({}, staticsError),
+                             "project compilation indexes Clang static overloads without publishing mixed families");
+                nativesharp::frontend::ProjectCompilation guardedStatics;
+                std::string staticGuardError;
+                const bool staticGuardConfigured = configure(guardedStatics, staticGuardError) &&
+                    guardedStatics.setExperimentalCppStaticMethodProvider(provideExperimentalCppStaticMethods, staticGuardError);
+                const bool staticsEmitted = staticGuardConfigured && guardedStatics.compileProjectOopMir(path, staticGuardError);
+                ok &= expect(staticGuardConfigured && !staticsEmitted && staticGuardError.find("not yet supported beyond") != std::string::npos,
+                             "static C++ methods remain protected before code generation");
+                nativesharp::frontend::ProjectCompilation guardedStaticFields;
+                std::string staticFieldGuardError;
+                const bool staticFieldGuardConfigured = configure(guardedStaticFields, staticFieldGuardError) &&
+                    guardedStaticFields.setExperimentalCppStaticFieldProvider(provideExperimentalCppStaticFields, staticFieldGuardError) &&
+                    guardedStaticFields.enableExperimentalCppInstanceMethodLoweringForTests(staticFieldGuardError);
+                const bool staticFieldsEmitted = staticFieldGuardConfigured && guardedStaticFields.compileProjectOopMir(path, staticFieldGuardError);
+                ok &= expect(staticFieldGuardConfigured && !staticFieldsEmitted &&
+                             staticFieldGuardError.find("C++ fields") != std::string::npos,
+                             "static C++ fields stay protected without the field test option");
+                nativesharp::frontend::ProjectCompilation constWrite;
+                std::string constError;
+                const bool constConfigured = configure(constWrite, constError) &&
+                    constWrite.setExperimentalCppInstanceFieldProvider(provideExperimentalCppInstanceFields, constError) &&
+                    constWrite.enableExperimentalCppInstanceMethodLoweringForTests(constError) &&
+                    constWrite.enableExperimentalCppInstanceFieldLoweringForTests(constError);
+                constWrite.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { Demo.Widget* p = null; p->immutable = 4; return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool constCompiled = constConfigured && constWrite.compileProjectOopMir(path, constError);
+                bool readonlyDiagnostic = false;
+                for (const auto& diagnostic : constWrite.diagnostics().diagnostics())
+                    readonlyDiagnostic |= diagnostic.message().find("not assignable") != std::string::npos;
+                ok &= expect(constConfigured && !constCompiled && readonlyDiagnostic,
+                             "C++ const field cannot be assigned from NativeSharp");
+                nativesharp::frontend::ProjectCompilation staticConstWrite;
+                std::string staticConstError;
+                const bool staticConstConfigured = configure(staticConstWrite, staticConstError) &&
+                    staticConstWrite.setExperimentalCppStaticFieldProvider(provideExperimentalCppStaticFields, staticConstError) &&
+                    staticConstWrite.enableExperimentalCppInstanceMethodLoweringForTests(staticConstError) &&
+                    staticConstWrite.enableExperimentalCppInstanceFieldLoweringForTests(staticConstError);
+                staticConstWrite.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { Demo.Widget.limit = 4; return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool staticConstCompiled = staticConstConfigured && staticConstWrite.compileProjectOopMir(path, staticConstError);
+                bool staticReadonlyDiagnostic = false;
+                for (const auto& diagnostic : staticConstWrite.diagnostics().diagnostics())
+                    staticReadonlyDiagnostic |= diagnostic.message().find("not assignable") != std::string::npos;
+                ok &= expect(staticConstConfigured && !staticConstCompiled && staticReadonlyDiagnostic,
+                             "C++ const static field cannot be assigned from NativeSharp");
+                for (int scenario : {0, 1, 2, 3, 4, 5})
+                {
+                    nativesharp::frontend::ProjectCompilation addressProbe;
+                    std::string addressError;
+                    const bool addressConfigured = configure(addressProbe, addressError) &&
+                        addressProbe.setExperimentalCppInstanceFieldProvider(provideExperimentalCppInstanceFields, addressError) &&
+                        addressProbe.setExperimentalCppStaticFieldProvider(provideExperimentalCppStaticFields, addressError) &&
+                        addressProbe.enableExperimentalCppInstanceMethodLoweringForTests(addressError) &&
+                        addressProbe.enableExperimentalCppInstanceFieldLoweringForTests(addressError);
+                    addressProbe.setSourceBufferProvider([scenario](const std::filesystem::path& source) -> std::optional<std::string> {
+                        if (source.filename() != "Main.ns") return std::nullopt;
+                        if (scenario == 0) return "int Main() { Demo.Widget* p = null; int* q = &p->immutable; return 0; }\n";
+                        if (scenario == 1) return "int Main() { Demo.Widget* p = null; int* q = &p->changing; return 0; }\n";
+                        if (scenario == 2) return "int Main() { Demo.Widget* p = null; int* q = &p->value; return 0; }\n";
+                        if (scenario == 3) return "int Main() { int* q = &Demo.Widget.limit; return 0; }\n";
+                        if (scenario == 4) return "int Main() { int* q = &Demo.Widget.io; return 0; }\n";
+                        return "int Main() { int* q = &Demo.Widget.shared; return 0; }\n";
+                    });
+                    const bool addressCompiled = addressConfigured && addressProbe.compileProjectOopMir(path, addressError);
+                    ok &= expect(addressConfigured && (scenario == 2 || scenario == 5 ? addressCompiled : !addressCompiled && addressProbe.diagnostics().hasErrors()),
+                                 "qualified C++ field addresses are deferred while ordinary field addresses remain available");
+                }
+                nativesharp::frontend::ProjectCompilation methodCall;
+                std::string methodError;
+                const bool callConfigured = configure(methodCall, methodError) &&
+                    methodCall.enableExperimentalCppInstanceMethodLoweringForTests(methodError) &&
+                    methodCall.setExperimentalCppStaticMethodProvider(provideExperimentalCppStaticMethods, methodError) &&
+                    methodCall.setExperimentalCppStaticFieldProvider(provideExperimentalCppStaticFields, methodError) &&
+                    methodCall.setExperimentalCppInstanceFieldProvider(provideExperimentalCppInstanceFields, methodError) &&
+                    methodCall.enableExperimentalCppInstanceFieldLoweringForTests(methodError) &&
+                    methodCall.setCppNamespaceProvider([](const auto&, auto, auto& out, auto&) {
+                        out.emplace_back(0, "Demo"); return true;
+                    }, methodError) &&
+                    methodCall.setCppFunctionProvider([&](const auto& graph, auto sessions, auto, auto demands,
+                        auto& projected, auto& deferred, auto& error) {
+                        const auto* lookup = methodCall.nameLookup();
+                        if (!lookup) { error = "name lookup is unavailable"; return false; }
+                        return provideExperimentalCppFunctionsWithRecords(graph, sessions, *lookup, demands,
+                                                                           projected, deferred, error);
+                    }, methodError);
+                methodCall.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns")
+                        return "int Main() { var p = Demo.create(); var q = Demo.createThing(); int m = p->mutate(7); p->value = 19; p->changing = 22; Demo.Widget.shared = 23; Demo.Widget.io = 4; return m + p->ping(5) + (int)p->factor(1.5) + p->mixed(3, 2.5, 9, 4.5) + q->compute(8) + p->value + p->immutable + p->changing + Demo.Widget.scale(3) + Demo.Widget.scale(2.5) + Demo.Widget.shared + Demo.Widget.limit + Demo.Widget.io; }\n";
+                    return std::nullopt;
+                });
+                const bool callReady = callConfigured && methodCall.compileProjectOopMir(path, methodError);
+                if (!callReady)
+                {
+                    std::cerr << "experimental instance call: " << methodError << '\n';
+                    for (const auto& diagnostic : methodCall.diagnostics().diagnostics())
+                        std::cerr << diagnostic.message() << '\n';
+                }
+                ok &= expect(callReady, "experimental instance method reaches MIR for a pointer receiver");
+                if (callReady)
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*methodCall.nameLookup(), *methodCall.oopMirModel());
+                    const bool valid = module && module->verify(methodError);
+                    const auto ir = module ? module->text() : std::string{};
+                    if (!valid) std::cerr << "experimental instance lowering: " << lowerer.error() << ' ' << methodError << '\n';
+                    const auto symbol = ir.find("?ping@Widget@Demo@@QEBAHH@Z");
+                    const auto second = symbol == std::string::npos ? symbol : ir.find("?ping@Widget@Demo@@QEBAHH@Z", symbol + 1);
+                    auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(methodError);
+                    const bool objectEmitted = valid && target && target->emit(*module,
+                        std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/cpp-instance-call.obj",
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object, methodError);
+                    ok &= expect(objectEmitted && second != std::string::npos &&
+                                 ir.find("load volatile i32") != std::string::npos &&
+                                 ir.find("store volatile i32") != std::string::npos &&
+                                 ir.find("?shared@Widget@Demo@@2HA\" = external global i32") != std::string::npos,
+                                 "experimental instance call and declaration retain the Clang symbol in LLVM IR");
+                }
+                nativesharp::frontend::ProjectCompilation dllFieldCall;
+                dllFieldCall.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns")
+                        return "int Main() { Plugin.Imported.value = 28; Plugin.shared = 14; var p = Plugin.make(); return Plugin.Imported.value + Plugin.shared + Plugin.increment(39) - 54 + Plugin.Imported.scale(3) + p->add(3) - 11; }\n";
+                    return std::nullopt;
+                });
+                CppProjectSessions dllGroup;
+                dllGroup.projectFile = std::filesystem::absolute(path);
+                dllGroup.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                    "namespace Plugin { __declspec(dllimport) extern int shared; __declspec(dllimport) int increment(int) noexcept; class Imported { public: __declspec(dllimport) static int value; __declspec(dllimport) static int scale(int); __declspec(dllimport) int add(int) const; }; __declspec(dllimport) Imported* make() noexcept; }\n")));
+                std::vector<CppProjectSessions> dllGroups;
+                dllGroups.push_back(std::move(dllGroup));
+                std::string dllError;
+                const bool dllConfigured = dllFieldCall.setCppProjectSessions(std::move(dllGroups), dllError) &&
+                    dllFieldCall.setExperimentalCppTypeProvider(provideExperimentalCppRecordCandidates, dllError) &&
+                    dllFieldCall.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, dllError) &&
+                    dllFieldCall.setExperimentalCppStaticFieldProvider(provideExperimentalCppStaticFields, dllError) &&
+                    dllFieldCall.setExperimentalCppStaticMethodProvider(provideExperimentalCppStaticMethods, dllError) &&
+                    dllFieldCall.setExperimentalCppInstanceMethodProvider(provideExperimentalCppInstanceMethods, dllError) &&
+                    dllFieldCall.enableExperimentalCppInstanceMethodLoweringForTests(dllError) &&
+                    dllFieldCall.setCppGlobalProvider(provideCppSemanticGlobals, dllError) &&
+                    dllFieldCall.setCppFunctionProvider([&](const auto& graph, auto sessions, auto, auto demands, auto& projected, auto& deferred, auto& why) {
+                        const auto* lookup = dllFieldCall.nameLookup();
+                        return lookup && provideExperimentalCppFunctionsWithRecords(graph, sessions, *lookup, demands, projected, deferred, why);
+                    }, dllError) &&
+                    dllFieldCall.enableExperimentalCppInstanceFieldLoweringForTests(dllError) &&
+                    dllFieldCall.setCppNamespaceProvider([](const auto&, auto, auto& out, auto&) {
+                        out.emplace_back(0, "Plugin"); return true;
+                    }, dllError);
+                const bool dllReady = dllConfigured && dllFieldCall.compileProjectOopMir(path, dllError);
+                if (!dllReady)
+                {
+                    std::cerr << "DLL static field compilation: " << dllError << '\n';
+                    for (const auto& diagnostic : dllFieldCall.diagnostics().diagnostics()) std::cerr << diagnostic.message() << '\n';
+                }
+                if (dllReady)
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*dllFieldCall.nameLookup(), *dllFieldCall.oopMirModel());
+                    const bool valid = module && module->verify(dllError);
+                    const auto ir = module ? module->text() : std::string{};
+                    auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(dllError);
+                    const bool emittedDllObject = valid && target && target->emit(*module,
+                        std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/cpp-dll-field-call.obj",
+                        nativesharp::llvm_backend::LlvmCodeGenFileType::Object, dllError);
+                    ok &= expect(emittedDllObject && ir.find("?value@Imported@Plugin@@2HA\" = external dllimport global i32") != std::string::npos &&
+                                 ir.find("?shared@Plugin@@3HA\" = external dllimport global i32") != std::string::npos &&
+                                 ir.find("dllimport i32 @\"?increment@Plugin@@YAHH@Z\"") != std::string::npos &&
+                                 ir.find("dllimport i32 @\"?scale@Imported@Plugin@@SAHH@Z\"") != std::string::npos &&
+                                 ir.find("dllimport i32 @\"?add@Imported@Plugin@@QEBAHH@Z\"") != std::string::npos,
+                                 "DLL function, methods, static field and global retain their symbols and import storage");
+                }
+                else ok &= expect(false, "DLL static field reaches isolated MIR generation");
             }
         }
     }
