@@ -233,14 +233,23 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 const std::string objectType = targetTyped
                     ? activeTargetTypeKey_
                     : memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_);
+                const auto objectOrdinal = targetTyped
+                    ? namedTypeOrdinalForTypeKey(objectType)
+                    : nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
+                if (objectOrdinal && nameLookup_->cppImportedTypeIndex(*objectOrdinal) && !cppLifetimeAnalysisForTests_)
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidAllocationType,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "C/C++ object construction requires its object lifetime to be implemented");
+                    result.valid = false;
+                    break;
+                }
                 ProjectConstructionSite site;
                 site.syntax = expression;
                 site.callableOrdinal = methodMemberOrdinal;
                 site.kind = ProjectConstructionSiteKind::Object;
                 site.targetTypeKey = objectType;
-                site.targetTypeOrdinal = targetTyped
-                    ? namedTypeOrdinalForTypeKey(objectType)
-                    : nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
+                site.targetTypeOrdinal = objectOrdinal;
                 site.argumentsTyped = true;
                 site.activeErrorHandlers = activeErrorHandlers();
                 site.enclosingErrorTypeKey = enclosingErrorTypeKey(methodMemberOrdinal);
@@ -467,12 +476,21 @@ ProjectMethodBodyModel::analyzeExpressionKindPlacementConstructionExpression(
     if (memberModel_ == nullptr || nameLookup_ == nullptr) return result;
     const std::string targetType =
         memberModel_->canonicalTypeKey(expression->typeSyntax(), *nameLookup_);
+    const auto targetOrdinal = nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
+    if (targetOrdinal && nameLookup_->cppImportedTypeIndex(*targetOrdinal))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidAllocationType,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "C/C++ placement construction requires its object lifetime to be implemented");
+        result.valid = false;
+        return result;
+    }
     ProjectConstructionSite site;
     site.syntax = expression;
     site.callableOrdinal = methodMemberOrdinal;
     site.kind = ProjectConstructionSiteKind::Placement;
     site.targetTypeKey = targetType;
-    site.targetTypeOrdinal = nameLookup_->resolvedTypeOrdinal(expression->typeSyntax());
+    site.targetTypeOrdinal = targetOrdinal;
     site.argumentsTyped = true;
     site.activeErrorHandlers = activeErrorHandlers();
     site.enclosingErrorTypeKey = enclosingErrorTypeKey(methodMemberOrdinal);
@@ -689,6 +707,21 @@ bool ProjectMethodBodyModel::validateRawAllocationElement(
     // ningun sitio -- ahora se usa.)
     bool allocationValid = !isErrorType(element);
     if (!isStackalloc && !isRawNew) return allocationValid;
+    if (allocationValid && nameLookup_ != nullptr && element.starts_with("type:"))
+    {
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(element.substr(5));
+        if (ordinal && nameLookup_->cppImportedTypeIndex(*ordinal))
+        {
+            diagnostics.report(
+                isStackalloc ? diagnostics::DiagnosticId::InvalidStackalloc
+                             : diagnostics::DiagnosticId::InvalidAllocationType,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "C/C++ object lifetime is not implemented for raw allocation of '" +
+                    std::string(element) + "'");
+            return false;
+        }
+    }
     // Sin tamano no hay reserva posible, ni en la pila ni en el monton.
     if (element == "builtin:void")
     {
