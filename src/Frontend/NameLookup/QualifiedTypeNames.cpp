@@ -37,6 +37,22 @@ namespace nativesharp::frontend
 {
 namespace
 {
+std::vector<ast::TypeModifierSyntax> cppPointerModifiers(const interop::CppType& type)
+{
+    const interop::CppType* current = &type;
+    while (current && current->kind == interop::CppTypeKind::Array) current = current->element.get();
+    std::vector<ast::TypeModifierSyntax> result;
+    while (current && current->kind == interop::CppTypeKind::Pointer)
+    {
+        ast::TypeModifierSyntax modifier;
+        modifier.importedCRestrict = current->isRestrict;
+        result.push_back(modifier);
+        current = current->element.get();
+    }
+    std::reverse(result.begin(), result.end());
+    return result;
+}
+
 std::string joinSegments(std::span<const std::string> segments)
 {
     std::string result;
@@ -271,7 +287,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             mutableSyntax->setBaseName(enumeration->name);
             mutableSyntax->setOriginProjectOrdinal(selected->projectOrdinal);
             mutableSyntax->setOriginNamespace("");
-            mutableSyntax->prependModifiers(std::vector<ast::TypeModifierSyntax>(enumeration->pointerDepth));
+            mutableSyntax->prependModifiers(cppPointerModifiers(selected->declaration.underlyingType));
             mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || enumeration->pointeeConst);
             return true;
         }
@@ -295,7 +311,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             mutableSyntax->setBaseName(record->name);
             mutableSyntax->setOriginProjectOrdinal(selected->projectOrdinal);
             mutableSyntax->setOriginNamespace("");
-            mutableSyntax->prependModifiers(std::vector<ast::TypeModifierSyntax>(record->pointerDepth));
+            mutableSyntax->prependModifiers(cppPointerModifiers(selected->declaration.underlyingType));
             mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || record->pointeeConst);
             return true;
         }
@@ -309,7 +325,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                               syntax->baseName() + "'");
             auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
             auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
-            std::vector<ast::TypeModifierSyntax> modifiers(array->element.pointerDepth);
+            std::vector<ast::TypeModifierSyntax> modifiers = cppPointerModifiers(selected->declaration.underlyingType);
             for (auto dimension = array->dimensions.rbegin(); dimension != array->dimensions.rend(); ++dimension)
             {
                 auto* count = arena.make<ast::AstNode>(ast::AstNodeKind::IntegerLiteralExpression, syntax->range());
@@ -357,7 +373,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             if (imported == cppImportedTypes_.end())
                 return report(diagnostics::DiagnosticId::InvalidUsingTarget, "C array alias element type is unavailable");
             auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
-            std::vector<ast::TypeModifierSyntax> modifiers(enumElement ? enumElement->pointerDepth : recordElement->pointerDepth);
+            std::vector<ast::TypeModifierSyntax> modifiers = cppPointerModifiers(arrayUnderlying);
             for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
             {
                 auto* count = arena.make<ast::AstNode>(ast::AstNodeKind::IntegerLiteralExpression, syntax->range());
@@ -457,7 +473,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 if (const auto builtin = cppAliasBuiltinType(type))
                 {
                     auto* value = arena.make<ast::TypeSyntax>(syntax->range(), builtin->token, std::string(builtin->name));
-                    value->prependModifiers(std::vector<ast::TypeModifierSyntax>(builtin->pointerDepth));
+                    value->prependModifiers(cppPointerModifiers(type));
                     value->setPointeeConst(builtin->pointeeConst);
                     return value;
                 }
@@ -475,7 +491,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 auto* value = arena.make<ast::TypeSyntax>(syntax->range(), lexer::TokenKind::Identifier, name);
                 value->setOriginProjectOrdinal(selected->projectOrdinal);
                 value->setOriginNamespace("");
-                value->prependModifiers(std::vector<ast::TypeModifierSyntax>(enumType ? enumType->pointerDepth : recordType->pointerDepth));
+                value->prependModifiers(cppPointerModifiers(type));
                 value->setPointeeConst(enumType ? enumType->pointeeConst : recordType->pointeeConst);
                 return value;
             };
@@ -505,7 +521,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
         auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
         mutableSyntax->setBaseTokenKind(mapped->token);
         mutableSyntax->setBaseName(std::string(mapped->name));
-        mutableSyntax->prependModifiers(std::vector<ast::TypeModifierSyntax>(mapped->pointerDepth));
+        mutableSyntax->prependModifiers(cppPointerModifiers(selected->declaration.underlyingType));
         mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || mapped->pointeeConst);
         return true;
     }

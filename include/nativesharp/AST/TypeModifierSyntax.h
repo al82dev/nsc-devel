@@ -23,5 +23,7 @@ struct TypeModifierSyntax
     bool pointerHasProvenance = true;
     std::size_t pointerKnownAlignment = 1;
     unsigned pointerAddressSpace = 0;
+    // Source C restrict qualifier, retained as metadata; not an LLVM noalias promise.
+    bool importedCRestrict = false;
 };
 }
