@@ -284,8 +284,10 @@ la comparación recursiva de miembros lo distingue. Se preparó una prueba de
 snapshot de un typedef con puntero restrict. El símbolo semántico de función
 importada prepara la conservación de los tipos originales del resultado y
 parámetros, con una prueba de parámetro restrict; no emite `noalias` por ello.
-Falta ejecutar las pruebas y determinar el transporte y tratamiento del
-contrato en las demás rutas, incluyendo typedefs, antes de cerrar T08-015.
+La expansión de typedefs de punteros prepara metadatos restrict por nivel,
+incluyendo las rutas de arreglos y componentes de callbacks; se prepararon
+pruebas de un nivel y niveles anidados. Falta ejecutar las pruebas y determinar
+el tratamiento del contrato en las demás rutas antes de cerrar T08-015.
 
 El proyecto `pruebas-tanda-08-enum-funcion` y su script preparan una prueba
 de extremo a extremo: un valor enum negativo se devuelve desde C y se vuelve
