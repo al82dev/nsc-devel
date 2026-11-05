@@ -2953,6 +2953,282 @@ int main(int argc, char** argv)
                                 hasLocalDrop |= region.kind == nativesharp::frontend::MethodCleanupRegionKind::ValueLocalDrop &&
                                     region.resourceLocalOrdinal == index;
                 }
+                ok &= expect(localLifetimeReady && hasLocalDrop,
+                             "C++ value local registers its destructor cleanup in semantic analysis");
+                bool localPhysicalLayout = false;
+                if (localLifetimeReady && localLifetime.methodBodyModel() && localLifetime.nameLookup() &&
+                    localLifetime.objectLayoutModel())
+                    for (const auto& local : localLifetime.methodBodyModel()->locals())
+                    {
+                        if (local.name != "value" || !local.typeKey.starts_with("type:")) continue;
+                        const auto ordinal = localLifetime.nameLookup()->typeOrdinalForIdentity(
+                            std::string_view(local.typeKey).substr(5));
+                        const auto* imported = ordinal ? localLifetime.nameLookup()->cppImportedType(*ordinal) : nullptr;
+                        const auto physical = localLifetime.objectLayoutModel()->valueLayoutForTypeKey(
+                            *localLifetime.nameLookup(), local.typeKey);
+                        localPhysicalLayout = imported && imported->objectLayout && physical &&
+                            physical->first == imported->objectLayout->sizeBytes &&
+                            physical->second == imported->objectLayout->alignmentBytes &&
+                            !localLifetime.objectLayoutModel()->structLayoutForType(*ordinal);
+                    }
+                ok &= expect(localPhysicalLayout,
+                             "C++ value local retains Clang storage dimensions without a NativeSharp struct layout");
+                bool localHirLifetime = false;
+                if (localLifetimeReady && localLifetime.oopHirModel())
+                    for (const auto& function : localLifetime.oopHirModel()->functions())
+                    {
+                        std::vector<const nativesharp::frontend::ProjectOopHirNode*> pending;
+                        if (function.body) pending.push_back(function.body.get());
+                        while (!pending.empty())
+                        {
+                            const auto* node = pending.back();
+                            pending.pop_back();
+                            for (const auto& child : node->children) if (child) pending.push_back(child.get());
+                            if (node->kind != nativesharp::frontend::ProjectOopHirNodeKind::LocalDeclaration ||
+                                node->stringValue != "value" || !node->localOrdinal || !node->cleanupRegionOrdinal ||
+                                !node->automaticDestruction || node->children.size() != 1 || !node->children[0]) continue;
+                            const auto* construction = node->children[0].get();
+                            localHirLifetime = construction->kind == nativesharp::frontend::ProjectOopHirNodeKind::ValueConstruction &&
+                                construction->memberOrdinal.has_value() && construction->targetTypeOrdinal.has_value();
+                        }
+                    }
+                ok &= expect(localHirLifetime, "C++ value local reaches HIR with construction and cleanup identity");
+                nativesharp::frontend::ProjectOopMirModel localMir;
+                std::string localMirError;
+                const bool localMirBuilt = localLifetimeReady && localLifetime.nameLookup() &&
+                    localLifetime.memberModel() && localLifetime.objectLayoutModel() &&
+                    localLifetime.virtualDispatchModel() && localLifetime.interfaceModel() &&
+                    localLifetime.destructionModel() && localLifetime.oopHirModel() &&
+                    localLifetime.namespaceFunctionModel() && localMir.build(*localLifetime.nameLookup(),
+                        *localLifetime.memberModel(), *localLifetime.objectLayoutModel(),
+                        *localLifetime.virtualDispatchModel(), *localLifetime.interfaceModel(),
+                        *localLifetime.destructionModel(), *localLifetime.oopHirModel(),
+                        *localLifetime.namespaceFunctionModel(), localMirError);
+                if (!localMirBuilt) std::cerr << "Isolated C++ local MIR: " << localMirError << '\n';
+                bool localMirLifetime = false;
+                if (localMirBuilt)
+                    for (const auto& function : localMir.functions())
+                    {
+                        std::vector<const nativesharp::frontend::ProjectOopMirNode*> pending;
+                        if (function.body) pending.push_back(function.body.get());
+                        while (!pending.empty())
+                        {
+                            const auto* node = pending.back();
+                            pending.pop_back();
+                            for (const auto& child : node->children) if (child) pending.push_back(child.get());
+                            if (node->kind != nativesharp::frontend::ProjectOopMirNodeKind::LocalDeclaration ||
+                                node->stringValue != "value" || !node->localOrdinal || !node->cleanupRegionOrdinal ||
+                                node->children.size() != 1 || !node->children[0]) continue;
+                            const auto* construction = node->children[0].get();
+                            bool matchingCleanup = false;
+                            for (const auto& region : function.cleanupRegions)
+                                matchingCleanup |= region.ordinal == *node->cleanupRegionOrdinal &&
+                                    region.localOrdinal == node->localOrdinal && region.automaticDestruction &&
+                                    region.typeKey == node->typeKey;
+                            localMirLifetime = construction->kind == nativesharp::frontend::ProjectOopMirNodeKind::ValueConstruct &&
+                                construction->memberOrdinal.has_value() && !construction->calleeName.empty() &&
+                                construction->immediate > 0 && construction->alignment > 0 && matchingCleanup;
+                        }
+                    }
+                ok &= expect(localMirBuilt && localMirLifetime,
+                             "isolated C++ local MIR retains construction, layout and cleanup identity");
+                nativesharp::frontend::ProjectCompilation implicitLocals;
+                std::string implicitLocalError;
+                const bool implicitConfigured = configureRealConstruction(implicitLocals, implicitLocalError) &&
+                    implicitLocals.enableExperimentalCppLocalLifetimeAnalysisForTests(implicitLocalError);
+                implicitLocals.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { Demo.Observed a = new Demo.Observed(); Demo.Observed b = new Demo.Observed(); return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool implicitHir = implicitConfigured && implicitLocals.compileProjectOopHir(path, implicitLocalError);
+                nativesharp::frontend::ProjectOopMirModel implicitMir;
+                const bool implicitMirBuilt = implicitHir && implicitMir.build(*implicitLocals.nameLookup(),
+                    *implicitLocals.memberModel(), *implicitLocals.objectLayoutModel(), *implicitLocals.virtualDispatchModel(),
+                    *implicitLocals.interfaceModel(), *implicitLocals.destructionModel(), *implicitLocals.oopHirModel(),
+                    *implicitLocals.namespaceFunctionModel(), implicitLocalError);
+                std::vector<CppImplicitLifetimeEmissionRequest> implicitLocalPlan;
+                const bool implicitPlanned = implicitMirBuilt && planCppImplicitLifetimeFromValues(
+                    *implicitLocals.projectGraph(), implicitLocals.cppProjectSessions(), *implicitLocals.nameLookup(),
+                    *implicitLocals.memberModel(), implicitLocals.constructionModel()->constructions(), implicitMir,
+                    implicitLocalPlan, implicitLocalError);
+                if (!implicitPlanned) std::cerr << "Implicit C++ local plan: " << implicitLocalError << '\n';
+                bool localCtorPlanned = false, localDtorPlanned = false;
+                for (const auto& item : implicitLocalPlan)
+                {
+                    localCtorPlanned |= item.qualifiedType == "Demo::Observed" && item.kind == CppImplicitLifetimeKind::DefaultConstructor;
+                    localDtorPlanned |= item.qualifiedType == "Demo::Observed" && item.kind == CppImplicitLifetimeKind::Destructor;
+                }
+                ok &= expect(implicitPlanned && implicitLocalPlan.size() == 2 && localCtorPlanned && localDtorPlanned,
+                             "implicit C++ locals request one constructor and one destructor body");
+                nativesharp::llvm_backend::ProjectOopLlvmLowerer localLlvmLowerer;
+                auto localLlvmModule = localMirBuilt ? localLlvmLowerer.lower(
+                    *localLifetime.nameLookup(), *localLifetime.memberModel(), localMir,
+                    localLifetime.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O0) : nullptr;
+                std::string localLlvmVerifyError;
+                const bool localLlvmValid = localLlvmModule && localLlvmModule->verify(localLlvmVerifyError);
+                const auto localIr = localLlvmModule ? localLlvmModule->text() : std::string{};
+                if (!localLlvmValid) std::cerr << "Isolated C++ local LLVM: " << localLlvmLowerer.error()
+                                               << " " << localLlvmVerifyError << '\n';
+                const bool localCtor = localIr.find("call ptr @\"??0Ready@Demo@@") != std::string::npos ||
+                    localIr.find("invoke ptr @\"??0Ready@Demo@@") != std::string::npos;
+                const bool localDtor = localIr.find("call void @\"??1Ready@Demo@@") != std::string::npos ||
+                    localIr.find("invoke void @\"??1Ready@Demo@@") != std::string::npos;
+                ok &= expect(localLlvmValid && localCtor && localDtor &&
+                             localIr.find("struct.new.value") == std::string::npos,
+                             "C++ local is constructed and destroyed in place in isolated LLVM");
+                nativesharp::frontend::ProjectCompilation throwingLocal;
+                std::string throwingError;
+                const bool throwingConfigured = configureRealConstruction(throwingLocal, throwingError) &&
+                    throwingLocal.enableExperimentalCppLocalLifetimeAnalysisForTests(throwingError) &&
+                    throwingLocal.setCppFunctionProvider([](const auto& graph, auto sessions, auto, auto demands,
+                        auto& projected, auto& deferred, auto& why) {
+                            return provideCppSemanticFunctions(graph, sessions, demands, projected, deferred, why);
+                        }, throwingError);
+                throwingLocal.setSourceBufferProvider([](const std::filesystem::path& source) -> std::optional<std::string> {
+                    if (source.filename() == "Main.ns") return "int Main() { Demo.Risky a = new Demo.Risky(1); Demo.Risky b = new Demo.Risky(2); Demo.Risky c = new Demo.Risky(3); cpp_local_throw(); return 0; }\n";
+                    return std::nullopt;
+                });
+                const bool throwingHir = throwingConfigured && throwingLocal.compileProjectOopHir(path, throwingError);
+                nativesharp::frontend::ProjectOopMirModel throwingMir;
+                const bool throwingMirReady = throwingHir && throwingMir.build(*throwingLocal.nameLookup(),
+                    *throwingLocal.memberModel(), *throwingLocal.objectLayoutModel(), *throwingLocal.virtualDispatchModel(),
+                    *throwingLocal.interfaceModel(), *throwingLocal.destructionModel(), *throwingLocal.oopHirModel(),
+                    *throwingLocal.namespaceFunctionModel(), throwingError);
+                nativesharp::llvm_backend::ProjectOopLlvmLowerer throwingLowerer;
+                auto throwingModule = throwingMirReady ? throwingLowerer.lower(*throwingLocal.nameLookup(),
+                    *throwingLocal.memberModel(), throwingMir, throwingLocal.sourceManager(),
+                    nativesharp::llvm_backend::DebugInformationKind::None,
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O0) : nullptr;
+                const bool throwingValid = throwingModule && throwingModule->verify(throwingError);
+                if (!throwingValid) std::cerr << "C++ local exception setup: " << throwingError << ' ' << throwingLowerer.error() << '\n';
+                ok &= expect(throwingValid, "isolated C++ locals with throwing constructor lower to verified LLVM");
+                if (argc > 4 && (std::string_view(argv[4]) == "lifetime" || std::string_view(argv[4]) == "bundle-link"))
+                {
+                    const auto output = std::filesystem::path(argv[2]) / "cpp-fixtures" / "lifetime-emission";
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer implicitLowerer;
+                    auto implicitModule = implicitPlanned ? implicitLowerer.lower(*implicitLocals.nameLookup(),
+                        *implicitLocals.memberModel(), implicitMir, implicitLocals.sourceManager(),
+                        nativesharp::llvm_backend::DebugInformationKind::None,
+                        nativesharp::llvm_backend::LlvmOptimizationLevel::O0) : nullptr;
+                    bool implicitEmitted = implicitModule && implicitModule->verify(implicitLocalError);
+                    for (int opt : {0, 2})
+                    {
+                        const auto level = opt == 0 ? nativesharp::llvm_backend::LlvmOptimizationLevel::O0 :
+                            nativesharp::llvm_backend::LlvmOptimizationLevel::O2;
+                        auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(level, implicitLocalError);
+                        implicitEmitted &= target && implicitModule && target->emit(*implicitModule,
+                            output / ("implicit-local-ns-O" + std::to_string(opt) + ".obj"),
+                            nativesharp::llvm_backend::LlvmCodeGenFileType::Object, implicitLocalError);
+                        std::vector<std::filesystem::path> paths;
+                        for (const auto& request : implicitLocalPlan)
+                            paths.push_back(output / (std::string("implicit-local-") +
+                                (request.kind == CppImplicitLifetimeKind::DefaultConstructor ? "ctor-O" : "dtor-O") +
+                                std::to_string(opt) + ".obj"));
+                        std::vector<std::filesystem::path> emitted;
+                        implicitEmitted &= nativesharp::llvm_backend::emitCppImplicitLifetimeObjects(
+                            implicitLocalPlan, paths, level, emitted, implicitLocalError) && emitted.size() == 2;
+                    }
+                    bool implicitBundlesReady = implicitPlanned;
+                    for (int opt : {0, 2})
+                    {
+                        const auto level = opt == 0 ? nativesharp::llvm_backend::LlvmOptimizationLevel::O0 :
+                            nativesharp::llvm_backend::LlvmOptimizationLevel::O2;
+                        nativesharp::llvm_backend::ProjectOopObjectGenerator generator;
+                        auto bundle = generator.generate(*implicitLocals.nameLookup(), *implicitLocals.memberModel(),
+                            implicitMir, implicitLocals.sourceManager(), nativesharp::llvm_backend::DebugInformationKind::None,
+                            level, 1, {}, implicitLocalError);
+                        const auto before = bundle ? bundle->objectFiles().size() : 0;
+                        const bool appended = bundle && nativesharp::driver::appendCppImplicitLifetimeObjects(
+                            implicitLocals, implicitMir, *bundle, level, implicitLocalError) &&
+                            bundle->objectFiles().size() == before + 2;
+                        std::vector<std::filesystem::path> temporary;
+                        if (appended) temporary.assign(bundle->objectFiles().begin() + before, bundle->objectFiles().end());
+                        nativesharp::linker::WindowsLibraryBuilder archiveBuilder;
+                        archiveBuilder.setRuntimeLibrary("A:/nsc-interop-build/tanda1-ON/generated/NativeSharp.Runtime.Win32.lib");
+                        const bool archived = appended && archiveBuilder.buildStaticObjects(bundle->objectFiles(),
+                            output / ("implicit-local-bundle-O" + std::to_string(opt) + ".lib"), level, implicitLocalError);
+                        bundle.reset();
+                        const bool removed = temporary.size() == 2 && std::all_of(temporary.begin(), temporary.end(),
+                            [](const auto& path) { return !std::filesystem::exists(path); });
+                        implicitBundlesReady &= archived && removed;
+                    }
+                    if (!implicitBundlesReady) std::cerr << "Implicit C++ locals bundle: " << implicitLocalError << '\n';
+                    ok &= expect(implicitBundlesReady, "implicit C++ local bundle includes and owns generated lifetime objects");
+                    std::string implicitEntry;
+                    if (implicitMirBuilt)
+                        for (const auto& function : implicitMir.functions())
+                            if (function.namespaceFunctionOrdinal && function.returnTypeKey == "builtin:int")
+                                implicitEntry = function.mangledName;
+                    std::ofstream implicitHarness(output / "implicit-local-harness.cpp");
+                    implicitHarness << "namespace Demo { struct CountedMember { int value; CountedMember() noexcept(false); ~CountedMember() noexcept(false); }; struct FailingMember { int value; FailingMember() noexcept(false); ~FailingMember() noexcept(false); }; }\n"
+                        "static void* c[2]; static void* f[2]; static int ci,fi,cd,fd,bad; "
+                        "Demo::CountedMember::CountedMember() noexcept(false){ if(ci>=2) bad=1; else c[ci++]=this; }\n"
+                        "Demo::FailingMember::FailingMember() noexcept(false){ if(fi>=2) bad=1; else f[fi++]=this; }\n"
+                        "Demo::CountedMember::~CountedMember() noexcept(false){ if(cd>=2 || this!=c[1-cd] || fd!=cd+1) bad=1; ++cd; }\n"
+                        "Demo::FailingMember::~FailingMember() noexcept(false){ if(fd>=2 || this!=f[1-fd] || cd!=fd) bad=1; ++fd; }\n"
+                        "extern \"C\" int invoke_ns() __asm__(\"" << implicitEntry << "\");\n"
+                        "int main(){ int r=invoke_ns(); return r==0 && ci==2 && fi==2 && cd==2 && fd==2 && !bad ? 0 : 1; }\n";
+                    implicitHarness.close();
+                    if (!implicitEmitted) std::cerr << "Implicit C++ locals object emission: " << implicitLocalError << ' ' << implicitLowerer.error() << '\n';
+                    ok &= expect(implicitEmitted && !implicitEntry.empty() && static_cast<bool>(implicitHarness),
+                                 "implicit C++ local objects and constructor/destructor bodies are emitted");
+                    bool emittedLocal = localLlvmValid;
+                    for (int opt : {0, 2})
+                    {
+                        const auto level = opt == 0 ? nativesharp::llvm_backend::LlvmOptimizationLevel::O0 :
+                            nativesharp::llvm_backend::LlvmOptimizationLevel::O2;
+                        auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(level, localLlvmVerifyError);
+                        emittedLocal &= target && localLlvmModule && target->emit(*localLlvmModule,
+                            output / ("local-ready-ns-O" + std::to_string(opt) + ".obj"),
+                            nativesharp::llvm_backend::LlvmCodeGenFileType::Object, localLlvmVerifyError);
+                    }
+                    std::string entry;
+                    for (const auto& function : localMir.functions())
+                        if (function.namespaceFunctionOrdinal && function.returnTypeKey == "builtin:int")
+                            entry = function.mangledName;
+                    std::ofstream harness(output / "local-ready-harness.cpp");
+                    harness << "namespace Demo { struct Ready { Ready(int) noexcept; ~Ready() noexcept; }; }\n"
+                        "static void* created; static int stage; "
+                        "Demo::Ready::Ready(int v) noexcept { created = this; stage = v == 1 ? 1 : 99; }\n"
+                        "Demo::Ready::~Ready() noexcept { stage = (stage == 1 && created == this) ? 2 : 99; }\n"
+                        "extern \"C\" int invoke_ns() __asm__(\"" << entry << "\");\n"
+                        "extern \"C\" __declspec(dllimport) void __stdcall ExitProcess(unsigned int);\n"
+                        "extern \"C\" void* memset(void* d, int v, unsigned long long n) { auto p = (unsigned char*)d; for (unsigned long long i=0; i<n; ++i) p[i]=(unsigned char)v; return d; }\n"
+                        "extern \"C\" void mainCRTStartup() { int r=invoke_ns(); ExitProcess(r == 0 && stage == 2 ? 0 : 1); }\n";
+                    harness.close();
+                    if (!emittedLocal) std::cerr << "C++ local object emission: " << localLlvmVerifyError << '\n';
+                    ok &= expect(emittedLocal && !entry.empty() && static_cast<bool>(harness),
+                                 "isolated C++ local objects and address-check harness are emitted");
+                    bool throwingEmitted = throwingValid;
+                    for (int opt : {0, 2})
+                    {
+                        const auto level = opt == 0 ? nativesharp::llvm_backend::LlvmOptimizationLevel::O0 :
+                            nativesharp::llvm_backend::LlvmOptimizationLevel::O2;
+                        auto target = nativesharp::llvm_backend::LlvmTargetMachine::createWindowsX64(level, throwingError);
+                        throwingEmitted &= target && throwingModule && target->emit(*throwingModule,
+                            output / ("local-throw-ns-O" + std::to_string(opt) + ".obj"),
+                            nativesharp::llvm_backend::LlvmCodeGenFileType::Object, throwingError);
+                    }
+                    std::string throwingEntry;
+                    if (throwingMirReady)
+                        for (const auto& function : throwingMir.functions())
+                            if (function.namespaceFunctionOrdinal && function.returnTypeKey == "builtin:int")
+                                throwingEntry = function.mangledName;
+                    std::ofstream throwingHarness(output / "local-throw-harness.cpp");
+                    throwingHarness << "namespace Demo { struct Risky { Risky(int); ~Risky() noexcept(false); }; }\n"
+                        "static void* objects[4]; static int failAt; static int count; static int bad; "
+                        "Demo::Risky::Risky(int v) { objects[v]=this; if(v==failAt) throw 42; }\n"
+                        "Demo::Risky::~Risky() noexcept(false) { int n=failAt>4 ? 3 : failAt-1; if(count>=n || this != objects[n-count]) bad=1; ++count; if(failAt==6 && this==objects[2]) throw 43; }\n"
+                        "extern \"C\" void cpp_local_throw() { if(failAt==4) throw 42; }\n"
+                        "extern \"C\" int invoke_ns() __asm__(\"" << throwingEntry << "\");\n"
+                        "extern \"C\" __declspec(dllimport) void __stdcall ExitProcess(unsigned int);\n"
+                        "extern \"C\" void mainCRTStartup() { for(failAt=2; failAt<=6; ++failAt) { count=0; bad=0; int caught=0; try { invoke_ns(); } catch(int v) { caught=v; } int n=failAt>4 ? 3 : failAt-1; int expected=failAt==5 ? 0 : (failAt==6 ? 43 : 42); if(caught!=expected || count!=n || bad) ExitProcess(1); } ExitProcess(0); }\n";
+                    throwingHarness.close();
+                    if (!throwingEmitted) std::cerr << "C++ local exception object: " << throwingError << '\n';
+                    ok &= expect(throwingEmitted && !throwingEntry.empty() && static_cast<bool>(throwingHarness),
+                                 "throwing C++ local objects and harness are emitted");
+                }
             }
         }
     }
