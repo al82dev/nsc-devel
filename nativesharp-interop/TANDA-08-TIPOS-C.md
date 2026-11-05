@@ -193,6 +193,11 @@ Los campos C de arreglos fijos escalares cuentan con una proyección inicial y
 una prueba preparada de matriz multidimensional y arreglo flexible. La
 indexación, los elementos compuestos y el ABI aún no se han validado.
 
+La proyección inicial de campos C admite un record importado anidado por valor
+si el propietario, tamaño y alineación coinciden; hay una prueba preparada de
+identidad y offset. No habilita paso general por valor y el acceso y la copia
+todavía no se han comprobado en ejecución.
+
 `pruebas-tanda-08-incompleto` prepara ambos casos de proyecto: declaración de
 puntero al tipo adelantado y rechazo de `sizeof` con diagnóstico. El script no
 se ha ejecutado; la comprobación real sigue pendiente.
