@@ -217,6 +217,37 @@ bool provideCppSemanticGlobals(
     return true;
 }
 
+CppSemanticEnumInventoryResult collectCppSemanticEnums(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects)
+{
+    std::vector<CppSemanticEnumEntry> result;
+    for (const auto& group : projects)
+    {
+        std::optional<std::size_t> owner;
+        for (std::size_t i = 0; i < graph.projects().size(); ++i)
+        {
+            std::error_code error;
+            const bool same = std::filesystem::equivalent(group.projectFile, graph.projects()[i].projectFile(), error);
+            if (error || !same) continue;
+            if (owner) return CppSemanticInventoryFailure{group.projectFile, 0, "ambiguous project owner"};
+            owner = i;
+        }
+        if (!owner) return CppSemanticInventoryFailure{group.projectFile, 0, "project owner not found in graph"};
+        for (std::size_t index = 0; index < group.sessions.size(); ++index)
+        {
+            const auto& session = group.sessions[index];
+            if (!session) return CppSemanticInventoryFailure{group.projectFile, index, "null C/C++ session"};
+            auto declarations = session->enumsSnapshot();
+            if (!declarations)
+                return CppSemanticInventoryFailure{group.projectFile, index, "C/C++ enum snapshot is not available"};
+            const auto target = session->optionsSnapshot().targetTriple;
+            for (auto& declaration : *declarations)
+                result.push_back({group.projectFile, index, *owner, target, std::move(declaration)});
+        }
+    }
+    return result;
+}
+
 CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects)
 {
