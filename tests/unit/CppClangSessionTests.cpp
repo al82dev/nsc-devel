@@ -5269,6 +5269,36 @@ int main(int argc, char** argv)
                     ok &= expect(ready && selectedShade && selectedNode,
                                  "array typedef selects its enum and record element dependencies");
                 }
+                {
+                    nativesharp::frontend::ProjectCompilation recordDependencies;
+                    recordDependencies.setSourceBufferProvider([](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns")
+                            return "int Use(Branch* value) { return 0; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    CppProjectSessions group;
+                    group.projectFile = std::filesystem::absolute(path);
+                    group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
+                        "struct Leaf { int value; }; struct Branch { struct Leaf items[2]; struct Branch* next; };\n")));
+                    std::vector<CppProjectSessions> groups;
+                    groups.push_back(std::move(group));
+                    std::string dependencyError;
+                    const bool ready = recordDependencies.setCppProjectSessions(std::move(groups), dependencyError) &&
+                        recordDependencies.setExperimentalCppTypeProvider(provideCppInteropTypes, dependencyError) &&
+                        recordDependencies.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, dependencyError) &&
+                        recordDependencies.compileProjectNames(path, dependencyError);
+                    bool branch = false, leaf = false;
+                    if (ready && recordDependencies.nameLookup())
+                        for (const auto& type : recordDependencies.nameLookup()->namedTypes())
+                        {
+                            branch |= type.identity.name() == "Branch" && type.kind == nativesharp::frontend::NamedTypeDeclarationKind::Struct;
+                            leaf |= type.identity.name() == "Leaf" && type.kind == nativesharp::frontend::NamedTypeDeclarationKind::Struct;
+                        }
+                    if (!ready) std::cerr << "C nested record dependencies: " << dependencyError << '\n';
+                    ok &= expect(ready && branch && leaf,
+                                 "C record fields select array element dependencies and handle cycles");
+                }
                 for (bool useCollision : {false, true})
                 {
                     nativesharp::frontend::ProjectCompilation collisionCompilation;
