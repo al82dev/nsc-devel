@@ -1,6 +1,6 @@
 # Tanda 05: integración de la sesión y diagnósticos
 
-Estado: implementación en curso; la tanda no está validada ni cerrada.
+Estado: validación agrupada completada; registro de ítems en curso.
 
 - En `src/Driver`, las compilaciones locales aparecen en
   `DriverArtifactGeneration.cpp` (ejecutable y bibliotecas estática/dinámica),
@@ -49,6 +49,13 @@ validación incremental agrupada. Corregir y repetir al aparecer errores.
   analizado con `--cpp-clang-root=A:/al82dev-clang --check-project-syntax`,
   terminó con código 1 y presentó `Bad.h:1:19` y el mensaje de Clang sobre el
   punto y coma faltante. Es una comprobación real del recorrido de errores.
-- OFF: construcción incremental de `nsc` en curso. Después se deben verificar
-  su comportamiento con y sin solicitud de interoperabilidad. Esta tanda sigue
-  abierta hasta que terminen esos controles y se registren sus resultados.
+- ON: `--check-project-method-bodies` del proyecto ordinario terminó con código 0.
+- OFF: `cmake --build A:/nsc-interop-build/tanda1-OFF --target nsc -j 4` terminó
+  con código 0 y pasó el control de runtime estático del host. El mismo análisis
+  semántico del proyecto ordinario terminó con código 0. El proyecto con una
+  referencia C++ terminó con código 1 y explicó que se requiere interop; pedir
+  explícitamente `--cpp-clang-root` terminó con código 2 y el mensaje de que la
+  construcción no incluye interoperabilidad.
+- La prueba de propiedad compartida usa una sesión real y una compilación
+  compartida equivalente a la propiedad del snapshot. No demuestra importación
+  C++ mediante el servicio de lenguaje, que aún no configura esas sesiones.
