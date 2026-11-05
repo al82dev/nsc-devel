@@ -5024,6 +5024,34 @@ int main(int argc, char** argv)
                     if (!ready) std::cerr << "C record enum dependency: " << dependencyError << '\n';
                     ok &= expect(ready && selectedShade, "record field selects its enum dependency without a direct type use");
                 }
+                {
+                    nativesharp::frontend::ProjectCompilation functionDependency;
+                    functionDependency.setSourceBufferProvider([](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns")
+                            return "int Main() { current_mood(); return 0; }\n";
+                        return std::nullopt;
+                    });
+                    CppProjectSessions group;
+                    group.projectFile = std::filesystem::absolute(path);
+                    group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::C, "enum Mood { Happy = 1 }; enum Mood current_mood(void);\n")));
+                    std::vector<CppProjectSessions> groups;
+                    groups.push_back(std::move(group));
+                    std::string dependencyError;
+                    const bool ready = functionDependency.setCppProjectSessions(std::move(groups), dependencyError) &&
+                        functionDependency.setExperimentalCppTypeProvider(provideCppInteropTypes, dependencyError) &&
+                        functionDependency.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, dependencyError) &&
+                        functionDependency.compileProjectNames(path, dependencyError);
+                    bool selectedMood = false;
+                    if (ready && functionDependency.nameLookup())
+                        for (const auto& type : functionDependency.nameLookup()->namedTypes())
+                            selectedMood |= type.identity.name() == "Mood" &&
+                                type.kind == nativesharp::frontend::NamedTypeDeclarationKind::Enum;
+                    if (!ready) std::cerr << "C function enum dependency: " << dependencyError << '\n';
+                    ok &= expect(ready && selectedMood,
+                                 "function demand selects its enum result without an explicit type use");
+                }
                 for (bool useCollision : {false, true})
                 {
                     nativesharp::frontend::ProjectCompilation collisionCompilation;
