@@ -149,6 +149,23 @@ private:
     CppCancellationToken token_;
 };
 
+class CountingSessionDiagnostics final : public clang::DiagnosticConsumer
+{
+public:
+    void BeginSourceFile(const clang::LangOptions& options, const clang::Preprocessor* preprocessor) override
+    {
+        ++begins;
+        clang::DiagnosticConsumer::BeginSourceFile(options, preprocessor);
+    }
+    void EndSourceFile() override
+    {
+        ++ends;
+        clang::DiagnosticConsumer::EndSourceFile();
+    }
+    unsigned begins = 0;
+    unsigned ends = 0;
+};
+
 const CppFunctionDeclaration* functionByName(const std::vector<CppFunctionDeclaration>& values,
                                               const std::string& name)
 {
@@ -280,6 +297,31 @@ int main(int argc, char** argv)
         }
         ok &= expect(correct.load(std::memory_order_relaxed),
                      "concurrent queries and opposite-order comparisons coordinate session access");
+    }
+    {
+        auto config = options(argv[1], argv[2], argv[3], CppLanguageMode::C, "");
+        auto arguments = nativesharp::interop::detail::buildClangInvocationArguments(config);
+        auto filesystem = llvm::vfs::createPhysicalFileSystem();
+        CountingSessionDiagnostics diagnostics;
+        auto ast = nativesharp::interop::detail::runClangSessionAction(
+            "int lifecycle_probe;\n", arguments,
+            (std::filesystem::path(argv[2]) / "lifecycle_probe.c").generic_string(), argv[3], &diagnostics,
+            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>(filesystem.release()), {});
+        ok &= expect(ast && ast->hasSema() && diagnostics.begins == 1 && diagnostics.ends == 1,
+                     "successful Clang action pairs one source begin and end and retains Sema");
+        ast.reset();
+        ok &= expect(diagnostics.begins == 1 && diagnostics.ends == 1,
+                     "destroying retained AST does not end the source a second time");
+
+        auto failingFilesystem = llvm::vfs::createPhysicalFileSystem();
+        CountingSessionDiagnostics rejectedDiagnostics;
+        arguments.push_back("-definitely-invalid-nsc-session-test");
+        auto rejected = nativesharp::interop::detail::runClangSessionAction(
+            "int rejected_probe;\n", arguments,
+            (std::filesystem::path(argv[2]) / "rejected_probe.c").generic_string(), argv[3], &rejectedDiagnostics,
+            llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>(failingFilesystem.release()), {});
+        ok &= expect(!rejected && rejectedDiagnostics.begins == 0 && rejectedDiagnostics.ends == 0,
+                     "failed driver invocation does not begin or end a source file");
     }
     {
         CppSessionOptions base;
