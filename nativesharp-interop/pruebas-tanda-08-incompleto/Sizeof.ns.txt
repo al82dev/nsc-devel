@@ -1,0 +1,5 @@
+int Main()
+{
+    nuint size = sizeof(Opaque);
+    return 0;
+}
