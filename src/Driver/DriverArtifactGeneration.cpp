@@ -1090,6 +1090,17 @@ bool buildDynamicLibraryProduct(const std::filesystem::path &destination,
         return false;
     }
     std::string referenceError;
+    if (!appendReferencedCppRuntimes(compilation, builder.dynamicLibraryInfo(), runtimeLibraries, referenceError))
+    {
+        error << "nsc: error: C/C++ runtime selection failed: " << referenceError << '\n';
+        return false;
+    }
+    if (!validateCppRuntimeDestinations(compilation, runtimeLibraries,
+                                        destination.parent_path(), referenceError))
+    {
+        error << "nsc: error: C/C++ runtime output preflight failed: " << referenceError << '\n';
+        return false;
+    }
     if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.dynamicLibraryInfo(), referenceError))
     {
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
