@@ -133,3 +133,10 @@ el proyecto `pruebas-tanda-08-valores` cubre la ruta real de typedef escalar y
 constantes enum. Falta conectar los tipos enum al selector sin que conflictos
 no usados bloqueen proyectos y verificar interacciones con funciones, records,
 aliases y la caché. No se ha ejecutado ninguna de estas pruebas.
+
+El proveedor de funciones también recibe el índice de records en sesiones
+exclusivamente C. Se preparó `pruebas-tanda-08-record-c`: una biblioteca C
+entrega un puntero a struct y NativeSharp modifica un campo antes de consultar
+el valor desde C. La prueba aún no se ha construido ni ejecutado. Siguiente
+acción: preparar su ejecución reproducible, integrar selección de enums por
+uso y completar los casos compuestos antes de la validación agrupada.
