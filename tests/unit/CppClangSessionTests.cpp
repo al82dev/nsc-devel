@@ -6764,5 +6764,49 @@ int main(int argc, char** argv)
         ok &= expect(!diagnostics.empty() && diagnostics.front().message.find("session_warning_marker") != std::string::npos,
                      "copied warning remains valid after session close");
     }
+
+    auto duplicate = factory.open(options(argv[1], argv[2], argv[3], CppLanguageMode::C,
+        "int duplicate_name;\ndouble duplicate_name;\n"), {});
+    const auto* duplicateFailure = std::get_if<CppSessionOpenFailure>(&duplicate);
+    bool errorWithNote = false;
+    if (duplicateFailure)
+        for (const auto& diagnostic : duplicateFailure->diagnostics)
+            if (diagnostic.severity == CppSessionDiagnosticSeverity::Error && diagnostic.location &&
+                diagnostic.location->line == 2)
+                for (const auto& note : diagnostic.notes)
+                    errorWithNote |= note.severity == CppSessionDiagnosticSeverity::Note &&
+                                     note.location && note.location->line == 1;
+    ok &= expect(duplicateFailure && duplicateFailure->phase == "parse" && errorWithNote,
+                 "error preserves its related note and both locations");
+
+    auto invalid = factory.open(options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                                        "class Broken { public: int ;\n"), {});
+    auto* invalidFailure = std::get_if<CppSessionOpenFailure>(&invalid);
+    ok &= expect(invalidFailure && invalidFailure->phase == "parse" &&
+                 !invalidFailure->diagnostics.empty(), "invalid C++ returns diagnostics");
+    if (invalidFailure && !invalidFailure->diagnostics.empty())
+        ok &= expect(invalidFailure->diagnostics.front().location.has_value(), "diagnostic has a location");
+
+    auto missing = options(argv[1], argv[2], argv[3], CppLanguageMode::C, "int x;\n");
+    missing.resourceDirectory /= "not-a-resource-directory";
+    auto missingResult = factory.open(std::move(missing), {});
+    auto* missingFailure = std::get_if<CppSessionOpenFailure>(&missingResult);
+    ok &= expect(missingFailure && missingFailure->phase == "options", "missing resources are rejected");
+
+    CppCancellationToken token;
+    token.cancel();
+    auto cancelled = factory.open(options(argv[1], argv[2], argv[3], CppLanguageMode::C, "int x;\n"), token);
+    auto* cancelledFailure = std::get_if<CppSessionOpenFailure>(&cancelled);
+    ok &= expect(cancelledFailure && cancelledFailure->phase == "cancel", "cancelled opening is rejected");
+    if (c)
+    {
+        ok &= expect(c->close().succeeded && c->close().succeeded, "close is idempotent");
+        ok &= expect(c->state() == CppSessionState::Closed && !c->topLevelDeclarationCount(),
+                     "closed session does not expose an AST");
+        ok &= expect(!c->freeFunctionsSnapshot() && !c->recordsSnapshot() && !c->globalsSnapshot() && cFunctions &&
+                     functionByName(*cFunctions, "bridge_probe") && cRecords &&
+                     recordByName(*cRecords, "Pair") && cGlobals && globalByName(*cGlobals, "c_global"),
+                     "closed session cannot query AST; copied declarations remain valid");
+    }
     return ok ? 0 : 1;
 }
