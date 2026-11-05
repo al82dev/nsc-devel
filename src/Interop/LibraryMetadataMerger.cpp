@@ -479,6 +479,7 @@ bool LibraryMetadataMerger::merge(
     candidate.dispatchTables.clear();
     candidate.exports.clear();
     candidate.binaryDependencies.clear();
+    candidate.cppBinaryDependencies.clear();
     candidate.platformImports.clear();
 
     for (std::size_t ordinal = 0; ordinal < fragments.size(); ++ordinal)
@@ -501,6 +502,15 @@ bool LibraryMetadataMerger::merge(
         append(candidate.dispatchTables, fragment.dispatchTables);
         append(candidate.exports, fragment.exports);
         append(candidate.binaryDependencies, fragment.binaryDependencies);
+        if (!fragment.cppBinaryDependencies.empty())
+        {
+            if (!candidate.cppBinaryDependencies.empty() && candidate.cppBinaryDependencies != fragment.cppBinaryDependencies)
+            {
+                error = "NSMETA fragments disagree on ordered C/C++ binary dependencies";
+                return false;
+            }
+            candidate.cppBinaryDependencies = fragment.cppBinaryDependencies;
+        }
         append(candidate.platformImports, fragment.platformImports);
     }
     if (!canonicalizeModel(candidate, error)) return false;
