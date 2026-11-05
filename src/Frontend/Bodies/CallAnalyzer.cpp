@@ -720,17 +720,43 @@ std::vector<std::size_t> ProjectMethodBodyModel::nonDominatedNamespaceFunctionCa
     std::span<const std::size_t> viable) const
 {
     std::vector<std::size_t> nonDominated;
+    const auto betterNamespaceCandidate = [&](const MethodCallCandidate& left, const MethodCallCandidate& right)
+    {
+        if (betterCandidate(left, right)) return true;
+        if (betterCandidate(right, left) || namespaceFunctionModel_ == nullptr ||
+            left.memberOrdinal >= namespaceFunctionModel_->functions().size() ||
+            right.memberOrdinal >= namespaceFunctionModel_->functions().size() ||
+            left.conversions.size() != 1 || right.conversions.size() != 1 ||
+            left.argumentParameterOrdinals.size() != 1 || right.argumentParameterOrdinals.size() != 1 ||
+            left.defaultedParameterCount != 0 || right.defaultedParameterCount != 0 ||
+            left.isVariadicCandidate || right.isVariadicCandidate ||
+            left.usesExpandedParameterPack || right.usesExpandedParameterPack)
+            return false;
+        const auto& leftFunction = namespaceFunctionModel_->functions()[left.memberOrdinal];
+        const auto& rightFunction = namespaceFunctionModel_->functions()[right.memberOrdinal];
+        if (leftFunction.cppCanonicalIdentity.empty() || rightFunction.cppCanonicalIdentity.empty() ||
+            leftFunction.parameters.size() != 1 || rightFunction.parameters.size() != 1 ||
+            left.argumentParameterOrdinals[0] != 0 || right.argumentParameterOrdinals[0] != 0)
+            return false;
+        const auto& lc = left.conversions[0];
+        const auto& rc = right.conversions[0];
+        return lc.rank == rc.rank && lc.sourceTypeKey == rc.sourceTypeKey &&
+            lc.sourceTypeKey == lc.targetTypeKey && lc.targetTypeKey == rc.targetTypeKey &&
+            ProjectTypeConversion::isPointer(lc.sourceTypeKey) &&
+            !leftFunction.parameters[0].pointerPointeeReadonly &&
+            rightFunction.parameters[0].pointerPointeeReadonly;
+    };
     for (const std::size_t candidateIndex : viable)
     {
         const bool dominated = std::ranges::any_of(nonDominated, [&](std::size_t other)
         {
-            return betterCandidate(
+            return betterNamespaceCandidate(
                 call.evaluatedCandidates[other], call.evaluatedCandidates[candidateIndex]);
         });
         if (dominated) continue;
         std::erase_if(nonDominated, [&](std::size_t other)
         {
-            return betterCandidate(
+            return betterNamespaceCandidate(
                 call.evaluatedCandidates[candidateIndex], call.evaluatedCandidates[other]);
         });
         nonDominated.push_back(candidateIndex);
@@ -791,7 +817,8 @@ bool ProjectMethodBodyModel::validateNamespaceFunctionDefinition(
     }
     const NamespaceFunctionSymbol& function =
         namespaceFunctionModel_->functions()[functionOrdinal];
-    if (function.definitionSyntax != nullptr || function.isExternC || function.isPrecompiled)
+    if (function.definitionSyntax != nullptr || function.isExternC || function.isPrecompiled ||
+        !function.cppCanonicalIdentity.empty())
     {
         return true;
     }
@@ -3001,9 +3028,56 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
             }
             if (reference->qualified || !shadowed)
             {
+                for (const auto& deferred : namespaceFunctionModel_->cppDeferredFunctions())
+                {
+                    if (!deferred.directCall || deferred.syntax != expression) continue;
+                    for (const auto ordinal : reference->candidateFunctionOrdinals)
+                    {
+                        if (ordinal >= namespaceFunctionModel_->functions().size()) continue;
+                        const auto& function = namespaceFunctionModel_->functions()[ordinal];
+                        std::string qualified;
+                        for (const char c : function.namespaceName)
+                            qualified += c == '.' ? "::" : std::string(1, c);
+                        if (!qualified.empty()) qualified += "::";
+                        qualified += function.name;
+                        if (qualified != deferred.declaration.qualifiedName) continue;
+                        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+                            diagnostics::DiagnosticSeverity::Error, expression->range(),
+                            "C/C++ overload set is incomplete for '" + reference->writtenName +
+                                "': " + deferred.reason);
+                        return ExpressionResult{};
+                    }
+                }
                 return analyzeNamespaceFunctionCall(
                     expression, *reference, methodMemberOrdinal, scopeOrdinal, diagnostics);
             }
+        }
+        else if (expression->first() != nullptr &&
+                 expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto& name = expression->first()->text();
+            bool shadowed = lookupScopeName(scopeOrdinal, name).has_value();
+            if (!shadowed && memberModel_ != nullptr)
+            {
+                const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+                if (caller != nullptr && caller->declaringTypeOrdinal < nameLookup_->namedTypes().size())
+                    for (const std::size_t ordinal : memberModel_->findMembers(caller->declaringTypeOrdinal, name))
+                        if (ordinal < memberModel_->members().size() &&
+                            memberModel_->members()[ordinal].kind == ClassMemberKind::Method)
+                        {
+                            shadowed = true;
+                            break;
+                        }
+            }
+            if (!shadowed)
+                for (const auto& deferred : namespaceFunctionModel_->cppDeferredFunctions())
+                    if (deferred.directCall && deferred.syntax == expression &&
+                        !deferred.conflictingOrigins.empty())
+                    {
+                        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+                            diagnostics::DiagnosticSeverity::Error, expression->range(), deferred.reason);
+                        return ExpressionResult{};
+                    }
         }
     }
     return std::nullopt;
@@ -4077,6 +4151,8 @@ void ProjectMethodBodyModel::evaluateCallCandidates(
         hasMatchingArity = true;
         candidateBinding.viable = true;
         evaluateCallCandidateArguments(candidateBinding, candidate, resolvedArguments);
+        if (callee.readonlyReceiver && candidate.isCppExternal && candidate.declaringTypeIsStruct &&
+            !candidate.isStatic && !candidate.isReadonly) candidateBinding.viable = false;
         finishCallCandidateEvaluation(
             constraintRejectedSyntaxes, candidateBinding, candidate, candidateOrdinal, call);
         call.evaluatedCandidates.push_back(std::move(candidateBinding));
@@ -4578,12 +4654,65 @@ bool ProjectMethodBodyModel::chooseNonDominatedCallCandidate(
 {
     std::vector<std::size_t> nonDominated;
     nonDominated.reserve(viableEvaluationOrdinals.size());
+    const auto betterMemberCandidate = [&](const MethodCallCandidate& left, const MethodCallCandidate& right)
+    {
+        if (betterCandidate(left, right)) return true;
+        if (betterCandidate(right, left)) return false;
+        const auto* l = methodSymbol(left.memberOrdinal);
+        const auto* r = methodSymbol(right.memberOrdinal);
+        if (l && r && l->isCppExternal && r->isCppExternal && !l->isStatic && !r->isStatic &&
+            l->declaringTypeOrdinal == r->declaringTypeOrdinal && l->name == r->name &&
+            l->parameters.size() == 1 && r->parameters.size() == 1 &&
+            left.conversions.size() == 1 && right.conversions.size() == 1 &&
+            left.argumentParameterOrdinals.size() == 1 && right.argumentParameterOrdinals.size() == 1 &&
+            left.argumentParameterOrdinals[0] == 0 && right.argumentParameterOrdinals[0] == 0 &&
+            left.defaultedParameterCount == 0 && right.defaultedParameterCount == 0 &&
+            !left.isVariadicCandidate && !right.isVariadicCandidate &&
+            !left.usesExpandedParameterPack && !right.usesExpandedParameterPack)
+        {
+            const auto& lc = left.conversions[0];
+            const auto& rc = right.conversions[0];
+            if (l->parameters[0].typeKey == r->parameters[0].typeKey &&
+                lc.rank == rc.rank && lc.sourceTypeKey == lc.targetTypeKey &&
+                lc.targetTypeKey == rc.targetTypeKey && ProjectTypeConversion::isPointer(lc.sourceTypeKey))
+            {
+                const bool lp = l->parameters[0].pointerPointeeReadonly;
+                const bool rp = r->parameters[0].pointerPointeeReadonly;
+                return (!l->isReadonly || r->isReadonly) && (!lp || rp) &&
+                    (l->isReadonly != r->isReadonly || lp != rp);
+            }
+        }
+        if (l && r && l->isCppExternal && r->isCppExternal && !l->isStatic && !r->isStatic &&
+            l->declaringTypeOrdinal == r->declaringTypeOrdinal && l->name == r->name &&
+            l->parameters.size() == r->parameters.size() && l->isReadonly != r->isReadonly &&
+            left.argumentParameterOrdinals == right.argumentParameterOrdinals &&
+            left.defaultedParameterCount == right.defaultedParameterCount &&
+            left.conversions.size() == right.conversions.size() &&
+            std::equal(l->parameters.begin(), l->parameters.end(), r->parameters.begin(), [](const auto& a, const auto& b) {
+                return a.typeKey == b.typeKey && a.pointerPointeeReadonly == b.pointerPointeeReadonly;
+            }) && std::equal(left.conversions.begin(), left.conversions.end(), right.conversions.begin(), [](const auto& a, const auto& b) {
+                return a.rank == b.rank && a.sourceTypeKey == b.sourceTypeKey && a.targetTypeKey == b.targetTypeKey;
+            })) return !l->isReadonly && r->isReadonly;
+        if (left.conversions.size() != 1 || right.conversions.size() != 1 ||
+            left.argumentParameterOrdinals.size() != 1 || right.argumentParameterOrdinals.size() != 1 ||
+            left.argumentParameterOrdinals[0] != 0 || right.argumentParameterOrdinals[0] != 0 ||
+            left.defaultedParameterCount != 0 || right.defaultedParameterCount != 0 ||
+            left.isVariadicCandidate || right.isVariadicCandidate ||
+            left.usesExpandedParameterPack || right.usesExpandedParameterPack) return false;
+        const auto& lc = left.conversions[0];
+        const auto& rc = right.conversions[0];
+        return l && r && l->isCppExternal && r->isCppExternal && l->isStatic == r->isStatic &&
+            l->isReadonly == r->isReadonly && l->parameters.size() == 1 && r->parameters.size() == 1 &&
+            lc.rank == rc.rank && lc.sourceTypeKey == lc.targetTypeKey &&
+            lc.targetTypeKey == rc.targetTypeKey && ProjectTypeConversion::isPointer(lc.sourceTypeKey) &&
+            !l->parameters[0].pointerPointeeReadonly && r->parameters[0].pointerPointeeReadonly;
+    };
     for (const std::size_t candidateIndex : viableEvaluationOrdinals)
     {
         const bool dominated = std::ranges::any_of(
             nonDominated, [&](const std::size_t otherIndex)
         {
-            return betterCandidate(
+            return betterMemberCandidate(
                 call.evaluatedCandidates[otherIndex],
                 call.evaluatedCandidates[candidateIndex]);
         });
@@ -4591,7 +4720,7 @@ bool ProjectMethodBodyModel::chooseNonDominatedCallCandidate(
 
         std::erase_if(nonDominated, [&](const std::size_t otherIndex)
         {
-            return betterCandidate(
+            return betterMemberCandidate(
                 call.evaluatedCandidates[candidateIndex],
                 call.evaluatedCandidates[otherIndex]);
         });
