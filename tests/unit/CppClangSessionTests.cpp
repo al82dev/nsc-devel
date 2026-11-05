@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/CppAliasRecordType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Frontend/CppAliasEnumType.h"
+#include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticRenderer.h"
 #include "nativesharp/Source/SourceManager.h"
@@ -2715,6 +2716,46 @@ int main(int argc, char** argv)
                     if (!bound) std::cerr << "C record typedef semantic setup failed: " << error << '\n';
                     ok &= expect(bound && aliasBound && tagBound,
                                  "record typedef and same-named C tag bind to the imported record");
+                }
+                {
+                    nativesharp::frontend::ProjectCompilation enumAliasCompilation;
+                    enumAliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() == "Main.ns")
+                            return "ColorAlias Echo(ColorAlias value) { return value; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    nativesharp::compilation::TypeIdentity enumIdentity("Semantic", {}, {}, "Color");
+                    nativesharp::frontend::CppImportedTypeDeclaration enumType{enumIdentity,
+                        nativesharp::frontend::NamedTypeDeclarationKind::Enum,
+                        nativesharp::frontend::NamedTypeAccessibility::Public, 0, "probe.c"};
+                    enumType.enumBase = nativesharp::frontend::CppImportedEnumBase{
+                        nativesharp::lexer::TokenKind::KwInt, "int"};
+                    const auto aliasesSnapshot = cAliases;
+                    const bool configured = enumAliasCompilation.setExperimentalCppImportedTypes({enumType}, error) &&
+                        enumAliasCompilation.setCppTypeAliasProvider(
+                        [aliasesSnapshot](const auto& graph, auto, auto& output, auto& why) {
+                            if (!aliasesSnapshot || graph.projects().empty()) { why = "alias fixture unavailable"; return false; }
+                            for (const auto& alias : *aliasesSnapshot)
+                                if (alias.name == "ColorAlias")
+                                    output.push_back({0, graph.projects()[0].projectFile(), 0,
+                                                      "x86_64-pc-windows-msvc", alias});
+                            return true;
+                        }, error);
+                    const bool bound = configured && enumAliasCompilation.compileProjectNames(semanticPath, error);
+                    bool enumBound = false, basePreserved = false;
+                    if (bound && enumAliasCompilation.nameLookup())
+                    {
+                        for (const auto& binding : enumAliasCompilation.nameLookup()->bindings())
+                            enumBound |= binding.writtenName == "ColorAlias" && binding.syntax &&
+                                binding.syntax->baseName() == "Color" && binding.targetTypeOrdinal.has_value();
+                        for (const auto& type : enumAliasCompilation.nameLookup()->namedTypes())
+                            if (type.identity.name() == "Color")
+                                basePreserved = nativesharp::frontend::enumUnderlyingTypeKey(type.syntax) == "builtin:int";
+                    }
+                    if (!bound) std::cerr << "C enum typedef semantic setup failed: " << error << '\n';
+                    ok &= expect(bound && enumBound && basePreserved,
+                                 "enum typedef binds to imported enum and preserves its underlying type");
                 }
                 auto incompleteProjection = imported;
                 incompleteProjection.mangledName.clear();
