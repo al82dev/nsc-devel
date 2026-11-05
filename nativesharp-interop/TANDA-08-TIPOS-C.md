@@ -2,6 +2,26 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Validación agrupada de sombra y calificadores enum: 2026-11-05
+
+La primera pasada tras `b0c8b304d`, `c53af4477` y `1a941c082` falló porque
+una demanda sintáctica de `hidden_global`, que después se resolvía a un local
+o parámetro NativeSharp, producía prematuramente un conflicto con `HiddenState`.
+`fe469455a` difiere ese caso y `85c23f228` prepara el rechazo complementario
+del uso real del global conflictivo.
+
+La segunda ejecución de `call nativesharp-interop\validar-tanda-08.cmd`
+terminó con código 0. Pasaron ON/OFF, suite Clang, restauración, equivalencia y
+los siete proyectos. El proyecto de enum comprobó lectura del puntero global,
+lectura del global `const`, ejecución de la sombra local y rechazo del uso real
+conflictivo. `collision.log` registró `C/C++ global type is not yet mapped`;
+`const-write.log` registró `left side of assignment is not assignable` para
+`readonly_mood`.
+
+La selección especulativa todavía no constituye resolución completa de
+sombras y colisiones. Estos casos son Windows x64 O0; no demuestran TLS,
+`volatile` enum, punteros con calificadores ni otras configuraciones.
+
 ## Validación agrupada de globales enum C: 2026-11-05
 
 Con los commits `2549bbd07`, `c8c37c02e`, `3712a45be` y `e11d160db`,
