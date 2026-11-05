@@ -6,6 +6,7 @@
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/Driver/CompilationTelemetry.h"
 #include "nativesharp/Frontend/ProjectCompilationLifetime.h"
+#include "nativesharp/Interop/CppProjectSessions.h"
 #include "nativesharp/LLVM/LlvmOptimizationBudgetTracker.h"
 
 #include <chrono>
@@ -52,6 +53,9 @@ struct DriverExecutionScope final
     compilation::ProjectLoader projectLoader;
     compilation::ProjectLoadOptions projectLoadOptions;
     compilation::CompilationInputManifest* preparedInputManifest = nullptr;
+    // The caller owns the factory for the duration of this synchronous execution.
+    std::optional<interop::CppProjectSessionEnvironment> cppSessionEnvironment;
+    interop::CppInteropSessionFactory* cppSessionFactory = nullptr;
     frontend::ProjectCompilationLifetime compilationLifetime;
     bool reportTiming = false;
     bool reportProgress = false;

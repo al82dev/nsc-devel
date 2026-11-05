@@ -1,4 +1,8 @@
 #include "Internal/DriverInternal.h"
+#include "nativesharp/Target/TargetInfo.h"
+#if defined(NSC_ENABLE_CPP_INTEROP)
+#include "nativesharp/Interop/CppClangSessionFactory.h"
+#endif
 
 namespace nativesharp::driver
 {
@@ -140,6 +144,36 @@ ExitCode executeCompilerSession(const Driver &driver, std::span<const std::strin
     ExitCode result = parseAndConfigureInvocation(arguments, executionScope, jobPolicy, invocation, error);
     if (result != ExitCode::Success)
         return result;
+    if (!invocation.cppSystemIncludes.empty() && !invocation.cppClangRoot.has_value())
+    {
+        error << "nsc: error: --cpp-system-include requires --cpp-clang-root\n";
+        return ExitCode::CommandLineError;
+    }
+#if defined(NSC_ENABLE_CPP_INTEROP)
+    interop::CppClangSessionFactory cppFactory;
+    if (invocation.cppClangRoot.has_value())
+    {
+        std::error_code ec;
+        auto workingDirectory = std::filesystem::current_path(ec);
+        if (ec)
+        {
+            error << "nsc: error: cannot determine the C/C++ working directory\n";
+            return ExitCode::CommandLineError;
+        }
+        const auto& root = *invocation.cppClangRoot;
+        executionScope.cppSessionEnvironment = interop::CppProjectSessionEnvironment{
+            std::string(target::TargetInfo::WindowsX64().llvmTriple()),
+            root / "bin" / "clang.exe", root / "lib" / "clang" / "23",
+            std::move(workingDirectory), invocation.cppSystemIncludes};
+        executionScope.cppSessionFactory = &cppFactory;
+    }
+#else
+    if (invocation.cppClangRoot.has_value())
+    {
+        error << "nsc: error: this compiler was built without C/C++ interoperability\n";
+        return ExitCode::CommandLineError;
+    }
+#endif
     installAndReportFloatingPoint(invocation, floatingPointModeScope, output);
     result = validateInvocationAndCache(invocation, artifactCache, output, error);
     if (result != ExitCode::Success)
