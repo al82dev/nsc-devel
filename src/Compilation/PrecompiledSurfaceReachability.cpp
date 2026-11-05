@@ -470,6 +470,7 @@ std::shared_ptr<const interop::LibraryMetadata> PrecompiledSurfaceReachability::
     pruned->dispatchTables = metadata.dispatchTables;
     pruned->exports = metadata.exports;
     pruned->binaryDependencies = metadata.binaryDependencies;
+    pruned->cppBinaryDependencies = metadata.cppBinaryDependencies;
     pruned->platformImports = metadata.platformImports;
     return pruned;
 }

@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Interop/CppBinaryDependencies.h"
 #include "nativesharp/Interop/LibraryMetadataMerger.h"
 
 #include "nativesharp/Basic/ArtifactTransaction.h"
@@ -801,6 +802,10 @@ bool appendBinaryDependencies(
         metadata.binaryDependencies.begin(),
         metadata.binaryDependencies.end(),
         binaryDependencyLess);
+    if (!collectCppGraphBinaryMetadataDependencies(
+            *compilation.projectGraph(), metadata.cppBinaryDependencies, error))
+        return false;
+    if (!metadata.cppBinaryDependencies.empty()) metadata.formatMinor = 41;
     return true;
 }
 
@@ -1746,6 +1751,9 @@ void collectPublishedRootTypeOrdinals(
     for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
     {
         if (types[ordinal].projectOrdinal != rootProjectOrdinal) continue;
+        // A Clang declaration is not a NativeSharp definition owned by this module.
+        // Public signatures that mention it must still be represented explicitly.
+        if (compilation.nameLookup()->cppImportedType(ordinal) != nullptr) continue;
         rootProjectTypes.insert(ordinal);
         rootTypeByKey.emplace(typeKeyForOrdinal(types, ordinal), ordinal);
     }
@@ -2757,7 +2765,9 @@ bool initializeMetadataModel(
     rootProjectOrdinalValue = *rootOrdinal;
     metadata = {};
     metadata.formatMajor = kFormatMajor;
-    metadata.formatMinor = kFormatMinor;
+    // The ordinary producer does not yet publish the private C++ binary catalogue.
+    // Keep its files readable by 1.40 readers until that catalogue is actually used.
+    metadata.formatMinor = 40;
     metadata.targetId = kWindowsX64Target;
     metadata.pointerSize = kPointerSize;
     metadata.pointerAlignment = kPointerAlignment;
@@ -2886,6 +2896,7 @@ bool appendNamespaceFunctionMetadata(
     {
         if (function.projectOrdinal != rootProjectOrdinal ||
             function.accessibility != frontend::NamespaceFunctionAccessibility::Public ||
+            !function.cppCanonicalIdentity.empty() ||
             (function.isExternC && !function.isExportedC))
         {
             continue;
@@ -2958,7 +2969,7 @@ void appendNamespaceStateMetadata(
     {
         if (state.projectOrdinal != rootProjectOrdinal ||
             state.accessibility != frontend::NamespaceFunctionAccessibility::Public ||
-            state.isPrecompiled)
+            state.isPrecompiled || state.isCppExternal)
         {
             continue;
         }

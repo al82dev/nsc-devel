@@ -247,7 +247,8 @@ bool LibraryMetadataCodec::verifyCurrentCompiler(
     if (!verifyNamespaceAndExportCatalogues(metadata, error)) return false;
     if (!verifyBinaryClosureMetadata(metadata, error)) return false;
     if (!verifyVersionedMemberContracts(metadata, error)) return false;
-    return verifyLifetimeMetadataContracts(metadata, error);
+    if (!verifyLifetimeMetadataContracts(metadata, error)) return false;
+    return true;
 }
 
 std::string LibraryMetadataCodec::fingerprintHex(const std::array<std::uint8_t, 32>& fingerprint)
