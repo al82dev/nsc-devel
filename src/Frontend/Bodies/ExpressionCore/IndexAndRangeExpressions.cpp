@@ -771,6 +771,36 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         indices.front().typeKey != "builtin:bool";
     if (validFixedIndices || validFlexibleIndex || validPointerIndex)
     {
+        // A raw NS pointer cannot preserve C volatile. Follow only fixed-array
+        // storage back to its resolved global; never transfer the qualification
+        // of a volatile pointer variable to the object it points at.
+        if (validFixedIndices && formingAddressOperand_ && expression == formingAddressTarget_ &&
+            namespaceFunctionModel_ != nullptr)
+        {
+            const ast::AstNode* root = expression;
+            while (root != nullptr && root->kind() == ast::AstNodeKind::IndexExpression)
+                root = root->first();
+            const MethodNameBinding* binding = root != nullptr
+                ? nameBinding(root, methodMemberOrdinal) : nullptr;
+            if (binding != nullptr && binding->kind == MethodNameBindingKind::NamespaceState &&
+                binding->candidateMemberOrdinals.size() == 1)
+            {
+                const std::size_t ordinal = binding->candidateMemberOrdinals.front();
+                if (ordinal < namespaceFunctionModel_->states().size())
+                {
+                    const NamespaceStateSymbol& state = namespaceFunctionModel_->states()[ordinal];
+                    if (state.isCppExternal && state.isVolatile &&
+                        ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value() &&
+                        state.declaredTypeKey.find('*') == std::string::npos)
+                    {
+                        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error, expression->range(),
+                            "cannot take the address of a volatile C/C++ array element until qualified pointers are supported");
+                        return;
+                    }
+                }
+            }
+        }
         result.typeKey = validFixedIndices ? indexedType : validFlexibleIndex
             ? *flexibleElementType : std::string(base.typeKey.substr(0, base.typeKey.size() - 1));
         result.valid = true;

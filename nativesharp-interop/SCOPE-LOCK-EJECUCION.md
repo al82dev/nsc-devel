@@ -1679,6 +1679,8 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Objetivo: verificar que `&volatile_array[1]` no se convierta silenciosamente en `int*` perdiendo `volatile`.
 - Presupuesto: `VolatileArrayAddress.ns.txt` y `validar.cmd` del proyecto `pruebas-tanda-08-record-c`, más registro Markdown. Si se acepta, investigar y corregir la pérdida del calificador antes de considerar seguro el acceso.
 - La prueba debe diagnosticar el descarte de volatile o de la dirección calificada. La validación dirigida del fixture ya compilado puede utilizarse para localizar el defecto; la batería se repetirá agrupada tras las correcciones.
+- Evidencia: el compilador aceptó `&volatile_array[1]` como `int*`. La dirección indexada no conserva un tipo de puntero calificado.
+- Corrección: `src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp` debe rechazar esa formación de dirección sobre arreglos globales C `volatile` de escalares o enum, incluida la indexación anidada; conservar el sombreado y los punteros no calificados. Extender el fixture con matriz y un caso positivo de arreglo mutable; registrar cada cambio con su Markdown y validar en conjunto.
 
 ### Global enum const
 
