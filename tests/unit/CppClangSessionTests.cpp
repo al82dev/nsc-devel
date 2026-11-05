@@ -4122,6 +4122,350 @@ int main(int argc, char** argv)
                              !hooked.diagnostics().hasErrors() && !hooked.setCppRecordObserver({}, lateError) && !lateError.empty(),
                              "optional record observer runs once and does not install placeholders into production lookup");
             }
+            {
+                nativesharp::frontend::ProjectCompilation unpreparedObservation;
+                ok &= expect(std::holds_alternative<CppRecordObservationFailure>(observeCppRecords(unpreparedObservation)),
+                             "record observation rejects an unprepared compilation");
+                for (int collision : {0, 1, 2, 3, 4})
+                {
+                    nativesharp::frontend::ProjectCompilation observedCompilation;
+                    observedCompilation.setSourceBufferProvider([collision](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() != "Main.ns") return std::nullopt;
+                        if (collision == 1) return "namespace A.B { struct C {} } int Main() { return 0; }\n";
+                        if (collision == 2) return "namespace A.B { struct C {} } int Use(A.B.C* item) { return 0; } int Main() { return 0; }\n";
+                        if (collision == 3) return "namespace A.B { struct C { public static int X; } } int Main() { return A.B.C.X; }\n";
+                        if (collision == 4) return "using A.B; namespace A.B { struct C {} } class Holder { public int X; } int Main() { Holder C; return C.X; }\n";
+                        return "using Alias = A.B.C; int Use(Alias* item) { return 0; } int Main() { return 0; }\n";
+                    });
+                    CppProjectSessions sessionGroup;
+                    sessionGroup.projectFile = std::filesystem::absolute(path);
+                    sessionGroup.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::Cpp, "namespace A { namespace B { struct C {}; } }\n")));
+                    std::vector<CppProjectSessions> sessions;
+                    sessions.push_back(std::move(sessionGroup));
+                    std::string observedError;
+                    const bool observedParsed = observedCompilation.setCppProjectSessions(std::move(sessions), observedError) &&
+                        observedCompilation.compileProjectSyntax(path, observedError);
+                    const nativesharp::ast::TypeSyntax* observedAlias = nullptr;
+                    std::vector<const nativesharp::ast::AstNode*> nodes;
+                    std::unordered_set<const nativesharp::ast::AstNode*> seenNodes;
+                    for (const auto& unit : observedCompilation.units())
+                        if (unit && unit->syntaxTree()) nodes.push_back(unit->syntaxTree());
+                    while (!nodes.empty())
+                    {
+                        const auto* node = nodes.back(); nodes.pop_back();
+                        if (!node || !seenNodes.insert(node).second) continue;
+                        if (node->typeSyntax() && node->typeSyntax()->baseName() == "Alias") observedAlias = node->typeSyntax();
+                        nodes.push_back(node->first()); nodes.push_back(node->second()); nodes.push_back(node->third());
+                        for (const auto* child : node->children()) nodes.push_back(child);
+                    }
+                    const auto observed = observedParsed ? observeCppRecords(observedCompilation) :
+                        CppRecordObservationRunResult{CppRecordObservationFailure{observedError}};
+                    const auto* observedResult = std::get_if<CppRecordObservation>(&observed);
+                    bool referenced = false;
+                    if (observedResult)
+                        for (const auto groupIndex : observedResult->selection.referencedGroups)
+                            referenced |= groupIndex < observedResult->groups.groups.size() &&
+                                observedResult->groups.groups[groupIndex].identity.key() == namespaceIdentity->key();
+                    const bool collisionTracked = observedResult && observedResult->collidingGroups.size() == 1 &&
+                        (collision != 2 || observedResult->referencedCollidingGroups == observedResult->collidingGroups) &&
+                        ((collision != 3 && collision != 4) || observedResult->expressionCollidingGroups == observedResult->collidingGroups) &&
+                        (collision != 1 || (observedResult->referencedCollidingGroups.empty() &&
+                                            observedResult->expressionCollidingGroups.empty()));
+                    ok &= expect(observedParsed && !observedCompilation.diagnostics().hasErrors() &&
+                                 (collision ? collisionTracked : referenced && observedAlias && observedAlias->baseName() == "Alias"),
+                                 "real compilation observation separates unused and referenced collisions without mutating syntax");
+                    if (observedResult)
+                    {
+                        const auto selected = selectExperimentalCppRecordTypes(*observedResult);
+                        const auto* inputs = std::get_if<CppRecordObservationInputs>(&selected);
+                        ok &= expect(inputs && (collision ? inputs->types.empty() : inputs->types.size() == 1),
+                                     "record selection uses real observation to retain imported or native identity");
+                    }
+                }
+            }
+            {
+                const auto root = std::filesystem::path(argv[2]) / "cpp-fixtures/record-visibility";
+                for (int scenario : {0, 1, 2})
+                {
+                    const auto base = root / std::to_string(scenario);
+                    const auto core = base / "Core";
+                    const auto app = base / "App";
+                    std::filesystem::create_directories(core);
+                    std::filesystem::create_directories(app);
+                    { std::ofstream file(core / "Core.nsproj"); file << "<Project><PropertyGroup><Name>Core</Name><OutputType>Library</OutputType></PropertyGroup></Project>"; }
+                    { std::ofstream file(core / "Core.ns"); file << (scenario == 2 ? "namespace Shared { public struct Token {} }\n" : "int CoreValue() { return 1; }\n"); }
+                    { std::ofstream file(app / "App.nsproj"); file << "<Project><PropertyGroup><Name>App</Name></PropertyGroup><ItemGroup><ProjectReference Include=\"../Core/Core.nsproj\" /></ItemGroup></Project>"; }
+                    { std::ofstream file(app / "App.ns");
+                      if (scenario == 1) file << "namespace Shared { public struct Token {} } ";
+                      file << "int Use(Shared.Token* item) { return 0; } int Main() { return 0; }\n"; }
+                    nativesharp::frontend::ProjectCompilation visibilityCompilation;
+                    CppProjectSessions visibilityGroup;
+                    visibilityGroup.projectFile = std::filesystem::absolute(core / "Core.nsproj");
+                    visibilityGroup.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::Cpp, "namespace Shared { struct Token {}; }\n")));
+                    std::vector<CppProjectSessions> visibilitySessions;
+                    visibilitySessions.push_back(std::move(visibilityGroup));
+                    std::string visibilityError;
+                    const bool visibilityParsed = visibilityCompilation.setCppProjectSessions(std::move(visibilitySessions), visibilityError) &&
+                        visibilityCompilation.compileProjectSyntax(app / "App.nsproj", visibilityError);
+                    const auto visibleResult = visibilityParsed ? observeCppRecords(visibilityCompilation) :
+                        CppRecordObservationRunResult{CppRecordObservationFailure{visibilityError}};
+                    const auto* observation = std::get_if<CppRecordObservation>(&visibleResult);
+                    bool valid = observation && !visibilityCompilation.diagnostics().hasErrors();
+                    if (observation && scenario == 0)
+                        valid &= observation->collidingGroups.empty() && observation->selection.referencedGroups.size() == 1;
+                    else if (observation && scenario == 1)
+                        valid &= observation->collidingGroups.empty() && observation->selection.referencedGroups.empty();
+                    else if (observation && scenario == 2)
+                        valid &= observation->collidingGroups.size() == 1 &&
+                            observation->referencedCollidingGroups == observation->collidingGroups;
+                    if (!valid)
+                    {
+                        if (const auto* failure = std::get_if<CppRecordObservationFailure>(&visibleResult))
+                            std::cerr << "record visibility scenario " << scenario << ": " << failure->message << '\n';
+                    }
+                    ok &= expect(valid, "record observation preserves project visibility and local type precedence");
+                }
+            }
+            {
+                const auto root = std::filesystem::path(argv[2]) / "cpp-fixtures/parser-visibility";
+                const auto core = root / "Core";
+                const auto app = root / "App";
+                std::filesystem::create_directories(core);
+                std::filesystem::create_directories(app);
+                { std::ofstream file(core / "Core.nsproj"); file << "<Project><PropertyGroup><Name>Core</Name><OutputType>Library</OutputType></PropertyGroup></Project>"; }
+                { std::ofstream file(core / "Core.ns"); file << "int CoreValue() { int Token = 2; int p = 3; Token * p; return Token; }\n"; }
+                { std::ofstream file(app / "App.nsproj"); file << "<Project><PropertyGroup><Name>App</Name></PropertyGroup><ItemGroup><ProjectReference Include=\"../Core/Core.nsproj\" /></ItemGroup></Project>"; }
+                { std::ofstream file(app / "App.ns"); file << "using Shared; int Main() { Token* item = null; return 0; }\n"; }
+                nativesharp::compilation::ProjectLoadOptions loadOptions;
+                nativesharp::compilation::ProjectGraphLoader graphLoader(1, {}, loadOptions);
+                std::string visibilityError;
+                auto graph = graphLoader.load(app / "App.nsproj", visibilityError);
+                std::size_t appOrdinal = 0;
+                if (graph)
+                    for (std::size_t i = 0; i < graph->projects().size(); ++i)
+                        if (graph->projects()[i].moduleName() == "App") appOrdinal = i;
+                auto recordSession = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+                    "namespace Shared { struct Token {}; }\n"));
+                const auto records = recordSession ? recordSession->recordsSnapshot() : std::nullopt;
+                const auto* token = records ? recordByName(*records, "Shared::Token") : nullptr;
+                const auto identity = token ? projectCppRecordIdentity(*token, "App") : std::nullopt;
+                if (graph && identity)
+                {
+                    std::size_t ownerCore = 0;
+                    for (std::size_t i = 0; i < graph->projects().size(); ++i)
+                        if (graph->projects()[i].moduleName() == "Core") ownerCore = i;
+                    const nativesharp::FileId inventoryFile{81};
+                    nativesharp::source::SourceFile inventorySource(inventoryFile, "inventory.ns",
+                        "namespace Native.Inner { public struct Data {} }");
+                    auto inventoryUnit = std::make_unique<nativesharp::frontend::ProjectSyntaxUnit>(
+                        ownerCore, 0, "Core", inventoryFile);
+                    nativesharp::diagnostics::DiagnosticEngine inventoryDiagnostics;
+                    const bool inventoryLexed = inventoryUnit->lex(inventorySource, inventoryDiagnostics);
+                    std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> inventoryUnits;
+                    inventoryUnits.push_back(std::move(inventoryUnit));
+                    const std::vector<nativesharp::frontend::CppImportedTypeDeclaration> imported{{*identity,
+                        nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                        nativesharp::frontend::NamedTypeAccessibility::Public, appOrdinal, "sample.h"}};
+                    const std::vector<std::pair<std::size_t, std::string>> extra{{appOrdinal, "External.More"}};
+                    const auto inventory = nativesharp::frontend::cppParserProjectInventories(
+                        *graph, inventoryUnits, imported, extra);
+                    auto contains = [](const auto& values, const auto& value) {
+                        return std::find(values.begin(), values.end(), value) != values.end();
+                    };
+                    ok &= expect(inventoryLexed && inventory && inventory->size() == graph->projects().size() &&
+                        (*inventory)[ownerCore].cppTypes.empty() &&
+                        !contains((*inventory)[ownerCore].namespaces, "External") &&
+                        contains((*inventory)[appOrdinal].cppTypes, "Shared.Token") &&
+                        contains((*inventory)[appOrdinal].namespaces, "Native.Inner") &&
+                        contains((*inventory)[appOrdinal].namespaces, "Native") &&
+                        contains((*inventory)[appOrdinal].namespaces, "External.More") &&
+                        contains((*inventory)[appOrdinal].namespaces, "External"),
+                        "parser inventory follows project references and retains native and C++ namespace prefixes");
+                    const auto consumer = root / "Consumer";
+                    std::filesystem::create_directories(consumer);
+                    { std::ofstream file(consumer / "Consumer.nsproj");
+                      file << "<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup><ItemGroup>"
+                              "<ProjectReference Include=\"../App/App.nsproj\" /></ItemGroup></Project>"; }
+                    { std::ofstream file(consumer / "Main.ns"); file << "int Main() { return 0; }\n"; }
+                    auto transitive = graphLoader.load(consumer / "Consumer.nsproj", visibilityError);
+                    std::size_t transitiveCore = 0, transitiveApp = 0, transitiveConsumer = 0;
+                    if (transitive)
+                        for (std::size_t i = 0; i < transitive->projects().size(); ++i)
+                        {
+                            const auto& project = transitive->projects()[i];
+                            if (project.moduleName() == "Core") transitiveCore = i;
+                            if (project.moduleName() == "App") transitiveApp = i;
+                            if (project.moduleName() == "Consumer") transitiveConsumer = i;
+                        }
+                    const std::vector<nativesharp::frontend::CppImportedTypeDeclaration> transitiveTypes{{*identity,
+                        nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                        nativesharp::frontend::NamedTypeAccessibility::Public, transitiveApp, "sample.h"}};
+                    const auto transitiveInventory = transitive ?
+                        nativesharp::frontend::cppParserProjectInventories(*transitive, {}, transitiveTypes, {}) :
+                        std::nullopt;
+                    ok &= expect(transitiveInventory &&
+                        contains((*transitiveInventory)[transitiveConsumer].visibleProjects, transitiveCore) &&
+                        contains((*transitiveInventory)[transitiveConsumer].cppTypes, "Shared.Token") &&
+                        (*transitiveInventory)[transitiveCore].cppTypes.empty(),
+                        "parser inventory propagates types transitively without reverse visibility");
+                }
+                nativesharp::frontend::ProjectCompilation compilation;
+                const bool ready = graph && identity && token && compilation.setPreloadedProjectGraph(std::move(*graph), visibilityError) &&
+                    compilation.setExperimentalCppImportedTypes({{*identity,
+                        nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                        nativesharp::frontend::NamedTypeAccessibility::Public, appOrdinal,
+                        token->location ? token->location->file.generic_string() : ""}}, visibilityError) &&
+                    compilation.compileProjectSyntax(app / "App.nsproj", visibilityError);
+                auto hasCoreMultiplication = [](const auto& units) {
+                    std::vector<const nativesharp::ast::AstNode*> pending;
+                    std::unordered_set<const nativesharp::ast::AstNode*> seen;
+                    for (const auto& unit : units)
+                        if (unit && unit->moduleName() == "Core" && unit->syntaxTree()) pending.push_back(unit->syntaxTree());
+                    while (!pending.empty())
+                    {
+                        const auto* node = pending.back(); pending.pop_back();
+                        if (!node || !seen.insert(node).second) continue;
+                        if (node->kind() == nativesharp::ast::AstNodeKind::BinaryExpression &&
+                            node->tokenKind() == nativesharp::lexer::TokenKind::Star) return true;
+                        pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
+                        for (const auto* child : node->children()) pending.push_back(child);
+                    }
+                    return false;
+                };
+                auto hasAppPointer = [](const auto& units) {
+                    std::vector<const nativesharp::ast::AstNode*> pending;
+                    std::unordered_set<const nativesharp::ast::AstNode*> seen;
+                    for (const auto& unit : units)
+                        if (unit && unit->moduleName() == "App" && unit->syntaxTree()) pending.push_back(unit->syntaxTree());
+                    while (!pending.empty())
+                    {
+                        const auto* node = pending.back(); pending.pop_back();
+                        if (!node || !seen.insert(node).second) continue;
+                        if (node->kind() == nativesharp::ast::AstNodeKind::VariableDeclarationStatement &&
+                            node->text() == "item" && node->typeSyntax() &&
+                            (node->typeSyntax()->baseName() == "Token" ||
+                             node->typeSyntax()->baseName() == "Shared.Token")) return true;
+                        pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
+                        for (const auto* child : node->children()) pending.push_back(child);
+                    }
+                    return false;
+                };
+                auto hasAppMultiplication = [](const auto& units) {
+                    std::vector<const nativesharp::ast::AstNode*> pending;
+                    std::unordered_set<const nativesharp::ast::AstNode*> seen;
+                    for (const auto& unit : units)
+                        if (unit && unit->moduleName() == "App" && unit->syntaxTree()) pending.push_back(unit->syntaxTree());
+                    while (!pending.empty())
+                    {
+                        const auto* node = pending.back(); pending.pop_back();
+                        if (!node || !seen.insert(node).second) continue;
+                        if (node->kind() == nativesharp::ast::AstNodeKind::BinaryExpression &&
+                            node->tokenKind() == nativesharp::lexer::TokenKind::Star) return true;
+                        pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
+                        for (const auto* child : node->children()) pending.push_back(child);
+                    }
+                    return false;
+                };
+                std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> copies;
+                nativesharp::diagnostics::DiagnosticEngine copyDiagnostics;
+                const bool copied = ready && compilation.cloneSyntaxForObservation(copies, copyDiagnostics, visibilityError);
+                ok &= expect(ready && copied && hasCoreMultiplication(compilation.units()) && hasCoreMultiplication(copies) &&
+                             hasAppPointer(compilation.units()) && hasAppPointer(copies),
+                             "C++ parser seed is visible to its owner without changing a dependency's multiplication");
+                { std::ofstream file(core / "Core.ns"); file << "int CoreValue() { return 2; }\n"; }
+                auto dependencyGraph = graphLoader.load(app / "App.nsproj", visibilityError);
+                std::size_t coreOrdinal = 0;
+                if (dependencyGraph)
+                    for (std::size_t i = 0; i < dependencyGraph->projects().size(); ++i)
+                        if (dependencyGraph->projects()[i].moduleName() == "Core") coreOrdinal = i;
+                const auto dependencyIdentity = token ? projectCppRecordIdentity(*token, "Core") : std::nullopt;
+                nativesharp::frontend::ProjectCompilation dependencyCompilation;
+                const bool dependencyReady = dependencyGraph && dependencyIdentity && token &&
+                    dependencyCompilation.setPreloadedProjectGraph(std::move(*dependencyGraph), visibilityError) &&
+                    dependencyCompilation.setExperimentalCppImportedTypes({{*dependencyIdentity,
+                        nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                        nativesharp::frontend::NamedTypeAccessibility::Public, coreOrdinal,
+                        token->location ? token->location->file.generic_string() : ""}}, visibilityError) &&
+                    dependencyCompilation.compileProjectSyntax(app / "App.nsproj", visibilityError);
+                std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> dependencyCopies;
+                nativesharp::diagnostics::DiagnosticEngine dependencyDiagnostics;
+                const bool dependencyCopied = dependencyReady && dependencyCompilation.cloneSyntaxForObservation(
+                    dependencyCopies, dependencyDiagnostics, visibilityError);
+                ok &= expect(dependencyReady && dependencyCopied && hasAppPointer(dependencyCompilation.units()) &&
+                             hasAppPointer(dependencyCopies),
+                             "C++ parser seed is visible through a project reference in original and copied syntax");
+
+                { std::ofstream file(app / "App.ns");
+                  file << "using Shared; int Main() { int Token = 2; int p = 3; Token * p; return Token; }\n"; }
+                auto sameProjectHasMultiplication = [&](bool withImportedType, bool* hasPointer = nullptr,
+                                                        bool* cloneMultiplication = nullptr) {
+                    auto sameGraph = graphLoader.load(app / "App.nsproj", visibilityError);
+                    if (!sameGraph) return false;
+                    std::size_t owner = 0;
+                    for (std::size_t i = 0; i < sameGraph->projects().size(); ++i)
+                        if (sameGraph->projects()[i].moduleName() == "App") owner = i;
+                    nativesharp::frontend::ProjectCompilation sameCompilation;
+                    if (!sameCompilation.setPreloadedProjectGraph(std::move(*sameGraph), visibilityError)) return false;
+                    if (withImportedType && !sameCompilation.setExperimentalCppImportedTypes({{*identity,
+                            nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                            nativesharp::frontend::NamedTypeAccessibility::Public, owner,
+                            token->location ? token->location->file.generic_string() : ""}}, visibilityError)) return false;
+                    if (!sameCompilation.compileProjectSyntax(app / "App.nsproj", visibilityError)) return false;
+                    if (hasPointer) *hasPointer = hasAppPointer(sameCompilation.units());
+                    if (cloneMultiplication)
+                    {
+                        std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> clones;
+                        nativesharp::diagnostics::DiagnosticEngine diagnostics;
+                        *cloneMultiplication = sameCompilation.cloneSyntaxForObservation(clones, diagnostics, visibilityError) &&
+                            !diagnostics.hasErrors() && hasAppMultiplication(clones);
+                    }
+                    std::vector<const nativesharp::ast::AstNode*> pending;
+                    std::unordered_set<const nativesharp::ast::AstNode*> seen;
+                    for (const auto& unit : sameCompilation.units())
+                        if (unit && unit->moduleName() == "App" && unit->syntaxTree()) pending.push_back(unit->syntaxTree());
+                    while (!pending.empty())
+                    {
+                        const auto* node = pending.back(); pending.pop_back();
+                        if (!node || !seen.insert(node).second) continue;
+                        if (node->kind() == nativesharp::ast::AstNodeKind::BinaryExpression &&
+                            node->tokenKind() == nativesharp::lexer::TokenKind::Star) return true;
+                        pending.push_back(node->first()); pending.push_back(node->second()); pending.push_back(node->third());
+                        for (const auto* child : node->children()) pending.push_back(child);
+                    }
+                    return false;
+                };
+                const bool plainMultiplication = sameProjectHasMultiplication(false);
+                const bool importedMultiplication = identity && token && sameProjectHasMultiplication(true);
+                { std::ofstream file(app / "App.ns");
+                  file << "using Shared; namespace Shared { public struct Token {} } "
+                          "int Main() { int Token = 2; int p = 3; Token * p; return Token; }\n"; }
+                const bool nativeTypeMultiplication = sameProjectHasMultiplication(false);
+                std::cerr << "same-project multiplication: plain=" << plainMultiplication
+                          << " imported=" << importedMultiplication
+                          << " native=" << nativeTypeMultiplication << '\n';
+                ok &= expect(plainMultiplication && importedMultiplication == nativeTypeMultiplication,
+                             "C++ parser seed follows the existing NativeSharp type-name disambiguation");
+                { std::ofstream file(app / "App.ns");
+                  file << "int Main() { int Token = 2; int p = 3; Token * p; return Token; }\n"; }
+                const bool unrelatedPlain = sameProjectHasMultiplication(false);
+                bool clonedUnrelated = false;
+                const bool unrelatedImported = identity && token &&
+                    sameProjectHasMultiplication(true, nullptr, &clonedUnrelated);
+                { std::ofstream file(app / "App.ns");
+                  file << "int Main() { Shared.Token* item = null; int Token = 2; int p = 3; "
+                          "Token * p; return Token; }\n"; }
+                bool qualifiedPointer = false;
+                if (identity && token) sameProjectHasMultiplication(true, &qualifiedPointer);
+                std::cerr << "unqualified name without using: plain=" << unrelatedPlain
+                          << " imported=" << unrelatedImported << " qualified=" << qualifiedPointer << '\n';
+                ok &= expect(unrelatedPlain && unrelatedImported && clonedUnrelated,
+                             "C++ type in an unimported namespace must not change original or cloned expressions");
+                ok &= expect(qualifiedPointer,
+                             "qualified C++ pointer remains a declaration without a using directive");
+            }
         }
     }
     return ok ? 0 : 1;
