@@ -43,6 +43,10 @@ findstr /r /c:"load volatile.*@global_record_volatile" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile del campo global. & exit /b 1)
 findstr /r /c:"store volatile.*@global_record_volatile" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura LLVM volatile del campo global. & exit /b 1)
+findstr /r /c:"load volatile.*@volatile_record_matrix" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura volatile de matriz de structs. & exit /b 1)
+findstr /r /c:"store volatile i32 43,.*@volatile_record_matrix" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile de matriz de structs. & exit /b 1)
 findstr /r /c:"store volatile i32 17," "%DEST%\project.ll" >nul
 if not errorlevel 1 (echo Se propago volatile del puntero a su apuntado. & exit /b 1)
 findstr /r /c:"load volatile ptr, ptr @volatile_record_pointer" "%DEST%\project.ll" >nul
@@ -100,6 +104,24 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-record.exe" > "%DEST%\volatile-record.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /c:"cannot take the address of volatile storage until qualified pointers are supported" "%DEST%\volatile-record.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstRecordMatrixWrite.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-matrix-write.exe" > "%DEST%\const-record-matrix-write.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%DEST%\const-record-matrix-write.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstRecordMatrixAddress.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-matrix-address.exe" > "%DEST%\const-record-matrix-address.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"operand of & must name addressable storage" "%DEST%\const-record-matrix-address.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileRecordMatrixAddress.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-record-matrix-address.exe" > "%DEST%\volatile-record-matrix-address.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"cannot take the address of volatile storage until qualified pointers are supported" "%DEST%\volatile-record-matrix-address.log" >nul
 if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

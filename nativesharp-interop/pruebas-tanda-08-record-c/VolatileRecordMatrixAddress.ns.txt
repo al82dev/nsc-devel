@@ -1,0 +1,5 @@
+int Main()
+{
+    int* pointer = &volatile_record_matrix[1][1].value;
+    return 0;
+}

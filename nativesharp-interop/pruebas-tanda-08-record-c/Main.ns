@@ -39,5 +39,8 @@ int Main()
     if (global_record_volatile.value != 41 || read_volatile_record() != 41) return 14;
     volatile_record_pointer->value = 17;
     if (volatile_record_pointer->value != 17) return 15;
+    if (readonly_record_matrix[1][1].value != 31) return 16;
+    volatile_record_matrix[1][1].value = 43;
+    if (volatile_record_matrix[1][1].value != 43 || read_volatile_record_matrix() != 43) return 17;
     return 0;
 }
