@@ -17,7 +17,9 @@ clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
-for %%O in (0 1 2 3) do (
+set "LEVELS=0 1 2 3"
+if /I "%~1"=="--diagnostico" set "LEVELS=0"
+for %%O in (%LEVELS%) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\RecordProducer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\CRecordCallbackProducer.lib"
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\RecordConsumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe"

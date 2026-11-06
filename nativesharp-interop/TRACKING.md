@@ -779,6 +779,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     el arreglo y la matriz de records empaquetados, con comprobación de IR O0
     y rechazo de direcciones subalineadas. T08-016 sigue abierto.
 - [ ] T08-017. Definir la representación de punteros a función C.
+  - El productor y consumidor precompilados de un callback que recibe un puntero a record C pasaron O0; O1–O3 quedan pendientes. [Detalle](registro-commits/callback-record-precompilado.md).
   - La llamada directa a callback escalar en campo y global pasó O0–O3. [Detalle](registro-commits/callback-c-invocacion-directa.md).
   - El callback almacenado con puntero a record C pasó O0–O3 para retorno, campo y global; la prueba de sesión pasó con controles de identidad. [Detalle](registro-commits/callback-c-puntero-record.md).
   - La lectura y escritura de callback volatile en global y campo pasaron
