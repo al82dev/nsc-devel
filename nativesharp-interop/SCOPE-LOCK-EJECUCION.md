@@ -7,6 +7,13 @@ C antigua `f()`, retorno void, puntero void y promociones de argumentos sin
 prototipo en Windows x64. Usar Clang como referencia y salidas en
 `A:/nsc-interop-build`; no modificar producción antes de registrar un fallo
 y el alcance de su corrección. Registrar resultados y controles negativos.
+El fixture C11 confirmó que NSC rechaza una llamada válida a `old_style()` con
+argumentos porque la proyecta como función de cero parámetros. Permitir
+`CppFunctionDeclaration.h`, `ClangSession.cpp`, `CppSemanticFunction.cpp`,
+los tests de sesión y el fixture para preservar si existe prototipo y emitir
+llamadas C sin prototipo mediante la ruta de argumentos promovidos. Mantener
+`f(void)` como cero argumentos y no extender esto a C++; verificar ABI y
+metadata cuando aplique, con construcción y validación agrupadas.
 
 ## Actualizaciones volatile de campos C importados
 
