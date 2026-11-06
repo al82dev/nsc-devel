@@ -3304,6 +3304,33 @@ int main(int argc, char** argv)
                         ok &= expect(metadata_detail::compareCRecordContracts(confirmed, missingFormat, floatComparison, codecError) &&
                                      floatComparison == metadata_detail::CRecordContractComparison::Insufficient,
                                      "C record comparison does not infer an unknown floating format");
+                        LibraryMetadata formatMetadata;
+                        formatMetadata.formatMinor = 43;
+                        formatMetadata.targetTriple = "x86_64-pc-windows-msvc";
+                        formatMetadata.moduleName = "Semantic";
+                        formatMetadata.producerVersion = "format-test";
+                        formatMetadata.cppCRecordCatalog = floatingBytes;
+                        ok &= expect(!metadata_detail::verifyBinaryClosureMetadata(formatMetadata, codecError),
+                                     "old metadata version rejects a catalogue with floating format");
+                        formatMetadata.formatMinor = 44;
+                        ok &= expect(metadata_detail::verifyBinaryClosureMetadata(formatMetadata, codecError),
+                                     "current metadata accepts a canonical floating format catalogue");
+                        auto movedSource = floatingCatalog;
+                        movedSource[recordIndex].sourceProvenance->sourcePath = "different/source.h";
+                        auto movedMetadata = formatMetadata;
+                        const bool movedEncoded = metadata_detail::encodeCTypeCatalogWithProvenance(
+                            movedSource, {}, movedMetadata.cppCRecordCatalog, codecError);
+                        ok &= expect(movedEncoded && metadata_detail::encodeAbiProjection(movedMetadata) ==
+                                     metadata_detail::encodeAbiProjection(formatMetadata),
+                                     "floating format ABI projection excludes source provenance");
+                        auto withoutFormat = floatingCatalog;
+                        withoutFormat[recordIndex].fields.front().type.ieeeBinary64 = false;
+                        auto withoutFormatMetadata = formatMetadata;
+                        const bool withoutEncoded = metadata_detail::encodeCTypeCatalogWithProvenance(
+                            withoutFormat, {}, withoutFormatMetadata.cppCRecordCatalog, codecError);
+                        ok &= expect(withoutEncoded && metadata_detail::encodeAbiProjection(withoutFormatMetadata) !=
+                                     metadata_detail::encodeAbiProjection(formatMetadata),
+                                     "floating format changes the ABI projection");
                         if (!floatingBytes.empty()) floatingBytes.back() = 2;
                         ok &= expect(!metadata_detail::decodeCTypeCatalogWithProvenance(
                                          floatingBytes, floatingRecords, floatingEnums, codecError),
