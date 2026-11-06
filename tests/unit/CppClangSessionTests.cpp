@@ -8180,6 +8180,43 @@ int main(int argc, char** argv)
                      "live Clang session exposes its effective MS volatile option");
     }
 
+    const std::string usrSource =
+        "typedef int Count; enum Color { Red, Blue }; struct Point { int x; int y; }; "
+        "extern int counter; int measure(struct Point*); int other(void);";
+    auto usrFirst = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C, usrSource));
+    auto usrSecond = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C, usrSource));
+    ok &= expect(usrFirst && usrSecond, "independent sessions open for Clang declaration identities");
+    if (usrFirst && usrSecond)
+    {
+        const auto functions = usrFirst->freeFunctionsSnapshot();
+        const auto functionsAgain = usrSecond->freeFunctionsSnapshot();
+        const auto globals = usrFirst->globalsSnapshot();
+        const auto records = usrFirst->recordsSnapshot();
+        const auto enums = usrFirst->enumsSnapshot();
+        const auto aliases = usrFirst->typeAliasesSnapshot();
+        const auto* measure = functions ? functionByName(*functions, "measure") : nullptr;
+        const auto* measureAgain = functionsAgain ? functionByName(*functionsAgain, "measure") : nullptr;
+        const auto* other = functions ? functionByName(*functions, "other") : nullptr;
+        const auto* global = globals ? globalByName(*globals, "counter") : nullptr;
+        const auto* record = records ? recordByName(*records, "Point") : nullptr;
+        ok &= expect(measure && measureAgain && measure->clangUsr &&
+                     measure->clangUsr == measureAgain->clangUsr && other && other->clangUsr &&
+                     measure->clangUsr != other->clangUsr,
+                     "Clang function USRs persist across sessions and distinguish names");
+        ok &= expect(global && global->clangUsr && record && record->clangUsr &&
+                     record->fields.size() == 2 && record->fields[0].clangUsr &&
+                     record->fields[1].clangUsr && record->fields[0].clangUsr != record->fields[1].clangUsr &&
+                     enums && !enums->empty() && enums->front().clangUsr &&
+                     enums->front().enumerators.size() == 2 && enums->front().enumerators[0].clangUsr &&
+                     enums->front().enumerators[1].clangUsr &&
+                     enums->front().enumerators[0].clangUsr != enums->front().enumerators[1].clangUsr &&
+                     aliases && !aliases->empty() && aliases->front().clangUsr,
+                     "C global, record, fields, enum, enumerators and alias preserve Clang USRs");
+        usrFirst->close();
+        ok &= expect(measure && measure->clangUsr && record && record->clangUsr,
+                     "copied USRs remain available after closing their session");
+    }
+
     auto alignedSession = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
         "__declspec(align(16)) extern volatile int aligned_global; extern int incomplete_global[];\n"));
     ok &= expect(static_cast<bool>(alignedSession), "Clang opens aligned and incomplete global declarations");
