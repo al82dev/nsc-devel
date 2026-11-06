@@ -601,6 +601,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     el arreglo y la matriz de records empaquetados, con comprobación de IR O0
     y rechazo de direcciones subalineadas. T08-016 sigue abierto.
 - [ ] T08-017. Definir la representación de punteros a función C.
+  - Un callback C `int(int)` retornado, llamado desde NativeSharp y pasado de
+    vuelta a C compiló y ejecutó O0–O3. No cubre todas las firmas ni
+    convenciones. [Evidencia](registro-commits/callback-c-retornado.md).
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
 - [ ] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.
 - [ ] T08-020. Comparar tamaño, alineación y offsets importados con los calculados por Clang.
