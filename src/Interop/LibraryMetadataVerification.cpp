@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Interop/LibraryMetadataMerger.h"
+#include "Internal/CppCRecordMetadataCodec.h"
 
 #include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
@@ -1396,6 +1397,24 @@ bool verifyBinaryClosureMetadata(
     {
         error = "metadata format cannot represent C record catalogue";
         return false;
+    }
+    if (!metadata.cppCRecordCatalog.empty())
+    {
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<std::uint8_t> canonical;
+        std::string detail;
+        if (!decodeCRecordCatalog(metadata.cppCRecordCatalog, records, detail) || records.empty() ||
+            !encodeCRecordCatalog(records, canonical, detail) || canonical != metadata.cppCRecordCatalog)
+        {
+            error = "invalid C record catalogue: " + detail;
+            return false;
+        }
+        for (const auto& record : records)
+            if (record.targetTriple != metadata.targetTriple)
+            {
+                error = "C record catalogue target does not match metadata target";
+                return false;
+            }
     }
     if (metadata.formatMinor < 41 && !metadata.cppBinaryDependencies.empty())
     {
