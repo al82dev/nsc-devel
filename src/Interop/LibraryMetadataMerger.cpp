@@ -480,6 +480,7 @@ bool LibraryMetadataMerger::merge(
     candidate.exports.clear();
     candidate.binaryDependencies.clear();
     candidate.cppBinaryDependencies.clear();
+    candidate.cppCRecordCatalog.clear();
     candidate.platformImports.clear();
 
     for (std::size_t ordinal = 0; ordinal < fragments.size(); ++ordinal)
@@ -510,6 +511,15 @@ bool LibraryMetadataMerger::merge(
                 return false;
             }
             candidate.cppBinaryDependencies = fragment.cppBinaryDependencies;
+        }
+        if (!fragment.cppCRecordCatalog.empty())
+        {
+            if (!candidate.cppCRecordCatalog.empty() && candidate.cppCRecordCatalog != fragment.cppCRecordCatalog)
+            {
+                error = "NSMETA fragments disagree on C record catalogue";
+                return false;
+            }
+            candidate.cppCRecordCatalog = fragment.cppCRecordCatalog;
         }
         append(candidate.platformImports, fragment.platformImports);
     }

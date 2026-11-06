@@ -1392,6 +1392,11 @@ bool verifyBinaryClosureMetadata(
     const LibraryMetadata& metadata,
     std::string& error)
 {
+    if (metadata.formatMinor < 42 && !metadata.cppCRecordCatalog.empty())
+    {
+        error = "metadata format cannot represent C record catalogue";
+        return false;
+    }
     if (metadata.formatMinor < 41 && !metadata.cppBinaryDependencies.empty())
     {
         error = "metadata format cannot represent C/C++ binary dependencies";

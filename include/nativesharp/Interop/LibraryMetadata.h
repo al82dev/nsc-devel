@@ -284,6 +284,8 @@ struct LibraryMetadata final
     std::vector<LibraryMetadataBinaryDependency> binaryDependencies;
     // NSMETA 1.41: private C/C++ binary inputs, in linker order.
     std::vector<LibraryMetadataCppBinaryDependency> cppBinaryDependencies;
+    // Prepared for 1.42; older formats must reject a nonempty encoded C record catalogue.
+    std::vector<std::uint8_t> cppCRecordCatalog;
     // Private `extern C from` callees referenced by this archive. The final consumer materializes
     // their import libraries even though the declarations themselves are not public metadata.
     std::vector<LibraryMetadataPlatformImport> platformImports;

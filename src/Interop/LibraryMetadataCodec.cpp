@@ -611,6 +611,11 @@ bool validateMetadataBefore40(
         }
     }
     if (metadata.formatMinor < 39) metadata.languageFeatureFlags = 0;
+    if (metadata.formatMinor < 42 && !metadata.cppCRecordCatalog.empty())
+    {
+        error = "NativeSharp metadata before 1.42 cannot represent C record catalogue";
+        return false;
+    }
     if (metadata.formatMinor < 41 && !metadata.cppBinaryDependencies.empty())
     {
         error = "NativeSharp metadata before 1.41 cannot represent C/C++ binary dependencies";
