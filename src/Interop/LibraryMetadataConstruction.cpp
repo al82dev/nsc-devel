@@ -3058,8 +3058,10 @@ bool buildMetadataModel(
         metadata, declaredTypeKeys, emittedSpecializedTypeKeys, externalTypeKeys);
     if (!appendBinaryDependencies(compilation, metadata, error)) return false;
     appendPlatformImports(compilation, metadata);
+    const auto previousMinor = metadata.formatMinor;
+    if (metadata.formatMinor < 43) metadata.formatMinor = 43;
     if (!compilation.collectCppMetadataCatalog(metadata, metadata.cppCRecordCatalog, error)) return false;
-    if (!metadata.cppCRecordCatalog.empty() && metadata.formatMinor < 42) metadata.formatMinor = 42;
+    if (metadata.cppCRecordCatalog.empty()) metadata.formatMinor = previousMinor;
     return true;
 }
 
