@@ -219,7 +219,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Actualización: `fb1796115`, `6670efd01` y `2627824b6` habilitan y
     prueban el record C anidado empaquetado. El fixture de layout pasó en
     O0–O3, con IR O0 y rechazo de dirección; la suite interna de sesión pasó.
-    Se revisan arreglos dentro de records subalineados. La tanda sigue abierta.
+    La tanda sigue abierta.
+  - `6497c64f2` reprodujo una dirección indebidamente aceptada en un arreglo
+    dentro de record subalineado; `2f97e22b8` la corrige. Con `aa662dd8f`
+    pasaron acceso y rechazo en layout O0–O3; `f02e37235` comprobó lectura y
+    escritura con alineación 1 en el IR ya generado. No cierra T08-010.
 - [ ] T08-011. Importar la declaración y campos de una `union` C.
 - [ ] T08-012. Obtener de Clang tamaño, alineación y desplazamiento de cada campo.
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.

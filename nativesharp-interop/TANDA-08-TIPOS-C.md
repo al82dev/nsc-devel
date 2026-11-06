@@ -1341,6 +1341,17 @@ alineación anidada y puntero cargado. Esto no constituye la validación complet
 de la tanda. Se debe revisar el escape de dirección de arreglos dentro del
 record subalineado antes de afirmar cobertura de ese caso.
 
+### Arreglo dentro de record C subalineado
+
+El caso `6497c64f2` compiló indebidamente al tomar la dirección de un elemento
+del arreglo anidado. `2f97e22b8` propaga la condición no direccionable de la
+base mutable en campos importados; `aa662dd8f` comprueba el rechazo, además de
+lectura y escritura simple y compuesta compartidas con C. La construcción
+incremental de NSC y `validar.cmd` de layout finalizaron con código 0 en O0–O3.
+El verificador `f02e37235` pasó sobre el IR O0 producido y exige alineación 1
+para una lectura y una escritura del arreglo anidado. Esto es evidencia
+dirigida, no la batería completa ni el cierre del ítem.
+
 ## Validación dirigida de arreglos empaquetados calificados y de punteros
 
 En `a0dc6fc71`, la construcción incremental de NSC terminó con código 0 y
