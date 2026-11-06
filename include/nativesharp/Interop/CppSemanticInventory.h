@@ -45,6 +45,10 @@ struct CppSemanticInventoryFailure
 using CppSemanticInventoryResult =
     std::variant<std::vector<CppSemanticInventoryEntry>, CppSemanticInventoryFailure>;
 
+// Internal C definitions receive a per-project/reference link symbol, not a C ABI name.
+std::string cppCInlineLinkSymbol(const std::filesystem::path& projectFile,
+    std::size_t referenceIndex, std::string_view name);
+
 // The supplied graph must already contain its final set of projects. No declaration is
 // discarded or merged; an unsupported projection remains attached to its declaration.
 CppSemanticInventoryResult collectCppSemanticFunctions(

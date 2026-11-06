@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppSemanticInventory.h"
+#include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
@@ -906,6 +907,15 @@ CppSignatureEnumResult collectCppSignatureEnumDependencies(
     return result;
 }
 
+std::string cppCInlineLinkSymbol(const std::filesystem::path& projectFile,
+    std::size_t referenceIndex, std::string_view name)
+{
+    const std::string input = projectFile.lexically_normal().generic_string() + "\x1f" +
+        std::to_string(referenceIndex) + "\x1f" + std::string(name);
+    const auto* bytes = reinterpret_cast<const std::uint8_t*>(input.data());
+    return "__nsc_c_inline_" + basic::sha256Hex(basic::sha256({bytes, input.size()}));
+}
+
 CppSemanticInventoryResult collectCppSemanticFunctions(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects)
 {
@@ -935,6 +945,8 @@ CppSemanticInventoryResult collectCppSemanticFunctions(
             const auto options = session->optionsSnapshot();
             for (auto& declaration : *declarations)
             {
+                if (declaration.isCStaticInlineDefinition && !declaration.externalLinkage)
+                    declaration.externalSymbol = cppCInlineLinkSymbol(group.projectFile, index, declaration.name);
                 auto projection = projectCppSemanticFunction(
                     declaration, *owner, graph.projects()[*owner].moduleName());
                 result.push_back({group.projectFile, index, *owner, options.targetTriple,

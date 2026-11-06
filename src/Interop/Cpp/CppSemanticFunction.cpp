@@ -161,7 +161,8 @@ CppSemanticFunctionResult projectFunction(
         return CppSemanticFunctionFailure{std::move(message)};
     };
     if (moduleName.empty() || function.name.empty() || function.qualifiedName.empty() ||
-        !function.externalLinkage || !function.externalSymbol || function.externalSymbol->empty() ||
+        (!function.externalLinkage && !function.isCStaticInlineDefinition) ||
+        !function.externalSymbol || function.externalSymbol->empty() ||
         function.callingConvention.empty())
         return failure("function requires a project, a name and an external symbol");
     if (function.variadic && (function.languageLinkage != CppLanguageLinkage::C ||
@@ -170,9 +171,10 @@ CppSemanticFunctionResult projectFunction(
     const bool cUnprototyped = function.languageLinkage == CppLanguageLinkage::C && !function.hasPrototype;
     if (cUnprototyped && (function.callingConvention != "cdecl" || !function.parameters.empty()))
         return failure("unprototyped C function with unsupported definition or calling convention");
-    const CppType mappedReturn = function.languageLinkage == CppLanguageLinkage::C
+    const bool cLanguage = function.languageLinkage == CppLanguageLinkage::C || function.isCStaticInlineDefinition;
+    const CppType mappedReturn = cLanguage
         ? invocationTypeForC(function.returnType, true) : function.returnType;
-    const bool cRecordValues = function.languageLinkage == CppLanguageLinkage::C;
+    const bool cRecordValues = cLanguage;
     const auto resultType = mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal, cRecordValues);
     if (!resultType) return failure("C/C++ return type is not yet mapped");
 
@@ -212,7 +214,7 @@ CppSemanticFunctionResult projectFunction(
     {
         const auto& input = function.parameters[index];
         // Map only the carrier; the original Clang type retains its qualifiers below.
-        const CppType mappedInput = function.languageLinkage == CppLanguageLinkage::C
+        const CppType mappedInput = cLanguage
             ? invocationTypeForC(input.type, true) : input.type;
         const auto parameterType = mapFunctionType(mappedInput, true, records, moduleName, 0, lookup, projectOrdinal, cRecordValues);
         if (!parameterType || input.type.kind == CppTypeKind::Void)
