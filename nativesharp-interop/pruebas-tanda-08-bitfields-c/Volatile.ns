@@ -2,6 +2,8 @@ int ReadFirst(VolatileBits* value) { return (int)value->first; }
 void WriteFirst(VolatileBits* value, uint number) { value->first = number; }
 int ReadPackedFirst(PackedVolatileBits* value) { return (int)value->first; }
 void WritePackedFirst(PackedVolatileBits* value, uint number) { value->first = number; }
+int ReadUnionFirst(VolatileUnionBits* value) { return (int)value->first; }
+void WriteUnionFirst(VolatileUnionBits* value, uint number) { value->first = number; }
 
 int Main()
 {
@@ -13,5 +15,10 @@ int Main()
     value->first = 6; value->delta = -7;
     packed->first = 7; packed->delta = -2;
     if (check_volatile_bits(value, packed) != 1) return 3;
+    var unionValue = get_volatile_union_bits();
+    init_volatile_union_bits(unionValue);
+    if (unionValue->first != 5 || unionValue->delta != -3) return 4;
+    unionValue->delta = -7; unionValue->first = 3;
+    if (unionValue->delta != -5 || check_volatile_union_bits(unionValue) != 1) return 5;
     return 0;
 }

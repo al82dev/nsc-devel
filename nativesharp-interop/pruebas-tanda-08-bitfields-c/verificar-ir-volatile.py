@@ -22,6 +22,8 @@ cases = [
     ("@write_volatile_first(", "__WriteFirst__", [("load", "", "32", "4"), ("store", "", "32", "4")]),
     ("@read_packed_volatile_first(", "__ReadPackedFirst__", [("load", "", "32", "1")]),
     ("@write_packed_volatile_first(", "__WritePackedFirst__", [("load", "", "32", "1"), ("store", "", "32", "1")]),
+    ("@read_union_volatile_first(", "__ReadUnionFirst__", [("load", "", "32", "4")]),
+    ("@write_union_volatile_first(", "__WriteUnionFirst__", [("load", "", "32", "4"), ("store", "", "32", "4")]),
 ]
 for c_name, n_name, expected in cases:
     c_actual = accesses(body(clang, c_name))
