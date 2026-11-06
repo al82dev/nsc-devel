@@ -1,3 +1,5 @@
+VolatileIntPtr global_volatile_alias;
+
 VolatileIntPtr forward_volatile_alias(VolatileIntPtr value)
 {
     return value;
@@ -45,6 +47,9 @@ int Main()
     if (read_volatile_pointee() != 71) return 34;
     ConstVolatileIntPtr readonly_volatile_alias = const_volatile_pointee;
     if (*readonly_volatile_alias != 71) return 35;
+    global_volatile_alias = volatile_pointee;
+    *global_volatile_alias = 72;
+    if (read_volatile_pointee() != 72) return 36;
     shared_array[1] = 19;
     int* shared_element = &shared_array[1];
     if (*shared_element != 19) return 10;

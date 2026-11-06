@@ -1,0 +1,7 @@
+VolatileIntPtr global_value;
+
+int Main()
+{
+    var address = &global_value;
+    return 0;
+}

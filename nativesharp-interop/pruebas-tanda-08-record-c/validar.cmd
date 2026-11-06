@@ -41,6 +41,8 @@ findstr /r /c:"store volatile i32 69, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante alias tipado. & exit /b 1)
 findstr /r /c:"store volatile i32 71, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile despues de la conversion al alias. & exit /b 1)
+findstr /r /c:"store volatile i32 72, ptr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile desde el global NativeSharp. & exit /b 1)
 findstr /r /c:"store volatile i32 67, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile del campo apuntado. & exit /b 1)
 findstr /r /c:"store volatile i32 68, ptr" "%DEST%\project.ll" >nul
@@ -296,6 +298,12 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-volatile-alias-write.exe" > "%DEST%\const-volatile-alias-write.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /c:"left side of assignment is not assignable" "%DEST%\const-volatile-alias-write.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileAliasGlobalAddress.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-alias-global-address.exe" > "%DEST%\volatile-alias-global-address.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"cannot take the address of this global until nested pointer qualifiers are supported" "%DEST%\volatile-alias-global-address.log" >nul
 if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

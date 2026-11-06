@@ -845,6 +845,12 @@ la validación agrupada, sin afirmar compatibilidad para conversiones anidadas.
 El fixture prepara lectura mediante `ConstVolatileIntPtr` y un caso negativo
 que intenta escribir por él. La comprobación agrupada todavía no se ha ejecutado.
 
+## Prueba de estado global con alias volatile
+
+El fixture prepara un global NativeSharp del tipo importado; comprueba una
+escritura observable desde C y en IR, y el rechazo de tomar su dirección mientras
+la representación anidada no exista. Son casos no ejecutados aún.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de estado global con alias volatile
+
+Preparar un estado global NS tipado con el alias C: asignar el puntero,
+escribir al apuntado y comprobar la operación volatile en IR y su resultado C.
+Preparar el rechazo de su dirección mientras no se representen los niveles
+anidados. Archivos: fixture de records C, su script y documentación. Ejecutar
+solo junto con la validación agrupada de la tanda.
+
 ## Alias C a apuntado const volatile
 
 Preparar lectura del alias combinado y comprobación de rechazo de escritura.
