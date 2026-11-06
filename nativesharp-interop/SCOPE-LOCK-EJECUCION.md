@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Protección provisional de llamadas indirectas y variádicas
+
+Mientras las firmas estructurales no representen volatile, rechazar argumentos
+con apuntado volatile en llamadas indirectas y en los argumentos variádicos
+sin contrato tipado. Archivo: CallAnalyzer.cpp y documentación. Es una
+restricción provisional; el objetivo conserva el soporte de estas llamadas.
+La importación real permanece cerrada.
+
 ## Prueba aislada de contrato volatile en llamadas
 
 Inyectar un global puntero con apuntado volatile y proyectar las funciones C

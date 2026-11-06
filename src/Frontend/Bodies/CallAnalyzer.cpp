@@ -496,7 +496,7 @@ ProjectMethodBodyModel::evaluateNamespaceVariadicCandidateArgument(
     if (parameterOrdinal < candidate.parameters.size()) return std::nullopt;
     ProjectImplicitConversion conversion =
         classifyCVariadicPromotion(arguments[argumentOrdinal].typeKey);
-    if (!conversion.exists() ||
+    if (!conversion.exists() || arguments[argumentOrdinal].pointerPointeeVolatile ||
         arguments[argumentOrdinal].argumentPassKind != ParameterPassKind::Value ||
         arguments[argumentOrdinal].ownership != sema::OwnershipKind::None)
     {
@@ -4012,6 +4012,13 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
 {
     for (std::size_t index = 0; index < arguments.size(); ++index)
     {
+        if (arguments[index].pointerPointeeVolatile)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, expression->children()[index]->range(),
+                "indirect call cannot yet preserve pointer pointee volatile qualification");
+            return false;
+        }
         if (index >= parameterTypes.size())
         {
             ProjectImplicitConversion conversion = classifyCVariadicPromotion(arguments[index].typeKey);
@@ -4226,7 +4233,8 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     if (parameterOrdinal >= candidate.parameters.size())
     {
         ProjectImplicitConversion conversion = classifyCVariadicPromotion(argument.typeKey);
-        if (!conversion.exists() || argument.argumentPassKind != ParameterPassKind::Value ||
+        if (!conversion.exists() || argument.pointerPointeeVolatile ||
+            argument.argumentPassKind != ParameterPassKind::Value ||
             argument.ownership != sema::OwnershipKind::None ||
             argument.ownershipTransfer || argument.ownershipFreshOwner)
         {
