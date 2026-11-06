@@ -40,3 +40,12 @@ if not any(re.search(r"store i32 [^\n]*ptr " + re.escape(address) + r", align 1"
            for address in nested_addresses):
     print("Falta escritura alineada a 1 del campo anidado")
     sys.exit(1)
+
+nested_array = ir.split("call ptr @layout_packed_nested_array()", 1)[-1].split(
+    "call i32 @layout_packed_nested_array_value()", 1)[0]
+if not re.search(r"store i32 70, ptr %raw\.element\.addr\d*, align 1", nested_array):
+    print("Falta escritura alineada a 1 del arreglo anidado")
+    sys.exit(1)
+if not re.search(r"load i32, ptr %raw\.element\.addr\d*, align 1", nested_array):
+    print("Falta lectura alineada a 1 del arreglo anidado")
+    sys.exit(1)
